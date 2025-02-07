@@ -1,3 +1,5 @@
+use std::sync::{Arc, RwLock};
+
 use rfd::FileDialog;
 use gpui::{
     Application, Bounds, MouseButton, Size, WindowBounds, WindowOptions, div,
@@ -74,7 +76,7 @@ pub fn menu_bar() -> gpui::Div {
         )
 }
 
-/// TabBar: renders a button for each tab with the active one highlighted.
+/// TabBar: renders a button for each tab, highlighting the active one.
 pub fn tab_bar(active_tab: usize, tabs: &[&str]) -> gpui::Div {
     let mut tab_elements: Vec<gpui::Div> = Vec::new();
     for (i, &tab_name) in tabs.iter().enumerate() {
@@ -106,7 +108,7 @@ pub fn tab_bar(active_tab: usize, tabs: &[&str]) -> gpui::Div {
         .children(tab_elements)
 }
 
-/// Enum for available tabs.
+/// Tab enum representing available tabs.
 pub enum Tab {
     LevelEditor,
     ScriptEditor,
@@ -190,7 +192,7 @@ pub fn script_editor_view() -> gpui::Div {
         )
 }
 
-/// Main content: displays a sidebar and the editor view based on the active tab.
+/// Main content: displays sidebar and editor view based on active tab.
 pub fn main_content(active_tab: &Tab) -> gpui::Div {
     let sidebar = div()
         .w_64()
@@ -234,7 +236,7 @@ pub fn main_content(active_tab: &Tab) -> gpui::Div {
 }
 
 /// Status bar: displays FPS, memory usage, time, and branch info.
-pub fn status_bar(fps: SharedString, memory: SharedString, time: SharedString, branch: SharedString) -> gpui::Div {
+pub fn status_bar(fps: Arc<RwLock<SharedString>>, memory: Arc<RwLock<SharedString>>, time: Arc<RwLock<SharedString>>, branch: Arc<RwLock<SharedString>>) -> gpui::Div {
     div()
         .flex()
         .h_6()

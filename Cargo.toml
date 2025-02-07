@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+chrono = "0.4.39"
 gpui = { git = "https://github.com/tristanpoland/zed" }
 once_cell = "1.20.3"
+rand = "0.9.0"
 rfd = "0.15.2"
