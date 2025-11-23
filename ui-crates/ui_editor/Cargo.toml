@@ -17,7 +17,6 @@ ui_terminal.workspace = true
 # Engine
 engine_state.workspace = true
 engine_backend.workspace = true
-engine_fs.workspace = true
 
 # Code editing
 ropey.workspace = true

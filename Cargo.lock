@@ -4490,7 +4490,6 @@ dependencies = [
  "anyhow",
  "dashmap",
  "notify 6.1.1",
- "once_cell",
  "serde",
  "serde_json",
  "tempfile",
@@ -9936,7 +9935,6 @@ dependencies = [
  "device_query",
  "directories",
  "engine_backend",
- "engine_fs",
  "engine_state",
  "flume",
  "futures",
@@ -14078,7 +14076,6 @@ name = "ui_alias_editor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "engine_fs",
  "engine_state",
  "gpui",
  "pulsar_std",
@@ -14119,7 +14116,6 @@ dependencies = [
  "anyhow",
  "directories",
  "engine_backend",
- "engine_fs",
  "engine_state",
  "gpui",
  "schemars",
@@ -14166,7 +14162,6 @@ dependencies = [
  "dashmap",
  "device_query",
  "engine_backend",
- "engine_fs",
  "engine_state",
  "flume",
  "futures",
@@ -14211,7 +14206,6 @@ dependencies = [
  "anyhow",
  "chrono",
  "dashmap",
- "engine_fs",
  "engine_state",
  "gpui",
  "parking_lot",
@@ -14261,7 +14255,6 @@ name = "ui_enum_editor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "engine_fs",
  "engine_state",
  "gpui",
  "serde",
@@ -14278,7 +14271,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
- "engine_fs",
  "gpui",
  "notify 7.0.0",
  "schemars",
@@ -14365,7 +14357,6 @@ name = "ui_struct_editor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "engine_fs",
  "engine_state",
  "gpui",
  "serde",
@@ -14403,7 +14394,6 @@ name = "ui_trait_editor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "engine_fs",
  "engine_state",
  "gpui",
  "serde",

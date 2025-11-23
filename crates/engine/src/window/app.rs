@@ -38,7 +38,7 @@
 
 use crate::assets::Assets;
 use crate::OpenSettings;  // Import the OpenSettings action from main/root
-use ui_core::{PulsarApp, PulsarRoot, ToggleCommandPalette, registry_init};
+use ui_core::{PulsarApp, PulsarRoot, ToggleCommandPalette};
 use ui_entry::{EntryScreen, ProjectSelected, create_entry_component};
 use ui_settings::{SettingsWindow, create_settings_component};
 use ui_loading_screen::create_loading_component;
@@ -1251,9 +1251,6 @@ impl ApplicationHandler for WinitGpuiApp {
                     }
                     Some(WindowRequest::ProjectEditor { project_path }) => {
                         // Use the captured window_id to ensure consistency
-                        // Initialize the asset registry system (only needs to happen once globally)
-                        registry_init::register_all_asset_types();
-                        
                         // Create the actual PulsarApp editor with the project
                         let app = cx.new(|cx| PulsarApp::new_with_project_and_window_id(
                             std::path::PathBuf::from(project_path),
@@ -1261,7 +1258,6 @@ impl ApplicationHandler for WinitGpuiApp {
                             window,
                             cx
                         ));
-                        
                         let pulsar_root = cx.new(|cx| PulsarRoot::new("Pulsar Engine", app, window, cx));
                         cx.new(|cx| ui::Root::new(pulsar_root.into(), window, cx))
                     }

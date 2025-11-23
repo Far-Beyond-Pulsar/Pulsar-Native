@@ -27,7 +27,6 @@ raw-window-handle.workspace = true
 # Engine crates
 engine_backend.workspace = true
 engine_state.workspace = true
-engine_fs.workspace = true
 
 # UI crates - commented out to avoid circular dependency during build
 # The UI crates depend on engine, so we can't have engine depend on them

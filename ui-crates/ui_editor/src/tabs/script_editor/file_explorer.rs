@@ -40,13 +40,6 @@ struct NewFolderHere {
     path: String,
 }
 
-#[derive(Action, Clone, PartialEq, Deserialize, JsonSchema)]
-#[action(namespace = file_explorer)]
-struct CreateAssetAction {
-    type_id: String,
-    directory: String,
-}
-
 // Clipboard operations
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ClipboardOperation {
@@ -175,11 +168,6 @@ impl FileExplorer {
     fn on_new_folder_here(&mut self, action: &NewFolderHere, window: &mut Window, cx: &mut Context<Self>) {
         let path = PathBuf::from(&action.path);
         self.create_folder_in_directory(path, window, cx);
-    }
-    
-    fn on_create_asset(&mut self, action: &CreateAssetAction, window: &mut Window, cx: &mut Context<Self>) {
-        let directory = PathBuf::from(&action.directory);
-        self.create_asset_in_directory(&action.type_id, directory, window, cx);
     }
 
     pub fn open_project(&mut self, path: PathBuf, _window: &mut Window, cx: &mut Context<Self>) {
@@ -530,32 +518,6 @@ impl FileExplorer {
         }
     }
 
-    fn create_asset_in_directory(&mut self, type_id: &str, dir_path: PathBuf, _window: &mut Window, cx: &mut Context<Self>) {
-        // Use the global registry to create the asset
-        let registry = engine_fs::global_registry();
-        
-        // Generate a default name
-        let default_name = format!("New{}", type_id.replace('_', ""));
-        
-        match registry.create_new_file(type_id, &default_name, Some(&dir_path)) {
-            Ok(file_path) => {
-                // Refresh the file tree
-                self.refresh_file_tree(cx);
-                
-                // Select the newly created file
-                self.selected_file = Some(file_path.clone());
-                
-                // TODO: Open the file in the appropriate editor
-                // This will be handled by the editor registry later
-                
-                cx.notify();
-            }
-            Err(e) => {
-                eprintln!("Failed to create asset: {}", e);
-            }
-        }
-    }
-    
     fn create_folder_in_directory(&mut self, dir_path: PathBuf, _window: &mut Window, cx: &mut Context<Self>) {
         let new_path = dir_path.join("new_folder");
         
@@ -782,54 +744,8 @@ impl FileExplorer {
                     // File/Folder specific actions
                     if is_directory {
                         menu = menu
-                            .submenu("New File", _window, _cx, {
-                                let path_str = path_str.clone();
-                                move |submenu, _window, _cx| {
-                                    let mut submenu = submenu;
-                                    
-                                    // Get all asset types from the global registry
-                                    let registry = engine_fs::global_registry();
-                                    let asset_types = registry.get_all_asset_types();
-                                    
-                                    // Group by category
-                                    use std::collections::HashMap;
-                                    let mut by_category: HashMap<engine_fs::AssetCategory, Vec<_>> = HashMap::new();
-                                    for asset_type in asset_types {
-                                        by_category.entry(asset_type.category())
-                                            .or_insert_with(Vec::new)
-                                            .push(asset_type);
-                                    }
-                                    
-                                    // Add each category
-                                    for category in [
-                                        engine_fs::AssetCategory::TypeSystem,
-                                        engine_fs::AssetCategory::Blueprints,
-                                        engine_fs::AssetCategory::Scripts,
-                                        engine_fs::AssetCategory::Scenes,
-                                        engine_fs::AssetCategory::Rendering,
-                                    ] {
-                                        if let Some(assets) = by_category.get(&category) {
-                                            for asset_type in assets {
-                                                let type_id = asset_type.type_id().to_string();
-                                                let label = format!("{} {}", asset_type.icon(), asset_type.display_name());
-                                                
-                                                submenu = submenu.menu(
-                                                    label, 
-                                                    Box::new(CreateAssetAction {
-                                                        type_id,
-                                                        directory: path_str.clone(),
-                                                    })
-                                                );
-                                            }
-                                            
-                                            submenu = submenu.separator();
-                                        }
-                                    }
-                                    
-                                    submenu
-                                }
-                            })
-                            .menu("New Folder", Box::new(NewFolderHere { path: path_str.clone() }))
+                            .menu("New File Here", Box::new(NewFileHere { path: path_str.clone() }))
+                            .menu("New Folder Here", Box::new(NewFolderHere { path: path_str.clone() }))
                             .separator();
                     }
 
@@ -946,7 +862,6 @@ impl Render for FileExplorer {
             .on_action(cx.listener(Self::on_reveal_in_file_manager))
             .on_action(cx.listener(Self::on_new_file_here))
             .on_action(cx.listener(Self::on_new_folder_here))
-            .on_action(cx.listener(Self::on_create_asset))
             .size_full()
             .flex()
             .flex_col()

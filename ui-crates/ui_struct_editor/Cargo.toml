@@ -15,7 +15,6 @@ ui_types_common.workspace = true
 
 # Engine state
 engine_state.workspace = true
-engine_fs.workspace = true
 
 # Utilities
 anyhow.workspace = true

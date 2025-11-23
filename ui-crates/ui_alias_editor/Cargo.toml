@@ -10,7 +10,6 @@ ui.workspace = true
 ui_common.workspace = true
 ui_types_common.workspace = true
 engine_state.workspace = true
-engine_fs.workspace = true
 pulsar_std.workspace = true
 anyhow.workspace = true
 serde.workspace = true

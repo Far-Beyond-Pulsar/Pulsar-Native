@@ -5,7 +5,6 @@
 pub mod app;
 pub mod flow;
 pub mod unified_palette;
-pub mod registry_init;
 
 // Re-export main app types
 pub use app::{PulsarApp, PulsarRoot, ToggleCommandPalette, ToggleFileManager, ToggleProblems, ToggleTerminal};

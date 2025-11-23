@@ -6,11 +6,12 @@ use anyhow::Result;
 use notify::{Watcher, RecursiveMode, Event, EventKind};
 use std::path::PathBuf;
 use std::sync::Arc;
-use super::TypeAliasIndex;
+use super::{AssetRegistry, TypeAliasIndex};
 
 /// Start watching the project directory for changes
 pub fn start_watcher(
     project_root: PathBuf,
+    _registry: Arc<AssetRegistry>,
     type_index: Arc<TypeAliasIndex>,
 ) -> Result<()> {
     let (tx, rx) = std::sync::mpsc::channel();

@@ -29,7 +29,6 @@ ui_alias_editor.workspace = true
 # Engine
 engine_state.workspace = true
 engine_backend.workspace = true
-engine_fs.workspace = true
 
 # File operations
 walkdir = "2.4"
