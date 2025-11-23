@@ -256,9 +256,6 @@ impl ApplicationHandler for WinitGpuiApp {
                     static mut CLAIM_CHECK_COUNT: u32 = 0;
                     unsafe {
                         CLAIM_CHECK_COUNT += 1;
-                        if CLAIM_CHECK_COUNT % 60 == 0 {
-                            println!("[RENDERER] ≡ƒöì Checking for renderer for window {} (attempt {})...", window_id_u64, CLAIM_CHECK_COUNT);
-                        }
                     }
 
                     // First check if this window already has a renderer
@@ -266,7 +263,6 @@ impl ApplicationHandler for WinitGpuiApp {
                         // Try to downcast from Any to the concrete type
                         if let Ok(gpu_renderer) = renderer_handle.clone().downcast::<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>() {
                             *bevy_renderer = Some(gpu_renderer);
-                            println!("[RENDERER] ≡ƒÄ« Γ£à Loaded GPU renderer for window {}!", window_id_u64);
                         }
                     }
                     // Otherwise, check if there's a pending renderer we can claim
@@ -278,8 +274,6 @@ impl ApplicationHandler for WinitGpuiApp {
                             self.engine_state.set_metadata("has_pending_viewport_renderer".to_string(), "false".to_string());
                             
                             *bevy_renderer = Some(gpu_renderer);
-                            println!("[RENDERER] ≡ƒÄ» Claimed pending GPU renderer for window {}!", window_id_u64);
-                            println!("[RENDERER] Γ£à Bevy will now render to this window's back buffer");
                         }
                     }
                 }
@@ -298,12 +292,6 @@ impl ApplicationHandler for WinitGpuiApp {
                         COMPOSITOR_FRAME_COUNT += 1;
                         if should_render_gpui {
                             GPUI_FRAME_COUNT += 1;
-                            if GPUI_FRAME_COUNT % 60 == 1 {
-                                println!("[DECOUPLED-RENDER] 🎨 GPUI frame {} (compositor frame {})", GPUI_FRAME_COUNT, COMPOSITOR_FRAME_COUNT);
-                                println!("[DECOUPLED-RENDER] 📊 Compositor: {} fps, GPUI: {} fps (estimated)", 
-                                    COMPOSITOR_FRAME_COUNT / (GPUI_FRAME_COUNT / 60).max(1),
-                                    60);
-                            }
                         }
                         
                         if should_render_gpui {
