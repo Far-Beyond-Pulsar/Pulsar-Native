@@ -17,11 +17,31 @@
 use plugin_editor_api::*;
 use serde_json::json;
 use std::path::PathBuf;
+use gpui::*;
+use ui::dock::{Panel, PanelEvent};
 
-// Re-export the existing BlueprintEditorPanel
-// We'll need to ensure it implements EditorInstance
+// Blueprint Editor modules
+mod blueprint_types;
+mod events;
+mod node_graph;
+mod toolbar;
+mod properties;
+mod variables;
+mod file_drawer;
+mod node_creation_menu;
+mod macros;
+mod minimap;
+mod hoverable_tooltip;
+mod node_palette;
+mod node_library;
+
+// Panel module (main editor implementation)
 pub mod panel;
+
+// Re-export main types
+pub use blueprint_types::*;
 pub use panel::BlueprintEditorPanel;
+pub use events::*;
 
 /// The Blueprint Editor Plugin
 pub struct BlueprintEditorPlugin;
@@ -84,9 +104,9 @@ impl EditorPlugin for BlueprintEditorPlugin {
         cx: &mut App,
     ) -> Result<Box<dyn EditorInstance>, PluginError> {
         if editor_id.as_str() == "blueprint-editor" {
-            let panel = BlueprintEditorPanel::new(file_path.clone(), window, cx)
+            let panel = panel::BlueprintEditorPanel::new_with_path(file_path.clone(), window, cx)
                 .map_err(|e| PluginError::FileLoadError {
-                    path: file_path,
+                    path: file_path.clone(),
                     message: e.to_string(),
                 })?;
 

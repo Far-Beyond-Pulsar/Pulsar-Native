@@ -2671,12 +2671,20 @@ dependencies = [
 name = "blueprint_editor_plugin"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "engine_backend",
+ "futures",
  "gpui",
+ "log",
  "plugin_editor_api",
  "pulsar_std",
+ "schemars",
  "serde",
  "serde_json",
+ "smol 2.0.2",
  "ui",
+ "ui_common",
+ "uuid",
 ]
 
 [[package]]
@@ -14204,6 +14212,8 @@ dependencies = [
  "engine_backend",
  "engine_state",
  "gpui",
+ "plugin_editor_api",
+ "plugin_manager",
  "schemars",
  "serde",
  "serde_json",

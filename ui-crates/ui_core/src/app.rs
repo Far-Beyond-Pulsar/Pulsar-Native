@@ -9,6 +9,8 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use std::path::PathBuf;
 use std::{sync::Arc, time::Duration};
+use plugin_manager::PluginManager;
+use plugin_editor_api::EditorInstance;
 
 // Import from new modular ui-crates
 use ui_common::{
@@ -148,6 +150,8 @@ pub struct PulsarApp {
     trait_editors: Vec<Entity<ui_trait_editor::TraitEditor>>,
     alias_editors: Vec<Entity<ui_alias_editor::AliasEditor>>,
     next_tab_id: usize,
+    // Plugin Manager
+    plugin_manager: PluginManager,
     // Rust Analyzer
     rust_analyzer: Entity<RustAnalyzerManager>,
     analyzer_status_text: String,
@@ -421,6 +425,22 @@ impl PulsarApp {
                 .detach();
         }
 
+        // Initialize plugin manager and load plugins
+        let mut plugin_manager = PluginManager::new();
+
+        // Load plugins from plugins/editor directory
+        // TODO: Make this path configurable
+        let plugins_dir = std::path::Path::new("plugins/editor");
+        if let Err(e) = plugin_manager.load_plugins_from_dir(plugins_dir) {
+            eprintln!("Failed to load editor plugins: {}", e);
+        } else {
+            let loaded_plugins = plugin_manager.get_plugins();
+            eprintln!("Loaded {} editor plugin(s)", loaded_plugins.len());
+            for plugin in loaded_plugins {
+                eprintln!("  - {} v{} by {}", plugin.name, plugin.version, plugin.author);
+            }
+        }
+
         let app = Self {
             dock_area,
             project_path,
@@ -439,6 +459,7 @@ impl PulsarApp {
             trait_editors,
             alias_editors,
             next_tab_id: 1,
+            plugin_manager,
             rust_analyzer,
             analyzer_status_text: "Idle".to_string(),
             analyzer_detail_message: String::new(),
@@ -451,7 +472,7 @@ impl PulsarApp {
             active_type_picker_editor: None,
             focus_handle: cx.focus_handle(),
         };
-        
+
         app
     }
 
@@ -632,37 +653,57 @@ impl PulsarApp {
             event.path, event.file_type
         );
 
+        // Try to open via plugin system first
+        // NOTE: This is a work in progress. Currently, we don't have a clean way to convert
+        // Box<dyn EditorInstance> to Arc<dyn PanelView> due to Rust's trait object limitations.
+        // For now, we keep the existing hardcoded logic and will migrate to plugins incrementally.
+        //
+        // TODO: Once editors are migrated to plugins, we can use this approach:
+        // match self.plugin_manager.create_editor_for_file(&event.path, window, cx) {
+        //     Ok(editor) => {
+        //         // Add editor to tab panel (requires wrapper/adapter)
+        //         self.drawer_open = false;
+        //         cx.notify();
+        //         return;
+        //     }
+        //     Err(e) => {
+        //         eprintln!("DEBUG: Plugin manager couldn't open file: {}", e);
+        //         // Fall through to legacy code
+        //     }
+        // }
+
+        // Legacy hardcoded file opening (will be replaced by plugin system)
         match event.file_type {
             FileType::Class => {
-                eprintln!("DEBUG: Opening blueprint tab");
+                eprintln!("DEBUG: Opening blueprint tab (legacy)");
                 self.open_blueprint_tab(event.path.clone(), window, cx);
             }
             FileType::Script => {
-                eprintln!("DEBUG: Opening script tab");
+                eprintln!("DEBUG: Opening script tab (legacy)");
                 self.open_script_tab(event.path.clone(), window, cx);
             }
             FileType::DawProject => {
-                eprintln!("DEBUG: Opening DAW tab for path: {:?}", event.path);
+                eprintln!("DEBUG: Opening DAW tab for path: {:?} (legacy)", event.path);
                 self.open_daw_tab(event.path.clone(), window, cx);
             }
             FileType::Database => {
-                eprintln!("DEBUG: Opening database tab for path: {:?}", event.path);
+                eprintln!("DEBUG: Opening database tab for path: {:?} (legacy)", event.path);
                 self.open_database_tab(event.path.clone(), window, cx);
             }
             FileType::StructType => {
-                eprintln!("DEBUG: Opening struct editor for path: {:?}", event.path);
+                eprintln!("DEBUG: Opening struct editor for path: {:?} (legacy)", event.path);
                 self.open_struct_tab(event.path.clone(), window, cx);
             }
             FileType::EnumType => {
-                eprintln!("DEBUG: Opening enum editor for path: {:?}", event.path);
+                eprintln!("DEBUG: Opening enum editor for path: {:?} (legacy)", event.path);
                 self.open_enum_tab(event.path.clone(), window, cx);
             }
             FileType::TraitType => {
-                eprintln!("DEBUG: Opening trait editor for path: {:?}", event.path);
+                eprintln!("DEBUG: Opening trait editor for path: {:?} (legacy)", event.path);
                 self.open_trait_tab(event.path.clone(), window, cx);
             }
             FileType::AliasType => {
-                eprintln!("DEBUG: Opening alias editor for path: {:?}", event.path);
+                eprintln!("DEBUG: Opening alias editor for path: {:?} (legacy)", event.path);
                 self.open_alias_tab(event.path.clone(), window, cx);
             }
             _ => {

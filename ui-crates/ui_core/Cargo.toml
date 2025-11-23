@@ -30,6 +30,10 @@ ui_alias_editor.workspace = true
 engine_state.workspace = true
 engine_backend.workspace = true
 
+# Plugin system
+plugin_manager = { path = "../../crates/plugin_manager" }
+plugin_editor_api = { path = "../../crates/plugin_editor_api" }
+
 # File operations
 walkdir = "2.4"
 directories = "5"
