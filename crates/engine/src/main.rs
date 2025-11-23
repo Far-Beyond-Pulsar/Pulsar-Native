@@ -83,11 +83,24 @@ pub use ui::OpenSettings;
 use window::{convert_mouse_button, convert_modifiers, SimpleClickState, MotionSmoother, WindowState, WinitGpuiApp};
 
 fn main() {
-    println!("{}", ENGINE_NAME);
-    println!("Version: {}", ENGINE_VERSION);
-    println!("Authors: {}", ENGINE_AUTHORS);
-    println!("Description: {}", ENGINE_DESCRIPTION);
-    println!("≡ƒÜÇ Starting Pulsar Engine with Winit + GPUI Zero-Copy Composition\n");
+    // Initialize logging backend with env filter support
+    // Set RUST_LOG=debug to see debug logs, RUST_LOG=trace for all logs
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"))
+        )
+        .with_target(true)
+        .with_thread_ids(true)
+        .with_file(true)
+        .with_line_number(true)
+        .init();
+
+    tracing::info!("{}", ENGINE_NAME);
+    tracing::info!("Version: {}", ENGINE_VERSION);
+    tracing::info!("Authors: {}", ENGINE_AUTHORS);
+    tracing::info!("Description: {}", ENGINE_DESCRIPTION);
+    tracing::info!("🚀 Starting Pulsar Engine with Winit + GPUI Zero-Copy Composition");
 
     // Determine app data directory
     let proj_dirs = ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
@@ -97,15 +110,15 @@ fn main() {
     let config_dir = appdata_dir.join("configs");
     let config_file = config_dir.join("engine.toml");
 
-    println!("App data directory: {:?}", appdata_dir);
-    println!("Themes directory: {:?}", themes_dir);
-    println!("Config directory: {:?}", config_dir);
-    println!("Config file: {:?}", config_file);
+    tracing::debug!("App data directory: {:?}", appdata_dir);
+    tracing::debug!("Themes directory: {:?}", themes_dir);
+    tracing::debug!("Config directory: {:?}", config_dir);
+    tracing::debug!("Config file: {:?}", config_file);
 
     // Extract bundled themes if not present
     if !themes_dir.exists() {
         if let Err(e) = fs::create_dir_all(&themes_dir) {
-            eprintln!("Failed to create themes directory: {e}");
+            tracing::error!("Failed to create themes directory: {e}");
         } else {
             // Copy all themes from project themes/ to appdata_dir/themes/
             let project_themes_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -129,14 +142,14 @@ fn main() {
     // Create default config if not present
     if !config_file.exists() {
         if let Err(e) = fs::create_dir_all(&config_dir) {
-            eprintln!("Failed to create config directory: {e}");
+            tracing::error!("Failed to create config directory: {e}");
         }
         let default_settings = EngineSettings::default();
         default_settings.save(&config_file);
     }
 
     // Load settings
-    println!("Loading engine settings from {:?}", config_file);
+    tracing::info!("Loading engine settings from {:?}", config_file);
     let _engine_settings = EngineSettings::load(&config_file);
 
     // Initialize Tokio runtime for engine backend

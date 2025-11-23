@@ -103,7 +103,7 @@ impl VersionInfo {
     /// Get the current version info for this build
     pub const fn current() -> Self {
         Self {
-            engine_version: (0, 1, 0), // TODO: Read from engine version
+            engine_version: parse_engine_version(),
             rustc_version_hash: rustc_version_hash(),
         }
     }
@@ -125,11 +125,9 @@ impl VersionInfo {
 }
 
 /// Compile-time hash of the rustc version
+/// This is set by build.rs at compile time to ensure ABI compatibility
 const fn rustc_version_hash() -> u64 {
-    // Using rustc version from env - fallback if not set
-    // In build.rs, we set this. For now, use a const value
-    // TODO: Set via build.rs
-    const RUSTC_VERSION: &str = env!("CARGO_PKG_RUST_VERSION", "unknown");
+    const RUSTC_VERSION: &str = env!("RUSTC_VERSION");
     const_hash_str(RUSTC_VERSION)
 }
 
@@ -144,6 +142,37 @@ const fn const_hash_str(s: &str) -> u64 {
         i += 1;
     }
     hash
+}
+
+/// Parse engine version from CARGO_PKG_VERSION at compile time
+/// Expects format "major.minor.patch" e.g. "0.1.47"
+const fn parse_engine_version() -> (u32, u32, u32) {
+    const VERSION_STR: &str = env!("CARGO_PKG_VERSION");
+    let bytes = VERSION_STR.as_bytes();
+
+    let mut major: u32 = 0;
+    let mut minor: u32 = 0;
+    let mut patch: u32 = 0;
+    let mut component = 0; // 0 = major, 1 = minor, 2 = patch
+    let mut i = 0;
+
+    while i < bytes.len() {
+        let byte = bytes[i];
+        if byte == b'.' {
+            component += 1;
+        } else if byte >= b'0' && byte <= b'9' {
+            let digit = (byte - b'0') as u32;
+            match component {
+                0 => major = major * 10 + digit,
+                1 => minor = minor * 10 + digit,
+                2 => patch = patch * 10 + digit,
+                _ => {},
+            }
+        }
+        i += 1;
+    }
+
+    (major, minor, patch)
 }
 
 // ============================================================================

@@ -426,26 +426,25 @@ impl PulsarApp {
         }
 
         // Initialize plugin manager and load plugins
-        println!("\n🔌 PLUGIN SYSTEM INITIALIZING...");
+        tracing::info!("🔌 Initializing plugin system");
         let mut plugin_manager = PluginManager::new();
 
         // Load plugins from plugins/editor directory
         let plugins_dir = std::path::Path::new("plugins/editor");
-        println!("📂 Loading plugins from: {:?}", plugins_dir);
+        tracing::info!("📂 Loading plugins from: {:?}", plugins_dir);
 
         match plugin_manager.load_plugins_from_dir(plugins_dir) {
             Err(e) => {
-                println!("❌ Failed to load editor plugins: {}", e);
+                tracing::error!("❌ Failed to load editor plugins: {}", e);
             }
             Ok(_) => {
                 let loaded_plugins = plugin_manager.get_plugins();
-                println!("✅ Loaded {} editor plugin(s)", loaded_plugins.len());
+                tracing::info!("✅ Loaded {} editor plugin(s)", loaded_plugins.len());
                 for plugin in loaded_plugins {
-                    println!("   📦 {} v{} by {}", plugin.name, plugin.version, plugin.author);
+                    tracing::info!("   📦 {} v{} by {}", plugin.name, plugin.version, plugin.author);
                 }
             }
         }
-        println!();
 
         let app = Self {
             dock_area,
