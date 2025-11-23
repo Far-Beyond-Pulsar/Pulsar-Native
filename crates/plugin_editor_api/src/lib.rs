@@ -378,6 +378,10 @@ pub trait EditorInstance: Send + Sync {
 
     /// Check if the editor has unsaved changes
     fn is_dirty(&self) -> bool;
+
+    /// Get the underlying wrapper as Any for downcasting
+    /// This allows the application to access plugin-specific functionality
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 // ============================================================================
@@ -503,14 +507,15 @@ pub trait EditorPlugin: Send + Sync {
     ///
     /// # Returns
     ///
-    /// A boxed editor instance, or an error if creation fails.
+    /// Returns the editor wrapped for tab system integration, plus the EditorInstance for file operations.
+    /// The panel can be added directly to the tab system.
     fn create_editor(
         &self,
         editor_id: EditorId,
         file_path: PathBuf,
         window: &mut Window,
         cx: &mut App,
-    ) -> Result<Box<dyn EditorInstance>, PluginError>;
+    ) -> Result<(std::sync::Arc<dyn ui::dock::PanelView>, Box<dyn EditorInstance>), PluginError>;
 
     /// Called when the plugin is loaded.
     ///

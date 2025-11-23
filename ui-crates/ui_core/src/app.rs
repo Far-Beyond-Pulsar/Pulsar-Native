@@ -426,20 +426,26 @@ impl PulsarApp {
         }
 
         // Initialize plugin manager and load plugins
+        println!("\n🔌 PLUGIN SYSTEM INITIALIZING...");
         let mut plugin_manager = PluginManager::new();
 
         // Load plugins from plugins/editor directory
-        // TODO: Make this path configurable
         let plugins_dir = std::path::Path::new("plugins/editor");
-        if let Err(e) = plugin_manager.load_plugins_from_dir(plugins_dir) {
-            eprintln!("Failed to load editor plugins: {}", e);
-        } else {
-            let loaded_plugins = plugin_manager.get_plugins();
-            eprintln!("Loaded {} editor plugin(s)", loaded_plugins.len());
-            for plugin in loaded_plugins {
-                eprintln!("  - {} v{} by {}", plugin.name, plugin.version, plugin.author);
+        println!("📂 Loading plugins from: {:?}", plugins_dir);
+
+        match plugin_manager.load_plugins_from_dir(plugins_dir) {
+            Err(e) => {
+                println!("❌ Failed to load editor plugins: {}", e);
+            }
+            Ok(_) => {
+                let loaded_plugins = plugin_manager.get_plugins();
+                println!("✅ Loaded {} editor plugin(s)", loaded_plugins.len());
+                for plugin in loaded_plugins {
+                    println!("   📦 {} v{} by {}", plugin.name, plugin.version, plugin.author);
+                }
             }
         }
+        println!();
 
         let app = Self {
             dock_area,
@@ -654,23 +660,25 @@ impl PulsarApp {
         );
 
         // Try to open via plugin system first
-        // NOTE: This is a work in progress. Currently, we don't have a clean way to convert
-        // Box<dyn EditorInstance> to Arc<dyn PanelView> due to Rust's trait object limitations.
-        // For now, we keep the existing hardcoded logic and will migrate to plugins incrementally.
-        //
-        // TODO: Once editors are migrated to plugins, we can use this approach:
-        // match self.plugin_manager.create_editor_for_file(&event.path, window, cx) {
-        //     Ok(editor) => {
-        //         // Add editor to tab panel (requires wrapper/adapter)
-        //         self.drawer_open = false;
-        //         cx.notify();
-        //         return;
-        //     }
-        //     Err(e) => {
-        //         eprintln!("DEBUG: Plugin manager couldn't open file: {}", e);
-        //         // Fall through to legacy code
-        //     }
-        // }
+        match self.plugin_manager.create_editor_for_file(&event.path, window, cx) {
+            Ok((panel, _editor_instance)) => {
+                eprintln!("✅ Plugin system successfully created editor for: {:?}", event.path);
+
+                // Add the panel to the tab system
+                self.center_tabs.update(cx, |tabs, cx| {
+                    tabs.add_panel(panel, window, cx);
+                });
+
+                // Close the drawer
+                self.drawer_open = false;
+                cx.notify();
+                return;
+            }
+            Err(e) => {
+                eprintln!("DEBUG: Plugin manager couldn't open file: {}", e);
+                // Fall through to legacy code
+            }
+        }
 
         // Legacy hardcoded file opening (will be replaced by plugin system)
         match event.file_type {

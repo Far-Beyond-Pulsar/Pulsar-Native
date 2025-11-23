@@ -17,3 +17,4 @@ profile.json.gz
 /crates/engine/target
 /crates/pulsar_docs/target
 PROMPT.md
+/plugins/editor

@@ -102,7 +102,7 @@ impl EditorPlugin for BlueprintEditorPlugin {
         file_path: PathBuf,
         window: &mut Window,
         cx: &mut App,
-    ) -> Result<Box<dyn EditorInstance>, PluginError> {
+    ) -> Result<(std::sync::Arc<dyn ui::dock::PanelView>, Box<dyn EditorInstance>), PluginError> {
         if editor_id.as_str() == "blueprint-editor" {
             // Clone file_path before moving into closure
             let file_path_clone = file_path.clone();
@@ -119,11 +119,14 @@ impl EditorPlugin for BlueprintEditorPlugin {
                 }
             });
 
-            // Wrap in EditorInstance implementation
-            Ok(Box::new(BlueprintEditorWrapper {
-                panel,
+            // Create the wrapper for EditorInstance
+            let wrapper = Box::new(BlueprintEditorWrapper {
+                panel: panel.clone(),
                 file_path,
-            }))
+            });
+
+            // Return both the panel (for tab system) and wrapper (for file operations)
+            Ok((std::sync::Arc::new(panel), wrapper))
         } else {
             Err(PluginError::EditorNotFound { editor_id })
         }
@@ -142,6 +145,18 @@ impl EditorPlugin for BlueprintEditorPlugin {
 pub struct BlueprintEditorWrapper {
     panel: Entity<BlueprintEditorPanel>,
     file_path: std::path::PathBuf,
+}
+
+impl BlueprintEditorWrapper {
+    /// Get the underlying panel entity for use in the tab system
+    pub fn panel(&self) -> &Entity<BlueprintEditorPanel> {
+        &self.panel
+    }
+
+    /// Clone the underlying panel entity
+    pub fn clone_panel(&self) -> Entity<BlueprintEditorPanel> {
+        self.panel.clone()
+    }
 }
 
 unsafe impl Send for BlueprintEditorWrapper {}
@@ -167,6 +182,10 @@ impl plugin_editor_api::EditorInstance for BlueprintEditorWrapper {
     fn is_dirty(&self) -> bool {
         // For now, blueprints are never dirty (auto-save or manual save)
         false
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

@@ -295,7 +295,7 @@ impl PluginManager {
         file_path: &Path,
         window: &mut Window,
         cx: &mut App,
-    ) -> Result<Box<dyn EditorInstance>, PluginManagerError> {
+    ) -> Result<(std::sync::Arc<dyn ui::dock::PanelView>, Box<dyn EditorInstance>), PluginManagerError> {
         // Determine file type
         let file_type_id = self
             .file_type_registry
@@ -333,7 +333,7 @@ impl PluginManager {
         file_path: PathBuf,
         window: &mut Window,
         cx: &mut App,
-    ) -> Result<Box<dyn EditorInstance>, PluginManagerError> {
+    ) -> Result<(std::sync::Arc<dyn ui::dock::PanelView>, Box<dyn EditorInstance>), PluginManagerError> {
         let plugin = self
             .plugins
             .get_mut(plugin_id)
