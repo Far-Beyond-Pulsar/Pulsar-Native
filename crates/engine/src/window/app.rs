@@ -433,14 +433,6 @@ impl ApplicationHandler for WinitGpuiApp {
                             static mut CHECK_COUNT: u32 = 0;
                             unsafe {
                                 CHECK_COUNT += 1;
-                                if CHECK_COUNT % 60 == 0 {
-                                    let window_id_u64 = std::mem::transmute::<_, u64>(window_id);
-                                    if bevy_renderer.is_none() {
-                                        println!("[RENDERER] ΓÅ│ No Bevy renderer for window {} (checked {} times)...", window_id_u64, CHECK_COUNT);
-                                    } else {
-                                        println!("[RENDERER] Γ£à Have Bevy renderer for window {} (frame {})", window_id_u64, CHECK_COUNT);
-                                    }
-                                }
                             }
 
                             if let Some(ref gpu_renderer_arc) = bevy_renderer {
@@ -684,9 +676,6 @@ impl ApplicationHandler for WinitGpuiApp {
                             {
                                 static mut FRAME_COUNT: u32 = 0;
                                 FRAME_COUNT += 1;
-                                if FRAME_COUNT % 60 == 1 {
-                                    eprintln!("≡ƒÄ¿ Compositing GPUI texture (frame {})", FRAME_COUNT);
-                                }
 
                                 // Set shaders
                                 context.VSSetShader(vertex_shader, None);
@@ -878,7 +867,6 @@ impl ApplicationHandler for WinitGpuiApp {
                                     // CRITICAL: Mark window as dirty to trigger UI re-layout
                                     // This is what GPUI's internal windows do in bounds_changed()
                                     window.refresh();
-                                    println!("≡ƒÄ¿ Marked window for refresh/re-layout");
                                 }
                             });
                         });
