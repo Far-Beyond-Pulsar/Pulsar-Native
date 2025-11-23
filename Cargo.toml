@@ -4,6 +4,7 @@ members = [
     "crates/engine",
     "crates/engine_backend",
     "crates/engine_state",
+    "crates/engine_fs",
     "crates/ui",
     "crates/pulsar_macros",
     "crates/pulsar_std",
@@ -52,6 +53,7 @@ ropey = { version = "=2.0.0-beta.1", features = ["metric_utf16", "metric_lines_l
 horizon = { git = "https://github.com/Far-Beyond-Dev/horizon" }
 engine_backend = { path = "crates/engine_backend" }
 engine_state = { path = "crates/engine_state" }
+engine_fs = { path = "crates/engine_fs" }
 
 # UI component crates
 ui_core = { path = "ui-crates/ui_core" }
