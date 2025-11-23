@@ -1,0 +1,26 @@
+[package]
+name = "plugin_manager"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+plugin_editor_api = { path = "../plugin_editor_api" }
+
+# Dynamic library loading
+libloading = "0.8"
+
+# Utilities
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.0", features = ["v4"] }
+log = "0.4"
+
+# UI dependencies
+gpui = { workspace = true }
+ui = { workspace = true }
+
+# File system operations
+walkdir = "2.4"
+
+[dev-dependencies]
+env_logger = "0.11"
