@@ -226,7 +226,12 @@ impl BlockCanvas {
     }
 
     /// Render the canvas
-    pub fn render(&self, cx: &App, on_slot_click: Option<Arc<dyn Fn(BlockId, usize) + Send + Sync + 'static>>) -> impl IntoElement {
+    pub fn render_with_handlers(
+        &self, 
+        cx: &App, 
+        on_slot_click: Option<Arc<dyn Fn(BlockId, usize) + Send + Sync + 'static>>,
+        on_empty_click: Option<Arc<dyn Fn() + Send + Sync + 'static>>
+    ) -> impl IntoElement {
         let theme = cx.theme();
         
         v_flex()
@@ -242,15 +247,20 @@ impl BlockCanvas {
                 if let Some(root) = &self.root_block {
                     self.render_block_tree(root, cx, on_slot_click)
                 } else {
-                    self.render_empty_state(cx)
+                    self.render_empty_state(cx, on_empty_click)
                 }
             )
             .when(self.drag_state.is_some(), |this| {
                 this.child(self.render_drag_preview(cx))
             })
     }
+    
+    /// Render the canvas (convenience method without empty click handler)
+    pub fn render(&self, cx: &App, on_slot_click: Option<Arc<dyn Fn(BlockId, usize) + Send + Sync + 'static>>) -> impl IntoElement {
+        self.render_with_handlers(cx, on_slot_click, None)
+    }
 
-    fn render_empty_state(&self, cx: &App) -> Div {
+    fn render_empty_state(&self, cx: &App, on_empty_click: Option<Arc<dyn Fn() + Send + Sync + 'static>>) -> Div {
         let is_drag_over = self.drag_state.is_some();
         
         v_flex()
@@ -260,9 +270,11 @@ impl BlockCanvas {
             .gap_3()
             .child(
                 // Large placeholder slot that looks clickable
-                v_flex()
+                div()
                     .w(px(500.0))
                     .min_h(px(250.0))
+                    .flex()
+                    .flex_col()
                     .items_center()
                     .justify_center()
                     .gap_4()
@@ -276,9 +288,18 @@ impl BlockCanvas {
                     })
                     .border_dashed()
                     .p_8()
+                    .when(on_empty_click.is_some(), |this| {
+                        this.cursor_pointer()
+                    })
                     .hover(|this| {
                         this.bg(cx.theme().secondary.opacity(0.5))
                             .border_color(cx.theme().muted_foreground.opacity(0.5))
+                    })
+                    .when_some(on_empty_click, |this, handler| {
+                        this.on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                            handler();
+                            cx.stop_propagation();
+                        })
                     })
                     .child(
                         div()
@@ -294,14 +315,18 @@ impl BlockCanvas {
                             .child(if is_drag_over {
                                 "Drop to create type"
                             } else {
-                                "Click a type to start"
+                                "Click to add a type"
                             })
                     )
                     .child(
                         div()
                             .text_base()
                             .text_color(cx.theme().muted_foreground)
-                            .child("Select a primitive or constructor from the library →")
+                            .child(if is_drag_over {
+                                "Release to place the type here"
+                            } else {
+                                "Click here or use the Add Type button"
+                            })
                     )
             )
     }

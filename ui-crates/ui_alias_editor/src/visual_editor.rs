@@ -318,7 +318,15 @@ impl Render for VisualAliasEditor {
         };
         
         if let Some((block_id, slot_idx)) = pending_selection {
-            self.select_slot(block_id, slot_idx, cx);
+            // Special case: empty BlockId indicates empty state click (add root)
+            if block_id.0.is_empty() {
+                // Open type picker for root (no target slot)
+                cx.emit(ShowTypePickerRequest {
+                    target_slot: None,
+                });
+            } else {
+                self.select_slot(block_id, slot_idx, cx);
+            }
         }
         
         v_flex()
@@ -441,12 +449,23 @@ impl Render for VisualAliasEditor {
                                 // Canvas - fills remaining space
                                 // Create a handler that stores slot clicks in shared state
                                 let pending = self.pending_slot_selection.clone();
-                                let handler = Arc::new(move |block_id: BlockId, slot_idx: usize| {
+                                let slot_handler = Arc::new(move |block_id: BlockId, slot_idx: usize| {
                                     if let Ok(mut guard) = pending.lock() {
                                         *guard = Some((block_id, slot_idx));
                                     }
                                 });
-                                self.canvas.render(cx, Some(handler))
+                                
+                                // Create handler for empty state click - opens type picker for root
+                                let pending_empty = self.pending_slot_selection.clone();
+                                let empty_handler = Arc::new(move || {
+                                    // Signal that we want to add a root type (no specific slot)
+                                    // Use empty BlockId as sentinel value
+                                    if let Ok(mut guard) = pending_empty.lock() {
+                                        *guard = Some((BlockId(Arc::from("")), 0));
+                                    }
+                                });
+                                
+                                self.canvas.render_with_handlers(cx, Some(slot_handler), Some(empty_handler))
                             })
                     )
                     .when(self.show_preview, |this| {
