@@ -9,6 +9,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use std::path::PathBuf;
 use std::{sync::Arc, time::Duration};
+use std::collections::HashMap;
 
 // Import from new modular ui-crates
 use ui_common::{
@@ -128,6 +129,9 @@ impl Render for PulsarRoot {
     }
 }
 
+// Type alias for editor opening functions
+type EditorOpener = Box<dyn Fn(&mut PulsarApp, PathBuf, &mut Window, &mut Context<PulsarApp>) + Send + Sync>;
+
 pub struct PulsarApp {
     dock_area: Entity<DockArea>,
     project_path: Option<PathBuf>,
@@ -166,6 +170,8 @@ pub struct PulsarApp {
     active_type_picker_editor: Option<Entity<ui_alias_editor::AliasEditor>>,
     // Focus management
     focus_handle: FocusHandle,
+    // Editor registry: maps editor_id -> opening function
+    editor_openers: HashMap<String, Arc<EditorOpener>>,
 }
 
 impl PulsarApp {
@@ -421,6 +427,82 @@ impl PulsarApp {
                 .detach();
         }
 
+        // Initialize editor openers registry
+        let mut editor_openers: HashMap<String, Arc<EditorOpener>> = HashMap::new();
+        
+        // Register blueprint editor
+        editor_openers.insert(
+            "blueprint_editor".to_string(),
+            Arc::new(Box::new(|app: &mut PulsarApp, path, window, cx| {
+                app.open_blueprint_tab(path, window, cx);
+            }))
+        );
+        
+        // Register script editor
+        editor_openers.insert(
+            "script_editor".to_string(),
+            Arc::new(Box::new(|app: &mut PulsarApp, path, window, cx| {
+                app.open_script_tab(path, window, cx);
+            }))
+        );
+        
+        // Register type alias editor
+        editor_openers.insert(
+            "type_alias_editor".to_string(),
+            Arc::new(Box::new(|app: &mut PulsarApp, path, window, cx| {
+                app.open_alias_tab(path, window, cx);
+            }))
+        );
+        
+        // Register struct editor
+        editor_openers.insert(
+            "struct_editor".to_string(),
+            Arc::new(Box::new(|app: &mut PulsarApp, path, window, cx| {
+                app.open_struct_tab(path, window, cx);
+            }))
+        );
+        
+        // Register enum editor
+        editor_openers.insert(
+            "enum_editor".to_string(),
+            Arc::new(Box::new(|app: &mut PulsarApp, path, window, cx| {
+                app.open_enum_tab(path, window, cx);
+            }))
+        );
+        
+        // Register trait editor
+        editor_openers.insert(
+            "trait_editor".to_string(),
+            Arc::new(Box::new(|app: &mut PulsarApp, path, window, cx| {
+                app.open_trait_tab(path, window, cx);
+            }))
+        );
+        
+        // Register DAW editor
+        editor_openers.insert(
+            "daw_editor".to_string(),
+            Arc::new(Box::new(|app: &mut PulsarApp, path, window, cx| {
+                app.open_daw_tab(path, window, cx);
+            }))
+        );
+        
+        // Register database/table editor
+        editor_openers.insert(
+            "table_editor".to_string(),
+            Arc::new(Box::new(|app: &mut PulsarApp, path, window, cx| {
+                app.open_database_tab(path, window, cx);
+            }))
+        );
+        
+        // Register level editor
+        editor_openers.insert(
+            "level_editor".to_string(),
+            Arc::new(Box::new(|_app: &mut PulsarApp, _path, _window, _cx| {
+                // Level editor is created by default, so we don't need to do anything here
+                // In the future, we might support opening specific level files
+            }))
+        );
+
         let app = Self {
             dock_area,
             project_path,
@@ -450,6 +532,7 @@ impl PulsarApp {
             active_node_picker_editor: None,
             active_type_picker_editor: None,
             focus_handle: cx.focus_handle(),
+            editor_openers,
         };
         
         app
@@ -632,40 +715,15 @@ impl PulsarApp {
             event.path, event.file_type
         );
 
-        match event.file_type {
-            FileType::Class => {
-                eprintln!("DEBUG: Opening blueprint tab");
-                self.open_blueprint_tab(event.path.clone(), window, cx);
+        match &event.file_type {
+            FileType::Asset(type_id) => {
+                eprintln!("DEBUG: Opening asset type: {}", type_id);
+                self.open_asset_tab(type_id, event.path.clone(), window, cx);
             }
-            FileType::Script => {
-                eprintln!("DEBUG: Opening script tab");
-                self.open_script_tab(event.path.clone(), window, cx);
+            FileType::Folder => {
+                eprintln!("DEBUG: Cannot open folder");
             }
-            FileType::DawProject => {
-                eprintln!("DEBUG: Opening DAW tab for path: {:?}", event.path);
-                self.open_daw_tab(event.path.clone(), window, cx);
-            }
-            FileType::Database => {
-                eprintln!("DEBUG: Opening database tab for path: {:?}", event.path);
-                self.open_database_tab(event.path.clone(), window, cx);
-            }
-            FileType::StructType => {
-                eprintln!("DEBUG: Opening struct editor for path: {:?}", event.path);
-                self.open_struct_tab(event.path.clone(), window, cx);
-            }
-            FileType::EnumType => {
-                eprintln!("DEBUG: Opening enum editor for path: {:?}", event.path);
-                self.open_enum_tab(event.path.clone(), window, cx);
-            }
-            FileType::TraitType => {
-                eprintln!("DEBUG: Opening trait editor for path: {:?}", event.path);
-                self.open_trait_tab(event.path.clone(), window, cx);
-            }
-            FileType::AliasType => {
-                eprintln!("DEBUG: Opening alias editor for path: {:?}", event.path);
-                self.open_alias_tab(event.path.clone(), window, cx);
-            }
-            _ => {
+            FileType::Other => {
                 eprintln!("DEBUG: Unknown file type, ignoring");
             }
         }
@@ -1047,40 +1105,15 @@ impl PulsarApp {
             event.path, event.file_type
         );
 
-        match event.file_type {
-            FileType::Class => {
-                eprintln!("DEBUG: Opening blueprint tab from external");
-                self.open_blueprint_tab(event.path.clone(), window, cx);
+        match &event.file_type {
+            FileType::Asset(type_id) => {
+                eprintln!("DEBUG: Opening asset type from external: {}", type_id);
+                self.open_asset_tab(type_id, event.path.clone(), window, cx);
             }
-            FileType::Script => {
-                eprintln!("DEBUG: Opening script tab from external");
-                self.open_script_tab(event.path.clone(), window, cx);
+            FileType::Folder => {
+                eprintln!("DEBUG: Cannot open folder from external");
             }
-            FileType::DawProject => {
-                eprintln!("DEBUG: Opening DAW tab from external: {:?}", event.path);
-                self.open_daw_tab(event.path.clone(), window, cx);
-            }
-            FileType::Database => {
-                eprintln!("DEBUG: Opening database tab from external: {:?}", event.path);
-                self.open_database_tab(event.path.clone(), window, cx);
-            }
-            FileType::StructType => {
-                eprintln!("DEBUG: Opening struct editor from external: {:?}", event.path);
-                self.open_struct_tab(event.path.clone(), window, cx);
-            }
-            FileType::EnumType => {
-                eprintln!("DEBUG: Opening enum editor from external: {:?}", event.path);
-                self.open_enum_tab(event.path.clone(), window, cx);
-            }
-            FileType::TraitType => {
-                eprintln!("DEBUG: Opening trait editor from external: {:?}", event.path);
-                self.open_trait_tab(event.path.clone(), window, cx);
-            }
-            FileType::AliasType => {
-                eprintln!("DEBUG: Opening alias editor from external: {:?}", event.path);
-                self.open_alias_tab(event.path.clone(), window, cx);
-            }
-            _ => {
+            FileType::Other => {
                 eprintln!("DEBUG: Unknown file type from external, ignoring");
             }
         }
@@ -1802,6 +1835,27 @@ impl PulsarApp {
         eprintln!("DEBUG: Alias tab opened successfully");
     }
 
+    /// Generic method to open any asset type based on type ID
+    fn open_asset_tab(&mut self, type_id: &str, file_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        eprintln!("DEBUG: open_asset_tab called with type_id: {}, path: {:?}", type_id, file_path);
+        
+        // Look up the asset type in the registry
+        let registry = engine_fs::registry::global_registry();
+        if let Some(asset_type) = registry.get_asset_type(type_id) {
+            let editor_id = asset_type.editor_id();
+            
+            // Look up and call the editor opener
+            if let Some(opener) = self.editor_openers.get(editor_id) {
+                let opener = opener.clone();
+                opener(self, file_path, window, cx);
+            } else {
+                eprintln!("ERROR: No editor registered for editor_id: {}", editor_id);
+            }
+        } else {
+            eprintln!("ERROR: Unknown asset type: {}", type_id);
+        }
+    }
+
     fn on_text_editor_event(
         &mut self,
         _editor: &Entity<ScriptEditorPanel>,
@@ -1831,24 +1885,21 @@ impl PulsarApp {
 
     /// Open a path in the appropriate editor
     pub fn open_path(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        if path.is_dir() {
-            // Check if it's a blueprint class (contains graph_save.json)
-            if path.join("graph_save.json").exists() {
-                self.open_blueprint_tab(path, window, cx);
+        // Use the registry to find the appropriate editor for this file
+        let registry = engine_fs::registry::global_registry();
+        
+        if let Some(asset_type) = registry.find_asset_type_for_file(&path) {
+            let editor_id = asset_type.editor_id();
+            
+            // Look up and call the editor opener
+            if let Some(opener) = self.editor_openers.get(editor_id) {
+                let opener = opener.clone();
+                opener(self, path, window, cx);
+            } else {
+                eprintln!("ERROR: No editor registered for editor_id: {}", editor_id);
             }
-        } else if let Some(extension) = path.extension() {
-            match extension.to_str() {
-                Some("pdaw") => {
-                    self.open_daw_tab(path, window, cx);
-                }
-                Some("db") | Some("sqlite") | Some("sqlite3") => {
-                    self.open_database_tab(path, window, cx);
-                }
-                Some("rs") | Some("js") | Some("ts") | Some("py") | Some("lua") => {
-                    self.open_script_tab(path, window, cx);
-                }
-                _ => {}
-            }
+        } else {
+            eprintln!("WARN: No handler found for file: {:?}", path);
         }
     }
 }

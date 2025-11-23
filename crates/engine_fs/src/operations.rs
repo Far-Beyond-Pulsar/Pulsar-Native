@@ -5,24 +5,21 @@
 use anyhow::{Result, Context};
 use std::path::PathBuf;
 use std::sync::Arc;
-use super::{AssetRegistry, TypeAliasIndex};
+use super::TypeAliasIndex;
 
 /// Handles asset file operations
 pub struct AssetOperations {
     project_root: PathBuf,
-    registry: Arc<AssetRegistry>,
     type_index: Arc<TypeAliasIndex>,
 }
 
 impl AssetOperations {
     pub fn new(
         project_root: PathBuf,
-        registry: Arc<AssetRegistry>,
         type_index: Arc<TypeAliasIndex>,
     ) -> Self {
         Self {
             project_root,
-            registry,
             type_index,
         }
     }
@@ -160,17 +157,8 @@ impl AssetOperations {
             AssetKind::TypeAlias => {
                 self.type_index.register(file_path)?;
             }
-            AssetKind::Struct => {
-                self.registry.register_struct(file_path)?;
-            }
-            AssetKind::Enum => {
-                self.registry.register_enum(file_path)?;
-            }
-            AssetKind::Trait => {
-                self.registry.register_trait(file_path)?;
-            }
             _ => {
-                // Other asset types don't need indexing yet
+                // Other asset types managed through registry
             }
         }
         
@@ -179,9 +167,8 @@ impl AssetOperations {
     
     /// Delete any asset file
     pub fn delete_asset(&self, file_path: &PathBuf) -> Result<()> {
-        // Try to unregister from all indexes
+        // Unregister from type index
         self.type_index.unregister_by_path(file_path);
-        // TODO: Unregister from other indexes
         
         // Delete file
         std::fs::remove_file(file_path)
@@ -204,18 +191,11 @@ impl AssetOperations {
         std::fs::rename(old_path, new_path)
             .context("Failed to move asset file")?;
         
-        // Re-register at new location
-        // Auto-detect type from extension
+        // Re-register at new location if it's a type alias
         if let Some(ext) = new_path.extension() {
             let ext_str = ext.to_string_lossy();
             if ext_str.contains("alias") {
                 self.type_index.register(new_path)?;
-            } else if ext_str.contains("struct") {
-                self.registry.register_struct(new_path)?;
-            } else if ext_str.contains("enum") {
-                self.registry.register_enum(new_path)?;
-            } else if ext_str.contains("trait") {
-                self.registry.register_trait(new_path)?;
             }
         }
         

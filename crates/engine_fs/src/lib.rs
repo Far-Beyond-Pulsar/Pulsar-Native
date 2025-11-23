@@ -3,16 +3,16 @@
 //! Centralized asset management and indexing system for Pulsar Engine.
 //! Handles all file operations and maintains up-to-date indexes for quick lookups.
 
-pub mod asset_registry;
 pub mod type_index;
 pub mod watchers;
 pub mod operations;
 pub mod asset_templates;
+pub mod registry;
 
-pub use asset_registry::AssetRegistry;
 pub use type_index::{TypeAliasIndex, TypeAliasSignature};
 pub use operations::AssetOperations;
-pub use asset_templates::{AssetKind, AssetCategory};
+pub use asset_templates::AssetKind;
+pub use registry::{AssetType, EditorType, AssetCategory, AssetRegistry, global_registry};
 
 use anyhow::Result;
 use std::path::PathBuf;
@@ -22,7 +22,7 @@ use std::sync::Arc;
 /// Coordinates all asset operations and maintains indexes
 pub struct EngineFs {
     project_root: PathBuf,
-    registry: Arc<AssetRegistry>,
+    registry: Arc<registry::AssetRegistry>,
     type_index: Arc<TypeAliasIndex>,
     operations: AssetOperations,
 }
@@ -30,11 +30,10 @@ pub struct EngineFs {
 impl EngineFs {
     /// Create a new EngineFs instance for a project
     pub fn new(project_root: PathBuf) -> Result<Self> {
-        let registry = Arc::new(AssetRegistry::new());
+        let registry = Arc::new(registry::AssetRegistry::new());
         let type_index = Arc::new(TypeAliasIndex::new());
         let operations = AssetOperations::new(
             project_root.clone(),
-            registry.clone(),
             type_index.clone(),
         );
 
@@ -57,7 +56,7 @@ impl EngineFs {
     }
 
     /// Get the asset registry
-    pub fn registry(&self) -> &Arc<AssetRegistry> {
+    pub fn registry(&self) -> &Arc<registry::AssetRegistry> {
         &self.registry
     }
 
@@ -76,7 +75,6 @@ impl EngineFs {
         use walkdir::WalkDir;
 
         // Clear existing indexes
-        self.registry.clear();
         self.type_index.clear();
 
         // Walk the project directory
@@ -95,7 +93,7 @@ impl EngineFs {
                 continue;
             }
 
-            // Register based on file extension
+            // Register based on file extension using registry
             if path.is_file() {
                 self.register_asset(path.to_path_buf())?;
             }
@@ -106,29 +104,16 @@ impl EngineFs {
 
     /// Register a single asset file
     fn register_asset(&self, path: PathBuf) -> Result<()> {
-        if let Some(extension) = path.extension() {
-            match extension.to_string_lossy().as_ref() {
-                "alias" | "json" if path.file_name()
-                    .and_then(|n| n.to_str())
-                    .map(|n| n.contains("alias"))
-                    .unwrap_or(false) => 
-                {
-                    // Type alias file
-                    self.operations.register_type_alias(&path)?;
-                }
-                "struct" => {
-                    // Struct definition
-                    self.registry.register_struct(&path)?;
-                }
-                "enum" => {
-                    // Enum definition  
-                    self.registry.register_enum(&path)?;
-                }
-                "trait" => {
-                    // Trait definition
-                    self.registry.register_trait(&path)?;
-                }
-                _ => {}
+        // Try to find asset type for this file via registry
+        if let Some(_asset_type) = self.registry.find_asset_type_for_file(&path) {
+            // Asset type handles registration internally
+            // For type aliases specifically, update index
+            if path.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.contains("alias"))
+                .unwrap_or(false)
+            {
+                self.operations.register_type_alias(&path)?;
             }
         }
         Ok(())
@@ -138,7 +123,6 @@ impl EngineFs {
     pub fn start_watching(&self) -> Result<()> {
         watchers::start_watcher(
             self.project_root.clone(),
-            self.registry.clone(),
             self.type_index.clone(),
         )
     }

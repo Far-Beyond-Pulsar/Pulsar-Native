@@ -150,6 +150,14 @@ fn main() {
     // Init the Game engine backend (subsystems, etc)
     rt.block_on(engine_backend::EngineBackend::init());
 
+    // Initialize asset registry with all built-in asset types
+    println!("Initializing asset registry...");
+    // TODO: Register asset types and editors here
+    // Each editor module should call engine_fs::global_registry().register_asset_type(...)
+    // and engine_fs::global_registry().register_editor(...) on startup
+    println!("Asset registry initialized with {} asset types", 
+             engine_fs::global_registry().get_all_asset_types().len());
+
     // Create channel for window creation requests
     let (window_tx, window_rx) = channel::<WindowRequest>();
 

@@ -35,6 +35,13 @@ pub struct NewFile {
 
 #[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 #[action(namespace = file_manager)]
+pub struct NewAsset {
+    pub folder_path: String,
+    pub asset_kind: String, // AssetKind as string
+}
+
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager)]
 pub struct DeleteItem {
     pub item_path: String,
 }
@@ -68,17 +75,41 @@ pub struct ToggleHiddenFiles;
 #[derive(Clone, Debug, PartialEq)]
 pub enum FileType {
     Folder,
-    Class, // A folder containing graph_save.json
-    Script,
-    DawProject, // .pdaw files
-    Database, // .db, .sqlite, .sqlite3 files
-    Config, // .toml files
-    // Type System Files
-    StructType,  // .struct.json files
-    EnumType,    // .enum.json files
-    TraitType,   // .trait.json files
-    AliasType,   // .alias.json files
+    Asset(String), // Asset type ID from registry (e.g., "blueprint", "type_alias")
     Other,
+}
+
+impl FileType {
+    /// Create FileType from a path using the registry
+    pub fn from_path(path: &Path) -> Self {
+        if path.is_dir() {
+            // Check if it's a special folder type
+            if FileItem::is_class_folder(path) {
+                return FileType::Asset("blueprint_class".to_string());
+            }
+            if FileItem::is_struct_folder(path) {
+                return FileType::Asset("struct".to_string());
+            }
+            if FileItem::is_enum_folder(path) {
+                return FileType::Asset("enum".to_string());
+            }
+            if FileItem::is_trait_folder(path) {
+                return FileType::Asset("trait".to_string());
+            }
+            if FileItem::is_alias_folder(path) {
+                return FileType::Asset("type_alias".to_string());
+            }
+            return FileType::Folder;
+        }
+        
+        // Use registry to detect file type
+        let registry = engine_fs::global_registry();
+        if let Some(asset_type) = registry.find_asset_type_for_file(path) {
+            FileType::Asset(asset_type.type_id().to_string())
+        } else {
+            FileType::Other
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -134,41 +165,8 @@ impl FileItem {
     pub fn from_path(path: &Path) -> Option<Self> {
         let name = path.file_name()?.to_str()?.to_string();
 
-        let file_type = if path.is_dir() {
-            if Self::is_class_folder(path) {
-                FileType::Class
-            } else if Self::is_struct_folder(path) {
-                FileType::StructType
-            } else if Self::is_enum_folder(path) {
-                FileType::EnumType
-            } else if Self::is_trait_folder(path) {
-                FileType::TraitType
-            } else if Self::is_alias_folder(path) {
-                FileType::AliasType
-            } else {
-                FileType::Folder
-            }
-        } else {
-            // Check for type system files first (they have .json extension but specific naming)
-            let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-            if file_name.ends_with(".struct.json") {
-                FileType::StructType
-            } else if file_name.ends_with(".enum.json") {
-                FileType::EnumType
-            } else if file_name.ends_with(".trait.json") {
-                FileType::TraitType
-            } else if file_name.ends_with(".alias.json") {
-                FileType::AliasType
-            } else {
-                match path.extension().and_then(|s| s.to_str()) {
-                    Some("rs") => FileType::Script,
-                    Some("pdaw") => FileType::DawProject,
-                    Some("db") | Some("sqlite") | Some("sqlite3") => FileType::Database,
-                    Some("toml") => FileType::Config,
-                    _ => FileType::Other,
-                }
-            }
-        };
+        // Use the new registry-based file type detection
+        let file_type = FileType::from_path(path);
 
         // Get file metadata for size and modified date
         let metadata = std::fs::metadata(path).ok();
@@ -455,10 +453,8 @@ impl FileManagerDrawer {
         eprintln!("DEBUG: handle_item_click called for: {:?}, type: {:?}", item.path, item.file_type);
         
         match &item.file_type {
-            FileType::Class | FileType::Script | FileType::DawProject | FileType::Database
-            | FileType::StructType | FileType::EnumType | FileType::TraitType | FileType::AliasType => {
+            FileType::Asset(_) => {
                 eprintln!("DEBUG: Emitting FileSelected event");
-                // Emit event to open this class in BP editor, script in script editor, DAW project, database, or type editor
                 cx.emit(FileSelected {
                     path: item.path.clone(),
                     file_type: item.file_type.clone(),
@@ -564,6 +560,36 @@ impl FileManagerDrawer {
 
         // Start rename mode for the new file
         self.start_rename(new_path, window, cx);
+    }
+
+    fn on_new_asset(&mut self, action: &NewAsset, window: &mut Window, cx: &mut Context<Self>) {
+        // Get global registry
+        let registry = engine_fs::global_registry();
+        
+        // Use the action.asset_kind as the type_id directly
+        let type_id = &action.asset_kind;
+        
+        // Determine the directory for the new file
+        let folder_path = std::path::Path::new(&action.folder_path);
+        
+        // Generate default name
+        let default_name = format!("New{}", action.asset_kind);
+        
+        // Create the file using the registry
+        match registry.create_new_file(type_id, &default_name, Some(folder_path)) {
+            Ok(new_path) => {
+                // Refresh folder tree
+                if let Some(project_path) = &self.project_path {
+                    self.folder_tree = FolderNode::from_path(project_path);
+                }
+                
+                // Start rename mode
+                self.start_rename(new_path, window, cx);
+            }
+            Err(e) => {
+                eprintln!("Failed to create asset {}: {}", type_id, e);
+            }
+        }
     }
 
     fn on_delete_item(
@@ -965,15 +991,25 @@ impl FileManagerDrawer {
     fn render_content_item(&self, item: &FileItem, cx: &mut Context<Self>) -> gpui::AnyElement {
         let icon = match &item.file_type {
             FileType::Folder => IconName::Folder,
-            FileType::Class => IconName::Component,
-            FileType::Script => IconName::Code,
-            FileType::DawProject => IconName::MusicNote,
-            FileType::Database => IconName::Database,
-            FileType::Config => IconName::Settings,
-            FileType::StructType => IconName::Box,
-            FileType::EnumType => IconName::List,
-            FileType::TraitType => IconName::Code,
-            FileType::AliasType => IconName::Link,
+            FileType::Asset(type_id) => {
+                // Get icon from registry
+                let registry = engine_fs::global_registry();
+                if let Some(asset_type) = registry.get_asset_type(type_id) {
+                    match type_id.as_str() {
+                        "blueprint_class" | "blueprint_function" => IconName::Component,
+                        "rust_script" | "lua_script" | "shader" => IconName::Code,
+                        "struct" => IconName::Box,
+                        "enum" => IconName::List,
+                        "trait" => IconName::Code,
+                        "type_alias" => IconName::Link,
+                        "material" => IconName::Palette,
+                        "scene" | "prefab" => IconName::Globe,
+                        _ => IconName::Page,
+                    }
+                } else {
+                    IconName::Page
+                }
+            }
             FileType::Other => IconName::Page,
         };
 
@@ -1006,7 +1042,7 @@ impl FileManagerDrawer {
             .h(px(100.))
             .context_menu(move |menu, _window, _cx| {
                 let path_str = item_path.to_string_lossy().to_string();
-                match item_type {
+                match &item_type {
                     FileType::Folder => menu
                         .menu(
                             "New Folder",
@@ -1033,8 +1069,7 @@ impl FileManagerDrawer {
                                 item_path: path_str.clone(),
                             }),
                         ),
-                    FileType::Class => menu
-                        .separator()
+                    FileType::Asset(_) => menu
                         .menu(
                             "Rename",
                             Box::new(RenameItem {
@@ -1047,7 +1082,7 @@ impl FileManagerDrawer {
                                 item_path: path_str.clone(),
                             }),
                         ),
-                    _ => menu
+                    FileType::Other => menu
                         .menu(
                             "Rename",
                             Box::new(RenameItem {
@@ -1099,28 +1134,25 @@ impl FileManagerDrawer {
                                     .items_center()
                                     .justify_center()
                                     .bg(match &item.file_type {
-                                        FileType::Class => cx.theme().accent.opacity(0.12),
+                                        FileType::Asset(type_id) if type_id == "blueprint_class" || type_id == "blueprint_function" => cx.theme().accent.opacity(0.12),
+                                        FileType::Asset(type_id) if type_id == "rust_script" || type_id == "lua_script" => cx.theme().info.opacity(0.12),
                                         FileType::Folder => cx.theme().primary.opacity(0.08),
-                                        FileType::Script => cx.theme().info.opacity(0.12),
-                                        FileType::DawProject => cx.theme().success.opacity(0.12),
                                         _ => cx.theme().muted.opacity(0.08),
                                     })
                                     .border_1()
                                     .border_color(match &item.file_type {
-                                        FileType::Class => cx.theme().accent.opacity(0.25),
+                                        FileType::Asset(type_id) if type_id == "blueprint_class" || type_id == "blueprint_function" => cx.theme().accent.opacity(0.25),
+                                        FileType::Asset(type_id) if type_id == "rust_script" || type_id == "lua_script" => cx.theme().info.opacity(0.25),
                                         FileType::Folder => cx.theme().primary.opacity(0.18),
-                                        FileType::Script => cx.theme().info.opacity(0.25),
-                                        FileType::DawProject => cx.theme().success.opacity(0.25),
                                         _ => cx.theme().border.opacity(0.25),
                                     })
                                     .child(
                                         Icon::new(icon)
                                             .size(px(24.))
                                             .text_color(match &item.file_type {
-                                                FileType::Class => cx.theme().accent,
+                                                FileType::Asset(type_id) if type_id == "blueprint" => cx.theme().accent,
+                                                FileType::Asset(type_id) if type_id == "rust_script" || type_id == "lua_script" => cx.theme().info,
                                                 FileType::Folder => cx.theme().primary,
-                                                FileType::Script => cx.theme().info,
-                                                FileType::DawProject => cx.theme().success,
                                                 _ => cx.theme().muted_foreground,
                                             })
                                     )
@@ -1149,7 +1181,7 @@ impl FileManagerDrawer {
                                         .into_any_element()
                                 }
                             )
-                            .when(matches!(item.file_type, FileType::Class), |this| {
+                            .when(matches!(&item.file_type, FileType::Asset(type_id) if type_id == "blueprint"), |this| {
                                 this.child(
                                     // Compact blueprint badge
                                     div()
@@ -1190,7 +1222,7 @@ impl FileManagerDrawer {
             .h(px(38.))
             .context_menu(move |menu, _window, _cx| {
                 let path_str = item_path.to_string_lossy().to_string();
-                match item_type {
+                match &item_type {
                     FileType::Folder => menu
                         .menu(
                             "New Folder",
@@ -1217,8 +1249,7 @@ impl FileManagerDrawer {
                                 item_path: path_str.clone(),
                             }),
                         ),
-                    FileType::Class => menu
-                        .separator()
+                    FileType::Asset(_) => menu
                         .menu(
                             "Rename",
                             Box::new(RenameItem {
@@ -1231,7 +1262,7 @@ impl FileManagerDrawer {
                                 item_path: path_str.clone(),
                             }),
                         ),
-                    _ => menu
+                    FileType::Other => menu
                         .menu(
                             "Rename",
                             Box::new(RenameItem {
@@ -1282,20 +1313,18 @@ impl FileManagerDrawer {
                                     .items_center()
                                     .justify_center()
                                     .bg(match &item.file_type {
-                                        FileType::Class => cx.theme().accent.opacity(0.1),
+                                        FileType::Asset(type_id) if type_id == "blueprint_class" || type_id == "blueprint_function" => cx.theme().accent.opacity(0.1),
+                                        FileType::Asset(type_id) if type_id == "rust_script" || type_id == "lua_script" => cx.theme().info.opacity(0.1),
                                         FileType::Folder => cx.theme().primary.opacity(0.08),
-                                        FileType::Script => cx.theme().info.opacity(0.1),
-                                        FileType::DawProject => cx.theme().success.opacity(0.1),
                                         _ => cx.theme().muted.opacity(0.06),
                                     })
                                     .child(
                                         Icon::new(icon)
                                             .size(px(16.))
                                             .text_color(match &item.file_type {
-                                                FileType::Class => cx.theme().accent,
+                                                FileType::Asset(type_id) if type_id == "blueprint_class" || type_id == "blueprint_function" => cx.theme().accent,
+                                                FileType::Asset(type_id) if type_id == "rust_script" || type_id == "lua_script" => cx.theme().info,
                                                 FileType::Folder => cx.theme().primary,
-                                                FileType::Script => cx.theme().info,
-                                                FileType::DawProject => cx.theme().success,
                                                 _ => cx.theme().muted_foreground,
                                             })
                                     )
@@ -1324,7 +1353,7 @@ impl FileManagerDrawer {
                                         .into_any_element()
                                 }
                             )
-                            .when(matches!(item.file_type, FileType::Class), |this| {
+                            .when(matches!(&item.file_type, FileType::Asset(type_id) if type_id == "blueprint_class" || type_id == "blueprint_function"), |this| {
                                 this.child(
                                     div()
                                         .px_1p5()
@@ -1398,6 +1427,7 @@ impl Render for FileManagerDrawer {
             .on_action(cx.listener(Self::on_new_folder))
             .on_action(cx.listener(Self::on_new_class))
             .on_action(cx.listener(Self::on_new_file))
+            .on_action(cx.listener(Self::on_new_asset))
             .on_action(cx.listener(Self::on_delete_item))
             .on_action(cx.listener(Self::on_rename_item))
             .on_action(cx.listener(Self::on_commit_rename))
@@ -1812,18 +1842,56 @@ impl Render for FileManagerDrawer {
                                                                                             folder_path: folder_str.clone(),
                                                                                         }),
                                                                                     )
-                                                                                    .menu(
-                                                                                        "New Class",
-                                                                                        Box::new(NewClass {
-                                                                                            folder_path: folder_str.clone(),
-                                                                                        }),
-                                                                                    )
-                                                                                    .menu(
-                                                                                        "New File",
-                                                                                        Box::new(NewFile {
-                                                                                            folder_path: folder_str.clone(),
-                                                                                        }),
-                                                                                    )
+                                                                                    .submenu("New File", _window, _cx, {
+                                                                                        let folder_str = folder_str.clone();
+                                                                                        move |submenu, _window, _cx| {
+                                                                                            let mut submenu = submenu;
+                                                                                            
+                                                                                            // Get all asset types from the global registry
+                                                                                            let registry = engine_fs::global_registry();
+                                                                                            let asset_types = registry.get_all_asset_types();
+                                                                                            
+                                                                                            // Group by category
+                                                                                            use std::collections::HashMap;
+                                                                                            let mut by_category: HashMap<engine_fs::AssetCategory, Vec<_>> = HashMap::new();
+                                                                                            for asset_type in asset_types {
+                                                                                                by_category.entry(asset_type.category())
+                                                                                                    .or_insert_with(Vec::new)
+                                                                                                    .push(asset_type);
+                                                                                            }
+                                                                                            
+                                                                                            // Add each category
+                                                                                            let categories = vec![
+                                                                                                engine_fs::AssetCategory::TypeSystem,
+                                                                                                engine_fs::AssetCategory::Blueprints,
+                                                                                                engine_fs::AssetCategory::Scripts,
+                                                                                                engine_fs::AssetCategory::Scenes,
+                                                                                                engine_fs::AssetCategory::Audio,
+                                                                                                engine_fs::AssetCategory::Data,
+                                                                                            ];
+                                                                                            
+                                                                                            for category in categories {
+                                                                                                if let Some(assets) = by_category.get(&category) {
+                                                                                                    for asset_type in assets {
+                                                                                                        let type_id = asset_type.type_id().to_string();
+                                                                                                        let label = format!("{} {}", asset_type.icon(), asset_type.display_name());
+                                                                                                        
+                                                                                                        submenu = submenu.menu(
+                                                                                                            label, 
+                                                                                                            Box::new(NewAsset {
+                                                                                                                folder_path: folder_str.clone(),
+                                                                                                                asset_kind: type_id,
+                                                                                                            })
+                                                                                                        );
+                                                                                                    }
+                                                                                                    
+                                                                                                    submenu = submenu.separator();
+                                                                                                }
+                                                                                            }
+                                                                                            
+                                                                                            submenu
+                                                                                        }
+                                                                                    })
                                                                                 } else {
                                                                                     menu
                                                                                 }

@@ -3,6 +3,7 @@
 //! Provides templates for creating new assets of any type
 
 use serde_json::json;
+use crate::registry::AssetCategory;
 
 /// All possible asset types that can be created
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -465,63 +466,5 @@ impl AssetKind {
                 AssetKind::EditorConfig,
             ],
         }
-    }
-}
-
-/// Categories for organizing assets
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AssetCategory {
-    TypeSystem,
-    Blueprints,
-    Scripts,
-    Scenes,
-    Rendering,
-    Audio,
-    UI,
-    Data,
-    Config,
-}
-
-impl AssetCategory {
-    pub fn display_name(&self) -> &'static str {
-        match self {
-            AssetCategory::TypeSystem => "Type System",
-            AssetCategory::Blueprints => "Blueprints",
-            AssetCategory::Scripts => "Scripts",
-            AssetCategory::Scenes => "Scenes",
-            AssetCategory::Rendering => "Rendering",
-            AssetCategory::Audio => "Audio",
-            AssetCategory::UI => "User Interface",
-            AssetCategory::Data => "Data",
-            AssetCategory::Config => "Configuration",
-        }
-    }
-    
-    pub fn icon(&self) -> &'static str {
-        match self {
-            AssetCategory::TypeSystem => "📝",
-            AssetCategory::Blueprints => "🔷",
-            AssetCategory::Scripts => "📜",
-            AssetCategory::Scenes => "🎬",
-            AssetCategory::Rendering => "🎨",
-            AssetCategory::Audio => "🔊",
-            AssetCategory::UI => "🖥️",
-            AssetCategory::Data => "📊",
-            AssetCategory::Config => "⚙️",
-        }
-    }
-    
-    pub fn all() -> Vec<AssetCategory> {
-        vec![
-            AssetCategory::TypeSystem,
-            AssetCategory::Blueprints,
-            AssetCategory::Scripts,
-            AssetCategory::Scenes,
-            AssetCategory::Rendering,
-            AssetCategory::Audio,
-            AssetCategory::UI,
-            AssetCategory::Data,
-            AssetCategory::Config,
-        ]
     }
 }
