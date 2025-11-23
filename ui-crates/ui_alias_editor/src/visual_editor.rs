@@ -7,6 +7,11 @@ use crate::{TypeBlock, BlockId, BlockCanvas, ConstructorPalette};
 
 actions!(visual_alias_editor, [Save, TogglePalette]);
 
+#[derive(Clone)]
+pub struct ShowTypePickerRequest {
+    pub target_slot: Option<(BlockId, usize)>,
+}
+
 /// Visual block-based type alias editor with Scratch-style interface
 pub struct VisualAliasEditor {
     file_path: Option<PathBuf>,
@@ -16,12 +21,6 @@ pub struct VisualAliasEditor {
     
     /// Canvas for composing type blocks
     canvas: BlockCanvas,
-    
-    /// Palette for selecting types (not stored, rendered inline)
-    palette_search: String,
-    
-    /// Whether palette is visible
-    show_palette: bool,
     
     /// Error message to display
     error_message: Option<String>,
@@ -34,7 +33,7 @@ pub struct VisualAliasEditor {
     /// Currently selected slot to fill (parent_block_id, slot_index)
     selected_slot: Option<(BlockId, usize)>,
     
-    /// Block pending placement (from library click)
+    /// Block pending placement (from palette)
     pending_block: Option<TypeBlock>,
     
     /// Pending slot selection (shared state for click handler)
@@ -88,8 +87,6 @@ impl VisualAliasEditor {
             display_name,
             description,
             canvas,
-            palette_search: String::new(),
-            show_palette: true,
             error_message,
             show_preview: true,
             focus_handle: cx.focus_handle(),
@@ -146,8 +143,10 @@ impl VisualAliasEditor {
     }
 
     fn toggle_palette(&mut self, _: &TogglePalette, _window: &mut Window, cx: &mut Context<Self>) {
-        self.show_palette = !self.show_palette;
-        cx.notify();
+        // Open the centered type picker with no target slot
+        cx.emit(ShowTypePickerRequest {
+            target_slot: self.selected_slot.clone(),
+        });
     }
 
     /// Render code preview panel
@@ -226,206 +225,41 @@ impl VisualAliasEditor {
         cx.notify();
     }
     
-    /// Select a slot to fill
+    /// Select a slot to fill - opens the type picker
     fn select_slot(&mut self, parent_id: BlockId, slot_idx: usize, cx: &mut Context<Self>) {
-        self.selected_slot = Some((parent_id, slot_idx));
+        self.selected_slot = Some((parent_id.clone(), slot_idx));
         
         // If we have a pending block, fill the slot immediately
         if let Some(block) = self.pending_block.take() {
             self.add_block_to_canvas(block, cx);
         } else {
-            self.error_message = Some("Now select a type from the library to fill this slot".to_string());
-            cx.notify();
+            // Open the centered type picker for this slot
+            cx.emit(ShowTypePickerRequest {
+                target_slot: Some((parent_id, slot_idx)),
+            });
         }
+    }
+    
+    /// Add a block from the type picker
+    pub fn add_type_from_picker(&mut self, type_item: &crate::TypeItem, target_slot: Option<(BlockId, usize)>, cx: &mut Context<Self>) {
+        let block = type_item.to_block();
+        
+        if let Some((parent_id, slot_idx)) = target_slot {
+            // Fill the specific slot
+            if self.canvas.fill_slot(parent_id, slot_idx, block) {
+                self.error_message = None;
+                self.selected_slot = None;
+            } else {
+                self.error_message = Some("Failed to fill slot".to_string());
+            }
+        } else {
+            // No slot specified - add to canvas
+            self.add_block_to_canvas(block, cx);
+        }
+        cx.notify();
     }
 
-    /// Render the palette inline with click handlers
-    fn render_palette(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        use pulsar_std::{get_all_type_constructors};
-        use ui_types_common::PRIMITIVES;
-        use std::collections::HashMap;
-        
-        let constructors = get_all_type_constructors();
-        let search_lower = self.palette_search.to_lowercase();
-        
-        // Group by category and sort for stable rendering
-        let mut by_category: HashMap<&str, Vec<_>> = HashMap::new();
-        for ctor in constructors {
-            by_category.entry(ctor.category).or_insert_with(Vec::new).push(ctor);
-        }
-        
-        // Sort categories for stable order
-        let mut categories: Vec<_> = by_category.into_iter().collect();
-        categories.sort_by_key(|(name, _)| *name);
-        
-        v_flex()
-            .w(px(320.0))
-            .h_full()
-            .bg(cx.theme().sidebar)
-            .border_r_2()
-            .border_color(cx.theme().border)
-            .child(
-                // Header
-                v_flex()
-                    .w_full()
-                    .bg(cx.theme().secondary)
-                    .border_b_2()
-                    .border_color(cx.theme().border)
-                    .child(
-                        h_flex()
-                            .w_full()
-                            .px_4()
-                            .py_3()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .font_bold()
-                                    .text_color(cx.theme().foreground)
-                                    .child("🎨 Type Library")
-                            )
-                    )
-            )
-            .child(
-                // Primitives
-                v_flex()
-                    .flex_1()
-                    .p_3()
-                    .gap_3()
-                    .child(
-                        v_flex()
-                            .w_full()
-                            .gap_2()
-                            .child(
-                                h_flex()
-                                    .w_full()
-                                    .px_3()
-                                    .py_2()
-                                    .gap_2()
-                                    .items_center()
-                                    .bg(cx.theme().muted.opacity(0.3))
-                                    .rounded(px(6.0))
-                                    .child(div().text_sm().child("▼"))
-                                    .child(div().text_base().child("🔢"))
-                                    .child(
-                                        div()
-                                            .text_sm()
-                                            .font_semibold()
-                                            .text_color(cx.theme().foreground)
-                                            .child(format!("Primitives ({})", PRIMITIVES.len()))
-                                    )
-                            )
-                            .child(
-                                div()
-                                    .w_full()
-                                    .flex()
-                                    .flex_wrap()
-                                    .gap_2()
-                                    .px_2()
-                                    .children(PRIMITIVES.iter().filter(|p| {
-                                        search_lower.is_empty() || p.to_lowercase().contains(&search_lower)
-                                    }).map(|prim| {
-                                        let prim_name = *prim;
-                                        Button::new(prim_name)
-                                            .with_variant(ButtonVariant::Secondary)
-                                            .child(prim_name)
-                                            .on_click(cx.listener(move |this, _, _window, cx| {
-                                                let block = TypeBlock::primitive(prim_name);
-                                                this.add_block_to_canvas(block, cx);
-                                            }))
-                                    }))
-                            )
-                    )
-                    .children(
-                        categories
-                            .into_iter()
-                            .map(|(category_name, category_constructors)| {
-                                let filtered: Vec<_> = category_constructors
-                                    .iter()
-                                    .filter(|c| {
-                                        search_lower.is_empty() 
-                                        || c.name.to_lowercase().contains(&search_lower)
-                                        || c.description.to_lowercase().contains(&search_lower)
-                                    })
-                                    .collect();
-                                
-                                if filtered.is_empty() {
-                                    return div();
-                                }
-                                
-                                v_flex()
-                                    .w_full()
-                                    .gap_2()
-                                    .child(
-                                        h_flex()
-                                            .w_full()
-                                            .px_3()
-                                            .py_2()
-                                            .gap_2()
-                                            .items_center()
-                                            .bg(cx.theme().muted.opacity(0.3))
-                                            .rounded(px(6.0))
-                                            .child(div().text_sm().child("▼"))
-                                            .child(div().text_base().child("📦"))
-                                            .child(
-                                                div()
-                                                    .flex_1()
-                                                    .text_sm()
-                                                    .font_semibold()
-                                                    .text_color(cx.theme().foreground)
-                                                    .child(format!("{} ({})", category_name, filtered.len()))
-                                            )
-                                    )
-                                    .child(
-                                        v_flex()
-                                            .w_full()
-                                            .gap_2()
-                                            .px_2()
-                                            .children(filtered.iter().map(|constructor| {
-                                                let ctor_name = constructor.name;
-                                                let param_count = constructor.params_count;
-                                                
-                                                v_flex()
-                                                    .w_full()
-                                                    .gap_1()
-                                                    .child(
-                                                        Button::new(ctor_name)
-                                                            .with_variant(ButtonVariant::Primary)
-                                                            .child(format!("{}<> ({})", ctor_name, param_count))
-                                                            .on_click(cx.listener(move |this, _, _window, cx| {
-                                                                let block = TypeBlock::constructor(ctor_name, param_count);
-                                                                this.add_block_to_canvas(block, cx);
-                                                            }))
-                                                    )
-                                                    .child(
-                                                        div()
-                                                            .w_full()
-                                                            .px_3()
-                                                            .text_xs()
-                                                            .text_color(cx.theme().muted_foreground)
-                                                            .child(constructor.description.to_string())
-                                                    )
-                                            }))
-                                    )
-                            })
-                    )
-            )
-            .child(
-                div()
-                    .px_4()
-                    .py_3()
-                    .bg(cx.theme().secondary.opacity(0.5))
-                    .border_t_1()
-                    .border_color(cx.theme().border)
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("💡 Click to add types to canvas")
-                    )
-            )
-    }
+
 
     fn generate_preview_code(&self, ast: &TypeAstNode) -> String {
         let type_str = self.ast_to_rust_string(ast);
@@ -528,13 +362,9 @@ impl Render for VisualAliasEditor {
                         h_flex()
                             .gap_2()
                             .child(
-                                Button::new("toggle_palette_btn")
-                                    .with_variant(if self.show_palette {
-                                        ButtonVariant::Secondary
-                                    } else {
-                                        ButtonVariant::Ghost
-                                    })
-                                    .child(if self.show_palette { "🎨 Hide Library" } else { "🎨 Show Library" })
+                                Button::new("add_type_btn")
+                                    .with_variant(ButtonVariant::Secondary)
+                                    .child("🎨 Add Type")
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.toggle_palette(&TogglePalette, window, cx);
                                     }))
@@ -564,15 +394,12 @@ impl Render for VisualAliasEditor {
                     )
             )
             .child(
-                // Main content area - three-panel layout
+                // Main content area - two-panel layout (canvas and preview)
                 h_flex()
                     .flex_1()
                     .w_full()
                     .h_full()
                     .min_h_0()
-                    .when(self.show_palette, |this| {
-                        this.child(self.render_palette(cx))
-                    })
                     .child(
                         // Center canvas container
                         v_flex()
@@ -662,6 +489,7 @@ impl Focusable for VisualAliasEditor {
 }
 
 impl EventEmitter<PanelEvent> for VisualAliasEditor {}
+impl EventEmitter<ShowTypePickerRequest> for VisualAliasEditor {}
 
 impl Panel for VisualAliasEditor {
     fn panel_name(&self) -> &'static str {

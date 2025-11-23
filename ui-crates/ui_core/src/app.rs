@@ -25,6 +25,7 @@ use ui_editor::{
     FileSelected, DrawerFileType as FileType, PopoutFileManagerEvent,
 };
 use ui_editor::tabs::blueprint_editor::ShowNodePickerRequest;
+use ui_alias_editor::ShowTypePickerRequest;
 
 // Standalone windows
 use ui_entry::{EntryScreen, ProjectSelected};
@@ -161,6 +162,8 @@ pub struct PulsarApp {
     command_palette: Option<Entity<GenericPalette<AnyPaletteDelegate>>>,
     // Track which blueprint editor requested the node picker (for node selection callback)
     active_node_picker_editor: Option<Entity<BlueprintEditorPanel>>,
+    // Track which alias editor requested the type picker (for type selection callback)
+    active_type_picker_editor: Option<Entity<ui_alias_editor::AliasEditor>>,
     // Focus management
     focus_handle: FocusHandle,
 }
@@ -445,6 +448,7 @@ impl PulsarApp {
             command_palette_open: false,
             command_palette: None,
             active_node_picker_editor: None,
+            active_type_picker_editor: None,
             focus_handle: cx.focus_handle(),
         };
         
@@ -1268,6 +1272,93 @@ impl PulsarApp {
         cx.notify();
     }
 
+    fn on_show_type_picker_request(
+        &mut self,
+        editor: &Entity<ui_alias_editor::AliasEditor>,
+        event: &ShowTypePickerRequest,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Store which editor requested the picker so we can send the type back
+        self.active_type_picker_editor = Some(editor.clone());
+
+        // Show the palette with type library delegate
+        if let Some(palette) = &self.command_palette {
+            // Palette already exists, swap in type library delegate
+            palette.update(cx, |palette, cx| {
+                let delegate = AnyPaletteDelegate::type_library(event.target_slot.clone());
+                palette.swap_delegate(delegate, window, cx);
+            });
+
+            // Focus the input for typing (actions bubble up to palette)
+            let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
+            input_handle.focus(window);
+        } else {
+            // Create the palette for the first time
+            let delegate = AnyPaletteDelegate::type_library(event.target_slot.clone());
+            let palette = cx.new(|cx| {
+                GenericPalette::new(delegate, window, cx)
+            });
+
+            // Subscribe to dismiss events
+            cx.subscribe_in(&palette, window, |this: &mut PulsarApp, palette, _event: &DismissEvent, window, cx| {
+                // Extract the selected item
+                let selected_item = palette.update(cx, |palette, _cx| {
+                    palette.delegate_mut().take_selected_command()
+                });
+
+                // Check if we're in node picker mode
+                let selected_node = palette.update(cx, |palette, _cx| {
+                    palette.delegate_mut().take_selected_node()
+                });
+
+                // Check if we're in type picker mode
+                let selected_type = palette.update(cx, |palette, _cx| {
+                    palette.delegate_mut().take_selected_type()
+                });
+
+                // Handle command/file selection
+                if let Some(item) = selected_item {
+                    this.handle_command_or_file_selected(item, window, cx);
+                }
+
+                // Handle node selection
+                if let Some((node_def, pos)) = selected_node {
+                    if let Some(editor) = &this.active_node_picker_editor {
+                        editor.update(cx, |ed, cx| {
+                            ed.add_node_from_definition(&node_def, pos, cx);
+                        });
+                    }
+                    this.active_node_picker_editor = None;
+                }
+
+                // Handle type selection
+                if let Some((type_item, target_slot)) = selected_type {
+                    if let Some(editor) = &this.active_type_picker_editor {
+                        editor.update(cx, |ed, cx| {
+                            ed.add_type_from_picker(&type_item, target_slot, cx);
+                        });
+                    }
+                    this.active_type_picker_editor = None;
+                }
+
+                this.command_palette_open = false;
+                // Restore focus to the app so shortcuts work immediately
+                this.focus_handle.focus(window);
+                cx.notify();
+            }).detach();
+
+            // Focus the input for typing (actions bubble up to palette)
+            let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
+            input_handle.focus(window);
+
+            self.command_palette = Some(palette);
+        }
+
+        self.command_palette_open = true;
+        cx.notify();
+    }
+
     /// Open a blueprint editor tab for an engine library (virtual blueprint class)
     /// This opens the library as if it were a blueprint, allowing users to browse and edit its macros
     pub fn open_engine_library_tab(
@@ -1695,6 +1786,10 @@ impl PulsarApp {
         let alias_editor = cx.new(|cx| {
             ui_alias_editor::AliasEditor::new_with_file(actual_file_path.clone(), window, cx)
         });
+
+        // Subscribe to type picker requests
+        cx.subscribe_in(&alias_editor, window, Self::on_show_type_picker_request)
+            .detach();
 
         eprintln!("DEBUG: Adding alias editor to tab panel");
         self.center_tabs.update(cx, |tabs, cx| {

@@ -1,6 +1,7 @@
 use ui_common::command_palette::{PaletteDelegate, PaletteItem, CommandDelegate, CommandOrFile};
 use ui_editor::tabs::blueprint_editor::node_palette::NodePalette;
 use ui_editor::tabs::blueprint_editor::NodeDefinition;
+use ui_alias_editor::{TypeLibraryPalette, TypeItem, BlockId};
 use ui::IconName;
 use gpui::Point;
 
@@ -9,6 +10,7 @@ use gpui::Point;
 pub enum AnyPaletteItem {
     CommandOrFile(CommandOrFile),
     Node(NodeDefinition),
+    Type(TypeItem),
 }
 
 impl PaletteItem for AnyPaletteItem {
@@ -16,6 +18,7 @@ impl PaletteItem for AnyPaletteItem {
         match self {
             AnyPaletteItem::CommandOrFile(item) => item.name(),
             AnyPaletteItem::Node(item) => item.name(),
+            AnyPaletteItem::Type(item) => item.name(),
         }
     }
 
@@ -23,6 +26,7 @@ impl PaletteItem for AnyPaletteItem {
         match self {
             AnyPaletteItem::CommandOrFile(item) => item.description(),
             AnyPaletteItem::Node(item) => item.description(),
+            AnyPaletteItem::Type(item) => item.description(),
         }
     }
 
@@ -30,6 +34,7 @@ impl PaletteItem for AnyPaletteItem {
         match self {
             AnyPaletteItem::CommandOrFile(item) => item.icon(),
             AnyPaletteItem::Node(item) => item.icon(),
+            AnyPaletteItem::Type(item) => item.icon(),
         }
     }
 
@@ -37,6 +42,7 @@ impl PaletteItem for AnyPaletteItem {
         match self {
             AnyPaletteItem::CommandOrFile(item) => item.keywords(),
             AnyPaletteItem::Node(item) => item.keywords(),
+            AnyPaletteItem::Type(item) => item.keywords(),
         }
     }
 
@@ -44,6 +50,7 @@ impl PaletteItem for AnyPaletteItem {
         match self {
             AnyPaletteItem::CommandOrFile(item) => item.documentation(),
             AnyPaletteItem::Node(item) => item.documentation(),
+            AnyPaletteItem::Type(item) => item.documentation(),
         }
     }
 }
@@ -52,6 +59,7 @@ impl PaletteItem for AnyPaletteItem {
 pub enum AnyPaletteDelegate {
     Command(CommandDelegate),
     Node(NodePalette),
+    TypeLibrary(TypeLibraryPalette),
 }
 
 impl AnyPaletteDelegate {
@@ -61,6 +69,10 @@ impl AnyPaletteDelegate {
 
     pub fn node(graph_position: Point<f32>) -> Self {
         AnyPaletteDelegate::Node(NodePalette::new(graph_position))
+    }
+
+    pub fn type_library(target_slot: Option<(BlockId, usize)>) -> Self {
+        AnyPaletteDelegate::TypeLibrary(TypeLibraryPalette::new(target_slot))
     }
 
     /// Get the selected command/file if this is a command delegate
@@ -78,6 +90,16 @@ impl AnyPaletteDelegate {
             _ => None,
         }
     }
+
+    /// Get the selected type if this is a type library delegate
+    pub fn take_selected_type(&mut self) -> Option<(TypeItem, Option<(BlockId, usize)>)> {
+        match self {
+            AnyPaletteDelegate::TypeLibrary(delegate) => {
+                delegate.take_selected_item().map(|item| (item, delegate.target_slot()))
+            },
+            _ => None,
+        }
+    }
 }
 
 impl PaletteDelegate for AnyPaletteDelegate {
@@ -87,6 +109,7 @@ impl PaletteDelegate for AnyPaletteDelegate {
         match self {
             AnyPaletteDelegate::Command(delegate) => delegate.placeholder(),
             AnyPaletteDelegate::Node(delegate) => delegate.placeholder(),
+            AnyPaletteDelegate::TypeLibrary(delegate) => delegate.placeholder(),
         }
     }
 
@@ -112,6 +135,16 @@ impl PaletteDelegate for AnyPaletteDelegate {
                     )
                 })
                 .collect(),
+            AnyPaletteDelegate::TypeLibrary(delegate) => delegate
+                .categories()
+                .into_iter()
+                .map(|(cat, items)| {
+                    (
+                        cat,
+                        items.into_iter().map(AnyPaletteItem::Type).collect(),
+                    )
+                })
+                .collect(),
         }
     }
 
@@ -121,6 +154,9 @@ impl PaletteDelegate for AnyPaletteDelegate {
                 delegate.confirm(item);
             }
             (AnyPaletteDelegate::Node(delegate), AnyPaletteItem::Node(item)) => {
+                delegate.confirm(item);
+            }
+            (AnyPaletteDelegate::TypeLibrary(delegate), AnyPaletteItem::Type(item)) => {
                 delegate.confirm(item);
             }
             _ => {
@@ -134,6 +170,7 @@ impl PaletteDelegate for AnyPaletteDelegate {
         match self {
             AnyPaletteDelegate::Command(delegate) => delegate.categories_collapsed_by_default(),
             AnyPaletteDelegate::Node(delegate) => delegate.categories_collapsed_by_default(),
+            AnyPaletteDelegate::TypeLibrary(delegate) => delegate.categories_collapsed_by_default(),
         }
     }
 
@@ -141,6 +178,7 @@ impl PaletteDelegate for AnyPaletteDelegate {
         match self {
             AnyPaletteDelegate::Command(delegate) => delegate.supports_docs(),
             AnyPaletteDelegate::Node(delegate) => delegate.supports_docs(),
+            AnyPaletteDelegate::TypeLibrary(delegate) => delegate.supports_docs(),
         }
     }
 }
