@@ -79,7 +79,9 @@
       "Bash(echo:*)",
       "Bash(do cp ui-crates/ui_editor/src/tabs/blueprint_editor/panel/$file plugins/blueprint_editor_plugin/src/panel/$file)",
       "Bash(timeout 10 cargo run:*)",
-      "Bash(./target/debug/pulsar_engine.exe:*)"
+      "Bash(./target/debug/pulsar_engine.exe:*)",
+      "Bash(timeout:*)",
+      "Bash(engine_out.txt)"
     ],
     "deny": [],
     "ask": []
