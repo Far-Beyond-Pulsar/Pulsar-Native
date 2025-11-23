@@ -236,7 +236,7 @@ mod hsla_serde {
 }
 
 impl BlueprintComment {
-    pub fn new(position: Point<f32>, window: &mut gpui::Window, cx: &mut gpui::Context<BlueprintEditorPanel>) -> Self {
+    pub fn new(position: Point<f32>, window: &mut gpui::Window, cx: &mut gpui::Context<crate::panel::BlueprintEditorPanel>) -> Self {
         let color_picker_state = Some(cx.new(|cx| {
             ColorPickerState::new(window, cx)
         }));

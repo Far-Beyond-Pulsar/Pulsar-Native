@@ -90,7 +90,7 @@ impl NodeLibraryRenderer {
             )
     }
 
-    fn render_node_category(title: &str, category: &crate::tabs::blueprint_editor::NodeCategory, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
+    fn render_node_category(title: &str, category: &crate::NodeCategory, cx: &mut Context<BlueprintEditorPanel>) -> impl IntoElement {
         v_flex()
             .gap_1()
             .child(
@@ -130,11 +130,11 @@ impl NodeLibraryRenderer {
                                     // Create new node from definition at mouse position
                                     let node_definitions = NodeDefinitions::load();
                                     if let Some(definition) = node_definitions.get_node_definition(&node_id) {
-                                        let graph_pos = crate::tabs::blueprint_editor::node_graph::NodeGraphRenderer::screen_to_graph_pos(
+                                        let graph_pos = crate::node_graph::NodeGraphRenderer::screen_to_graph_pos(
                                             event.position,
                                             &panel.graph
                                         );
-                                        let new_node = crate::tabs::blueprint_editor::BlueprintNode::from_definition(definition, graph_pos);
+                                        let new_node = crate::BlueprintNode::from_definition(definition, graph_pos);
                                         panel.add_node(new_node, cx);
                                     }
                                 }))

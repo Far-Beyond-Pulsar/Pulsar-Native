@@ -10,7 +10,8 @@ use ui::{
 };
 use std::collections::HashMap;
 
-use crate::{BlueprintGraph, BlueprintNode, Connection, NodeType, Pin, PinType, DataType, VirtualizationStats, Size};
+use crate::{BlueprintGraph, BlueprintNode, Connection, NodeType, Pin, PinType, VirtualizationStats, Size};
+use ui::graph::DataType;
 use crate::variables::ClassVariable;
 use crate::events::ShowNodePickerRequest;
 use super::tabs::GraphTab;

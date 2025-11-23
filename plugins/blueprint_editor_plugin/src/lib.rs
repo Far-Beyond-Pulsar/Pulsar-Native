@@ -104,13 +104,26 @@ impl EditorPlugin for BlueprintEditorPlugin {
         cx: &mut App,
     ) -> Result<Box<dyn EditorInstance>, PluginError> {
         if editor_id.as_str() == "blueprint-editor" {
-            let panel = panel::BlueprintEditorPanel::new_with_path(file_path.clone(), window, cx)
-                .map_err(|e| PluginError::FileLoadError {
-                    path: file_path.clone(),
-                    message: e.to_string(),
-                })?;
+            // Clone file_path before moving into closure
+            let file_path_clone = file_path.clone();
 
-            Ok(Box::new(panel))
+            // Create a view context for the panel
+            let panel = cx.new(|cx| {
+                match panel::BlueprintEditorPanel::new_with_path(file_path_clone.clone(), window, cx) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        log::error!("Failed to create blueprint panel: {}", e);
+                        // Return a default panel on error
+                        panel::BlueprintEditorPanel::new(window, cx)
+                    }
+                }
+            });
+
+            // Wrap in EditorInstance implementation
+            Ok(Box::new(BlueprintEditorWrapper {
+                panel,
+                file_path,
+            }))
         } else {
             Err(PluginError::EditorNotFound { editor_id })
         }
@@ -122,6 +135,38 @@ impl EditorPlugin for BlueprintEditorPlugin {
 
     fn on_unload(&mut self) {
         log::info!("Blueprint Editor Plugin unloaded");
+    }
+}
+
+/// Wrapper to bridge Entity<BlueprintEditorPanel> to EditorInstance trait
+pub struct BlueprintEditorWrapper {
+    panel: Entity<BlueprintEditorPanel>,
+    file_path: std::path::PathBuf,
+}
+
+unsafe impl Send for BlueprintEditorWrapper {}
+unsafe impl Sync for BlueprintEditorWrapper {}
+
+impl plugin_editor_api::EditorInstance for BlueprintEditorWrapper {
+    fn file_path(&self) -> &std::path::PathBuf {
+        &self.file_path
+    }
+
+    fn save(&mut self, _window: &mut Window, cx: &mut App) -> Result<(), PluginError> {
+        self.panel.update(cx, |panel, _cx| {
+            panel.plugin_save()
+        })
+    }
+
+    fn reload(&mut self, _window: &mut Window, cx: &mut App) -> Result<(), PluginError> {
+        self.panel.update(cx, |panel, _cx| {
+            panel.plugin_reload()
+        })
+    }
+
+    fn is_dirty(&self) -> bool {
+        // For now, blueprints are never dirty (auto-save or manual save)
+        false
     }
 }
 

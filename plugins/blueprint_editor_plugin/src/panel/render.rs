@@ -43,16 +43,13 @@ impl EventEmitter<PanelEvent> for BlueprintEditorPanel {}
 impl EventEmitter<OpenEngineLibraryRequest> for BlueprintEditorPanel {}
 impl EventEmitter<ShowNodePickerRequest> for BlueprintEditorPanel {}
 
-// EditorInstance trait implementation for plugin system
-impl plugin_editor_api::EditorInstance for BlueprintEditorPanel {
-    fn file_path(&self) -> &std::path::PathBuf {
-        self.current_class_path.as_ref().unwrap_or(&std::path::PathBuf::new())
-    }
-
-    fn save(&mut self, window: &mut Window, cx: &mut App) -> Result<(), plugin_editor_api::PluginError> {
-        if let Some(path) = &self.current_class_path {
-            // Use the existing save_blueprint method from file_io module
-            self.save_blueprint(path.to_str().unwrap(), window, cx)
+// Plugin-related methods (called by BlueprintEditorWrapper)
+impl BlueprintEditorPanel {
+    pub fn plugin_save(&mut self) -> Result<(), plugin_editor_api::PluginError> {
+        if let Some(path) = self.current_class_path.clone() {
+            // Clone the path to avoid borrow checker issues
+            let path_str = path.to_str().unwrap().to_string();
+            self.save_blueprint(&path_str)
                 .map_err(|e| plugin_editor_api::PluginError::FileSaveError {
                     path: path.clone(),
                     message: e.to_string(),
@@ -64,25 +61,12 @@ impl plugin_editor_api::EditorInstance for BlueprintEditorPanel {
         }
     }
 
-    fn reload(&mut self, window: &mut Window, cx: &mut App) -> Result<(), plugin_editor_api::PluginError> {
-        if let Some(path) = &self.current_class_path {
-            self.load_blueprint(path.to_str().unwrap(), window, cx)
-                .map_err(|e| plugin_editor_api::PluginError::FileLoadError {
-                    path: path.clone(),
-                    message: e.to_string(),
-                })
-        } else {
-            Err(plugin_editor_api::PluginError::Other {
-                message: "No file path set".into(),
-            })
-        }
-    }
-
-    fn is_dirty(&self) -> bool {
-        // Check if there are unsaved changes
-        // For now, we'll use compilation status as a proxy
-        // TODO: Implement proper dirty tracking
-        false
+    pub fn plugin_reload(&mut self) -> Result<(), plugin_editor_api::PluginError> {
+        // TODO: Implement reload functionality
+        // For now, return an error indicating it's not implemented
+        Err(plugin_editor_api::PluginError::Other {
+            message: "Reload not yet implemented for blueprint editor".into(),
+        })
     }
 }
 
