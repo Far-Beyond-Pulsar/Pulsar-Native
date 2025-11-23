@@ -1,5 +1,12 @@
 use gpui::{*, prelude::FluentBuilder, actions};
-use ui::{v_flex, h_flex, ActiveTheme, StyledExt, Colorize, dock::{Panel, PanelEvent}, button::{Button, ButtonVariant, ButtonVariants}, divider::Divider};
+use ui::{
+    v_flex, h_flex, ActiveTheme, StyledExt, Colorize, 
+    dock::{Panel, PanelEvent}, 
+    button::{Button, ButtonVariant, ButtonVariants}, 
+    divider::Divider,
+    resizable::{h_resizable, resizable_panel, ResizableState},
+    input::{InputState, TextInput},
+};
 use ui_types_common::{AliasAsset, TypeAstNode};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -22,6 +29,15 @@ pub struct VisualAliasEditor {
     /// Canvas for composing type blocks
     canvas: BlockCanvas,
     
+    /// Code preview input state
+    preview_input: Entity<InputState>,
+    
+    /// Resizable state for canvas/preview split
+    horizontal_resizable_state: Entity<ResizableState>,
+    
+    /// Flag to update preview on next render
+    preview_needs_update: bool,
+    
     /// Error message to display
     error_message: Option<String>,
     
@@ -41,7 +57,7 @@ pub struct VisualAliasEditor {
 }
 
 impl VisualAliasEditor {
-    pub fn new_with_file(file_path: PathBuf, _window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new_with_file(file_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
         // Try to load the alias data
         let (name, display_name, description, root_block, error_message) =
             match std::fs::read_to_string(&file_path) {
@@ -81,19 +97,43 @@ impl VisualAliasEditor {
             BlockCanvas::new()
         };
         
-        Self {
+        let horizontal_resizable_state = ResizableState::new(cx);
+        
+        // Create preview input with code editor setup (same as script editor)
+        let preview_input = cx.new(|cx| {
+            use ui::input::TabSize;
+            InputState::new(window, cx)
+                .code_editor("rust")
+                .line_number(true)
+                .minimap(true)
+                .tab_size(TabSize {
+                    tab_size: 4,
+                    hard_tabs: false,
+                })
+        });
+        
+        let mut editor = Self {
             file_path: Some(file_path),
             name,
             display_name,
             description,
             canvas,
+            preview_input,
+            horizontal_resizable_state,
+            preview_needs_update: true,
             error_message,
             show_preview: true,
             focus_handle: cx.focus_handle(),
             selected_slot: None,
             pending_block: None,
             pending_slot_selection: Arc::new(Mutex::new(None)),
-        }
+        };
+        
+        // Initialize preview input with current content
+        editor.update_preview(window, cx);
+        editor.preview_needs_update = false;
+        
+        editor
     }
 
     pub fn file_path(&self) -> Option<PathBuf> {
@@ -149,56 +189,7 @@ impl VisualAliasEditor {
         });
     }
 
-    /// Render code preview panel
-    fn render_preview(&self, cx: &App) -> impl IntoElement {
-        let code = if let Some(root) = self.canvas.root_block() {
-            if let Some(ast) = root.to_ast() {
-                self.generate_preview_code(&ast)
-            } else {
-                "// Fill all slots to see generated code".to_string()
-            }
-        } else {
-            "// Drag types to the canvas to start".to_string()
-        };
 
-        v_flex()
-            .w(px(350.0))
-            .h_full()
-            .bg(cx.theme().sidebar)
-            .border_l_2()
-            .border_color(cx.theme().border)
-            .child(
-                // Header
-                h_flex()
-                    .w_full()
-                    .px_4()
-                    .py_3()
-                    .bg(cx.theme().secondary)
-                    .border_b_2()
-                    .border_color(cx.theme().border)
-                    .items_center()
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_bold()
-                            .text_color(cx.theme().foreground)
-                            .child("📋 Code Preview")
-                    )
-            )
-            .child(
-                // Code display
-                v_flex()
-                    .flex_1()
-                    .p_4()
-                    .child(
-                        div()
-                            .font_family("JetBrains Mono")
-                            .text_sm()
-                            .text_color(cx.theme().foreground)
-                            .child(code)
-                    )
-            )
-    }
 
     /// Add a block to the canvas
     fn add_block_to_canvas(&mut self, block: TypeBlock, cx: &mut Context<Self>) {
@@ -222,6 +213,7 @@ impl VisualAliasEditor {
             self.pending_block = Some(block);
             self.error_message = Some("Click on an empty slot to place this type".to_string());
         }
+        self.preview_needs_update = true;
         cx.notify();
     }
     
@@ -256,7 +248,25 @@ impl VisualAliasEditor {
             // No slot specified - add to canvas
             self.add_block_to_canvas(block, cx);
         }
+        self.preview_needs_update = true;
         cx.notify();
+    }
+    
+    /// Update the preview input with current code
+    fn update_preview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let code = if let Some(root) = self.canvas.root_block() {
+            if let Some(ast) = root.to_ast() {
+                self.generate_preview_code(&ast)
+            } else {
+                "// Fill all slots to see generated code".to_string()
+            }
+        } else {
+            "// Click to add a type or use the Add Type button".to_string()
+        };
+        
+        self.preview_input.update(cx, |input, cx| {
+            input.set_value(&code, window, cx);
+        });
     }
 
 
@@ -309,7 +319,13 @@ impl VisualAliasEditor {
 }
 
 impl Render for VisualAliasEditor {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Update preview if needed
+        if self.preview_needs_update {
+            self.update_preview(window, cx);
+            self.preview_needs_update = false;
+        }
+        
         // Check for pending slot selection from click handler
         let pending_selection = if let Ok(mut guard) = self.pending_slot_selection.lock() {
             guard.take()
@@ -402,74 +418,121 @@ impl Render for VisualAliasEditor {
                     )
             )
             .child(
-                // Main content area - two-panel layout (canvas and preview)
-                h_flex()
-                    .flex_1()
-                    .w_full()
-                    .h_full()
-                    .min_h_0()
+                // Main content area - resizable canvas and preview
+                h_resizable("alias-editor-horizontal", self.horizontal_resizable_state.clone())
                     .child(
-                        // Center canvas container
-                        v_flex()
-                            .flex_1()
-                            .h_full()
-                            .min_w_0()
-                            .min_h_0()
-                            .p_4()
-                            .gap_4()
-                            .when(self.error_message.is_some(), |this| {
-                                let error = self.error_message.as_ref().unwrap();
-                                this.child(
-                                    div()
-                                        .w_full()
-                                        .p_4()
-                                        .bg(hsla(0.0, 0.8, 0.5, 0.1))
-                                        .border_2()
-                                        .border_color(hsla(0.0, 0.8, 0.6, 1.0))
-                                        .rounded(px(8.0))
+                        resizable_panel()
+                            .child(
+                                // Canvas container
+                                v_flex()
+                                    .size_full()
+                                    .p_4()
+                                    .gap_4()
+                                    .when(self.error_message.is_some(), |this| {
+                                        let error = self.error_message.as_ref().unwrap();
+                                        this.child(
+                                            div()
+                                                .w_full()
+                                                .p_4()
+                                                .bg(hsla(0.0, 0.8, 0.5, 0.1))
+                                                .border_2()
+                                                .border_color(hsla(0.0, 0.8, 0.6, 1.0))
+                                                .rounded(px(8.0))
+                                                .child(
+                                                    h_flex()
+                                                        .gap_2()
+                                                        .items_center()
+                                                        .child(
+                                                            div()
+                                                                .text_base()
+                                                                .child("⚠️")
+                                                        )
+                                                        .child(
+                                                            div()
+                                                                .text_sm()
+                                                                .text_color(hsla(0.0, 0.8, 0.5, 1.0))
+                                                                .child(error.clone())
+                                                        )
+                                                )
+                                        )
+                                    })
+                                    .child({
+                                        // Canvas - fills remaining space
+                                        // Create a handler that stores slot clicks in shared state
+                                        let pending = self.pending_slot_selection.clone();
+                                        let slot_handler = Arc::new(move |block_id: BlockId, slot_idx: usize| {
+                                            if let Ok(mut guard) = pending.lock() {
+                                                *guard = Some((block_id, slot_idx));
+                                            }
+                                        });
+                                        
+                                        // Create handler for empty state click - opens type picker for root
+                                        let pending_empty = self.pending_slot_selection.clone();
+                                        let empty_handler = Arc::new(move || {
+                                            // Signal that we want to add a root type (no specific slot)
+                                            // Use empty BlockId as sentinel value
+                                            if let Ok(mut guard) = pending_empty.lock() {
+                                                *guard = Some((BlockId(Arc::from("")), 0));
+                                            }
+                                        });
+                                        
+                                        self.canvas.render_with_handlers(cx, Some(slot_handler), Some(empty_handler))
+                                    })
+                            )
+                    )
+                    .when(self.show_preview, |this| {
+                        this.child(
+                            resizable_panel()
+                                .size(px(500.))
+                                .size_range(px(300.)..px(800.))
+                                .child(
+                                    v_flex()
+                                        .size_full()
+                                        .bg(cx.theme().sidebar)
+                                        .border_l_2()
+                                        .border_color(cx.theme().border)
                                         .child(
+                                            // Header
                                             h_flex()
-                                                .gap_2()
+                                                .w_full()
+                                                .px_4()
+                                                .py_3()
+                                                .bg(cx.theme().secondary)
+                                                .border_b_2()
+                                                .border_color(cx.theme().border)
                                                 .items_center()
                                                 .child(
                                                     div()
-                                                        .text_base()
-                                                        .child("⚠️")
-                                                )
-                                                .child(
-                                                    div()
                                                         .text_sm()
-                                                        .text_color(hsla(0.0, 0.8, 0.5, 1.0))
-                                                        .child(error.clone())
+                                                        .font_bold()
+                                                        .text_color(cx.theme().foreground)
+                                                        .child("📋 Code Preview")
+                                                )
+                                        )
+                                        .child(
+                                            // Code input - fills remaining space
+                                            div()
+                                                .flex_1()
+                                                .w_full()
+                                                .p_2()
+                                                .child(
+                                                    TextInput::new(&self.preview_input)
+                                                        .h_full()
+                                                        .w_full()
+                                                        .appearance(false)
+                                                        .font_family("monospace")
+                                                        .font(gpui::Font {
+                                                            family: "Jetbrains Mono".to_string().into(),
+                                                            weight: gpui::FontWeight::NORMAL,
+                                                            style: gpui::FontStyle::Normal,
+                                                            features: gpui::FontFeatures::default(),
+                                                            fallbacks: Some(gpui::FontFallbacks::from_fonts(vec!["monospace".to_string()])),
+                                                        })
+                                                        .text_size(px(14.0))
                                                 )
                                         )
                                 )
-                            })
-                            .child({
-                                // Canvas - fills remaining space
-                                // Create a handler that stores slot clicks in shared state
-                                let pending = self.pending_slot_selection.clone();
-                                let slot_handler = Arc::new(move |block_id: BlockId, slot_idx: usize| {
-                                    if let Ok(mut guard) = pending.lock() {
-                                        *guard = Some((block_id, slot_idx));
-                                    }
-                                });
-                                
-                                // Create handler for empty state click - opens type picker for root
-                                let pending_empty = self.pending_slot_selection.clone();
-                                let empty_handler = Arc::new(move || {
-                                    // Signal that we want to add a root type (no specific slot)
-                                    // Use empty BlockId as sentinel value
-                                    if let Ok(mut guard) = pending_empty.lock() {
-                                        *guard = Some((BlockId(Arc::from("")), 0));
-                                    }
-                                });
-                                
-                                self.canvas.render_with_handlers(cx, Some(slot_handler), Some(empty_handler))
-                            })
-                    )
-                    .when(self.show_preview, |this| {
-                        this.child(self.render_preview(cx))
+                        )
                     })
             )
             .when(!self.name.is_empty() && !self.description.is_empty(), |this| {
