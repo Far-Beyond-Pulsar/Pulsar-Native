@@ -1158,7 +1158,7 @@ impl ApplicationHandler for WinitGpuiApp {
                 app.bind_keys([
                     KeyBinding::new("ctrl-,", OpenSettings, None),
                     KeyBinding::new("ctrl-space", ToggleCommandPalette, None),
-                    KeyBinding::new("ctrl-n", ui_editor::tabs::blueprint_editor::OpenAddNodeMenu, Some("BlueprintGraph")),
+                    // Blueprint editor keybindings handled by plugin
                 ]);
 
                 let engine_state = engine_state_for_actions.clone();
