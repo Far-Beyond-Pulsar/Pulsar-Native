@@ -455,9 +455,6 @@ impl ApplicationHandler for WinitGpuiApp {
                                                 static mut OPEN_ATTEMPT: u32 = 0;
                                                 unsafe {
                                                     OPEN_ATTEMPT += 1;
-                                                    if OPEN_ATTEMPT == 1 || OPEN_ATTEMPT % 120 == 0 {
-                                                        eprintln!("[COMPOSITOR] 🔓 Attempting to open Bevy shared texture handle: 0x{:X} (attempt {})", handle_ptr, OPEN_ATTEMPT);
-                                                    }
                                                 }
                                                 
                                                 // Try to cast to ID3D11Device1 for OpenSharedResource1 (supports NT handles)
@@ -525,12 +522,6 @@ impl ApplicationHandler for WinitGpuiApp {
                                                 }
 
                                                 if let Some(ref bevy_tex) = bevy_texture_local {
-                                                    unsafe {
-                                                        if OPEN_ATTEMPT == 1 || OPEN_ATTEMPT % 120 == 0 {
-                                                            eprintln!("[COMPOSITOR] ✅ Successfully opened Bevy texture");
-                                                        }
-                                                    }
-                                                    
                                                     // Create or reuse SRV for Bevy texture
                                                     if bevy_texture.is_none() || bevy_texture.as_ref().map(|t| t.as_raw()) != Some(bevy_tex.as_raw()) {
                                                         // Create new SRV - MUST match Bevy's BGRA8UnormSrgb format!
@@ -572,12 +563,6 @@ impl ApplicationHandler for WinitGpuiApp {
                                                                     *bevy_srv = None;
                                                                 } else if SRV_ERROR_COUNT == 1 || SRV_ERROR_COUNT % 60 == 0 {
                                                                     eprintln!("[COMPOSITOR] ❌ Failed to create SRV for Bevy texture: {:?} (error count: {})", e, SRV_ERROR_COUNT);
-                                                                }
-                                                            }
-                                                        } else {
-                                                            unsafe {
-                                                                if OPEN_ATTEMPT == 1 || OPEN_ATTEMPT % 120 == 0 {
-                                                                    eprintln!("[COMPOSITOR] ✅ Created SRV for Bevy texture");
                                                                 }
                                                             }
                                                         }
@@ -627,9 +612,6 @@ impl ApplicationHandler for WinitGpuiApp {
 
                                                         static mut BEVY_FRAME_COUNT: u32 = 0;
                                                         BEVY_FRAME_COUNT += 1;
-                                                        if BEVY_FRAME_COUNT % 120 == 1 {
-                                                            eprintln!("≡ƒÄ« Bevy layer composited to back buffer (frame {})", BEVY_FRAME_COUNT);
-                                                        }
                                                     }
                                                 }
                                             }

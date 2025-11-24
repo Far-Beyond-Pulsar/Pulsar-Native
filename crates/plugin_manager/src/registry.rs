@@ -104,6 +104,17 @@ impl FileTypeRegistry {
                     }
                 }
             }
+
+            // If no extension found, check for marker files
+            // This handles folders like "ExampleClass/" that contain "graph_save.json"
+            for (file_type_id, file_type) in &self.file_types {
+                if let FileStructure::FolderBased { marker_file, .. } = &file_type.structure {
+                    let marker_path = path.join(marker_file);
+                    if marker_path.exists() {
+                        return Some(file_type_id.clone());
+                    }
+                }
+            }
         }
 
         // Check if this is a regular file
