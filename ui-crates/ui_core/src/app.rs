@@ -22,11 +22,11 @@ use engine_backend::services::rust_analyzer_manager::{AnalyzerEvent, AnalyzerSta
 
 // Editor panels and drawers (all from ui_editor)
 use ui_editor::{
-    BlueprintEditorPanel, DawEditorPanel, LevelEditorPanel, ScriptEditorPanel,
+    DawEditorPanel, LevelEditorPanel, ScriptEditorPanel,
     FileManagerDrawer, TerminalDrawer, ProblemsDrawer,
     FileSelected, DrawerFileType as FileType, PopoutFileManagerEvent,
 };
-use ui_editor::tabs::blueprint_editor::ShowNodePickerRequest;
+// Blueprint editor migrated to plugin system
 use ui_alias_editor::ShowTypePickerRequest;
 
 // Standalone windows
@@ -39,16 +39,15 @@ use ui_multiplayer::MultiplayerWindow;
 // EditorType enum
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EditorType {
-    Blueprint,
     Script,
     Level,
     Daw,
+    // Blueprint editor migrated to plugin system
 }
 
 impl EditorType {
     pub fn display_name(&self) -> &'static str {
         match self {
-            EditorType::Blueprint => "Blueprint Editor",
             EditorType::Script => "Script Editor",
             EditorType::Level => "Level Editor",
             EditorType::Daw => "DAW Editor",
@@ -57,7 +56,6 @@ impl EditorType {
 
     pub fn description(&self) -> &'static str {
         match self {
-            EditorType::Blueprint => "Visual scripting with node graphs",
             EditorType::Script => "Code editor with LSP support",
             EditorType::Level => "3D level design and placement",
             EditorType::Daw => "Digital audio workstation",
@@ -141,7 +139,7 @@ pub struct PulsarApp {
     // Tab management
     center_tabs: Entity<TabPanel>,
     script_editor: Option<Entity<ScriptEditorPanel>>,
-    blueprint_editors: Vec<Entity<BlueprintEditorPanel>>,
+    // Blueprint editors migrated to plugin system
     daw_editors: Vec<Entity<DawEditorPanel>>,
     database_editors: Vec<Entity<ui_editor_table::DataTableEditor>>,
     // Type System Editors
@@ -164,8 +162,6 @@ pub struct PulsarApp {
     // Command Palette (unified generic palette)
     command_palette_open: bool,
     command_palette: Option<Entity<GenericPalette<AnyPaletteDelegate>>>,
-    // Track which blueprint editor requested the node picker (for node selection callback)
-    active_node_picker_editor: Option<Entity<BlueprintEditorPanel>>,
     // Track which alias editor requested the type picker (for type selection callback)
     active_type_picker_editor: Option<Entity<ui_alias_editor::AliasEditor>>,
     // Focus management
@@ -182,13 +178,13 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        eprintln!(
-            "DEBUG: PulsarApp::new_with_project called with path: {:?}",
+        tracing::debug!(
+            "PulsarApp::new_with_project called with path: {:?}",
             project_path
         );
         Self::new_internal(Some(project_path), None, None, true, window, cx)
     }
-    
+
     /// Create a new PulsarApp with window_id for GPU renderer registration
     pub fn new_with_project_and_window_id(
         project_path: PathBuf,
@@ -196,8 +192,8 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        eprintln!(
-            "DEBUG: PulsarApp::new_with_project_and_window_id called with path: {:?}, window_id: {}",
+        tracing::debug!(
+            "PulsarApp::new_with_project_and_window_id called with path: {:?}, window_id: {}",
             project_path, window_id
         );
         Self::new_internal(Some(project_path), None, Some(window_id), true, window, cx)
@@ -212,8 +208,8 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        eprintln!(
-            "DEBUG: PulsarApp::new_with_project_and_analyzer called with path: {:?}",
+        tracing::debug!(
+            "PulsarApp::new_with_project_and_analyzer called with path: {:?}",
             project_path
         );
         let app = Self::new_internal(Some(project_path.clone()), Some(rust_analyzer.clone()), None, true, window, cx);
@@ -361,7 +357,7 @@ impl PulsarApp {
 
         // Initialize editor tracking
         let script_editor = None;
-        let blueprint_editors = Vec::new();
+        // Blueprint editors migrated to plugin system
         let daw_editors = Vec::new();
         let database_editors = Vec::new();
         let struct_editors = Vec::new();
@@ -456,7 +452,6 @@ impl PulsarApp {
             terminal_drawer,
             center_tabs,
             script_editor,
-            blueprint_editors,
             daw_editors,
             database_editors,
             struct_editors,
@@ -473,7 +468,6 @@ impl PulsarApp {
             shown_welcome_notification: false,
             command_palette_open: false,
             command_palette: None,
-            active_node_picker_editor: None,
             active_type_picker_editor: None,
             focus_handle: cx.focus_handle(),
         };
@@ -627,8 +621,7 @@ impl PulsarApp {
                 self.create_detached_window(panel.clone(), *position, window, cx);
             }
             PanelEvent::TabClosed(entity_id) => {
-                self.blueprint_editors
-                    .retain(|e| e.entity_id() != *entity_id);
+                // Blueprint editors removed - handled by plugin system
                 self.daw_editors
                     .retain(|e| e.entity_id() != *entity_id);
                 self.database_editors
@@ -653,15 +646,15 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        eprintln!(
-            "DEBUG: FileSelected event received - path: {:?}, type: {:?}",
+        tracing::debug!(
+            "FileSelected event received - path: {:?}, type: {:?}",
             event.path, event.file_type
         );
 
         // Try to open via plugin system first
         match self.plugin_manager.create_editor_for_file(&event.path, window, cx) {
             Ok((panel, _editor_instance)) => {
-                eprintln!("✅ Plugin system successfully created editor for: {:?}", event.path);
+                tracing::info!("✅ Plugin system successfully created editor for: {:?}", event.path);
 
                 // Add the panel to the tab system
                 self.center_tabs.update(cx, |tabs, cx| {
@@ -674,7 +667,7 @@ impl PulsarApp {
                 return;
             }
             Err(e) => {
-                eprintln!("DEBUG: Plugin manager couldn't open file: {}", e);
+                tracing::debug!("Plugin manager couldn't open file: {} - falling through to legacy code", e);
                 // Fall through to legacy code
             }
         }
@@ -682,39 +675,40 @@ impl PulsarApp {
         // Legacy hardcoded file opening (will be replaced by plugin system)
         match event.file_type {
             FileType::Class => {
-                eprintln!("DEBUG: Opening blueprint tab (legacy)");
-                self.open_blueprint_tab(event.path.clone(), window, cx);
+                tracing::error!("Blueprint editor tried to load via legacy code, but it's now plugin-only!");
+                // Blueprint editor has been fully migrated to plugin system
+                // If we get here, it means the plugin system failed to load the file
             }
             FileType::Script => {
-                eprintln!("DEBUG: Opening script tab (legacy)");
+                tracing::warn!("Opening script tab using legacy code (should use plugin system)");
                 self.open_script_tab(event.path.clone(), window, cx);
             }
             FileType::DawProject => {
-                eprintln!("DEBUG: Opening DAW tab for path: {:?} (legacy)", event.path);
+                tracing::warn!("Opening DAW tab using legacy code: {:?}", event.path);
                 self.open_daw_tab(event.path.clone(), window, cx);
             }
             FileType::Database => {
-                eprintln!("DEBUG: Opening database tab for path: {:?} (legacy)", event.path);
+                tracing::warn!("Opening database tab using legacy code: {:?}", event.path);
                 self.open_database_tab(event.path.clone(), window, cx);
             }
             FileType::StructType => {
-                eprintln!("DEBUG: Opening struct editor for path: {:?} (legacy)", event.path);
+                tracing::warn!("Opening struct editor using legacy code: {:?}", event.path);
                 self.open_struct_tab(event.path.clone(), window, cx);
             }
             FileType::EnumType => {
-                eprintln!("DEBUG: Opening enum editor for path: {:?} (legacy)", event.path);
+                tracing::warn!("Opening enum editor using legacy code: {:?}", event.path);
                 self.open_enum_tab(event.path.clone(), window, cx);
             }
             FileType::TraitType => {
-                eprintln!("DEBUG: Opening trait editor for path: {:?} (legacy)", event.path);
+                tracing::warn!("Opening trait editor using legacy code: {:?}", event.path);
                 self.open_trait_tab(event.path.clone(), window, cx);
             }
             FileType::AliasType => {
-                eprintln!("DEBUG: Opening alias editor for path: {:?} (legacy)", event.path);
+                tracing::warn!("Opening alias editor using legacy code: {:?}", event.path);
                 self.open_alias_tab(event.path.clone(), window, cx);
             }
             _ => {
-                eprintln!("DEBUG: Unknown file type, ignoring");
+                tracing::debug!("Unknown file type, ignoring");
             }
         }
 
@@ -1090,235 +1084,51 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        eprintln!(
-            "DEBUG: File selected from external window - path: {:?}, type: {:?}",
+        tracing::debug!(
+            "File selected from external window - path: {:?}, type: {:?}",
             event.path, event.file_type
         );
 
         match event.file_type {
             FileType::Class => {
-                eprintln!("DEBUG: Opening blueprint tab from external");
-                self.open_blueprint_tab(event.path.clone(), window, cx);
+                tracing::error!("Blueprint editor tried to load from external window, but it's now plugin-only!");
+                // Blueprint editor has been fully migrated to plugin system
             }
             FileType::Script => {
-                eprintln!("DEBUG: Opening script tab from external");
+                tracing::debug!("Opening script tab from external window");
                 self.open_script_tab(event.path.clone(), window, cx);
             }
             FileType::DawProject => {
-                eprintln!("DEBUG: Opening DAW tab from external: {:?}", event.path);
+                tracing::debug!("Opening DAW tab from external window: {:?}", event.path);
                 self.open_daw_tab(event.path.clone(), window, cx);
             }
             FileType::Database => {
-                eprintln!("DEBUG: Opening database tab from external: {:?}", event.path);
+                tracing::debug!("Opening database tab from external window: {:?}", event.path);
                 self.open_database_tab(event.path.clone(), window, cx);
             }
             FileType::StructType => {
-                eprintln!("DEBUG: Opening struct editor from external: {:?}", event.path);
+                tracing::debug!("Opening struct editor from external window: {:?}", event.path);
                 self.open_struct_tab(event.path.clone(), window, cx);
             }
             FileType::EnumType => {
-                eprintln!("DEBUG: Opening enum editor from external: {:?}", event.path);
+                tracing::debug!("Opening enum editor from external window: {:?}", event.path);
                 self.open_enum_tab(event.path.clone(), window, cx);
             }
             FileType::TraitType => {
-                eprintln!("DEBUG: Opening trait editor from external: {:?}", event.path);
+                tracing::debug!("Opening trait editor from external window: {:?}", event.path);
                 self.open_trait_tab(event.path.clone(), window, cx);
             }
             FileType::AliasType => {
-                eprintln!("DEBUG: Opening alias editor from external: {:?}", event.path);
+                tracing::debug!("Opening alias editor from external window: {:?}", event.path);
                 self.open_alias_tab(event.path.clone(), window, cx);
             }
             _ => {
-                eprintln!("DEBUG: Unknown file type from external, ignoring");
+                tracing::debug!("Unknown file type from external window, ignoring");
             }
         }
     }
 
-    /// Open a blueprint editor tab for the given class path
-    fn open_blueprint_tab(
-        &mut self,
-        class_path: PathBuf,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        // Check if a blueprint editor for this class is already open
-        let already_open = self
-            .blueprint_editors
-            .iter()
-            .enumerate()
-            .find_map(|(ix, editor)| {
-                editor
-                    .read(cx)
-                    .current_class_path
-                    .as_ref()
-                    .map(|p| p == &class_path)
-                    .unwrap_or(false)
-                    .then_some(ix)
-            });
-
-        if let Some(ix) = already_open {
-            // Focus the correct tab by matching entity_id in TabPanel using the public getter
-            if let Some(editor_entity) = self.blueprint_editors.get(ix) {
-                let target_id = editor_entity.entity_id();
-                self.center_tabs.update(cx, |tabs, cx| {
-                    if let Some(tab_ix) = tabs.index_of_panel_by_entity_id(target_id) {
-                        tabs.set_active_tab(tab_ix, window, cx);
-                    }
-                });
-            }
-            return;
-        }
-
-        self.next_tab_id += 1;
-
-        // Create a new blueprint editor panel and set its class path and tab title
-        let class_name = class_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("Blueprint")
-            .to_string();
-
-        let blueprint_editor = cx.new(|cx| {
-            let mut panel = BlueprintEditorPanel::new(window, cx);
-            panel.current_class_path = Some(class_path.clone());
-            panel.tab_title = Some(class_name.clone());
-            panel
-        });
-
-        // Subscribe to blueprint editor events
-        cx.subscribe_in(&blueprint_editor, window, Self::on_blueprint_editor_event)
-            .detach();
-        cx.subscribe_in(&blueprint_editor, window, Self::on_show_node_picker_request)
-            .detach();
-
-        // Load the blueprint from the class path
-        let graph_save_path = class_path.join("graph_save.json");
-        println!("🔍 Looking for blueprint at: {:?}", graph_save_path);
-        if graph_save_path.exists() {
-            println!("✅ Blueprint file found, loading...");
-            blueprint_editor.update(cx, |editor, cx| {
-                if let Err(e) = editor.load_blueprint(graph_save_path.to_str().unwrap(), window, cx)
-                {
-                    eprintln!("❌ Failed to load blueprint: {}", e);
-                } else {
-                    println!("✅ Blueprint loaded successfully!");
-                }
-            });
-        } else {
-            println!("⚠️  No graph_save.json found, creating empty blueprint");
-        }
-
-        // Add the tab (Entity<BlueprintEditorPanel> implements all required traits)
-        self.center_tabs.update(cx, |tabs, cx| {
-            tabs.add_panel(Arc::new(blueprint_editor.clone()), window, cx);
-        });
-
-        // Store the blueprint editor reference
-        self.blueprint_editors.push(blueprint_editor);
-    }
-
-    /// Handle events from blueprint editor panels
-    fn on_blueprint_editor_event(
-        &mut self,
-        _editor: &Entity<BlueprintEditorPanel>,
-        event: &ui_editor::tabs::blueprint_editor::OpenEngineLibraryRequest,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        // Blueprint editor is requesting to open an engine library
-        self.open_engine_library_tab(
-            event.library_id.clone(),
-            event.library_name.clone(),
-            window,
-            cx,
-        );
-
-        // If a specific macro was requested, open it in the library tab
-        if let (Some(macro_id), Some(macro_name)) = (&event.macro_id, &event.macro_name) {
-            // Find the blueprint editor we just opened/focused for this library
-            let library_tab_title = format!("📚 {} Library", event.library_name);
-            if let Some(editor) = self.blueprint_editors.iter().find(|e| {
-                e.read(cx).tab_title.as_ref().map(|t| t == &library_tab_title).unwrap_or(false)
-            }) {
-                // Open the macro in that editor
-                editor.update(cx, |ed, cx| {
-                    ed.open_global_macro(macro_id.clone(), macro_name.clone(), cx);
-                });
-            }
-        }
-    }
-
-    fn on_show_node_picker_request(
-        &mut self,
-        editor: &Entity<BlueprintEditorPanel>,
-        event: &ShowNodePickerRequest,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        // Store which editor requested the picker so we can send the node back
-        self.active_node_picker_editor = Some(editor.clone());
-
-        // Show the palette with node delegate
-        if let Some(palette) = &self.command_palette {
-            // Palette already exists, swap in node delegate
-            palette.update(cx, |palette, cx| {
-                let delegate = AnyPaletteDelegate::node(event.graph_position);
-                palette.swap_delegate(delegate, window, cx);
-            });
-
-            // Focus the input for typing (actions bubble up to palette)
-            let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
-            input_handle.focus(window);
-        } else {
-            // Create the palette for the first time
-            let delegate = AnyPaletteDelegate::node(event.graph_position);
-            let palette = cx.new(|cx| {
-                GenericPalette::new(delegate, window, cx)
-            });
-
-            // Subscribe to dismiss events
-            cx.subscribe_in(&palette, window, |this: &mut PulsarApp, palette, _event: &DismissEvent, window, cx| {
-                // Extract the selected item
-                let selected_item = palette.update(cx, |palette, _cx| {
-                    palette.delegate_mut().take_selected_command()
-                });
-
-                // Check if we're in node picker mode
-                let selected_node = palette.update(cx, |palette, _cx| {
-                    palette.delegate_mut().take_selected_node()
-                });
-
-                // Handle command/file selection
-                if let Some(item) = selected_item {
-                    this.handle_command_or_file_selected(item, window, cx);
-                }
-
-                // Handle node selection
-                if let Some((node_def, pos)) = selected_node {
-                    if let Some(editor) = &this.active_node_picker_editor {
-                        editor.update(cx, |ed, cx| {
-                            ed.add_node_from_definition(&node_def, pos, cx);
-                        });
-                    }
-                    this.active_node_picker_editor = None;
-                }
-
-                this.command_palette_open = false;
-                // Restore focus to the app so shortcuts work immediately
-                this.focus_handle.focus(window);
-                cx.notify();
-            }).detach();
-
-            // Focus the input for typing (actions bubble up to palette)
-            let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
-            input_handle.focus(window);
-
-            self.command_palette = Some(palette);
-        }
-
-        self.command_palette_open = true;
-        cx.notify();
-    }
+    // Blueprint editor methods removed - now handled by plugin system
 
     fn on_show_type_picker_request(
         &mut self,
@@ -1355,11 +1165,6 @@ impl PulsarApp {
                     palette.delegate_mut().take_selected_command()
                 });
 
-                // Check if we're in node picker mode
-                let selected_node = palette.update(cx, |palette, _cx| {
-                    palette.delegate_mut().take_selected_node()
-                });
-
                 // Check if we're in type picker mode
                 let selected_type = palette.update(cx, |palette, _cx| {
                     palette.delegate_mut().take_selected_type()
@@ -1370,15 +1175,7 @@ impl PulsarApp {
                     this.handle_command_or_file_selected(item, window, cx);
                 }
 
-                // Handle node selection
-                if let Some((node_def, pos)) = selected_node {
-                    if let Some(editor) = &this.active_node_picker_editor {
-                        editor.update(cx, |ed, cx| {
-                            ed.add_node_from_definition(&node_def, pos, cx);
-                        });
-                    }
-                    this.active_node_picker_editor = None;
-                }
+                // Node selection removed - blueprint editor migrated to plugin system
 
                 // Handle type selection
                 if let Some((type_item, target_slot)) = selected_type {
@@ -1407,65 +1204,7 @@ impl PulsarApp {
         cx.notify();
     }
 
-    /// Open a blueprint editor tab for an engine library (virtual blueprint class)
-    /// This opens the library as if it were a blueprint, allowing users to browse and edit its macros
-    pub fn open_engine_library_tab(
-        &mut self,
-        library_id: String,
-        library_name: String,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        // Check if a blueprint editor for this library is already open
-        // We use tab_title to identify library tabs since they don't have a class_path
-        let already_open = self
-            .blueprint_editors
-            .iter()
-            .enumerate()
-            .find_map(|(ix, editor)| {
-                let title = editor.read(cx).tab_title.clone();
-                title
-                    .map(|t| t == format!("📚 {} Library", library_name))
-                    .unwrap_or(false)
-                    .then_some(ix)
-            });
-
-        if let Some(ix) = already_open {
-            // Focus the correct tab
-            if let Some(editor_entity) = self.blueprint_editors.get(ix) {
-                let target_id = editor_entity.entity_id();
-                self.center_tabs.update(cx, |tabs, cx| {
-                    if let Some(tab_ix) = tabs.index_of_panel_by_entity_id(target_id) {
-                        tabs.set_active_tab(tab_ix, window, cx);
-                    }
-                });
-            }
-            return;
-        }
-
-        self.next_tab_id += 1;
-
-        // Create a new blueprint editor for the library
-        let blueprint_editor = cx.new(|cx| {
-            BlueprintEditorPanel::new_for_library(library_id.clone(), library_name.clone(), window, cx)
-        });
-
-        // Subscribe to blueprint editor events
-        cx.subscribe_in(&blueprint_editor, window, Self::on_blueprint_editor_event)
-            .detach();
-        cx.subscribe_in(&blueprint_editor, window, Self::on_show_node_picker_request)
-            .detach();
-
-        // Add the tab
-        self.center_tabs.update(cx, |tabs, cx| {
-            tabs.add_panel(Arc::new(blueprint_editor.clone()), window, cx);
-        });
-
-        // Store the blueprint editor reference
-        self.blueprint_editors.push(blueprint_editor);
-
-        println!("📚 Opened engine library '{}' in main tab", library_name);
-    }
+    // open_engine_library_tab removed - blueprint system migrated to plugins
 
     /// Open or focus the script editor tab
     fn open_script_tab(&mut self, file_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
@@ -1879,12 +1618,22 @@ impl PulsarApp {
 
     /// Open a path in the appropriate editor
     pub fn open_path(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        if path.is_dir() {
-            // Check if it's a blueprint class (contains graph_save.json)
-            if path.join("graph_save.json").exists() {
-                self.open_blueprint_tab(path, window, cx);
+        // Try plugin system first for all file types
+        match self.plugin_manager.create_editor_for_file(&path, window, cx) {
+            Ok((panel, _editor_instance)) => {
+                tracing::info!("Plugin system opened file: {:?}", path);
+                self.center_tabs.update(cx, |tabs, cx| {
+                    tabs.add_panel(panel, window, cx);
+                });
+                return;
             }
-        } else if let Some(extension) = path.extension() {
+            Err(e) => {
+                tracing::debug!("Plugin system couldn't open {:?}: {} - trying legacy handlers", path, e);
+            }
+        }
+
+        // Legacy fallback for file types not yet migrated to plugins
+        if let Some(extension) = path.extension() {
             match extension.to_str() {
                 Some("pdaw") => {
                     self.open_daw_tab(path, window, cx);
@@ -2406,8 +2155,8 @@ impl EditorPanel {
         match self.editor_type {
             EditorType::Level => self.render_level_editor(cx).into_any_element(),
             EditorType::Script => self.render_script_editor(cx).into_any_element(),
-            EditorType::Blueprint => self.render_blueprint_editor(cx).into_any_element(),
-            _ => self.render_placeholder_editor(cx).into_any_element(),
+            EditorType::Daw => self.render_placeholder_editor(cx).into_any_element(),
+            // Blueprint editor migrated to plugin system
         }
     }
 
@@ -2518,35 +2267,7 @@ impl EditorPanel {
             )
     }
 
-    fn render_blueprint_editor(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        h_flex()
-            .size_full()
-            .gap_4()
-            .child(
-                div()
-                    .w_64()
-                    .h_full()
-                    .bg(cx.theme().sidebar)
-                    .border_1()
-                    .border_color(cx.theme().border)
-                    .rounded(cx.theme().radius)
-                    .p_3()
-                    .child("Node Library"),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .h_full()
-                    .bg(cx.theme().muted.opacity(0.2))
-                    .border_1()
-                    .border_color(cx.theme().border)
-                    .rounded(cx.theme().radius)
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child("Visual Node Graph"),
-            )
-    }
+    // render_blueprint_editor removed - blueprint system migrated to plugins
 
     fn render_placeholder_editor(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div().flex_1().flex().items_center().justify_center().child(

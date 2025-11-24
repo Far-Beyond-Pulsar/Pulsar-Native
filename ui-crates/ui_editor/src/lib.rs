@@ -11,6 +11,7 @@ pub mod editors;
 pub use drawers::{FileManagerDrawer, TerminalDrawer, ProblemsDrawer};
 pub use ui_file_manager::{FileSelected, FileType as DrawerFileType, PopoutFileManagerEvent};
 pub use tabs::{
-    ScriptEditorPanel, LevelEditorPanel, BlueprintEditorPanel, DawEditorPanel,
+    ScriptEditorPanel, LevelEditorPanel, DawEditorPanel,
     TextEditorEvent,
 };
+// Note: BlueprintEditorPanel migrated to blueprint_editor_plugin
