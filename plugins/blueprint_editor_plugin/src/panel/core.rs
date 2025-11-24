@@ -153,7 +153,16 @@ impl BlueprintEditorPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        Ok(Self::new_internal(Some(file_path), window, cx))
+        let mut panel = Self::new_internal(Some(file_path.clone()), window, cx);
+
+        // Load the blueprint file
+        if let Err(e) = panel.load_blueprint(file_path.to_str().unwrap(), window, cx) {
+            log::error!("Failed to load blueprint: {}", e);
+            return Err(e.into());
+        }
+
+        log::info!("Loaded blueprint from {:?}", file_path);
+        Ok(panel)
     }
 
     /// Create a new blueprint editor panel with a file to load
