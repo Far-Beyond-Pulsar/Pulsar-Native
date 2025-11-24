@@ -155,8 +155,11 @@ impl BlueprintEditorPanel {
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let mut panel = Self::new_internal(Some(file_path.clone()), window, cx);
 
+        // Blueprint classes are folders containing graph_save.json
+        let graph_file = file_path.join("graph_save.json");
+
         // Load the blueprint file
-        if let Err(e) = panel.load_blueprint(file_path.to_str().unwrap(), window, cx) {
+        if let Err(e) = panel.load_blueprint(graph_file.to_str().unwrap(), window, cx) {
             log::error!("Failed to load blueprint: {}", e);
             return Err(e.into());
         }
