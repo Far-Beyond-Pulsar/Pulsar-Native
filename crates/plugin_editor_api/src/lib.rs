@@ -591,7 +591,8 @@ pub trait EditorPlugin: Send + Sync {
 /// Type alias for the plugin constructor function.
 ///
 /// Plugins must export a function with this signature named `_plugin_create`.
-pub type PluginCreate = unsafe extern "C" fn() -> *mut dyn EditorPlugin;
+/// The theme_ptr is passed immediately to ensure globals are available.
+pub type PluginCreate = unsafe extern "C" fn(theme_ptr: *const std::ffi::c_void) -> *mut dyn EditorPlugin;
 
 /// Type alias for the plugin destructor function.
 ///
@@ -601,7 +602,7 @@ pub type PluginDestroy = unsafe extern "C" fn(*mut dyn EditorPlugin);
 /// Macro to export a plugin from a dynamic library.
 ///
 /// This generates the necessary FFI functions for the plugin to be loaded
-/// by the engine.
+/// by the engine, including a synced copy of the main app's Theme global.
 ///
 /// # Example
 ///
@@ -614,11 +615,25 @@ pub type PluginDestroy = unsafe extern "C" fn(*mut dyn EditorPlugin);
 #[macro_export]
 macro_rules! export_plugin {
     ($plugin_type:ty) => {
+        // Static storage for synced Theme data from main app (stored as usize for thread safety)
+        static SYNCED_THEME: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+
         #[no_mangle]
-        pub unsafe extern "C" fn _plugin_create() -> *mut dyn $crate::EditorPlugin {
+        pub unsafe extern "C" fn _plugin_create(theme_ptr: *const std::ffi::c_void) -> *mut dyn $crate::EditorPlugin {
+            // Initialize globals immediately before creating plugin to prevent race conditions
+            SYNCED_THEME.set(theme_ptr as usize).ok();
+
+            // Register the plugin theme accessor with the ui crate
+            ui::theme::Theme::register_plugin_accessor(plugin_theme_unsafe);
+
             let plugin = <$plugin_type>::default();
             let boxed: Box<dyn $crate::EditorPlugin> = Box::new(plugin);
             Box::into_raw(boxed)
+        }
+
+        /// Internal accessor for plugin theme (called by ui crate)
+        unsafe fn plugin_theme_unsafe() -> Option<&'static ui::theme::Theme> {
+            get_synced_theme().map(|ptr| &*(ptr as *const ui::theme::Theme))
         }
 
         #[no_mangle]
@@ -631,6 +646,25 @@ macro_rules! export_plugin {
         #[no_mangle]
         pub extern "C" fn _plugin_version() -> $crate::VersionInfo {
             $crate::VersionInfo::current()
+        }
+
+        /// Initialize the plugin's synced copy of globals from the main app
+        #[no_mangle]
+        pub unsafe extern "C" fn _plugin_init_globals(theme_ptr: *const std::ffi::c_void) {
+            SYNCED_THEME.set(theme_ptr as usize).ok();
+        }
+
+        /// Get the synced Theme pointer for use in the plugin
+        #[allow(dead_code)]
+        pub fn get_synced_theme() -> Option<*const std::ffi::c_void> {
+            SYNCED_THEME.get().map(|addr| *addr as *const std::ffi::c_void)
+        }
+
+        /// Plugin-safe theme accessor that uses the synced copy
+        /// This bypasses GPUI's TypeId-based global system which doesn't work across DLLs
+        #[allow(dead_code)]
+        pub fn plugin_theme() -> Option<&'static ui::theme::Theme> {
+            get_synced_theme().map(|ptr| unsafe { &*(ptr as *const ui::theme::Theme) })
         }
     };
 }

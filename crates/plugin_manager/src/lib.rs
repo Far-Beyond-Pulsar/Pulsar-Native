@@ -95,7 +95,7 @@ impl PluginManager {
     ///
     /// Plugins that fail version checks or loading will be logged but won't
     /// prevent other plugins from loading.
-    pub fn load_plugins_from_dir(&mut self, dir: impl AsRef<Path>) -> Result<(), PluginManagerError> {
+    pub fn load_plugins_from_dir(&mut self, dir: impl AsRef<Path>, cx: &gpui::App) -> Result<(), PluginManagerError> {
         let dir = dir.as_ref();
 
         if !dir.exists() {
@@ -127,7 +127,7 @@ impl PluginManager {
             }
 
             // Attempt to load the plugin
-            match self.load_plugin(path) {
+            match self.load_plugin(path, cx) {
                 Ok(plugin_id) => {
                     log::info!("Successfully loaded plugin: {}", plugin_id);
                 }
@@ -147,7 +147,7 @@ impl PluginManager {
     /// This function loads and executes code from a dynamic library. The library
     /// must be compiled with the same Rust version and for the same engine version
     /// as the current build.
-    pub fn load_plugin(&mut self, path: impl AsRef<Path>) -> Result<PluginId, PluginManagerError> {
+    pub fn load_plugin(&mut self, path: impl AsRef<Path>, cx: &gpui::App) -> Result<PluginId, PluginManagerError> {
         let path = path.as_ref();
 
         log::debug!("Loading plugin from: {:?}", path);
@@ -191,9 +191,11 @@ impl PluginManager {
                 })?
         };
 
-        // Create the plugin instance
+        // Create the plugin instance with Theme pointer for cross-DLL global state sync
         let mut plugin = unsafe {
-            let raw_plugin = create_fn();
+            // Get Theme from main app's global state and pass to plugin
+            let theme_ptr = ui::theme::Theme::global(cx) as *const _ as *const std::ffi::c_void;
+            let raw_plugin = create_fn(theme_ptr);
             if raw_plugin.is_null() {
                 return Err(PluginManagerError::PluginCreationFailed {
                     message: "Plugin constructor returned null".to_string(),
@@ -340,6 +342,17 @@ impl PluginManager {
             .ok_or_else(|| PluginManagerError::PluginNotFound {
                 plugin_id: plugin_id.clone(),
             })?;
+
+        // Initialize plugin globals (Theme, etc.) from main app before creating editor
+        // This syncs the main app's global state into the plugin's DLL memory space
+        unsafe {
+            if let Ok(init_fn) = plugin.library.get::<unsafe extern "C" fn(*const std::ffi::c_void)>(b"_plugin_init_globals") {
+                // Get Theme pointer from main app's global state
+                let theme_ptr = ui::theme::Theme::global(cx) as *const _ as *const std::ffi::c_void;
+                init_fn(theme_ptr);
+                log::debug!("Initialized plugin globals for: {}", plugin_id.as_str());
+            }
+        }
 
         plugin
             .plugin

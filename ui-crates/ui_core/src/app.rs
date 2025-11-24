@@ -429,7 +429,7 @@ impl PulsarApp {
         let plugins_dir = std::path::Path::new("plugins/editor");
         tracing::info!("📂 Loading plugins from: {:?}", plugins_dir);
 
-        match plugin_manager.load_plugins_from_dir(plugins_dir) {
+        match plugin_manager.load_plugins_from_dir(plugins_dir, &*cx) {
             Err(e) => {
                 tracing::error!("❌ Failed to load editor plugins: {}", e);
             }
