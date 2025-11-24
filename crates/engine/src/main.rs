@@ -85,10 +85,11 @@ use window::{convert_mouse_button, convert_modifiers, SimpleClickState, MotionSm
 fn main() {
     // Initialize logging backend with env filter support
     // Set RUST_LOG=debug to see debug logs, RUST_LOG=trace for all logs
+    // Filter out wgpu shader compilation spam by setting wgpu crates to warn level
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"))
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,wgpu_hal=warn,wgpu_core=warn,naga=warn"))
         )
         .with_target(true)
         .with_thread_ids(true)

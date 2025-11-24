@@ -127,16 +127,43 @@ impl VersionInfo {
 /// Compile-time hash of the rustc version
 /// This is set by build.rs at compile time to ensure ABI compatibility
 const fn rustc_version_hash() -> u64 {
+    // Extract and hash only the semver part (e.g., "1.83.0" from "rustc 1.83.0 (90b35a623 2024-11-26)")
+    // This ensures compatibility is based on the actual compiler version, not build metadata
     const RUSTC_VERSION: &str = env!("RUSTC_VERSION");
-    const_hash_str(RUSTC_VERSION)
+    hash_semver_only(RUSTC_VERSION)
 }
 
-/// Simple const hash function for version string
-const fn const_hash_str(s: &str) -> u64 {
-    let bytes = s.as_bytes();
-    let mut hash: u64 = 0xcbf29ce484222325; // FNV-1a offset basis
+/// Hash only the semver portion of rustc version string
+/// e.g., "1.83.0" from "rustc 1.83.0 (90b35a623 2024-11-26)"
+const fn hash_semver_only(version: &str) -> u64 {
+    let bytes = version.as_bytes();
+    let mut start = 0;
+    let mut end = 0;
+    let mut found_start = false;
     let mut i = 0;
+
+    // Find the first digit (start of version)
     while i < bytes.len() {
+        if bytes[i] >= b'0' && bytes[i] <= b'9' && !found_start {
+            start = i;
+            found_start = true;
+        }
+        // Find the first space or '(' after the version (end of semver)
+        if found_start && (bytes[i] == b' ' || bytes[i] == b'(') {
+            end = i;
+            break;
+        }
+        i += 1;
+    }
+
+    if end == 0 {
+        end = bytes.len();
+    }
+
+    // Hash only the bytes in the semver range [start..end)
+    let mut hash: u64 = 0xcbf29ce484222325; // FNV-1a offset basis
+    let mut i = start;
+    while i < end {
         hash ^= bytes[i] as u64;
         hash = hash.wrapping_mul(0x100000001b3); // FNV-1a prime
         i += 1;
