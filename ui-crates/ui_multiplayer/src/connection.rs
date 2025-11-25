@@ -582,15 +582,51 @@ impl MultiplayerWindow {
 
                                                             if diff.has_changes() {
                                                                 tracing::info!("JOIN_SESSION: Changes detected, showing sync UI");
+
+                                                                // Collect files to request for preview
+                                                                let mut files_to_preview = Vec::new();
+                                                                files_to_preview.extend(diff.files_to_add.clone());
+                                                                files_to_preview.extend(diff.files_to_update.clone());
+
                                                                 // Update UI to show pending sync
+                                                                let diff_clone = diff.clone();
                                                                 cx.update(|cx| {
                                                                     this.update(cx, |this, cx| {
-                                                                        this.pending_file_sync = Some((diff, from_peer_id.clone()));
+                                                                        // Populate the file sync UI with entries
+                                                                        this.populate_file_sync_ui(&diff_clone, cx);
+
+                                                                        this.pending_file_sync = Some((diff_clone, from_peer_id.clone()));
                                                                         this.current_tab = SessionTab::FileSync;
                                                                         tracing::info!("JOIN_SESSION: Set pending_file_sync and switched to FileSync tab");
                                                                         cx.notify();
                                                                     }).ok()
                                                                 }).ok();
+
+                                                                // Request file contents for preview (don't write to disk yet)
+                                                                if !files_to_preview.is_empty() {
+                                                                    tracing::info!("JOIN_SESSION: Requesting {} files for preview", files_to_preview.len());
+
+                                                                    let client_guard = client.read().await;
+                                                                    let session_id_result = cx.update(|cx| {
+                                                                        this.update(cx, |this, _cx| {
+                                                                            this.active_session.as_ref().map(|s| s.session_id.clone())
+                                                                        }).ok()
+                                                                    }).ok().flatten().flatten();
+
+                                                                    let peer_id_result = cx.update(|cx| {
+                                                                        this.update(cx, |this, _cx| {
+                                                                            this.current_peer_id.clone()
+                                                                        }).ok()
+                                                                    }).ok().flatten().flatten();
+
+                                                                    if let (Some(session_id), Some(peer_id)) = (session_id_result, peer_id_result) {
+                                                                        let _ = client_guard.send(ClientMessage::RequestFiles {
+                                                                            session_id,
+                                                                            peer_id,
+                                                                            file_paths: files_to_preview,
+                                                                        }).await;
+                                                                    }
+                                                                }
                                                             } else {
                                                                 tracing::info!("JOIN_SESSION: No changes needed, already in sync");
                                                             }
@@ -680,6 +716,19 @@ impl MultiplayerWindow {
                                                 match serde_json::from_str::<Vec<(String, Vec<u8>)>>(&files_json) {
                                                     Ok(files_data) => {
                                                         tracing::info!("SYNC_TASK: Successfully deserialized {} files", files_data.len());
+
+                                                        // Update FileSyncUI with file contents for preview
+                                                        for (file_path, data) in &files_data {
+                                                            if let Ok(content) = String::from_utf8(data.clone()) {
+                                                                let file_path_clone = file_path.clone();
+                                                                let content_clone = content.clone();
+                                                                cx.update(|cx| {
+                                                                    this.update(cx, |this, cx| {
+                                                                        this.update_file_remote_content(&file_path_clone, content_clone, cx);
+                                                                    }).ok()
+                                                                }).ok();
+                                                            }
+                                                        }
 
                                                         // Apply files using simple_sync
                                                         match simple_sync::apply_files(&project_root, files_data) {

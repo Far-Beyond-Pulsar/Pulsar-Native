@@ -4,7 +4,9 @@
 
 mod chat;
 mod connection;
+mod diff;
 mod file_sync;
+mod file_sync_ui;
 mod presence;
 mod session;
 mod state;
@@ -14,5 +16,6 @@ mod ui;
 mod utils;
 
 // Re-export main types
+pub use diff::*;
 pub use state::MultiplayerWindow;
 pub use types::*;
