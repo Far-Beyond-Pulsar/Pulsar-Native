@@ -815,7 +815,27 @@ impl TextEditor {
             .and_then(|index| self.open_files.get(index))
             .map(|file| file.path.clone())
     }
-    
+
+    /// Get the current scroll offset of the active file's input state
+    pub fn get_current_scroll_offset(&self, cx: &mut Context<Self>) -> Option<Point<Pixels>> {
+        self.current_file_index
+            .and_then(|index| self.open_files.get(index))
+            .map(|file| {
+                file.input_state.read(cx).get_scroll_offset()
+            })
+    }
+
+    /// Set the scroll offset for the active file's input state
+    pub fn set_scroll_offset(&mut self, offset: Point<Pixels>, cx: &mut Context<Self>) {
+        if let Some(index) = self.current_file_index {
+            if let Some(file) = self.open_files.get(index) {
+                file.input_state.update(cx, |state, _cx| {
+                    state.set_scroll_offset(offset);
+                });
+            }
+        }
+    }
+
     /// Process pending navigation request (called from render where we have window access)
     fn process_pending_navigation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some((path, line, character)) = self.pending_navigation.take() {
@@ -1310,6 +1330,218 @@ impl TextEditor {
                     .child("Spaces: 4")
                     .child(file_info.1)
             })
+    }
+
+    /// Load content directly into the editor without opening from disk
+    /// This is used for diff mode where content is provided programmatically
+    pub fn load_content(&mut self, path: PathBuf, content: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.load_content_with_diff_highlight(path, content, None, window, cx);
+    }
+
+    /// Load content with optional diff highlighting
+    /// other_content is used to compute which lines are added/removed
+    pub fn load_content_with_diff_highlight(
+        &mut self,
+        path: PathBuf,
+        content: String,
+        other_content: Option<(String, bool)>, // (other_content, is_before)
+        window: &mut Window,
+        cx: &mut Context<Self>
+    ) {
+        // In diff mode, we want to replace the current file rather than accumulate multiple files
+        // Check if we should reuse the first file slot (for diff mode)
+        let should_replace = other_content.is_some() && !self.open_files.is_empty();
+
+        if should_replace {
+            // Replace the first (and only) file in diff mode
+            if let Some(file) = self.open_files.get_mut(0) {
+                file.path = path.clone();
+
+                // Update language for syntax highlighting
+                let language = path.extension()
+                    .and_then(|ext| ext.to_str())
+                    .map(|ext| match ext {
+                        "rs" => "rust",
+                        "js" | "jsx" => "javascript",
+                        "ts" | "tsx" => "typescript",
+                        "py" => "python",
+                        "go" => "go",
+                        "c" | "h" => "c",
+                        "cpp" | "cc" | "cxx" | "hpp" => "cpp",
+                        "java" => "java",
+                        "json" => "json",
+                        "toml" => "toml",
+                        "yaml" | "yml" => "yaml",
+                        "md" => "markdown",
+                        "html" | "htm" => "html",
+                        "css" => "css",
+                        "xml" => "xml",
+                        "sh" | "bash" => "bash",
+                        _ => "plaintext",
+                    })
+                    .unwrap_or("plaintext");
+
+                file.input_state.update(cx, |state, cx| {
+                    // Update language/highlighter for the new file
+                    state.set_highlighter(language, cx);
+                    state.set_value(&content, window, cx);
+
+                    // Apply diff highlighting if other_content is provided
+                    if let Some((other, is_before)) = &other_content {
+                        Self::apply_diff_highlighting(state, &content, other, *is_before, window, cx);
+                    }
+                });
+                file.is_modified = false;
+                file.lines_count = content.lines().count();
+                file.file_size = content.len();
+                self.current_file_index = Some(0);
+                tracing::info!("TextEditor: Replaced file slot 0 with {:?}", path);
+            }
+        } else if let Some(index) = self.open_files.iter().position(|f| f.path == path) {
+            // File already open at a different index, just set its content
+            self.current_file_index = Some(index);
+            if let Some(file) = self.open_files.get_mut(index) {
+                file.input_state.update(cx, |state, cx| {
+                    state.set_value(&content, window, cx);
+
+                    // Apply diff highlighting if other_content is provided
+                    if let Some((other, is_before)) = &other_content {
+                        Self::apply_diff_highlighting(state, &content, other, *is_before, window, cx);
+                    }
+                });
+                file.is_modified = false;
+            }
+        } else {
+            // Detect language from file extension for syntax highlighting
+            let language = path.extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| match ext {
+                    "rs" => "rust",
+                    "js" | "jsx" => "javascript",
+                    "ts" | "tsx" => "typescript",
+                    "py" => "python",
+                    "go" => "go",
+                    "c" | "h" => "c",
+                    "cpp" | "cc" | "cxx" | "hpp" => "cpp",
+                    "java" => "java",
+                    "json" => "json",
+                    "toml" => "toml",
+                    "yaml" | "yml" => "yaml",
+                    "md" => "markdown",
+                    "html" | "htm" => "html",
+                    "css" => "css",
+                    "xml" => "xml",
+                    "sh" | "bash" => "bash",
+                    _ => "plaintext",
+                })
+                .unwrap_or("plaintext");
+
+            // Create new file entry with provided content
+            let input_state = cx.new(|cx| {
+                let mut state = InputState::new(window, cx)
+                    .multi_line()
+                    .code_editor(language)
+                    .line_number(true)
+                    .tab_size(TabSize {
+                        tab_size: 4,
+                        hard_tabs: false,
+                    });
+                state.set_value(&content, window, cx);
+
+                // Apply diff highlighting if other_content is provided
+                if let Some((other, is_before)) = &other_content {
+                    Self::apply_diff_highlighting(&mut state, &content, other, *is_before, window, cx);
+                }
+
+                state
+            });
+
+            let file = OpenFile {
+                path: path.clone(),
+                input_state: input_state.clone(),
+                is_modified: false,
+                lines_count: content.lines().count(),
+                file_size: content.len(),
+                version: 1,
+                render_as_markdown: false,
+                markdown_preview_cache: String::new(),
+                last_markdown_render: None,
+                pending_scroll_target: None,
+            };
+
+            self.open_files.push(file);
+            self.current_file_index = Some(self.open_files.len() - 1);
+        }
+
+        cx.notify();
+    }
+
+    /// Apply diff highlighting to an InputState with proper alignment
+    fn apply_diff_highlighting(
+        state: &mut InputState,
+        this_content: &str,
+        other_content: &str,
+        is_before: bool,
+        window: &mut Window,
+        cx: &mut Context<InputState>
+    ) {
+        use similar::{ChangeTag, TextDiff};
+
+        // Use the 'similar' crate's Myers diff algorithm
+        let diff = TextDiff::from_lines(
+            if is_before { this_content } else { other_content },
+            if is_before { other_content } else { this_content }
+        );
+
+        let mut aligned_content = String::new();
+        let mut line_highlights = Vec::new();
+
+        for change in diff.iter_all_changes() {
+            let line = change.to_string_lossy();
+
+            match change.tag() {
+                ChangeTag::Equal => {
+                    // Line exists in both - no highlight
+                    aligned_content.push_str(&line);
+                    if !line.ends_with('\n') {
+                        aligned_content.push('\n');
+                    }
+                    line_highlights.push(ui::input::LineHighlight::None);
+                }
+                ChangeTag::Delete => {
+                    if is_before {
+                        // This is the "before" view, show the deleted line
+                        aligned_content.push_str(&line);
+                        if !line.ends_with('\n') {
+                            aligned_content.push('\n');
+                        }
+                        line_highlights.push(ui::input::LineHighlight::Removed);
+                    } else {
+                        // This is the "after" view, insert blank line for alignment
+                        aligned_content.push('\n');
+                        line_highlights.push(ui::input::LineHighlight::None);
+                    }
+                }
+                ChangeTag::Insert => {
+                    if !is_before {
+                        // This is the "after" view, show the inserted line
+                        aligned_content.push_str(&line);
+                        if !line.ends_with('\n') {
+                            aligned_content.push('\n');
+                        }
+                        line_highlights.push(ui::input::LineHighlight::Added);
+                    } else {
+                        // This is the "before" view, insert blank line for alignment
+                        aligned_content.push('\n');
+                        line_highlights.push(ui::input::LineHighlight::None);
+                    }
+                }
+            }
+        }
+
+        // Update the content with aligned version
+        state.set_value(&aligned_content, window, cx);
+        state.set_line_highlights(line_highlights);
     }
 }
 

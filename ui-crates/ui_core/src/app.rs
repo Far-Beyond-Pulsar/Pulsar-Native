@@ -859,6 +859,9 @@ impl PulsarApp {
         use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
         use ui::Root;
 
+        // Get project path to pass to multiplayer window
+        let project_path = self.project_path.clone();
+
         // Open multiplayer window
         let _ = cx.open_window(
             WindowOptions {
@@ -883,8 +886,8 @@ impl PulsarApp {
                 }),
                 ..Default::default()
             },
-            |window, cx| {
-                let multiplayer_window = cx.new(|cx| MultiplayerWindow::new(window, cx));
+            move |window, cx| {
+                let multiplayer_window = cx.new(|cx| MultiplayerWindow::new(project_path, window, cx));
                 cx.new(|cx| Root::new(multiplayer_window.into(), window, cx))
             },
         );

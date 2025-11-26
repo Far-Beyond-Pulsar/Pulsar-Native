@@ -592,8 +592,8 @@ impl MultiplayerWindow {
                                                                 let diff_clone = diff.clone();
                                                                 cx.update(|cx| {
                                                                     this.update(cx, |this, cx| {
-                                                                        // Populate the file sync UI with entries
-                                                                        this.populate_file_sync_ui(&diff_clone, cx);
+                                                                        // Queue the diff populate (will be processed on next render with window access)
+                                                                        this.queue_diff_populate(diff_clone.clone(), cx);
 
                                                                         this.pending_file_sync = Some((diff_clone, from_peer_id.clone()));
                                                                         this.current_tab = SessionTab::FileSync;
@@ -724,7 +724,7 @@ impl MultiplayerWindow {
                                                                 let content_clone = content.clone();
                                                                 cx.update(|cx| {
                                                                     this.update(cx, |this, cx| {
-                                                                        this.update_file_remote_content(&file_path_clone, content_clone, cx);
+                                                                        this.queue_file_content_update(file_path_clone, content_clone, cx);
                                                                     }).ok()
                                                                 }).ok();
                                                             }

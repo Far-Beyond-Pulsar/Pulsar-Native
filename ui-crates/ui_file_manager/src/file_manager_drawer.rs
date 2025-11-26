@@ -354,6 +354,10 @@ impl FileManagerDrawer {
         }
     }
 
+    pub fn get_project_path(&self) -> Option<&PathBuf> {
+        self.project_path.as_ref()
+    }
+
     pub fn set_project_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         self.project_path = Some(path.clone());
         self.folder_tree = FolderNode::from_path(&path);

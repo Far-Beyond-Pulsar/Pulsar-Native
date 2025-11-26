@@ -592,20 +592,20 @@ impl MultiplayerWindow {
                         )
                 )
                 .child(
-                    // File sync UI
+                    // Script Editor in diff mode
                     div()
                         .flex_1()
-                        .child(self.file_sync_ui.clone())
+                        .child(self.script_editor.clone())
                 )
                 .into_any_element()
         } else {
             tracing::debug!("Rendering FileSync tab - no pending sync");
-            // No pending sync
+            // No pending sync - show sync status and dev button
             v_flex()
                 .size_full()
                 .items_center()
                 .justify_center()
-                .gap_2()
+                .gap_4()
                 .child(
                     Icon::new(IconName::Check)
                         .size(px(48.))
@@ -623,6 +623,19 @@ impl MultiplayerWindow {
                         .text_sm()
                         .text_color(cx.theme().muted_foreground)
                         .child("Your project is up to date with the session")
+                )
+                .child(
+                    // Dev button to simulate diff
+                    div()
+                        .pt_8()
+                        .child(
+                            Button::new("simulate-diff-dev")
+                                .label("Simulate Diff (Dev)")
+                                .icon(IconName::Code)
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.simulate_diff_for_dev(window, cx);
+                                }))
+                        )
                 )
                 .into_any_element()
         }

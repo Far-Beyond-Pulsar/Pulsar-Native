@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use super::types::*;
-use super::file_sync_ui::FileSyncUI;
+use ui_editor::tabs::script_editor::ScriptEditor;
 use engine_backend::subsystems::networking::simple_sync::SyncDiff;
 use engine_backend::subsystems::networking::multiuser::MultiuserClient;
 
@@ -32,12 +32,16 @@ pub struct MultiplayerWindow {
     pub(super) file_sync_in_progress: bool,
     pub(super) sync_progress_message: Option<String>,
     pub(super) sync_progress_percent: Option<f32>,
-    pub(super) file_sync_ui: Entity<FileSyncUI>,
+    pub(super) script_editor: Entity<ScriptEditor>,
+    /// Pending diff to populate on next render (when we have window access)
+    pub(super) pending_diff_populate: Option<SyncDiff>,
+    /// Pending file content updates (path, content)
+    pub(super) pending_file_updates: Vec<(String, String)>,
 }
 
 impl MultiplayerWindow {
     /// Create a new multiplayer window
-        pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        pub fn new(project_path: Option<std::path::PathBuf>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let server_address_input = cx.new(|cx| {
             let mut state = InputState::new(window, cx);
             state.set_placeholder("ws://localhost:8080", window, cx);
@@ -62,11 +66,11 @@ impl MultiplayerWindow {
             state
         });
 
-        // Try to get project root from current directory
-        let project_root = std::env::current_dir().ok();
+        // Use provided project path
+        let project_root = project_path;
 
-        // Create file sync UI
-        let file_sync_ui = cx.new(|cx| FileSyncUI::new(cx));
+        // Create script editor for file sync
+        let script_editor = cx.new(|cx| ScriptEditor::new(window, cx));
 
         Self {
             server_address_input,
@@ -87,16 +91,18 @@ impl MultiplayerWindow {
             file_sync_in_progress: false,
             sync_progress_message: None,
             sync_progress_percent: None,
-            file_sync_ui,
+            script_editor,
+            pending_diff_populate: None,
+            pending_file_updates: Vec::new(),
         }
     }
 
     /// Populate the file sync UI with entries from a diff
-    pub(super) fn populate_file_sync_ui(&mut self, diff: &SyncDiff, cx: &mut Context<Self>) {
-        use crate::file_sync_ui::FileSyncEntry;
+    pub(super) fn populate_file_sync_ui(&mut self, diff: &SyncDiff, window: &mut Window, cx: &mut Context<Self>) {
+        use ui_editor::tabs::script_editor::DiffFileEntry;
         use std::fs;
 
-        let mut entries = Vec::new();
+        let mut diff_files = Vec::new();
 
         // Get project root
         let project_root = match &self.project_root {
@@ -107,13 +113,13 @@ impl MultiplayerWindow {
             }
         };
 
-        // Process added files
+        // Process added files (no local content)
         for file_path in &diff.files_to_add {
-            // For added files, we don't have local content, will fetch remote later
-            entries.push(FileSyncEntry::new_added(
-                file_path.clone(),
-                String::new(), // Will be populated when file content is received
-            ));
+            diff_files.push(DiffFileEntry {
+                path: file_path.clone(),
+                before_content: String::new(), // No local file
+                after_content: String::new(), // Will be populated when received
+            });
         }
 
         // Process modified files
@@ -121,11 +127,11 @@ impl MultiplayerWindow {
             let full_path = project_root.join(file_path);
             let local_content = fs::read_to_string(&full_path).unwrap_or_default();
 
-            entries.push(FileSyncEntry::new_modified(
-                file_path.clone(),
-                local_content,
-                String::new(), // Will be populated when file content is received
-            ));
+            diff_files.push(DiffFileEntry {
+                path: file_path.clone(),
+                before_content: local_content,
+                after_content: String::new(), // Will be populated when received
+            });
         }
 
         // Process deleted files
@@ -133,15 +139,17 @@ impl MultiplayerWindow {
             let full_path = project_root.join(file_path);
             let local_content = fs::read_to_string(&full_path).unwrap_or_default();
 
-            entries.push(FileSyncEntry::new_deleted(
-                file_path.clone(),
-                local_content,
-            ));
+            diff_files.push(DiffFileEntry {
+                path: file_path.clone(),
+                before_content: local_content,
+                after_content: String::new(), // No remote file
+            });
         }
 
-        // Update the file sync UI
-        self.file_sync_ui.update(cx, |ui, cx| {
-            ui.set_files(entries, cx);
+        // Enter diff mode with the file list and project root
+        let project_root_for_editor = project_root.clone();
+        self.script_editor.update(cx, |editor, cx| {
+            editor.enter_diff_mode(diff_files, project_root_for_editor, window, cx);
         });
 
         tracing::info!("Populated file sync UI with {} entries",
@@ -149,103 +157,149 @@ impl MultiplayerWindow {
     }
 
     /// Update a file entry with remote content when received
-    pub(super) fn update_file_remote_content(&mut self, file_path: &str, content: String, cx: &mut Context<Self>) {
-        self.file_sync_ui.update(cx, |ui, cx| {
-            // Find the file entry and update its remote content
-            if let Some(entry) = ui.files.iter_mut().find(|e| e.path == file_path) {
-                entry.remote_content = Some(content);
-                cx.notify();
-                tracing::debug!("Updated remote content for {}", file_path);
-            }
+    pub(super) fn update_file_remote_content(&mut self, file_path: &str, content: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.script_editor.update(cx, |editor, cx| {
+            editor.update_diff_file_after_content(file_path, content.clone(), window, cx);
+            tracing::debug!("Updated remote content for {}", file_path);
         });
     }
 
-    /// Simulate a file diff for development/testing purposes
-    pub(super) fn simulate_diff_for_dev(&mut self, cx: &mut Context<Self>) {
-        use crate::file_sync_ui::FileSyncEntry;
+    /// Queue a file content update (for async contexts without window access)
+    pub(super) fn queue_file_content_update(&mut self, file_path: String, content: String, cx: &mut Context<Self>) {
+        self.pending_file_updates.push((file_path, content));
+        cx.notify(); // Trigger re-render to process pending updates
+    }
 
-        // Create mock file entries with realistic diffs
-        let mock_files = vec![
-            FileSyncEntry::new_added(
-                "src/new_feature.rs".to_string(),
-                r#"// New feature implementation
-pub struct NewFeature {
-    pub name: String,
-    pub enabled: bool,
-}
+    /// Queue a diff populate (for async contexts without window access)
+    pub(super) fn queue_diff_populate(&mut self, diff: SyncDiff, cx: &mut Context<Self>) {
+        self.pending_diff_populate = Some(diff);
+        cx.notify(); // Trigger re-render to process pending updates
+    }
 
-impl NewFeature {
-    pub fn new(name: String) -> Self {
-        Self {
-            name,
-            enabled: true,
+    /// Process pending updates (called from render where we have window access)
+    pub(super) fn process_pending_updates(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // Process pending diff populate
+        if let Some(diff) = self.pending_diff_populate.take() {
+            self.populate_file_sync_ui(&diff, window, cx);
+        }
+
+        // Process pending file content updates
+        let updates = std::mem::take(&mut self.pending_file_updates);
+        for (file_path, content) in updates {
+            self.update_file_remote_content(&file_path, content, window, cx);
         }
     }
-}
-"#.to_string(),
-            ),
-            FileSyncEntry::new_modified(
-                "src/main.rs".to_string(),
-                r#"fn main() {
-    println!("Hello, world!");
-    let x = 42;
-}
-"#.to_string(),
-                r#"fn main() {
-    println!("Hello, Pulsar!");
-    let x = 42;
-    let y = 100;
-    println!("Sum: {}", x + y);
-}
-"#.to_string(),
-            ),
-            FileSyncEntry::new_modified(
-                "Cargo.toml".to_string(),
-                r#"[package]
-name = "pulsar"
-version = "0.1.0"
-edition = "2021"
 
-[dependencies]
-tokio = "1.0"
-"#.to_string(),
-                r#"[package]
-name = "pulsar"
-version = "0.2.0"
-edition = "2021"
+    /// Simulate a file diff for development/testing purposes
+    pub(super) fn simulate_diff_for_dev(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        use ui_editor::tabs::script_editor::DiffFileEntry;
+        use std::fs;
 
-[dependencies]
-tokio = "1.35"
-serde = "1.0"
-"#.to_string(),
-            ),
-            FileSyncEntry::new_deleted(
-                "src/old_code.rs".to_string(),
-                r#"// This file is being removed
-pub fn old_function() {
-    println!("This is old code");
-}
-"#.to_string(),
-            ),
+        // Get project root from the stored path
+        let project_root = match &self.project_root {
+            Some(root) => root.clone(),
+            None => {
+                tracing::error!("No project path available - cannot simulate diff");
+                return;
+            }
+        };
+
+        tracing::info!("Using project root for diff simulation: {:?}", project_root);
+
+        // Look for common project files - try multiple patterns
+        let test_file_patterns = vec![
+            // Common project files
+            vec!["Cargo.toml", "src/main.rs", "src/lib.rs"],
+            vec!["package.json", "src/index.js", "README.md"],
+            vec!["README.md", "Cargo.toml", ".gitignore"],
+            // Fallback - just try to find any files
+            vec!["Cargo.toml"],
         ];
 
-        // Update the file sync UI with mock data
-        self.file_sync_ui.update(cx, |ui, cx| {
-            ui.set_files(mock_files, cx);
+        let mut test_files = Vec::new();
+
+        // Try each pattern until we find some files
+        for pattern in test_file_patterns {
+            for file in &pattern {
+                let full_path = project_root.join(file);
+                if full_path.exists() && full_path.is_file() {
+                    test_files.push(file.to_string());
+                }
+            }
+
+            // If we found at least 1 file, use this pattern
+            if !test_files.is_empty() {
+                break;
+            }
+        }
+
+        // If still no files, try to find ANY files in the project root
+        if test_files.is_empty() {
+            if let Ok(entries) = fs::read_dir(&project_root) {
+                for entry in entries.flatten().take(3) {
+                    if let Ok(metadata) = entry.metadata() {
+                        if metadata.is_file() {
+                            if let Some(name) = entry.file_name().to_str() {
+                                test_files.push(name.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if test_files.is_empty() {
+            tracing::error!("No files found in project root: {:?}", project_root);
+            return;
+        }
+
+        tracing::info!("Found {} files for diff simulation: {:?}", test_files.len(), test_files);
+
+        let mut diff_entries = Vec::new();
+        let mut files_to_update = Vec::new();
+
+        for file_path in &test_files {
+            let full_path = project_root.join(file_path);
+            if let Ok(content) = fs::read_to_string(&full_path) {
+                // Create a modified version by adding a comment at the top
+                let modified_content = format!("// SIMULATED CHANGE - This line was added for diff testing\n{}", content);
+
+                diff_entries.push(DiffFileEntry {
+                    path: file_path.to_string(),
+                    before_content: content,
+                    after_content: modified_content,
+                });
+
+                files_to_update.push(file_path.to_string());
+            } else {
+                tracing::warn!("Could not read file for diff simulation: {}", file_path);
+            }
+        }
+
+        if diff_entries.is_empty() {
+            tracing::error!("No files found for diff simulation");
+            return;
+        }
+
+        // Enter diff mode with real file data
+        self.script_editor.update(cx, |editor, cx| {
+            editor.enter_diff_mode(diff_entries, project_root, window, cx);
         });
 
         // Create a mock diff
         let mock_diff = SyncDiff {
-            files_to_add: vec!["src/new_feature.rs".to_string()],
-            files_to_update: vec!["src/main.rs".to_string(), "Cargo.toml".to_string()],
-            files_to_delete: vec!["src/old_code.rs".to_string()],
+            files_to_add: vec![],
+            files_to_update,
+            files_to_delete: vec![],
         };
+
+        let file_count = mock_diff.files_to_update.len();
 
         // Set pending sync with mock data
         self.pending_file_sync = Some((mock_diff, "dev-mock-peer".to_string()));
         self.current_tab = SessionTab::FileSync;
 
-        tracing::info!("DEV: Simulated diff for testing file sync UI");
+        tracing::info!("DEV: Simulated diff for testing file sync UI with {} files", file_count);
         cx.notify();
     }
 

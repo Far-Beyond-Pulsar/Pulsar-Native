@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use gpui::{*, prelude::FluentBuilder, actions};
@@ -82,6 +82,8 @@ pub struct FileExplorer {
     clipboard_operation: Option<ClipboardOperation>,
     /// Path being renamed (for inline rename)
     renaming_path: Option<PathBuf>,
+    /// Files that have diffs (for diff mode highlighting)
+    diff_files: HashSet<PathBuf>,
 }
 
 impl FileExplorer {
@@ -103,6 +105,7 @@ impl FileExplorer {
             clipboard_path: None,
             clipboard_operation: None,
             renaming_path: None,
+            diff_files: HashSet::new(),
         }
     }
 
@@ -308,14 +311,43 @@ impl FileExplorer {
     }
 
     fn open_file_in_editor(&mut self, path: PathBuf, _window: &mut Window, cx: &mut Context<Self>) {
-        println!("Opening file in editor: {:?}", path);
+        tracing::info!("FileExplorer: open_file_in_editor called with path: {:?}", path);
         self.selected_file = Some(path.clone());
-        self.last_opened_file = Some(path);
+        self.last_opened_file = Some(path.clone());
         cx.notify();
+        tracing::info!("FileExplorer: Set last_opened_file to {:?}", path);
     }
 
     pub fn get_last_opened_file(&mut self) -> Option<PathBuf> {
-        self.last_opened_file.take()
+        let file = self.last_opened_file.take();
+        if file.is_some() {
+            tracing::info!("FileExplorer: get_last_opened_file returning {:?}", file);
+        }
+        file
+    }
+
+    /// Get the current project root
+    pub fn get_project_root(&self) -> Option<&PathBuf> {
+        self.project_root.as_ref()
+    }
+
+    /// Set which files have diffs for diff mode highlighting
+    pub fn set_diff_files(&mut self, diff_paths: HashSet<PathBuf>, cx: &mut Context<Self>) {
+        self.diff_files = diff_paths;
+        cx.notify();
+    }
+
+    /// Clear diff files (exit diff mode)
+    pub fn clear_diff_files(&mut self, cx: &mut Context<Self>) {
+        self.diff_files.clear();
+        cx.notify();
+    }
+
+    /// Check if a folder contains any diff files (recursively)
+    fn folder_contains_diff_files(&self, folder_path: &Path) -> bool {
+        self.diff_files.iter().any(|diff_path| {
+            diff_path.starts_with(folder_path)
+        })
     }
 
     fn create_new_file(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -686,6 +718,21 @@ impl FileExplorer {
         let icon = self.get_file_icon(entry);
         let indent = px(entry.depth as f32 * 16.0); // 16px per depth level
         let has_clipboard = self.clipboard_path.is_some();
+
+        // Check if this is a diff file or if we're in normal mode
+        let in_diff_mode = !self.diff_files.is_empty();
+        let is_diff_file = self.diff_files.contains(&entry.path);
+        let folder_has_diff_files = if is_directory {
+            self.folder_contains_diff_files(&entry.path)
+        } else {
+            false
+        };
+
+        // Files: only clickable if diff file or not in diff mode
+        // Folders: always clickable, but grey if no diff files
+        let is_clickable = !in_diff_mode || is_directory || is_diff_file;
+        let should_grey = in_diff_mode && !is_diff_file && (!is_directory || !folder_has_diff_files);
+
         // Create a valid ID by hashing the path
         let item_id = SharedString::from(format!("file-{:x}", {
             use std::collections::hash_map::DefaultHasher;
@@ -705,27 +752,35 @@ impl FileExplorer {
             .pr_3()
             .rounded_md()
             .when(is_selected, |style| style.bg(cx.theme().accent))
-            .when(!is_selected, |style| {
+            .when(!is_selected && is_clickable, |style| {
                 style.hover(|style| style.bg(cx.theme().accent.opacity(0.1)))
             })
-            .cursor_pointer()
-            .child(Icon::new(icon).size_4())
+            .when(is_clickable, |style| style.cursor_pointer())
+            .when(!is_clickable, |style| style.cursor_default())
+            .child(Icon::new(icon).size_4().when(should_grey, |icon| icon.text_color(cx.theme().muted_foreground)))
             .child(
                 div()
                     .text_sm()
+                    .when(should_grey, |style| style.italic())
                     .when(is_selected, |style| style.text_color(cx.theme().accent_foreground))
-                    .when(!is_selected, |style| style.text_color(cx.theme().foreground))
+                    .when(!is_selected && !should_grey, |style| style.text_color(cx.theme().foreground))
+                    .when(!is_selected && should_grey, |style| style.text_color(cx.theme().muted_foreground))
                     .child(entry.name.clone())
             )
-            .on_mouse_down(gpui::MouseButton::Left, {
-                let path = path.clone();
-                cx.listener(move |this, _, window, cx| {
-                    if is_directory {
-                        this.toggle_folder(&path, window, cx);
-                    } else {
-                        this.select_file(path.clone(), window, cx);
-                        this.open_file_in_editor(path.clone(), window, cx);
-                    }
+            .when(is_clickable, |div| {
+                div.on_mouse_down(gpui::MouseButton::Left, {
+                    let path = path.clone();
+                    let is_dir = is_directory;
+                    cx.listener(move |this, _, window, cx| {
+                        tracing::info!("FileExplorer: Click on {:?}, is_directory: {}", path, is_dir);
+                        if is_dir {
+                            this.toggle_folder(&path, window, cx);
+                        } else {
+                            tracing::info!("FileExplorer: Calling select_file and open_file_in_editor for {:?}", path);
+                            this.select_file(path.clone(), window, cx);
+                            this.open_file_in_editor(path.clone(), window, cx);
+                        }
+                    })
                 })
             })
             // Select the item on right-click to ensure context menu actions work on it
