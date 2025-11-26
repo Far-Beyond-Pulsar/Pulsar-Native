@@ -24,54 +24,108 @@ use crate::config::Config;
 use crate::metrics::METRICS;
 use crate::nat::{ConnectionCandidate, NatType};
 
-/// Signaling message types
+/// Messages sent FROM client TO server
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum SignalingMessage {
+pub enum ClientMessage {
     /// Join a session
     Join {
         session_id: String,
         peer_id: String,
         join_token: String,
-        candidates: Vec<CandidateDto>,
-        pubkey: Vec<u8>,
     },
     /// Leave a session
     Leave {
         session_id: String,
         peer_id: String,
     },
-    /// Exchange ICE candidates
-    Candidate {
+    /// Chat message
+    ChatMessage {
         session_id: String,
         peer_id: String,
-        candidate: CandidateDto,
+        message: String,
     },
-    /// Offer to establish connection
-    Offer {
-        session_id: String,
-        from_peer_id: String,
-        to_peer_id: String,
-        sdp: String,
-    },
-    /// Answer to connection offer
-    Answer {
-        session_id: String,
-        from_peer_id: String,
-        to_peer_id: String,
-        sdp: String,
-    },
-    /// Punch coordination token
-    PunchCoord {
+    /// Request file manifest from host
+    RequestFileManifest {
         session_id: String,
         peer_id: String,
-        token: Vec<u8>,
-        start_ts: i64,
-        expires: i64,
-        candidates: Vec<CandidateDto>,
+    },
+    /// Send file manifest (host response)
+    FileManifest {
+        session_id: String,
+        peer_id: String,
+        manifest_json: String,
+    },
+    /// Request specific files
+    RequestFiles {
+        session_id: String,
+        peer_id: String,
+        file_paths: Vec<String>,
+    },
+    /// Send file data chunk
+    FilesChunk {
+        session_id: String,
+        peer_id: String,
+        files_json: String,
+        chunk_index: usize,
+        total_chunks: usize,
     },
     /// Heartbeat / keepalive
     Ping,
+}
+
+/// Messages sent FROM server TO client
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ServerMessage {
+    /// Confirmation that client joined
+    Joined {
+        session_id: String,
+        peer_id: String,
+        participants: Vec<String>,
+    },
+    /// Another peer joined
+    PeerJoined {
+        session_id: String,
+        peer_id: String,
+    },
+    /// A peer left
+    PeerLeft {
+        session_id: String,
+        peer_id: String,
+    },
+    /// Chat message (relayed)
+    ChatMessage {
+        session_id: String,
+        peer_id: String,
+        message: String,
+        timestamp: u64,
+    },
+    /// File manifest request (relayed from guest to host)
+    RequestFileManifest {
+        session_id: String,
+        from_peer_id: String,
+    },
+    /// File manifest response (relayed from host to guest)
+    FileManifest {
+        session_id: String,
+        from_peer_id: String,
+        manifest_json: String,
+    },
+    /// File request (relayed from guest to host)
+    RequestFiles {
+        session_id: String,
+        from_peer_id: String,
+        file_paths: Vec<String>,
+    },
+    /// Files chunk (relayed from host to guest)
+    FilesChunk {
+        session_id: String,
+        from_peer_id: String,
+        files_json: String,
+        chunk_index: usize,
+        total_chunks: usize,
+    },
     /// Heartbeat response
     Pong,
     /// Error message
@@ -105,11 +159,8 @@ impl From<ConnectionCandidate> for CandidateDto {
 struct PeerSession {
     peer_id: String,
     session_id: String,
-    tx: mpsc::Sender<SignalingMessage>,
-    candidates: Vec<CandidateDto>,
-    pubkey: Vec<u8>,
+    tx: mpsc::Sender<ServerMessage>,
     joined_at: SystemTime,
-    nat_type: Option<NatType>,
 }
 
 /// Rendezvous session
@@ -191,7 +242,7 @@ impl RendezvousCoordinator {
 
             // Notify all peers that session is closing
             for peer in session.list_peers() {
-                let _ = peer.tx.try_send(SignalingMessage::Error {
+                let _ = peer.tx.try_send(ServerMessage::Error {
                     message: "Session closed".to_string(),
                 });
             }
@@ -214,7 +265,7 @@ impl RendezvousCoordinator {
         let (mut sender, mut receiver) = socket.split();
 
         // Create channel for outgoing messages
-        let (tx, mut rx) = mpsc::channel::<SignalingMessage>(100);
+        let (tx, mut rx) = mpsc::channel::<ServerMessage>(100);
 
         // Spawn task to send messages to WebSocket
         let send_task = tokio::spawn(async move {
@@ -254,24 +305,24 @@ impl RendezvousCoordinator {
                         .with_label_values(&["received"])
                         .inc();
 
-                    match serde_json::from_str::<SignalingMessage>(&text) {
-                        Ok(sig_msg) => {
-                            let result = self.handle_signaling_message(
-                                sig_msg,
+                    match serde_json::from_str::<ClientMessage>(&text) {
+                        Ok(client_msg) => {
+                            let result = self.handle_client_message(
+                                client_msg,
                                 tx.clone(),
                                 &mut peer_id,
                                 &mut session_id,
                             ).await;
 
                             if let Err(e) = result {
-                                error!(error = %e, "Failed to handle signaling message");
-                                let _ = tx.send(SignalingMessage::Error {
+                                error!(error = %e, "Failed to handle client message");
+                                let _ = tx.send(ServerMessage::Error {
                                     message: e.to_string(),
                                 }).await;
                             }
                         }
                         Err(e) => {
-                            warn!(error = %e, text = %text, "Failed to parse signaling message");
+                            warn!(error = %e, text = %text, "Failed to parse client message");
                         }
                     }
                 }
@@ -294,70 +345,73 @@ impl RendezvousCoordinator {
         send_task.abort();
     }
 
-    async fn handle_signaling_message(
+    async fn handle_client_message(
         &self,
-        msg: SignalingMessage,
-        tx: mpsc::Sender<SignalingMessage>,
+        msg: ClientMessage,
+        tx: mpsc::Sender<ServerMessage>,
         peer_id: &mut Option<String>,
         session_id: &mut Option<String>,
     ) -> Result<()> {
         match msg {
-            SignalingMessage::Join {
+            ClientMessage::Join {
                 session_id: sid,
                 peer_id: pid,
                 join_token,
-                candidates,
-                pubkey,
             } => {
-                self.handle_join(sid, pid, join_token, candidates, pubkey, tx, peer_id, session_id)
+                self.handle_join(sid, pid, join_token, tx, peer_id, session_id)
                     .await?;
             }
-            SignalingMessage::Leave {
+            ClientMessage::Leave {
                 session_id: sid,
                 peer_id: pid,
             } => {
                 self.handle_leave(&sid, &pid).await?;
             }
-            SignalingMessage::Candidate {
+            ClientMessage::ChatMessage {
                 session_id: sid,
                 peer_id: pid,
-                candidate,
+                message,
             } => {
-                self.handle_candidate(&sid, &pid, candidate).await?;
+                self.relay_chat_message(&sid, &pid, message).await?;
             }
-            SignalingMessage::Offer {
+            ClientMessage::RequestFileManifest {
                 session_id: sid,
-                from_peer_id,
-                to_peer_id,
-                sdp,
+                peer_id: pid,
             } => {
-                let msg = SignalingMessage::Offer {
-                    session_id: sid.clone(),
-                    from_peer_id,
-                    to_peer_id: to_peer_id.clone(),
-                    sdp,
-                };
-                self.forward_to_peer(&sid, &to_peer_id, msg).await?;
+                self.forward_to_host(&sid, ServerMessage::RequestFileManifest {
+                    session_id: sid,
+                    from_peer_id: pid,
+                }).await?;
             }
-            SignalingMessage::Answer {
+            ClientMessage::FileManifest {
                 session_id: sid,
-                from_peer_id,
-                to_peer_id,
-                sdp,
+                peer_id: pid,
+                manifest_json,
             } => {
-                let msg = SignalingMessage::Answer {
-                    session_id: sid.clone(),
-                    from_peer_id,
-                    to_peer_id: to_peer_id.clone(),
-                    sdp,
-                };
-                self.forward_to_peer(&sid, &to_peer_id, msg).await?;
+                self.relay_file_manifest(&sid, &pid, manifest_json).await?;
             }
-            SignalingMessage::Ping => {
-                tx.send(SignalingMessage::Pong).await?;
+            ClientMessage::RequestFiles {
+                session_id: sid,
+                peer_id: pid,
+                file_paths,
+            } => {
+                self.forward_to_host(&sid, ServerMessage::RequestFiles {
+                    session_id: sid,
+                    from_peer_id: pid,
+                    file_paths,
+                }).await?;
             }
-            _ => {
-                warn!("Unhandled signaling message: {:?}", msg);
+            ClientMessage::FilesChunk {
+                session_id: sid,
+                peer_id: pid,
+                files_json,
+                chunk_index,
+                total_chunks,
+            } => {
+                self.relay_files_chunk(&sid, &pid, files_json, chunk_index, total_chunks).await?;
+            }
+            ClientMessage::Ping => {
+                tx.send(ServerMessage::Pong).await?;
             }
         }
 

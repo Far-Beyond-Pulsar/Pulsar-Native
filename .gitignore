@@ -21,3 +21,5 @@ PROMPT.md
 engine_out.txt
 *.dll
 *.dll
+nul
+plugins/editor/blueprint_editor_plugin.dll
