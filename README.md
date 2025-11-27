@@ -23,6 +23,7 @@ cargo run --release
 
 The engine will detect missing dependencies and guide you through installation automatically.
 
+<img width="3437" height="1439" alt="image" src="https://github.com/user-attachments/assets/1d18a87e-050e-47ed-bbcb-05c4d4850c6d" />
 <img width="2155" height="1109" alt="image" src="https://github.com/user-attachments/assets/9097fae6-2ce9-40a2-9581-e692a7b38770" />
 <img width="2515" height="1362" alt="image" src="https://github.com/user-attachments/assets/2baf8876-07ff-4de0-95ab-840c56ed8679" />
 <img width="2515" height="1362" alt="image" src="https://github.com/user-attachments/assets/cc584017-a4c4-4f16-bfa8-8ffc23a8370d" />
