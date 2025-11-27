@@ -542,10 +542,6 @@ impl ViewportPanel {
                     static mut FRAME_COUNT: u32 = 0;
                     unsafe {
                         FRAME_COUNT += 1;
-                        if FRAME_COUNT % 60 == 1 {
-                            println!("[VIEWPORT] 📐 Element bounds: origin=({:.1}, {:.1}) size=({:.1}x{:.1})", 
-                                min_x, min_y, max_x - min_x, max_y - min_y);
-                        }
                     }
                 }
             })
