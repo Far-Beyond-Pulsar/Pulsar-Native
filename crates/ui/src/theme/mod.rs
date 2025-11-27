@@ -82,11 +82,39 @@ impl DerefMut for Theme {
 
 impl Global for Theme {}
 
+// Global function pointer for plugin theme accessor (set by export_plugin! macro)
+static PLUGIN_THEME_ACCESSOR: std::sync::atomic::AtomicPtr<()> =
+    std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+
 impl Theme {
+    /// Register a plugin theme accessor function
+    /// Called automatically by export_plugin! macro
+    pub fn register_plugin_accessor(accessor: unsafe fn() -> Option<&'static Theme>) {
+        PLUGIN_THEME_ACCESSOR.store(accessor as *mut (), std::sync::atomic::Ordering::Release);
+    }
+
     /// Returns the global theme reference
+    /// Falls back to plugin-synced theme if running in a plugin context
     #[inline(always)]
     pub fn global(cx: &App) -> &Theme {
-        cx.global::<Theme>()
+        // Try to get from GPUI's global state first
+        match cx.try_global::<Theme>() {
+            Some(theme) => theme,
+            None => {
+                // If we're in a plugin context, try the plugin accessor
+                let accessor_ptr = PLUGIN_THEME_ACCESSOR.load(std::sync::atomic::Ordering::Acquire);
+                if !accessor_ptr.is_null() {
+                    let accessor: unsafe fn() -> Option<&'static Theme> =
+                        unsafe { std::mem::transmute(accessor_ptr) };
+                    if let Some(theme) = unsafe { accessor() } {
+                        return theme;
+                    }
+                }
+
+                // Last resort: panic with helpful message
+                panic!("Theme not available in this context. Make sure ui::init() was called and plugins have initialized globals.");
+            }
+        }
     }
 
     /// Returns the global theme mutable reference

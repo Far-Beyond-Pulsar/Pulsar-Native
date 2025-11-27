@@ -8,11 +8,12 @@
 //!
 
 // Registry infrastructure
-mod registry;
+pub mod registry;
+pub mod type_constructors;
 pub use registry::*;
 
 // Re-export macros
-pub use pulsar_macros::{blueprint, bp_import, exec_output};
+pub use pulsar_macros::{blueprint, bp_import, exec_output, blueprint_type};
 
 // =============================================================================
 // Node Type Enum (for blueprint attribute)

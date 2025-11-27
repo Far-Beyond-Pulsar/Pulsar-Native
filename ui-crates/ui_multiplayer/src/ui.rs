@@ -518,107 +518,94 @@ impl MultiplayerWindow {
                         .text_xs()
                         .text_color(cx.theme().muted_foreground)
                         .child(format!("{}%", (self.sync_progress_percent.unwrap_or(0.0) * 100.0) as u32))
-                );
+                )
+                .into_any_element();
         }
 
-        // Check if there's a pending file sync
+        // Check if there's a pending file sync or files to review
         if let Some((diff, host_peer_id)) = &self.pending_file_sync {
             tracing::info!("Rendering FileSync tab with pending diff");
-            // Show the diff UI
+
+            // Show the new studio-quality file sync UI with action bar
             v_flex()
                 .size_full()
-                .p_4()
-                .gap_4()
                 .child(
-                    div()
-                        .text_lg()
-                        .font_semibold()
-                        .text_color(cx.theme().foreground)
-                        .child(format!("Synchronize with {}", host_peer_id))
-                )
-                .child(
+                    // Action bar at top
                     div()
                         .p_3()
-                        .rounded(px(6.))
-                        .bg(cx.theme().accent.opacity(0.1))
-                        .border_1()
-                        .border_color(cx.theme().accent)
+                        .border_b_1()
+                        .border_color(cx.theme().border)
+                        .bg(cx.theme().secondary)
                         .child(
-                            v_flex()
-                                .gap_2()
+                            h_flex()
+                                .items_center()
+                                .justify_between()
                                 .child(
-                                    div()
-                                        .text_sm()
-                                        .font_semibold()
-                                        .text_color(cx.theme().foreground)
-                                        .child("Changes to apply:")
+                                    v_flex()
+                                        .gap_1()
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .font_semibold()
+                                                .text_color(cx.theme().foreground)
+                                                .child(format!("Synchronize with {}", host_peer_id))
+                                        )
+                                        .child(
+                                            h_flex()
+                                                .gap_3()
+                                                .text_xs()
+                                                .child(
+                                                    div()
+                                                        .text_color(cx.theme().success)
+                                                        .child(format!("+{} added", diff.files_to_add.len()))
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_color(cx.theme().warning)
+                                                        .child(format!("~{} modified", diff.files_to_update.len()))
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_color(cx.theme().danger)
+                                                        .child(format!("-{} deleted", diff.files_to_delete.len()))
+                                                )
+                                        )
                                 )
-                                .when(!diff.files_to_add.is_empty(), |this| {
-                                    this.child(
-                                        div()
-                                            .text_sm()
-                                            .text_color(cx.theme().success)
-                                            .child(format!("+ {} files to add", diff.files_to_add.len()))
-                                    )
-                                })
-                                .when(!diff.files_to_update.is_empty(), |this| {
-                                    this.child(
-                                        div()
-                                            .text_sm()
-                                            .text_color(cx.theme().warning)
-                                            .child(format!("~ {} files to update", diff.files_to_update.len()))
-                                    )
-                                })
-                                .when(!diff.files_to_delete.is_empty(), |this| {
-                                    this.child(
-                                        div()
-                                            .text_sm()
-                                            .text_color(cx.theme().danger)
-                                            .child(format!("- {} files to remove", diff.files_to_delete.len()))
-                                    )
-                                })
+                                .child(
+                                    h_flex()
+                                        .gap_2()
+                                        .child(
+                                            Button::new("sync-cancel")
+                                                .label("Cancel")
+                                                .on_click(cx.listener(|this, _, _window, cx| {
+                                                    this.cancel_file_sync(cx);
+                                                }))
+                                        )
+                                        .child(
+                                            Button::new("sync-approve")
+                                                .label("Sync Files")
+                                                .on_click(cx.listener(|this, _, _window, cx| {
+                                                    this.approve_file_sync(cx);
+                                                }))
+                                        )
+                                )
                         )
                 )
                 .child(
+                    // Script Editor in diff mode
                     div()
-                        .p_3()
-                        .rounded(px(6.))
-                        .bg(cx.theme().warning.opacity(0.1))
-                        .border_1()
-                        .border_color(cx.theme().warning)
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(cx.theme().warning)
-                                .child("⚠ Warning: Local changes will be overwritten!")
-                        )
+                        .flex_1()
+                        .child(self.script_editor.clone())
                 )
-                .child(
-                    h_flex()
-                        .gap_2()
-                        .child(
-                            Button::new("sync-approve")
-                                .label("Sync Files")
-                                .on_click(cx.listener(|this, _, _window, cx| {
-                                    this.approve_file_sync(cx);
-                                }))
-                        )
-                        .child(
-                            Button::new("sync-cancel")
-                                .label("Cancel")
-                                .on_click(cx.listener(|this, _, _window, cx| {
-                                    this.cancel_file_sync(cx);
-                                }))
-                        )
-                )
+                .into_any_element()
         } else {
             tracing::debug!("Rendering FileSync tab - no pending sync");
-            // No pending sync
+            // No pending sync - show sync status and dev button
             v_flex()
                 .size_full()
                 .items_center()
                 .justify_center()
-                .gap_2()
+                .gap_4()
                 .child(
                     Icon::new(IconName::Check)
                         .size(px(48.))
@@ -637,6 +624,20 @@ impl MultiplayerWindow {
                         .text_color(cx.theme().muted_foreground)
                         .child("Your project is up to date with the session")
                 )
+                .child(
+                    // Dev button to simulate diff
+                    div()
+                        .pt_8()
+                        .child(
+                            Button::new("simulate-diff-dev")
+                                .label("Simulate Diff (Dev)")
+                                .icon(IconName::Code)
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.simulate_diff_for_dev(window, cx);
+                                }))
+                        )
+                )
+                .into_any_element()
         }
     }
 

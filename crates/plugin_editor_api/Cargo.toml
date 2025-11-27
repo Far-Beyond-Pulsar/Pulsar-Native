@@ -1,0 +1,21 @@
+[package]
+name = "plugin_editor_api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+# UI dependencies (for Panel trait integration)
+gpui = { workspace = true }
+ui = { workspace = true }
+
+[features]
+default = []
+# Feature flag to indicate this is being built as a plugin
+plugin = []
+
+[lib]
+crate-type = ["lib", "cdylib"]

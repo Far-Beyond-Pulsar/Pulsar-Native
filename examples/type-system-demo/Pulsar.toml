@@ -1,0 +1,7 @@
+[project]
+name = "Type System Demo"
+version = "0.1.0"
+engine_version = "0.1.0"
+
+[metadata]
+description = "Example project demonstrating the Pulsar type system"

@@ -4,10 +4,16 @@ members = [
     "crates/engine",
     "crates/engine_backend",
     "crates/engine_state",
+    "crates/engine_fs",
     "crates/ui",
     "crates/pulsar_macros",
     "crates/pulsar_std",
     "crates/multiuser_server",
+    # Plugin system
+    "crates/plugin_editor_api",
+    "crates/plugin_manager",
+    # Editor plugins
+    "plugins/blueprint_editor_plugin",
     # UI component crates
     "ui-crates/ui_common",
     "ui-crates/ui_core",
@@ -21,6 +27,12 @@ members = [
     "ui-crates/ui_loading_screen",
     "ui-crates/ui_project_launcher", "ui-crates/ui_about", "ui-crates/ui_documentation", "crates/pulsar_docs",
     "ui-crates/ui_editor_table",
+    # Type system editors
+    "ui-crates/ui_types_common",
+    "ui-crates/ui_struct_editor",
+    "ui-crates/ui_enum_editor",
+    "ui-crates/ui_trait_editor",
+    "ui-crates/ui_alias_editor",
 ]
 
 default-members = ["crates/engine"] 
@@ -30,10 +42,10 @@ resolver = "2"
 debug = true
 
 [workspace.dependencies]
-gpui = { git = "https://github.com/tristanpoland/zed", rev="433b9ae0dce0e0dae03c4ac44d70575c981c530c", features = ["runtime_shaders", "macos-blade"] }
-gpui_macros = { git = "https://github.com/tristanpoland/zed", rev="433b9ae0dce0e0dae03c4ac44d70575c981c530c" }
-reqwest_client = { git = "https://github.com/tristanpoland/zed", rev = "433b9ae0dce0e0dae03c4ac44d70575c981c530c" }
-sum_tree = { git = "https://github.com/tristanpoland/zed", rev = "433b9ae0dce0e0dae03c4ac44d70575c981c530c" }
+gpui = { git = "https://github.com/tristanpoland/zed", rev="bbd9dd98a50dc5b3a10eb39642c105ea7950e7b2", features = ["runtime_shaders", "macos-blade"] }
+gpui_macros = { git = "https://github.com/tristanpoland/zed", rev="bbd9dd98a50dc5b3a10eb39642c105ea7950e7b2" }
+reqwest_client = { git = "https://github.com/tristanpoland/zed", rev = "bbd9dd98a50dc5b3a10eb39642c105ea7950e7b2" }
+sum_tree = { git = "https://github.com/tristanpoland/zed", rev = "bbd9dd98a50dc5b3a10eb39642c105ea7950e7b2" }
 # gpui ={ path="../zed/crates/gpui", features = ["runtime_shaders", "macos-blade"] }
 # gpui_macros = { path="../zed/crates/gpui_macros" }
 # reqwest_client = { path="../zed/crates/reqwest_client" }
@@ -46,6 +58,7 @@ ropey = { version = "=2.0.0-beta.1", features = ["metric_utf16", "metric_lines_l
 horizon = { git = "https://github.com/Far-Beyond-Dev/horizon" }
 engine_backend = { path = "crates/engine_backend" }
 engine_state = { path = "crates/engine_state" }
+engine_fs = { path = "crates/engine_fs" }
 
 # UI component crates
 ui_core = { path = "ui-crates/ui_core" }
@@ -62,6 +75,11 @@ ui_project_launcher = { path = "ui-crates/ui_project_launcher" }
 ui_about = { path = "ui-crates/ui_about" }
 ui_documentation = { path = "ui-crates/ui_documentation" }
 ui_editor_table = { path = "ui-crates/ui_editor_table" }
+ui_types_common = { path = "ui-crates/ui_types_common" }
+ui_struct_editor = { path = "ui-crates/ui_struct_editor" }
+ui_enum_editor = { path = "ui-crates/ui_enum_editor" }
+ui_trait_editor = { path = "ui-crates/ui_trait_editor" }
+ui_alias_editor = { path = "ui-crates/ui_alias_editor" }
 
 anyhow = "1"
 log = "0.4"

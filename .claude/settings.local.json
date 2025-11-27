@@ -73,7 +73,16 @@
       "Bash(timeout 60 cargo check:*)",
       "Bash(awk:*)",
       "Bash(timeout 90 cargo check:*)",
-      "Bash(timeout 180 cargo check:*)"
+      "Bash(timeout 180 cargo check:*)",
+      "Bash(do wc -l \"$file\")",
+      "Bash(do cp ui-crates/ui_editor/src/tabs/blueprint_editor/$file plugins/blueprint_editor_plugin/src/$file)",
+      "Bash(echo:*)",
+      "Bash(do cp ui-crates/ui_editor/src/tabs/blueprint_editor/panel/$file plugins/blueprint_editor_plugin/src/panel/$file)",
+      "Bash(timeout 10 cargo run:*)",
+      "Bash(./target/debug/pulsar_engine.exe:*)",
+      "Bash(timeout:*)",
+      "Bash(engine_out.txt)",
+      "Bash(git stash:*)"
     ],
     "deny": [],
     "ask": []

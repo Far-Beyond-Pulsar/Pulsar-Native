@@ -31,7 +31,7 @@ pub use minimap_scrollbar::*;
 pub use mode::TabSize;
 pub use number_input::{NumberInput, NumberInputEvent, StepAction};
 pub use otp_input::*;
-pub use state::*;
+pub use state::{*, LineHighlight};
 pub use tab_completion::*;
 pub use text_input::*;
 pub use virtual_editor_utils::{VirtualEditorConfig, calculate_visible_range, calculate_content_size};

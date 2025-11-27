@@ -1,0 +1,24 @@
+[package]
+name = "ui_types_common"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+
+# Utilities
+anyhow.workspace = true
+thiserror = "2.0"
+chrono = "0.4"
+uuid = { version = "1.11", features = ["v4", "serde"] }
+
+# Validation
+regex = "1.10"
+lazy_static = "1.5"
+
+# File I/O
+walkdir = "2"

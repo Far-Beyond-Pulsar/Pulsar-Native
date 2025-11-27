@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "typeKind": "enum",
+  "name": "game_state",
+  "displayName": "GameState",
+  "description": "Represents the current state of the game",
+  "variants": [
+    {
+      "name": "MainMenu",
+      "payload": null,
+      "doc": "Player is in the main menu"
+    },
+    {
+      "name": "Playing",
+      "payload": null,
+      "doc": "Game is actively being played"
+    },
+    {
+      "name": "Paused",
+      "payload": null,
+      "doc": "Game is paused"
+    },
+    {
+      "name": "GameOver",
+      "payload": {
+        "kind": "Primitive",
+        "name": "u32"
+      },
+      "doc": "Game ended with final score"
+    }
+  ],
+  "visibility": "pub",
+  "meta": {}
+}

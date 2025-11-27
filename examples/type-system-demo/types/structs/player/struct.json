@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "typeKind": "struct",
+  "name": "player",
+  "displayName": "Player",
+  "description": "Represents a player in the game",
+  "fields": [
+    {
+      "name": "id",
+      "type": {
+        "kind": "Primitive",
+        "name": "u64"
+      },
+      "visibility": "pub",
+      "doc": "Unique player identifier"
+    },
+    {
+      "name": "name",
+      "type": {
+        "kind": "Primitive",
+        "name": "String"
+      },
+      "visibility": "pub",
+      "doc": "Player's display name"
+    },
+    {
+      "name": "health",
+      "type": {
+        "kind": "Primitive",
+        "name": "f32"
+      },
+      "visibility": "pub",
+      "doc": "Current health points"
+    },
+    {
+      "name": "position",
+      "type": {
+        "kind": "Path",
+        "path": "glam::Vec3"
+      },
+      "visibility": "pub",
+      "doc": "3D position in world space"
+    }
+  ],
+  "visibility": "pub",
+  "meta": {}
+}

@@ -256,9 +256,6 @@ impl ApplicationHandler for WinitGpuiApp {
                     static mut CLAIM_CHECK_COUNT: u32 = 0;
                     unsafe {
                         CLAIM_CHECK_COUNT += 1;
-                        if CLAIM_CHECK_COUNT % 60 == 0 {
-                            println!("[RENDERER] ≡ƒöì Checking for renderer for window {} (attempt {})...", window_id_u64, CLAIM_CHECK_COUNT);
-                        }
                     }
 
                     // First check if this window already has a renderer
@@ -266,7 +263,6 @@ impl ApplicationHandler for WinitGpuiApp {
                         // Try to downcast from Any to the concrete type
                         if let Ok(gpu_renderer) = renderer_handle.clone().downcast::<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>() {
                             *bevy_renderer = Some(gpu_renderer);
-                            println!("[RENDERER] ≡ƒÄ« Γ£à Loaded GPU renderer for window {}!", window_id_u64);
                         }
                     }
                     // Otherwise, check if there's a pending renderer we can claim
@@ -278,8 +274,6 @@ impl ApplicationHandler for WinitGpuiApp {
                             self.engine_state.set_metadata("has_pending_viewport_renderer".to_string(), "false".to_string());
                             
                             *bevy_renderer = Some(gpu_renderer);
-                            println!("[RENDERER] ≡ƒÄ» Claimed pending GPU renderer for window {}!", window_id_u64);
-                            println!("[RENDERER] Γ£à Bevy will now render to this window's back buffer");
                         }
                     }
                 }
@@ -298,12 +292,6 @@ impl ApplicationHandler for WinitGpuiApp {
                         COMPOSITOR_FRAME_COUNT += 1;
                         if should_render_gpui {
                             GPUI_FRAME_COUNT += 1;
-                            if GPUI_FRAME_COUNT % 60 == 1 {
-                                println!("[DECOUPLED-RENDER] 🎨 GPUI frame {} (compositor frame {})", GPUI_FRAME_COUNT, COMPOSITOR_FRAME_COUNT);
-                                println!("[DECOUPLED-RENDER] 📊 Compositor: {} fps, GPUI: {} fps (estimated)", 
-                                    COMPOSITOR_FRAME_COUNT / (GPUI_FRAME_COUNT / 60).max(1),
-                                    60);
-                            }
                         }
                         
                         if should_render_gpui {
@@ -445,14 +433,6 @@ impl ApplicationHandler for WinitGpuiApp {
                             static mut CHECK_COUNT: u32 = 0;
                             unsafe {
                                 CHECK_COUNT += 1;
-                                if CHECK_COUNT % 60 == 0 {
-                                    let window_id_u64 = std::mem::transmute::<_, u64>(window_id);
-                                    if bevy_renderer.is_none() {
-                                        println!("[RENDERER] ΓÅ│ No Bevy renderer for window {} (checked {} times)...", window_id_u64, CHECK_COUNT);
-                                    } else {
-                                        println!("[RENDERER] Γ£à Have Bevy renderer for window {} (frame {})", window_id_u64, CHECK_COUNT);
-                                    }
-                                }
                             }
 
                             if let Some(ref gpu_renderer_arc) = bevy_renderer {
@@ -475,9 +455,6 @@ impl ApplicationHandler for WinitGpuiApp {
                                                 static mut OPEN_ATTEMPT: u32 = 0;
                                                 unsafe {
                                                     OPEN_ATTEMPT += 1;
-                                                    if OPEN_ATTEMPT == 1 || OPEN_ATTEMPT % 120 == 0 {
-                                                        eprintln!("[COMPOSITOR] 🔓 Attempting to open Bevy shared texture handle: 0x{:X} (attempt {})", handle_ptr, OPEN_ATTEMPT);
-                                                    }
                                                 }
                                                 
                                                 // Try to cast to ID3D11Device1 for OpenSharedResource1 (supports NT handles)
@@ -545,12 +522,6 @@ impl ApplicationHandler for WinitGpuiApp {
                                                 }
 
                                                 if let Some(ref bevy_tex) = bevy_texture_local {
-                                                    unsafe {
-                                                        if OPEN_ATTEMPT == 1 || OPEN_ATTEMPT % 120 == 0 {
-                                                            eprintln!("[COMPOSITOR] ✅ Successfully opened Bevy texture");
-                                                        }
-                                                    }
-                                                    
                                                     // Create or reuse SRV for Bevy texture
                                                     if bevy_texture.is_none() || bevy_texture.as_ref().map(|t| t.as_raw()) != Some(bevy_tex.as_raw()) {
                                                         // Create new SRV - MUST match Bevy's BGRA8UnormSrgb format!
@@ -592,12 +563,6 @@ impl ApplicationHandler for WinitGpuiApp {
                                                                     *bevy_srv = None;
                                                                 } else if SRV_ERROR_COUNT == 1 || SRV_ERROR_COUNT % 60 == 0 {
                                                                     eprintln!("[COMPOSITOR] ❌ Failed to create SRV for Bevy texture: {:?} (error count: {})", e, SRV_ERROR_COUNT);
-                                                                }
-                                                            }
-                                                        } else {
-                                                            unsafe {
-                                                                if OPEN_ATTEMPT == 1 || OPEN_ATTEMPT % 120 == 0 {
-                                                                    eprintln!("[COMPOSITOR] ✅ Created SRV for Bevy texture");
                                                                 }
                                                             }
                                                         }
@@ -647,9 +612,6 @@ impl ApplicationHandler for WinitGpuiApp {
 
                                                         static mut BEVY_FRAME_COUNT: u32 = 0;
                                                         BEVY_FRAME_COUNT += 1;
-                                                        if BEVY_FRAME_COUNT % 120 == 1 {
-                                                            eprintln!("≡ƒÄ« Bevy layer composited to back buffer (frame {})", BEVY_FRAME_COUNT);
-                                                        }
                                                     }
                                                 }
                                             }
@@ -696,9 +658,6 @@ impl ApplicationHandler for WinitGpuiApp {
                             {
                                 static mut FRAME_COUNT: u32 = 0;
                                 FRAME_COUNT += 1;
-                                if FRAME_COUNT % 60 == 1 {
-                                    eprintln!("≡ƒÄ¿ Compositing GPUI texture (frame {})", FRAME_COUNT);
-                                }
 
                                 // Set shaders
                                 context.VSSetShader(vertex_shader, None);
@@ -890,7 +849,6 @@ impl ApplicationHandler for WinitGpuiApp {
                                     // CRITICAL: Mark window as dirty to trigger UI re-layout
                                     // This is what GPUI's internal windows do in bounds_changed()
                                     window.refresh();
-                                    println!("≡ƒÄ¿ Marked window for refresh/re-layout");
                                 }
                             });
                         });
@@ -1182,7 +1140,7 @@ impl ApplicationHandler for WinitGpuiApp {
                 app.bind_keys([
                     KeyBinding::new("ctrl-,", OpenSettings, None),
                     KeyBinding::new("ctrl-space", ToggleCommandPalette, None),
-                    KeyBinding::new("ctrl-n", ui_editor::tabs::blueprint_editor::OpenAddNodeMenu, Some("BlueprintGraph")),
+                    // Blueprint editor keybindings handled by plugin
                 ]);
 
                 let engine_state = engine_state_for_actions.clone();

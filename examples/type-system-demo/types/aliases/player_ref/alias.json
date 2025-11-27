@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "typeKind": "alias",
+  "name": "player_ref",
+  "displayName": "PlayerRef",
+  "description": "Thread-safe reference-counted pointer to a Player",
+  "ast": {
+    "nodeKind": "Constructor",
+    "name": "Arc",
+    "params": [
+      {
+        "nodeKind": "Path",
+        "path": "Player"
+      }
+    ],
+    "lifetimes": [],
+    "const_generics": []
+  },
+  "meta": {}
+}

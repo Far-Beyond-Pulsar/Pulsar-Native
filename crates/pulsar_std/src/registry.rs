@@ -98,6 +98,45 @@ pub fn get_nodes_by_category(category: &str) -> Vec<&'static NodeMetadata> {
         .collect()
 }
 
+/// Type constructor metadata for the type system
+#[derive(Debug, Clone)]
+pub struct TypeConstructorMetadata {
+    /// Name of the constructor (e.g., "Box", "Arc", "Result")
+    pub name: &'static str,
+
+    /// Number of type parameters
+    pub params_count: usize,
+
+    /// Category for grouping
+    pub category: &'static str,
+
+    /// Description of what this type does
+    pub description: &'static str,
+
+    /// Example usage
+    pub example: &'static str,
+}
+
+/// Global registry of all type constructors
+///
+/// This is automatically populated by the #[blueprint_type] macro using linkme's
+/// distributed slice feature.
+#[distributed_slice]
+pub static TYPE_CONSTRUCTOR_REGISTRY: [TypeConstructorMetadata] = [..];
+
+/// Get all registered type constructors
+pub fn get_all_type_constructors() -> &'static [TypeConstructorMetadata] {
+    &TYPE_CONSTRUCTOR_REGISTRY
+}
+
+/// Get type constructors filtered by category
+pub fn get_type_constructors_by_category(category: &str) -> Vec<&'static TypeConstructorMetadata> {
+    TYPE_CONSTRUCTOR_REGISTRY
+        .iter()
+        .filter(|tc| tc.category == category)
+        .collect()
+}
+
 /// Get a specific node by name
 pub fn get_node_by_name(name: &str) -> Option<&'static NodeMetadata> {
     BLUEPRINT_REGISTRY.iter().find(|node| node.name == name)

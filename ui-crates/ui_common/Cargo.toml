@@ -11,6 +11,7 @@ ui.workspace = true
 
 # Engine
 engine_state.workspace = true
+engine_fs.workspace = true
 
 # LSP
 lsp-types.workspace = true

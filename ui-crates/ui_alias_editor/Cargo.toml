@@ -1,0 +1,17 @@
+[package]
+name = "ui_alias_editor"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+gpui.workspace = true
+ui.workspace = true
+ui_common.workspace = true
+ui_types_common.workspace = true
+engine_state.workspace = true
+pulsar_std.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid = { version = "1.11", features = ["v4", "serde"] }

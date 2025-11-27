@@ -1249,10 +1249,13 @@ impl Element for TextElement {
 
         let active_line_color = cx.theme().highlight_theme.style.editor_active_line;
 
-        // Paint active line
+        // Paint active line and diff highlights
         let mut offset_y = px(0.);
         if let Some(line_numbers) = prepaint.line_numbers.as_ref() {
             offset_y += invisible_top_padding;
+
+            let state = self.state.read(cx);
+            let line_highlights = &state.line_highlights;
 
             // Each item is the normal lines.
             for (ix, lines) in line_numbers.iter().enumerate() {
@@ -1260,8 +1263,36 @@ impl Element for TextElement {
                 let is_active = prepaint.current_row == Some(row);
                 let p = point(input_bounds.origin.x, origin.y + offset_y);
                 let height = line_height * lines.len() as f32;
-                // Paint the current line background
-                if is_active {
+
+                // Paint diff highlight backgrounds (takes precedence over active line)
+                let has_diff_highlight = if let Some(highlight) = line_highlights.get(row) {
+                    match highlight {
+                        crate::input::LineHighlight::Added => {
+                            // Green with 30% opacity: RGBA
+                            let green_bg: gpui::Hsla = gpui::rgba(0x00400050).into();
+                            window.paint_quad(fill(
+                                Bounds::new(p, size(bounds.size.width, height)),
+                                green_bg,
+                            ));
+                            true
+                        }
+                        crate::input::LineHighlight::Removed => {
+                            // Red with 30% opacity: RGBA
+                            let red_bg: gpui::Hsla = gpui::rgba(0x40000050).into();
+                            window.paint_quad(fill(
+                                Bounds::new(p, size(bounds.size.width, height)),
+                                red_bg,
+                            ));
+                            true
+                        }
+                        crate::input::LineHighlight::None => false,
+                    }
+                } else {
+                    false
+                };
+
+                // Paint the current line background (only if no diff highlight)
+                if !has_diff_highlight && is_active {
                     if let Some(bg_color) = active_line_color {
                         window.paint_quad(fill(
                             Bounds::new(p, size(bounds.size.width, height)),

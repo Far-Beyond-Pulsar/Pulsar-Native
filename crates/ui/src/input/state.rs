@@ -38,6 +38,14 @@ use crate::input::{RopeExt as _, Selection};
 use crate::{highlighter::DiagnosticSet, input::text_wrapper::LineItem};
 use crate::{history::History, scroll::ScrollbarState, Root};
 
+/// Line background highlight for diff views
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LineHighlight {
+    None,
+    Added,   // Green background for added lines
+    Removed, // Red background for removed lines
+}
+
 #[derive(Action, Clone, PartialEq, Eq, Deserialize)]
 #[action(namespace = input, no_json)]
 pub struct Enter {
@@ -342,6 +350,9 @@ pub struct InputState {
     _subscriptions: Vec<Subscription>,
 
     pub(super) _context_menu_task: Task<Result<()>>,
+
+    /// Line highlights for diff views (one per line)
+    pub(super) line_highlights: Vec<LineHighlight>,
 }
 
 impl EventEmitter<InputEvent> for InputState {}
@@ -425,6 +436,7 @@ impl InputState {
             silent_replace_text: false,
             _subscriptions,
             _context_menu_task: Task::ready(Ok(())),
+            line_highlights: Vec::new(),
         }
     }
 
@@ -605,6 +617,11 @@ impl InputState {
         cx.notify();
     }
 
+    /// Set line highlights for diff views
+    pub fn set_line_highlights(&mut self, highlights: Vec<LineHighlight>) {
+        self.line_highlights = highlights;
+    }
+
     /// Find which line and sub-line the given offset belongs to, along with the position within that sub-line.
     ///
     /// Returns:
@@ -669,6 +686,16 @@ impl InputState {
     /// This allows external code to check cache statistics and performance.
     pub fn line_cache(&self) -> &crate::input::line_cache::OptimizedLineCache {
         &self.line_cache
+    }
+
+    /// Get the current scroll offset
+    pub fn get_scroll_offset(&self) -> Point<Pixels> {
+        self.scroll_handle.offset()
+    }
+
+    /// Set the scroll offset
+    pub fn set_scroll_offset(&mut self, offset: Point<Pixels>) {
+        self.scroll_handle.set_offset(offset);
     }
 
     /// Insert text at the current cursor position.

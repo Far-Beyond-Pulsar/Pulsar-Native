@@ -73,6 +73,11 @@ pub enum FileType {
     DawProject, // .pdaw files
     Database, // .db, .sqlite, .sqlite3 files
     Config, // .toml files
+    // Type System Files
+    StructType,  // .struct.json files
+    EnumType,    // .enum.json files
+    TraitType,   // .trait.json files
+    AliasType,   // .alias.json files
     Other,
 }
 
@@ -110,22 +115,58 @@ impl FileItem {
         path.is_dir() && path.join("graph_save.json").exists()
     }
 
+    pub fn is_struct_folder(path: &Path) -> bool {
+        path.is_dir() && path.join("struct.json").exists()
+    }
+
+    pub fn is_enum_folder(path: &Path) -> bool {
+        path.is_dir() && path.join("enum.json").exists()
+    }
+
+    pub fn is_trait_folder(path: &Path) -> bool {
+        path.is_dir() && path.join("trait.json").exists()
+    }
+
+    pub fn is_alias_folder(path: &Path) -> bool {
+        path.is_dir() && path.join("alias.json").exists()
+    }
+
     pub fn from_path(path: &Path) -> Option<Self> {
         let name = path.file_name()?.to_str()?.to_string();
 
         let file_type = if path.is_dir() {
             if Self::is_class_folder(path) {
                 FileType::Class
+            } else if Self::is_struct_folder(path) {
+                FileType::StructType
+            } else if Self::is_enum_folder(path) {
+                FileType::EnumType
+            } else if Self::is_trait_folder(path) {
+                FileType::TraitType
+            } else if Self::is_alias_folder(path) {
+                FileType::AliasType
             } else {
                 FileType::Folder
             }
         } else {
-            match path.extension().and_then(|s| s.to_str()) {
-                Some("rs") => FileType::Script,
-                Some("pdaw") => FileType::DawProject,
-                Some("db") | Some("sqlite") | Some("sqlite3") => FileType::Database,
-                Some("toml") => FileType::Config,
-                _ => FileType::Other,
+            // Check for type system files first (they have .json extension but specific naming)
+            let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            if file_name.ends_with(".struct.json") {
+                FileType::StructType
+            } else if file_name.ends_with(".enum.json") {
+                FileType::EnumType
+            } else if file_name.ends_with(".trait.json") {
+                FileType::TraitType
+            } else if file_name.ends_with(".alias.json") {
+                FileType::AliasType
+            } else {
+                match path.extension().and_then(|s| s.to_str()) {
+                    Some("rs") => FileType::Script,
+                    Some("pdaw") => FileType::DawProject,
+                    Some("db") | Some("sqlite") | Some("sqlite3") => FileType::Database,
+                    Some("toml") => FileType::Config,
+                    _ => FileType::Other,
+                }
             }
         };
 
@@ -313,6 +354,10 @@ impl FileManagerDrawer {
         }
     }
 
+    pub fn get_project_path(&self) -> Option<&PathBuf> {
+        self.project_path.as_ref()
+    }
+
     pub fn set_project_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         self.project_path = Some(path.clone());
         self.folder_tree = FolderNode::from_path(&path);
@@ -414,9 +459,10 @@ impl FileManagerDrawer {
         eprintln!("DEBUG: handle_item_click called for: {:?}, type: {:?}", item.path, item.file_type);
         
         match &item.file_type {
-            FileType::Class | FileType::Script | FileType::DawProject | FileType::Database => {
+            FileType::Class | FileType::Script | FileType::DawProject | FileType::Database
+            | FileType::StructType | FileType::EnumType | FileType::TraitType | FileType::AliasType => {
                 eprintln!("DEBUG: Emitting FileSelected event");
-                // Emit event to open this class in BP editor, script in script editor, DAW project, or database
+                // Emit event to open this class in BP editor, script in script editor, DAW project, database, or type editor
                 cx.emit(FileSelected {
                     path: item.path.clone(),
                     file_type: item.file_type.clone(),
@@ -928,6 +974,10 @@ impl FileManagerDrawer {
             FileType::DawProject => IconName::MusicNote,
             FileType::Database => IconName::Database,
             FileType::Config => IconName::Settings,
+            FileType::StructType => IconName::Box,
+            FileType::EnumType => IconName::List,
+            FileType::TraitType => IconName::Code,
+            FileType::AliasType => IconName::Link,
             FileType::Other => IconName::Page,
         };
 

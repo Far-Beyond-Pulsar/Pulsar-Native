@@ -434,3 +434,104 @@ pub fn bp_import(_args: TokenStream, input: TokenStream) -> TokenStream {
     // The #[blueprint] macro extracts these attributes
     input
 }
+
+/// Register a type constructor for the type system.
+///
+/// # Attributes
+///
+/// - `params`: Number of type parameters (e.g., 1 for `Box<T>`, 2 for `Result<T, E>`)
+/// - `category`: Category for grouping (e.g., "Smart Pointers", "Collections")
+/// - `description`: Optional description text
+/// - `example`: Optional example usage
+/// - `unwrapped_name`: The actual Rust type name (e.g., "Arc" for PArc)
+///
+/// # Examples
+///
+/// ```ignore
+/// #[blueprint_type(params: 1, category: "Smart Pointers", description: "Thread-safe reference counting", unwrapped_name: "Arc")]
+/// pub type PArc<T> = Arc<T>;
+///
+/// #[blueprint_type(params: 2, category: "Option & Result", description: "Success or error", unwrapped_name: "Result")]
+/// pub type PResult<T, E> = Result<T, E>;
+/// ```
+#[proc_macro_attribute]
+pub fn blueprint_type(args: TokenStream, input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as syn::ItemType);
+    let args_str = args.to_string();
+
+    let type_name = &input.ident;
+    let type_name_str = type_name.to_string();
+
+    // Extract the unwrapped name (the actual Rust type like "Arc", "Box")
+    let constructor_name = extract_string_value(&args_str, "unwrapped_name")
+        .unwrap_or_else(|| {
+            // Default: strip 'P' prefix if present (PArc -> Arc)
+            type_name_str.strip_prefix('P').unwrap_or(&type_name_str).to_string()
+        });
+
+    // Parse parameters count
+    let params_count = extract_number_value(&args_str, "params").unwrap_or(1);
+
+    // Extract category
+    let category = extract_string_value(&args_str, "category")
+        .unwrap_or_else(|| "Other".to_string());
+
+    // Extract description
+    let description = extract_string_value(&args_str, "description")
+        .unwrap_or_else(|| format!("{} type constructor", constructor_name));
+
+    // Extract example
+    let example = extract_string_value(&args_str, "example")
+        .unwrap_or_else(|| {
+            if params_count == 1 {
+                format!("{}<T>", constructor_name)
+            } else if params_count == 2 {
+                format!("{}<T, E>", constructor_name)
+            } else {
+                format!("{}<...>", constructor_name)
+            }
+        });
+
+    // Generate the registration const
+    let registry_ident = syn::Ident::new(
+        &format!("__TYPE_CONSTRUCTOR__{}", constructor_name.to_uppercase()),
+        type_name.span()
+    );
+
+    let expanded = quote! {
+        #[allow(dead_code)]
+        #input
+
+        #[::linkme::distributed_slice(crate::TYPE_CONSTRUCTOR_REGISTRY)]
+        #[linkme(crate = ::linkme)]
+        static #registry_ident: crate::TypeConstructorMetadata = crate::TypeConstructorMetadata {
+            name: #constructor_name,
+            params_count: #params_count,
+            category: #category,
+            description: #description,
+            example: #example,
+        };
+    };
+
+    TokenStream::from(expanded)
+}
+
+/// Extract a number value from an attribute string like `params: 1`
+fn extract_number_value(attr_str: &str, key: &str) -> Option<usize> {
+    if let Some(key_pos) = attr_str.find(key) {
+        let after_key = &attr_str[key_pos + key.len()..];
+        if let Some(colon_pos) = after_key.find(':') {
+            let after_colon = &after_key[colon_pos + 1..];
+            // Find the first sequence of digits
+            let digits: String = after_colon
+                .chars()
+                .skip_while(|c| !c.is_ascii_digit())
+                .take_while(|c| c.is_ascii_digit())
+                .collect();
+            if let Ok(num) = digits.parse() {
+                return Some(num);
+            }
+        }
+    }
+    None
+}

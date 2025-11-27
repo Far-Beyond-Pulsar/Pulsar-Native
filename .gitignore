@@ -16,3 +16,10 @@ profile.json.gz
 *.zip
 /crates/engine/target
 /crates/pulsar_docs/target
+PROMPT.md
+/plugins/editor
+engine_out.txt
+*.dll
+*.dll
+nul
+plugins/editor/blueprint_editor_plugin.dll

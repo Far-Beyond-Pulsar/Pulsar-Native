@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2025-11-22T13:00:00Z",
+  "types": {
+    "aliases": {
+      "player_ref": {
+        "id": "alias:player_ref",
+        "name": "player_ref",
+        "displayName": "PlayerRef",
+        "path": "../types/aliases/player_ref",
+        "modPath": "crate::types::aliases::player_ref::mod",
+        "jsonFile": "types/aliases/player_ref/alias.json",
+        "rsFile": "types/aliases/player_ref/mod.rs",
+        "lastCompiled": "2025-11-22T13:00:00Z",
+        "version": 1
+      }
+    },
+    "structs": {
+      "player": {
+        "id": "struct:player",
+        "name": "player",
+        "displayName": "Player",
+        "path": "../types/structs/player",
+        "modPath": "crate::types::structs::player::mod",
+        "jsonFile": "types/structs/player/struct.json",
+        "rsFile": "types/structs/player/mod.rs",
+        "lastCompiled": "2025-11-22T13:00:00Z",
+        "version": 1
+      }
+    },
+    "enums": {
+      "game_state": {
+        "id": "enum:game_state",
+        "name": "game_state",
+        "displayName": "GameState",
+        "path": "../types/enums/game_state",
+        "modPath": "crate::types::enums::game_state::mod",
+        "jsonFile": "types/enums/game_state/enum.json",
+        "rsFile": "types/enums/game_state/mod.rs",
+        "lastCompiled": "2025-11-22T13:00:00Z",
+        "version": 1
+      }
+    },
+    "traits": {}
+  }
+}
