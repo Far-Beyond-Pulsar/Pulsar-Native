@@ -327,10 +327,14 @@ impl ApplicationHandler for WinitGpuiApp {
 
                                 // Open the shared texture using OpenSharedResource (legacy API)
                                 // GPUI uses GetSharedHandle() which requires the legacy API
-                                // handle_ptr is GPUI's SharedTextureHandle which can be cast to a raw pointer
+                                // SharedTextureHandle is 192 bits, but we need just the handle (first 8 bytes)
+                                // Transmute the first 8 bytes into an isize handle
+                                let handle_value: isize = unsafe {
+                                    *(&handle_ptr as *const _ as *const isize)
+                                };
                                 let mut texture: Option<ID3D11Texture2D> = None;
                                 let result = device.OpenSharedResource(
-                                    HANDLE(std::mem::transmute(handle_ptr)),
+                                    HANDLE(handle_value as *mut _),
                                     &mut texture
                                 );
 
