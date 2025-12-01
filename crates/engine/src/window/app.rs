@@ -62,7 +62,7 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window as WinitWindow, WindowId};
 
 #[cfg(target_os = "windows")]
-use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use raw_window_handle::RawWindowHandle;
 
 #[cfg(target_os = "windows")]
 use windows::{
@@ -322,19 +322,19 @@ impl ApplicationHandler for WinitGpuiApp {
                                 })
                             });
 
-                            if let Ok(handle_ptr) = handle_result {
-                                if let Some(handle_ptr) = handle_ptr {
-                                    println!("Γ£à Got shared texture handle from GPUI: {:p}", handle_ptr);
+                            if let Ok(Ok(Some(handle_ptr))) = handle_result {
+                                println!("Γ£à Got shared texture handle from GPUI: {:?}", handle_ptr);
 
-                                    // Open the shared texture using OpenSharedResource (legacy API)
-                                    // GPUI uses GetSharedHandle() which requires the legacy API
-                                    let mut texture: Option<ID3D11Texture2D> = None;
-                                    let result = device.OpenSharedResource(
-                                        HANDLE(handle_ptr as _),
-                                        &mut texture
-                                    );
+                                // Open the shared texture using OpenSharedResource (legacy API)
+                                // GPUI uses GetSharedHandle() which requires the legacy API
+                                // handle_ptr is GPUI's SharedTextureHandle which can be cast to a raw pointer
+                                let mut texture: Option<ID3D11Texture2D> = None;
+                                let result = device.OpenSharedResource(
+                                    HANDLE(std::mem::transmute(handle_ptr)),
+                                    &mut texture
+                                );
 
-                                    match result {
+                                match result {
                                         Ok(_) => {
                                             if let Some(shared_texture_val) = texture {
                                                 // Get texture description to create our persistent copy
@@ -380,9 +380,8 @@ impl ApplicationHandler for WinitGpuiApp {
                                             *shared_texture_initialized = true;
                                         }
                                     }
-                                } else {
-                                    println!("ΓÜá∩╕Å  GPUI hasn't created shared texture yet, will retry next frame");
-                                }
+                            } else {
+                                println!("ΓÜá∩╕Å  GPUI hasn't created shared texture yet, will retry next frame");
                             }
                         }
 
