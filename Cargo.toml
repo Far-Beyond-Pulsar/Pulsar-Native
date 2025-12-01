@@ -42,10 +42,10 @@ resolver = "2"
 debug = true
 
 [workspace.dependencies]
-gpui = { git = "https://github.com/tristanpoland/zed", rev="c26a77211e8daba78fdd0feadc2810c9b224fa07", features = ["runtime_shaders", "macos-blade"] }
-gpui_macros = { git = "https://github.com/tristanpoland/zed", rev="c26a77211e8daba78fdd0feadc2810c9b224fa07" }
-reqwest_client = { git = "https://github.com/tristanpoland/zed", rev = "c26a77211e8daba78fdd0feadc2810c9b224fa07" }
-sum_tree = { git = "https://github.com/tristanpoland/zed", rev = "c26a77211e8daba78fdd0feadc2810c9b224fa07" }
+gpui = { git = "https://github.com/tristanpoland/zed", rev="2e403b7c1564f9ef515f5aa466581fc3759bc5ff", features = ["runtime_shaders", "macos-blade"] }
+gpui_macros = { git = "https://github.com/tristanpoland/zed", rev="2e403b7c1564f9ef515f5aa466581fc3759bc5ff" }
+reqwest_client = { git = "https://github.com/tristanpoland/zed", rev = "2e403b7c1564f9ef515f5aa466581fc3759bc5ff" }
+sum_tree = { git = "https://github.com/tristanpoland/zed", rev = "2e403b7c1564f9ef515f5aa466581fc3759bc5ff" }
 # gpui ={ path="/home/trident/zed/crates/gpui", features = ["runtime_shaders", "macos-blade"] }
 # gpui_macros = { path="/home/trident/zed/crates/gpui_macros" }
 # reqwest_client = { path="/home/trident/zed/crates/reqwest_client" }

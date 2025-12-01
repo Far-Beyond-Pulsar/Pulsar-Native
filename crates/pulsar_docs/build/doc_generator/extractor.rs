@@ -19,57 +19,45 @@ fn extract_source_from_span<T: ToTokens>(node: &T, source_code: &str) -> String 
     let start = span.start();
     let end = span.end();
     
-    // Split source into lines but keep newlines for byte counting
-    let mut byte_offset = 0;
-    let mut start_byte = None;
-    let mut end_byte = None;
+    // Convert source to char indices for proper UTF-8 handling
+    let chars: Vec<char> = source_code.chars().collect();
+    
+    // Track position in char array
+    let mut char_offset = 0;
+    let mut start_char_idx = None;
+    let mut end_char_idx = None;
     
     for (line_num, line) in source_code.lines().enumerate() {
         let line_index = line_num + 1; // lines() is 0-indexed, span is 1-indexed
+        let line_char_count = line.chars().count();
         
-        if line_index == start.line && start_byte.is_none() {
-            // Use char_indices to handle multi-byte chars correctly
-            let mut char_col = 0;
-            for (byte_idx, _) in line.char_indices() {
-                if char_col == start.column {
-                    start_byte = Some(byte_offset + byte_idx);
-                    break;
-                }
-                char_col += 1;
-            }
-            // If column is at end of line
-            if start_byte.is_none() && char_col == start.column {
-                start_byte = Some(byte_offset + line.len());
+        if line_index == start.line && start_char_idx.is_none() {
+            if start.column <= line_char_count {
+                start_char_idx = Some(char_offset + start.column);
+            } else {
+                start_char_idx = Some(char_offset + line_char_count);
             }
         }
         
-        if line_index == end.line && end_byte.is_none() {
-            // Use char_indices to handle multi-byte chars correctly
-            let mut char_col = 0;
-            for (byte_idx, _) in line.char_indices() {
-                if char_col == end.column {
-                    end_byte = Some(byte_offset + byte_idx);
-                    break;
-                }
-                char_col += 1;
-            }
-            // If column is at end of line
-            if end_byte.is_none() && char_col == end.column {
-                end_byte = Some(byte_offset + line.len());
+        if line_index == end.line && end_char_idx.is_none() {
+            if end.column <= line_char_count {
+                end_char_idx = Some(char_offset + end.column);
+            } else {
+                end_char_idx = Some(char_offset + line_char_count);
             }
         }
         
-        byte_offset += line.len() + 1; // +1 for the newline character
+        char_offset += line_char_count + 1; // +1 for the newline character
         
-        if start_byte.is_some() && end_byte.is_some() {
+        if start_char_idx.is_some() && end_char_idx.is_some() {
             break;
         }
     }
     
-    // Extract the exact slice - preserves ALL formatting
-    if let (Some(start), Some(end)) = (start_byte, end_byte) {
-        if start < source_code.len() && end <= source_code.len() && start < end {
-            return source_code[start..end].to_string();
+    // Extract the exact slice using char indices
+    if let (Some(start_idx), Some(end_idx)) = (start_char_idx, end_char_idx) {
+        if start_idx < chars.len() && end_idx <= chars.len() && start_idx < end_idx {
+            return chars[start_idx..end_idx].iter().collect();
         }
     }
     
