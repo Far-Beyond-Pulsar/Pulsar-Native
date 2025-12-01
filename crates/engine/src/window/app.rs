@@ -48,6 +48,7 @@ use ui_common::menu::{AboutApp, ShowDocumentation};
 use crate::window::{convert_modifiers, convert_mouse_button, WindowState};
 use engine_state::{EngineState, WindowRequest};
 use gpui::*;
+use raw_window_handle::HasWindowHandle;
 use ui::Root;
 use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
@@ -825,75 +826,26 @@ impl ApplicationHandler for WinitGpuiApp {
 
                         let _ = gpui_app.update(|app| {
                             let _ = gpui_window_ref.update(app, |_view, window, _cx| {
-                                #[cfg(target_os = "windows")]
-                                {
-                                    // Resize renderer (GPU buffers)
-                                    if let Err(e) = window.resize_renderer(physical_size) {
-                                        eprintln!("Γ¥î Failed to resize GPUI renderer: {:?}", e);
-                                    } else {
-                                        println!("Γ£à Resized GPUI renderer to {:?}", physical_size);
+                                // Resize renderer (GPU buffers) - platform-agnostic, works on Windows, macOS, Linux
+                                if let Err(e) = window.resize_renderer(physical_size) {
+                                    eprintln!("Γ¥î Failed to resize GPUI renderer: {:?}", e);
+                                } else {
+                                    println!("Γ£à Resized GPUI renderer to {:?}", physical_size);
 
-                                        // CRITICAL: GPUI recreates its texture when resizing, so we need to re-obtain the shared handle
-                                        // Mark for re-initialization on next frame
-                                        *shared_texture_initialized = false;
-                                        *shared_texture = None;
-                                        *persistent_gpui_texture = None;
-                                        *persistent_gpui_srv = None; // Also clear cached SRV
-                                        println!("≡ƒöä Marked shared texture for re-initialization after GPUI resize");
-                                    }
-
-                                    // Update logical size (for UI layout)
-                                    window.update_logical_size(logical_size);
-                                    println!("Γ£à Updated GPUI logical size to {:?} (scale {})", logical_size, scale_factor);
-
-                                    // CRITICAL: Mark window as dirty to trigger UI re-layout
-                                    // This is what GPUI's internal windows do in bounds_changed()
-                                    window.refresh();
                                 }
+
+                                // Update logical size (for UI layout) - platform-agnostic
+                                window.update_logical_size(logical_size);
+                                println!("Γ£à Updated GPUI logical size to {:?} (scale {})", logical_size, scale_factor);
+
+                                // CRITICAL: Mark window as dirty to trigger UI re-layout
+                                // This is what GPUI's internal windows do in bounds_changed()
+                                window.refresh();
                             });
                         });
                     }
 
-                    // CRITICAL: Resize the swap chain to match the new window size
-                    // This is why the green background was stuck at the original size!
-                    if let Some(swap_chain_ref) = swap_chain.as_ref() {
-                        unsafe {
-                            // Release the render target view before resizing
-                            *render_target_view = None;
-
-                            // Resize swap chain buffers
-                            let resize_result = swap_chain_ref.ResizeBuffers(
-                                0,  // Keep current buffer count
-                                new_size.width,
-                                new_size.height,
-                                DXGI_FORMAT_UNKNOWN,  // Keep current format
-                                DXGI_SWAP_CHAIN_FLAG(0),  // No flags
-                            );
-
-                            if let Err(e) = resize_result {
-                                eprintln!("Γ¥î Failed to resize swap chain: {:?}", e);
-                            } else {
-                                println!("Γ£à Resized swap chain to {}x{}", new_size.width, new_size.height);
-
-                                // Recreate render target view
-                                if let Some(device) = d3d_device.as_ref() {
-                                    let back_buffer: Option<ID3D11Texture2D> = swap_chain_ref.GetBuffer(0).ok();
-                                    if let Some(back_buffer) = back_buffer {
-                                        let mut new_rtv: Option<ID3D11RenderTargetView> = None;
-                                        let result = device.CreateRenderTargetView(&back_buffer, None, Some(&mut new_rtv));
-                                        if result.is_ok() {
-                                            *render_target_view = new_rtv;
-                                            println!("Γ£à Recreated render target view");
-                                        } else {
-                                            eprintln!("Γ¥î Failed to create render target view: {:?}", result);
-                                        }
-                                    } else {
-                                        eprintln!("Γ¥î Failed to get back buffer after resize");
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    // No manual swap chain management needed - GPUI handles this internally via resize_renderer()
 
                     *needs_render = true;
                     /* winit_window already available */ {

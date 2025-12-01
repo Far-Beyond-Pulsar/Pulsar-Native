@@ -82,7 +82,9 @@
       "Bash(./target/debug/pulsar_engine.exe:*)",
       "Bash(timeout:*)",
       "Bash(engine_out.txt)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(tee:*)",
+      "Bash(cargo tree:*)"
     ],
     "deny": [],
     "ask": []
