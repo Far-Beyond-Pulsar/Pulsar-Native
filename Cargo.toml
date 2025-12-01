@@ -35,21 +35,21 @@ members = [
     "ui-crates/ui_alias_editor",
 ]
 
-default-members = ["crates/engine"] 
+default-members = ["crates/engine"]
 resolver = "2"
 
 [profile.release]
 debug = true
 
 [workspace.dependencies]
-# gpui = { git = "https://github.com/tristanpoland/zed", rev="bbd9dd98a50dc5b3a10eb39642c105ea7950e7b2", features = ["runtime_shaders", "macos-blade"] }
-# gpui_macros = { git = "https://github.com/tristanpoland/zed", rev="bbd9dd98a50dc5b3a10eb39642c105ea7950e7b2" }
-# reqwest_client = { git = "https://github.com/tristanpoland/zed", rev = "bbd9dd98a50dc5b3a10eb39642c105ea7950e7b2" }
-# sum_tree = { git = "https://github.com/tristanpoland/zed", rev = "bbd9dd98a50dc5b3a10eb39642c105ea7950e7b2" }
-gpui ={ path="/home/trident/zed/crates/gpui", features = ["runtime_shaders", "macos-blade"] }
-gpui_macros = { path="/home/trident/zed/crates/gpui_macros" }
-reqwest_client = { path="/home/trident/zed/crates/reqwest_client" }
-sum_tree = { path="/home/trident/zed/crates/sum_tree" }
+gpui = { git = "https://github.com/tristanpoland/zed", rev="c26a77211e8daba78fdd0feadc2810c9b224fa07", features = ["runtime_shaders", "macos-blade"] }
+gpui_macros = { git = "https://github.com/tristanpoland/zed", rev="c26a77211e8daba78fdd0feadc2810c9b224fa07" }
+reqwest_client = { git = "https://github.com/tristanpoland/zed", rev = "c26a77211e8daba78fdd0feadc2810c9b224fa07" }
+sum_tree = { git = "https://github.com/tristanpoland/zed", rev = "c26a77211e8daba78fdd0feadc2810c9b224fa07" }
+# gpui ={ path="/home/trident/zed/crates/gpui", features = ["runtime_shaders", "macos-blade"] }
+# gpui_macros = { path="/home/trident/zed/crates/gpui_macros" }
+# reqwest_client = { path="/home/trident/zed/crates/reqwest_client" }
+# sum_tree = { path="/home/trident/zed/crates/sum_tree" }
 
 ui = { path = "crates/ui" }
 gpui-component-macros = { path = "crates/macros" }
