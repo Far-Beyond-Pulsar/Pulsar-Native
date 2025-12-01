@@ -835,6 +835,16 @@ impl ApplicationHandler for WinitGpuiApp {
                                 } else {
                                     println!("Γ£à Resized GPUI renderer to {:?}", physical_size);
 
+                                    // CRITICAL: GPUI recreates its texture when resizing, so we need to re-obtain the shared handle
+                                    // This is platform-agnostic - all platforms need to reinitialize shared textures after resize
+                                    #[cfg(target_os = "windows")]
+                                    {
+                                        *shared_texture_initialized = false;
+                                        *shared_texture = None;
+                                        *persistent_gpui_texture = None;
+                                        *persistent_gpui_srv = None; // Also clear cached SRV
+                                        println!("≡ƒöä Marked shared texture for re-initialization after GPUI resize");
+                                    }
                                 }
 
                                 // Update logical size (for UI layout) - platform-agnostic
