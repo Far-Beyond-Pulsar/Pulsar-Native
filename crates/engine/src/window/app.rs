@@ -703,10 +703,8 @@ impl ApplicationHandler for WinitGpuiApp {
                                 let present_result = swap_chain.Present(1, DXGI_PRESENT(0));
                                 
                                 // Handle present failures gracefully  
-                                if present_result.is_err() {
-                                    let e = present_result.unwrap();
-                                    // The error type is (), so we can't get an HRESULT.
-                                    // Instead, just log the error and continue.
+                                if let Err(e) = present_result {
+                                    // Log the error and continue - device may recover
                                     static mut PRESENT_ERROR_COUNT: u32 = 0;
                                     unsafe {
                                         PRESENT_ERROR_COUNT += 1;
@@ -866,6 +864,9 @@ impl ApplicationHandler for WinitGpuiApp {
                             
                             println!("≡ƒÄ» Resizing D3D11 swap chain to {}x{}", new_size.width, new_size.height);
                             
+                            // Flush any pending commands to ensure context is clean
+                            d3d_context.Flush();
+                            
                             // Must release render target view before resizing
                             if render_target_view.is_some() {
                                 *render_target_view = None;
@@ -883,6 +884,7 @@ impl ApplicationHandler for WinitGpuiApp {
                             
                             if let Err(e) = resize_result {
                                 eprintln!("Γ¥î Failed to resize swap chain: {:?}", e);
+                                eprintln!("Γ¥î This may indicate a device lost condition - rendering may be degraded");
                             } else {
                                 println!("Γ£à Successfully resized swap chain");
                                 
