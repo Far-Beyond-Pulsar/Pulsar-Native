@@ -865,11 +865,10 @@ impl ApplicationHandler for WinitGpuiApp {
                                         *persistent_gpui_texture = None;
                                         *persistent_gpui_srv = None; // Also clear cached SRV
                                         
-                                        // CRITICAL: Also clear Bevy texture cache - old textures may be wrong size
-                                        *bevy_texture = None;
-                                        *bevy_srv = None;
+                                        // DON'T clear Bevy texture cache - we want to keep using it at original size
+                                        // The compositor will stretch it to fit the new window size
                                         
-                                        println!("≡ƒöä Marked shared textures (GPUI + Bevy) for re-initialization after resize");
+                                        println!("≡ƒöä Marked GPUI shared texture for re-initialization after resize");
                                     }
                                 }
 
@@ -884,13 +883,9 @@ impl ApplicationHandler for WinitGpuiApp {
                         });
                     }
 
-                    // Resize Bevy renderer to match new window size
-                    if let Some(ref gpu_renderer_arc) = bevy_renderer {
-                        if let Ok(mut gpu_renderer) = gpu_renderer_arc.lock() {
-                            gpu_renderer.resize(new_size.width, new_size.height);
-                            println!("Γ£à Resized Bevy renderer to {}x{}", new_size.width, new_size.height);
-                        }
-                    }
+                    // DON'T resize Bevy renderer - let it keep rendering at original size
+                    // We'll stretch the texture to fit the window in the compositor
+                    // This avoids device removal errors from Bevy's incomplete resize implementation
 
                     // Resize D3D11 swap chain to match new window size
                     #[cfg(target_os = "windows")]
