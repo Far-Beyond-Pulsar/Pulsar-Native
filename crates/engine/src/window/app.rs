@@ -858,7 +858,49 @@ impl ApplicationHandler for WinitGpuiApp {
                         });
                     }
 
-                    // No manual swap chain management needed - GPUI handles this internally via resize_renderer()
+                    // Resize D3D11 swap chain to match new window size
+                    #[cfg(target_os = "windows")]
+                    unsafe {
+                        if let (Some(swap_chain), Some(d3d_device), Some(d3d_context)) = 
+                            (swap_chain.as_ref(), d3d_device.as_ref(), d3d_context.as_ref()) {
+                            
+                            println!("≡ƒÄ» Resizing D3D11 swap chain to {}x{}", new_size.width, new_size.height);
+                            
+                            // Must release render target view before resizing
+                            if render_target_view.is_some() {
+                                *render_target_view = None;
+                                println!("≡ƒöä Released render target view before resize");
+                            }
+                            
+                            // Resize the swap chain buffers
+                            let resize_result = swap_chain.ResizeBuffers(
+                                2, // Buffer count (same as creation)
+                                new_size.width,
+                                new_size.height,
+                                DXGI_FORMAT_B8G8R8A8_UNORM,
+                                DXGI_SWAP_CHAIN_FLAG(0), // Flags
+                            );
+                            
+                            if let Err(e) = resize_result {
+                                eprintln!("Γ¥î Failed to resize swap chain: {:?}", e);
+                            } else {
+                                println!("Γ£à Successfully resized swap chain");
+                                
+                                // Recreate render target view with new back buffer
+                                if let Ok(back_buffer) = swap_chain.GetBuffer::<ID3D11Texture2D>(0) {
+                                    let mut rtv: Option<ID3D11RenderTargetView> = None;
+                                    if d3d_device.CreateRenderTargetView(&back_buffer, None, Some(&mut rtv as *mut _)).is_ok() {
+                                        *render_target_view = rtv;
+                                        println!("Γ£à Recreated render target view for resized swap chain");
+                                    } else {
+                                        eprintln!("Γ¥î Failed to recreate render target view");
+                                    }
+                                } else {
+                                    eprintln!("Γ¥î Failed to get back buffer after resize");
+                                }
+                            }
+                        }
+                    }
 
                     *needs_render = true;
                     /* winit_window already available */ {
