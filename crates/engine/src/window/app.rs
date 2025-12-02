@@ -526,9 +526,31 @@ impl ApplicationHandler for WinitGpuiApp {
                                                 }
 
                                                 if let Some(ref bevy_tex) = bevy_texture_local {
-                                                    // Create or reuse SRV for Bevy texture
-                                                    if bevy_texture.is_none() || bevy_texture.as_ref().map(|t| t.as_raw()) != Some(bevy_tex.as_raw()) {
-                                                        // Create new SRV - MUST match Bevy's BGRA8UnormSrgb format!
+                                                    // CRITICAL: Validate Bevy texture size matches window size
+                                                    // If sizes don't match, Bevy hasn't resized yet - skip to prevent device removal
+                                                    let mut bevy_tex_desc = D3D11_TEXTURE2D_DESC::default();
+                                                    bevy_tex.GetDesc(&mut bevy_tex_desc as *mut _);
+                                                    let window_size = winit_window.inner_size();
+                                                    
+                                                    if bevy_tex_desc.Width != window_size.width || bevy_tex_desc.Height != window_size.height {
+                                                        static mut SIZE_MISMATCH_COUNT: u32 = 0;
+                                                        SIZE_MISMATCH_COUNT += 1;
+                                                        if SIZE_MISMATCH_COUNT == 1 || SIZE_MISMATCH_COUNT % 60 == 0 {
+                                                            eprintln!("[COMPOSITOR] ⚠️  Bevy texture size mismatch - Bevy: {}x{}, Window: {}x{}", 
+                                                                bevy_tex_desc.Width, bevy_tex_desc.Height,
+                                                                window_size.width, window_size.height);
+                                                            eprintln!("[COMPOSITOR] 💡 Skipping Bevy composition to prevent device removal");
+                                                            eprintln!("[COMPOSITOR] 🔄 Waiting for Bevy backend to implement texture resize...");
+                                                        }
+                                                        // Clear cached Bevy textures to force re-fetch after Bevy resizes
+                                                        *bevy_texture = None;
+                                                        *bevy_srv = None;
+                                                        // Skip Bevy rendering this frame
+                                                    } else {
+                                                        // Size matches! Safe to use this texture
+                                                        // Create or reuse SRV for Bevy texture
+                                                        if bevy_texture.is_none() || bevy_texture.as_ref().map(|t| t.as_raw()) != Some(bevy_tex.as_raw()) {
+                                                            // Create new SRV - MUST match Bevy's BGRA8UnormSrgb format!
                                                         let srv_desc = D3D11_SHADER_RESOURCE_VIEW_DESC {
                                                             Format: DXGI_FORMAT_B8G8R8A8_UNORM,
                                                             ViewDimension: D3D11_SRV_DIMENSION_TEXTURE2D,
@@ -571,11 +593,11 @@ impl ApplicationHandler for WinitGpuiApp {
                                                             }
                                                         }
 
-                                                        *bevy_texture = Some(bevy_tex.clone());
-                                                        *bevy_srv = new_srv;
-                                                    }
+                                                            *bevy_texture = Some(bevy_tex.clone());
+                                                            *bevy_srv = new_srv;
+                                                        }
 
-                                                    // Draw Bevy texture to back buffer (opaque, no blending)
+                                                        // Draw Bevy texture to back buffer (opaque, no blending)
                                                     if let Some(ref bevy_shader_view) = &*bevy_srv {
                                                         // Disable blending for opaque Bevy render
                                                         context.OMSetBlendState(None, None, 0xffffffff);
@@ -617,6 +639,7 @@ impl ApplicationHandler for WinitGpuiApp {
                                                         static mut BEVY_FRAME_COUNT: u32 = 0;
                                                         BEVY_FRAME_COUNT += 1;
                                                     }
+                                                    } // Close the size match else block
                                                 }
                                             }
                                         } else {
@@ -703,13 +726,13 @@ impl ApplicationHandler for WinitGpuiApp {
                                 let present_result = swap_chain.Present(1, DXGI_PRESENT(0));
                                 
                                 // Handle present failures gracefully  
-                                if let Err(e) = present_result {
+                                if present_result.is_err() {
                                     // Log the error and continue - device may recover
                                     static mut PRESENT_ERROR_COUNT: u32 = 0;
                                     unsafe {
                                         PRESENT_ERROR_COUNT += 1;
                                         if PRESENT_ERROR_COUNT == 1 || PRESENT_ERROR_COUNT % 600 == 0 {
-                                            eprintln!("[COMPOSITOR] ❌ Present failed - error: {:?}", e);
+                                            eprintln!("[COMPOSITOR] ❌ Present failed - HRESULT: {:?}", present_result);
                                             eprintln!("[COMPOSITOR] 🔄 Continuing (device may recover)...");
                                         }
                                     }
@@ -841,7 +864,12 @@ impl ApplicationHandler for WinitGpuiApp {
                                         *shared_texture = None;
                                         *persistent_gpui_texture = None;
                                         *persistent_gpui_srv = None; // Also clear cached SRV
-                                        println!("≡ƒöä Marked shared texture for re-initialization after GPUI resize");
+                                        
+                                        // CRITICAL: Also clear Bevy texture cache - old textures may be wrong size
+                                        *bevy_texture = None;
+                                        *bevy_srv = None;
+                                        
+                                        println!("≡ƒöä Marked shared textures (GPUI + Bevy) for re-initialization after resize");
                                     }
                                 }
 
@@ -854,6 +882,14 @@ impl ApplicationHandler for WinitGpuiApp {
                                 window.refresh();
                             });
                         });
+                    }
+
+                    // Resize Bevy renderer to match new window size
+                    if let Some(ref gpu_renderer_arc) = bevy_renderer {
+                        if let Ok(mut gpu_renderer) = gpu_renderer_arc.lock() {
+                            gpu_renderer.resize(new_size.width, new_size.height);
+                            println!("Γ£à Resized Bevy renderer to {}x{}", new_size.width, new_size.height);
+                        }
                     }
 
                     // Resize D3D11 swap chain to match new window size
