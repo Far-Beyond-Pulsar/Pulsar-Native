@@ -7,7 +7,7 @@
 )
 
 ## Temporarly loss of support for non-Windows platforms
-
+### Update: Mac and linux support is being worked on actively, see PRs
 [https://github.com/orgs/Far-Beyond-Pulsar/discussions/17](https://github.com/orgs/Far-Beyond-Pulsar/discussions/17)
 
 ## You probably can't make a game in this yet!!
