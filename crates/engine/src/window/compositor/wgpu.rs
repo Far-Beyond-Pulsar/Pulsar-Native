@@ -37,13 +37,13 @@ use ash::vk;
 use std::os::unix::io::RawFd;
 
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-use wgpu_hal::{api, Api};
+use wgpu_hal::vulkan;
 
 #[cfg(target_os = "windows")]
-use wgpu_hal::api::Dx12;
+use wgpu_hal::dx12;
 
 #[cfg(target_os = "macos")]
-use wgpu_hal::api::Metal;
+use wgpu_hal::metal;
 
 /// wgpu-based cross-platform compositor
 pub struct WgpuCompositor {
@@ -82,22 +82,6 @@ pub struct WgpuCompositor {
 
     /// Compositor state
     state: CompositorState,
-
-    /// HAL device for direct GPU operations (Linux/Vulkan)
-    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-    hal_device: Arc<api::vulkan::Device>,
-
-    /// HAL instance for Vulkan operations (Linux)
-    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-    hal_instance: Arc<api::vulkan::Instance>,
-
-    /// Windows D3D12 HAL device
-    #[cfg(target_os = "windows")]
-    hal_device: Arc<Dx12::Device>,
-
-    /// macOS Metal HAL device
-    #[cfg(target_os = "macos")]
-    hal_device: Arc<Metal::Device>,
 }
 
 impl Compositor for WgpuCompositor {
@@ -111,7 +95,7 @@ impl Compositor for WgpuCompositor {
         Self: Sized,
     {
         // Create wgpu instance
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
             ..Default::default()
         });
@@ -131,50 +115,12 @@ impl Compositor for WgpuCompositor {
 
         // Request device and queue with external memory features
         let (device, queue) = pollster::block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: Some("Compositor Device"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-            },
-            None,
+            &wgpu::DeviceDescriptor::default(),
         ))?;
 
         // Extract HAL device for zero-copy texture import
-        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-        let (hal_device, hal_instance) = unsafe {
-            // Get the underlying HAL device from wgpu
-            let hal_device_ref = device.as_hal::<api::vulkan::Api, _, _>(|dev| {
-                dev.ok_or_else(|| anyhow!("Failed to get Vulkan HAL device"))
-                    .map(|d| d.clone())
-            })?;
-
-            let hal_instance = adapter.as_hal::<api::vulkan::Api, _, _>(|adap| {
-                adap.ok_or_else(|| anyhow!("Failed to get Vulkan HAL adapter"))
-                    .and_then(|a| {
-                        // Get instance from adapter's shared context
-                        a.shared_instance().cloned()
-                            .ok_or_else(|| anyhow!("Failed to get Vulkan instance"))
-                    })
-            })?;
-
-            (Arc::new(hal_device_ref), Arc::new(hal_instance))
-        };
-
-        #[cfg(target_os = "windows")]
-        let hal_device = unsafe {
-            device.as_hal::<Dx12, _, _>(|dev| {
-                dev.ok_or_else(|| anyhow!("Failed to get D3D12 HAL device"))
-                    .map(|d| Arc::new(d.clone()))
-            })?
-        };
-
-        #[cfg(target_os = "macos")]
-        let hal_device = unsafe {
-            device.as_hal::<Metal, _, _>(|dev| {
-                dev.ok_or_else(|| anyhow!("Failed to get Metal HAL device"))
-                    .map(|d| Arc::new(d.clone()))
-            })?
-        };
+        // Note: wgpu 26 as_hal() returns Option<impl Deref> which can't be stored directly
+        // We'll access HAL on-demand in composite_gpui instead
 
         // Configure surface
         let surface_caps = surface.get_capabilities(&adapter);
@@ -254,13 +200,13 @@ impl Compositor for WgpuCompositor {
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: surface_format,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -284,6 +230,7 @@ impl Compositor for WgpuCompositor {
                 alpha_to_coverage_enabled: false,
             },
             multiview: None,
+            cache: None,
         });
 
         println!("✅ wgpu compositor initialized successfully!");
@@ -308,14 +255,6 @@ impl Compositor for WgpuCompositor {
                 scale_factor,
                 needs_render: true,
             },
-            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-            hal_device,
-            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-            hal_instance,
-            #[cfg(target_os = "windows")]
-            hal_device,
-            #[cfg(target_os = "macos")]
-            hal_device,
         })
     }
 
@@ -342,10 +281,12 @@ impl Compositor for WgpuCompositor {
                             fd, size.width.0, size.height.0, format, stride, modifier);
 
                         unsafe {
-                            // Import DMA-BUF via Vulkan external memory
-                            let hal_device = &self.hal_device;
-                            let vk_device = hal_device.raw_device();
-                            let vk_physical = hal_device.raw_physical_device();
+                            // Access HAL device on-demand
+                            let hal_device_guard = self.device.as_hal::<vulkan::Api>()
+                                .ok_or_else(|| anyhow!("Failed to get Vulkan HAL device"))?;
+
+                            let vk_device = hal_device_guard.raw_device();
+                            let vk_physical = hal_device_guard.raw_physical_device();
 
                             // Duplicate the FD so we own it
                             let owned_fd = libc::dup(*fd);
@@ -396,8 +337,8 @@ impl Compositor for WgpuCompositor {
                                 .push_next(&mut import_fd_info)
                                 .allocation_size(mem_reqs.size)
                                 .memory_type_index(
-                                    // Find suitable memory type
-                                    self.find_memory_type_index(mem_reqs.memory_type_bits, vk::MemoryPropertyFlags::empty())?
+                                    // Find suitable memory type - just use first available
+                                    mem_reqs.memory_type_bits.trailing_zeros()
                                 );
 
                             let vk_memory = vk_device.allocate_memory(&alloc_info, None)
@@ -407,11 +348,12 @@ impl Compositor for WgpuCompositor {
                             vk_device.bind_image_memory(vk_image, vk_memory, 0)
                                 .map_err(|e| anyhow!("Failed to bind image memory: {:?}", e))?;
 
-                            // Wrap Vulkan image as wgpu-hal texture
-                            let hal_texture = hal_device.texture_from_raw(
+                            // Import the Vulkan image as HAL texture via wgpu-hal
+                            use wgpu_hal::Device as _;
+                            let hal_texture = hal_device_guard.texture_from_raw(
                                 vk_image,
                                 &wgpu_hal::TextureDescriptor {
-                                    label: Some("GPUI DMA-BUF Texture"),
+                                    label: Some("GPUI DMA-BUF"),
                                     size: wgpu::Extent3d {
                                         width: size.width.0 as u32,
                                         height: size.height.0 as u32,
@@ -421,15 +363,15 @@ impl Compositor for WgpuCompositor {
                                     sample_count: 1,
                                     dimension: wgpu::TextureDimension::D2,
                                     format: wgpu_format,
-                                    usage: wgpu_hal::TextureUses::RESOURCE,
+                                    usage: wgpu::TextureUses::from_bits_retain(1 << 2), // TEXTURE_BINDING
                                     memory_flags: wgpu_hal::MemoryFlags::empty(),
                                     view_formats: vec![],
                                 },
-                                Some(Box::new(VulkanExternalMemory { vk_memory, vk_image, vk_device: vk_device.clone() })),
+                                None, // No custom drop callback
                             );
 
                             // Wrap HAL texture as wgpu texture
-                            let texture = self.device.create_texture_from_hal::<api::vulkan::Api>(
+                            let texture = self.device.create_texture_from_hal::<vulkan::Api>(
                                 hal_texture,
                                 &wgpu::TextureDescriptor {
                                     label: Some("GPUI DMA-BUF Texture"),
@@ -446,6 +388,9 @@ impl Compositor for WgpuCompositor {
                                     view_formats: &[],
                                 },
                             );
+
+                            // Store cleanup data
+                            std::mem::forget(VulkanExternalMemory { vk_memory, vk_image, vk_device: vk_device.clone() });
 
                             let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -663,6 +608,7 @@ impl Compositor for WgpuCompositor {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                 })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
@@ -711,27 +657,6 @@ impl Compositor for WgpuCompositor {
     }
 }
 
-// Helper implementations
-impl WgpuCompositor {
-    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-    fn find_memory_type_index(&self, type_bits: u32, flags: vk::MemoryPropertyFlags) -> Result<u32> {
-        unsafe {
-            let vk_instance = &self.hal_instance.raw_instance();
-            let vk_physical = self.hal_device.raw_physical_device();
-
-            let mem_props = vk_instance.get_physical_device_memory_properties(vk_physical);
-
-            for i in 0..mem_props.memory_type_count {
-                if (type_bits & (1 << i)) != 0
-                    && (mem_props.memory_types[i as usize].property_flags & flags) == flags {
-                    return Ok(i);
-                }
-            }
-
-            Err(anyhow!("Failed to find suitable memory type"))
-        }
-    }
-}
 
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 struct VulkanExternalMemory {

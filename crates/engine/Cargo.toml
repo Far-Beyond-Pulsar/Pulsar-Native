@@ -87,6 +87,8 @@ wgpu = "26"        # GPU compute and rendering
 wgpu-hal = "26"    # Hardware abstraction layer for wgpu
 ash = "0.38"       # Vulkan bindings for DMA-BUF import
 pollster = "0.3"   # Block on async operations
+log = "0.4"        # Logging facade
+libc = "0.2"       # C library bindings for dup() and PTY
 bytemuck = { version = "1.14", features = ["derive"] }
 ron = "0.8"
 futures = "0.3"    # Async primitives for GPUI compatibility
@@ -94,7 +96,6 @@ portable-pty = "0.8"  # PTY support for terminal emulator
 which = "6"  # Find executables in PATH
 alacritty_terminal = { git = "https://github.com/zed-industries/alacritty.git", branch = "add-hush-login-flag" }  # Professional terminal emulator
 itertools.workspace = true  # Iterator utilities
-libc = "0.2"  # Low-level system calls for PTY
 device_query = "2.1"  # Raw keyboard/mouse input polling - bypasses GPUI for viewport controls
 winapi = { version = "0.3", features = ["winuser"] }  # Windows API for keyboard hook to suppress WASD events
 sysinfo = "0.30"  # System information

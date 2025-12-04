@@ -10039,6 +10039,7 @@ dependencies = [
  "itertools 0.13.0",
  "lewton",
  "libc",
+ "log",
  "lsp-types",
  "open",
  "parking_lot",
