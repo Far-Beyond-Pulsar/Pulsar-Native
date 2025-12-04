@@ -84,6 +84,7 @@ claxon = "0.4"
 symphonia = { version = "0.5", features = ["mp3", "wav", "flac", "vorbis"] }  # Modern audio decoder
 crossbeam = "0.8.4"  # Concurrency utilities
 wgpu = "0.20"      # GPU compute and rendering
+pollster = "0.3"   # Block on async operations
 bytemuck = { version = "1.14", features = ["derive"] }
 ron = "0.8"
 futures = "0.3"    # Async primitives for GPUI compatibility
@@ -98,6 +99,10 @@ sysinfo = "0.30"  # System information
 reqwest = { version = "0.12", features = ["json"] }  # HTTP client (existing, used for GitHub API)
 async-tungstenite = { version = "0.23", features = ["tokio-runtime"] }  # WebSocket client
 url = "2.5"  # URL parsing
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ash = "0.38"  # Vulkan bindings for Linux compositor
+ash-window = "0.13"  # Vulkan surface creation helpers
 
 [build-dependencies]
 winresource = "0.1"

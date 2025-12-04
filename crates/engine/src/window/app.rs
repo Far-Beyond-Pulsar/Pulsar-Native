@@ -247,6 +247,7 @@ impl ApplicationHandler for WinitGpuiApp {
                     #[cfg(target_os = "windows")]
                     ref mut bevy_srv,
                     ref mut bevy_renderer,
+                    ref mut compositor,
                 } = window_state;
 
                 // Fetch the GPU renderer for this window from EngineState if not already set

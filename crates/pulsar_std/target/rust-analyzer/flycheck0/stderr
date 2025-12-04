@@ -1,0 +1,2873 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/trident/Documents/GitHub/Pulsar-Native/crates/engine/Cargo.toml
+workspace: /home/trident/Documents/GitHub/Pulsar-Native/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/trident/Documents/GitHub/Pulsar-Native/crates/engine_backend/Cargo.toml
+workspace: /home/trident/Documents/GitHub/Pulsar-Native/Cargo.toml
+   2.044609852s  INFO prepare_target{force=false package_id=blueprint_editor_plugin v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/plugins/blueprint_editor_plugin) target="blueprint_editor_plugin"}: cargo::core::compiler::fingerprint: fingerprint error for blueprint_editor_plugin v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/plugins/blueprint_editor_plugin)/Check { test: false }/TargetInner { ..: lib_target("blueprint_editor_plugin", ["cdylib", "rlib"], "/home/trident/Documents/GitHub/Pulsar-Native/plugins/blueprint_editor_plugin/src/lib.rs", Edition2021) }
+   2.044713883s  INFO prepare_target{force=false package_id=blueprint_editor_plugin v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/plugins/blueprint_editor_plugin) target="blueprint_editor_plugin"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/blueprint_editor_plugin-d3f4afa463c7a168/lib-blueprint_editor_plugin`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   2.083727022s  INFO prepare_target{force=false package_id=engine_backend v0.1.34 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_backend) target="engine_backend"}: cargo::core::compiler::fingerprint: fingerprint error for engine_backend v0.1.34 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_backend)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("engine_backend", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_backend/src/lib.rs", Edition2021) }
+   2.083800574s  INFO prepare_target{force=false package_id=engine_backend v0.1.34 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_backend) target="engine_backend"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/engine_backend-50266657e81254a7/lib-engine_backend`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::build_runner::BuildRunner::compile
+   6: cargo::ops::cargo_compile::compile_ws
+   7: cargo::ops::cargo_compile::compile_with_exec
+   8: cargo::ops::cargo_compile::compile
+   9: cargo::commands::check::exec
+  10: cargo::cli::Exec::exec
+  11: cargo::cli::main
+  12: cargo::main
+  13: std::sys::backtrace::__rust_begin_short_backtrace
+  14: std::rt::lang_start::{{closure}}
+  15: std::rt::lang_start_internal
+  16: main
+  17: __libc_start_call_main
+  18: __libc_start_main_alias_1
+  19: _start
+   2.277864492s  INFO prepare_target{force=false package_id=git2 v0.19.0 target="git2"}: cargo::core::compiler::fingerprint: fingerprint error for git2 v0.19.0/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("git2", ["lib"], "/home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/git2-0.19.0/src/lib.rs", Edition2018) }
+   2.277903431s  INFO prepare_target{force=false package_id=git2 v0.19.0 target="git2"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/git2-6b1707e43b3a3358/lib-git2`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::build_runner::BuildRunner::compile
+   7: cargo::ops::cargo_compile::compile_ws
+   8: cargo::ops::cargo_compile::compile_with_exec
+   9: cargo::ops::cargo_compile::compile
+  10: cargo::commands::check::exec
+  11: cargo::cli::Exec::exec
+  12: cargo::cli::main
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace
+  15: std::rt::lang_start::{{closure}}
+  16: std::rt::lang_start_internal
+  17: main
+  18: __libc_start_call_main
+  19: __libc_start_main_alias_1
+  20: _start
+   2.283848578s  INFO prepare_target{force=false package_id=libgit2-sys v0.17.0+1.8.1 target="libgit2_sys"}: cargo::core::compiler::fingerprint: fingerprint error for libgit2-sys v0.17.0+1.8.1/Check { test: false }/TargetInner { ..: lib_target("libgit2_sys", ["lib"], "/home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libgit2-sys-0.17.0+1.8.1/lib.rs", Edition2018) }
+   2.283910730s  INFO prepare_target{force=false package_id=libgit2-sys v0.17.0+1.8.1 target="libgit2_sys"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/libgit2-sys-3cba7a42944256fc/lib-libgit2_sys`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::build_runner::BuildRunner::compile
+   8: cargo::ops::cargo_compile::compile_ws
+   9: cargo::ops::cargo_compile::compile_with_exec
+  10: cargo::ops::cargo_compile::compile
+  11: cargo::commands::check::exec
+  12: cargo::cli::Exec::exec
+  13: cargo::cli::main
+  14: cargo::main
+  15: std::sys::backtrace::__rust_begin_short_backtrace
+  16: std::rt::lang_start::{{closure}}
+  17: std::rt::lang_start_internal
+  18: main
+  19: __libc_start_call_main
+  20: __libc_start_main_alias_1
+  21: _start
+   2.298089463s  INFO prepare_target{force=false package_id=libgit2-sys v0.17.0+1.8.1 target="build-script-build"}: cargo::core::compiler::fingerprint: fingerprint error for libgit2-sys v0.17.0+1.8.1/RunCustomBuild/TargetInner { ..: custom_build_target("build-script-build", "/home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libgit2-sys-0.17.0+1.8.1/build.rs", Edition2018) }
+   2.298157180s  INFO prepare_target{force=false package_id=libgit2-sys v0.17.0+1.8.1 target="build-script-build"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/libgit2-sys-eb21382d7727e665/run-build-script-build-script-build`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::custom_build::build_work
+   4: cargo::core::compiler::custom_build::prepare
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::compile
+   8: cargo::core::compiler::compile
+   9: cargo::core::compiler::compile
+  10: cargo::core::compiler::build_runner::BuildRunner::compile
+  11: cargo::ops::cargo_compile::compile_ws
+  12: cargo::ops::cargo_compile::compile_with_exec
+  13: cargo::ops::cargo_compile::compile
+  14: cargo::commands::check::exec
+  15: cargo::cli::Exec::exec
+  16: cargo::cli::main
+  17: cargo::main
+  18: std::sys::backtrace::__rust_begin_short_backtrace
+  19: std::rt::lang_start::{{closure}}
+  20: std::rt::lang_start_internal
+  21: main
+  22: __libc_start_call_main
+  23: __libc_start_main_alias_1
+  24: _start
+   2.300511719s  INFO prepare_target{force=false package_id=libssh2-sys v0.3.1 target="build-script-build"}: cargo::core::compiler::fingerprint: fingerprint error for libssh2-sys v0.3.1/RunCustomBuild/TargetInner { ..: custom_build_target("build-script-build", "/home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libssh2-sys-0.3.1/build.rs", Edition2015) }
+   2.300553669s  INFO prepare_target{force=false package_id=libssh2-sys v0.3.1 target="build-script-build"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/libssh2-sys-8d56ac9a3fe64473/run-build-script-build-script-build`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::custom_build::build_work
+   4: cargo::core::compiler::custom_build::prepare
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::compile
+   8: cargo::core::compiler::compile
+   9: cargo::core::compiler::compile
+  10: cargo::core::compiler::compile
+  11: cargo::core::compiler::build_runner::BuildRunner::compile
+  12: cargo::ops::cargo_compile::compile_ws
+  13: cargo::ops::cargo_compile::compile_with_exec
+  14: cargo::ops::cargo_compile::compile
+  15: cargo::commands::check::exec
+  16: cargo::cli::Exec::exec
+  17: cargo::cli::main
+  18: cargo::main
+  19: std::sys::backtrace::__rust_begin_short_backtrace
+  20: std::rt::lang_start::{{closure}}
+  21: std::rt::lang_start_internal
+  22: main
+  23: __libc_start_call_main
+  24: __libc_start_main_alias_1
+  25: _start
+   2.301009315s  INFO prepare_target{force=false package_id=openssl-sys v0.9.111 target="build-script-main"}: cargo::core::compiler::fingerprint: fingerprint error for openssl-sys v0.9.111/RunCustomBuild/TargetInner { ..: custom_build_target("build-script-main", "/home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/openssl-sys-0.9.111/build/main.rs", Edition2021) }
+   2.301031431s  INFO prepare_target{force=false package_id=openssl-sys v0.9.111 target="build-script-main"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/openssl-sys-248abd7e77ee0dc6/run-build-script-build-script-main`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::custom_build::build_work
+   4: cargo::core::compiler::custom_build::prepare
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::compile
+   8: cargo::core::compiler::compile
+   9: cargo::core::compiler::compile
+  10: cargo::core::compiler::compile
+  11: cargo::core::compiler::compile
+  12: cargo::core::compiler::build_runner::BuildRunner::compile
+  13: cargo::ops::cargo_compile::compile_ws
+  14: cargo::ops::cargo_compile::compile_with_exec
+  15: cargo::ops::cargo_compile::compile
+  16: cargo::commands::check::exec
+  17: cargo::cli::Exec::exec
+  18: cargo::cli::main
+  19: cargo::main
+  20: std::sys::backtrace::__rust_begin_short_backtrace
+  21: std::rt::lang_start::{{closure}}
+  22: std::rt::lang_start_internal
+  23: main
+  24: __libc_start_call_main
+  25: __libc_start_main_alias_1
+  26: _start
+   2.301667020s  INFO prepare_target{force=false package_id=libssh2-sys v0.3.1 target="libssh2_sys"}: cargo::core::compiler::fingerprint: fingerprint error for libssh2-sys v0.3.1/Check { test: false }/TargetInner { ..: lib_target("libssh2_sys", ["lib"], "/home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libssh2-sys-0.3.1/lib.rs", Edition2015) }
+   2.301701048s  INFO prepare_target{force=false package_id=libssh2-sys v0.3.1 target="libssh2_sys"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/libssh2-sys-fc1252de48dad3dc/lib-libssh2_sys`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::compile
+   8: cargo::core::compiler::build_runner::BuildRunner::compile
+   9: cargo::ops::cargo_compile::compile_ws
+  10: cargo::ops::cargo_compile::compile_with_exec
+  11: cargo::ops::cargo_compile::compile
+  12: cargo::commands::check::exec
+  13: cargo::cli::Exec::exec
+  14: cargo::cli::main
+  15: cargo::main
+  16: std::sys::backtrace::__rust_begin_short_backtrace
+  17: std::rt::lang_start::{{closure}}
+  18: std::rt::lang_start_internal
+  19: main
+  20: __libc_start_call_main
+  21: __libc_start_main_alias_1
+  22: _start
+   2.302534146s  INFO prepare_target{force=false package_id=openssl-sys v0.9.111 target="openssl_sys"}: cargo::core::compiler::fingerprint: fingerprint error for openssl-sys v0.9.111/Check { test: false }/TargetInner { ..: lib_target("openssl_sys", ["lib"], "/home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/openssl-sys-0.9.111/src/lib.rs", Edition2021) }
+   2.302573181s  INFO prepare_target{force=false package_id=openssl-sys v0.9.111 target="openssl_sys"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/openssl-sys-b28cc0465a3ff1a5/lib-openssl_sys`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::compile
+   8: cargo::core::compiler::compile
+   9: cargo::core::compiler::build_runner::BuildRunner::compile
+  10: cargo::ops::cargo_compile::compile_ws
+  11: cargo::ops::cargo_compile::compile_with_exec
+  12: cargo::ops::cargo_compile::compile
+  13: cargo::commands::check::exec
+  14: cargo::cli::Exec::exec
+  15: cargo::cli::main
+  16: cargo::main
+  17: std::sys::backtrace::__rust_begin_short_backtrace
+  18: std::rt::lang_start::{{closure}}
+  19: std::rt::lang_start_internal
+  20: main
+  21: __libc_start_call_main
+  22: __libc_start_main_alias_1
+  23: _start
+   2.303854852s  INFO prepare_target{force=false package_id=gpui v0.2.1 (/home/trident/zed/crates/gpui) target="gpui"}: cargo::core::compiler::fingerprint: fingerprint error for gpui v0.2.1 (/home/trident/zed/crates/gpui)/Check { test: false }/TargetInner { name_inferred: true, doctest: false, ..: lib_target("gpui", ["lib"], "/home/trident/zed/crates/gpui/src/gpui.rs", Edition2024) }
+   2.303883658s  INFO prepare_target{force=false package_id=gpui v0.2.1 (/home/trident/zed/crates/gpui) target="gpui"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/gpui-60334b3908e72060/lib-gpui`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::build_runner::BuildRunner::compile
+   7: cargo::ops::cargo_compile::compile_ws
+   8: cargo::ops::cargo_compile::compile_with_exec
+   9: cargo::ops::cargo_compile::compile
+  10: cargo::commands::check::exec
+  11: cargo::cli::Exec::exec
+  12: cargo::cli::main
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace
+  15: std::rt::lang_start::{{closure}}
+  16: std::rt::lang_start_internal
+  17: main
+  18: __libc_start_call_main
+  19: __libc_start_main_alias_1
+  20: _start
+   2.320799602s  INFO prepare_target{force=false package_id=collections v0.1.0 (/home/trident/zed/crates/collections) target="collections"}: cargo::core::compiler::fingerprint: fingerprint error for collections v0.1.0 (/home/trident/zed/crates/collections)/Check { test: false }/TargetInner { name_inferred: true, doctest: false, ..: lib_target("collections", ["lib"], "/home/trident/zed/crates/collections/src/collections.rs", Edition2024) }
+   2.320877938s  INFO prepare_target{force=false package_id=collections v0.1.0 (/home/trident/zed/crates/collections) target="collections"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/collections-5087d121cb40c696/lib-collections`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::build_runner::BuildRunner::compile
+   8: cargo::ops::cargo_compile::compile_ws
+   9: cargo::ops::cargo_compile::compile_with_exec
+  10: cargo::ops::cargo_compile::compile
+  11: cargo::commands::check::exec
+  12: cargo::cli::Exec::exec
+  13: cargo::cli::main
+  14: cargo::main
+  15: std::sys::backtrace::__rust_begin_short_backtrace
+  16: std::rt::lang_start::{{closure}}
+  17: std::rt::lang_start_internal
+  18: main
+  19: __libc_start_call_main
+  20: __libc_start_main_alias_1
+  21: _start
+   2.329289917s  INFO prepare_target{force=false package_id=http_client v0.1.0 (/home/trident/zed/crates/http_client) target="http_client"}: cargo::core::compiler::fingerprint: fingerprint error for http_client v0.1.0 (/home/trident/zed/crates/http_client)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("http_client", ["lib"], "/home/trident/zed/crates/http_client/src/http_client.rs", Edition2024) }
+   2.329336106s  INFO prepare_target{force=false package_id=http_client v0.1.0 (/home/trident/zed/crates/http_client) target="http_client"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/http_client-4786c2ef9904c4aa/lib-http_client`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::build_runner::BuildRunner::compile
+   8: cargo::ops::cargo_compile::compile_ws
+   9: cargo::ops::cargo_compile::compile_with_exec
+  10: cargo::ops::cargo_compile::compile
+  11: cargo::commands::check::exec
+  12: cargo::cli::Exec::exec
+  13: cargo::cli::main
+  14: cargo::main
+  15: std::sys::backtrace::__rust_begin_short_backtrace
+  16: std::rt::lang_start::{{closure}}
+  17: std::rt::lang_start_internal
+  18: main
+  19: __libc_start_call_main
+  20: __libc_start_main_alias_1
+  21: _start
+   2.335573555s  INFO prepare_target{force=false package_id=util v0.1.0 (/home/trident/zed/crates/util) target="util"}: cargo::core::compiler::fingerprint: fingerprint error for util v0.1.0 (/home/trident/zed/crates/util)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("util", ["lib"], "/home/trident/zed/crates/util/src/util.rs", Edition2024) }
+   2.335669574s  INFO prepare_target{force=false package_id=util v0.1.0 (/home/trident/zed/crates/util) target="util"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/util-668c36658bfaac39/lib-util`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::compile
+   8: cargo::core::compiler::build_runner::BuildRunner::compile
+   9: cargo::ops::cargo_compile::compile_ws
+  10: cargo::ops::cargo_compile::compile_with_exec
+  11: cargo::ops::cargo_compile::compile
+  12: cargo::commands::check::exec
+  13: cargo::cli::Exec::exec
+  14: cargo::cli::main
+  15: cargo::main
+  16: std::sys::backtrace::__rust_begin_short_backtrace
+  17: std::rt::lang_start::{{closure}}
+  18: std::rt::lang_start_internal
+  19: main
+  20: __libc_start_call_main
+  21: __libc_start_main_alias_1
+  22: _start
+   2.370007219s  INFO prepare_target{force=false package_id=refineable v0.1.0 (/home/trident/zed/crates/refineable) target="refineable"}: cargo::core::compiler::fingerprint: fingerprint error for refineable v0.1.0 (/home/trident/zed/crates/refineable)/Check { test: false }/TargetInner { name_inferred: true, doctest: false, ..: lib_target("refineable", ["lib"], "/home/trident/zed/crates/refineable/src/refineable.rs", Edition2024) }
+   2.370047344s  INFO prepare_target{force=false package_id=refineable v0.1.0 (/home/trident/zed/crates/refineable) target="refineable"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/refineable-34e849eb0591f008/lib-refineable`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::build_runner::BuildRunner::compile
+   8: cargo::ops::cargo_compile::compile_ws
+   9: cargo::ops::cargo_compile::compile_with_exec
+  10: cargo::ops::cargo_compile::compile
+  11: cargo::commands::check::exec
+  12: cargo::cli::Exec::exec
+  13: cargo::cli::main
+  14: cargo::main
+  15: std::sys::backtrace::__rust_begin_short_backtrace
+  16: std::rt::lang_start::{{closure}}
+  17: std::rt::lang_start_internal
+  18: main
+  19: __libc_start_call_main
+  20: __libc_start_main_alias_1
+  21: _start
+   2.375413525s  INFO prepare_target{force=false package_id=semantic_version v0.1.0 (/home/trident/zed/crates/semantic_version) target="semantic_version"}: cargo::core::compiler::fingerprint: fingerprint error for semantic_version v0.1.0 (/home/trident/zed/crates/semantic_version)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("semantic_version", ["lib"], "/home/trident/zed/crates/semantic_version/src/semantic_version.rs", Edition2024) }
+   2.375455219s  INFO prepare_target{force=false package_id=semantic_version v0.1.0 (/home/trident/zed/crates/semantic_version) target="semantic_version"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/semantic_version-895a43bacb10622d/lib-semantic_version`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::build_runner::BuildRunner::compile
+   8: cargo::ops::cargo_compile::compile_ws
+   9: cargo::ops::cargo_compile::compile_with_exec
+  10: cargo::ops::cargo_compile::compile
+  11: cargo::commands::check::exec
+  12: cargo::cli::Exec::exec
+  13: cargo::cli::main
+  14: cargo::main
+  15: std::sys::backtrace::__rust_begin_short_backtrace
+  16: std::rt::lang_start::{{closure}}
+  17: std::rt::lang_start_internal
+  18: main
+  19: __libc_start_call_main
+  20: __libc_start_main_alias_1
+  21: _start
+   2.379667642s  INFO prepare_target{force=false package_id=sum_tree v0.1.0 (/home/trident/zed/crates/sum_tree) target="sum_tree"}: cargo::core::compiler::fingerprint: fingerprint error for sum_tree v0.1.0 (/home/trident/zed/crates/sum_tree)/Check { test: false }/TargetInner { name_inferred: true, doctest: false, ..: lib_target("sum_tree", ["lib"], "/home/trident/zed/crates/sum_tree/src/sum_tree.rs", Edition2024) }
+   2.379763767s  INFO prepare_target{force=false package_id=sum_tree v0.1.0 (/home/trident/zed/crates/sum_tree) target="sum_tree"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/sum_tree-13f1eaf09b75975f/lib-sum_tree`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::build_runner::BuildRunner::compile
+   8: cargo::ops::cargo_compile::compile_ws
+   9: cargo::ops::cargo_compile::compile_with_exec
+  10: cargo::ops::cargo_compile::compile
+  11: cargo::commands::check::exec
+  12: cargo::cli::Exec::exec
+  13: cargo::cli::main
+  14: cargo::main
+  15: std::sys::backtrace::__rust_begin_short_backtrace
+  16: std::rt::lang_start::{{closure}}
+  17: std::rt::lang_start_internal
+  18: main
+  19: __libc_start_call_main
+  20: __libc_start_main_alias_1
+  21: _start
+   2.394478356s  INFO prepare_target{force=false package_id=ui v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/ui) target="ui"}: cargo::core::compiler::fingerprint: fingerprint error for ui v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/ui)/Check { test: false }/TargetInner { name_inferred: true, doctest: false, ..: lib_target("ui", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/crates/ui/src/lib.rs", Edition2021) }
+   2.394510044s  INFO prepare_target{force=false package_id=ui v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/ui) target="ui"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui-cfc134d4d1af61eb/lib-ui`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::build_runner::BuildRunner::compile
+   7: cargo::ops::cargo_compile::compile_ws
+   8: cargo::ops::cargo_compile::compile_with_exec
+   9: cargo::ops::cargo_compile::compile
+  10: cargo::commands::check::exec
+  11: cargo::cli::Exec::exec
+  12: cargo::cli::main
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace
+  15: std::rt::lang_start::{{closure}}
+  16: std::rt::lang_start_internal
+  17: main
+  18: __libc_start_call_main
+  19: __libc_start_main_alias_1
+  20: _start
+   2.416430556s  INFO prepare_target{force=false package_id=pulsar_std v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_std) target="pulsar_std"}: cargo::core::compiler::fingerprint: fingerprint error for pulsar_std v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_std)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("pulsar_std", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_std/src/lib.rs", Edition2021) }
+   2.416473725s  INFO prepare_target{force=false package_id=pulsar_std v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_std) target="pulsar_std"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/pulsar_std-978250bf8423b06e/lib-pulsar_std`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::build_runner::BuildRunner::compile
+   8: cargo::ops::cargo_compile::compile_ws
+   9: cargo::ops::cargo_compile::compile_with_exec
+  10: cargo::ops::cargo_compile::compile
+  11: cargo::commands::check::exec
+  12: cargo::cli::Exec::exec
+  13: cargo::cli::main
+  14: cargo::main
+  15: std::sys::backtrace::__rust_begin_short_backtrace
+  16: std::rt::lang_start::{{closure}}
+  17: std::rt::lang_start_internal
+  18: main
+  19: __libc_start_call_main
+  20: __libc_start_main_alias_1
+  21: _start
+   2.509432871s  INFO prepare_target{force=false package_id=plugin_editor_api v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/plugin_editor_api) target="plugin_editor_api"}: cargo::core::compiler::fingerprint: fingerprint error for plugin_editor_api v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/plugin_editor_api)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("plugin_editor_api", ["lib", "cdylib"], "/home/trident/Documents/GitHub/Pulsar-Native/crates/plugin_editor_api/src/lib.rs", Edition2021) }
+   2.509505885s  INFO prepare_target{force=false package_id=plugin_editor_api v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/plugin_editor_api) target="plugin_editor_api"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/plugin_editor_api-d2c1b2a895adc1d8/lib-plugin_editor_api`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::build_runner::BuildRunner::compile
+   6: cargo::ops::cargo_compile::compile_ws
+   7: cargo::ops::cargo_compile::compile_with_exec
+   8: cargo::ops::cargo_compile::compile
+   9: cargo::commands::check::exec
+  10: cargo::cli::Exec::exec
+  11: cargo::cli::main
+  12: cargo::main
+  13: std::sys::backtrace::__rust_begin_short_backtrace
+  14: std::rt::lang_start::{{closure}}
+  15: std::rt::lang_start_internal
+  16: main
+  17: __libc_start_call_main
+  18: __libc_start_main_alias_1
+  19: _start
+   2.514625417s  INFO prepare_target{force=false package_id=ui_common v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_common) target="ui_common"}: cargo::core::compiler::fingerprint: fingerprint error for ui_common v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_common)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("ui_common", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_common/src/lib.rs", Edition2021) }
+   2.514665485s  INFO prepare_target{force=false package_id=ui_common v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_common) target="ui_common"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_common-c12b0c2aeae8a62f/lib-ui_common`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::build_runner::BuildRunner::compile
+   6: cargo::ops::cargo_compile::compile_ws
+   7: cargo::ops::cargo_compile::compile_with_exec
+   8: cargo::ops::cargo_compile::compile
+   9: cargo::commands::check::exec
+  10: cargo::cli::Exec::exec
+  11: cargo::cli::main
+  12: cargo::main
+  13: std::sys::backtrace::__rust_begin_short_backtrace
+  14: std::rt::lang_start::{{closure}}
+  15: std::rt::lang_start_internal
+  16: main
+  17: __libc_start_call_main
+  18: __libc_start_main_alias_1
+  19: _start
+   2.522071676s  INFO prepare_target{force=false package_id=engine_fs v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_fs) target="engine_fs"}: cargo::core::compiler::fingerprint: fingerprint error for engine_fs v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_fs)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("engine_fs", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_fs/src/lib.rs", Edition2021) }
+   2.522132672s  INFO prepare_target{force=false package_id=engine_fs v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_fs) target="engine_fs"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/engine_fs-96c2a78632424802/lib-engine_fs`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::build_runner::BuildRunner::compile
+   7: cargo::ops::cargo_compile::compile_ws
+   8: cargo::ops::cargo_compile::compile_with_exec
+   9: cargo::ops::cargo_compile::compile
+  10: cargo::commands::check::exec
+  11: cargo::cli::Exec::exec
+  12: cargo::cli::main
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace
+  15: std::rt::lang_start::{{closure}}
+  16: std::rt::lang_start_internal
+  17: main
+  18: __libc_start_call_main
+  19: __libc_start_main_alias_1
+  20: _start
+   2.527191231s  INFO prepare_target{force=false package_id=ui_types_common v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_types_common) target="ui_types_common"}: cargo::core::compiler::fingerprint: fingerprint error for ui_types_common v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_types_common)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("ui_types_common", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_types_common/src/lib.rs", Edition2021) }
+   2.527240332s  INFO prepare_target{force=false package_id=ui_types_common v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_types_common) target="ui_types_common"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_types_common-eaca66d30b5e1e98/lib-ui_types_common`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::build_runner::BuildRunner::compile
+   8: cargo::ops::cargo_compile::compile_ws
+   9: cargo::ops::cargo_compile::compile_with_exec
+  10: cargo::ops::cargo_compile::compile
+  11: cargo::commands::check::exec
+  12: cargo::cli::Exec::exec
+  13: cargo::cli::main
+  14: cargo::main
+  15: std::sys::backtrace::__rust_begin_short_backtrace
+  16: std::rt::lang_start::{{closure}}
+  17: std::rt::lang_start_internal
+  18: main
+  19: __libc_start_call_main
+  20: __libc_start_main_alias_1
+  21: _start
+   2.529469268s  INFO prepare_target{force=false package_id=engine_state v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_state) target="engine_state"}: cargo::core::compiler::fingerprint: fingerprint error for engine_state v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_state)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("engine_state", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_state/src/lib.rs", Edition2021) }
+   2.529546597s  INFO prepare_target{force=false package_id=engine_state v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_state) target="engine_state"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/engine_state-112705afce00ee5b/lib-engine_state`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::build_runner::BuildRunner::compile
+   7: cargo::ops::cargo_compile::compile_ws
+   8: cargo::ops::cargo_compile::compile_with_exec
+   9: cargo::ops::cargo_compile::compile
+  10: cargo::commands::check::exec
+  11: cargo::cli::Exec::exec
+  12: cargo::cli::main
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace
+  15: std::rt::lang_start::{{closure}}
+  16: std::rt::lang_start_internal
+  17: main
+  18: __libc_start_call_main
+  19: __libc_start_main_alias_1
+  20: _start
+   2.541393329s  INFO prepare_target{force=false package_id=blueprint_editor_plugin v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/plugins/blueprint_editor_plugin) target="blueprint_editor_plugin"}: cargo::core::compiler::fingerprint: fingerprint error for blueprint_editor_plugin v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/plugins/blueprint_editor_plugin)/Check { test: true }/TargetInner { ..: lib_target("blueprint_editor_plugin", ["cdylib", "rlib"], "/home/trident/Documents/GitHub/Pulsar-Native/plugins/blueprint_editor_plugin/src/lib.rs", Edition2021) }
+   2.541430504s  INFO prepare_target{force=false package_id=blueprint_editor_plugin v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/plugins/blueprint_editor_plugin) target="blueprint_editor_plugin"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/blueprint_editor_plugin-4035b61b5ce25066/test-lib-blueprint_editor_plugin`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   2.551540649s  INFO prepare_target{force=false package_id=engine_backend v0.1.34 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_backend) target="engine_backend"}: cargo::core::compiler::fingerprint: fingerprint error for engine_backend v0.1.34 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_backend)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("engine_backend", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_backend/src/lib.rs", Edition2021) }
+   2.551644558s  INFO prepare_target{force=false package_id=engine_backend v0.1.34 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_backend) target="engine_backend"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/engine_backend-8a05fabc7525fa63/test-lib-engine_backend`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   2.562471472s  INFO prepare_target{force=false package_id=engine_fs v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_fs) target="engine_fs"}: cargo::core::compiler::fingerprint: fingerprint error for engine_fs v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_fs)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("engine_fs", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_fs/src/lib.rs", Edition2021) }
+   2.562556226s  INFO prepare_target{force=false package_id=engine_fs v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_fs) target="engine_fs"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/engine_fs-bef796ac523f963d/test-lib-engine_fs`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   2.567464327s  INFO prepare_target{force=false package_id=engine_state v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_state) target="engine_state"}: cargo::core::compiler::fingerprint: fingerprint error for engine_state v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_state)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("engine_state", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_state/src/lib.rs", Edition2021) }
+   2.568043956s  INFO prepare_target{force=false package_id=engine_state v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_state) target="engine_state"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/engine_state-ea6177d874f66c43/test-lib-engine_state`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   2.576392379s  INFO prepare_target{force=false package_id=gpui-component-macros v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/macros) target="gpui_component_macros"}: cargo::core::compiler::fingerprint: fingerprint error for gpui-component-macros v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/macros)/Check { test: false }/TargetInner { name_inferred: true, for_host: true, proc_macro: true, ..: lib_target("gpui_component_macros", ["proc-macro"], "/home/trident/Documents/GitHub/Pulsar-Native/crates/macros/src/lib.rs", Edition2021) }
+   2.577208978s  INFO prepare_target{force=false package_id=gpui-component-macros v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/macros) target="gpui_component_macros"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/gpui-component-macros-27355221b5669235/lib-gpui_component_macros`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   2.580219352s  INFO prepare_target{force=false package_id=plugin_editor_api v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/plugin_editor_api) target="plugin_editor_api"}: cargo::core::compiler::fingerprint: fingerprint error for plugin_editor_api v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/plugin_editor_api)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("plugin_editor_api", ["lib", "cdylib"], "/home/trident/Documents/GitHub/Pulsar-Native/crates/plugin_editor_api/src/lib.rs", Edition2021) }
+   2.580258627s  INFO prepare_target{force=false package_id=plugin_editor_api v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/plugin_editor_api) target="plugin_editor_api"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/plugin_editor_api-6c75f9253c4ffdd8/test-lib-plugin_editor_api`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   2.586672957s  INFO prepare_target{force=false package_id=plugin_manager v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/plugin_manager) target="plugin_manager"}: cargo::core::compiler::fingerprint: fingerprint error for plugin_manager v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/plugin_manager)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("plugin_manager", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/crates/plugin_manager/src/lib.rs", Edition2021) }
+   2.587231610s  INFO prepare_target{force=false package_id=plugin_manager v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/plugin_manager) target="plugin_manager"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/plugin_manager-90cd8e599ddc8d53/lib-plugin_manager`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   2.604789558s  INFO prepare_target{force=false package_id=plugin_manager v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/plugin_manager) target="plugin_manager"}: cargo::core::compiler::fingerprint: fingerprint error for plugin_manager v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/plugin_manager)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("plugin_manager", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/crates/plugin_manager/src/lib.rs", Edition2021) }
+   2.604881376s  INFO prepare_target{force=false package_id=plugin_manager v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/plugin_manager) target="plugin_manager"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/plugin_manager-cd207cf36569fa2b/test-lib-plugin_manager`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   2.738168561s  INFO prepare_target{force=false package_id=pulsar-multiedit v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/multiuser_server) target="pulsar_multiedit"}: cargo::core::compiler::fingerprint: fingerprint error for pulsar-multiedit v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/multiuser_server)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("pulsar_multiedit", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/crates/multiuser_server/src/lib.rs", Edition2021) }
+   2.738208870s  INFO prepare_target{force=false package_id=pulsar-multiedit v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/multiuser_server) target="pulsar_multiedit"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/pulsar-multiedit-fd9ea074f5ef6c73/lib-pulsar_multiedit`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   2.822564267s  INFO prepare_target{force=false package_id=pulsar-multiedit v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/multiuser_server) target="pulsar_multiedit"}: cargo::core::compiler::fingerprint: fingerprint error for pulsar-multiedit v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/multiuser_server)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("pulsar_multiedit", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/crates/multiuser_server/src/lib.rs", Edition2021) }
+   2.822661045s  INFO prepare_target{force=false package_id=pulsar-multiedit v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/multiuser_server) target="pulsar_multiedit"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/pulsar-multiedit-cb3071481323aa11/test-lib-pulsar_multiedit`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   2.841269382s  INFO prepare_target{force=false package_id=reqwest v0.12.24 target="reqwest"}: cargo::core::compiler::fingerprint: fingerprint error for reqwest v0.12.24/Check { test: false }/TargetInner { ..: lib_target("reqwest", ["lib"], "/home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/reqwest-0.12.24/src/lib.rs", Edition2021) }
+   2.841302958s  INFO prepare_target{force=false package_id=reqwest v0.12.24 target="reqwest"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/reqwest-6beba4332880afd6/lib-reqwest`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::build_runner::BuildRunner::compile
+   6: cargo::ops::cargo_compile::compile_ws
+   7: cargo::ops::cargo_compile::compile_with_exec
+   8: cargo::ops::cargo_compile::compile
+   9: cargo::commands::check::exec
+  10: cargo::cli::Exec::exec
+  11: cargo::cli::main
+  12: cargo::main
+  13: std::sys::backtrace::__rust_begin_short_backtrace
+  14: std::rt::lang_start::{{closure}}
+  15: std::rt::lang_start_internal
+  16: main
+  17: __libc_start_call_main
+  18: __libc_start_main_alias_1
+  19: _start
+   2.845287442s  INFO prepare_target{force=false package_id=hyper-tls v0.6.0 target="hyper_tls"}: cargo::core::compiler::fingerprint: fingerprint error for hyper-tls v0.6.0/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("hyper_tls", ["lib"], "/home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-tls-0.6.0/src/lib.rs", Edition2018) }
+   2.845319367s  INFO prepare_target{force=false package_id=hyper-tls v0.6.0 target="hyper_tls"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/hyper-tls-5753a3c2afc77b54/lib-hyper_tls`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::build_runner::BuildRunner::compile
+   7: cargo::ops::cargo_compile::compile_ws
+   8: cargo::ops::cargo_compile::compile_with_exec
+   9: cargo::ops::cargo_compile::compile
+  10: cargo::commands::check::exec
+  11: cargo::cli::Exec::exec
+  12: cargo::cli::main
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace
+  15: std::rt::lang_start::{{closure}}
+  16: std::rt::lang_start_internal
+  17: main
+  18: __libc_start_call_main
+  19: __libc_start_main_alias_1
+  20: _start
+   2.848303081s  INFO prepare_target{force=false package_id=native-tls v0.2.14 target="native_tls"}: cargo::core::compiler::fingerprint: fingerprint error for native-tls v0.2.14/Check { test: false }/TargetInner { ..: lib_target("native_tls", ["lib"], "/home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/native-tls-0.2.14/src/lib.rs", Edition2015) }
+   2.848338968s  INFO prepare_target{force=false package_id=native-tls v0.2.14 target="native_tls"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/native-tls-ef4cb68a8200ce2b/lib-native_tls`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::build_runner::BuildRunner::compile
+   8: cargo::ops::cargo_compile::compile_ws
+   9: cargo::ops::cargo_compile::compile_with_exec
+  10: cargo::ops::cargo_compile::compile
+  11: cargo::commands::check::exec
+  12: cargo::cli::Exec::exec
+  13: cargo::cli::main
+  14: cargo::main
+  15: std::sys::backtrace::__rust_begin_short_backtrace
+  16: std::rt::lang_start::{{closure}}
+  17: std::rt::lang_start_internal
+  18: main
+  19: __libc_start_call_main
+  20: __libc_start_main_alias_1
+  21: _start
+   2.849015357s  INFO prepare_target{force=false package_id=native-tls v0.2.14 target="build-script-build"}: cargo::core::compiler::fingerprint: fingerprint error for native-tls v0.2.14/RunCustomBuild/TargetInner { ..: custom_build_target("build-script-build", "/home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/native-tls-0.2.14/build.rs", Edition2015) }
+   2.849037313s  INFO prepare_target{force=false package_id=native-tls v0.2.14 target="build-script-build"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/native-tls-87431a56ac2fe122/run-build-script-build-script-build`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::custom_build::build_work
+   4: cargo::core::compiler::custom_build::prepare
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::compile
+   8: cargo::core::compiler::compile
+   9: cargo::core::compiler::compile
+  10: cargo::core::compiler::build_runner::BuildRunner::compile
+  11: cargo::ops::cargo_compile::compile_ws
+  12: cargo::ops::cargo_compile::compile_with_exec
+  13: cargo::ops::cargo_compile::compile
+  14: cargo::commands::check::exec
+  15: cargo::cli::Exec::exec
+  16: cargo::cli::main
+  17: cargo::main
+  18: std::sys::backtrace::__rust_begin_short_backtrace
+  19: std::rt::lang_start::{{closure}}
+  20: std::rt::lang_start_internal
+  21: main
+  22: __libc_start_call_main
+  23: __libc_start_main_alias_1
+  24: _start
+   2.849506587s  INFO prepare_target{force=false package_id=openssl v0.10.75 target="openssl"}: cargo::core::compiler::fingerprint: fingerprint error for openssl v0.10.75/Check { test: false }/TargetInner { ..: lib_target("openssl", ["lib"], "/home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/openssl-0.10.75/src/lib.rs", Edition2021) }
+   2.849557300s  INFO prepare_target{force=false package_id=openssl v0.10.75 target="openssl"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/openssl-c39029c2cfc1b828/lib-openssl`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::compile
+   8: cargo::core::compiler::build_runner::BuildRunner::compile
+   9: cargo::ops::cargo_compile::compile_ws
+  10: cargo::ops::cargo_compile::compile_with_exec
+  11: cargo::ops::cargo_compile::compile
+  12: cargo::commands::check::exec
+  13: cargo::cli::Exec::exec
+  14: cargo::cli::main
+  15: cargo::main
+  16: std::sys::backtrace::__rust_begin_short_backtrace
+  17: std::rt::lang_start::{{closure}}
+  18: std::rt::lang_start_internal
+  19: main
+  20: __libc_start_call_main
+  21: __libc_start_main_alias_1
+  22: _start
+   2.853073981s  INFO prepare_target{force=false package_id=openssl v0.10.75 target="build-script-build"}: cargo::core::compiler::fingerprint: fingerprint error for openssl v0.10.75/RunCustomBuild/TargetInner { ..: custom_build_target("build-script-build", "/home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/openssl-0.10.75/build.rs", Edition2021) }
+   2.853164758s  INFO prepare_target{force=false package_id=openssl v0.10.75 target="build-script-build"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/openssl-bf4cc164486003ef/run-build-script-build-script-build`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::custom_build::build_work
+   4: cargo::core::compiler::custom_build::prepare
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::compile
+   8: cargo::core::compiler::compile
+   9: cargo::core::compiler::compile
+  10: cargo::core::compiler::compile
+  11: cargo::core::compiler::build_runner::BuildRunner::compile
+  12: cargo::ops::cargo_compile::compile_ws
+  13: cargo::ops::cargo_compile::compile_with_exec
+  14: cargo::ops::cargo_compile::compile
+  15: cargo::commands::check::exec
+  16: cargo::cli::Exec::exec
+  17: cargo::cli::main
+  18: cargo::main
+  19: std::sys::backtrace::__rust_begin_short_backtrace
+  20: std::rt::lang_start::{{closure}}
+  21: std::rt::lang_start_internal
+  22: main
+  23: __libc_start_call_main
+  24: __libc_start_main_alias_1
+  25: _start
+   2.854451852s  INFO prepare_target{force=false package_id=tokio-native-tls v0.3.1 target="tokio_native_tls"}: cargo::core::compiler::fingerprint: fingerprint error for tokio-native-tls v0.3.1/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("tokio_native_tls", ["lib"], "/home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-native-tls-0.3.1/src/lib.rs", Edition2018) }
+   2.854498276s  INFO prepare_target{force=false package_id=tokio-native-tls v0.3.1 target="tokio_native_tls"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/tokio-native-tls-a5b34cd31fbf5f48/lib-tokio_native_tls`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::build_runner::BuildRunner::compile
+   8: cargo::ops::cargo_compile::compile_ws
+   9: cargo::ops::cargo_compile::compile_with_exec
+  10: cargo::ops::cargo_compile::compile
+  11: cargo::commands::check::exec
+  12: cargo::cli::Exec::exec
+  13: cargo::cli::main
+  14: cargo::main
+  15: std::sys::backtrace::__rust_begin_short_backtrace
+  16: std::rt::lang_start::{{closure}}
+  17: std::rt::lang_start_internal
+  18: main
+  19: __libc_start_call_main
+  20: __libc_start_main_alias_1
+  21: _start
+   2.859534023s  INFO prepare_target{force=false package_id=pulsar-multiedit v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/multiuser_server) target="pulsar-multiedit"}: cargo::core::compiler::fingerprint: fingerprint error for pulsar-multiedit v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/multiuser_server)/Check { test: false }/TargetInner { name: "pulsar-multiedit", doc: true, ..: with_path("/home/trident/Documents/GitHub/Pulsar-Native/crates/multiuser_server/src/main.rs", Edition2021) }
+   2.859684644s  INFO prepare_target{force=false package_id=pulsar-multiedit v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/multiuser_server) target="pulsar-multiedit"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/pulsar-multiedit-a2c2859401afe988/bin-pulsar-multiedit`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   2.866413698s  INFO prepare_target{force=false package_id=pulsar-multiedit v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/multiuser_server) target="pulsar-multiedit"}: cargo::core::compiler::fingerprint: fingerprint error for pulsar-multiedit v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/multiuser_server)/Check { test: true }/TargetInner { name: "pulsar-multiedit", doc: true, ..: with_path("/home/trident/Documents/GitHub/Pulsar-Native/crates/multiuser_server/src/main.rs", Edition2021) }
+   2.866462195s  INFO prepare_target{force=false package_id=pulsar-multiedit v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/multiuser_server) target="pulsar-multiedit"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/pulsar-multiedit-1e5beec91cf984b9/test-bin-pulsar-multiedit`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   2.871157407s  INFO prepare_target{force=false package_id=pulsar-multiedit v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/multiuser_server) target="simple_client"}: cargo::core::compiler::fingerprint: fingerprint error for pulsar-multiedit v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/multiuser_server)/Check { test: false }/TargetInner { kind: "example", name: "simple_client", tested: false, benched: false, ..: with_path("/home/trident/Documents/GitHub/Pulsar-Native/crates/multiuser_server/examples/simple_client.rs", Edition2021) }
+   2.871200493s  INFO prepare_target{force=false package_id=pulsar-multiedit v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/multiuser_server) target="simple_client"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/pulsar-multiedit-2e6cdd36c2f6c911/example-simple_client`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   2.883735236s  INFO prepare_target{force=false package_id=pulsar_docs v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_docs) target="pulsar_docs"}: cargo::core::compiler::fingerprint: stale: changed "/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_docs/../../crates/"
+   2.883759391s  INFO prepare_target{force=false package_id=pulsar_docs v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_docs) target="pulsar_docs"}: cargo::core::compiler::fingerprint:           (vs) "/home/trident/Documents/GitHub/Pulsar-Native/target/debug/build/pulsar_docs-8784eeed25f7c92a/output"
+   2.883764337s  INFO prepare_target{force=false package_id=pulsar_docs v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_docs) target="pulsar_docs"}: cargo::core::compiler::fingerprint:                FileTime { seconds: 1764793219, nanos: 382783362 } < FileTime { seconds: 1764793232, nanos: 868599018 }
+   2.884080269s  INFO prepare_target{force=false package_id=pulsar_docs v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_docs) target="pulsar_docs"}: cargo::core::compiler::fingerprint: fingerprint error for pulsar_docs v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_docs)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("pulsar_docs", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_docs/src/lib.rs", Edition2024) }
+   2.884110873s  INFO prepare_target{force=false package_id=pulsar_docs v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_docs) target="pulsar_docs"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/pulsar_docs-f3a5e1a4ebb85991/lib-pulsar_docs`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   2.887239471s  INFO prepare_target{force=false package_id=pulsar_docs v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_docs) target="build-script-build"}: cargo::core::compiler::fingerprint: fingerprint dirty for pulsar_docs v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_docs)/RunCustomBuild/TargetInner { ..: custom_build_target("build-script-build", "/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_docs/build.rs", Edition2024) }
+   2.887319820s  INFO prepare_target{force=false package_id=pulsar_docs v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_docs) target="build-script-build"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleItem(ChangedFile { reference: "/home/trident/Documents/GitHub/Pulsar-Native/target/debug/build/pulsar_docs-8784eeed25f7c92a/output", reference_mtime: FileTime { seconds: 1764793219, nanos: 382783362 }, stale: "/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_docs/../../crates/", stale_mtime: FileTime { seconds: 1764793232, nanos: 868599018 } }))
+   2.887958282s  INFO prepare_target{force=false package_id=pulsar_docs v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_docs) target="pulsar_docs"}: cargo::core::compiler::fingerprint: fingerprint error for pulsar_docs v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_docs)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("pulsar_docs", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_docs/src/lib.rs", Edition2024) }
+   2.887995608s  INFO prepare_target{force=false package_id=pulsar_docs v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_docs) target="pulsar_docs"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/pulsar_docs-331b33321c24f830/test-lib-pulsar_docs`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   2.931116933s  INFO prepare_target{force=false package_id=pulsar_engine v0.1.47 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine) target="pulsar_engine"}: cargo::core::compiler::fingerprint: fingerprint error for pulsar_engine v0.1.47 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine)/Check { test: false }/TargetInner { ..: lib_target("pulsar_engine", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/crates/engine/src/lib.rs", Edition2021) }
+   2.931165555s  INFO prepare_target{force=false package_id=pulsar_engine v0.1.47 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine) target="pulsar_engine"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/pulsar_engine-85d55c4efa2d2064/lib-pulsar_engine`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   2.940435019s  INFO prepare_target{force=false package_id=cpal v0.15.3 target="cpal"}: cargo::core::compiler::fingerprint: fingerprint error for cpal v0.15.3/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("cpal", ["lib"], "/home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cpal-0.15.3/src/lib.rs", Edition2021) }
+   2.940489002s  INFO prepare_target{force=false package_id=cpal v0.15.3 target="cpal"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/cpal-91ce7c9dc23f7c25/lib-cpal`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::build_runner::BuildRunner::compile
+   6: cargo::ops::cargo_compile::compile_ws
+   7: cargo::ops::cargo_compile::compile_with_exec
+   8: cargo::ops::cargo_compile::compile
+   9: cargo::commands::check::exec
+  10: cargo::cli::Exec::exec
+  11: cargo::cli::main
+  12: cargo::main
+  13: std::sys::backtrace::__rust_begin_short_backtrace
+  14: std::rt::lang_start::{{closure}}
+  15: std::rt::lang_start_internal
+  16: main
+  17: __libc_start_call_main
+  18: __libc_start_main_alias_1
+  19: _start
+   2.942136418s  INFO prepare_target{force=false package_id=alsa v0.9.1 target="alsa"}: cargo::core::compiler::fingerprint: fingerprint error for alsa v0.9.1/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("alsa", ["lib"], "/home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/alsa-0.9.1/src/lib.rs", Edition2021) }
+   2.942192291s  INFO prepare_target{force=false package_id=alsa v0.9.1 target="alsa"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/alsa-ec9ae77ac26f199c/lib-alsa`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::build_runner::BuildRunner::compile
+   7: cargo::ops::cargo_compile::compile_ws
+   8: cargo::ops::cargo_compile::compile_with_exec
+   9: cargo::ops::cargo_compile::compile
+  10: cargo::commands::check::exec
+  11: cargo::cli::Exec::exec
+  12: cargo::cli::main
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace
+  15: std::rt::lang_start::{{closure}}
+  16: std::rt::lang_start_internal
+  17: main
+  18: __libc_start_call_main
+  19: __libc_start_main_alias_1
+  20: _start
+   2.943030926s  INFO prepare_target{force=false package_id=alsa-sys v0.3.1 target="alsa_sys"}: cargo::core::compiler::fingerprint: fingerprint error for alsa-sys v0.3.1/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("alsa_sys", ["lib"], "/home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/alsa-sys-0.3.1/src/lib.rs", Edition2018) }
+   2.943068623s  INFO prepare_target{force=false package_id=alsa-sys v0.3.1 target="alsa_sys"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/alsa-sys-906ec049280826ad/lib-alsa_sys`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::build_runner::BuildRunner::compile
+   8: cargo::ops::cargo_compile::compile_ws
+   9: cargo::ops::cargo_compile::compile_with_exec
+  10: cargo::ops::cargo_compile::compile
+  11: cargo::commands::check::exec
+  12: cargo::cli::Exec::exec
+  13: cargo::cli::main
+  14: cargo::main
+  15: std::sys::backtrace::__rust_begin_short_backtrace
+  16: std::rt::lang_start::{{closure}}
+  17: std::rt::lang_start_internal
+  18: main
+  19: __libc_start_call_main
+  20: __libc_start_main_alias_1
+  21: _start
+   2.943456408s  INFO prepare_target{force=false package_id=alsa-sys v0.3.1 target="build-script-build"}: cargo::core::compiler::fingerprint: fingerprint error for alsa-sys v0.3.1/RunCustomBuild/TargetInner { ..: custom_build_target("build-script-build", "/home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/alsa-sys-0.3.1/build.rs", Edition2018) }
+   2.943480684s  INFO prepare_target{force=false package_id=alsa-sys v0.3.1 target="build-script-build"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/alsa-sys-a662ed8e3f3bf89f/run-build-script-build-script-build`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::custom_build::build_work
+   4: cargo::core::compiler::custom_build::prepare
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::compile
+   8: cargo::core::compiler::compile
+   9: cargo::core::compiler::compile
+  10: cargo::core::compiler::build_runner::BuildRunner::compile
+  11: cargo::ops::cargo_compile::compile_ws
+  12: cargo::ops::cargo_compile::compile_with_exec
+  13: cargo::ops::cargo_compile::compile
+  14: cargo::commands::check::exec
+  15: cargo::cli::Exec::exec
+  16: cargo::cli::main
+  17: cargo::main
+  18: std::sys::backtrace::__rust_begin_short_backtrace
+  19: std::rt::lang_start::{{closure}}
+  20: std::rt::lang_start_internal
+  21: main
+  22: __libc_start_call_main
+  23: __libc_start_main_alias_1
+  24: _start
+   2.944393778s  INFO prepare_target{force=false package_id=device_query v2.1.0 target="device_query"}: cargo::core::compiler::fingerprint: fingerprint error for device_query v2.1.0/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("device_query", ["lib"], "/home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/device_query-2.1.0/src/lib.rs", Edition2015) }
+   2.944415310s  INFO prepare_target{force=false package_id=device_query v2.1.0 target="device_query"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/device_query-4f03215bc5798607/lib-device_query`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::build_runner::BuildRunner::compile
+   6: cargo::ops::cargo_compile::compile_ws
+   7: cargo::ops::cargo_compile::compile_with_exec
+   8: cargo::ops::cargo_compile::compile
+   9: cargo::commands::check::exec
+  10: cargo::cli::Exec::exec
+  11: cargo::cli::main
+  12: cargo::main
+  13: std::sys::backtrace::__rust_begin_short_backtrace
+  14: std::rt::lang_start::{{closure}}
+  15: std::rt::lang_start_internal
+  16: main
+  17: __libc_start_call_main
+  18: __libc_start_main_alias_1
+  19: _start
+   2.944966163s  INFO prepare_target{force=false package_id=x11 v2.21.0 target="x11"}: cargo::core::compiler::fingerprint: fingerprint error for x11 v2.21.0/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("x11", ["lib"], "/home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/x11-2.21.0/src/lib.rs", Edition2021) }
+   2.944994200s  INFO prepare_target{force=false package_id=x11 v2.21.0 target="x11"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/x11-29c6be78b58b3a3e/lib-x11`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::build_runner::BuildRunner::compile
+   7: cargo::ops::cargo_compile::compile_ws
+   8: cargo::ops::cargo_compile::compile_with_exec
+   9: cargo::ops::cargo_compile::compile
+  10: cargo::commands::check::exec
+  11: cargo::cli::Exec::exec
+  12: cargo::cli::main
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace
+  15: std::rt::lang_start::{{closure}}
+  16: std::rt::lang_start_internal
+  17: main
+  18: __libc_start_call_main
+  19: __libc_start_main_alias_1
+  20: _start
+   2.945316108s  INFO prepare_target{force=false package_id=x11 v2.21.0 target="build-script-build"}: cargo::core::compiler::fingerprint: fingerprint error for x11 v2.21.0/RunCustomBuild/TargetInner { ..: custom_build_target("build-script-build", "/home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/x11-2.21.0/build.rs", Edition2021) }
+   2.945341639s  INFO prepare_target{force=false package_id=x11 v2.21.0 target="build-script-build"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/x11-2dc2706f38b97e58/run-build-script-build-script-build`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::custom_build::build_work
+   4: cargo::core::compiler::custom_build::prepare
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::compile
+   8: cargo::core::compiler::compile
+   9: cargo::core::compiler::build_runner::BuildRunner::compile
+  10: cargo::ops::cargo_compile::compile_ws
+  11: cargo::ops::cargo_compile::compile_with_exec
+  12: cargo::ops::cargo_compile::compile
+  13: cargo::commands::check::exec
+  14: cargo::cli::Exec::exec
+  15: cargo::cli::main
+  16: cargo::main
+  17: std::sys::backtrace::__rust_begin_short_backtrace
+  18: std::rt::lang_start::{{closure}}
+  19: std::rt::lang_start_internal
+  20: main
+  21: __libc_start_call_main
+  22: __libc_start_main_alias_1
+  23: _start
+   2.963349520s  INFO prepare_target{force=false package_id=ui_about v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_about) target="ui_about"}: cargo::core::compiler::fingerprint: fingerprint error for ui_about v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_about)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("ui_about", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_about/src/lib.rs", Edition2024) }
+   2.963666560s  INFO prepare_target{force=false package_id=ui_about v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_about) target="ui_about"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_about-a94529d46758796c/lib-ui_about`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::build_runner::BuildRunner::compile
+   6: cargo::ops::cargo_compile::compile_ws
+   7: cargo::ops::cargo_compile::compile_with_exec
+   8: cargo::ops::cargo_compile::compile
+   9: cargo::commands::check::exec
+  10: cargo::cli::Exec::exec
+  11: cargo::cli::main
+  12: cargo::main
+  13: std::sys::backtrace::__rust_begin_short_backtrace
+  14: std::rt::lang_start::{{closure}}
+  15: std::rt::lang_start_internal
+  16: main
+  17: __libc_start_call_main
+  18: __libc_start_main_alias_1
+  19: _start
+   2.968871593s  INFO prepare_target{force=false package_id=ui_core v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_core) target="ui_core"}: cargo::core::compiler::fingerprint: fingerprint error for ui_core v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_core)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("ui_core", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_core/src/lib.rs", Edition2021) }
+   2.968957248s  INFO prepare_target{force=false package_id=ui_core v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_core) target="ui_core"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_core-8057763e9611f971/lib-ui_core`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::build_runner::BuildRunner::compile
+   6: cargo::ops::cargo_compile::compile_ws
+   7: cargo::ops::cargo_compile::compile_with_exec
+   8: cargo::ops::cargo_compile::compile
+   9: cargo::commands::check::exec
+  10: cargo::cli::Exec::exec
+  11: cargo::cli::main
+  12: cargo::main
+  13: std::sys::backtrace::__rust_begin_short_backtrace
+  14: std::rt::lang_start::{{closure}}
+  15: std::rt::lang_start_internal
+  16: main
+  17: __libc_start_call_main
+  18: __libc_start_main_alias_1
+  19: _start
+   2.978103865s  INFO prepare_target{force=false package_id=ui_alias_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_alias_editor) target="ui_alias_editor"}: cargo::core::compiler::fingerprint: fingerprint error for ui_alias_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_alias_editor)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("ui_alias_editor", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_alias_editor/src/lib.rs", Edition2021) }
+   2.978136980s  INFO prepare_target{force=false package_id=ui_alias_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_alias_editor) target="ui_alias_editor"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_alias_editor-6ad9ad6acdb7a5d0/lib-ui_alias_editor`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::build_runner::BuildRunner::compile
+   7: cargo::ops::cargo_compile::compile_ws
+   8: cargo::ops::cargo_compile::compile_with_exec
+   9: cargo::ops::cargo_compile::compile
+  10: cargo::commands::check::exec
+  11: cargo::cli::Exec::exec
+  12: cargo::cli::main
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace
+  15: std::rt::lang_start::{{closure}}
+  16: std::rt::lang_start_internal
+  17: main
+  18: __libc_start_call_main
+  19: __libc_start_main_alias_1
+  20: _start
+   2.985805811s  INFO prepare_target{force=false package_id=ui_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_editor) target="ui_editor"}: cargo::core::compiler::fingerprint: fingerprint error for ui_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_editor)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("ui_editor", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_editor/src/lib.rs", Edition2021) }
+   2.985925294s  INFO prepare_target{force=false package_id=ui_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_editor) target="ui_editor"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_editor-a3b49999396e5ce7/lib-ui_editor`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::build_runner::BuildRunner::compile
+   7: cargo::ops::cargo_compile::compile_ws
+   8: cargo::ops::cargo_compile::compile_with_exec
+   9: cargo::ops::cargo_compile::compile
+  10: cargo::commands::check::exec
+  11: cargo::cli::Exec::exec
+  12: cargo::cli::main
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace
+  15: std::rt::lang_start::{{closure}}
+  16: std::rt::lang_start_internal
+  17: main
+  18: __libc_start_call_main
+  19: __libc_start_main_alias_1
+  20: _start
+   2.994532718s  INFO prepare_target{force=false package_id=ui_file_manager v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_file_manager) target="ui_file_manager"}: cargo::core::compiler::fingerprint: fingerprint error for ui_file_manager v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_file_manager)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("ui_file_manager", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_file_manager/src/lib.rs", Edition2021) }
+   2.994616633s  INFO prepare_target{force=false package_id=ui_file_manager v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_file_manager) target="ui_file_manager"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_file_manager-a58e43ea85f11bdb/lib-ui_file_manager`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::build_runner::BuildRunner::compile
+   8: cargo::ops::cargo_compile::compile_ws
+   9: cargo::ops::cargo_compile::compile_with_exec
+  10: cargo::ops::cargo_compile::compile
+  11: cargo::commands::check::exec
+  12: cargo::cli::Exec::exec
+  13: cargo::cli::main
+  14: cargo::main
+  15: std::sys::backtrace::__rust_begin_short_backtrace
+  16: std::rt::lang_start::{{closure}}
+  17: std::rt::lang_start_internal
+  18: main
+  19: __libc_start_call_main
+  20: __libc_start_main_alias_1
+  21: _start
+   2.999472410s  INFO prepare_target{force=false package_id=ui_problems v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_problems) target="ui_problems"}: cargo::core::compiler::fingerprint: fingerprint error for ui_problems v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_problems)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("ui_problems", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_problems/src/lib.rs", Edition2021) }
+   2.999512667s  INFO prepare_target{force=false package_id=ui_problems v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_problems) target="ui_problems"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_problems-31cbb61f739425b2/lib-ui_problems`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::build_runner::BuildRunner::compile
+   8: cargo::ops::cargo_compile::compile_ws
+   9: cargo::ops::cargo_compile::compile_with_exec
+  10: cargo::ops::cargo_compile::compile
+  11: cargo::commands::check::exec
+  12: cargo::cli::Exec::exec
+  13: cargo::cli::main
+  14: cargo::main
+  15: std::sys::backtrace::__rust_begin_short_backtrace
+  16: std::rt::lang_start::{{closure}}
+  17: std::rt::lang_start_internal
+  18: main
+  19: __libc_start_call_main
+  20: __libc_start_main_alias_1
+  21: _start
+   3.005789840s  INFO prepare_target{force=false package_id=ui_terminal v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_terminal) target="ui_terminal"}: cargo::core::compiler::fingerprint: fingerprint error for ui_terminal v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_terminal)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("ui_terminal", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_terminal/src/lib.rs", Edition2024) }
+   3.005967675s  INFO prepare_target{force=false package_id=ui_terminal v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_terminal) target="ui_terminal"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_terminal-9226c458a7c147ec/lib-ui_terminal`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::build_runner::BuildRunner::compile
+   8: cargo::ops::cargo_compile::compile_ws
+   9: cargo::ops::cargo_compile::compile_with_exec
+  10: cargo::ops::cargo_compile::compile
+  11: cargo::commands::check::exec
+  12: cargo::cli::Exec::exec
+  13: cargo::cli::main
+  14: cargo::main
+  15: std::sys::backtrace::__rust_begin_short_backtrace
+  16: std::rt::lang_start::{{closure}}
+  17: std::rt::lang_start_internal
+  18: main
+  19: __libc_start_call_main
+  20: __libc_start_main_alias_1
+  21: _start
+   3.011855519s  INFO prepare_target{force=false package_id=ui_editor_table v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_editor_table) target="ui_editor_table"}: cargo::core::compiler::fingerprint: fingerprint error for ui_editor_table v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_editor_table)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("ui_editor_table", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_editor_table/src/lib.rs", Edition2021) }
+   3.011900291s  INFO prepare_target{force=false package_id=ui_editor_table v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_editor_table) target="ui_editor_table"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_editor_table-539177aace8bca9c/lib-ui_editor_table`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::build_runner::BuildRunner::compile
+   7: cargo::ops::cargo_compile::compile_ws
+   8: cargo::ops::cargo_compile::compile_with_exec
+   9: cargo::ops::cargo_compile::compile
+  10: cargo::commands::check::exec
+  11: cargo::cli::Exec::exec
+  12: cargo::cli::main
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace
+  15: std::rt::lang_start::{{closure}}
+  16: std::rt::lang_start_internal
+  17: main
+  18: __libc_start_call_main
+  19: __libc_start_main_alias_1
+  20: _start
+   3.017134949s  INFO prepare_target{force=false package_id=ui_entry v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_entry) target="ui_entry"}: cargo::core::compiler::fingerprint: fingerprint error for ui_entry v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_entry)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("ui_entry", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_entry/src/lib.rs", Edition2021) }
+   3.017209245s  INFO prepare_target{force=false package_id=ui_entry v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_entry) target="ui_entry"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_entry-bcc02e4877baaab5/lib-ui_entry`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::build_runner::BuildRunner::compile
+   7: cargo::ops::cargo_compile::compile_ws
+   8: cargo::ops::cargo_compile::compile_with_exec
+   9: cargo::ops::cargo_compile::compile
+  10: cargo::commands::check::exec
+  11: cargo::cli::Exec::exec
+  12: cargo::cli::main
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace
+  15: std::rt::lang_start::{{closure}}
+  16: std::rt::lang_start_internal
+  17: main
+  18: __libc_start_call_main
+  19: __libc_start_main_alias_1
+  20: _start
+   3.027686662s  INFO prepare_target{force=false package_id=ui_enum_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_enum_editor) target="ui_enum_editor"}: cargo::core::compiler::fingerprint: fingerprint error for ui_enum_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_enum_editor)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("ui_enum_editor", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_enum_editor/src/lib.rs", Edition2021) }
+   3.027824499s  INFO prepare_target{force=false package_id=ui_enum_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_enum_editor) target="ui_enum_editor"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_enum_editor-6a2c52839d18ae0e/lib-ui_enum_editor`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::build_runner::BuildRunner::compile
+   7: cargo::ops::cargo_compile::compile_ws
+   8: cargo::ops::cargo_compile::compile_with_exec
+   9: cargo::ops::cargo_compile::compile
+  10: cargo::commands::check::exec
+  11: cargo::cli::Exec::exec
+  12: cargo::cli::main
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace
+  15: std::rt::lang_start::{{closure}}
+  16: std::rt::lang_start_internal
+  17: main
+  18: __libc_start_call_main
+  19: __libc_start_main_alias_1
+  20: _start
+   3.037071479s  INFO prepare_target{force=false package_id=ui_loading_screen v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_loading_screen) target="ui_loading_screen"}: cargo::core::compiler::fingerprint: fingerprint error for ui_loading_screen v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_loading_screen)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("ui_loading_screen", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_loading_screen/src/lib.rs", Edition2021) }
+   3.037181139s  INFO prepare_target{force=false package_id=ui_loading_screen v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_loading_screen) target="ui_loading_screen"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_loading_screen-5cb78f1ff5a29500/lib-ui_loading_screen`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::build_runner::BuildRunner::compile
+   7: cargo::ops::cargo_compile::compile_ws
+   8: cargo::ops::cargo_compile::compile_with_exec
+   9: cargo::ops::cargo_compile::compile
+  10: cargo::commands::check::exec
+  11: cargo::cli::Exec::exec
+  12: cargo::cli::main
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace
+  15: std::rt::lang_start::{{closure}}
+  16: std::rt::lang_start_internal
+  17: main
+  18: __libc_start_call_main
+  19: __libc_start_main_alias_1
+  20: _start
+   3.047815013s  INFO prepare_target{force=false package_id=ui_multiplayer v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_multiplayer) target="ui_multiplayer"}: cargo::core::compiler::fingerprint: fingerprint error for ui_multiplayer v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_multiplayer)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("ui_multiplayer", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_multiplayer/src/lib.rs", Edition2021) }
+   3.047847795s  INFO prepare_target{force=false package_id=ui_multiplayer v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_multiplayer) target="ui_multiplayer"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_multiplayer-8381efc435af5024/lib-ui_multiplayer`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::build_runner::BuildRunner::compile
+   7: cargo::ops::cargo_compile::compile_ws
+   8: cargo::ops::cargo_compile::compile_with_exec
+   9: cargo::ops::cargo_compile::compile
+  10: cargo::commands::check::exec
+  11: cargo::cli::Exec::exec
+  12: cargo::cli::main
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace
+  15: std::rt::lang_start::{{closure}}
+  16: std::rt::lang_start_internal
+  17: main
+  18: __libc_start_call_main
+  19: __libc_start_main_alias_1
+  20: _start
+   3.053892015s  INFO prepare_target{force=false package_id=ui_project_launcher v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_project_launcher) target="ui_project_launcher"}: cargo::core::compiler::fingerprint: fingerprint error for ui_project_launcher v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_project_launcher)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("ui_project_launcher", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_project_launcher/src/lib.rs", Edition2021) }
+   3.053923263s  INFO prepare_target{force=false package_id=ui_project_launcher v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_project_launcher) target="ui_project_launcher"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_project_launcher-8d90299f8cdfb73f/lib-ui_project_launcher`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::build_runner::BuildRunner::compile
+   7: cargo::ops::cargo_compile::compile_ws
+   8: cargo::ops::cargo_compile::compile_with_exec
+   9: cargo::ops::cargo_compile::compile
+  10: cargo::commands::check::exec
+  11: cargo::cli::Exec::exec
+  12: cargo::cli::main
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace
+  15: std::rt::lang_start::{{closure}}
+  16: std::rt::lang_start_internal
+  17: main
+  18: __libc_start_call_main
+  19: __libc_start_main_alias_1
+  20: _start
+   3.059667189s  INFO prepare_target{force=false package_id=ui_settings v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_settings) target="ui_settings"}: cargo::core::compiler::fingerprint: fingerprint error for ui_settings v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_settings)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("ui_settings", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_settings/src/lib.rs", Edition2021) }
+   3.059705677s  INFO prepare_target{force=false package_id=ui_settings v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_settings) target="ui_settings"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_settings-1946bb5ade492523/lib-ui_settings`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::build_runner::BuildRunner::compile
+   7: cargo::ops::cargo_compile::compile_ws
+   8: cargo::ops::cargo_compile::compile_with_exec
+   9: cargo::ops::cargo_compile::compile
+  10: cargo::commands::check::exec
+  11: cargo::cli::Exec::exec
+  12: cargo::cli::main
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace
+  15: std::rt::lang_start::{{closure}}
+  16: std::rt::lang_start_internal
+  17: main
+  18: __libc_start_call_main
+  19: __libc_start_main_alias_1
+  20: _start
+   3.063440432s  INFO prepare_target{force=false package_id=ui_struct_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_struct_editor) target="ui_struct_editor"}: cargo::core::compiler::fingerprint: fingerprint error for ui_struct_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_struct_editor)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("ui_struct_editor", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_struct_editor/src/lib.rs", Edition2021) }
+   3.063471000s  INFO prepare_target{force=false package_id=ui_struct_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_struct_editor) target="ui_struct_editor"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_struct_editor-69fe444897fa753d/lib-ui_struct_editor`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::build_runner::BuildRunner::compile
+   7: cargo::ops::cargo_compile::compile_ws
+   8: cargo::ops::cargo_compile::compile_with_exec
+   9: cargo::ops::cargo_compile::compile
+  10: cargo::commands::check::exec
+  11: cargo::cli::Exec::exec
+  12: cargo::cli::main
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace
+  15: std::rt::lang_start::{{closure}}
+  16: std::rt::lang_start_internal
+  17: main
+  18: __libc_start_call_main
+  19: __libc_start_main_alias_1
+  20: _start
+   3.067772252s  INFO prepare_target{force=false package_id=ui_trait_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_trait_editor) target="ui_trait_editor"}: cargo::core::compiler::fingerprint: fingerprint error for ui_trait_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_trait_editor)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("ui_trait_editor", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_trait_editor/src/lib.rs", Edition2021) }
+   3.067811911s  INFO prepare_target{force=false package_id=ui_trait_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_trait_editor) target="ui_trait_editor"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_trait_editor-fd65d7accaf3d9a1/lib-ui_trait_editor`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::build_runner::BuildRunner::compile
+   7: cargo::ops::cargo_compile::compile_ws
+   8: cargo::ops::cargo_compile::compile_with_exec
+   9: cargo::ops::cargo_compile::compile
+  10: cargo::commands::check::exec
+  11: cargo::cli::Exec::exec
+  12: cargo::cli::main
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace
+  15: std::rt::lang_start::{{closure}}
+  16: std::rt::lang_start_internal
+  17: main
+  18: __libc_start_call_main
+  19: __libc_start_main_alias_1
+  20: _start
+   3.074076019s  INFO prepare_target{force=false package_id=ui_documentation v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_documentation) target="ui_documentation"}: cargo::core::compiler::fingerprint: fingerprint error for ui_documentation v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_documentation)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("ui_documentation", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_documentation/src/lib.rs", Edition2024) }
+   3.074237017s  INFO prepare_target{force=false package_id=ui_documentation v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_documentation) target="ui_documentation"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_documentation-b26906db7b8687d2/lib-ui_documentation`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::build_runner::BuildRunner::compile
+   6: cargo::ops::cargo_compile::compile_ws
+   7: cargo::ops::cargo_compile::compile_with_exec
+   8: cargo::ops::cargo_compile::compile
+   9: cargo::commands::check::exec
+  10: cargo::cli::Exec::exec
+  11: cargo::cli::main
+  12: cargo::main
+  13: std::sys::backtrace::__rust_begin_short_backtrace
+  14: std::rt::lang_start::{{closure}}
+  15: std::rt::lang_start_internal
+  16: main
+  17: __libc_start_call_main
+  18: __libc_start_main_alias_1
+  19: _start
+   3.081159608s  INFO prepare_target{force=false package_id=pulsar_engine v0.1.47 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine) target="pulsar_engine"}: cargo::core::compiler::fingerprint: fingerprint error for pulsar_engine v0.1.47 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine)/Check { test: true }/TargetInner { ..: lib_target("pulsar_engine", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/crates/engine/src/lib.rs", Edition2021) }
+   3.081271404s  INFO prepare_target{force=false package_id=pulsar_engine v0.1.47 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine) target="pulsar_engine"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/pulsar_engine-ccbd4cc47316c512/test-lib-pulsar_engine`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.093922740s  INFO prepare_target{force=false package_id=pulsar_engine v0.1.47 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine) target="pulsar_engine"}: cargo::core::compiler::fingerprint: fingerprint error for pulsar_engine v0.1.47 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine)/Check { test: false }/TargetInner { name: "pulsar_engine", doc: true, ..: with_path("/home/trident/Documents/GitHub/Pulsar-Native/crates/engine/src/main.rs", Edition2021) }
+   3.094012395s  INFO prepare_target{force=false package_id=pulsar_engine v0.1.47 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine) target="pulsar_engine"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/pulsar_engine-5b48e17838c74480/bin-pulsar_engine`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.110309055s  INFO prepare_target{force=false package_id=pulsar_engine v0.1.47 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine) target="pulsar_engine"}: cargo::core::compiler::fingerprint: fingerprint error for pulsar_engine v0.1.47 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine)/Check { test: true }/TargetInner { name: "pulsar_engine", doc: true, ..: with_path("/home/trident/Documents/GitHub/Pulsar-Native/crates/engine/src/main.rs", Edition2021) }
+   3.113392721s  INFO prepare_target{force=false package_id=pulsar_engine v0.1.47 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine) target="pulsar_engine"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/pulsar_engine-ce1c23f9068a6cd8/test-bin-pulsar_engine`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.137022497s  INFO prepare_target{force=false package_id=pulsar_macros v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_macros) target="pulsar_macros"}: cargo::core::compiler::fingerprint: fingerprint error for pulsar_macros v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_macros)/Check { test: false }/TargetInner { name_inferred: true, for_host: true, proc_macro: true, ..: lib_target("pulsar_macros", ["proc-macro"], "/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_macros/src/lib.rs", Edition2021) }
+   3.137083155s  INFO prepare_target{force=false package_id=pulsar_macros v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_macros) target="pulsar_macros"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/pulsar_macros-e12cd77120e326a1/lib-pulsar_macros`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.145379247s  INFO prepare_target{force=false package_id=pulsar_std v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_std) target="registry_test"}: cargo::core::compiler::fingerprint: fingerprint error for pulsar_std v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_std)/Check { test: true }/TargetInner { kind: "test", name: "registry_test", benched: false, ..: with_path("/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_std/tests/registry_test.rs", Edition2021) }
+   3.145409465s  INFO prepare_target{force=false package_id=pulsar_std v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_std) target="registry_test"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/pulsar_std-9b0bedf61b4ff4b5/test-integration-test-registry_test`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.146561026s  INFO prepare_target{force=false package_id=ui v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/ui) target="ui"}: cargo::core::compiler::fingerprint: fingerprint error for ui v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/ui)/Check { test: true }/TargetInner { name_inferred: true, doctest: false, ..: lib_target("ui", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/crates/ui/src/lib.rs", Edition2021) }
+   3.146584838s  INFO prepare_target{force=false package_id=ui v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/ui) target="ui"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui-1daf3fd43b170f13/test-lib-ui`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.152019589s  INFO prepare_target{force=false package_id=ui_about v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_about) target="ui_about"}: cargo::core::compiler::fingerprint: fingerprint error for ui_about v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_about)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("ui_about", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_about/src/lib.rs", Edition2024) }
+   3.152051787s  INFO prepare_target{force=false package_id=ui_about v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_about) target="ui_about"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_about-290618742c638a6b/test-lib-ui_about`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.159070141s  INFO prepare_target{force=false package_id=ui_alias_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_alias_editor) target="ui_alias_editor"}: cargo::core::compiler::fingerprint: fingerprint error for ui_alias_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_alias_editor)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("ui_alias_editor", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_alias_editor/src/lib.rs", Edition2021) }
+   3.159147393s  INFO prepare_target{force=false package_id=ui_alias_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_alias_editor) target="ui_alias_editor"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_alias_editor-10f3347f0e79461c/test-lib-ui_alias_editor`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.166750698s  INFO prepare_target{force=false package_id=ui_common v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_common) target="ui_common"}: cargo::core::compiler::fingerprint: fingerprint error for ui_common v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_common)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("ui_common", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_common/src/lib.rs", Edition2021) }
+   3.166783878s  INFO prepare_target{force=false package_id=ui_common v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_common) target="ui_common"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_common-9eb030a692a20440/test-lib-ui_common`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.171977163s  INFO prepare_target{force=false package_id=ui_core v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_core) target="ui_core"}: cargo::core::compiler::fingerprint: fingerprint error for ui_core v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_core)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("ui_core", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_core/src/lib.rs", Edition2021) }
+   3.172011490s  INFO prepare_target{force=false package_id=ui_core v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_core) target="ui_core"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_core-e41d02b17cd13e60/test-lib-ui_core`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.181027351s  INFO prepare_target{force=false package_id=ui_documentation v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_documentation) target="ui_documentation"}: cargo::core::compiler::fingerprint: fingerprint error for ui_documentation v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_documentation)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("ui_documentation", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_documentation/src/lib.rs", Edition2024) }
+   3.181061722s  INFO prepare_target{force=false package_id=ui_documentation v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_documentation) target="ui_documentation"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_documentation-2ca52106bc61d105/test-lib-ui_documentation`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.186721780s  INFO prepare_target{force=false package_id=ui_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_editor) target="ui_editor"}: cargo::core::compiler::fingerprint: fingerprint error for ui_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_editor)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("ui_editor", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_editor/src/lib.rs", Edition2021) }
+   3.186758293s  INFO prepare_target{force=false package_id=ui_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_editor) target="ui_editor"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_editor-dfd45db8854f2f0f/test-lib-ui_editor`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.203668649s  INFO prepare_target{force=false package_id=ui_editor_table v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_editor_table) target="ui_editor_table"}: cargo::core::compiler::fingerprint: fingerprint error for ui_editor_table v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_editor_table)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("ui_editor_table", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_editor_table/src/lib.rs", Edition2021) }
+   3.203704920s  INFO prepare_target{force=false package_id=ui_editor_table v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_editor_table) target="ui_editor_table"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_editor_table-5ab382efd2a7698c/test-lib-ui_editor_table`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.209300569s  INFO prepare_target{force=false package_id=ui_editor_table v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_editor_table) target="simple_datatable"}: cargo::core::compiler::fingerprint: fingerprint error for ui_editor_table v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_editor_table)/Check { test: false }/TargetInner { kind: "example", name: "simple_datatable", tested: false, benched: false, ..: with_path("/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_editor_table/examples/simple_datatable.rs", Edition2021) }
+   3.209366104s  INFO prepare_target{force=false package_id=ui_editor_table v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_editor_table) target="simple_datatable"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_editor_table-6cc802c16b0ebf4c/example-simple_datatable`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.214350905s  INFO prepare_target{force=false package_id=ui_entry v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_entry) target="ui_entry"}: cargo::core::compiler::fingerprint: fingerprint error for ui_entry v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_entry)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("ui_entry", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_entry/src/lib.rs", Edition2021) }
+   3.214416133s  INFO prepare_target{force=false package_id=ui_entry v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_entry) target="ui_entry"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_entry-f36cedb1f5b8b4dc/test-lib-ui_entry`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.221285389s  INFO prepare_target{force=false package_id=ui_enum_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_enum_editor) target="ui_enum_editor"}: cargo::core::compiler::fingerprint: fingerprint error for ui_enum_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_enum_editor)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("ui_enum_editor", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_enum_editor/src/lib.rs", Edition2021) }
+   3.221318511s  INFO prepare_target{force=false package_id=ui_enum_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_enum_editor) target="ui_enum_editor"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_enum_editor-a8671ddc6699c121/test-lib-ui_enum_editor`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.225892282s  INFO prepare_target{force=false package_id=ui_file_manager v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_file_manager) target="ui_file_manager"}: cargo::core::compiler::fingerprint: fingerprint error for ui_file_manager v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_file_manager)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("ui_file_manager", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_file_manager/src/lib.rs", Edition2021) }
+   3.225920388s  INFO prepare_target{force=false package_id=ui_file_manager v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_file_manager) target="ui_file_manager"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_file_manager-5ddb32c882599188/test-lib-ui_file_manager`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.232506104s  INFO prepare_target{force=false package_id=ui_loading_screen v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_loading_screen) target="ui_loading_screen"}: cargo::core::compiler::fingerprint: fingerprint error for ui_loading_screen v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_loading_screen)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("ui_loading_screen", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_loading_screen/src/lib.rs", Edition2021) }
+   3.232542293s  INFO prepare_target{force=false package_id=ui_loading_screen v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_loading_screen) target="ui_loading_screen"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_loading_screen-95c4b63a8f2d2697/test-lib-ui_loading_screen`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.239347283s  INFO prepare_target{force=false package_id=ui_multiplayer v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_multiplayer) target="ui_multiplayer"}: cargo::core::compiler::fingerprint: fingerprint error for ui_multiplayer v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_multiplayer)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("ui_multiplayer", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_multiplayer/src/lib.rs", Edition2021) }
+   3.239421095s  INFO prepare_target{force=false package_id=ui_multiplayer v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_multiplayer) target="ui_multiplayer"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_multiplayer-71afc2c7b4517f07/test-lib-ui_multiplayer`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.245456400s  INFO prepare_target{force=false package_id=ui_problems v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_problems) target="ui_problems"}: cargo::core::compiler::fingerprint: fingerprint error for ui_problems v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_problems)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("ui_problems", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_problems/src/lib.rs", Edition2021) }
+   3.245535663s  INFO prepare_target{force=false package_id=ui_problems v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_problems) target="ui_problems"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_problems-fef447777cabc0f1/test-lib-ui_problems`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.250661055s  INFO prepare_target{force=false package_id=ui_project_launcher v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_project_launcher) target="ui_project_launcher"}: cargo::core::compiler::fingerprint: fingerprint error for ui_project_launcher v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_project_launcher)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("ui_project_launcher", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_project_launcher/src/lib.rs", Edition2021) }
+   3.250734181s  INFO prepare_target{force=false package_id=ui_project_launcher v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_project_launcher) target="ui_project_launcher"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_project_launcher-da3012cc910aa2f7/test-lib-ui_project_launcher`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.257110767s  INFO prepare_target{force=false package_id=ui_settings v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_settings) target="ui_settings"}: cargo::core::compiler::fingerprint: fingerprint error for ui_settings v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_settings)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("ui_settings", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_settings/src/lib.rs", Edition2021) }
+   3.257168309s  INFO prepare_target{force=false package_id=ui_settings v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_settings) target="ui_settings"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_settings-3be23fa1a3310798/test-lib-ui_settings`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.264766257s  INFO prepare_target{force=false package_id=ui_struct_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_struct_editor) target="ui_struct_editor"}: cargo::core::compiler::fingerprint: fingerprint error for ui_struct_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_struct_editor)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("ui_struct_editor", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_struct_editor/src/lib.rs", Edition2021) }
+   3.264838383s  INFO prepare_target{force=false package_id=ui_struct_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_struct_editor) target="ui_struct_editor"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_struct_editor-00c689bc9724fb4b/test-lib-ui_struct_editor`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.270672040s  INFO prepare_target{force=false package_id=ui_terminal v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_terminal) target="ui_terminal"}: cargo::core::compiler::fingerprint: fingerprint error for ui_terminal v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_terminal)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("ui_terminal", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_terminal/src/lib.rs", Edition2024) }
+   3.270704068s  INFO prepare_target{force=false package_id=ui_terminal v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_terminal) target="ui_terminal"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_terminal-aa4c8763a7fe30f6/test-lib-ui_terminal`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+   3.275775982s  INFO prepare_target{force=false package_id=ui_trait_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_trait_editor) target="ui_trait_editor"}: cargo::core::compiler::fingerprint: fingerprint error for ui_trait_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_trait_editor)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("ui_trait_editor", ["lib"], "/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_trait_editor/src/lib.rs", Edition2021) }
+   3.275804046s  INFO prepare_target{force=false package_id=ui_trait_editor v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_trait_editor) target="ui_trait_editor"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/.fingerprint/ui_trait_editor-6a7f9227d9615ff3/test-lib-ui_trait_editor`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: <E as anyhow::context::ext::StdError>::ext_context
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::prepare_target
+   3: cargo::core::compiler::compile
+   4: cargo::core::compiler::build_runner::BuildRunner::compile
+   5: cargo::ops::cargo_compile::compile_ws
+   6: cargo::ops::cargo_compile::compile_with_exec
+   7: cargo::ops::cargo_compile::compile
+   8: cargo::commands::check::exec
+   9: cargo::cli::Exec::exec
+  10: cargo::cli::main
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace
+  13: std::rt::lang_start::{{closure}}
+  14: std::rt::lang_start_internal
+  15: main
+  16: __libc_start_call_main
+  17: __libc_start_main_alias_1
+  18: _start
+    Checking collections v0.1.0 (/home/trident/zed/crates/collections)
+    Checking refineable v0.1.0 (/home/trident/zed/crates/refineable)
+    Checking util v0.1.0 (/home/trident/zed/crates/util)
+    Checking pulsar_std v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_std)
+    Checking http_client v0.1.0 (/home/trident/zed/crates/http_client)
+    Checking semantic_version v0.1.0 (/home/trident/zed/crates/semantic_version)
+    Checking sum_tree v0.1.0 (/home/trident/zed/crates/sum_tree)
+    Checking engine_state v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_state)
+    Checking ui_types_common v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/ui-crates/ui_types_common)
+    Checking gpui v0.2.1 (/home/trident/zed/crates/gpui)
+error: could not compile `gpui` (lib) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+   Compiling openssl-sys v0.9.111
+warning: openssl-sys@0.9.111: Could not find directory of OpenSSL installation, and this `-sys` crate cannot proceed without this knowledge. If OpenSSL is installed and this crate had trouble finding it,  you can set the `OPENSSL_DIR` environment variable for the compilation process. See stderr section below for further information.
+error: failed to run custom build command for `openssl-sys v0.9.111`
+note: To improve backtraces for build dependencies, set the CARGO_PROFILE_DEV_BUILD_OVERRIDE_DEBUG=true environment variable to enable debug information generation.
+
+Caused by:
+  process didn't exit successfully: `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/build/openssl-sys-43c65986e9a5dc9d/build-script-main` (exit status: 101)
+  --- stdout
+  cargo:rustc-check-cfg=cfg(osslconf, values("OPENSSL_NO_OCB", "OPENSSL_NO_SM4", "OPENSSL_NO_SEED", "OPENSSL_NO_CHACHA", "OPENSSL_NO_CAST", "OPENSSL_NO_IDEA", "OPENSSL_NO_CAMELLIA", "OPENSSL_NO_RC4", "OPENSSL_NO_BF", "OPENSSL_NO_PSK", "OPENSSL_NO_DEPRECATED_3_0", "OPENSSL_NO_SCRYPT", "OPENSSL_NO_SM3", "OPENSSL_NO_RMD160", "OPENSSL_NO_EC2M", "OPENSSL_NO_OCSP", "OPENSSL_NO_CMS", "OPENSSL_NO_COMP", "OPENSSL_NO_SOCK", "OPENSSL_NO_STDIO", "OPENSSL_NO_EC", "OPENSSL_NO_SSL3_METHOD", "OPENSSL_NO_KRB5", "OPENSSL_NO_TLSEXT", "OPENSSL_NO_SRP", "OPENSSL_NO_SRTP", "OPENSSL_NO_RFC3779", "OPENSSL_NO_SHA", "OPENSSL_NO_NEXTPROTONEG", "OPENSSL_NO_ENGINE", "OPENSSL_NO_BUF_FREELISTS", "OPENSSL_NO_RC2"))
+  cargo:rustc-check-cfg=cfg(openssl)
+  cargo:rustc-check-cfg=cfg(libressl)
+  cargo:rustc-check-cfg=cfg(boringssl)
+  cargo:rustc-check-cfg=cfg(awslc)
+  cargo:rustc-check-cfg=cfg(libressl250)
+  cargo:rustc-check-cfg=cfg(libressl251)
+  cargo:rustc-check-cfg=cfg(libressl252)
+  cargo:rustc-check-cfg=cfg(libressl261)
+  cargo:rustc-check-cfg=cfg(libressl270)
+  cargo:rustc-check-cfg=cfg(libressl271)
+  cargo:rustc-check-cfg=cfg(libressl273)
+  cargo:rustc-check-cfg=cfg(libressl280)
+  cargo:rustc-check-cfg=cfg(libressl281)
+  cargo:rustc-check-cfg=cfg(libressl291)
+  cargo:rustc-check-cfg=cfg(libressl310)
+  cargo:rustc-check-cfg=cfg(libressl321)
+  cargo:rustc-check-cfg=cfg(libressl332)
+  cargo:rustc-check-cfg=cfg(libressl340)
+  cargo:rustc-check-cfg=cfg(libressl350)
+  cargo:rustc-check-cfg=cfg(libressl360)
+  cargo:rustc-check-cfg=cfg(libressl361)
+  cargo:rustc-check-cfg=cfg(libressl370)
+  cargo:rustc-check-cfg=cfg(libressl380)
+  cargo:rustc-check-cfg=cfg(libressl381)
+  cargo:rustc-check-cfg=cfg(libressl382)
+  cargo:rustc-check-cfg=cfg(libressl390)
+  cargo:rustc-check-cfg=cfg(libressl400)
+  cargo:rustc-check-cfg=cfg(libressl410)
+  cargo:rustc-check-cfg=cfg(libressl420)
+  cargo:rustc-check-cfg=cfg(ossl101)
+  cargo:rustc-check-cfg=cfg(ossl102)
+  cargo:rustc-check-cfg=cfg(ossl102f)
+  cargo:rustc-check-cfg=cfg(ossl102h)
+  cargo:rustc-check-cfg=cfg(ossl110)
+  cargo:rustc-check-cfg=cfg(ossl110f)
+  cargo:rustc-check-cfg=cfg(ossl110g)
+  cargo:rustc-check-cfg=cfg(ossl110h)
+  cargo:rustc-check-cfg=cfg(ossl111)
+  cargo:rustc-check-cfg=cfg(ossl111b)
+  cargo:rustc-check-cfg=cfg(ossl111c)
+  cargo:rustc-check-cfg=cfg(ossl111d)
+  cargo:rustc-check-cfg=cfg(ossl300)
+  cargo:rustc-check-cfg=cfg(ossl310)
+  cargo:rustc-check-cfg=cfg(ossl320)
+  cargo:rustc-check-cfg=cfg(ossl330)
+  cargo:rustc-check-cfg=cfg(ossl340)
+  cargo:rerun-if-env-changed=X86_64_UNKNOWN_LINUX_GNU_OPENSSL_LIB_DIR
+  X86_64_UNKNOWN_LINUX_GNU_OPENSSL_LIB_DIR unset
+  cargo:rerun-if-env-changed=OPENSSL_LIB_DIR
+  OPENSSL_LIB_DIR unset
+  cargo:rerun-if-env-changed=X86_64_UNKNOWN_LINUX_GNU_OPENSSL_INCLUDE_DIR
+  X86_64_UNKNOWN_LINUX_GNU_OPENSSL_INCLUDE_DIR unset
+  cargo:rerun-if-env-changed=OPENSSL_INCLUDE_DIR
+  OPENSSL_INCLUDE_DIR unset
+  cargo:rerun-if-env-changed=X86_64_UNKNOWN_LINUX_GNU_OPENSSL_DIR
+  X86_64_UNKNOWN_LINUX_GNU_OPENSSL_DIR unset
+  cargo:rerun-if-env-changed=OPENSSL_DIR
+  OPENSSL_DIR unset
+  cargo:rerun-if-env-changed=OPENSSL_NO_PKG_CONFIG
+  cargo:rerun-if-env-changed=PKG_CONFIG_x86_64-unknown-linux-gnu
+  cargo:rerun-if-env-changed=PKG_CONFIG_x86_64_unknown_linux_gnu
+  cargo:rerun-if-env-changed=HOST_PKG_CONFIG
+  cargo:rerun-if-env-changed=PKG_CONFIG
+  cargo:rerun-if-env-changed=OPENSSL_STATIC
+  cargo:rerun-if-env-changed=OPENSSL_DYNAMIC
+  cargo:rerun-if-env-changed=PKG_CONFIG_ALL_STATIC
+  cargo:rerun-if-env-changed=PKG_CONFIG_ALL_DYNAMIC
+  cargo:rerun-if-env-changed=PKG_CONFIG_PATH_x86_64-unknown-linux-gnu
+  cargo:rerun-if-env-changed=PKG_CONFIG_PATH_x86_64_unknown_linux_gnu
+  cargo:rerun-if-env-changed=HOST_PKG_CONFIG_PATH
+  cargo:rerun-if-env-changed=PKG_CONFIG_PATH
+  cargo:rerun-if-env-changed=PKG_CONFIG_LIBDIR_x86_64-unknown-linux-gnu
+  cargo:rerun-if-env-changed=PKG_CONFIG_LIBDIR_x86_64_unknown_linux_gnu
+  cargo:rerun-if-env-changed=HOST_PKG_CONFIG_LIBDIR
+  cargo:rerun-if-env-changed=PKG_CONFIG_LIBDIR
+  cargo:rerun-if-env-changed=PKG_CONFIG_SYSROOT_DIR_x86_64-unknown-linux-gnu
+  cargo:rerun-if-env-changed=PKG_CONFIG_SYSROOT_DIR_x86_64_unknown_linux_gnu
+  cargo:rerun-if-env-changed=HOST_PKG_CONFIG_SYSROOT_DIR
+  cargo:rerun-if-env-changed=PKG_CONFIG_SYSROOT_DIR
+
+
+  Could not find openssl via pkg-config:
+
+  pkg-config exited with status code 1
+  > PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1 pkg-config --libs --cflags openssl
+
+  The system library `openssl` required by crate `openssl-sys` was not found.
+  The file `openssl.pc` needs to be installed and the PKG_CONFIG_PATH environment variable must contain its parent directory.
+  The PKG_CONFIG_PATH environment variable is not set.
+
+  HINT: if you have installed the library, try setting PKG_CONFIG_PATH to the directory containing `openssl.pc`.
+
+
+  cargo:warning=Could not find directory of OpenSSL installation, and this `-sys` crate cannot proceed without this knowledge. If OpenSSL is installed and this crate had trouble finding it,  you can set the `OPENSSL_DIR` environment variable for the compilation process. See stderr section below for further information.
+
+  --- stderr
+
+
+  Could not find directory of OpenSSL installation, and this `-sys` crate cannot
+  proceed without this knowledge. If OpenSSL is installed and this crate had
+  trouble finding it,  you can set the `OPENSSL_DIR` environment variable for the
+  compilation process.
+
+  Make sure you also have the development packages of openssl installed.
+  For example, `libssl-dev` on Ubuntu or `openssl-devel` on Fedora.
+
+  If you're in a situation where you think the directory *should* be found
+  automatically, please open a bug at https://github.com/rust-openssl/rust-openssl
+  and include information about your system as well as this message.
+
+  $HOST = x86_64-unknown-linux-gnu
+  $TARGET = x86_64-unknown-linux-gnu
+  openssl-sys = 0.9.111
+
+
+   Compiling alsa-sys v0.3.1
+error: failed to run custom build command for `alsa-sys v0.3.1`
+note: To improve backtraces for build dependencies, set the CARGO_PROFILE_DEV_BUILD_OVERRIDE_DEBUG=true environment variable to enable debug information generation.
+
+Caused by:
+  process didn't exit successfully: `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/build/alsa-sys-ca8bf5aeffbd50d0/build-script-build` (exit status: 101)
+  --- stdout
+  cargo:rerun-if-env-changed=ALSA_NO_PKG_CONFIG
+  cargo:rerun-if-env-changed=PKG_CONFIG_x86_64-unknown-linux-gnu
+  cargo:rerun-if-env-changed=PKG_CONFIG_x86_64_unknown_linux_gnu
+  cargo:rerun-if-env-changed=HOST_PKG_CONFIG
+  cargo:rerun-if-env-changed=PKG_CONFIG
+  cargo:rerun-if-env-changed=ALSA_STATIC
+  cargo:rerun-if-env-changed=ALSA_DYNAMIC
+  cargo:rerun-if-env-changed=PKG_CONFIG_ALL_STATIC
+  cargo:rerun-if-env-changed=PKG_CONFIG_ALL_DYNAMIC
+  cargo:rerun-if-env-changed=PKG_CONFIG_PATH_x86_64-unknown-linux-gnu
+  cargo:rerun-if-env-changed=PKG_CONFIG_PATH_x86_64_unknown_linux_gnu
+  cargo:rerun-if-env-changed=HOST_PKG_CONFIG_PATH
+  cargo:rerun-if-env-changed=PKG_CONFIG_PATH
+  cargo:rerun-if-env-changed=PKG_CONFIG_LIBDIR_x86_64-unknown-linux-gnu
+  cargo:rerun-if-env-changed=PKG_CONFIG_LIBDIR_x86_64_unknown_linux_gnu
+  cargo:rerun-if-env-changed=HOST_PKG_CONFIG_LIBDIR
+  cargo:rerun-if-env-changed=PKG_CONFIG_LIBDIR
+  cargo:rerun-if-env-changed=PKG_CONFIG_SYSROOT_DIR_x86_64-unknown-linux-gnu
+  cargo:rerun-if-env-changed=PKG_CONFIG_SYSROOT_DIR_x86_64_unknown_linux_gnu
+  cargo:rerun-if-env-changed=HOST_PKG_CONFIG_SYSROOT_DIR
+  cargo:rerun-if-env-changed=PKG_CONFIG_SYSROOT_DIR
+
+  --- stderr
+
+  thread 'main' (193394) panicked at /home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/alsa-sys-0.3.1/build.rs:13:18:
+
+  pkg-config exited with status code 1
+  > PKG_CONFIG_ALLOW_SYSTEM_LIBS=1 PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1 pkg-config --libs --cflags alsa
+
+  The system library `alsa` required by crate `alsa-sys` was not found.
+  The file `alsa.pc` needs to be installed and the PKG_CONFIG_PATH environment variable must contain its parent directory.
+  The PKG_CONFIG_PATH environment variable is not set.
+
+  HINT: if you have installed the library, try setting PKG_CONFIG_PATH to the directory containing `alsa.pc`.
+
+  stack backtrace:
+     0: __rustc::rust_begin_unwind
+     1: core::panicking::panic_fmt
+     2: core::panicking::panic_display
+     3: build_script_build::main
+     4: core::ops::function::FnOnce::call_once
+  note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+   Compiling x11 v2.21.0
+error: failed to run custom build command for `x11 v2.21.0`
+note: To improve backtraces for build dependencies, set the CARGO_PROFILE_DEV_BUILD_OVERRIDE_DEBUG=true environment variable to enable debug information generation.
+
+Caused by:
+  process didn't exit successfully: `/home/trident/Documents/GitHub/Pulsar-Native/target/debug/build/x11-618c07bac8232ad0/build-script-build` (exit status: 101)
+  --- stdout
+  cargo:rerun-if-env-changed=X11_NO_PKG_CONFIG
+  cargo:rerun-if-env-changed=PKG_CONFIG_x86_64-unknown-linux-gnu
+  cargo:rerun-if-env-changed=PKG_CONFIG_x86_64_unknown_linux_gnu
+  cargo:rerun-if-env-changed=HOST_PKG_CONFIG
+  cargo:rerun-if-env-changed=PKG_CONFIG
+  cargo:rerun-if-env-changed=X11_STATIC
+  cargo:rerun-if-env-changed=X11_DYNAMIC
+  cargo:rerun-if-env-changed=PKG_CONFIG_ALL_STATIC
+  cargo:rerun-if-env-changed=PKG_CONFIG_ALL_DYNAMIC
+  cargo:rerun-if-env-changed=PKG_CONFIG_PATH_x86_64-unknown-linux-gnu
+  cargo:rerun-if-env-changed=PKG_CONFIG_PATH_x86_64_unknown_linux_gnu
+  cargo:rerun-if-env-changed=HOST_PKG_CONFIG_PATH
+  cargo:rerun-if-env-changed=PKG_CONFIG_PATH
+  cargo:rerun-if-env-changed=PKG_CONFIG_LIBDIR_x86_64-unknown-linux-gnu
+  cargo:rerun-if-env-changed=PKG_CONFIG_LIBDIR_x86_64_unknown_linux_gnu
+  cargo:rerun-if-env-changed=HOST_PKG_CONFIG_LIBDIR
+  cargo:rerun-if-env-changed=PKG_CONFIG_LIBDIR
+  cargo:rerun-if-env-changed=PKG_CONFIG_SYSROOT_DIR_x86_64-unknown-linux-gnu
+  cargo:rerun-if-env-changed=PKG_CONFIG_SYSROOT_DIR_x86_64_unknown_linux_gnu
+  cargo:rerun-if-env-changed=HOST_PKG_CONFIG_SYSROOT_DIR
+  cargo:rerun-if-env-changed=PKG_CONFIG_SYSROOT_DIR
+
+  --- stderr
+
+  thread 'main' (193404) panicked at /home/trident/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/x11-2.21.0/build.rs:42:14:
+  called `Result::unwrap()` on an `Err` value: 
+  pkg-config exited with status code 1
+  > PKG_CONFIG_ALLOW_SYSTEM_LIBS=1 PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1 pkg-config --libs --cflags x11 'x11 >= 1.4.99.1'
+
+  The system library `x11` required by crate `x11` was not found.
+  The file `x11.pc` needs to be installed and the PKG_CONFIG_PATH environment variable must contain its parent directory.
+  The PKG_CONFIG_PATH environment variable is not set.
+
+  HINT: if you have installed the library, try setting PKG_CONFIG_PATH to the directory containing `x11.pc`.
+
+  stack backtrace:
+     0: __rustc::rust_begin_unwind
+     1: core::panicking::panic_fmt
+     2: core::result::unwrap_failed
+     3: build_script_build::main
+     4: core::ops::function::FnOnce::call_once
+  note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+   Compiling pulsar_docs v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_docs)
+warning: pulsar_docs@0.1.0: Skipping doc generation in debug mode
+    Checking pulsar-multiedit v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/multiuser_server)
+    Checking engine_fs v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/engine_fs)
+    Checking pulsar_macros v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/pulsar_macros)
+    Checking gpui-component-macros v0.1.0 (/home/trident/Documents/GitHub/Pulsar-Native/crates/macros)
+error: could not compile `pulsar-multiedit` (lib) due to 22 previous errors; 15 warnings emitted
