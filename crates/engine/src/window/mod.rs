@@ -30,16 +30,29 @@
 //! - `state` - Per-window state management
 //! - `app` - Main application handler (WinitGpuiApp)
 //! - `events` - Event conversion and utilities
-//! - `d3d11` - Direct3D 11 rendering (Windows only)
+//! - `compositor` - Cross-platform GPU compositor (Windows/macOS/Linux)
+//! - `d3d11` - Direct3D 11 rendering (Windows only) [DEPRECATED - use compositor]
 //!
-//! ## Zero-Copy Composition (Windows)
+//! ## Zero-Copy Composition (Cross-Platform)
 //!
-//! On Windows, we use Direct3D 11 shared textures for efficient rendering:
+//! We use platform-specific shared texture APIs for efficient rendering:
 //!
+//! **Windows (D3D11)**:
 //! 1. **Bevy** renders 3D content to D3D12 shared texture (bottom layer, opaque)
 //! 2. **GPUI** renders UI to D3D11 shared texture (top layer, alpha-blended)
-//! 3. **D3D11** composites both textures to swap chain back buffer
-//! 4. No CPU-GPU data transfers required
+//! 3. **D3D11 Compositor** composites both textures to swap chain
+//!
+//! **macOS (Metal)**:
+//! 1. **Bevy** renders to Metal texture backed by IOSurface
+//! 2. **GPUI** exposes rendering buffer as IOSurface
+//! 3. **Metal Compositor** composites IOSurfaces to CAMetalLayer
+//!
+//! **Linux (Vulkan)**:
+//! 1. **Bevy** exports Vulkan VkImage as DMA-BUF file descriptor
+//! 2. **GPUI** exports Blade renderer texture as DMA-BUF
+//! 3. **Vulkan Compositor** imports DMA-BUFs and composites to swapchain
+//!
+//! All platforms achieve true zero-copy - no CPU-GPU data transfers required!
 //!
 //! ## Usage
 //!
@@ -52,11 +65,13 @@
 //! ```
 
 pub mod app;
+pub mod compositor;
 pub mod d3d11;
 pub mod events;
 pub mod state;
 
 pub use app::WinitGpuiApp;
+pub use compositor::Compositor;
 pub use events::{convert_modifiers, convert_mouse_button, MotionSmoother, SimpleClickState};
 pub use state::WindowState;
 
