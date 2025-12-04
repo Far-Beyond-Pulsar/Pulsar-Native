@@ -24,10 +24,26 @@
 //! - **macOS**: Import Metal IOSurface textures via HAL
 
 use super::{Compositor, CompositorState};
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use engine_backend::subsystems::render::NativeTextureHandle;
 use gpui::SharedTextureHandle;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+use std::sync::Arc;
+
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+use ash::vk;
+
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+use std::os::unix::io::RawFd;
+
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+use wgpu_hal::{api, Api};
+
+#[cfg(target_os = "windows")]
+use wgpu_hal::api::Dx12;
+
+#[cfg(target_os = "macos")]
+use wgpu_hal::api::Metal;
 
 /// wgpu-based cross-platform compositor
 pub struct WgpuCompositor {
@@ -66,6 +82,22 @@ pub struct WgpuCompositor {
 
     /// Compositor state
     state: CompositorState,
+
+    /// HAL device for direct GPU operations (Linux/Vulkan)
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    hal_device: Arc<api::vulkan::Device>,
+
+    /// HAL instance for Vulkan operations (Linux)
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    hal_instance: Arc<api::vulkan::Instance>,
+
+    /// Windows D3D12 HAL device
+    #[cfg(target_os = "windows")]
+    hal_device: Arc<Dx12::Device>,
+
+    /// macOS Metal HAL device
+    #[cfg(target_os = "macos")]
+    hal_device: Arc<Metal::Device>,
 }
 
 impl Compositor for WgpuCompositor {
@@ -97,7 +129,7 @@ impl Compositor for WgpuCompositor {
         }))
         .context("Failed to find suitable GPU adapter")?;
 
-        // Request device and queue
+        // Request device and queue with external memory features
         let (device, queue) = pollster::block_on(adapter.request_device(
             &wgpu::DeviceDescriptor {
                 label: Some("Compositor Device"),
@@ -106,6 +138,43 @@ impl Compositor for WgpuCompositor {
             },
             None,
         ))?;
+
+        // Extract HAL device for zero-copy texture import
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        let (hal_device, hal_instance) = unsafe {
+            // Get the underlying HAL device from wgpu
+            let hal_device_ref = device.as_hal::<api::vulkan::Api, _, _>(|dev| {
+                dev.ok_or_else(|| anyhow!("Failed to get Vulkan HAL device"))
+                    .map(|d| d.clone())
+            })?;
+
+            let hal_instance = adapter.as_hal::<api::vulkan::Api, _, _>(|adap| {
+                adap.ok_or_else(|| anyhow!("Failed to get Vulkan HAL adapter"))
+                    .and_then(|a| {
+                        // Get instance from adapter's shared context
+                        a.shared_instance().cloned()
+                            .ok_or_else(|| anyhow!("Failed to get Vulkan instance"))
+                    })
+            })?;
+
+            (Arc::new(hal_device_ref), Arc::new(hal_instance))
+        };
+
+        #[cfg(target_os = "windows")]
+        let hal_device = unsafe {
+            device.as_hal::<Dx12, _, _>(|dev| {
+                dev.ok_or_else(|| anyhow!("Failed to get D3D12 HAL device"))
+                    .map(|d| Arc::new(d.clone()))
+            })?
+        };
+
+        #[cfg(target_os = "macos")]
+        let hal_device = unsafe {
+            device.as_hal::<Metal, _, _>(|dev| {
+                dev.ok_or_else(|| anyhow!("Failed to get Metal HAL device"))
+                    .map(|d| Arc::new(d.clone()))
+            })?
+        };
 
         // Configure surface
         let surface_caps = surface.get_capabilities(&adapter);
@@ -239,6 +308,14 @@ impl Compositor for WgpuCompositor {
                 scale_factor,
                 needs_render: true,
             },
+            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+            hal_device,
+            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+            hal_instance,
+            #[cfg(target_os = "windows")]
+            hal_device,
+            #[cfg(target_os = "macos")]
+            hal_device,
         })
     }
 
@@ -255,8 +332,311 @@ impl Compositor for WgpuCompositor {
     }
 
     fn composite_gpui(&mut self, handle: &SharedTextureHandle, should_render: bool) -> Result<()> {
-        // Import GPUI texture if needed
-        // TODO: Implement platform-specific texture import
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        {
+            match handle {
+                SharedTextureHandle::DmaBuf { fd, size, format, stride, modifier } => {
+                    // Only import texture once
+                    if self.gpui_texture.is_none() {
+                        log::info!("🔥 ZERO-COPY DMA-BUF import: fd={}, {}x{}, format={}, stride={}, modifier={}",
+                            fd, size.width.0, size.height.0, format, stride, modifier);
+
+                        unsafe {
+                            // Import DMA-BUF via Vulkan external memory
+                            let hal_device = &self.hal_device;
+                            let vk_device = hal_device.raw_device();
+                            let vk_physical = hal_device.raw_physical_device();
+
+                            // Duplicate the FD so we own it
+                            let owned_fd = libc::dup(*fd);
+                            if owned_fd < 0 {
+                                return Err(anyhow!("Failed to duplicate DMA-BUF FD"));
+                            }
+
+                            // Map GPUI Vulkan format to wgpu format
+                            let (vk_format, wgpu_format) = match *format {
+                                44 => (vk::Format::B8G8R8A8_UNORM, wgpu::TextureFormat::Bgra8Unorm),
+                                50 => (vk::Format::B8G8R8A8_SRGB, wgpu::TextureFormat::Bgra8UnormSrgb),
+                                _ => (vk::Format::B8G8R8A8_UNORM, wgpu::TextureFormat::Bgra8Unorm),
+                            };
+
+                            // Create Vulkan image from DMA-BUF FD
+                            let mut external_memory_image_create_info = vk::ExternalMemoryImageCreateInfo::default()
+                                .handle_types(vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT);
+
+                            let image_create_info = vk::ImageCreateInfo::default()
+                                .push_next(&mut external_memory_image_create_info)
+                                .image_type(vk::ImageType::TYPE_2D)
+                                .format(vk_format)
+                                .extent(vk::Extent3D {
+                                    width: size.width.0 as u32,
+                                    height: size.height.0 as u32,
+                                    depth: 1,
+                                })
+                                .mip_levels(1)
+                                .array_layers(1)
+                                .samples(vk::SampleCountFlags::TYPE_1)
+                                .tiling(vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT)
+                                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST)
+                                .sharing_mode(vk::SharingMode::EXCLUSIVE)
+                                .initial_layout(vk::ImageLayout::UNDEFINED);
+
+                            let vk_image = vk_device.create_image(&image_create_info, None)
+                                .map_err(|e| anyhow!("Failed to create Vulkan image: {:?}", e))?;
+
+                            // Get memory requirements
+                            let mem_reqs = vk_device.get_image_memory_requirements(vk_image);
+
+                            // Import DMA-BUF memory
+                            let mut import_fd_info = vk::ImportMemoryFdInfoKHR::default()
+                                .fd(owned_fd)
+                                .handle_type(vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT);
+
+                            let alloc_info = vk::MemoryAllocateInfo::default()
+                                .push_next(&mut import_fd_info)
+                                .allocation_size(mem_reqs.size)
+                                .memory_type_index(
+                                    // Find suitable memory type
+                                    self.find_memory_type_index(mem_reqs.memory_type_bits, vk::MemoryPropertyFlags::empty())?
+                                );
+
+                            let vk_memory = vk_device.allocate_memory(&alloc_info, None)
+                                .map_err(|e| anyhow!("Failed to import DMA-BUF memory: {:?}", e))?;
+
+                            // Bind image to memory
+                            vk_device.bind_image_memory(vk_image, vk_memory, 0)
+                                .map_err(|e| anyhow!("Failed to bind image memory: {:?}", e))?;
+
+                            // Wrap Vulkan image as wgpu-hal texture
+                            let hal_texture = hal_device.texture_from_raw(
+                                vk_image,
+                                &wgpu_hal::TextureDescriptor {
+                                    label: Some("GPUI DMA-BUF Texture"),
+                                    size: wgpu::Extent3d {
+                                        width: size.width.0 as u32,
+                                        height: size.height.0 as u32,
+                                        depth_or_array_layers: 1,
+                                    },
+                                    mip_level_count: 1,
+                                    sample_count: 1,
+                                    dimension: wgpu::TextureDimension::D2,
+                                    format: wgpu_format,
+                                    usage: wgpu_hal::TextureUses::RESOURCE,
+                                    memory_flags: wgpu_hal::MemoryFlags::empty(),
+                                    view_formats: vec![],
+                                },
+                                Some(Box::new(VulkanExternalMemory { vk_memory, vk_image, vk_device: vk_device.clone() })),
+                            );
+
+                            // Wrap HAL texture as wgpu texture
+                            let texture = self.device.create_texture_from_hal::<api::vulkan::Api>(
+                                hal_texture,
+                                &wgpu::TextureDescriptor {
+                                    label: Some("GPUI DMA-BUF Texture"),
+                                    size: wgpu::Extent3d {
+                                        width: size.width.0 as u32,
+                                        height: size.height.0 as u32,
+                                        depth_or_array_layers: 1,
+                                    },
+                                    mip_level_count: 1,
+                                    sample_count: 1,
+                                    dimension: wgpu::TextureDimension::D2,
+                                    format: wgpu_format,
+                                    usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                                    view_formats: &[],
+                                },
+                            );
+
+                            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+                            let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                                label: Some("GPUI Bind Group"),
+                                layout: &self.bind_group_layout,
+                                entries: &[
+                                    wgpu::BindGroupEntry {
+                                        binding: 0,
+                                        resource: wgpu::BindingResource::TextureView(&view),
+                                    },
+                                    wgpu::BindGroupEntry {
+                                        binding: 1,
+                                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                                    },
+                                ],
+                            });
+
+                            self.gpui_texture = Some(texture);
+                            self.gpui_bind_group = Some(bind_group);
+
+                            log::info!("✅ ZERO-COPY DMA-BUF import successful!");
+                        }
+                    }
+                }
+            }
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            match handle {
+                SharedTextureHandle::D3D11NTHandle { handle, size, format } => {
+                    if self.gpui_texture.is_none() {
+                        log::info!("🔥 ZERO-COPY D3D11 import: handle={:?}, {}x{}, format={}",
+                            handle, size.width.0, size.height.0, format);
+
+                        unsafe {
+                            // Import D3D11 shared handle via D3D12
+                            let hal_device = &self.hal_device;
+
+                            // Create D3D12 resource from NT handle
+                            let d3d12_resource = hal_device.open_shared_handle(*handle)
+                                .map_err(|e| anyhow!("Failed to open D3D11 shared handle: {:?}", e))?;
+
+                            let wgpu_format = match *format {
+                                87 => wgpu::TextureFormat::Bgra8Unorm,
+                                91 => wgpu::TextureFormat::Bgra8UnormSrgb,
+                                _ => wgpu::TextureFormat::Bgra8Unorm,
+                            };
+
+                            // Wrap as HAL texture
+                            let hal_texture = hal_device.texture_from_raw(
+                                d3d12_resource,
+                                wgpu_format,
+                                wgpu::TextureDimension::D2,
+                                wgpu::Extent3d {
+                                    width: size.width.0 as u32,
+                                    height: size.height.0 as u32,
+                                    depth_or_array_layers: 1,
+                                },
+                                1,
+                                1,
+                            );
+
+                            let texture = self.device.create_texture_from_hal::<Dx12>(
+                                hal_texture,
+                                &wgpu::TextureDescriptor {
+                                    label: Some("GPUI D3D11 Texture"),
+                                    size: wgpu::Extent3d {
+                                        width: size.width.0 as u32,
+                                        height: size.height.0 as u32,
+                                        depth_or_array_layers: 1,
+                                    },
+                                    mip_level_count: 1,
+                                    sample_count: 1,
+                                    dimension: wgpu::TextureDimension::D2,
+                                    format: wgpu_format,
+                                    usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                                    view_formats: &[],
+                                },
+                            );
+
+                            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+                            let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                                label: Some("GPUI Bind Group"),
+                                layout: &self.bind_group_layout,
+                                entries: &[
+                                    wgpu::BindGroupEntry {
+                                        binding: 0,
+                                        resource: wgpu::BindingResource::TextureView(&view),
+                                    },
+                                    wgpu::BindGroupEntry {
+                                        binding: 1,
+                                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                                    },
+                                ],
+                            });
+
+                            self.gpui_texture = Some(texture);
+                            self.gpui_bind_group = Some(bind_group);
+
+                            log::info!("✅ ZERO-COPY D3D11 import successful!");
+                        }
+                    }
+                }
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            match handle {
+                SharedTextureHandle::IOSurface { surface_id, size, format } => {
+                    if self.gpui_texture.is_none() {
+                        log::info!("🔥 ZERO-COPY IOSurface import: id={}, {}x{}, format={}",
+                            surface_id, size.width.0, size.height.0, format);
+
+                        unsafe {
+                            let hal_device = &self.hal_device;
+
+                            // Get IOSurface from ID
+                            let io_surface = metal::IOSurfaceRef::from_id(*surface_id as u64);
+
+                            let wgpu_format = match *format {
+                                80 => wgpu::TextureFormat::Bgra8Unorm,
+                                _ => wgpu::TextureFormat::Bgra8Unorm,
+                            };
+
+                            // Create Metal texture from IOSurface
+                            let hal_texture = hal_device.texture_from_io_surface(
+                                io_surface,
+                                &wgpu_hal::TextureDescriptor {
+                                    label: Some("GPUI IOSurface Texture"),
+                                    size: wgpu::Extent3d {
+                                        width: size.width.0 as u32,
+                                        height: size.height.0 as u32,
+                                        depth_or_array_layers: 1,
+                                    },
+                                    mip_level_count: 1,
+                                    sample_count: 1,
+                                    dimension: wgpu::TextureDimension::D2,
+                                    format: wgpu_format,
+                                    usage: wgpu_hal::TextureUses::RESOURCE,
+                                    memory_flags: wgpu_hal::MemoryFlags::empty(),
+                                    view_formats: vec![],
+                                },
+                            )?;
+
+                            let texture = self.device.create_texture_from_hal::<Metal>(
+                                hal_texture,
+                                &wgpu::TextureDescriptor {
+                                    label: Some("GPUI IOSurface Texture"),
+                                    size: wgpu::Extent3d {
+                                        width: size.width.0 as u32,
+                                        height: size.height.0 as u32,
+                                        depth_or_array_layers: 1,
+                                    },
+                                    mip_level_count: 1,
+                                    sample_count: 1,
+                                    dimension: wgpu::TextureDimension::D2,
+                                    format: wgpu_format,
+                                    usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                                    view_formats: &[],
+                                },
+                            );
+
+                            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+                            let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                                label: Some("GPUI Bind Group"),
+                                layout: &self.bind_group_layout,
+                                entries: &[
+                                    wgpu::BindGroupEntry {
+                                        binding: 0,
+                                        resource: wgpu::BindingResource::TextureView(&view),
+                                    },
+                                    wgpu::BindGroupEntry {
+                                        binding: 1,
+                                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                                    },
+                                ],
+                            });
+
+                            self.gpui_texture = Some(texture);
+                            self.gpui_bind_group = Some(bind_group);
+
+                            log::info!("✅ ZERO-COPY IOSurface import successful!");
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -328,5 +708,44 @@ impl Compositor for WgpuCompositor {
 
     fn state_mut(&mut self) -> &mut CompositorState {
         &mut self.state
+    }
+}
+
+// Helper implementations
+impl WgpuCompositor {
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    fn find_memory_type_index(&self, type_bits: u32, flags: vk::MemoryPropertyFlags) -> Result<u32> {
+        unsafe {
+            let vk_instance = &self.hal_instance.raw_instance();
+            let vk_physical = self.hal_device.raw_physical_device();
+
+            let mem_props = vk_instance.get_physical_device_memory_properties(vk_physical);
+
+            for i in 0..mem_props.memory_type_count {
+                if (type_bits & (1 << i)) != 0
+                    && (mem_props.memory_types[i as usize].property_flags & flags) == flags {
+                    return Ok(i);
+                }
+            }
+
+            Err(anyhow!("Failed to find suitable memory type"))
+        }
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+struct VulkanExternalMemory {
+    vk_memory: vk::DeviceMemory,
+    vk_image: vk::Image,
+    vk_device: ash::Device,
+}
+
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+impl Drop for VulkanExternalMemory {
+    fn drop(&mut self) {
+        unsafe {
+            self.vk_device.destroy_image(self.vk_image, None);
+            self.vk_device.free_memory(self.vk_memory, None);
+        }
     }
 }

@@ -282,470 +282,70 @@ impl ApplicationHandler for WinitGpuiApp {
 
                 match event {
                 WindowEvent::RedrawRequested => {
-                    #[cfg(target_os = "windows")]
-                    unsafe {
-                        // ALWAYS run compositor if we have D3D11 set up (for continuous Bevy rendering)
-                        // GPUI only re-renders when needs_render is true
-                        let should_render_gpui = *needs_render;
-                        
-                        // Diagnostic: Show decoupled rendering rates
-                        static mut COMPOSITOR_FRAME_COUNT: u32 = 0;
-                        static mut GPUI_FRAME_COUNT: u32 = 0;
-                        COMPOSITOR_FRAME_COUNT += 1;
-                        if should_render_gpui {
-                            GPUI_FRAME_COUNT += 1;
-                        }
-                        
-                        if should_render_gpui {
-                            // First refresh windows (marks windows as dirty)
-                            let _ = gpui_app.update(|app| {
-                                app.refresh_windows();
-                            });
-                            // After update finishes, effects are flushed
-                            // Now manually trigger drawing
-                            let _ = gpui_app.update(|app| {
-                                app.draw_windows();
-                            });
+                    // Cross-platform compositor-based rendering
+                    let should_render_gpui = *needs_render;
 
-                            // Reset the flag after rendering
-                            *needs_render = false;
+                    if should_render_gpui {
+                        // First refresh windows (marks windows as dirty)
+                        let _ = gpui_app.update(|app| {
+                            app.refresh_windows();
+                        });
+                        // After update finishes, effects are flushed
+                        // Now manually trigger drawing
+                        let _ = gpui_app.update(|app| {
+                            app.draw_windows();
+                        });
+
+                        // Reset the flag after rendering
+                        *needs_render = false;
+                    }
+
+                    // Use compositor for cross-platform GPU composition
+                    if let Some(ref mut compositor) = compositor {
+                        // Begin frame
+                        if let Err(e) = compositor.begin_frame() {
+                            eprintln!("[COMPOSITOR] Γ¥î Failed to begin frame: {:?}", e);
                         }
 
-                        // Lazy initialization of shared texture on first render
-                        if !*shared_texture_initialized && gpui_window.is_some() && d3d_device.is_some() {
-                            let gpui_window_ref = gpui_window.as_ref().unwrap();
-                            let device = d3d_device.as_ref().unwrap();
+                        // Composite Bevy layer (if available)
+                        if let Some(ref gpu_renderer_arc) = bevy_renderer {
+                            if let Ok(gpu_renderer) = gpu_renderer_arc.lock() {
+                                if let Some(ref bevy_renderer_inst) = gpu_renderer.bevy_renderer {
+                                    if let Some(native_handle) = bevy_renderer_inst.get_current_native_handle() {
+                                        if let Ok(Some(())) = compositor.composite_bevy(&native_handle) {
+                                            // Successfully composited Bevy layer
+                                        }
+                                    }
+                                }
+                            }
+                        }
 
-                            // Get the shared texture handle from GPUI using the new update method
+                        // Composite GPUI layer (always try to get the shared texture)
+                        if let Some(ref gpui_window_ref) = gpui_window {
                             let handle_result = gpui_app.update(|app| {
                                 gpui_window_ref.update(app, |_view, window, _cx| {
                                     window.get_shared_texture_handle()
                                 })
                             });
 
-                            if let Ok(Ok(Some(handle_ptr))) = handle_result {
-                                println!("Γ£à Got shared texture handle from GPUI: {:?}", handle_ptr);
-
-                                // Open the shared texture using OpenSharedResource (legacy API)
-                                // GPUI uses GetSharedHandle() which requires the legacy API
-                                // SharedTextureHandle is 192 bits, but we need just the handle (first 8 bytes)
-                                // Transmute the first 8 bytes into an isize handle
-                                let handle_value: isize = unsafe {
-                                    *(&handle_ptr as *const _ as *const isize)
-                                };
-                                let mut texture: Option<ID3D11Texture2D> = None;
-                                let result = device.OpenSharedResource(
-                                    HANDLE(handle_value as *mut _),
-                                    &mut texture
-                                );
-
-                                match result {
-                                        Ok(_) => {
-                                            if let Some(shared_texture_val) = texture {
-                                                // Get texture description to create our persistent copy
-                                                let mut desc = D3D11_TEXTURE2D_DESC::default();
-                                                shared_texture_val.GetDesc(&mut desc);
-
-                                                // Create persistent texture (not shared, just ours)
-                                                desc.MiscFlags = D3D11_RESOURCE_MISC_FLAG(0).0 as u32; // Remove shared flag
-                                                desc.Usage = D3D11_USAGE_DEFAULT;
-                                                desc.BindFlags = D3D11_BIND_SHADER_RESOURCE.0 as u32;
-
-                                                let mut persistent_texture: Option<ID3D11Texture2D> = None;
-                                                let create_result = device.CreateTexture2D(&desc, None, Some(&mut persistent_texture));
-
-                                                if create_result.is_ok() && persistent_texture.is_some() {
-                                                    let tex = persistent_texture.as_ref().unwrap();
-
-                                                    // CRITICAL: Create SRV once here, not per-frame
-                                                    // This prevents memory leaks from allocating SRV every frame
-                                                    let mut srv: Option<ID3D11ShaderResourceView> = None;
-                                                    let srv_result = device.CreateShaderResourceView(tex, None, Some(&mut srv));
-
-                                                    if srv_result.is_ok() && srv.is_some() {
-                                                        *persistent_gpui_srv = srv;
-                                                        println!("Γ£à Created cached SRV for persistent texture (no per-frame alloc)");
-                                                    } else {
-                                                        eprintln!("Γ¥î Failed to create SRV: {:?}", srv_result);
-                                                    }
-
-                                                    *persistent_gpui_texture = persistent_texture;
-                                                    println!("Γ£à Created persistent GPUI texture buffer!");
-                                                } else {
-                                                    eprintln!("Γ¥î Failed to create persistent texture: {:?}", create_result);
-                                                }
-
-                                                *shared_texture = Some(shared_texture_val);
-                                                *shared_texture_initialized = true;
-                                                println!("Γ£à Opened shared texture in winit D3D11 device!");
-                                            }
-                                        }
-                                        Err(e) => {
-                                            println!("Γ¥î Failed to open shared texture: {:?}", e);
-                                            *shared_texture_initialized = true;
-                                        }
-                                    }
-                            } else {
-                                println!("ΓÜá∩╕Å  GPUI hasn't created shared texture yet, will retry next frame");
+                            if let Ok(Ok(Some(handle))) = handle_result {
+                                if let Err(e) = compositor.composite_gpui(&handle, should_render_gpui) {
+                                    eprintln!("[COMPOSITOR] Γ¥î Failed to composite GPUI: {:?}", e);
+                                }
                             }
                         }
 
-                        // Note: We don't present here - we'll present once after compositing all layers
-
-                        // GPU-side zero-copy 3-layer composition:
-                        // Layer 0 (bottom): Green background (cleared)
-                        // Layer 1 (middle): Bevy 3D rendering (opaque, from shared D3D12 texture)
-                        // Layer 2 (top): GPUI UI (transparent, alpha-blended)
-                        // CRITICAL: Only present frames when we have valid GPUI content to avoid flickering
-                        if let (Some(context), Some(shared_texture), Some(persistent_texture), Some(srv), Some(swap_chain), Some(render_target_view), Some(blend_state), Some(vertex_shader), Some(pixel_shader), Some(vertex_buffer), Some(input_layout), Some(sampler_state)) =
-                            (d3d_context.as_ref(), &*shared_texture, &*persistent_gpui_texture, &*persistent_gpui_srv, swap_chain.as_ref(), render_target_view.as_ref(), blend_state.as_ref(), vertex_shader.as_ref(), pixel_shader.as_ref(), vertex_buffer.as_ref(), input_layout.as_ref(), sampler_state.as_ref()) {
-
-                            // Periodically check D3D11 device status
-                            static mut DEVICE_CHECK_COUNTER: u32 = 0;
-                            unsafe {
-                                DEVICE_CHECK_COUNTER += 1;
-                                if DEVICE_CHECK_COUNTER % 300 == 0 {
-                                    if let Some(device) = d3d_device.as_ref() {
-                                        let device_reason = device.GetDeviceRemovedReason();
-                                        if device_reason.is_err() {
-                                            eprintln!("[COMPOSITOR] ⚠️  D3D11 device has been removed! Reason: {:?}", device_reason);
-                                            eprintln!("[COMPOSITOR] 🔄 Device recreation would be needed for full recovery");
-                                            // Clear Bevy texture cache to prevent using stale handles
-                                            *bevy_texture = None;
-                                            *bevy_srv = None;
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Copy from GPUI's shared texture to our persistent buffer ONLY if GPUI rendered this frame
-                            // This preserves the last rendered frame even if GPUI doesn't re-render
-                            if should_render_gpui {
-                                context.CopyResource(persistent_texture, shared_texture);
-                            }
-                            // If GPUI didn't render, we just reuse the last frame from persistent_texture
-
-                            // Clear to black (bottom layer) - immediate mode background
-                            let black = [0.0f32, 0.0, 0.0, 1.0];
-                            context.ClearRenderTargetView(render_target_view, &black);
-
-                            // Set render target
-                            context.OMSetRenderTargets(Some(&[Some(render_target_view.clone())]), None);
-
-                            // LAYER 1: Draw Bevy texture to back buffer (BEHIND GPUI)
-                            // This window's own Bevy renderer (if it has a 3D viewport)
-                            // Debug: Check if we have a renderer
-                            static mut CHECK_COUNT: u32 = 0;
-                            unsafe {
-                                CHECK_COUNT += 1;
-                            }
-
-                            if let Some(ref gpu_renderer_arc) = bevy_renderer {
-                                if let Ok(gpu_renderer) = gpu_renderer_arc.lock() {
-                                    if let Some(ref bevy_renderer_inst) = gpu_renderer.bevy_renderer {
-                                        // Get the current native handle from Bevy's read buffer
-                                        if let Some(native_handle) = bevy_renderer_inst.get_current_native_handle() {
-                                            static mut BEVY_FIRST_RENDER: bool = false;
-                                            if !BEVY_FIRST_RENDER {
-                                                eprintln!("≡ƒÄ« First Bevy texture found for this window! Starting composition...");
-                                                BEVY_FIRST_RENDER = true;
-                                            }
-                                            // Extract D3D11 handle
-                                            if let engine_backend::subsystems::render::NativeTextureHandle::D3D11(handle_ptr) = native_handle {
-                                                // Open the shared texture from Bevy using D3D11.1 API (supports NT handles)
-                                                let mut bevy_texture_local: Option<ID3D11Texture2D> = None;
-                                                let device = d3d_device.as_ref().unwrap();
-                                                
-                                                // DIAGNOSTIC: Log handle opening
-                                                static mut OPEN_ATTEMPT: u32 = 0;
-                                                unsafe {
-                                                    OPEN_ATTEMPT += 1;
-                                                }
-                                                
-                                                // Try to cast to ID3D11Device1 for OpenSharedResource1 (supports NT handles)
-                                                let open_result: std::result::Result<(), windows::core::Error> = unsafe {
-                                                    match device.cast::<ID3D11Device1>() {
-                                                        Ok(device1) => {
-                                                            // Use OpenSharedResource1 which supports NT handles from CreateSharedHandle
-                                                            let result: std::result::Result<ID3D11Texture2D, windows::core::Error> = device1.OpenSharedResource1(
-                                                                HANDLE(handle_ptr as *mut _)
-                                                            );
-                                                            match result {
-                                                                Ok(tex) => {
-                                                                    bevy_texture_local = Some(tex);
-                                                                    Ok(())
-                                                                }
-                                                                Err(e) => Err(e)
-                                                            }
-                                                        }
-                                                        Err(cast_err) => {
-                                                            // Fallback to legacy OpenSharedResource (won't work with NT handles but try anyway)
-                                                            eprintln!("[COMPOSITOR] ⚠️  Failed to cast to ID3D11Device1: {:?}, using legacy OpenSharedResource", cast_err);
-                                                            device.OpenSharedResource(
-                                                                HANDLE(handle_ptr as *mut _),
-                                                                &mut bevy_texture_local
-                                                            )
-                                                        }
-                                                    }
-                                                };
-                                                
-                                                if let Err(e) = open_result {
-                                                    // Check for device removed/suspended errors
-                                                    let hresult = e.code().0;
-                                                    let is_device_error = hresult == 0x887A0005_u32 as i32 || // DXGI_ERROR_DEVICE_REMOVED
-                                                                         hresult == 0x887A0006_u32 as i32 || // DXGI_ERROR_DEVICE_HUNG
-                                                                         hresult == 0x887A0007_u32 as i32 || // DXGI_ERROR_DEVICE_RESET
-                                                                         hresult == 0x887A0020_u32 as i32;   // DXGI_ERROR_DRIVER_INTERNAL_ERROR
-                                                    
-                                                    static mut OPEN_ERROR_COUNT: u32 = 0;
-                                                    static mut LAST_WAS_DEVICE_ERROR: bool = false;
-                                                    unsafe {
-                                                        OPEN_ERROR_COUNT += 1;
-                                                        
-                                                        if is_device_error {
-                                                            if !LAST_WAS_DEVICE_ERROR || OPEN_ERROR_COUNT % 600 == 1 {
-                                                                eprintln!("[COMPOSITOR] ❌ GPU DEVICE REMOVED/SUSPENDED: {:?}", e);
-                                                                eprintln!("[COMPOSITOR] 💡 This is usually caused by:");
-                                                                eprintln!("[COMPOSITOR]    - GPU driver crash/timeout (TDR)");
-                                                                eprintln!("[COMPOSITOR]    - GPU overheating");
-                                                                eprintln!("[COMPOSITOR]    - Power management suspending GPU");
-                                                                eprintln!("[COMPOSITOR]    - Unexpected power dip to the GPU");
-                                                                eprintln!("[COMPOSITOR]    - Display driver update in progress");
-                                                                eprintln!("[COMPOSITOR] 🔄 Continuing with GPUI-only rendering...");
-                                                                LAST_WAS_DEVICE_ERROR = true;
-                                                            }
-                                                            // Invalidate Bevy texture cache to force retry after device recovery
-                                                            *bevy_texture = None;
-                                                            *bevy_srv = None;
-                                                        } else {
-                                                            LAST_WAS_DEVICE_ERROR = false;
-                                                            if OPEN_ERROR_COUNT == 1 || OPEN_ERROR_COUNT % 60 == 0 {
-                                                                eprintln!("[COMPOSITOR] ❌ Failed to open Bevy shared resource: {:?} (error count: {})", e, OPEN_ERROR_COUNT);
-                                                            }
-                                                        }
-                                                    }
-                                                }
-
-                                                if let Some(ref bevy_tex) = bevy_texture_local {
-                                                    // CRITICAL: Validate Bevy texture size matches window size
-                                                    // If sizes don't match, Bevy hasn't resized yet - skip to prevent device removal
-                                                    let mut bevy_tex_desc = D3D11_TEXTURE2D_DESC::default();
-                                                    bevy_tex.GetDesc(&mut bevy_tex_desc as *mut _);
-                                                    let window_size = winit_window.inner_size();
-                                                    
-                                                    if bevy_tex_desc.Width != window_size.width || bevy_tex_desc.Height != window_size.height {
-                                                        static mut SIZE_MISMATCH_COUNT: u32 = 0;
-                                                        SIZE_MISMATCH_COUNT += 1;
-                                                        if SIZE_MISMATCH_COUNT == 1 || SIZE_MISMATCH_COUNT % 60 == 0 {
-                                                            eprintln!("[COMPOSITOR] ⚠️  Bevy texture size mismatch - Bevy: {}x{}, Window: {}x{}", 
-                                                                bevy_tex_desc.Width, bevy_tex_desc.Height,
-                                                                window_size.width, window_size.height);
-                                                            eprintln!("[COMPOSITOR] 💡 Skipping Bevy composition to prevent device removal");
-                                                            eprintln!("[COMPOSITOR] 🔄 Waiting for Bevy backend to implement texture resize...");
-                                                        }
-                                                        // Clear cached Bevy textures to force re-fetch after Bevy resizes
-                                                        *bevy_texture = None;
-                                                        *bevy_srv = None;
-                                                        // Skip Bevy rendering this frame
-                                                    } else {
-                                                        // Size matches! Safe to use this texture
-                                                        // Create or reuse SRV for Bevy texture
-                                                        if bevy_texture.is_none() || bevy_texture.as_ref().map(|t| t.as_raw()) != Some(bevy_tex.as_raw()) {
-                                                            // Create new SRV - MUST match Bevy's BGRA8UnormSrgb format!
-                                                        let srv_desc = D3D11_SHADER_RESOURCE_VIEW_DESC {
-                                                            Format: DXGI_FORMAT_B8G8R8A8_UNORM,
-                                                            ViewDimension: D3D11_SRV_DIMENSION_TEXTURE2D,
-                                                            Anonymous: D3D11_SHADER_RESOURCE_VIEW_DESC_0 {
-                                                                Texture2D: D3D11_TEX2D_SRV {
-                                                                    MostDetailedMip: 0,
-                                                                    MipLevels: 1,
-                                                                },
-                                                            },
-                                                        };
-
-                                                        let mut new_srv: Option<ID3D11ShaderResourceView> = None;
-                                                        let srv_result = device.CreateShaderResourceView(
-                                                            bevy_tex,
-                                                            Some(&srv_desc),
-                                                            Some(&mut new_srv)
-                                                        );
-                                                        
-                                                        if let Err(e) = srv_result {
-                                                            // Check for device removed errors
-                                                            let hresult = e.code().0;
-                                                            let is_device_error = hresult == 0x887A0005_u32 as i32 || 
-                                                                                 hresult == 0x887A0006_u32 as i32 ||
-                                                                                 hresult == 0x887A0007_u32 as i32;
-                                                            
-                                                            static mut SRV_ERROR_COUNT: u32 = 0;
-                                                            unsafe {
-                                                                SRV_ERROR_COUNT += 1;
-                                                                if is_device_error {
-                                                                    if SRV_ERROR_COUNT == 1 || SRV_ERROR_COUNT % 600 == 0 {
-                                                                        eprintln!("[COMPOSITOR] ❌ GPU device error creating SRV: {:?}", e);
-                                                                        eprintln!("[COMPOSITOR] 🔄 Falling back to GPUI-only rendering");
-                                                                    }
-                                                                    // Clear cache
-                                                                    *bevy_texture = None;
-                                                                    *bevy_srv = None;
-                                                                } else if SRV_ERROR_COUNT == 1 || SRV_ERROR_COUNT % 60 == 0 {
-                                                                    eprintln!("[COMPOSITOR] ❌ Failed to create SRV for Bevy texture: {:?} (error count: {})", e, SRV_ERROR_COUNT);
-                                                                }
-                                                            }
-                                                        }
-
-                                                            *bevy_texture = Some(bevy_tex.clone());
-                                                            *bevy_srv = new_srv;
-                                                        }
-
-                                                        // Draw Bevy texture to back buffer (opaque, no blending)
-                                                    if let Some(ref bevy_shader_view) = &*bevy_srv {
-                                                        // Disable blending for opaque Bevy render
-                                                        context.OMSetBlendState(None, None, 0xffffffff);
-
-                                                        // Set shaders
-                                                        context.VSSetShader(vertex_shader, None);
-                                                        context.PSSetShader(pixel_shader, None);
-
-                                                        // Set input layout
-                                                        context.IASetInputLayout(input_layout);
-
-                                                        // Set vertex buffer (fullscreen quad)
-                                                        let stride = 16u32;
-                                                        let offset = 0u32;
-                                                        context.IASetVertexBuffers(0, 1, Some(&Some(vertex_buffer.clone())), Some(&stride), Some(&offset));
-
-                                                        // Set topology
-                                                        context.IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
-
-                                                        // Set Bevy texture and sampler
-                                                        context.PSSetShaderResources(0, Some(&[Some(bevy_shader_view.clone())]));
-                                                        context.PSSetSamplers(0, Some(&[Some(sampler_state.clone())]));
-
-                                                        // Set viewport
-                                                        let size = winit_window.inner_size();
-                                                        let viewport = D3D11_VIEWPORT {
-                                                            TopLeftX: 0.0,
-                                                            TopLeftY: 0.0,
-                                                            Width: size.width as f32,
-                                                            Height: size.height as f32,
-                                                            MinDepth: 0.0,
-                                                            MaxDepth: 1.0,
-                                                        };
-                                                        context.RSSetViewports(Some(&[viewport]));
-
-                                                        // Draw Bevy's 3D rendering (opaque)
-                                                        context.Draw(4, 0);
-
-                                                        static mut BEVY_FRAME_COUNT: u32 = 0;
-                                                        BEVY_FRAME_COUNT += 1;
-                                                    }
-                                                    } // Close the size match else block
-                                                }
-                                            }
-                                        } else {
-                                            // DIAGNOSTIC: Texture handle not available yet
-                                            static mut HANDLE_CHECK_COUNT: u32 = 0;
-                                            unsafe {
-                                                HANDLE_CHECK_COUNT += 1;
-                                                if HANDLE_CHECK_COUNT % 120 == 1 {
-                                                    eprintln!("[RENDERER] ⚠️  Bevy renderer exists but texture handle is None (checked {} times)", HANDLE_CHECK_COUNT);
-                                                    eprintln!("[RENDERER] 💡 This means Bevy hasn't created shared textures yet - waiting for first render...");
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        // DIAGNOSTIC: GpuRenderer has no bevy_renderer
-                                        static mut NO_BEVY_COUNT: u32 = 0;
-                                        unsafe {
-                                            NO_BEVY_COUNT += 1;
-                                            if NO_BEVY_COUNT % 120 == 1 {
-                                                eprintln!("[RENDERER] ⚠️  GpuRenderer exists but bevy_renderer is None (checked {} times)", NO_BEVY_COUNT);
-                                                eprintln!("[RENDERER] 💡 This means BevyRenderer initialization failed or timed out");
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    // DIAGNOSTIC: Failed to lock GpuRenderer
-                                    static mut LOCK_FAIL_COUNT: u32 = 0;
-                                    unsafe {
-                                        LOCK_FAIL_COUNT += 1;
-                                        if LOCK_FAIL_COUNT % 120 == 1 {
-                                            eprintln!("[RENDERER] ⚠️  Failed to lock GpuRenderer (contended {} times)", LOCK_FAIL_COUNT);
-                                        }
-                                    }
-                                }
-                            }
-
-                            // LAYER 2: Draw GPUI texture with alpha blending (ON TOP of Bevy)
-                            // Set blend state for alpha blending (top layer)
-                            let blend_factor = [0.0f32, 0.0, 0.0, 0.0];
-                            context.OMSetBlendState(Some(blend_state), Some(&blend_factor), 0xffffffff);
-
-                            // Use cached SRV (no per-frame allocation!)
-                            {
-                                static mut FRAME_COUNT: u32 = 0;
-                                FRAME_COUNT += 1;
-
-                                // Set shaders
-                                context.VSSetShader(vertex_shader, None);
-                                context.PSSetShader(pixel_shader, None);
-
-                                // Set input layout
-                                context.IASetInputLayout(input_layout);
-
-                                // Set vertex buffer (fullscreen quad)
-                                let stride = 16u32; // 2 floats pos + 2 floats tex = 16 bytes
-                                let offset = 0u32;
-                                context.IASetVertexBuffers(0, 1, Some(&Some(vertex_buffer.clone())), Some(&stride), Some(&offset));
-
-                                // Set topology
-                                context.IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
-
-                                // Set GPUI texture and sampler
-                                context.PSSetShaderResources(0, Some(&[Some(srv.clone())]));
-                                context.PSSetSamplers(0, Some(&[Some(sampler_state.clone())]));
-
-                                // Set viewport - must use physical pixels
-                                // inner_size() already returns physical pixels (logical ├ù scale factor)
-                                let size = winit_window.inner_size();
-                                let viewport = D3D11_VIEWPORT {
-                                    TopLeftX: 0.0,
-                                    TopLeftY: 0.0,
-                                    Width: size.width as f32,
-                                    Height: size.height as f32,
-                                    MinDepth: 0.0,
-                                    MaxDepth: 1.0,
-                                };
-                                context.RSSetViewports(Some(&[viewport]));
-
-                                // Draw fullscreen quad with GPUI texture (transparent UI layer on top)
-                                context.Draw(4, 0);
-
-                                // ONLY present when we successfully composited GPUI content
-                                // This prevents flickering of green-only frames
-                                let present_result = swap_chain.Present(1, DXGI_PRESENT(0));
-                                
-                                // Handle present failures gracefully  
-                                if present_result.is_err() {
-                                    // Log the error and continue - device may recover
-                                    static mut PRESENT_ERROR_COUNT: u32 = 0;
-                                    unsafe {
-                                        PRESENT_ERROR_COUNT += 1;
-                                        if PRESENT_ERROR_COUNT == 1 || PRESENT_ERROR_COUNT % 600 == 0 {
-                                            eprintln!("[COMPOSITOR] ❌ Present failed - HRESULT: {:?}", present_result);
-                                            eprintln!("[COMPOSITOR] 🔄 Continuing (device may recover)...");
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            // Don't present if we don't have GPUI texture ready yet
-                            // This shows the last valid frame instead of flickering
-                            static mut SKIP_COUNT: u32 = 0;
-                            SKIP_COUNT += 1;
-                            if SKIP_COUNT <= 3 || SKIP_COUNT % 60 == 0 {
-                                eprintln!("ΓÅ¡∩╕Å  Skipping frame {} - waiting for GPUI texture to be ready", SKIP_COUNT);
+                        // Present the final frame
+                        if let Err(e) = compositor.present() {
+                            eprintln!("[COMPOSITOR] Γ¥î Failed to present: {:?}", e);
+                        }
+                    } else {
+                        // No compositor available - fallback
+                        static mut NO_COMPOSITOR_WARN: bool = false;
+                        unsafe {
+                            if !NO_COMPOSITOR_WARN {
+                                eprintln!("[COMPOSITOR] Γ¢Ñ£∩╕Å  No compositor initialized - window will be blank");
+                                NO_COMPOSITOR_WARN = true;
                             }
                         }
                     }
@@ -1269,362 +869,29 @@ impl ApplicationHandler for WinitGpuiApp {
 
             window_state.gpui_window = Some(gpui_window);
 
-            // Initialize D3D11 for blitting on Windows
-            #[cfg(target_os = "windows")]
-            unsafe {
-                println!("Γ£à Initializing D3D11 for GPU blitting...");
+            // Initialize cross-platform compositor
+            {
+                use crate::window::compositor::Compositor;
+                use crate::window::compositor::PlatformCompositor;
 
-                let mut device = None;
-                let mut context = None;
-                let mut feature_level = Default::default();
+                println!("Γ£à Initializing compositor...");
 
-                let result = D3D11CreateDevice(
-                    None,
-                    D3D_DRIVER_TYPE_HARDWARE,
-                    HMODULE(std::ptr::null_mut()),
-                    D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-                    None,
-                    D3D11_SDK_VERSION,
-                    Some(&mut device),
-                    Some(&mut feature_level),
-                    Some(&mut context),
-                );
+                let physical_size = winit_window.inner_size();
+                let scale_factor = winit_window.scale_factor() as f32;
 
-                if result.is_ok() && device.is_some() {
-                    window_state.d3d_device = device.clone();
-                    window_state.d3d_context = context;
-                    println!("Γ£à D3D11 device created successfully!");
-
-                    // Create swap chain for the winit window
-                    let parent_raw = winit_window.window_handle().unwrap().as_raw();
-                    let hwnd = match parent_raw {
-                        RawWindowHandle::Win32(h) => HWND(h.hwnd.get() as isize as *mut _),
-                        _ => {
-                            println!("Γ¥î Failed to get HWND");
-                            return;
-                        }
-                    };
-
-                    let dxgi_device: IDXGIDevice = device.as_ref().unwrap().cast().unwrap();
-                    let adapter = dxgi_device.GetAdapter().unwrap();
-                    let dxgi_factory: IDXGIFactory2 = adapter.GetParent().unwrap();
-
-                    // Swap chain must use physical pixels
-                    // inner_size() already returns physical pixels (logical ├ù scale factor)
-                    let physical_width = size.width;
-                    let physical_height = size.height;
-                    println!("≡ƒÄ» Creating swap chain: physical {}x{}, scale {}",
-                        physical_width, physical_height, winit_window.scale_factor());
-
-                    let swap_chain_desc = DXGI_SWAP_CHAIN_DESC1 {
-                        Width: physical_width,
-                        Height: physical_height,
-                        Format: DXGI_FORMAT_B8G8R8A8_UNORM,
-                        Stereo: FALSE,
-                        SampleDesc: DXGI_SAMPLE_DESC {
-                            Count: 1,
-                            Quality: 0,
-                        },
-                        BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
-                        BufferCount: 2,
-                        Scaling: DXGI_SCALING_NONE,
-                        SwapEffect: DXGI_SWAP_EFFECT_FLIP_DISCARD,
-                        AlphaMode: DXGI_ALPHA_MODE_IGNORE,  // Ignore alpha for solid window
-                        Flags: 0,
-                    };
-
-                    let swap_chain = dxgi_factory.CreateSwapChainForHwnd(
-                        device.as_ref().unwrap(),
-                        hwnd,
-                        &swap_chain_desc,
-                        None,
-                        None,
-                    );
-                    if let Ok(swap_chain) = swap_chain {
-                        window_state.swap_chain = Some(swap_chain.clone());
-                        println!("Γ£à Swap chain created for winit window!");
-
-                        // Create render target view from swap chain back buffer
-                        if let Ok(back_buffer) = swap_chain.GetBuffer::<ID3D11Texture2D>(0) {
-                            let mut rtv: Option<ID3D11RenderTargetView> = None;
-                            if device.as_ref().unwrap().CreateRenderTargetView(&back_buffer, None, Some(&mut rtv as *mut _)).is_ok() {
-                                window_state.render_target_view = rtv;
-                                println!("Γ£à Render target view created!");
-                            }
-                        }
-
-                        // Create blend state for alpha blending
-                        let blend_desc = D3D11_BLEND_DESC {
-                            AlphaToCoverageEnable: FALSE,
-                            IndependentBlendEnable: FALSE,
-                            RenderTarget: [
-                                D3D11_RENDER_TARGET_BLEND_DESC {
-                                    BlendEnable: TRUE,
-                                    SrcBlend: D3D11_BLEND_SRC_ALPHA,
-                                    DestBlend: D3D11_BLEND_INV_SRC_ALPHA,
-                                    BlendOp: D3D11_BLEND_OP_ADD,
-                                    SrcBlendAlpha: D3D11_BLEND_ONE,
-                                    DestBlendAlpha: D3D11_BLEND_ZERO,
-                                    BlendOpAlpha: D3D11_BLEND_OP_ADD,
-                                    RenderTargetWriteMask: D3D11_COLOR_WRITE_ENABLE_ALL.0 as u8,
-                                },
-                                D3D11_RENDER_TARGET_BLEND_DESC::default(),
-                                D3D11_RENDER_TARGET_BLEND_DESC::default(),
-                                D3D11_RENDER_TARGET_BLEND_DESC::default(),
-                                D3D11_RENDER_TARGET_BLEND_DESC::default(),
-                                D3D11_RENDER_TARGET_BLEND_DESC::default(),
-                                D3D11_RENDER_TARGET_BLEND_DESC::default(),
-                                D3D11_RENDER_TARGET_BLEND_DESC::default(),
-                            ],
-                        };
-
-                        let mut blend_state = None;
-                        if device.as_ref().unwrap().CreateBlendState(&blend_desc, Some(&mut blend_state as *mut _)).is_ok() {
-                            window_state.blend_state = blend_state;
-                            println!("Γ£à Blend state created for alpha composition!");
-                        }
-
-                        // Create shaders for GPU alpha blending by compiling HLSL at runtime
-                        println!("≡ƒö¿ Compiling shaders at runtime...");
-
-                        // Vertex shader source: passthrough with position and texcoord
-                        let vs_source = r#"
-struct VS_INPUT {
-    float2 pos : POSITION;
-    float2 tex : TEXCOORD0;
-};
-
-struct PS_INPUT {
-    float4 pos : SV_POSITION;
-    float2 tex : TEXCOORD0;
-};
-
-PS_INPUT main(VS_INPUT input) {
-    PS_INPUT output;
-    output.pos = float4(input.pos, 0.0f, 1.0f);
-    output.tex = input.tex;
-    return output;
-}
-"#;
-
-                        // Pixel shader source: sample texture with alpha
-                        let ps_source = r#"
-Texture2D gpuiTexture : register(t0);
-SamplerState samplerState : register(s0);
-
-struct PS_INPUT {
-    float4 pos : SV_POSITION;
-    float2 tex : TEXCOORD0;
-};
-
-float4 main(PS_INPUT input) : SV_TARGET {
-    return gpuiTexture.Sample(samplerState, input.tex);
-}
-"#;
-
-                        // Compile vertex shader
-                        let vs_bytecode_blob = {
-                            let mut blob: Option<ID3DBlob> = None;
-                            let mut error_blob: Option<ID3DBlob> = None;
-                            let result = D3DCompile(
-                                vs_source.as_ptr() as *const _,
-                                vs_source.len(),
-                                None,
-                                None,
-                                None,
-                                s!("main"),
-                                s!("vs_5_0"),
-                                0,
-                                0,
-                                &mut blob,
-                                Some(&mut error_blob),
-                            );
-
-                            if result.is_err() {
-                                if let Some(err) = error_blob {
-                                    let err_msg = std::slice::from_raw_parts(
-                                        err.GetBufferPointer() as *const u8,
-                                        err.GetBufferSize(),
-                                    );
-                                    println!("Γ¥î VS compile error: {}", String::from_utf8_lossy(err_msg));
-                                }
-                            }
-                            blob
-                        };
-
-                        // Compile pixel shader
-                        let ps_bytecode_blob = {
-                            let mut blob: Option<ID3DBlob> = None;
-                            let mut error_blob: Option<ID3DBlob> = None;
-                            let result = D3DCompile(
-                                ps_source.as_ptr() as *const _,
-                                ps_source.len(),
-                                None,
-                                None,
-                                None,
-                                s!("main"),
-                                s!("ps_5_0"),
-                                0,
-                                0,
-                                &mut blob,
-                                Some(&mut error_blob),
-                            );
-
-                            if result.is_err() {
-                                if let Some(err) = error_blob {
-                                    let err_msg = std::slice::from_raw_parts(
-                                        err.GetBufferPointer() as *const u8,
-                                        err.GetBufferSize(),
-                                    );
-                                    println!("Γ¥î PS compile error: {}", String::from_utf8_lossy(err_msg));
-                                }
-                            }
-                            blob
-                        };
-
-                        let vs_bytecode = if let Some(blob) = &vs_bytecode_blob {
-                            std::slice::from_raw_parts(
-                                blob.GetBufferPointer() as *const u8,
-                                blob.GetBufferSize(),
-                            )
-                        } else {
-                            &[] as &[u8]
-                        };
-
-                        let ps_bytecode = if let Some(blob) = &ps_bytecode_blob {
-                            std::slice::from_raw_parts(
-                                blob.GetBufferPointer() as *const u8,
-                                blob.GetBufferSize(),
-                            )
-                        } else {
-                            &[] as &[u8]
-                        };
-
-                        if vs_bytecode.is_empty() || ps_bytecode.is_empty() {
-                            println!("Γ¥î Shader compilation failed!");
-                        }
-
-                        // Create D3D11 shader objects from compiled bytecode
-                        let mut vertex_shader = None;
-                        let mut pixel_shader = None;
-
-                        let vs_result = if !vs_bytecode.is_empty() {
-                            device.as_ref().unwrap().CreateVertexShader(vs_bytecode, None, Some(&mut vertex_shader as *mut _))
-                        } else {
-                            Err(Error::from(E_FAIL))
-                        };
-
-                        let ps_result = if !ps_bytecode.is_empty() {
-                            device.as_ref().unwrap().CreatePixelShader(ps_bytecode, None, Some(&mut pixel_shader as *mut _))
-                        } else {
-                            Err(Error::from(E_FAIL))
-                        };
-
-                        if vs_result.is_ok() && ps_result.is_ok() {
-                            window_state.vertex_shader = vertex_shader;
-                            window_state.pixel_shader = pixel_shader;
-                            println!("Γ£à Shaders created from bytecode!");
-                        } else {
-                            println!("Γ¥î Failed to create shaders - VS: {:?}, PS: {:?}", vs_result, ps_result);
-                        }
-
-                        if window_state.vertex_shader.is_some() && window_state.pixel_shader.is_some() {
-
-                            // Create input layout that matches the vertex shader
-                            // VS_INPUT has: float2 pos : POSITION; float2 tex : TEXCOORD0;
-                            let layout = [
-                                D3D11_INPUT_ELEMENT_DESC {
-                                    SemanticName: s!("POSITION"),
-                                    SemanticIndex: 0,
-                                    Format: DXGI_FORMAT_R32G32_FLOAT,
-                                    InputSlot: 0,
-                                    AlignedByteOffset: 0,
-                                    InputSlotClass: D3D11_INPUT_PER_VERTEX_DATA,
-                                    InstanceDataStepRate: 0,
-                                },
-                                D3D11_INPUT_ELEMENT_DESC {
-                                    SemanticName: s!("TEXCOORD"),
-                                    SemanticIndex: 0,
-                                    Format: DXGI_FORMAT_R32G32_FLOAT,
-                                    InputSlot: 0,
-                                    AlignedByteOffset: 8,
-                                    InputSlotClass: D3D11_INPUT_PER_VERTEX_DATA,
-                                    InstanceDataStepRate: 0,
-                                },
-                            ];
-
-                            let mut input_layout = None;
-                            if device.as_ref().unwrap().CreateInputLayout(&layout, vs_bytecode, Some(&mut input_layout as *mut _)).is_ok() {
-                                window_state.input_layout = input_layout;
-                                println!("Γ£à Input layout created!");
-                            } else {
-                                println!("Γ¥î Failed to create input layout");
-                            }
-                        }
-
-                        // Create vertex buffer for fullscreen quad
-                        #[repr(C)]
-                        struct Vertex {
-                            pos: [f32; 2],
-                            tex: [f32; 2],
-                        }
-
-                        let vertices = [
-                            Vertex { pos: [-1.0, -1.0], tex: [0.0, 1.0] },
-                            Vertex { pos: [-1.0,  1.0], tex: [0.0, 0.0] },
-                            Vertex { pos: [ 1.0, -1.0], tex: [1.0, 1.0] },
-                            Vertex { pos: [ 1.0,  1.0], tex: [1.0, 0.0] },
-                        ];
-
-                        let vb_desc = D3D11_BUFFER_DESC {
-                            ByteWidth: std::mem::size_of_val(&vertices) as u32,
-                            Usage: D3D11_USAGE_DEFAULT,
-                            BindFlags: D3D11_BIND_VERTEX_BUFFER.0 as u32,
-                            CPUAccessFlags: 0,
-                            MiscFlags: 0,
-                            StructureByteStride: 0,
-                        };
-
-                        let vb_data = D3D11_SUBRESOURCE_DATA {
-                            pSysMem: vertices.as_ptr() as *const _,
-                            SysMemPitch: 0,
-                            SysMemSlicePitch: 0,
-                        };
-
-                        let mut vertex_buffer = None;
-                        if device.as_ref().unwrap().CreateBuffer(&vb_desc, Some(&vb_data), Some(&mut vertex_buffer as *mut _)).is_ok() {
-                            window_state.vertex_buffer = vertex_buffer;
-                            println!("Γ£à Vertex buffer created!");
-                        }
-
-                        // Create sampler state
-                        let sampler_desc = D3D11_SAMPLER_DESC {
-                            Filter: D3D11_FILTER_MIN_MAG_MIP_LINEAR,
-                            AddressU: D3D11_TEXTURE_ADDRESS_CLAMP,
-                            AddressV: D3D11_TEXTURE_ADDRESS_CLAMP,
-                            AddressW: D3D11_TEXTURE_ADDRESS_CLAMP,
-                            MipLODBias: 0.0,
-                            MaxAnisotropy: 1,
-                            ComparisonFunc: D3D11_COMPARISON_NEVER,
-                            BorderColor: [0.0, 0.0, 0.0, 0.0],
-                            MinLOD: 0.0,
-                            MaxLOD: f32::MAX,
-                        };
-
-                        let mut sampler_state = None;
-                        if device.as_ref().unwrap().CreateSamplerState(&sampler_desc, Some(&mut sampler_state as *mut _)).is_ok() {
-                            window_state.sampler_state = sampler_state;
-                            println!("Γ£à Sampler state created!");
-                        }
-                    } else {
-                        println!("Γ¥î Failed to create swap chain");
+                match PlatformCompositor::init(
+                    winit_window.as_ref(),
+                    physical_size.width,
+                    physical_size.height,
+                    scale_factor,
+                ) {
+                    Ok(compositor) => {
+                        window_state.compositor = Some(Box::new(compositor));
+                        println!("Γ£à Compositor initialized successfully!");
                     }
-
-                    // Note: We'll get the shared texture handle lazily on first render
-                    // GPUI creates the shared texture during its first draw call
-                    println!("≡ƒÆí Shared texture will be retrieved on first render");
-                } else {
-                    println!("Γ¥î Failed to create D3D11 device: {:?}", result);
+                    Err(e) => {
+                        eprintln!("Γ¥î Failed to initialize compositor: {:?}", e);
+                    }
                 }
             }
 

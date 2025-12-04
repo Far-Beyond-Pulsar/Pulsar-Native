@@ -83,7 +83,9 @@ lewton = "0.10"
 claxon = "0.4"
 symphonia = { version = "0.5", features = ["mp3", "wav", "flac", "vorbis"] }  # Modern audio decoder
 crossbeam = "0.8.4"  # Concurrency utilities
-wgpu = "0.20"      # GPU compute and rendering
+wgpu = "26"        # GPU compute and rendering
+wgpu-hal = "26"    # Hardware abstraction layer for wgpu
+ash = "0.38"       # Vulkan bindings for DMA-BUF import
 pollster = "0.3"   # Block on async operations
 bytemuck = { version = "1.14", features = ["derive"] }
 ron = "0.8"

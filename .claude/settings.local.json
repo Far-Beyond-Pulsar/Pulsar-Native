@@ -87,7 +87,8 @@
       "Bash(cargo tree:*)",
       "Bash(RUST_LOG=info timeout 30 ./target/debug/pulsar_engine:*)",
       "WebFetch(domain:docs.rs)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(cargo metadata:*)"
     ],
     "deny": [],
     "ask": []

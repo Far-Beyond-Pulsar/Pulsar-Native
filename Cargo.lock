@@ -2516,8 +2516,6 @@ dependencies = [
 [[package]]
 name = "blade-graphics"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4deb8f595ce7f00dee3543ebf6fd9a20ea86fc421ab79600dac30876250bdae"
 dependencies = [
  "ash 0.38.0+1.3.281",
  "ash-window",
@@ -10086,7 +10084,8 @@ dependencies = [
  "url",
  "uuid",
  "walkdir",
- "wgpu 0.20.1",
+ "wgpu 26.0.1",
+ "wgpu-hal 26.0.6",
  "which 6.0.3",
  "winapi",
  "windows 0.58.0",

@@ -132,3 +132,6 @@ ttf-parser = { opt-level = 3 }
 
 [workspace.metadata.typos]
 files.extend-exclude = ["**/fixtures/*"]
+
+[patch.crates-io]
+blade-graphics = { path = "/home/trident/zed/vendor/blade-graphics" }
