@@ -84,6 +84,9 @@ impl MultiplayerWindow {
                                                 session.connected_users = participants.clone();
                                             }
 
+                                            // Initialize presence for all participants
+                                            this.update_presence_from_participants(cx);
+
                                             // Log project root for host
                                             if let Some(project_root) = &this.project_root {
                                                 tracing::info!("CREATE_SESSION: Project root at {:?}", project_root);
@@ -132,6 +135,8 @@ impl MultiplayerWindow {
                                                                     session.connected_users
                                                                 );
                                                                 session.connected_users.push(joined_peer_id.clone());
+                                                                // Update presence
+                                                                this.update_presence_from_participants(cx);
                                                                 cx.notify();
                                                             } else {
                                                                 tracing::info!("CREATE_SESSION: Peer {} already in list", joined_peer_id);
@@ -438,6 +443,9 @@ impl MultiplayerWindow {
                                         // Store raw participant list
                                         connected_users: participants.clone(),
                                     });
+
+                                    // Initialize presence for all participants
+                                    this.update_presence_from_participants(cx);
 
                                     // Log project root
                                     if let Some(project_root) = &this.project_root {

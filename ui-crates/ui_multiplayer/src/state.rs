@@ -190,6 +190,27 @@ impl MultiplayerWindow {
         }
     }
 
+    /// Initialize presence for connected users
+    pub(super) fn update_presence_from_participants(&mut self, cx: &mut Context<Self>) {
+        if let Some(session) = &self.active_session {
+            // Create presence entries for participants who don't have one
+            for peer_id in &session.connected_users {
+                if !self.user_presences.iter().any(|p| &p.peer_id == peer_id) {
+                    self.user_presences.push(UserPresence::new(peer_id.clone()));
+                }
+            }
+
+            // Remove presence entries for participants who left
+            self.user_presences.retain(|p| session.connected_users.contains(&p.peer_id));
+        }
+        cx.notify();
+    }
+
+    /// Get presence for a specific peer
+    pub(super) fn get_presence_mut(&mut self, peer_id: &str) -> Option<&mut UserPresence> {
+        self.user_presences.iter_mut().find(|p| p.peer_id == peer_id)
+    }
+
     /// Simulate a file diff for development/testing purposes
     pub(super) fn simulate_diff_for_dev(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         use ui_editor::tabs::script_editor::DiffFileEntry;
