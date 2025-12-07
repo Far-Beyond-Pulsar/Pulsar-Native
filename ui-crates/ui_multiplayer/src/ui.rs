@@ -358,29 +358,99 @@ impl MultiplayerWindow {
                     .bg(cx.theme().border)
             )
             .child(
-                // Users list
+                // Users list with enhanced display
                 v_flex()
-                    .gap_2()
+                    .gap_3()
                     .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!("{} CONNECTED", session.connected_users.len()))
+                        h_flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                Icon::new(IconName::User)
+                                    .size(px(16.))
+                                    .text_color(cx.theme().primary)
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_bold()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(format!("{} PARTICIPANT{}",
+                                        session.connected_users.len(),
+                                        if session.connected_users.len() == 1 { "" } else { "S" }
+                                    ))
+                            )
+                            .child(
+                                // Active indicator
+                                div()
+                                    .ml_auto()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .child(
+                                        div()
+                                            .size(px(6.))
+                                            .rounded_full()
+                                            .bg(rgb(0x00ff00))
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child("Active")
+                                    )
+                            )
                     )
                     .child(
                         v_flex()
                             .gap_1()
                             .children(
                                 self.format_participants(&session.connected_users).iter().map(|user| {
-                                    div()
-                                        .px_2()
-                                        .py_1()
-                                        .text_sm()
-                                        .text_color(cx.theme().foreground)
-                                        .child(user.clone())
+                                    h_flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .px_3()
+                                        .py_2()
+                                        .rounded(px(6.))
+                                        .bg(cx.theme().secondary)
+                                        .child(
+                                            Icon::new(IconName::User)
+                                                .size(px(14.))
+                                                .text_color(cx.theme().muted_foreground)
+                                        )
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .text_color(cx.theme().foreground)
+                                                .child(user.clone())
+                                        )
+                                        .when(user.contains("(Host)"), |this| {
+                                            this.child(
+                                                div()
+                                                    .ml_auto()
+                                                    .px_2()
+                                                    .py_0p5()
+                                                    .rounded(px(4.))
+                                                    .bg(cx.theme().primary)
+                                                    .text_xs()
+                                                    .font_bold()
+                                                    .text_color(cx.theme().primary_foreground)
+                                                    .child("HOST")
+                                            )
+                                        })
                                         .into_any_element()
                                 })
                             )
+                            .when(session.connected_users.is_empty(), |this| {
+                                this.child(
+                                    div()
+                                        .text_sm()
+                                        .text_center()
+                                        .py_4()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("No participants yet")
+                                )
+                            })
                     )
             )
             .child(
@@ -412,38 +482,80 @@ impl MultiplayerWindow {
                             .gap_3()
                             .when(self.chat_messages.is_empty(), |this| {
                                 this.child(
-                                    div()
-                                        .text_sm()
-                                        .text_center()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child("No messages")
+                                    v_flex()
+                                        .size_full()
+                                        .items_center()
+                                        .justify_center()
+                                        .gap_2()
+                                        .child(
+                                            Icon::new(IconName::ChatBubble)
+                                                .size(px(48.))
+                                                .text_color(cx.theme().muted_foreground.opacity(0.3))
+                                        )
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child("No messages yet")
+                                        )
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().muted_foreground.opacity(0.7))
+                                                .child("Start chatting with your team!")
+                                        )
                                 )
                             })
                             .children(
                                 self.chat_messages.iter().map(|msg| {
-                                    let peer_name = if msg.is_self { "You".to_string() } else { msg.peer_id.clone() };
+                                    let peer_name = if msg.is_self {
+                                        "You".to_string()
+                                    } else {
+                                        // Shorten peer ID for chat display
+                                        if msg.peer_id.len() > 8 {
+                                            format!("{}...", &msg.peer_id[..8])
+                                        } else {
+                                            msg.peer_id.clone()
+                                        }
+                                    };
+
+                                    let timestamp_str = format_timestamp(msg.timestamp);
+
                                     v_flex()
-                                        .gap_0p5()
+                                        .gap_1()
                                         .when(msg.is_self, |this| this.items_end())
                                         .child(
-                                            div()
-                                                .text_xs()
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child(peer_name)
+                                            h_flex()
+                                                .gap_2()
+                                                .items_baseline()
+                                                .child(
+                                                    div()
+                                                        .text_xs()
+                                                        .font_medium()
+                                                        .text_color(cx.theme().foreground)
+                                                        .child(peer_name)
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_xs()
+                                                        .text_color(cx.theme().muted_foreground)
+                                                        .child(timestamp_str)
+                                                )
                                         )
                                         .child(
                                             div()
+                                                .max_w(px(400.))
                                                 .px_3()
                                                 .py_2()
-                                                .rounded(px(6.))
+                                                .rounded(px(8.))
                                                 .bg(if msg.is_self {
-                                                    cx.theme().accent
+                                                    cx.theme().primary
                                                 } else {
                                                     cx.theme().secondary
                                                 })
                                                 .text_sm()
                                                 .text_color(if msg.is_self {
-                                                    cx.theme().accent_foreground
+                                                    cx.theme().primary_foreground
                                                 } else {
                                                     cx.theme().foreground
                                                 })
@@ -455,19 +567,36 @@ impl MultiplayerWindow {
                     )
             )
             .child(
-                // Input
-                h_flex()
+                // Input area
+                v_flex()
                     .gap_2()
-                    .p_4()
+                    .p_3()
                     .border_t_1()
                     .border_color(cx.theme().border)
-                    .child(TextInput::new(&self.chat_input).flex_1())
+                    .bg(cx.theme().background)
                     .child(
-                        Button::new("send")
-                            .label("Send")
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.send_chat_message(window, cx);
-                            }))
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                TextInput::new(&self.chat_input)
+                                    .flex_1()
+                            )
+                            .child(
+                                Button::new("send")
+                                    .label("Send")
+                                    .icon(IconName::Send)
+                                    .disabled(self.chat_input.read(cx).text().len() == 0)
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.send_chat_message(window, cx);
+                                    }))
+                            )
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Press Enter to send")
                     )
             )
     }
