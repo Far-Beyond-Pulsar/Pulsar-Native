@@ -138,7 +138,8 @@ impl WinitGpuiApp {
             .with_title(title)
             .with_inner_size(winit::dpi::LogicalSize::new(size.0, size.1))
             .with_transparent(false)
-            .with_decorations(false); // Use custom titlebar instead of OS decorations
+            .with_decorations(false) // Use custom titlebar instead of OS decorations
+            .with_resizable(true); // Enable resize for borderless window
 
         // Splash window positioning (centered by default)
         // Position::Automatic doesn't exist in winit, windows are centered by default
