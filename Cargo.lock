@@ -3200,7 +3200,7 @@ dependencies = [
 [[package]]
 name = "collections"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed?rev=2e403b7c1564f9ef515f5aa466581fc3759bc5ff#2e403b7c1564f9ef515f5aa466581fc3759bc5ff"
+source = "git+https://github.com/tristanpoland/zed?rev=2c8245c23abd0a05b8a83fae8ae8344d0e4520ae#2c8245c23abd0a05b8a83fae8ae8344d0e4520ae"
 dependencies = [
  "indexmap 2.12.0",
  "rustc-hash 2.1.1",
@@ -4095,7 +4095,7 @@ dependencies = [
 [[package]]
 name = "derive_refineable"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed?rev=2e403b7c1564f9ef515f5aa466581fc3759bc5ff#2e403b7c1564f9ef515f5aa466581fc3759bc5ff"
+source = "git+https://github.com/tristanpoland/zed?rev=2c8245c23abd0a05b8a83fae8ae8344d0e4520ae#2c8245c23abd0a05b8a83fae8ae8344d0e4520ae"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5622,7 +5622,7 @@ dependencies = [
 [[package]]
 name = "gpui"
 version = "0.2.1"
-source = "git+https://github.com/tristanpoland/zed?rev=2e403b7c1564f9ef515f5aa466581fc3759bc5ff#2e403b7c1564f9ef515f5aa466581fc3759bc5ff"
+source = "git+https://github.com/tristanpoland/zed?rev=2c8245c23abd0a05b8a83fae8ae8344d0e4520ae#2c8245c23abd0a05b8a83fae8ae8344d0e4520ae"
 dependencies = [
  "anyhow",
  "as-raw-xcb-connection",
@@ -5728,7 +5728,7 @@ dependencies = [
 [[package]]
 name = "gpui_macros"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed?rev=2e403b7c1564f9ef515f5aa466581fc3759bc5ff#2e403b7c1564f9ef515f5aa466581fc3759bc5ff"
+source = "git+https://github.com/tristanpoland/zed?rev=2c8245c23abd0a05b8a83fae8ae8344d0e4520ae#2c8245c23abd0a05b8a83fae8ae8344d0e4520ae"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -6173,7 +6173,7 @@ dependencies = [
 [[package]]
 name = "http_client"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed?rev=2e403b7c1564f9ef515f5aa466581fc3759bc5ff#2e403b7c1564f9ef515f5aa466581fc3759bc5ff"
+source = "git+https://github.com/tristanpoland/zed?rev=2c8245c23abd0a05b8a83fae8ae8344d0e4520ae#2c8245c23abd0a05b8a83fae8ae8344d0e4520ae"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -7428,7 +7428,7 @@ dependencies = [
 [[package]]
 name = "media"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed?rev=2e403b7c1564f9ef515f5aa466581fc3759bc5ff#2e403b7c1564f9ef515f5aa466581fc3759bc5ff"
+source = "git+https://github.com/tristanpoland/zed?rev=2c8245c23abd0a05b8a83fae8ae8344d0e4520ae#2c8245c23abd0a05b8a83fae8ae8344d0e4520ae"
 dependencies = [
  "anyhow",
  "bindgen 0.71.1",
@@ -9188,7 +9188,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "perf"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed?rev=2e403b7c1564f9ef515f5aa466581fc3759bc5ff#2e403b7c1564f9ef515f5aa466581fc3759bc5ff"
+source = "git+https://github.com/tristanpoland/zed?rev=2c8245c23abd0a05b8a83fae8ae8344d0e4520ae#2c8245c23abd0a05b8a83fae8ae8344d0e4520ae"
 dependencies = [
  "collections",
  "serde",
@@ -10565,7 +10565,7 @@ dependencies = [
 [[package]]
 name = "refineable"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed?rev=2e403b7c1564f9ef515f5aa466581fc3759bc5ff#2e403b7c1564f9ef515f5aa466581fc3759bc5ff"
+source = "git+https://github.com/tristanpoland/zed?rev=2c8245c23abd0a05b8a83fae8ae8344d0e4520ae#2c8245c23abd0a05b8a83fae8ae8344d0e4520ae"
 dependencies = [
  "derive_refineable",
  "workspace-hack",
@@ -11513,7 +11513,7 @@ checksum = "16c2f82143577edb4921b71ede051dac62ca3c16084e918bf7b40c96ae10eb33"
 [[package]]
 name = "semantic_version"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed?rev=2e403b7c1564f9ef515f5aa466581fc3759bc5ff#2e403b7c1564f9ef515f5aa466581fc3759bc5ff"
+source = "git+https://github.com/tristanpoland/zed?rev=2c8245c23abd0a05b8a83fae8ae8344d0e4520ae#2c8245c23abd0a05b8a83fae8ae8344d0e4520ae"
 dependencies = [
  "anyhow",
  "serde",
@@ -12512,7 +12512,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 [[package]]
 name = "sum_tree"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed?rev=2e403b7c1564f9ef515f5aa466581fc3759bc5ff#2e403b7c1564f9ef515f5aa466581fc3759bc5ff"
+source = "git+https://github.com/tristanpoland/zed?rev=2c8245c23abd0a05b8a83fae8ae8344d0e4520ae#2c8245c23abd0a05b8a83fae8ae8344d0e4520ae"
 dependencies = [
  "arrayvec",
  "log",
@@ -14726,7 +14726,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 [[package]]
 name = "util"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed?rev=2e403b7c1564f9ef515f5aa466581fc3759bc5ff#2e403b7c1564f9ef515f5aa466581fc3759bc5ff"
+source = "git+https://github.com/tristanpoland/zed?rev=2c8245c23abd0a05b8a83fae8ae8344d0e4520ae#2c8245c23abd0a05b8a83fae8ae8344d0e4520ae"
 dependencies = [
  "anyhow",
  "async-fs 2.2.0",
@@ -14762,7 +14762,7 @@ dependencies = [
 [[package]]
 name = "util_macros"
 version = "0.1.0"
-source = "git+https://github.com/tristanpoland/zed?rev=2e403b7c1564f9ef515f5aa466581fc3759bc5ff#2e403b7c1564f9ef515f5aa466581fc3759bc5ff"
+source = "git+https://github.com/tristanpoland/zed?rev=2c8245c23abd0a05b8a83fae8ae8344d0e4520ae#2c8245c23abd0a05b8a83fae8ae8344d0e4520ae"
 dependencies = [
  "perf",
  "quote",
