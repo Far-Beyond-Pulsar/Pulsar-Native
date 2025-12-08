@@ -857,8 +857,13 @@ impl MultiplayerWindow {
                                     let (r, g, b) = (presence.color[0], presence.color[1], presence.color[2]);
                                     let color_value = ((r * 255.0) as u32) << 16 | ((g * 255.0) as u32) << 8 | ((b * 255.0) as u32);
 
+                                    let jump_id = SharedString::from(format!("jump-{}", presence.peer_id));
+                                    let kick_id = SharedString::from(format!("kick-{}", presence.peer_id));
+                                    let peer_id_for_jump = presence.peer_id.clone();
+                                    let peer_id_for_kick = presence.peer_id.clone();
+
                                     v_flex()
-                                        .gap_2()
+                                        .gap_3()
                                         .px_4()
                                         .py_3()
                                         .rounded(px(8.))
@@ -943,21 +948,23 @@ impl MultiplayerWindow {
                                                 })
                                         )
                                         .when(!is_self, |this| {
-                                            let jump_id = SharedString::from(format!("jump-{}", presence.peer_id));
-                                            let kick_id = SharedString::from(format!("kick-{}", presence.peer_id));
-                                            let peer_id_for_jump = presence.peer_id.clone();
-                                            let peer_id_for_kick = presence.peer_id.clone();
-
                                             this.child(
-                                                // Action buttons
+                                                // Divider
+                                                div()
+                                                    .h(px(1.))
+                                                    .w_full()
+                                                    .bg(cx.theme().border.opacity(0.5))
+                                            )
+                                            .child(
+                                                // Action buttons inside card
                                                 h_flex()
                                                     .gap_2()
-                                                    .mt_2()
+                                                    .w_full()
                                                     .child(
                                                         Button::new(jump_id)
                                                             .label("Jump to View")
                                                             .icon(IconName::Eye)
-                                                            .w_full()
+                                                            .flex_1()
                                                             .on_click(cx.listener(move |this, _, window, cx| {
                                                                 this.jump_to_user_view(peer_id_for_jump.clone(), window, cx);
                                                             }))
@@ -967,6 +974,7 @@ impl MultiplayerWindow {
                                                             Button::new(kick_id)
                                                                 .label("Kick")
                                                                 .icon(IconName::X)
+                                                                .flex_1()
                                                                 .on_click(cx.listener(move |this, _, window, cx| {
                                                                     this.kick_user(peer_id_for_kick.clone(), window, cx);
                                                                 }))

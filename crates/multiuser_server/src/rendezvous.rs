@@ -39,6 +39,12 @@ pub enum ClientMessage {
         session_id: String,
         peer_id: String,
     },
+    /// Kick a user (host only)
+    KickUser {
+        session_id: String,
+        peer_id: String,
+        target_peer_id: String,
+    },
     /// Chat message
     ChatMessage {
         session_id: String,
@@ -141,6 +147,11 @@ pub enum ServerMessage {
     PeerLeft {
         session_id: String,
         peer_id: String,
+    },
+    /// You were kicked from the session
+    Kicked {
+        session_id: String,
+        reason: String,
     },
     /// Chat message (relayed)
     ChatMessage {
@@ -474,6 +485,13 @@ impl RendezvousCoordinator {
             } => {
                 self.handle_leave(&sid, &pid).await?;
             }
+            ClientMessage::KickUser {
+                session_id: sid,
+                peer_id: pid,
+                target_peer_id,
+            } => {
+                self.handle_kick(&sid, &pid, target_peer_id).await?;
+            }
             ClientMessage::ChatMessage {
                 session_id: sid,
                 peer_id: pid,
@@ -654,6 +672,65 @@ impl RendezvousCoordinator {
 
             // Notify other peers
             self.broadcast_peer_left(sid, pid).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn handle_kick(&self, sid: &str, pid: &str, target_peer_id: String) -> Result<()> {
+        let session = self.sessions.get(sid).context("Session not found")?;
+
+        // Verify the kicker is the host (first participant)
+        let is_host = session
+            .list_peers()
+            .first()
+            .map(|p| p.peer_id == pid)
+            .unwrap_or(false);
+
+        if !is_host {
+            warn!(
+                session = %sid,
+                kicker = %pid,
+                target = %target_peer_id,
+                "Non-host attempted to kick user"
+            );
+            return Ok(());
+        }
+
+        // Get the target peer
+        if let Some(target_peer) = session.get_peer(&target_peer_id) {
+            info!(
+                session = %sid,
+                host = %pid,
+                kicked_user = %target_peer_id,
+                "Host kicked user from session"
+            );
+
+            // Send Kicked message to the target user
+            let _ = target_peer
+                .tx
+                .send(ServerMessage::Kicked {
+                    session_id: sid.to_string(),
+                    reason: "Kicked by host".to_string(),
+                })
+                .await;
+
+            // Remove the kicked user
+            session.remove_peer(&target_peer_id);
+
+            // Notify other peers that this user left
+            self.broadcast_peer_left(sid, &target_peer_id).await?;
+
+            METRICS
+                .signaling_messages
+                .with_label_values(&["kick"])
+                .inc();
+        } else {
+            warn!(
+                session = %sid,
+                target = %target_peer_id,
+                "Attempted to kick non-existent user"
+            );
         }
 
         Ok(())

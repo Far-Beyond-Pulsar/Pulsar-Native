@@ -32,17 +32,18 @@ impl MultiplayerWindow {
 
             tracing::info!("Kicking user {} from session {}", peer_id, session_id);
 
-            // TODO: Add KickUser message to the protocol and send it
-            // For now, we'll just remove them from local state
+            // Send kick message to server
             cx.spawn(async move |this, cx| {
-                // Send kick message to server
-                // let client_guard = client.read().await;
-                // let _ = client_guard.send(ClientMessage::KickUser {
-                //     session_id,
-                //     peer_id: our_peer_id,
-                //     target_peer_id: peer_id.clone(),
-                // }).await;
+                {
+                    let client_guard = client.read().await;
+                    let _ = client_guard.send(ClientMessage::KickUser {
+                        session_id,
+                        peer_id: our_peer_id,
+                        target_peer_id: peer_id.clone(),
+                    }).await;
+                }
 
+                // Update local state (will also update when server confirms via PeerLeft)
                 cx.update(|cx| {
                     this.update(cx, |this, cx| {
                         // Remove from local participants list

@@ -32,6 +32,11 @@ pub enum ClientMessage {
         session_id: String,
         peer_id: String,
     },
+    KickUser {
+        session_id: String,
+        peer_id: String,        // Host's peer ID
+        target_peer_id: String, // User to kick
+    },
     ChatMessage {
         session_id: String,
         peer_id: String,
@@ -128,6 +133,10 @@ pub enum ServerMessage {
     PeerLeft {
         session_id: String,
         peer_id: String,
+    },
+    Kicked {
+        session_id: String,
+        reason: String,
     },
     ChatMessage {
         session_id: String,
