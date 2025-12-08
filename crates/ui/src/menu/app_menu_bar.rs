@@ -184,6 +184,9 @@ impl AppMenu {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Stop propagation to prevent titlebar drag
+        cx.stop_propagation();
+
         let is_selected = self.menu_bar.read(cx).selected_ix == Some(self.ix);
 
         _ = self.menu_bar.update(cx, |state, cx| {

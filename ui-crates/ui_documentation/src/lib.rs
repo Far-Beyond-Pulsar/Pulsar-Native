@@ -1,6 +1,6 @@
 use gpui::{prelude::*, *};
 use ui::{
-    ActiveTheme, Root, Sizable, StyledExt, Selectable,
+    ActiveTheme, Root, Sizable, StyledExt, Selectable, TitleBar,
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, IconName, Icon,
     text::TextView,
@@ -52,21 +52,21 @@ impl DocumentationWindow {
             markdown_content: "# Pulsar Engine Documentation\n\nSelect an item from the sidebar to view its documentation.".to_string(),
             search_query: String::new(),
         };
-        
+
         window.load_documentation();
         window
     }
-    
+
     fn load_documentation(&mut self) {
         if !docs_available() {
             self.markdown_content = "# No Documentation Available\n\nDocumentation has not been generated yet. Build in release mode to generate docs.".to_string();
             return;
         }
-        
+
         // Build flat tree structure
         let mut crates = list_crates();
         crates.sort();
-        
+
         for crate_name in crates {
             if let Some(index) = get_crate_index(&crate_name) {
                 // Add crate node
@@ -75,11 +75,11 @@ impl DocumentationWindow {
                     index: index.clone(),
                     depth: 0,
                 });
-                
+
                 // Add section nodes (sorted)
                 let mut sections = index.sections.clone();
                 sections.sort_by(|a, b| a.name.cmp(&b.name));
-                
+
                 for section in &sections {
                     self.tree_items.push(TreeNode::Section {
                         crate_name: crate_name.clone(),
@@ -87,11 +87,11 @@ impl DocumentationWindow {
                         count: section.count,
                         depth: 1,
                     });
-                    
+
                     // Add item nodes (sorted)
                     let mut items = section.items.clone();
                     items.sort_by(|a, b| a.name.cmp(&b.name));
-                    
+
                     for item in &items {
                         self.tree_items.push(TreeNode::Item {
                             crate_name: crate_name.clone(),
@@ -105,13 +105,13 @@ impl DocumentationWindow {
                 }
             }
         }
-        
+
         self.rebuild_visible_list();
     }
-    
+
     fn rebuild_visible_list(&mut self) {
         self.flat_visible_items.clear();
-        
+
         for (idx, node) in self.tree_items.iter().enumerate() {
             match node {
                 TreeNode::Crate { name, .. } => {
@@ -131,27 +131,27 @@ impl DocumentationWindow {
             }
         }
     }
-    
+
     fn is_expanded(&self, path: &str) -> bool {
         self.expanded_paths.get(path).copied().unwrap_or(false)
     }
-    
+
     fn toggle_expansion(&mut self, path: String, cx: &mut Context<Self>) {
         let is_expanded = self.is_expanded(&path);
         self.expanded_paths.insert(path, !is_expanded);
         self.rebuild_visible_list();
         cx.notify();
     }
-    
+
     fn load_content(&mut self, path: &str, cx: &mut Context<Self>) {
         self.current_path = Some(path.to_string());
-        
+
         if let Some(markdown) = get_doc_content(path) {
             self.markdown_content = markdown;
         } else {
             self.markdown_content = format!("# Error\n\nFailed to load documentation: {}", path);
         }
-        
+
         cx.notify();
     }
 }
@@ -169,21 +169,26 @@ impl Render for DocumentationWindow {
         let sidebar_bg = theme.sidebar;
         let border = theme.border;
         let fg = theme.foreground;
-        
+
         // Clone data needed for rendering to avoid borrow issues
         let visible_items: Vec<_> = self.flat_visible_items.iter()
             .map(|&idx| self.tree_items[idx].clone())
             .collect();
-        
+
         let markdown = self.markdown_content.clone();
-        
-        div()
+
+        v_flex()
             .track_focus(&self.focus_handle)
             .size_full()
-            .flex()
-            .flex_col()
             .bg(bg)
+            .child(TitleBar::new().child("Documentation"))
             .child(
+                div()
+                    .flex_1()
+                    .flex()
+                    .flex_col()
+                    .overflow_hidden()
+                    .child(
                 // Header
                 div()
                     .w_full()
@@ -321,6 +326,7 @@ impl Render for DocumentationWindow {
                             )
                     )
             )
+        )
     }
 }
 
@@ -333,7 +339,7 @@ impl DocumentationWindow {
                 let indent = px(*depth as f32 * 16.0);
                 let id = SharedString::from(format!("crate-{}", name));
                 let theme = cx.theme();
-                
+
                 div()
                     .id(id)
                     .flex()
@@ -369,7 +375,7 @@ impl DocumentationWindow {
                 let indent = px(*depth as f32 * 16.0);
                 let id = SharedString::from(format!("section-{}-{}", crate_name, section_name));
                 let theme = cx.theme();
-                
+
                 div()
                     .id(id)
                     .flex()
@@ -403,7 +409,7 @@ impl DocumentationWindow {
                 let indent = px(*depth as f32 * 16.0);
                 let id = SharedString::from(format!("item-{}", path.replace('/', "-")));
                 let theme = cx.theme();
-                
+
                 div()
                     .id(id)
                     .flex()
