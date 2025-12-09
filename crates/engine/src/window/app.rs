@@ -537,16 +537,80 @@ impl ApplicationHandler for WinitGpuiApp {
                                                         static mut SIZE_MISMATCH_COUNT: u32 = 0;
                                                         SIZE_MISMATCH_COUNT += 1;
                                                         if SIZE_MISMATCH_COUNT == 1 || SIZE_MISMATCH_COUNT % 60 == 0 {
-                                                            eprintln!("[COMPOSITOR] ⚠️  Bevy texture size mismatch - Bevy: {}x{}, Window: {}x{}", 
+                                                            eprintln!("[COMPOSITOR] ⚠️  Bevy texture size mismatch - Bevy: {}x{}, Window: {}x{} (stretching to fit)", 
                                                                 bevy_tex_desc.Width, bevy_tex_desc.Height,
                                                                 window_size.width, window_size.height);
-                                                            eprintln!("[COMPOSITOR] 💡 Skipping Bevy composition to prevent device removal");
-                                                            eprintln!("[COMPOSITOR] 🔄 Waiting for Bevy backend to implement texture resize...");
+                                                            eprintln!("[COMPOSITOR] 💡 Stretching Bevy output to window size until resize is implemented");
                                                         }
-                                                        // Clear cached Bevy textures to force re-fetch after Bevy resizes
-                                                        *bevy_texture = None;
-                                                        *bevy_srv = None;
-                                                        // Skip Bevy rendering this frame
+                                                        // Create or reuse SRV for Bevy texture
+                                                        if bevy_texture.is_none() || bevy_texture.as_ref().map(|t| t.as_raw()) != Some(bevy_tex.as_raw()) {
+                                                            let srv_desc = D3D11_SHADER_RESOURCE_VIEW_DESC {
+                                                                Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                                                                ViewDimension: D3D11_SRV_DIMENSION_TEXTURE2D,
+                                                                Anonymous: D3D11_SHADER_RESOURCE_VIEW_DESC_0 {
+                                                                    Texture2D: D3D11_TEX2D_SRV {
+                                                                        MostDetailedMip: 0,
+                                                                        MipLevels: 1,
+                                                                    },
+                                                                },
+                                                            };
+                                                            let mut new_srv: Option<ID3D11ShaderResourceView> = None;
+                                                            let srv_result = device.CreateShaderResourceView(
+                                                                bevy_tex,
+                                                                Some(&srv_desc),
+                                                                Some(&mut new_srv)
+                                                            );
+                                                            if let Err(e) = srv_result {
+                                                                let hresult = e.code().0;
+                                                                let is_device_error = hresult == 0x887A0005_u32 as i32 || 
+                                                                                     hresult == 0x887A0006_u32 as i32 ||
+                                                                                     hresult == 0x887A0007_u32 as i32;
+                                                                static mut SRV_ERROR_COUNT: u32 = 0;
+                                                                unsafe {
+                                                                    SRV_ERROR_COUNT += 1;
+                                                                    if is_device_error {
+                                                                        if SRV_ERROR_COUNT == 1 || SRV_ERROR_COUNT % 600 == 0 {
+                                                                            eprintln!("[COMPOSITOR] ❌ GPU device error creating SRV: {:?}", e);
+                                                                            eprintln!("[COMPOSITOR] 🔄 Falling back to GPUI-only rendering");
+                                                                        }
+                                                                        *bevy_texture = None;
+                                                                        *bevy_srv = None;
+                                                                    } else if SRV_ERROR_COUNT == 1 || SRV_ERROR_COUNT % 60 == 0 {
+                                                                        eprintln!("[COMPOSITOR] ❌ Failed to create SRV for Bevy texture: {:?} (error count: {})", e, SRV_ERROR_COUNT);
+                                                                    }
+                                                                }
+                                                            }
+                                                            *bevy_texture = Some(bevy_tex.clone());
+                                                            *bevy_srv = new_srv;
+                                                        }
+                                                        // Draw Bevy texture stretched to window size (opaque, no blending)
+                                                        if let Some(ref bevy_shader_view) = &*bevy_srv {
+                                                            context.OMSetBlendState(None, None, 0xffffffff);
+                                                            context.VSSetShader(vertex_shader, None);
+                                                            context.PSSetShader(pixel_shader, None);
+                                                            context.IASetInputLayout(input_layout);
+                                                            let stride = 16u32;
+                                                            let offset = 0u32;
+                                                            context.IASetVertexBuffers(0, 1, Some(&Some(vertex_buffer.clone())), Some(&stride), Some(&offset));
+                                                            context.IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+                                                            context.PSSetShaderResources(0, Some(&[Some(bevy_shader_view.clone())]));
+                                                            context.PSSetSamplers(0, Some(&[Some(sampler_state.clone())]));
+                                                            // Set viewport to window size (stretches texture)
+                                                            let size = winit_window.inner_size();
+                                                            let viewport = D3D11_VIEWPORT {
+                                                                TopLeftX: 0.0,
+                                                                TopLeftY: 0.0,
+                                                                Width: size.width as f32,
+                                                                Height: size.height as f32,
+                                                                MinDepth: 0.0,
+                                                                MaxDepth: 1.0,
+                                                            };
+                                                            context.RSSetViewports(Some(&[viewport]));
+                                                            context.Draw(4, 0);
+                                                            static mut BEVY_FRAME_COUNT: u32 = 0;
+                                                            BEVY_FRAME_COUNT += 1;
+                                                        }
+                                                        // Continue with GPUI layer as usual
                                                     } else {
                                                         // Size matches! Safe to use this texture
                                                         // Create or reuse SRV for Bevy texture
