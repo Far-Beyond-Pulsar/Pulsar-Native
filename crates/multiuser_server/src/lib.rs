@@ -46,6 +46,7 @@
 //! - [`telemetry`] - OpenTelemetry integration
 //! - [`persistence`] - Database and S3 storage
 
+pub mod simple_test_server;
 pub mod auth;
 pub mod config;
 pub mod crdt;

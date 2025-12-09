@@ -12,17 +12,16 @@ use axum::{
     Router,
 };
 use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::mpsc;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 use crate::auth::{AuthService, Role};
 use crate::config::Config;
-use crate::health::{HealthChecker, HealthStatus};
+use crate::health::HealthChecker;
 use crate::metrics::METRICS;
 use crate::rendezvous::RendezvousCoordinator;
 use crate::session::SessionStore;
@@ -99,7 +98,10 @@ pub async fn run_server(
 
     info!("🌐 HTTP server binding to {}", bind_addr);
 
-    let listener = tokio::net::TcpListener::bind(bind_addr).await?;
+    // Use stdlib TcpListener to match Python's behavior exactly
+    let std_listener = std::net::TcpListener::bind(bind_addr)?;
+    std_listener.set_nonblocking(true)?;
+    let listener = tokio::net::TcpListener::from_std(std_listener)?;
 
     info!("🌐 HTTP server ready - accepting connections");
 
@@ -174,17 +176,27 @@ async fn create_session(
     State(state): State<AppState>,
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<Json<CreateSessionResponse>, ErrorResponse> {
+    info!("📝 Received create_session request from host: {}", req.host_id);
+    
     let metadata = req.metadata.unwrap_or_else(|| serde_json::json!({}));
+    info!("📋 Session metadata: {:?}", metadata);
 
+    info!("🔨 Creating session in session manager...");
     let session = state
         .sessions
         .create_session(req.host_id.clone(), metadata)
-        .map_err(|e| ErrorResponse {
-            error: "session_creation_failed".to_string(),
-            message: e.to_string(),
+        .map_err(|e| {
+            error!("❌ Session creation failed: {}", e);
+            ErrorResponse {
+                error: "session_creation_failed".to_string(),
+                message: e.to_string(),
+            }
         })?;
 
+    info!("✅ Session created with ID: {}", session.id);
+
     // Generate join token
+    info!("🔑 Generating join token for session: {}", session.id);
     let join_token = state
         .auth
         .create_join_token(
@@ -192,10 +204,16 @@ async fn create_session(
             Role::Host,
             Duration::from_secs(3600),
         )
-        .map_err(|e| ErrorResponse {
-            error: "token_generation_failed".to_string(),
-            message: e.to_string(),
+        .map_err(|e| {
+            error!("❌ Token generation failed: {}", e);
+            ErrorResponse {
+                error: "token_generation_failed".to_string(),
+                message: e.to_string(),
+            }
         })?;
+
+    info!("✅ Join token generated for session: {}", session.id);
+    info!("📤 Sending response to client");
 
     Ok(Json(CreateSessionResponse {
         session_id: session.id,
@@ -209,16 +227,25 @@ async fn join_session(
     Path(session_id): Path<String>,
     Json(req): Json<JoinSessionRequest>,
 ) -> Result<Json<JoinSessionResponse>, ErrorResponse> {
+    info!("👥 Received join_session request - Session: {}, Peer: {}", session_id, req.peer_id);
+    
     // Verify join token
+    info!("🔐 Verifying join token...");
     let (verified_session_id, role) = state
         .auth
         .verify_join_token(&req.join_token)
-        .map_err(|e| ErrorResponse {
-            error: "invalid_token".to_string(),
-            message: e.to_string(),
+        .map_err(|e| {
+            error!("❌ Token verification failed: {}", e);
+            ErrorResponse {
+                error: "invalid_token".to_string(),
+                message: e.to_string(),
+            }
         })?;
 
+    info!("✅ Token verified - Session: {}, Role: {:?}", verified_session_id, role);
+
     if verified_session_id != session_id {
+        error!("❌ Session ID mismatch - Token: {}, Requested: {}", verified_session_id, session_id);
         return Err(ErrorResponse {
             error: "session_mismatch".to_string(),
             message: "Token session ID does not match".to_string(),
@@ -226,13 +253,19 @@ async fn join_session(
     }
 
     // Join session
+    info!("🚪 Joining session: {}", session_id);
     let session = state
         .sessions
         .join_session(&session_id, req.peer_id.clone(), role.clone())
-        .map_err(|e| ErrorResponse {
-            error: "join_failed".to_string(),
-            message: e.to_string(),
+        .map_err(|e| {
+            error!("❌ Failed to join session: {}", e);
+            ErrorResponse {
+                error: "join_failed".to_string(),
+                message: e.to_string(),
+            }
         })?;
+
+    info!("✅ Peer {} joined session {} - Total participants: {}", req.peer_id, session_id, session.participants.len());
 
     Ok(Json(JoinSessionResponse {
         session_id: session.id,

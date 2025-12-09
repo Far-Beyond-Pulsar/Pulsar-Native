@@ -1,0 +1,59 @@
+//! Dead simple TCP server for testing port forwarding
+//! No tokio, no async, no axum - just raw stdlib sockets like Python
+
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::thread;
+
+pub fn run() -> anyhow::Result<()> {
+    let bind_addr = "0.0.0.0:8080";
+    let listener = TcpListener::bind(bind_addr)?;
+    println!("✅ Simple test server listening on {}", bind_addr);
+    println!("Try: curl http://YOUR_PUBLIC_IP:8080/");
+    
+    for stream in listener.incoming() {
+        match stream {
+            Ok(stream) => {
+                thread::spawn(|| handle_client(stream));
+            }
+            Err(e) => {
+                eprintln!("Connection failed: {}", e);
+            }
+        }
+    }
+    
+    Ok(())
+}
+
+fn handle_client(mut stream: TcpStream) {
+    let peer_addr = stream.peer_addr().unwrap();
+    println!("✅ Connection from: {}", peer_addr);
+    
+    let mut buffer = [0; 1024];
+    match stream.read(&mut buffer) {
+        Ok(size) => {
+            println!("📨 Received {} bytes from {}", size, peer_addr);
+            
+            // Send HTTP response
+            let body = "Simple test server works!\n";
+            let response = format!(
+                "HTTP/1.1 200 OK\r\n\
+                 Content-Type: text/plain\r\n\
+                 Content-Length: {}\r\n\
+                 \r\n\
+                 {}",
+                body.len(),
+                body
+            );
+            
+            if let Err(e) = stream.write_all(response.as_bytes()) {
+                eprintln!("Failed to send response: {}", e);
+            } else {
+                println!("✅ Sent response to {}", peer_addr);
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to read from {}: {}", peer_addr, e);
+        }
+    }
+}

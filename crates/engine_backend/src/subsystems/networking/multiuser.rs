@@ -273,8 +273,14 @@ impl MultiuserClient {
         *self.status.write().await = ConnectionStatus::Connecting;
 
         let peer_id = uuid::Uuid::new_v4().to_string();
-        let ws_url = format!("{}/ws", self.server_url);
+        
+        // Trim and sanitize server URL
+        let server_url_clean = self.server_url.trim();
+        let ws_url = format!("{}/ws", server_url_clean);
 
+        info!("🔗 Server URL (raw): {:?}", self.server_url);
+        info!("🔗 Server URL (clean): {:?}", server_url_clean);
+        info!("🔗 WebSocket URL: {:?}", ws_url);
         info!("Connecting to WebSocket: {}", ws_url);
 
         // Create channels for bidirectional communication
