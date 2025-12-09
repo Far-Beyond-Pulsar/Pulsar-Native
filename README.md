@@ -1,6 +1,9 @@
 # Pulsar_engine
 =======
 
+## Join the community
+[Discord](https://discord.gg/5eAKDC53SX)
+
 ## Before you continue!
 
 **Do you like this project?** You may like the Horizon game server from many of the same developers who work on Pulsar. [Check it out](https://github.com/Far-Beyond-Dev/Horizon
