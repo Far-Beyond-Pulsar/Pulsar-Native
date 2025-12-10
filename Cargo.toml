@@ -43,14 +43,14 @@ debug = true
 
 [workspace.dependencies]
 # Using local Zed with Windows drag fix
-gpui = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/gpui", features = ["runtime_shaders", "macos-blade"] }
-gpui_macros = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/gpui_macros" }
-reqwest_client = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/reqwest_client" }
-sum_tree = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/sum_tree" }
-# gpui = { git = "https://github.com/tristanpoland/zed", rev="16c3e4230812eec4e69dac2b34ee469d98d63d29", features = ["runtime_shaders", "macos-blade"] }
-# gpui_macros = { git = "https://github.com/tristanpoland/zed", rev="16c3e4230812eec4e69dac2b34ee469d98d63d29" }
-# reqwest_client = { git = "https://github.com/tristanpoland/zed", rev = "16c3e4230812eec4e69dac2b34ee469d98d63d29" }
-# sum_tree = { git = "https://github.com/tristanpoland/zed", rev = "16c3e4230812eec4e69dac2b34ee469d98d63d29" }
+# gpui = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/gpui", features = ["runtime_shaders", "macos-blade"] }
+# gpui_macros = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/gpui_macros" }
+# reqwest_client = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/reqwest_client" }
+# sum_tree = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/sum_tree" }
+gpui = { git = "https://github.com/tristanpoland/zed", rev="2047043a00dc138e3d8127c8921c96927acea8f8", features = ["runtime_shaders", "macos-blade"] }
+gpui_macros = { git = "https://github.com/tristanpoland/zed", rev="2047043a00dc138e3d8127c8921c96927acea8f8" }
+reqwest_client = { git = "https://github.com/tristanpoland/zed", rev = "2047043a00dc138e3d8127c8921c96927acea8f8" }
+sum_tree = { git = "https://github.com/tristanpoland/zed", rev = "2047043a00dc138e3d8127c8921c96927acea8f8" }
 
 ui = { path = "crates/ui" }
 gpui-component-macros = { path = "crates/macros" }
