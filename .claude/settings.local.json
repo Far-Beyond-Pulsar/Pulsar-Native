@@ -89,6 +89,7 @@
       "WebFetch(domain:docs.rs)",
       "Bash(git checkout:*)",
       "Bash(cargo metadata:*)"
+      "Bash(dir \"C:\\Users\\redst\\OneDrive\\Documents\\GitHub\\Pulsar-Native\" /b)"
     ],
     "deny": [],
     "ask": []

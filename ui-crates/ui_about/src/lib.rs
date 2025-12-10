@@ -1,5 +1,5 @@
 use gpui::*;
-use ui::{ActiveTheme, Root, Sizable, StyledExt, button::{Button, ButtonVariants as _}};
+use ui::{ActiveTheme, Root, Sizable, StyledExt, TitleBar, v_flex, button::{Button, ButtonVariants as _}};
 
 pub struct AboutWindow {
     focus_handle: FocusHandle,
@@ -22,15 +22,19 @@ impl Focusable for AboutWindow {
 impl Render for AboutWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
-        
-        div()
+
+        v_flex()
             .track_focus(&self.focus_handle)
             .size_full()
-            .flex()
-            .flex_col()
-            .items_center()
-            .justify_center()
             .bg(theme.background)
+            .child(TitleBar::new().child("About Pulsar Engine"))
+            .child(
+                div()
+                    .flex_1()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .justify_center()
             .child(
                 div()
                     .flex()
@@ -102,6 +106,7 @@ impl Render for AboutWindow {
                             )
                     )
             )
+        )
     }
 }
 

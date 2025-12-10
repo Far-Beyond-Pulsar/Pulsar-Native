@@ -1005,7 +1005,13 @@ impl Render for AppTitleBar {
 
         TitleBar::new()
             // left side with app menu bar
-            .child(div().flex().items_center().child(self.app_menu_bar.clone()))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .child(self.app_menu_bar.clone())
+            )
             .child(
                 div()
                     .flex()

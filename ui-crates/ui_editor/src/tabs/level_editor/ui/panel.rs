@@ -80,39 +80,26 @@ impl LevelEditorPanel {
         let horizontal_resizable_state = ResizableState::new(cx);
         let vertical_resizable_state = ResizableState::new(cx);
 
-        println!("[LEVEL-EDITOR] 🚀 Initializing Bevy-powered viewport");
-        println!("[LEVEL-EDITOR] 🔥 Zero-copy GPU texture sharing!");
-
         // Load engine settings for frame pacing configuration
         let settings = EngineSettings::default_path()
             .and_then(|path| Some(EngineSettings::load(&path)))
             .unwrap_or_default();
 
         let max_viewport_fps = settings.advanced.max_viewport_fps;
-        println!("[LEVEL-EDITOR] 🎯 Frame pacing configured: {} FPS",
-            if max_viewport_fps == 0 { "Unlimited".to_string() } else { max_viewport_fps.to_string() });
 
         // Create Bevy viewport with zero-copy shared textures
         let viewport = cx.new(|cx| BevyViewport::new(1600, 900, cx));
         let viewport_state = viewport.read(cx).shared_state();
-
-        println!("[LEVEL-EDITOR] ✅ Bevy viewport created (1600x900)");
         
         // Create game thread but DON'T start it yet (editor starts in Edit mode)
-        println!("[LEVEL-EDITOR] 🎮 Creating game thread (paused - Edit mode)...");
         let game_thread = Arc::new(GameThread::new(240.0));
         let game_state = game_thread.get_state();
         game_thread.set_enabled(false); // CRITICAL: Start disabled for Edit mode
         game_thread.start(); // Thread runs but does nothing while disabled
-        println!("[LEVEL-EDITOR] ✅ Game thread created (paused for Edit mode)");
         
         // Create GPU render engine WITHOUT game thread link initially (Edit mode)
-        println!("[LEVEL-EDITOR] 🎨 Creating GPU renderer (no game sync in Edit mode)...");
         let gpu_engine = Arc::new(Mutex::new(GpuRenderer::new(1600, 900))); // No game state initially
         let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
-
-        println!("[LEVEL-EDITOR] ✅ GPU renderer initialized (Edit mode)");
-        println!("[LEVEL-EDITOR] 📝 Editor ready in EDIT MODE - objects frozen");
 
         // Store GPU renderer in global EngineState using a marker that the render loop will pick up
         // The render loop will associate it with the correct window when it first renders
@@ -120,13 +107,11 @@ impl LevelEditorPanel {
             if let Some(wid) = window_id {
                 // We have the actual window ID - register directly!
                 engine_state.set_window_gpu_renderer(wid, gpu_engine.clone());
-                println!("[LEVEL-EDITOR] ✅ GPU renderer registered directly for window {}!", wid);
             } else {
                 // Fallback: Use a sentinel value (0) to mark this renderer as pending association with a window
                 // The main render loop will detect windows with viewports and claim this renderer
                 engine_state.set_window_gpu_renderer(0, gpu_engine.clone());
                 engine_state.set_metadata("has_pending_viewport_renderer".to_string(), "true".to_string());
-                println!("[LEVEL-EDITOR] 📦 GPU renderer created and ready for window association by render loop");
             }
         } else {
             println!("[LEVEL-EDITOR] ❌ ERROR: No global EngineState found!");
@@ -312,28 +297,24 @@ impl LevelEditorPanel {
     fn on_select_tool(&mut self, _: &SelectTool, _: &mut Window, cx: &mut Context<Self>) {
         self.state.set_tool(TransformTool::Select);
         self.sync_gizmo_to_bevy();
-        println!("[LEVEL-EDITOR] 🎯 Tool: Select (gizmo hidden)");
         cx.notify();
     }
 
     fn on_move_tool(&mut self, _: &MoveTool, _: &mut Window, cx: &mut Context<Self>) {
         self.state.set_tool(TransformTool::Move);
         self.sync_gizmo_to_bevy();
-        println!("[LEVEL-EDITOR] 🎯 Tool: Move (translate gizmo)");
         cx.notify();
     }
 
     fn on_rotate_tool(&mut self, _: &RotateTool, _: &mut Window, cx: &mut Context<Self>) {
         self.state.set_tool(TransformTool::Rotate);
         self.sync_gizmo_to_bevy();
-        println!("[LEVEL-EDITOR] 🎯 Tool: Rotate (rotation gizmo)");
         cx.notify();
     }
 
     fn on_scale_tool(&mut self, _: &ScaleTool, _: &mut Window, cx: &mut Context<Self>) {
         self.state.set_tool(TransformTool::Scale);
         self.sync_gizmo_to_bevy();
-        println!("[LEVEL-EDITOR] 🎯 Tool: Scale (scale gizmo)");
         cx.notify();
     }
 
@@ -452,14 +433,11 @@ impl LevelEditorPanel {
     }
 
     fn on_play_scene(&mut self, _: &PlayScene, _: &mut Window, cx: &mut Context<Self>) {
-        println!("[LEVEL-EDITOR] ▶️ PLAY button pressed");
-
         // Enter play mode (saves scene snapshot)
         self.state.enter_play_mode();
 
         // Enable game thread
         self.game_thread.set_enabled(true);
-        println!("[LEVEL-EDITOR] ✅ Game thread enabled - objects will move");
 
         // Disable gizmos in play mode
         self.sync_gizmo_to_bevy();
@@ -468,15 +446,11 @@ impl LevelEditorPanel {
     }
 
     fn on_stop_scene(&mut self, _: &StopScene, _: &mut Window, cx: &mut Context<Self>) {
-        println!("[LEVEL-EDITOR] ⏹️ STOP button pressed");
-
         // Disable game thread
         self.game_thread.set_enabled(false);
-        println!("[LEVEL-EDITOR] ⏸️ Game thread disabled");
 
         // Exit play mode (restores scene from snapshot)
         self.state.exit_play_mode();
-        println!("[LEVEL-EDITOR] ✅ Scene restored to edit state");
 
         // Re-enable gizmos in edit mode
         self.sync_gizmo_to_bevy();
@@ -517,9 +491,6 @@ impl LevelEditorPanel {
         let increment = gizmo_state.snap_increment;
         drop(gizmo_state);
 
-        println!("[LEVEL-EDITOR] {} Grid snapping: increment = {}",
-            if enabled { "✅ Enabled" } else { "🚫 Disabled" },
-            increment);
         cx.notify();
     }
 
@@ -530,7 +501,6 @@ impl LevelEditorPanel {
         let is_local = gizmo_state.local_space;
         drop(gizmo_state);
 
-        println!("[LEVEL-EDITOR] 🌍 Space mode: {}", if is_local { "LOCAL" } else { "WORLD" });
         cx.notify();
     }
 
@@ -541,7 +511,6 @@ impl LevelEditorPanel {
         let increment = gizmo_state.snap_increment;
         drop(gizmo_state);
 
-        println!("[LEVEL-EDITOR] ⬆️ Snap increment increased to {}", increment);
         cx.notify();
     }
 
@@ -552,14 +521,12 @@ impl LevelEditorPanel {
         let increment = gizmo_state.snap_increment;
         drop(gizmo_state);
 
-        println!("[LEVEL-EDITOR] ⬇️ Snap increment decreased to {}", increment);
         cx.notify();
     }
 
     fn on_focus_selected(&mut self, _: &FocusSelected, window: &mut Window, cx: &mut Context<Self>) {
         // TODO: Frame selected object in viewport (move camera to focus on selection)
         if let Some(obj) = self.state.get_selected_object() {
-            println!("[LEVEL-EDITOR] 📹 Focus on object: '{}'", obj.name);
             // For now just log - implementing camera movement would require Bevy camera manipulation
         }
         cx.notify();

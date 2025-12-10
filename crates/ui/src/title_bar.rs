@@ -169,10 +169,7 @@ impl RenderOnce for ControlIcon {
             .content_center()
             .items_center()
             .text_color(fg)
-            .when(is_windows, |this| {
-                this.window_control_area(self.window_control_area())
-            })
-            .when(is_linux, |this| {
+            .when(is_linux || is_windows, |this| {
                 this.on_mouse_down(MouseButton::Left, move |_, window, cx| {
                     window.prevent_default();
                     cx.stop_propagation();
@@ -245,6 +242,7 @@ impl ParentElement for TitleBar {
 impl RenderOnce for TitleBar {
     fn render(mut self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let is_linux = cfg!(target_os = "linux");
+        let is_windows = cfg!(target_os = "windows");
         let is_macos = cfg!(target_os = "macos");
 
         let paddings = self.base.style().padding.clone();
@@ -261,32 +259,27 @@ impl RenderOnce for TitleBar {
                 .border_b_1()
                 .border_color(cx.theme().title_bar_border)
                 .bg(cx.theme().title_bar)
-                .when(is_linux, |this| {
-                    this.on_double_click(|_, window, _| window.zoom_window())
-                })
-                .when(is_macos, |this| {
-                    this.on_double_click(|_, window, _| window.titlebar_double_click())
-                })
                 .child(
                     h_flex()
                         .id("bar")
                         .pl(left_padding)
                         .when(window.is_fullscreen(), |this| this.pl_3())
-                        .window_control_area(WindowControlArea::Drag)
                         .h_full()
                         .justify_between()
                         .flex_shrink_0()
                         .flex_1()
-                        .when(is_linux, |this| {
-                            this.child(
-                                div()
-                                    .top_0()
-                                    .left_0()
-                                    .absolute()
-                                    .size_full()
-                                    .h_full()
-                                    .child(TitleBarElement {}),
-                            )
+                        .when(is_linux || is_windows, |this| {
+                            this.on_mouse_down(MouseButton::Left, |_, window, cx| {
+                                // Start dragging - child elements should call cx.stop_propagation()
+                                // to prevent this from running
+                                window.start_window_move();
+                            })
+                            .on_double_click(|_, window, _| {
+                                window.zoom_window();
+                            })
+                        })
+                        .when(is_macos, |this| {
+                            this.on_double_click(|_, window, _| window.titlebar_double_click())
                         })
                         .children(self.children),
                 )

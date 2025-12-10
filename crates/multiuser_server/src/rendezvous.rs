@@ -39,6 +39,12 @@ pub enum ClientMessage {
         session_id: String,
         peer_id: String,
     },
+    /// Kick a user (host only)
+    KickUser {
+        session_id: String,
+        peer_id: String,
+        target_peer_id: String,
+    },
     /// Chat message
     ChatMessage {
         session_id: String,
@@ -70,6 +76,54 @@ pub enum ClientMessage {
         chunk_index: usize,
         total_chunks: usize,
     },
+    /// P2P connection negotiation
+    P2PConnectionRequest {
+        session_id: String,
+        peer_id: String,
+        public_ip: String,
+        public_port: u16,
+    },
+    P2PConnectionResponse {
+        session_id: String,
+        peer_id: String,
+        public_ip: String,
+        public_port: u16,
+    },
+    /// Binary proxy mode (raw bytes, no JSON)
+    RequestBinaryProxy {
+        session_id: String,
+        peer_id: String,
+    },
+    BinaryProxyData {
+        session_id: String,
+        peer_id: String,
+        sequence: u64,
+        is_git_protocol: bool,
+    },
+    /// Git sync messages
+    RequestProjectTree {
+        session_id: String,
+        peer_id: String,
+    },
+    ProjectTreeResponse {
+        session_id: String,
+        peer_id: String,
+        tree_json: String,
+    },
+    /// Legacy file-based messages
+    RequestFile {
+        session_id: String,
+        peer_id: String,
+        file_path: String,
+    },
+    FileChunk {
+        session_id: String,
+        peer_id: String,
+        file_path: String,
+        offset: u64,
+        data: Vec<u8>,
+        is_last: bool,
+    },
     /// Heartbeat / keepalive
     Ping,
 }
@@ -93,6 +147,11 @@ pub enum ServerMessage {
     PeerLeft {
         session_id: String,
         peer_id: String,
+    },
+    /// You were kicked from the session
+    Kicked {
+        session_id: String,
+        reason: String,
     },
     /// Chat message (relayed)
     ChatMessage {
@@ -125,6 +184,54 @@ pub enum ServerMessage {
         files_json: String,
         chunk_index: usize,
         total_chunks: usize,
+    },
+    /// P2P connection negotiation (relayed)
+    P2PConnectionRequest {
+        session_id: String,
+        from_peer_id: String,
+        public_ip: String,
+        public_port: u16,
+    },
+    P2PConnectionResponse {
+        session_id: String,
+        from_peer_id: String,
+        public_ip: String,
+        public_port: u16,
+    },
+    /// Binary proxy (relayed)
+    RequestBinaryProxy {
+        session_id: String,
+        from_peer_id: String,
+    },
+    BinaryProxyData {
+        session_id: String,
+        from_peer_id: String,
+        sequence: u64,
+        is_git_protocol: bool,
+    },
+    /// Git sync messages (relayed)
+    RequestProjectTree {
+        session_id: String,
+        from_peer_id: String,
+    },
+    ProjectTreeResponse {
+        session_id: String,
+        from_peer_id: String,
+        tree_json: String,
+    },
+    /// Legacy file messages
+    RequestFile {
+        session_id: String,
+        from_peer_id: String,
+        file_path: String,
+    },
+    FileChunk {
+        session_id: String,
+        from_peer_id: String,
+        file_path: String,
+        offset: u64,
+        data: Vec<u8>,
+        is_last: bool,
     },
     /// Heartbeat response
     Pong,
@@ -161,6 +268,17 @@ struct PeerSession {
     session_id: String,
     tx: mpsc::Sender<ServerMessage>,
     joined_at: SystemTime,
+}
+
+impl PeerSession {
+    fn new(peer_id: String, session_id: String, tx: mpsc::Sender<ServerMessage>) -> Self {
+        Self {
+            peer_id,
+            session_id,
+            tx,
+            joined_at: SystemTime::now(),
+        }
+    }
 }
 
 /// Rendezvous session
@@ -367,6 +485,13 @@ impl RendezvousCoordinator {
             } => {
                 self.handle_leave(&sid, &pid).await?;
             }
+            ClientMessage::KickUser {
+                session_id: sid,
+                peer_id: pid,
+                target_peer_id,
+            } => {
+                self.handle_kick(&sid, &pid, target_peer_id).await?;
+            }
             ClientMessage::ChatMessage {
                 session_id: sid,
                 peer_id: pid,
@@ -379,7 +504,7 @@ impl RendezvousCoordinator {
                 peer_id: pid,
             } => {
                 self.forward_to_host(&sid, ServerMessage::RequestFileManifest {
-                    session_id: sid,
+                    session_id: sid.clone(),
                     from_peer_id: pid,
                 }).await?;
             }
@@ -396,7 +521,7 @@ impl RendezvousCoordinator {
                 file_paths,
             } => {
                 self.forward_to_host(&sid, ServerMessage::RequestFiles {
-                    session_id: sid,
+                    session_id: sid.clone(),
                     from_peer_id: pid,
                     file_paths,
                 }).await?;
@@ -409,6 +534,73 @@ impl RendezvousCoordinator {
                 total_chunks,
             } => {
                 self.relay_files_chunk(&sid, &pid, files_json, chunk_index, total_chunks).await?;
+            }
+            ClientMessage::P2PConnectionRequest {
+                session_id: sid,
+                peer_id: pid,
+                public_ip,
+                public_port,
+            } => {
+                self.relay_p2p_request(&sid, &pid, public_ip, public_port).await?;
+            }
+            ClientMessage::P2PConnectionResponse {
+                session_id: sid,
+                peer_id: pid,
+                public_ip,
+                public_port,
+            } => {
+                self.relay_p2p_response(&sid, &pid, public_ip, public_port).await?;
+            }
+            ClientMessage::RequestBinaryProxy {
+                session_id: sid,
+                peer_id: pid,
+            } => {
+                self.relay_binary_proxy_request(&sid, &pid).await?;
+            }
+            ClientMessage::BinaryProxyData {
+                session_id: sid,
+                peer_id: pid,
+                sequence,
+                is_git_protocol,
+            } => {
+                self.relay_binary_proxy_data(&sid, &pid, sequence, is_git_protocol).await?;
+            }
+            ClientMessage::RequestProjectTree {
+                session_id: sid,
+                peer_id: pid,
+            } => {
+                self.forward_to_host(&sid, ServerMessage::RequestProjectTree {
+                    session_id: sid.clone(),
+                    from_peer_id: pid,
+                }).await?;
+            }
+            ClientMessage::ProjectTreeResponse {
+                session_id: sid,
+                peer_id: pid,
+                tree_json,
+            } => {
+                self.relay_project_tree(&sid, &pid, tree_json).await?;
+            }
+            ClientMessage::RequestFile {
+                session_id: sid,
+                peer_id: pid,
+                file_path,
+            } => {
+                self.forward_to_host(&sid, ServerMessage::RequestFile {
+                    session_id: sid.clone(),
+                    from_peer_id: pid,
+                    file_path,
+                }).await?;
+            }
+            ClientMessage::FileChunk {
+                session_id: sid,
+                peer_id: pid,
+                file_path,
+                offset,
+                data,
+                is_last,
+            } => {
+                self.relay_file_chunk(&sid, &pid, file_path, offset, data, is_last).await?;
             }
             ClientMessage::Ping => {
                 tx.send(ServerMessage::Pong).await?;
@@ -423,14 +615,18 @@ impl RendezvousCoordinator {
         sid: String,
         pid: String,
         _join_token: String,
-        candidates: Vec<CandidateDto>,
-        pubkey: Vec<u8>,
-        tx: mpsc::Sender<SignalingMessage>,
+        tx: mpsc::Sender<ServerMessage>,
         peer_id: &mut Option<String>,
         session_id: &mut Option<String>,
     ) -> Result<()> {
         // Validate join token (simplified - should use JWT verification)
         // TODO: Implement proper token validation
+
+        // If session doesn't exist, create it (first peer is host)
+        let is_new_session = !self.sessions.contains_key(&sid);
+        if is_new_session {
+            self.create_session(sid.clone(), pid.clone())?;
+        }
 
         let session = self
             .sessions
@@ -438,27 +634,33 @@ impl RendezvousCoordinator {
             .context("Session not found")?
             .clone();
 
-        let peer = PeerSession {
-            peer_id: pid.clone(),
-            session_id: sid.clone(),
-            tx,
-            candidates: candidates.clone(),
-            pubkey,
-            joined_at: SystemTime::now(),
-            nat_type: None,
-        };
-
+        // Add the new peer FIRST
+        let peer = PeerSession::new(pid.clone(), sid.clone(), tx.clone());
         session.add_peer(peer);
         *peer_id = Some(pid.clone());
         *session_id = Some(sid.clone());
 
         info!(session = %sid, peer = %pid, "Peer joined session");
 
-        // Send punch coordination to all peers
-        self.coordinate_punch(&sid, &pid).await?;
+        // Get list of current participants AFTER adding new peer (so they're included)
+        let participants: Vec<String> = session
+            .list_peers()
+            .iter()
+            .map(|p| p.peer_id.clone())
+            .collect();
 
-        // Notify other peers
-        self.broadcast_peer_joined(&sid, &pid, &candidates).await?;
+        info!(session = %sid, "Sending Joined with {} participants: {:?}", participants.len(), participants);
+
+        // Send Joined confirmation to the new peer
+        tx.send(ServerMessage::Joined {
+            session_id: sid.clone(),
+            peer_id: pid.clone(),
+            participants,
+        })
+        .await?;
+
+        // Notify other peers about the new peer
+        self.broadcast_peer_joined(&sid, &pid).await?;
 
         Ok(())
     }
@@ -475,113 +677,175 @@ impl RendezvousCoordinator {
         Ok(())
     }
 
-    async fn handle_candidate(&self, sid: &str, pid: &str, candidate: CandidateDto) -> Result<()> {
-        debug!(
-            session = %sid,
-            peer = %pid,
-            candidate = ?candidate,
-            "Received candidate"
-        );
+    async fn handle_kick(&self, sid: &str, pid: &str, target_peer_id: String) -> Result<()> {
+        let session = self.sessions.get(sid).context("Session not found")?;
 
-        // Broadcast candidate to other peers in session
-        self.broadcast_candidate(sid, pid, candidate).await?;
+        // Verify the kicker is the host (first participant)
+        let is_host = session
+            .list_peers()
+            .first()
+            .map(|p| p.peer_id == pid)
+            .unwrap_or(false);
+
+        if !is_host {
+            warn!(
+                session = %sid,
+                kicker = %pid,
+                target = %target_peer_id,
+                "Non-host attempted to kick user"
+            );
+            return Ok(());
+        }
+
+        // Get the target peer
+        if let Some(target_peer) = session.get_peer(&target_peer_id) {
+            info!(
+                session = %sid,
+                host = %pid,
+                kicked_user = %target_peer_id,
+                "Host kicked user from session"
+            );
+
+            // Send Kicked message to the target user
+            let _ = target_peer
+                .tx
+                .send(ServerMessage::Kicked {
+                    session_id: sid.to_string(),
+                    reason: "Kicked by host".to_string(),
+                })
+                .await;
+
+            // Remove the kicked user
+            session.remove_peer(&target_peer_id);
+
+            // Notify other peers that this user left
+            self.broadcast_peer_left(sid, &target_peer_id).await?;
+
+            METRICS
+                .signaling_messages
+                .with_label_values(&["kick"])
+                .inc();
+        } else {
+            warn!(
+                session = %sid,
+                target = %target_peer_id,
+                "Attempted to kick non-existent user"
+            );
+        }
 
         Ok(())
     }
 
-    async fn coordinate_punch(&self, sid: &str, pid: &str) -> Result<()> {
+    async fn relay_chat_message(&self, sid: &str, pid: &str, message: String) -> Result<()> {
         let session = self.sessions.get(sid).context("Session not found")?;
 
-        let peer = session.get_peer(pid).context("Peer not found")?;
-
-        // Generate punch coordination token
-        let token = self.generate_punch_token(sid, pid)?;
-        let now = SystemTime::now()
+        let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_secs() as i64;
-        let expires = now + self.config.hole_punch_timeout.as_secs() as i64;
+            .as_secs();
 
-        let punch_msg = SignalingMessage::PunchCoord {
+        let msg = ServerMessage::ChatMessage {
             session_id: sid.to_string(),
             peer_id: pid.to_string(),
-            token,
-            start_ts: now,
-            expires,
-            candidates: peer.candidates.clone(),
+            message,
+            timestamp,
         };
 
-        // Send to all other peers
-        for other_peer in session.list_peers() {
-            if other_peer.peer_id != pid {
-                let _ = other_peer.tx.send(punch_msg.clone()).await;
+        // Broadcast to all peers in session
+        for peer in session.list_peers() {
+            let _ = peer.tx.send(msg.clone()).await;
+        }
+
+        METRICS
+            .signaling_messages
+            .with_label_values(&["chat"])
+            .inc();
+
+        Ok(())
+    }
+
+    async fn forward_to_host(&self, sid: &str, msg: ServerMessage) -> Result<()> {
+        let session = self.sessions.get(sid).context("Session not found")?;
+        let host = session
+            .get_peer(&session.host_id)
+            .context("Host not found")?;
+
+        host.tx
+            .send(msg)
+            .await
+            .context("Failed to send message to host")?;
+
+        METRICS
+            .signaling_messages
+            .with_label_values(&["forwarded_to_host"])
+            .inc();
+
+        Ok(())
+    }
+
+    async fn relay_file_manifest(&self, sid: &str, pid: &str, manifest_json: String) -> Result<()> {
+        let session = self.sessions.get(sid).context("Session not found")?;
+
+        let msg = ServerMessage::FileManifest {
+            session_id: sid.to_string(),
+            from_peer_id: pid.to_string(),
+            manifest_json,
+        };
+
+        // Send to all other peers (typically just the requesting guest)
+        for peer in session.list_peers() {
+            if peer.peer_id != pid {
+                let _ = peer.tx.send(msg.clone()).await;
             }
         }
 
         METRICS
             .signaling_messages
-            .with_label_values(&["punch_coord"])
+            .with_label_values(&["file_manifest"])
             .inc();
 
         Ok(())
     }
 
-    fn generate_punch_token(&self, session_id: &str, peer_id: &str) -> Result<Vec<u8>> {
-        // Generate HMAC token for hole punching
-        use hmac::{Hmac, Mac};
-        use sha2::Sha256;
-
-        type HmacSha256 = Hmac<Sha256>;
-
-        let mut mac = HmacSha256::new_from_slice(self.config.jwt_secret.as_bytes())
-            .context("Failed to create HMAC")?;
-
-        mac.update(session_id.as_bytes());
-        mac.update(peer_id.as_bytes());
-        mac.update(&SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs()
-            .to_le_bytes());
-
-        Ok(mac.finalize().into_bytes().to_vec())
-    }
-
-    async fn forward_to_peer(&self, sid: &str, pid: &str, msg: SignalingMessage) -> Result<()> {
-        let session = self.sessions.get(sid).context("Session not found")?;
-        let peer = session.get_peer(pid).context("Peer not found")?;
-
-        peer.tx
-            .send(msg)
-            .await
-            .context("Failed to send message to peer")?;
-
-        METRICS
-            .signaling_messages
-            .with_label_values(&["forwarded"])
-            .inc();
-
-        Ok(())
-    }
-
-    async fn broadcast_peer_joined(
+    async fn relay_files_chunk(
         &self,
         sid: &str,
         pid: &str,
-        candidates: &[CandidateDto],
+        files_json: String,
+        chunk_index: usize,
+        total_chunks: usize,
     ) -> Result<()> {
         let session = self.sessions.get(sid).context("Session not found")?;
 
-        let msg = SignalingMessage::Candidate {
+        let msg = ServerMessage::FilesChunk {
+            session_id: sid.to_string(),
+            from_peer_id: pid.to_string(),
+            files_json,
+            chunk_index,
+            total_chunks,
+        };
+
+        // Send to all other peers
+        for peer in session.list_peers() {
+            if peer.peer_id != pid {
+                let _ = peer.tx.send(msg.clone()).await;
+            }
+        }
+
+        METRICS
+            .signaling_messages
+            .with_label_values(&["files_chunk"])
+            .inc();
+
+        Ok(())
+    }
+
+    async fn broadcast_peer_joined(&self, sid: &str, pid: &str) -> Result<()> {
+        let session = self.sessions.get(sid).context("Session not found")?;
+
+        let msg = ServerMessage::PeerJoined {
             session_id: sid.to_string(),
             peer_id: pid.to_string(),
-            candidate: candidates.first().cloned().unwrap_or(CandidateDto {
-                ip: "0.0.0.0".to_string(),
-                port: 0,
-                proto: "udp".to_string(),
-                priority: 0,
-                candidate_type: "host".to_string(),
-            }),
         };
 
         for peer in session.list_peers() {
@@ -589,6 +853,11 @@ impl RendezvousCoordinator {
                 let _ = peer.tx.send(msg.clone()).await;
             }
         }
+
+        METRICS
+            .signaling_messages
+            .with_label_values(&["peer_joined"])
+            .inc();
 
         Ok(())
     }
@@ -596,7 +865,7 @@ impl RendezvousCoordinator {
     async fn broadcast_peer_left(&self, sid: &str, pid: &str) -> Result<()> {
         let session = self.sessions.get(sid).context("Session not found")?;
 
-        let msg = SignalingMessage::Leave {
+        let msg = ServerMessage::PeerLeft {
             session_id: sid.to_string(),
             peer_id: pid.to_string(),
         };
@@ -606,22 +875,29 @@ impl RendezvousCoordinator {
                 let _ = peer.tx.send(msg.clone()).await;
             }
         }
+
+        METRICS
+            .signaling_messages
+            .with_label_values(&["peer_left"])
+            .inc();
 
         Ok(())
     }
 
-    async fn broadcast_candidate(
+    async fn relay_p2p_request(
         &self,
         sid: &str,
         pid: &str,
-        candidate: CandidateDto,
+        public_ip: String,
+        public_port: u16,
     ) -> Result<()> {
         let session = self.sessions.get(sid).context("Session not found")?;
 
-        let msg = SignalingMessage::Candidate {
+        let msg = ServerMessage::P2PConnectionRequest {
             session_id: sid.to_string(),
-            peer_id: pid.to_string(),
-            candidate,
+            from_peer_id: pid.to_string(),
+            public_ip,
+            public_port,
         };
 
         for peer in session.list_peers() {
@@ -629,6 +905,150 @@ impl RendezvousCoordinator {
                 let _ = peer.tx.send(msg.clone()).await;
             }
         }
+
+        METRICS
+            .signaling_messages
+            .with_label_values(&["p2p_request"])
+            .inc();
+
+        Ok(())
+    }
+
+    async fn relay_p2p_response(
+        &self,
+        sid: &str,
+        pid: &str,
+        public_ip: String,
+        public_port: u16,
+    ) -> Result<()> {
+        let session = self.sessions.get(sid).context("Session not found")?;
+
+        let msg = ServerMessage::P2PConnectionResponse {
+            session_id: sid.to_string(),
+            from_peer_id: pid.to_string(),
+            public_ip,
+            public_port,
+        };
+
+        for peer in session.list_peers() {
+            if peer.peer_id != pid {
+                let _ = peer.tx.send(msg.clone()).await;
+            }
+        }
+
+        METRICS
+            .signaling_messages
+            .with_label_values(&["p2p_response"])
+            .inc();
+
+        Ok(())
+    }
+
+    async fn relay_binary_proxy_request(&self, sid: &str, pid: &str) -> Result<()> {
+        let session = self.sessions.get(sid).context("Session not found")?;
+
+        let msg = ServerMessage::RequestBinaryProxy {
+            session_id: sid.to_string(),
+            from_peer_id: pid.to_string(),
+        };
+
+        for peer in session.list_peers() {
+            if peer.peer_id != pid {
+                let _ = peer.tx.send(msg.clone()).await;
+            }
+        }
+
+        METRICS
+            .signaling_messages
+            .with_label_values(&["binary_proxy_request"])
+            .inc();
+
+        Ok(())
+    }
+
+    async fn relay_binary_proxy_data(
+        &self,
+        sid: &str,
+        pid: &str,
+        sequence: u64,
+        is_git_protocol: bool,
+    ) -> Result<()> {
+        let session = self.sessions.get(sid).context("Session not found")?;
+
+        let msg = ServerMessage::BinaryProxyData {
+            session_id: sid.to_string(),
+            from_peer_id: pid.to_string(),
+            sequence,
+            is_git_protocol,
+        };
+
+        for peer in session.list_peers() {
+            if peer.peer_id != pid {
+                let _ = peer.tx.send(msg.clone()).await;
+            }
+        }
+
+        METRICS
+            .signaling_messages
+            .with_label_values(&["binary_proxy_data"])
+            .inc();
+
+        Ok(())
+    }
+
+    async fn relay_project_tree(&self, sid: &str, pid: &str, tree_json: String) -> Result<()> {
+        let session = self.sessions.get(sid).context("Session not found")?;
+
+        let msg = ServerMessage::ProjectTreeResponse {
+            session_id: sid.to_string(),
+            from_peer_id: pid.to_string(),
+            tree_json,
+        };
+
+        for peer in session.list_peers() {
+            if peer.peer_id != pid {
+                let _ = peer.tx.send(msg.clone()).await;
+            }
+        }
+
+        METRICS
+            .signaling_messages
+            .with_label_values(&["project_tree"])
+            .inc();
+
+        Ok(())
+    }
+
+    async fn relay_file_chunk(
+        &self,
+        sid: &str,
+        pid: &str,
+        file_path: String,
+        offset: u64,
+        data: Vec<u8>,
+        is_last: bool,
+    ) -> Result<()> {
+        let session = self.sessions.get(sid).context("Session not found")?;
+
+        let msg = ServerMessage::FileChunk {
+            session_id: sid.to_string(),
+            from_peer_id: pid.to_string(),
+            file_path,
+            offset,
+            data,
+            is_last,
+        };
+
+        for peer in session.list_peers() {
+            if peer.peer_id != pid {
+                let _ = peer.tx.send(msg.clone()).await;
+            }
+        }
+
+        METRICS
+            .signaling_messages
+            .with_label_values(&["file_chunk"])
+            .inc();
 
         Ok(())
     }

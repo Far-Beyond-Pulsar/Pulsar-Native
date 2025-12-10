@@ -84,6 +84,9 @@ impl MultiplayerWindow {
                                                 session.connected_users = participants.clone();
                                             }
 
+                                            // Initialize presence for all participants
+                                            this.update_presence_from_participants(cx);
+
                                             // Log project root for host
                                             if let Some(project_root) = &this.project_root {
                                                 tracing::info!("CREATE_SESSION: Project root at {:?}", project_root);
@@ -132,6 +135,8 @@ impl MultiplayerWindow {
                                                                     session.connected_users
                                                                 );
                                                                 session.connected_users.push(joined_peer_id.clone());
+                                                                // Update presence
+                                                                this.update_presence_from_participants(cx);
                                                                 cx.notify();
                                                             } else {
                                                                 tracing::info!("CREATE_SESSION: Peer {} already in list", joined_peer_id);
@@ -145,10 +150,27 @@ impl MultiplayerWindow {
                                                     this.update(cx, |this, cx| {
                                                         if let Some(session) = &mut this.active_session {
                                                             session.connected_users.retain(|p| p != &left_peer_id);
+                                                            this.user_presences.retain(|p| p.peer_id != left_peer_id);
                                                             cx.notify();
                                                         }
                                                     }).ok();
                                                 }).ok();
+                                            }
+                                            ServerMessage::Kicked { reason, .. } => {
+                                                tracing::warn!("CREATE_SESSION: You were kicked from the session: {}", reason);
+                                                cx.update(|cx| {
+                                                    this.update(cx, |this, cx| {
+                                                        // Disconnect and show error
+                                                        this.connection_status = ConnectionStatus::Error(
+                                                            format!("Kicked from session: {}", reason)
+                                                        );
+                                                        this.active_session = None;
+                                                        this.client = None;
+                                                        this.user_presences.clear();
+                                                        cx.notify();
+                                                    }).ok();
+                                                }).ok();
+                                                break; // Exit the message loop
                                             }
                                             ServerMessage::ChatMessage { peer_id: sender_peer_id, message, timestamp, .. } => {
                                                 tracing::info!(
@@ -439,6 +461,9 @@ impl MultiplayerWindow {
                                         connected_users: participants.clone(),
                                     });
 
+                                    // Initialize presence for all participants
+                                    this.update_presence_from_participants(cx);
+
                                     // Log project root
                                     if let Some(project_root) = &this.project_root {
                                         tracing::info!("JOIN_SESSION: Project root at {:?}", project_root);
@@ -520,10 +545,27 @@ impl MultiplayerWindow {
                                             this.update(cx, |this, cx| {
                                                 if let Some(session) = &mut this.active_session {
                                                     session.connected_users.retain(|p| p != &left_peer_id);
+                                                    this.user_presences.retain(|p| p.peer_id != left_peer_id);
                                                     cx.notify();
                                                 }
                                             }).ok();
                                         }).ok();
+                                    }
+                                    ServerMessage::Kicked { reason, .. } => {
+                                        tracing::warn!("JOIN_SESSION: You were kicked from the session: {}", reason);
+                                        cx.update(|cx| {
+                                            this.update(cx, |this, cx| {
+                                                // Disconnect and show error
+                                                this.connection_status = ConnectionStatus::Error(
+                                                    format!("Kicked from session: {}", reason)
+                                                );
+                                                this.active_session = None;
+                                                this.client = None;
+                                                this.user_presences.clear();
+                                                cx.notify();
+                                            }).ok();
+                                        }).ok();
+                                        break; // Exit the message loop
                                     }
                                     ServerMessage::ChatMessage { peer_id: sender_peer_id, message, timestamp, .. } => {
                                         tracing::info!(

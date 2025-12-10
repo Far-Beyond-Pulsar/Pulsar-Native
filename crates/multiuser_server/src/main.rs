@@ -20,6 +20,14 @@ use pulsar_multiedit::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Check if we should run the simple test server instead
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 && args[1] == "--test-server" {
+        println!("🧪 Running simple test server on 0.0.0.0:8080");
+        println!("This is a minimal stdlib TCP server for testing external connectivity");
+        return simple_test_server::run();
+    }
+
     // 1. Load configuration
     let config = Arc::new(Config::from_env().context("Failed to load configuration")?);
 
