@@ -5,215 +5,127 @@ use ui::{
     h_flex, v_flex, IconName, Icon,
     text::TextView,
     resizable::{h_resizable, resizable_panel, ResizableState},
-    input::{InputState, InputEvent, TextInput},
+    input::{InputState, TextInput},
 };
-use pulsar_docs::{get_doc_content, get_crate_index, list_crates, docs_available, CrateIndex};
-use std::collections::HashMap;
+use std::path::PathBuf;
+
+mod engine_docs;
+mod project_docs;
+mod manual_docs;
+
+use engine_docs::{EngineDocsState, TreeNode};
+use project_docs::ProjectDocsState;
+use manual_docs::{ManualDocsState, FileEntry, ViewMode};
+
+// ============================================================================
+// Main Documentation Window
+// ============================================================================
 
 pub struct DocumentationWindow {
     focus_handle: FocusHandle,
-    current_path: Option<String>,
-    tree_items: Vec<TreeNode>,
-    flat_visible_items: Vec<usize>,
-    expanded_paths: HashMap<String, bool>,
-    markdown_content: String,
-    search_query: String,
+    current_category: DocCategory,
     sidebar_resizable_state: Entity<ResizableState>,
-    search_input_state: Entity<InputState>,
+    project_root: Option<PathBuf>,
+
+    // Docs states
+    engine_docs: EngineDocsState,
+    project_docs: ProjectDocsState,
+    manual_docs: ManualDocsState,
+
+    // Manual docs - new file dialog
+    new_file_name: String,
+    new_file_input_state: Entity<InputState>,
+    show_new_file_dialog: bool,
 }
 
-#[derive(Clone, Debug)]
-enum TreeNode {
-    Crate {
-        name: String,
-        index: CrateIndex,
-        depth: usize,
-    },
-    Section {
-        crate_name: String,
-        section_name: String,
-        count: usize,
-        depth: usize,
-    },
-    Item {
-        crate_name: String,
-        section_name: String,
-        item_name: String,
-        path: String,
-        doc_summary: Option<String>,
-        depth: usize,
-    },
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum DocCategory {
+    Engine,
+    Project,
+    Manual,
 }
 
 impl DocumentationWindow {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let sidebar_resizable_state = ResizableState::new(cx);
-        let search_input_state = cx.new(|cx| {
+
+        // TODO: Get actual project root from engine state
+        // For now, use current directory or a default
+        let project_root = std::env::current_dir().ok();
+
+        let engine_docs = EngineDocsState::new(window, cx);
+        let project_docs = ProjectDocsState::new(window, cx, project_root.clone());
+        let manual_docs = ManualDocsState::new(window, cx, project_root.clone());
+
+        let new_file_input_state = cx.new(|cx| {
             let mut state = InputState::new(window, cx);
-            state.set_placeholder("Search documentation...", window, cx);
+            state.set_placeholder("filename.md", window, cx);
             state
         });
 
-        let mut doc_window = Self {
-            focus_handle: cx.focus_handle(),
-            current_path: None,
-            tree_items: Vec::new(),
-            flat_visible_items: Vec::new(),
-            expanded_paths: HashMap::new(),
-            markdown_content: "# Pulsar Engine Documentation\n\nSelect an item from the sidebar to view its documentation.".to_string(),
-            search_query: String::new(),
-            sidebar_resizable_state,
-            search_input_state: search_input_state.clone(),
-        };
-
-        // Subscribe to search input changes
-        cx.subscribe(&search_input_state, |this: &mut Self, state, _event: &InputEvent, cx| {
-            this.search_query = state.read(cx).text().to_string();
-            this.rebuild_visible_list();
+        // Subscribe to engine search input
+        let engine_search_state = engine_docs.search_input_state.clone();
+        cx.subscribe(&engine_search_state, |this: &mut Self, state, _event: &ui::input::InputEvent, cx| {
+            this.engine_docs.search_query = state.read(cx).text().to_string();
+            this.engine_docs.rebuild_visible_list();
             cx.notify();
         }).detach();
 
-        doc_window.load_documentation();
-        doc_window
+        // Subscribe to manual docs editor input
+        let manual_editor_state = manual_docs.editor_input_state.clone();
+        cx.subscribe(&manual_editor_state, |this: &mut Self, state, _event: &ui::input::InputEvent, cx| {
+            let content = state.read(cx).text().to_string();
+            this.manual_docs.update_preview(content);
+            cx.notify();
+        }).detach();
+
+        // Subscribe to new file input
+        let new_file_state = new_file_input_state.clone();
+        cx.subscribe(&new_file_state, |this: &mut Self, state, _event: &ui::input::InputEvent, cx| {
+            this.new_file_name = state.read(cx).text().to_string();
+            cx.notify();
+        }).detach();
+
+        Self {
+            focus_handle: cx.focus_handle(),
+            current_category: DocCategory::Engine,
+            sidebar_resizable_state,
+            project_root,
+            engine_docs,
+            project_docs,
+            manual_docs,
+            new_file_name: String::new(),
+            new_file_input_state,
+            show_new_file_dialog: false,
+        }
     }
 
-    fn load_documentation(&mut self) {
-        if !docs_available() {
-            self.markdown_content = "# No Documentation Available\n\nDocumentation has not been generated yet. Build in release mode to generate docs.".to_string();
-            return;
-        }
-
-        // Build flat tree structure
-        let mut crates = list_crates();
-        crates.sort();
-
-        for crate_name in crates {
-            if let Some(index) = get_crate_index(&crate_name) {
-                // Add crate node
-                self.tree_items.push(TreeNode::Crate {
-                    name: crate_name.clone(),
-                    index: index.clone(),
-                    depth: 0,
-                });
-
-                // Add section nodes (sorted)
-                let mut sections = index.sections.clone();
-                sections.sort_by(|a, b| a.name.cmp(&b.name));
-
-                for section in &sections {
-                    self.tree_items.push(TreeNode::Section {
-                        crate_name: crate_name.clone(),
-                        section_name: section.name.clone(),
-                        count: section.count,
-                        depth: 1,
-                    });
-
-                    // Add item nodes (sorted)
-                    let mut items = section.items.clone();
-                    items.sort_by(|a, b| a.name.cmp(&b.name));
-
-                    for item in &items {
-                        self.tree_items.push(TreeNode::Item {
-                            crate_name: crate_name.clone(),
-                            section_name: section.name.clone(),
-                            item_name: item.name.clone(),
-                            path: format!("{}/{}", crate_name, item.path),
-                            doc_summary: item.doc_summary.clone(),
-                            depth: 2,
-                        });
-                    }
-                }
+    fn refresh_current_category(&mut self) {
+        match self.current_category {
+            DocCategory::Engine => {
+                self.engine_docs.tree_items.clear();
+                self.engine_docs.expanded_paths.clear();
+                self.engine_docs.load_documentation();
             }
-        }
-
-        self.rebuild_visible_list();
-    }
-
-    fn rebuild_visible_list(&mut self) {
-        self.flat_visible_items.clear();
-        let query = self.search_query.to_lowercase();
-        let is_searching = !query.is_empty();
-
-        for (idx, node) in self.tree_items.iter().enumerate() {
-            match node {
-                TreeNode::Crate { name, .. } => {
-                    let matches = name.to_lowercase().contains(&query);
-                    if !is_searching || matches {
-                        self.flat_visible_items.push(idx);
-                    }
-                }
-                TreeNode::Section { crate_name, section_name, .. } => {
-                    let matches = section_name.to_lowercase().contains(&query);
-                    let parent_expanded = self.is_expanded(crate_name);
-
-                    if is_searching && matches {
-                        // Auto-expand parent when match found
-                        self.expanded_paths.insert(crate_name.clone(), true);
-                    }
-
-                    if (parent_expanded || (is_searching && matches)) && (!is_searching || matches || self.is_expanded(crate_name)) {
-                        self.flat_visible_items.push(idx);
-                    }
-                }
-                TreeNode::Item { crate_name, section_name, item_name, .. } => {
-                    let section_path = format!("{}/{}", crate_name, section_name);
-                    let matches = item_name.to_lowercase().contains(&query);
-                    let section_expanded = self.is_expanded(&section_path);
-
-                    if is_searching && matches {
-                        // Auto-expand parents when match found
-                        self.expanded_paths.insert(crate_name.clone(), true);
-                        self.expanded_paths.insert(section_path.clone(), true);
-                    }
-
-                    if (section_expanded || (is_searching && matches)) && (!is_searching || matches) {
-                        self.flat_visible_items.push(idx);
-                    }
-                }
+            DocCategory::Manual => {
+                self.manual_docs.load_file_tree();
             }
+            _ => {}
         }
-
-        // Show "no results" message when searching with no matches
-        if is_searching && self.flat_visible_items.is_empty() {
-            self.markdown_content = format!(
-                "# No Results\n\nNo documentation found matching \"{}\".\n\nTry a different search term.",
-                self.search_query
-            );
-        }
-    }
-
-    fn is_expanded(&self, path: &str) -> bool {
-        self.expanded_paths.get(path).copied().unwrap_or(false)
-    }
-
-    fn toggle_expansion(&mut self, path: String, cx: &mut Context<Self>) {
-        let is_expanded = self.is_expanded(&path);
-        self.expanded_paths.insert(path, !is_expanded);
-        self.rebuild_visible_list();
-        cx.notify();
-    }
-
-    fn load_content(&mut self, path: &str, cx: &mut Context<Self>) {
-        self.current_path = Some(path.to_string());
-
-        if let Some(markdown) = get_doc_content(path) {
-            self.markdown_content = markdown;
-        } else {
-            self.markdown_content = format!("# Error\n\nFailed to load documentation: {}", path);
-        }
-
-        cx.notify();
     }
 
     fn render_breadcrumbs(&self) -> Option<Vec<String>> {
-        let path = self.current_path.as_ref()?;
-        let parts: Vec<String> = path.split('/').map(|s| s.to_string()).collect();
-
-        if parts.is_empty() {
-            return None;
+        match self.current_category {
+            DocCategory::Engine => {
+                let path = self.engine_docs.current_path.as_ref()?;
+                let parts: Vec<String> = path.split('/').map(|s| s.to_string()).collect();
+                if parts.is_empty() {
+                    return None;
+                }
+                Some(parts)
+            }
+            _ => None,
         }
-
-        Some(parts)
     }
 }
 
@@ -232,13 +144,8 @@ impl Render for DocumentationWindow {
         let fg = theme.foreground;
         let muted_fg = theme.muted_foreground;
 
-        // Clone data needed for rendering to avoid borrow issues
-        let visible_items: Vec<_> = self.flat_visible_items.iter()
-            .map(|&idx| self.tree_items[idx].clone())
-            .collect();
-
-        let markdown = self.markdown_content.clone();
         let breadcrumb_parts = self.render_breadcrumbs();
+        let current_category = self.current_category;
 
         v_flex()
             .track_focus(&self.focus_handle)
@@ -246,29 +153,24 @@ impl Render for DocumentationWindow {
             .bg(bg)
             .child(TitleBar::new().child("Documentation"))
             .child(
-                div()
-                    .flex_1()
-                    .flex()
-                    .flex_col()
-                    .overflow_hidden()
-                    .child(
-                // Compact Header (no search)
-                div()
+                // Header with tabs
+                v_flex()
                     .w_full()
-                    .h(px(48.0))
-                    .flex()
-                    .items_center()
-                    .px_4()
-                    .gap_4()
                     .bg(sidebar_bg)
                     .border_b_1()
                     .border_color(border)
                     .child(
-                        // Icon + Title
                         h_flex()
-                            .gap_2()
+                            .w_full()
+                            .h(px(48.0))
                             .items_center()
-                            .child(Icon::new(IconName::BookOpen).size_5().text_color(theme.accent))
+                            .px_4()
+                            .gap_4()
+                            .child(
+                                Icon::new(IconName::BookOpen)
+                                    .size_5()
+                                    .text_color(theme.accent)
+                            )
                             .child(
                                 div()
                                     .text_base()
@@ -276,73 +178,149 @@ impl Render for DocumentationWindow {
                                     .text_color(fg)
                                     .child("Documentation")
                             )
+                            .child(div().flex_1())
+                            .child(
+                                Button::new("refresh-docs")
+                                    .icon(IconName::Refresh)
+                                    .ghost()
+                                    .small()
+                                    .tooltip("Refresh Documentation")
+                                    .on_click(cx.listener(|this, _event, _window, cx| {
+                                        this.refresh_current_category();
+                                        cx.notify();
+                                    }))
+                            )
                     )
-                    .child(div().flex_1())
                     .child(
-                        Button::new("refresh-docs")
-                            .icon(IconName::Refresh)
-                            .ghost()
-                            .small()
-                            .tooltip("Refresh Documentation")
-                            .on_click(cx.listener(|this, _event, _window, cx| {
-                                this.tree_items.clear();
-                                this.expanded_paths.clear();
-                                this.load_documentation();
-                                cx.notify();
-                            }))
+                        // Category tabs
+                        h_flex()
+                            .w_full()
+                            .px_4()
+                            .gap_2()
+                            .pb_2()
+                            .child(
+                                Button::new("tab-engine")
+                                    .label("Engine Docs")
+                                    .small()
+                                    .when(current_category == DocCategory::Engine, |btn| btn.primary())
+                                    .when(current_category != DocCategory::Engine, |btn| btn.ghost())
+                                    .on_click(cx.listener(|this, _event, _window, cx| {
+                                        this.current_category = DocCategory::Engine;
+                                        cx.notify();
+                                    }))
+                            )
+                            .child(
+                                Button::new("tab-project")
+                                    .label("Project Docs")
+                                    .small()
+                                    .when(current_category == DocCategory::Project, |btn| btn.primary())
+                                    .when(current_category != DocCategory::Project, |btn| btn.ghost())
+                                    .on_click(cx.listener(|this, _event, _window, cx| {
+                                        this.current_category = DocCategory::Project;
+                                        cx.notify();
+                                    }))
+                            )
+                            .child(
+                                Button::new("tab-manual")
+                                    .label("Manual Docs")
+                                    .small()
+                                    .when(current_category == DocCategory::Manual, |btn| btn.primary())
+                                    .when(current_category != DocCategory::Manual, |btn| btn.ghost())
+                                    .on_click(cx.listener(|this, _event, _window, cx| {
+                                        this.current_category = DocCategory::Manual;
+                                        cx.notify();
+                                    }))
+                            )
                     )
             )
             .child(
-                // Main content area with resizable sidebar
+                // Main content area
                 div()
                     .flex_1()
                     .overflow_hidden()
+                    .child({
+                        let content = match current_category {
+                            DocCategory::Engine => self.render_engine_docs(window, cx, &theme, sidebar_bg, border, bg, fg, muted_fg, breadcrumb_parts).into_any_element(),
+                            DocCategory::Project => self.render_project_docs(window, cx, &theme, sidebar_bg, border, bg).into_any_element(),
+                            DocCategory::Manual => self.render_manual_docs(window, cx, &theme, sidebar_bg, border, bg, fg).into_any_element(),
+                        };
+                        content
+                    })
+            )
+    }
+}
+
+// ============================================================================
+// Rendering Methods
+// ============================================================================
+
+impl DocumentationWindow {
+    fn render_engine_docs(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        theme: &ui::ThemeColor,
+        sidebar_bg: gpui::Hsla,
+        border: gpui::Hsla,
+        bg: gpui::Hsla,
+        fg: gpui::Hsla,
+        muted_fg: gpui::Hsla,
+        breadcrumb_parts: Option<Vec<String>>,
+    ) -> impl IntoElement {
+        let visible_items: Vec<_> = self.engine_docs.flat_visible_items.iter()
+            .map(|&idx| self.engine_docs.tree_items[idx].clone())
+            .collect();
+        let markdown = self.engine_docs.markdown_content.clone();
+
+        h_resizable("docs-horizontal", self.sidebar_resizable_state.clone())
+            .child(
+                resizable_panel()
+                    .size(px(300.0))
                     .child(
-                        h_resizable("docs-horizontal", self.sidebar_resizable_state.clone())
-                    .child(
-                        resizable_panel()
-                            .size(px(300.0))
+                        v_flex()
+                            .size_full()
+                            .bg(sidebar_bg)
+                            .border_r_1()
+                            .border_color(border)
                             .child(
-                                // Sidebar with search and tree
-                                v_flex()
-                                    .id("docs-sidebar")
-                                    .h_full()
-                                    .bg(sidebar_bg)
-                                    .border_r_1()
+                                // Search bar - FULL WIDTH
+                                div()
+                                    .w_full()
+                                    .p_2()
+                                    .border_b_1()
                                     .border_color(border)
-                                    .font_family("monospace")
-                                    .font(gpui::Font {
-                                        family: "JetBrains Mono".to_string().into(),
-                                        weight: gpui::FontWeight::NORMAL,
-                                        style: gpui::FontStyle::Normal,
-                                        features: gpui::FontFeatures::default(),
-                                        fallbacks: Some(gpui::FontFallbacks::from_fonts(vec!["monospace".to_string()])),
-                                    })
                                     .child(
-                                        // Search bar in sidebar
-                                        div()
-                                            .w_full()
-                                            .p_2()
-                                            .border_b_1()
-                                            .border_color(border)
-                                            .child(
-                                                TextInput::new(&self.search_input_state)
-                                                    .prefix(Icon::new(IconName::Search).size_4())
-                                                    .appearance(true)
-                                                    .bordered(true)
-                                                    .small()
-                                            )
+                                        TextInput::new(&self.engine_docs.search_input_state)
+                                            .prefix(Icon::new(IconName::Search).size_4())
+                                            .appearance(true)
+                                            .bordered(true)
+                                            .small()
+                                            .w_full()  // FULL WIDTH
                                     )
+                            )
+                            .child(
+                                // Tree items with scroll
+                                div()
+                                    .flex_1()
+                                    .overflow_hidden()
                                     .child(
-                                        // Tree items (scrollable)
                                         div()
-                                            .flex_1()
-                                            .overflow_y(gpui::Overflow::Scroll)
+                                            .id("engine-tree-scroll")
+                                            .size_full()
+                                            .overflow_y_scroll()
                                             .child(
                                                 v_flex()
                                                     .w_full()
                                                     .py_2()
                                                     .px_2()
+                                                    .font_family("monospace")
+                                                    .font(gpui::Font {
+                                                        family: "JetBrains Mono".to_string().into(),
+                                                        weight: gpui::FontWeight::NORMAL,
+                                                        style: gpui::FontStyle::Normal,
+                                                        features: gpui::FontFeatures::default(),
+                                                        fallbacks: Some(gpui::FontFallbacks::from_fonts(vec!["monospace".to_string()])),
+                                                    })
                                                     .children(
                                                         visible_items.iter().map(|node| {
                                                             self.render_tree_node(node, cx)
@@ -352,16 +330,18 @@ impl Render for DocumentationWindow {
                                     )
                             )
                     )
+            )
+            .child(
+                resizable_panel()
                     .child(
-                        resizable_panel()
+                        div()
+                            .size_full()
+                            .bg(bg)
                             .child(
-                                // Content area with markdown
                                 div()
-                                    .id("docs-content")
-                                    .flex_1()
-                                    .h_full()
-                                    .overflow_y(gpui::Overflow::Scroll)
-                                    .bg(bg)
+                                    .id("engine-content-scroll")
+                                    .size_full()
+                                    .overflow_y_scroll()
                                     .child(
                                         div()
                                             .w_full()
@@ -371,7 +351,6 @@ impl Render for DocumentationWindow {
                                                 v_flex()
                                                     .w_full()
                                                     .gap_4()
-                                                    // Breadcrumb navigation
                                                     .when_some(breadcrumb_parts, |this, parts| {
                                                         this.child(
                                                             div()
@@ -407,7 +386,6 @@ impl Render for DocumentationWindow {
                                                                 })
                                                         )
                                                     })
-                                                    // Markdown content
                                                     .child(
                                                         div()
                                                             .w_full()
@@ -428,17 +406,420 @@ impl Render for DocumentationWindow {
                                     )
                             )
                     )
+            )
+    }
+
+    fn render_project_docs(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        theme: &ui::ThemeColor,
+        sidebar_bg: gpui::Hsla,
+        border: gpui::Hsla,
+        bg: gpui::Hsla,
+    ) -> impl IntoElement {
+        let markdown = self.project_docs.markdown_content.clone();
+
+        h_resizable("docs-horizontal", self.sidebar_resizable_state.clone())
+            .child(
+                resizable_panel()
+                    .size(px(300.0))
+                    .child(
+                        v_flex()
+                            .size_full()
+                            .bg(sidebar_bg)
+                            .border_r_1()
+                            .border_color(border)
+                            .child(
+                                div()
+                                    .w_full()
+                                    .p_2()
+                                    .border_b_1()
+                                    .border_color(border)
+                                    .child(
+                                        TextInput::new(&self.project_docs.search_input_state)
+                                            .prefix(Icon::new(IconName::Search).size_4())
+                                            .appearance(true)
+                                            .bordered(true)
+                                            .small()
+                                            .w_full()
+                                    )
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .p_4()
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(theme.muted_foreground)
+                                            .child("Project documentation will be listed here.")
+                                    )
+                            )
                     )
             )
-        )
+            .child(
+                resizable_panel()
+                    .child(
+                        div()
+                            .size_full()
+                            .bg(bg)
+                            .child(
+                                div()
+                                    .id("project-content-scroll")
+                                    .size_full()
+                                    .overflow_y_scroll()
+                                    .child(
+                                        div()
+                                            .w_full()
+                                            .max_w(px(1200.0))
+                                            .mx_auto()
+                                            .px_8()
+                                            .pt_6()
+                                            .pb_8()
+                                            .child(
+                                                TextView::markdown(
+                                                    "project-docs-markdown",
+                                                    markdown,
+                                                    window,
+                                                    cx,
+                                                )
+                                                .selectable()
+                                            )
+                                    )
+                            )
+                    )
+            )
     }
-}
 
-impl DocumentationWindow {
+    fn render_manual_docs(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        theme: &ui::ThemeColor,
+        sidebar_bg: gpui::Hsla,
+        border: gpui::Hsla,
+        bg: gpui::Hsla,
+        fg: gpui::Hsla,
+    ) -> impl IntoElement {
+        let visible_files: Vec<_> = self.manual_docs.visible_entries.iter()
+            .map(|&idx| self.manual_docs.file_tree[idx].clone())
+            .collect();
+
+        h_resizable("docs-horizontal", self.sidebar_resizable_state.clone())
+            .child(
+                // File tree sidebar
+                resizable_panel()
+                    .size(px(250.0))
+                    .child(
+                        v_flex()
+                            .size_full()
+                            .bg(sidebar_bg)
+                            .border_r_1()
+                            .border_color(border)
+                            .child(
+                                // Toolbar
+                                h_flex()
+                                    .w_full()
+                                    .h(px(40.0))
+                                    .items_center()
+                                    .px_2()
+                                    .gap_2()
+                                    .border_b_1()
+                                    .border_color(border)
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .font_semibold()
+                                            .text_color(fg)
+                                            .child("Files")
+                                    )
+                                    .child(div().flex_1())
+                                    .child(
+                                        Button::new("new-file")
+                                            .icon(IconName::Plus)
+                                            .ghost()
+                                            .small()
+                                            .tooltip("New File")
+                                            .on_click(cx.listener(|this, _event, _window, cx| {
+                                                this.show_new_file_dialog = true;
+                                                cx.notify();
+                                            }))
+                                    )
+                            )
+                            .child(
+                                // File tree with scroll
+                                div()
+                                    .flex_1()
+                                    .overflow_hidden()
+                                    .child(
+                                        div()
+                                            .id("manual-tree-scroll")
+                                            .size_full()
+                                            .overflow_y_scroll()
+                                            .child(
+                                                v_flex()
+                                                    .w_full()
+                                                    .py_2()
+                                                    .children(
+                                                        visible_files.iter().map(|entry| {
+                                                            self.render_file_entry(entry, cx, theme)
+                                                        })
+                                                    )
+                                            )
+                                    )
+                            )
+                    )
+            )
+            .child(
+                // Editor/Preview area
+                resizable_panel()
+                    .child(
+                        v_flex()
+                            .size_full()
+                            .bg(bg)
+                            .child(
+                                // Toolbar with view mode toggle
+                                h_flex()
+                                    .w_full()
+                                    .h(px(40.0))
+                                    .items_center()
+                                    .px_4()
+                                    .gap_2()
+                                    .border_b_1()
+                                    .border_color(border)
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .font_semibold()
+                                            .text_color(fg)
+                                            .child({
+                                                let file_name = self.manual_docs.selected_file
+                                                    .as_ref()
+                                                    .and_then(|p| p.file_name())
+                                                    .and_then(|n| n.to_str())
+                                                    .unwrap_or("No file selected")
+                                                    .to_string();
+                                                file_name
+                                            })
+                                    )
+                                    .child(div().flex_1())
+                                    .child(
+                                        Button::new("mode-editor")
+                                            .label("Editor")
+                                            .small()
+                                            .when(self.manual_docs.view_mode == ViewMode::Editor, |btn| btn.primary())
+                                            .when(self.manual_docs.view_mode != ViewMode::Editor, |btn| btn.ghost())
+                                            .on_click(cx.listener(|this, _event, _window, cx| {
+                                                this.manual_docs.set_view_mode(ViewMode::Editor);
+                                                cx.notify();
+                                            }))
+                                    )
+                                    .child(
+                                        Button::new("mode-preview")
+                                            .label("Preview")
+                                            .small()
+                                            .when(self.manual_docs.view_mode == ViewMode::Preview, |btn| btn.primary())
+                                            .when(self.manual_docs.view_mode != ViewMode::Preview, |btn| btn.ghost())
+                                            .on_click(cx.listener(|this, _event, _window, cx| {
+                                                this.manual_docs.set_view_mode(ViewMode::Preview);
+                                                cx.notify();
+                                            }))
+                                    )
+                                    .child(
+                                        Button::new("mode-split")
+                                            .label("Split")
+                                            .small()
+                                            .when(self.manual_docs.view_mode == ViewMode::Split, |btn| btn.primary())
+                                            .when(self.manual_docs.view_mode != ViewMode::Split, |btn| btn.ghost())
+                                            .on_click(cx.listener(|this, _event, _window, cx| {
+                                                this.manual_docs.set_view_mode(ViewMode::Split);
+                                                cx.notify();
+                                            }))
+                                    )
+                                    .child(
+                                        Button::new("save-file")
+                                            .icon(IconName::Check)
+                                            .ghost()
+                                            .small()
+                                            .tooltip("Save File")
+                                            .on_click(cx.listener(|this, _event, _window, cx| {
+                                                let _ = this.manual_docs.save_current_file();
+                                                cx.notify();
+                                            }))
+                                    )
+                            )
+                            .child({
+                                // Content area based on view mode
+                                // Clone view mode before match to avoid borrow conflicts
+                                let view_mode = self.manual_docs.view_mode;
+                                div()
+                                    .flex_1()
+                                    .overflow_hidden()
+                                    .child({
+                                        let content = match view_mode {
+                                            ViewMode::Editor => self.render_editor_only(window, cx, bg).into_any_element(),
+                                            ViewMode::Preview => self.render_preview_only(window, cx, bg).into_any_element(),
+                                            ViewMode::Split => self.render_split_view(window, cx, bg, border).into_any_element(),
+                                        };
+                                        content
+                                    })
+                            })
+                    )
+            )
+    }
+
+    fn render_editor_only(&mut self, _window: &mut Window, _cx: &mut Context<Self>, bg: gpui::Hsla) -> impl IntoElement {
+        div()
+            .size_full()
+            .bg(bg)
+            .p_4()
+            .child(
+                TextInput::new(&self.manual_docs.editor_input_state)
+                    .appearance(true)
+                    .bordered(true)
+            )
+    }
+
+    fn render_preview_only(&mut self, window: &mut Window, cx: &mut Context<Self>, bg: gpui::Hsla) -> impl IntoElement {
+        let markdown = self.manual_docs.markdown_preview.clone();
+
+        div()
+            .size_full()
+            .bg(bg)
+            .child(
+                div()
+                    .id("manual-preview-scroll")
+                    .size_full()
+                    .overflow_y_scroll()
+                    .child(
+                        div()
+                            .w_full()
+                            .max_w(px(1200.0))
+                            .mx_auto()
+                            .px_8()
+                            .pt_6()
+                            .pb_8()
+                            .child(
+                                TextView::markdown(
+                                    "manual-docs-preview",
+                                    markdown,
+                                    window,
+                                    cx,
+                                )
+                                .selectable()
+                            )
+                    )
+            )
+    }
+
+    fn render_split_view(&mut self, window: &mut Window, cx: &mut Context<Self>, bg: gpui::Hsla, border: gpui::Hsla) -> impl IntoElement {
+        let markdown = self.manual_docs.markdown_preview.clone();
+
+        h_flex()
+            .size_full()
+            .child(
+                // Editor (left)
+                div()
+                    .flex_1()
+                    .bg(bg)
+                    .border_r_1()
+                    .border_color(border)
+                    .p_4()
+                    .child(
+                        TextInput::new(&self.manual_docs.editor_input_state)
+                            .appearance(true)
+                            .bordered(true)
+                    )
+            )
+            .child(
+                // Preview (right)
+                div()
+                    .flex_1()
+                    .bg(bg)
+                    .child(
+                        div()
+                            .id("manual-preview-split-scroll")
+                            .size_full()
+                            .overflow_y_scroll()
+                            .child(
+                                div()
+                                    .w_full()
+                                    .max_w(px(1200.0))
+                                    .mx_auto()
+                                    .px_8()
+                                    .pt_6()
+                                    .pb_8()
+                                    .child(
+                                        TextView::markdown(
+                                            "manual-docs-preview-split",
+                                            markdown,
+                                            window,
+                                            cx,
+                                        )
+                                        .selectable()
+                                    )
+                            )
+                    )
+            )
+    }
+
+    fn render_file_entry(&self, entry: &FileEntry, cx: &mut Context<Self>, theme: &ui::ThemeColor) -> AnyElement {
+        let is_selected = self.manual_docs.selected_file.as_ref() == Some(&entry.path);
+        let is_expanded = self.manual_docs.expanded_folders.contains(&entry.path);
+        let indent = px(entry.depth as f32 * 16.0);
+        let path = entry.path.clone();
+        let is_directory = entry.is_directory;
+
+        div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .h(px(28.0))
+            .pl(indent + px(8.0))
+            .pr_3()
+            .rounded_sm()
+            .when(is_selected, |style| style.bg(theme.accent).shadow_sm())
+            .when(!is_selected, |style| style.hover(|s| s.bg(theme.accent.opacity(0.08))))
+            .cursor_pointer()
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                if is_directory {
+                    this.manual_docs.toggle_folder(path.clone());
+                } else {
+                    this.manual_docs.select_file(path.clone());
+                }
+                cx.notify();
+            }))
+            .child(
+                Icon::new(if is_directory {
+                    if is_expanded { IconName::FolderOpen } else { IconName::Folder }
+                } else {
+                    IconName::BookOpen
+                })
+                .size_4()
+                .text_color(if is_selected {
+                    theme.accent_foreground
+                } else {
+                    theme.accent.opacity(0.7)
+                })
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(if is_selected {
+                        theme.accent_foreground
+                    } else {
+                        theme.foreground.opacity(0.85)
+                    })
+                    .child(entry.name.clone())
+            )
+            .into_any_element()
+    }
+
     fn render_tree_node(&self, node: &TreeNode, cx: &mut Context<Self>) -> AnyElement {
         match node {
             TreeNode::Crate { name, depth, .. } => {
-                let is_expanded = self.is_expanded(name);
+                let is_expanded = self.engine_docs.expanded_paths.contains(name);
                 let crate_name = name.clone();
                 let indent = px(*depth as f32 * 16.0);
                 let id = SharedString::from(format!("crate-{}", name));
@@ -456,7 +837,8 @@ impl DocumentationWindow {
                     .hover(|style| style.bg(theme.accent.opacity(0.08)))
                     .cursor_pointer()
                     .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                        this.toggle_expansion(crate_name.clone(), cx);
+                        this.engine_docs.toggle_expansion(crate_name.clone());
+                        cx.notify();
                     }))
                     .child(
                         Icon::new(if is_expanded { IconName::FolderOpen } else { IconName::Folder })
@@ -474,7 +856,7 @@ impl DocumentationWindow {
             }
             TreeNode::Section { crate_name, section_name, count, depth } => {
                 let section_path = format!("{}/{}", crate_name, section_name);
-                let is_expanded = self.is_expanded(&section_path);
+                let is_expanded = self.engine_docs.expanded_paths.contains(&section_path);
                 let section_path_clone = section_path.clone();
                 let indent = px(*depth as f32 * 16.0);
                 let id = SharedString::from(format!("section-{}-{}", crate_name, section_name));
@@ -492,7 +874,8 @@ impl DocumentationWindow {
                     .hover(|style| style.bg(theme.accent.opacity(0.08)))
                     .cursor_pointer()
                     .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                        this.toggle_expansion(section_path_clone.clone(), cx);
+                        this.engine_docs.toggle_expansion(section_path_clone.clone());
+                        cx.notify();
                     }))
                     .child(
                         Icon::new(if is_expanded { IconName::ChevronDown } else { IconName::ChevronRight })
@@ -509,7 +892,7 @@ impl DocumentationWindow {
                     .into_any_element()
             }
             TreeNode::Item { item_name, path, depth, .. } => {
-                let is_selected = self.current_path.as_ref() == Some(path);
+                let is_selected = self.engine_docs.current_path.as_ref() == Some(path);
                 let path_clone = path.clone();
                 let indent = px(*depth as f32 * 16.0);
                 let id = SharedString::from(format!("item-{}", path.replace('/', "-")));
@@ -532,7 +915,8 @@ impl DocumentationWindow {
                     })
                     .cursor_pointer()
                     .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                        this.load_content(&path_clone, cx);
+                        this.engine_docs.load_content(&path_clone);
+                        cx.notify();
                     }))
                     .child(
                         Icon::new(IconName::Code)
@@ -559,7 +943,6 @@ impl DocumentationWindow {
     }
 }
 
-/// Helper to create documentation window with Root wrapper
 pub fn create_documentation_window(window: &mut Window, cx: &mut App) -> Entity<Root> {
     let docs = cx.new(|cx| DocumentationWindow::new(window, cx));
     cx.new(|cx| Root::new(docs.into(), window, cx))
