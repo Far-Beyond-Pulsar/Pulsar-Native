@@ -84,7 +84,8 @@
       "Bash(engine_out.txt)",
       "Bash(git stash:*)",
       "Bash(tee:*)",
-      "Bash(cargo tree:*)"
+      "Bash(cargo tree:*)",
+      "Bash(dir \"C:\\Users\\redst\\OneDrive\\Documents\\GitHub\\Pulsar-Native\" /b)"
     ],
     "deny": [],
     "ask": []
