@@ -40,12 +40,21 @@ actions!(
         ToggleWireframe,
         ToggleLighting,
         TogglePerformanceOverlay,
-        ToggleViewportControls,
         ToggleCameraModeSelector,
         ToggleViewportOptions,
         Toggle3DRenderer,
         ToggleGpuRenderer,
         ToggleFpsGraphType,
+
+        // Performance metrics toggles
+        ToggleFpsGraph,
+        ToggleTpsGraph,
+        ToggleFrameTimeGraph,
+        ToggleMemoryGraph,
+        ToggleDrawCallsGraph,
+        ToggleVerticesGraph,
+        ToggleInputLatencyGraph,
+        ToggleUiConsistencyGraph,
 
         // Camera modes
         PerspectiveView,

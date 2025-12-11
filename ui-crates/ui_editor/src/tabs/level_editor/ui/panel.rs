@@ -412,11 +412,6 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
-    fn on_toggle_viewport_controls(&mut self, _: &ToggleViewportControls, _: &mut Window, cx: &mut Context<Self>) {
-        self.state.toggle_viewport_controls();
-        cx.notify();
-    }
-
     fn on_toggle_camera_mode_selector(&mut self, _: &ToggleCameraModeSelector, _: &mut Window, cx: &mut Context<Self>) {
         self.state.toggle_camera_mode_selector();
         cx.notify();
@@ -429,6 +424,47 @@ impl LevelEditorPanel {
 
     fn on_toggle_fps_graph_type(&mut self, _: &ToggleFpsGraphType, _: &mut Window, cx: &mut Context<Self>) {
         self.state.toggle_fps_graph_type();
+        cx.notify();
+    }
+
+    // Performance metrics toggles
+    fn on_toggle_fps_graph(&mut self, _: &ToggleFpsGraph, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.toggle_fps_graph();
+        cx.notify();
+    }
+
+    fn on_toggle_tps_graph(&mut self, _: &ToggleTpsGraph, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.toggle_tps_graph();
+        cx.notify();
+    }
+
+    fn on_toggle_frame_time_graph(&mut self, _: &ToggleFrameTimeGraph, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.toggle_frame_time_graph();
+        cx.notify();
+    }
+
+    fn on_toggle_memory_graph(&mut self, _: &ToggleMemoryGraph, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.toggle_memory_graph();
+        cx.notify();
+    }
+
+    fn on_toggle_draw_calls_graph(&mut self, _: &ToggleDrawCallsGraph, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.toggle_draw_calls_graph();
+        cx.notify();
+    }
+
+    fn on_toggle_vertices_graph(&mut self, _: &ToggleVerticesGraph, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.toggle_vertices_graph();
+        cx.notify();
+    }
+
+    fn on_toggle_input_latency_graph(&mut self, _: &ToggleInputLatencyGraph, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.toggle_input_latency_graph();
+        cx.notify();
+    }
+
+    fn on_toggle_ui_consistency_graph(&mut self, _: &ToggleUiConsistencyGraph, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.toggle_ui_consistency_graph();
         cx.notify();
     }
 
@@ -591,6 +627,7 @@ impl Render for LevelEditorPanel {
 
         // Request continuous animation frames to keep viewport and stats updating
         // This creates a render loop synchronized with the display refresh rate
+        //TODO: Optimize to only request when necessary (The viewport is now a transparent hole son continuous updates may not be needed for the entire window)
         window.request_animation_frame();
 
         v_flex()
@@ -621,10 +658,18 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_toggle_wireframe))
             .on_action(cx.listener(Self::on_toggle_lighting))
             .on_action(cx.listener(Self::on_toggle_performance_overlay))
-            .on_action(cx.listener(Self::on_toggle_viewport_controls))
             .on_action(cx.listener(Self::on_toggle_camera_mode_selector))
             .on_action(cx.listener(Self::on_toggle_viewport_options))
             .on_action(cx.listener(Self::on_toggle_fps_graph_type))
+            // Performance metrics toggles
+            .on_action(cx.listener(Self::on_toggle_fps_graph))
+            .on_action(cx.listener(Self::on_toggle_tps_graph))
+            .on_action(cx.listener(Self::on_toggle_frame_time_graph))
+            .on_action(cx.listener(Self::on_toggle_memory_graph))
+            .on_action(cx.listener(Self::on_toggle_draw_calls_graph))
+            .on_action(cx.listener(Self::on_toggle_vertices_graph))
+            .on_action(cx.listener(Self::on_toggle_input_latency_graph))
+            .on_action(cx.listener(Self::on_toggle_ui_consistency_graph))
             // Play/Edit mode
             .on_action(cx.listener(Self::on_play_scene))
             .on_action(cx.listener(Self::on_stop_scene))

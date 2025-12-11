@@ -322,6 +322,7 @@ impl ViewportPanel {
     pub fn render<V: 'static>(
         &mut self,
         state: &mut LevelEditorState,
+        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         fps_graph_state: Rc<RefCell<bool>>,  // Shared state for the Switch
         gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
         game_thread: &Arc<GameThread>,
@@ -756,18 +757,8 @@ impl ViewportPanel {
                     })
                     .child(self.viewport.clone())
             )
-            .when(state.show_viewport_controls, |viewport_div| {
-                viewport_div.child(
-                    // Viewport controls overlay (top-right)
-                    div()
-                        .absolute()
-                        .top_4()
-                        .right_4()
-                        .w(px(200.0)) // Hardcoded width to prevent inheritance issues
-                        .child(Self::render_viewport_controls_overlay(cx))
-                )
-            })
             .when(state.show_camera_mode_selector, |viewport_div| {
+                let state_arc_clone = state_arc.clone();
                 viewport_div.child(
                     // Camera mode selector (bottom-left)
                     div()
@@ -775,10 +766,11 @@ impl ViewportPanel {
                         .bottom_4()
                         .left_4()
                         .w(px(320.0)) // Hardcoded width to prevent inheritance issues
-                        .child(Self::render_camera_mode_selector(state.camera_mode, cx))
+                        .child(Self::render_camera_mode_selector(state.camera_mode, state_arc_clone, cx))
                 )
             })
             .when(state.show_viewport_options, |viewport_div| {
+                let state_arc_clone = state_arc.clone();
                 viewport_div.child(
                     // Grid and rendering options (top-left)
                     div()
@@ -786,7 +778,7 @@ impl ViewportPanel {
                         .top_4()
                         .left_4()
                         .w(px(400.0)) // Hardcoded width to prevent inheritance issues
-                        .child(Self::render_viewport_options(state, cx))
+                        .child(Self::render_viewport_options(state, state_arc_clone, cx))
                 )
             });
 
@@ -803,21 +795,29 @@ impl ViewportPanel {
         }
 
         if state.show_performance_overlay {
+            let state_arc_clone = state_arc.clone();
             viewport_div = viewport_div.child(
                 // Performance overlay (bottom-right)
                 div()
+                    .id("performance-overlay-container")
                     .absolute()
                     .bottom_4()
                     .right_4()
                     .w(px(360.0)) // Expanded width for graph
-                    .child(self.render_performance_overlay(state, fps_graph_state, gpu_engine, game_thread, cx))
+                    .max_h(px(700.0)) // Max height before scrolling
+                    .overflow_y_scroll() // Enable vertical scrolling
+                    .child(self.render_performance_overlay(state, state_arc_clone, fps_graph_state, gpu_engine, game_thread, cx))
             );
         }
 
         viewport_div
     }
 
-    fn render_camera_mode_selector<V: 'static>(camera_mode: CameraMode, cx: &mut Context<V>) -> impl IntoElement
+    fn render_camera_mode_selector<V: 'static>(
+        camera_mode: CameraMode,
+        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        cx: &mut Context<V>
+    ) -> impl IntoElement
     where
         V: EventEmitter<ui::dock::PanelEvent> + Render,
     {
@@ -834,64 +834,79 @@ impl ViewportPanel {
             .child(
                 h_flex()
                     .gap_1()
-                    .child(
+                    .child({
+                        let state_clone = state_arc.clone();
                         Button::new("camera_perspective")
-                            .child("Persp")
+                            .icon(IconName::Cube)
+                            .tooltip("Perspective View")
                             .xsmall()
                             .selected(matches!(camera_mode, CameraMode::Perspective))
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.dispatch_action(&PerspectiveView);
-                            }))
-                    )
-                    .child(
+                            .on_click(move |_, _, _| {
+                                state_clone.write().set_camera_mode(CameraMode::Perspective);
+                            })
+                    })
+                    .child({
+                        let state_clone = state_arc.clone();
                         Button::new("camera_orthographic")
-                            .child("Ortho")
+                            .icon(IconName::Square)
+                            .tooltip("Orthographic View")
                             .xsmall()
                             .selected(matches!(camera_mode, CameraMode::Orthographic))
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.dispatch_action(&OrthographicView);
-                            }))
-                    )
-                    .child(
+                            .on_click(move |_, _, _| {
+                                state_clone.write().set_camera_mode(CameraMode::Orthographic);
+                            })
+                    })
+                    .child({
+                        let state_clone = state_arc.clone();
                         Button::new("camera_top")
-                            .child("Top")
+                            .icon(IconName::ArrowUp)
+                            .tooltip("Top View")
                             .xsmall()
                             .selected(matches!(camera_mode, CameraMode::Top))
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.dispatch_action(&TopView);
-                            }))
-                    )
-                    .child(
+                            .on_click(move |_, _, _| {
+                                state_clone.write().set_camera_mode(CameraMode::Top);
+                            })
+                    })
+                    .child({
+                        let state_clone = state_arc.clone();
                         Button::new("camera_front")
-                            .child("Front")
+                            .icon(IconName::ArrowRight)
+                            .tooltip("Front View")
                             .xsmall()
                             .selected(matches!(camera_mode, CameraMode::Front))
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.dispatch_action(&FrontView);
-                            }))
-                    )
-                    .child(
+                            .on_click(move |_, _, _| {
+                                state_clone.write().set_camera_mode(CameraMode::Front);
+                            })
+                    })
+                    .child({
+                        let state_clone = state_arc.clone();
                         Button::new("camera_side")
-                            .child("Side")
+                            .icon(IconName::ArrowLeft)
+                            .tooltip("Side View")
                             .xsmall()
                             .selected(matches!(camera_mode, CameraMode::Side))
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.dispatch_action(&SideView);
-                            }))
-                    )
+                            .on_click(move |_, _, _| {
+                                state_clone.write().set_camera_mode(CameraMode::Side);
+                            })
+                    })
             )
-            .child(
+            .child({
+                let state_clone = state_arc.clone();
                 Button::new("close_camera_mode")
                     .icon(IconName::X)
                     .ghost()
                     .xsmall()
-                    .on_click(cx.listener(|_, _, _, cx| {
-                        cx.dispatch_action(&ToggleCameraModeSelector);
-                    }))
-            )
+                    .on_click(move |_, _, _| {
+                        state_clone.write().toggle_camera_mode_selector();
+                    })
+            })
     }
 
-    fn render_viewport_options<V: 'static>(state: &LevelEditorState, cx: &mut Context<V>) -> impl IntoElement
+    fn render_viewport_options<V: 'static>(
+        state: &LevelEditorState,
+        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        cx: &mut Context<V>
+    ) -> impl IntoElement
     where
         V: EventEmitter<ui::dock::PanelEvent> + Render,
     {
@@ -908,52 +923,61 @@ impl ViewportPanel {
             .child(
                 h_flex()
                     .gap_1()
-                    .child(
+                    .child({
+                        let state_clone = state_arc.clone();
                         Button::new("toggle_grid")
-                            .child("Grid")
+                            .icon(IconName::LayoutDashboard)
+                            .tooltip("Toggle Grid")
                             .xsmall()
                             .selected(state.show_grid)
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.dispatch_action(&ToggleGrid);
-                            }))
-                    )
-                    .child(
+                            .on_click(move |_, _, _| {
+                                state_clone.write().toggle_grid();
+                            })
+                    })
+                    .child({
+                        let state_clone = state_arc.clone();
                         Button::new("toggle_wireframe")
-                            .child("Wireframe")
+                            .icon(IconName::Triangle)
+                            .tooltip("Toggle Wireframe")
                             .xsmall()
                             .selected(state.show_wireframe)
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.dispatch_action(&ToggleWireframe);
-                            }))
-                    )
-                    .child(
+                            .on_click(move |_, _, _| {
+                                state_clone.write().toggle_wireframe();
+                            })
+                    })
+                    .child({
+                        let state_clone = state_arc.clone();
                         Button::new("toggle_lighting")
-                            .child("Lighting")
+                            .icon(IconName::Sun)
+                            .tooltip("Toggle Lighting")
                             .xsmall()
                             .selected(state.show_lighting)
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.dispatch_action(&ToggleLighting);
-                            }))
-                    )
-                    .child(
+                            .on_click(move |_, _, _| {
+                                state_clone.write().toggle_lighting();
+                            })
+                    })
+                    .child({
+                        let state_clone = state_arc.clone();
                         Button::new("toggle_performance")
-                            .child("Stats")
+                            .icon(IconName::Activity)
+                            .tooltip("Toggle Performance Stats")
                             .xsmall()
                             .selected(state.show_performance_overlay)
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.dispatch_action(&TogglePerformanceOverlay);
-                            }))
-                    )
+                            .on_click(move |_, _, _| {
+                                state_clone.write().toggle_performance_overlay();
+                            })
+                    })
             )
-            .child(
+            .child({
+                let state_clone = state_arc.clone();
                 Button::new("close_viewport_options")
                     .icon(IconName::X)
                     .ghost()
                     .xsmall()
-                    .on_click(cx.listener(|_, _, _, cx| {
-                        cx.dispatch_action(&ToggleViewportOptions);
-                    }))
-            )
+                    .on_click(move |_, _, _| {
+                        state_clone.write().toggle_viewport_options();
+                    })
+            })
     }
 
     fn render_viewport_controls_overlay<V: 'static>(cx: &mut Context<V>) -> impl IntoElement
@@ -998,7 +1022,7 @@ impl ViewportPanel {
                     .ghost()
                     .xsmall()
                     .on_click(cx.listener(|_, _, _, cx| {
-                        cx.dispatch_action(&ToggleViewportControls);
+                        cx.dispatch_action(&ToggleViewportOptions);
                     }))
             )
     }
@@ -1202,6 +1226,7 @@ impl ViewportPanel {
     fn render_performance_overlay<V: 'static>(
         &mut self,
         state: &mut LevelEditorState,
+        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         fps_graph_state: Rc<RefCell<bool>>,
         gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
         game_thread: &Arc<GameThread>,
@@ -1485,17 +1510,116 @@ impl ViewportPanel {
                                     })
                             })
                     )
-                    .child(
+                    .child({
+                        let state_clone = state_arc.clone();
                         Button::new("close_performance")
                             .icon(IconName::X)
                             .ghost()
                             .xsmall()
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.dispatch_action(&TogglePerformanceOverlay);
-                            }))
-                    )
+                            .on_click(move |_, _, _| {
+                                state_clone.write().toggle_performance_overlay();
+                            })
+                    })
             )
-            .when(!fps_data.is_empty(), |this| {
+            // Metrics selector toolbar
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap_1()
+                    .p_1()
+                    .flex_wrap()
+                    .border_t_1()
+                    .border_color(cx.theme().border)
+                    .child({
+                        let state_clone = state_arc.clone();
+                        Button::new("toggle_fps")
+                            .icon(IconName::Activity)
+                            .tooltip("FPS Graph")
+                            .xsmall()
+                            .selected(state.show_fps_graph)
+                            .on_click(move |_, _, _| {
+                                state_clone.write().toggle_fps_graph();
+                            })
+                    })
+                    .child({
+                        let state_clone = state_arc.clone();
+                        Button::new("toggle_tps")
+                            .icon(IconName::Play)
+                            .tooltip("TPS Graph")
+                            .xsmall()
+                            .selected(state.show_tps_graph)
+                            .on_click(move |_, _, _| {
+                                state_clone.write().toggle_tps_graph();
+                            })
+                    })
+                    .child({
+                        let state_clone = state_arc.clone();
+                        Button::new("toggle_frame_time")
+                            .icon(IconName::Clock)
+                            .tooltip("Frame Time")
+                            .xsmall()
+                            .selected(state.show_frame_time_graph)
+                            .on_click(move |_, _, _| {
+                                state_clone.write().toggle_frame_time_graph();
+                            })
+                    })
+                    .child({
+                        let state_clone = state_arc.clone();
+                        Button::new("toggle_memory")
+                            .icon(IconName::Database)
+                            .tooltip("GPU Memory")
+                            .xsmall()
+                            .selected(state.show_memory_graph)
+                            .on_click(move |_, _, _| {
+                                state_clone.write().toggle_memory_graph();
+                            })
+                    })
+                    .child({
+                        let state_clone = state_arc.clone();
+                        Button::new("toggle_draw_calls")
+                            .icon(IconName::BookStack)
+                            .tooltip("Draw Calls")
+                            .xsmall()
+                            .selected(state.show_draw_calls_graph)
+                            .on_click(move |_, _, _| {
+                                state_clone.write().toggle_draw_calls_graph();
+                            })
+                    })
+                    .child({
+                        let state_clone = state_arc.clone();
+                        Button::new("toggle_vertices")
+                            .icon(IconName::Triangle)
+                            .tooltip("Vertices")
+                            .xsmall()
+                            .selected(state.show_vertices_graph)
+                            .on_click(move |_, _, _| {
+                                state_clone.write().toggle_vertices_graph();
+                            })
+                    })
+                    .child({
+                        let state_clone = state_arc.clone();
+                        Button::new("toggle_input_latency")
+                            .icon(IconName::CursorPointer)
+                            .tooltip("Input Latency")
+                            .xsmall()
+                            .selected(state.show_input_latency_graph)
+                            .on_click(move |_, _, _| {
+                                state_clone.write().toggle_input_latency_graph();
+                            })
+                    })
+                    .child({
+                        let state_clone = state_arc.clone();
+                        Button::new("toggle_ui_consistency")
+                            .icon(IconName::GraphUp)
+                            .tooltip("UI Consistency")
+                            .xsmall()
+                            .selected(state.show_ui_consistency_graph)
+                            .on_click(move |_, _, _| {
+                                state_clone.write().toggle_ui_consistency_graph();
+                            })
+                    })
+            )
+            .when(state.show_fps_graph && !fps_data.is_empty(), |this| {
                 this.child(
                     v_flex()
                         .w_full()
@@ -1575,7 +1699,7 @@ impl ViewportPanel {
                 )
             })
             // UI REFRESH CONSISTENCY GRAPH - Shows FPS variance over time (lower is better/more consistent)
-            .when(!ui_consistency_data.is_empty(), |this| {
+            .when(state.show_ui_consistency_graph && !ui_consistency_data.is_empty(), |this| {
                 this.child(
                     v_flex()
                         .w_full()
@@ -1661,7 +1785,7 @@ impl ViewportPanel {
                             .child(format!("Target: 240 | Ticks: {}", game_tick_count))
                     )
             )
-            .when(!tps_data.is_empty(), |this| {
+            .when(state.show_tps_graph && !tps_data.is_empty(), |this| {
                 this.child(
                     v_flex()
                         .w_full()
@@ -1896,7 +2020,7 @@ impl ViewportPanel {
                     )
             )
             // FRAME TIME JITTER GRAPH - Critical for finding stutters!
-            .when(!frame_time_data.is_empty(), |this| {
+            .when(state.show_frame_time_graph && !frame_time_data.is_empty(), |this| {
                 this.child(
                     v_flex()
                         .w_full()
@@ -1945,7 +2069,7 @@ impl ViewportPanel {
                 )
             })
             // GPU MEMORY USAGE GRAPH
-            .when(!memory_data.is_empty(), |this| {
+            .when(state.show_memory_graph && !memory_data.is_empty(), |this| {
                 this.child(
                     v_flex()
                         .w_full()
@@ -1991,7 +2115,7 @@ impl ViewportPanel {
                 )
             })
             // DRAW CALLS GRAPH
-            .when(!draw_calls_data.is_empty(), |this| {
+            .when(state.show_draw_calls_graph && !draw_calls_data.is_empty(), |this| {
                 this.child(
                     v_flex()
                         .w_full()
@@ -2037,7 +2161,7 @@ impl ViewportPanel {
                 )
             })
             // VERTICES GRAPH
-            .when(!vertices_data.is_empty(), |this| {
+            .when(state.show_vertices_graph && !vertices_data.is_empty(), |this| {
                 this.child(
                     v_flex()
                         .w_full()
@@ -2083,7 +2207,7 @@ impl ViewportPanel {
                 )
             })
             // INPUT LATENCY GRAPH - Critical for responsive controls! (Measured on input thread)
-            .when(!input_latency_data.is_empty(), |this| {
+            .when(state.show_input_latency_graph && !input_latency_data.is_empty(), |this| {
                 this.child(
                     v_flex()
                         .w_full()

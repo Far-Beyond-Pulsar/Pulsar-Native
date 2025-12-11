@@ -6,6 +6,7 @@ use ui::{
     divider::Divider,
     resizable::{h_resizable, resizable_panel, ResizableState},
     input::{InputState, TextInput},
+    scroll::ScrollbarAxis,
 };
 use ui_types_common::{AliasAsset, TypeAstNode};
 use std::path::PathBuf;
@@ -429,6 +430,7 @@ impl Render for VisualAliasEditor {
                                     .size_full()
                                     .p_4()
                                     .gap_4()
+                                    .scrollable(ScrollbarAxis::Both)
                                     .when(self.error_message.is_some(), |this| {
                                         let error = self.error_message.as_ref().unwrap();
                                         this.child(
@@ -511,11 +513,12 @@ impl Render for VisualAliasEditor {
                                                 )
                                         )
                                         .child(
-                                            // Code input - fills remaining space
+                                            // Code input - fills remaining space, scrollable both directions
                                             div()
                                                 .flex_1()
                                                 .w_full()
                                                 .p_2()
+                                                .scrollable(ScrollbarAxis::Both)
                                                 .child(
                                                     TextInput::new(&self.preview_input)
                                                         .h_full()

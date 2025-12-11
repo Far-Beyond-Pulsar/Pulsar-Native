@@ -183,6 +183,7 @@ impl Render for ViewportPanelWrapper {
             .child(
                 self.viewport_panel.render(
                     &mut *state,
+                    self.state.clone(),
                     self.fps_graph_is_line.clone(),
                     &self.gpu_engine,
                     &self.game_thread,

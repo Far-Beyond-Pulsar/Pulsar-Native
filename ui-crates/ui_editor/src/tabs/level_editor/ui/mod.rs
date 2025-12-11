@@ -18,3 +18,4 @@ pub use hierarchy::HierarchyPanel;
 pub use properties::PropertiesPanel;
 pub use viewport::ViewportPanel;
 pub use toolbar::ToolbarPanel;
+pub use actions::*;

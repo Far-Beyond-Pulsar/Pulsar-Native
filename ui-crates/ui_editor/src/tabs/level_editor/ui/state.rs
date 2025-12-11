@@ -37,11 +37,19 @@ pub struct LevelEditorState {
     pub show_lighting: bool,
     pub show_grid: bool,
     pub show_performance_overlay: bool,
-    pub show_viewport_controls: bool,
     pub show_camera_mode_selector: bool,
     pub show_viewport_options: bool,
     /// FPS graph type (true = line, false = bar)
     pub fps_graph_is_line: bool,
+    /// Performance metrics visibility
+    pub show_fps_graph: bool,
+    pub show_tps_graph: bool,
+    pub show_frame_time_graph: bool,
+    pub show_memory_graph: bool,
+    pub show_draw_calls_graph: bool,
+    pub show_vertices_graph: bool,
+    pub show_input_latency_graph: bool,
+    pub show_ui_consistency_graph: bool,
     /// Expanded state for hierarchy items
     pub expanded_objects: HashSet<String>,
 }
@@ -91,10 +99,18 @@ impl Default for LevelEditorState {
             show_lighting: true,
             show_grid: true,
             show_performance_overlay: true,
-            show_viewport_controls: true,
             show_camera_mode_selector: true,
             show_viewport_options: true,
             fps_graph_is_line: true,
+            // Performance metrics - all visible by default
+            show_fps_graph: true,
+            show_tps_graph: true,
+            show_frame_time_graph: true,
+            show_memory_graph: true,
+            show_draw_calls_graph: true,
+            show_vertices_graph: true,
+            show_input_latency_graph: true,
+            show_ui_consistency_graph: true,
             expanded_objects: HashSet::new(),
         }
     }
@@ -280,11 +296,6 @@ impl LevelEditorState {
         self.show_performance_overlay = !self.show_performance_overlay;
     }
 
-    /// Toggle viewport controls
-    pub fn toggle_viewport_controls(&mut self) {
-        self.show_viewport_controls = !self.show_viewport_controls;
-    }
-
     /// Toggle camera mode selector
     pub fn toggle_camera_mode_selector(&mut self) {
         self.show_camera_mode_selector = !self.show_camera_mode_selector;
@@ -298,5 +309,38 @@ impl LevelEditorState {
     /// Toggle FPS graph type
     pub fn toggle_fps_graph_type(&mut self) {
         self.fps_graph_is_line = !self.fps_graph_is_line;
+    }
+
+    /// Toggle individual performance metrics
+    pub fn toggle_fps_graph(&mut self) {
+        self.show_fps_graph = !self.show_fps_graph;
+    }
+
+    pub fn toggle_tps_graph(&mut self) {
+        self.show_tps_graph = !self.show_tps_graph;
+    }
+
+    pub fn toggle_frame_time_graph(&mut self) {
+        self.show_frame_time_graph = !self.show_frame_time_graph;
+    }
+
+    pub fn toggle_memory_graph(&mut self) {
+        self.show_memory_graph = !self.show_memory_graph;
+    }
+
+    pub fn toggle_draw_calls_graph(&mut self) {
+        self.show_draw_calls_graph = !self.show_draw_calls_graph;
+    }
+
+    pub fn toggle_vertices_graph(&mut self) {
+        self.show_vertices_graph = !self.show_vertices_graph;
+    }
+
+    pub fn toggle_input_latency_graph(&mut self) {
+        self.show_input_latency_graph = !self.show_input_latency_graph;
+    }
+
+    pub fn toggle_ui_consistency_graph(&mut self) {
+        self.show_ui_consistency_graph = !self.show_ui_consistency_graph;
     }
 }
