@@ -1301,9 +1301,16 @@ impl ApplicationHandler for WinitGpuiApp {
                         create_about_window(window, cx)
                     }
                     Some(WindowRequest::Documentation) => {
-                        create_documentation_window(window, cx)
+                        // Get the current project path from engine state if available
+                        let project_path = engine_state_for_events.get_metadata("current_project_path")
+                            .and_then(|p| if p.is_empty() { None } else { Some(std::path::PathBuf::from(p)) });
+
+                        ui_documentation::create_documentation_window_with_project(window, cx, project_path)
                     }
                     Some(WindowRequest::ProjectSplash { project_path }) => {
+                        // Store the current project path in engine state for other windows to access
+                        engine_state_for_events.set_metadata("current_project_path".to_string(), project_path.clone());
+
                         // Create loading screen for project loading
                         create_loading_component(
                             PathBuf::from(project_path),
@@ -1313,6 +1320,9 @@ impl ApplicationHandler for WinitGpuiApp {
                         )
                     }
                     Some(WindowRequest::ProjectEditor { project_path }) => {
+                        // Store the current project path in engine state for other windows to access
+                        engine_state_for_events.set_metadata("current_project_path".to_string(), project_path.clone());
+
                         // Use the captured window_id to ensure consistency
                         // Create the actual PulsarApp editor with the project
                         let app = cx.new(|cx| PulsarApp::new_with_project_and_window_id(

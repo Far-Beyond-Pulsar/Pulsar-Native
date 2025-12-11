@@ -47,11 +47,14 @@ enum DocCategory {
 
 impl DocumentationWindow {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_with_project(window, cx, None)
+    }
+
+    pub fn new_with_project(window: &mut Window, cx: &mut Context<Self>, project_path: Option<PathBuf>) -> Self {
         let sidebar_resizable_state = ResizableState::new(cx);
 
-        // TODO: Get actual project root from engine state
-        // For now, use current directory or a default
-        let project_root = std::env::current_dir().ok();
+        // Use provided project path or fallback to current directory
+        let project_root = project_path.or_else(|| std::env::current_dir().ok());
 
         let engine_docs = EngineDocsState::new(window, cx);
         let project_docs = ProjectDocsState::new(window, cx, project_root.clone());
@@ -291,11 +294,10 @@ impl DocumentationWindow {
                                     .border_color(border)
                                     .child(
                                         TextInput::new(&self.engine_docs.search_input_state)
+                                            .w_full()
                                             .prefix(Icon::new(IconName::Search).size_4())
                                             .appearance(true)
                                             .bordered(true)
-                                            .small()
-                                            .w_full()  // FULL WIDTH
                                     )
                             )
                             .child(
@@ -438,11 +440,10 @@ impl DocumentationWindow {
                                     .border_color(border)
                                     .child(
                                         TextInput::new(&self.project_docs.search_input_state)
+                                            .w_full()
                                             .prefix(Icon::new(IconName::Search).size_4())
                                             .appearance(true)
                                             .bordered(true)
-                                            .small()
-                                            .w_full()
                                     )
                             )
                             .child(
@@ -944,6 +945,10 @@ impl DocumentationWindow {
 }
 
 pub fn create_documentation_window(window: &mut Window, cx: &mut App) -> Entity<Root> {
-    let docs = cx.new(|cx| DocumentationWindow::new(window, cx));
+    create_documentation_window_with_project(window, cx, None)
+}
+
+pub fn create_documentation_window_with_project(window: &mut Window, cx: &mut App, project_path: Option<PathBuf>) -> Entity<Root> {
+    let docs = cx.new(|cx| DocumentationWindow::new_with_project(window, cx, project_path));
     cx.new(|cx| Root::new(docs.into(), window, cx))
 }

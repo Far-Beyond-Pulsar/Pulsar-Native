@@ -1,6 +1,8 @@
 use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
 
+pub mod project_parser;
+
 #[derive(RustEmbed)]
 #[folder = "$CARGO_MANIFEST_DIR/../../target/doc"]
 pub struct DocAssets;

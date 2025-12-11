@@ -10,59 +10,10 @@ use quote::ToTokens;
 use super::parser::ParsedCrate;
 use super::types::*;
 
-/// Extract exact source code for a syntax node - LITERAL extraction from source
-fn extract_source_from_span<T: ToTokens>(node: &T, source_code: &str) -> String {
-    // Get the span of the node
-    let span = node.span();
-    
-    // Extract positions (1-indexed lines, 0-indexed columns)
-    let start = span.start();
-    let end = span.end();
-    
-    // Convert source to char indices for proper UTF-8 handling
-    let chars: Vec<char> = source_code.chars().collect();
-    
-    // Track position in char array
-    let mut char_offset = 0;
-    let mut start_char_idx = None;
-    let mut end_char_idx = None;
-    
-    for (line_num, line) in source_code.lines().enumerate() {
-        let line_index = line_num + 1; // lines() is 0-indexed, span is 1-indexed
-        let line_char_count = line.chars().count();
-        
-        if line_index == start.line && start_char_idx.is_none() {
-            if start.column <= line_char_count {
-                start_char_idx = Some(char_offset + start.column);
-            } else {
-                start_char_idx = Some(char_offset + line_char_count);
-            }
-        }
-        
-        if line_index == end.line && end_char_idx.is_none() {
-            if end.column <= line_char_count {
-                end_char_idx = Some(char_offset + end.column);
-            } else {
-                end_char_idx = Some(char_offset + line_char_count);
-            }
-        }
-        
-        char_offset += line_char_count + 1; // +1 for the newline character
-        
-        if start_char_idx.is_some() && end_char_idx.is_some() {
-            break;
-        }
-    }
-    
-    // Extract the exact slice using char indices
-    if let (Some(start_idx), Some(end_idx)) = (start_char_idx, end_char_idx) {
-        if start_idx < chars.len() && end_idx <= chars.len() && start_idx < end_idx {
-            return chars[start_idx..end_idx].iter().collect();
-        }
-    }
-    
-    // Fallback to token stream if span extraction fails
-    node.to_token_stream().to_string()
+/// Extract exact source code for a syntax node - uses quote for reliable stringification
+fn extract_source_from_span<T: ToTokens>(node: &T, _source_code: &str) -> String {
+    // Use quote to convert to string - this is more reliable than span extraction
+    quote::quote!(#node).to_string()
 }
 
 /// Extract documentation from a parsed crate

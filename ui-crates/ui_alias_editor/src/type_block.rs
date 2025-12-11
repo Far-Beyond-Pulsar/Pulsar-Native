@@ -274,8 +274,15 @@ impl TypeBlock {
                 let mut block = TypeBlock::constructor(name.clone(), params.len());
                 if let TypeBlock::Constructor { slots, .. } = &mut block {
                     for (i, param) in params.iter().enumerate() {
-                        if i < slots.len() {
-                            slots[i] = Some(Box::new(TypeBlock::from_ast(param)));
+                        match param {
+                            TypeAstNode::None => {
+                                // Leave slot empty for None
+                            }
+                            _ => {
+                                if i < slots.len() {
+                                    slots[i] = Some(Box::new(TypeBlock::from_ast(param)));
+                                }
+                            }
                         }
                     }
                 }
@@ -285,16 +292,24 @@ impl TypeBlock {
                 let mut block = TypeBlock::tuple(elements.len());
                 if let TypeBlock::Tuple { elements: el, .. } = &mut block {
                     for (i, elem) in elements.iter().enumerate() {
-                        if i < el.len() {
-                            el[i] = Some(Box::new(TypeBlock::from_ast(elem)));
+                        match elem {
+                            TypeAstNode::None => {
+                                // Leave slot empty for None
+                            }
+                            _ => {
+                                if i < el.len() {
+                                    el[i] = Some(Box::new(TypeBlock::from_ast(elem)));
+                                }
+                            }
                         }
                     }
                 }
                 block
             }
-            TypeAstNode::FnPointer { .. } => {
-                // For now, represent as a placeholder
-                TypeBlock::primitive("FnPtr")
+            TypeAstNode::FnPointer { .. } => TypeBlock::primitive("FnPtr"),
+            TypeAstNode::None => {
+                // Do not fill slot, leave it empty
+                TypeBlock::primitive("") // Or handle as needed
             }
         }
     }
@@ -566,20 +581,16 @@ impl TypeBlockView {
                 *block.clone(),
                 ("slot", index),
             );
-            
             // Pass down the click handler to nested blocks
             if let Some(handler) = &self.on_slot_click {
                 let handler = Arc::clone(handler);
                 nested_view = nested_view.on_slot_click(move |id, idx| handler(id, idx));
             }
-
-            div()
-                .child(nested_view)
+            div().child(nested_view)
         } else {
-            // Empty slot - clickable drop zone
+            // Explicitly render a visual indicator for None slots
             let parent_id = self.block.id();
             let slot_idx = index;
-            
             let mut slot_div = div()
                 .min_w(px(150.0))
                 .px_4()
@@ -601,9 +612,14 @@ impl TypeBlockView {
                     div()
                         .text_xs()
                         .text_color(hsla(0.0, 0.0, 0.5, 1.0))
-                        .child("click to select slot")
+                        .child("Empty slot (None)")
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(hsla(0.0, 0.0, 0.5, 0.7))
+                        .child("Click to select type")
                 );
-            
             // Add click handler if provided
             if let Some(handler) = &self.on_slot_click {
                 let handler = Arc::clone(handler);
@@ -612,7 +628,6 @@ impl TypeBlockView {
                     handler(parent_id.clone(), slot_idx);
                 });
             }
-            
             slot_div
         }
     }

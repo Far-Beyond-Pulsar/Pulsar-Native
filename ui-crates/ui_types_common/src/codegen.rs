@@ -65,6 +65,7 @@ pub fn render_ast_node(node: &TypeAstNode) -> String {
             let return_str = render_ast_node(return_type);
             format!("fn{} -> {}", param_str, return_str)
         }
+        TypeAstNode::None => String::new(), // Render None as empty
     }
 }
 

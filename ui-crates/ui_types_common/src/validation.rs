@@ -119,6 +119,9 @@ pub fn validate_ast_node(node: &TypeAstNode, index: &TypeIndex) -> Result<()> {
             }
             validate_ast_node(return_type, index)?;
         }
+        TypeAstNode::None => {
+            // None slots are valid, nothing to validate
+        }
     }
     Ok(())
 }

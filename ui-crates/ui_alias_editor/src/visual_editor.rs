@@ -314,6 +314,7 @@ impl VisualAliasEditor {
                     .join(", ");
                 format!("fn({}) -> {}", params_str, self.ast_to_rust_string(return_type))
             }
+            &TypeAstNode::None => String::new(),
         }
     }
 }

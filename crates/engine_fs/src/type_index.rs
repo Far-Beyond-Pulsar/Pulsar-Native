@@ -84,6 +84,7 @@ impl TypeAliasSignature {
                     .join(", ");
                 format!("fn({}) -> {}", params_str, Self::ast_to_string(return_type))
             }
+            &TypeAstNode::None => String::new(),
         }
     }
     

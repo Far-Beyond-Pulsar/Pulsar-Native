@@ -7,6 +7,11 @@ edition = "2024"
 rust-embed = { version = "6", features = ["interpolate-folder-path"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+syn = { version = "2", features = ["full", "parsing", "extra-traits", "visit"] }
+quote = "1"
+proc-macro2 = "1"
+walkdir = "2"
+toml = "0.8"
 
 [build-dependencies]
 syn = { version = "2", features = ["full", "parsing", "extra-traits", "visit"] }

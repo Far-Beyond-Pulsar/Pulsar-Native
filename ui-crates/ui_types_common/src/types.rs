@@ -78,6 +78,8 @@ impl TypeRef {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "nodeKind")]
 pub enum TypeAstNode {
+        /// Explicitly empty slot (for UI mapping)
+        None,
     /// Primitive type
     Primitive { name: String },
 
