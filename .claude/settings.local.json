@@ -85,6 +85,10 @@
       "Bash(git stash:*)",
       "Bash(tee:*)",
       "Bash(cargo tree:*)",
+      "Bash(RUST_LOG=info timeout 30 ./target/debug/pulsar_engine:*)",
+      "WebFetch(domain:docs.rs)",
+      "Bash(git checkout:*)",
+      "Bash(cargo metadata:*)"
       "Bash(dir \"C:\\Users\\redst\\OneDrive\\Documents\\GitHub\\Pulsar-Native\" /b)"
     ],
     "deny": [],
