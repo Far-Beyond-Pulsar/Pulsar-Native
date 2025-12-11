@@ -85,7 +85,6 @@ impl ToolbarPanel {
                             Button::new("play")
                                 .icon(IconName::Play)
                                 .tooltip("Play (Ctrl+P)")
-                                .xsmall()
                                 .on_click(cx.listener(|_, _, _, cx| {
                                     cx.dispatch_action(&PlayScene);
                                 }))
@@ -94,7 +93,6 @@ impl ToolbarPanel {
                             Button::new("play_disabled")
                                 .icon(IconName::Play)
                                 .tooltip("Already playing")
-                                .xsmall()
                                 .ghost()
                                 .into_any_element()
                         }
@@ -104,7 +102,6 @@ impl ToolbarPanel {
                             Button::new("stop")
                                 .icon(IconName::X)
                                 .tooltip("Stop (Ctrl+.)")
-                                .xsmall()
                                 .on_click(cx.listener(|_, _, _, cx| {
                                     cx.dispatch_action(&StopScene);
                                 }))
@@ -113,7 +110,6 @@ impl ToolbarPanel {
                             Button::new("stop_disabled")
                                 .icon(IconName::X)
                                 .tooltip("Not playing")
-                                .xsmall()
                                 .ghost()
                                 .into_any_element()
                         }
@@ -135,7 +131,6 @@ impl ToolbarPanel {
                         Button::new("add_mesh")
                             .icon(IconName::Plus)
                             .tooltip("Add Mesh")
-                            .xsmall()
                             .on_click(cx.listener(|_, _, _, cx| {
                                 cx.dispatch_action(&AddObjectOfType {
                                     object_type: "Mesh".to_string()
@@ -146,7 +141,6 @@ impl ToolbarPanel {
                         Button::new("add_light")
                             .icon(IconName::Sun)
                             .tooltip("Add Light")
-                            .xsmall()
                             .on_click(cx.listener(|_, _, _, cx| {
                                 cx.dispatch_action(&AddObjectOfType {
                                     object_type: "Light".to_string()
@@ -157,7 +151,6 @@ impl ToolbarPanel {
                         Button::new("add_camera")
                             .icon(IconName::Camera)
                             .tooltip("Add Camera")
-                            .xsmall()
                             .on_click(cx.listener(|_, _, _, cx| {
                                 cx.dispatch_action(&AddObjectOfType {
                                     object_type: "Camera".to_string()
@@ -176,8 +169,7 @@ impl ToolbarPanel {
                     .child({
                         let mut btn = Button::new("save_scene")
                             .icon(IconName::FloppyDisk)
-                            .tooltip("Save Scene (Ctrl+S)")
-                            .xsmall();
+                            .tooltip("Save Scene (Ctrl+S)");
 
                         if state.has_unsaved_changes {
                             btn = btn.text_color(cx.theme().warning);
@@ -191,7 +183,6 @@ impl ToolbarPanel {
                         Button::new("open_scene")
                             .icon(IconName::FolderOpen)
                             .tooltip("Open Scene (Ctrl+O)")
-                            .xsmall()
                             .on_click(cx.listener(|_, _, _, cx| {
                                 cx.dispatch_action(&OpenScene);
                             }))
@@ -200,7 +191,6 @@ impl ToolbarPanel {
                         Button::new("new_scene")
                             .icon(IconName::FolderPlus)
                             .tooltip("New Scene (Ctrl+N)")
-                            .xsmall()
                             .on_click(cx.listener(|_, _, _, cx| {
                                 cx.dispatch_action(&NewScene);
                             }))

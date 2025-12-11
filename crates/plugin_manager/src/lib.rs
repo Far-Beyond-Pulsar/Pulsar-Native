@@ -250,6 +250,10 @@ impl PluginManager {
     ///
     /// This will call the plugin's `on_unload` hook and remove all registered
     /// file types and editors.
+    /// 
+    /// TODO: Currently, the dynamic library is not unloaded from memory due to Rust's
+    /// safety restrictions. This will be addressed in future versions of the engine by
+    /// tracking the in-memory location of a plugin and unloading it when no longer needed.
     pub fn unload_plugin(&mut self, plugin_id: &PluginId) -> Result<(), PluginManagerError> {
         if let Some(mut loaded_plugin) = self.plugins.remove(plugin_id) {
             // Call on_unload hook
@@ -290,8 +294,13 @@ impl PluginManager {
     ///
     /// This will:
     /// 1. Determine the file type from the path
-    /// 2. Find an editor that supports that file type
+    /// 2. Find an editor that supports that file type (if any)
     /// 3. Create an editor instance using the appropriate plugin
+    ///      else
+    ///    We will return an error in a notification if no suitable
+    ///    editor is found. TODO: Implement a suggested plugins system
+    ///    that can scan the plugins dir on request to identify plugin
+    ///    that may provide support for the file type.
     pub fn create_editor_for_file(
         &mut self,
         file_path: &Path,

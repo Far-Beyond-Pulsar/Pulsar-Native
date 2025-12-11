@@ -39,6 +39,11 @@ pub struct LevelEditorState {
     pub show_performance_overlay: bool,
     pub show_camera_mode_selector: bool,
     pub show_viewport_options: bool,
+    /// Collapsed state for overlays (when X is clicked, overlay collapses to a button)
+    pub camera_mode_selector_collapsed: bool,
+    pub viewport_options_collapsed: bool,
+    pub performance_overlay_collapsed: bool,
+    pub gpu_pipeline_overlay_collapsed: bool,
     /// FPS graph type (true = line, false = bar)
     pub fps_graph_is_line: bool,
     /// Performance metrics visibility
@@ -101,16 +106,20 @@ impl Default for LevelEditorState {
             show_performance_overlay: true,
             show_camera_mode_selector: true,
             show_viewport_options: true,
+            camera_mode_selector_collapsed: false,
+            viewport_options_collapsed: false,
+            performance_overlay_collapsed: false,
+            gpu_pipeline_overlay_collapsed: false,
             fps_graph_is_line: true,
-            // Performance metrics - all visible by default
-            show_fps_graph: true,
-            show_tps_graph: true,
+            // Performance metrics - default: Frame Time, GPU Memory, Input Latency
+            show_fps_graph: false,
+            show_tps_graph: false,
             show_frame_time_graph: true,
             show_memory_graph: true,
-            show_draw_calls_graph: true,
-            show_vertices_graph: true,
+            show_draw_calls_graph: false,
+            show_vertices_graph: false,
             show_input_latency_graph: true,
-            show_ui_consistency_graph: true,
+            show_ui_consistency_graph: false,
             expanded_objects: HashSet::new(),
         }
     }
@@ -304,6 +313,26 @@ impl LevelEditorState {
     /// Toggle viewport options
     pub fn toggle_viewport_options(&mut self) {
         self.show_viewport_options = !self.show_viewport_options;
+    }
+
+    /// Collapse/expand camera mode selector
+    pub fn set_camera_mode_selector_collapsed(&mut self, collapsed: bool) {
+        self.camera_mode_selector_collapsed = collapsed;
+    }
+
+    /// Collapse/expand viewport options
+    pub fn set_viewport_options_collapsed(&mut self, collapsed: bool) {
+        self.viewport_options_collapsed = collapsed;
+    }
+
+    /// Collapse/expand performance overlay
+    pub fn set_performance_overlay_collapsed(&mut self, collapsed: bool) {
+        self.performance_overlay_collapsed = collapsed;
+    }
+
+    /// Collapse/expand GPU pipeline overlay
+    pub fn set_gpu_pipeline_overlay_collapsed(&mut self, collapsed: bool) {
+        self.gpu_pipeline_overlay_collapsed = collapsed;
     }
 
     /// Toggle FPS graph type

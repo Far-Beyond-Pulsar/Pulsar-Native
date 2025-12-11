@@ -603,6 +603,8 @@ pub type PluginDestroy = unsafe extern "C" fn(*mut dyn EditorPlugin);
 ///
 /// This generates the necessary FFI functions for the plugin to be loaded
 /// by the engine, including a synced copy of the main app's Theme global.
+/// 
+/// WARNING: This macro must be used in the root of the plugin crate.
 ///
 /// # Example
 ///
