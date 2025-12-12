@@ -4,6 +4,7 @@ use ui::{
     context_menu::ContextMenuExt,
     h_flex, v_flex, scroll::ScrollbarAxis, ActiveTheme, Icon, IconName, Sizable, StyledExt,
 };
+use std::sync::Arc;
 
 use super::state::{LevelEditorState, SceneObject};
 use super::actions::*;
@@ -20,6 +21,7 @@ impl HierarchyPanel {
     pub fn render<V: 'static>(
         &self,
         state: &LevelEditorState,
+        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         cx: &mut Context<V>
     ) -> impl IntoElement
     where
@@ -50,26 +52,43 @@ impl HierarchyPanel {
                             .child(
                                 h_flex()
                                     .gap_1()
-                                    .child(
+                                    .child({
+                                        let state_clone = state_arc.clone();
                                         Button::new("add_object")
                                             .icon(IconName::Plus)
                                             .ghost()
                                             .xsmall()
                                             .tooltip("Add Object")
-                                            .on_click(cx.listener(|_, _, _, cx| {
-                                                cx.dispatch_action(&AddObject);
-                                            }))
-                                    )
-                                    .child(
+                                            .on_click(move |_, _, _| {
+                                                use crate::tabs::level_editor::scene_database::{SceneObjectData, ObjectType, Transform};
+                                                let objects_count = state_clone.read().scene_objects().len();
+                                                let new_object = SceneObjectData {
+                                                    id: format!("object_{}", objects_count + 1),
+                                                    name: "New Object".to_string(),
+                                                    object_type: ObjectType::Empty,
+                                                    transform: Transform::default(),
+                                                    visible: true,
+                                                    locked: false,
+                                                    parent: None,
+                                                    children: vec![],
+                                                    components: vec![],
+                                                };
+                                                state_clone.read().scene_database.add_object(new_object, None);
+                                            })
+                                    })
+                                    .child({
+                                        let state_clone = state_arc.clone();
                                         Button::new("delete_object")
                                             .icon(IconName::Trash)
                                             .ghost()
                                             .xsmall()
                                             .tooltip("Delete Selected")
-                                            .on_click(cx.listener(|_, _, _, cx| {
-                                                cx.dispatch_action(&DeleteObject);
-                                            }))
-                                    )
+                                            .on_click(move |_, _, _| {
+                                                if let Some(id) = state_clone.read().selected_object() {
+                                                    state_clone.read().scene_database.remove_object(&id);
+                                                }
+                                            })
+                                    })
                             )
                     )
             )
@@ -84,7 +103,7 @@ impl HierarchyPanel {
                             .scrollable(ScrollbarAxis::Vertical)
                             .children(
                                 state.scene_objects().iter().map(|obj| {
-                                    Self::render_object_tree_item(obj, state, 0, cx)
+                                    Self::render_object_tree_item(obj, state, state_arc.clone(), 0, cx)
                                 })
                             )
                     )
@@ -94,6 +113,7 @@ impl HierarchyPanel {
     fn render_object_tree_item<V: 'static>(
         object: &SceneObject,
         state: &LevelEditorState,
+        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         depth: usize,
         cx: &mut Context<V>,
     ) -> impl IntoElement
@@ -129,24 +149,17 @@ impl HierarchyPanel {
             item_div.hover(|style| style.bg(cx.theme().accent.opacity(0.1)))
         };
 
+        let state_clone_for_click = state_arc.clone();
+        let object_id_for_click = object_id.clone();
+        
         div()
             .w_full()
             .flex()
             .flex_col()
             .child(
                 item_div
-                    .on_mouse_down(MouseButton::Left, cx.listener(move |view, _, _, cx| {
-                        cx.dispatch_action(&SelectObject {
-                            object_id: object_id.clone()
-                        });
-                    }))
-                    .context_menu(move |menu, _window, _cx| {
-                        menu
-                            .menu("Add Child Object", Box::new(AddObject) as Box<dyn gpui::Action>)
-                            .menu("Duplicate", Box::new(DuplicateObject) as Box<dyn gpui::Action>)
-                            .separator()
-                            .menu("Rename", Box::new(RenameObject) as Box<dyn gpui::Action>)
-                            .menu("Delete", Box::new(DeleteObject) as Box<dyn gpui::Action>)
+                    .on_mouse_down(MouseButton::Left, move |_, _, _| {
+                        state_clone_for_click.write().select_object(Some(object_id_for_click.clone()));
                     })
                     .child(
                         // Expand/collapse arrow for items with children

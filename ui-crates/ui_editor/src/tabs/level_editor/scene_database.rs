@@ -11,6 +11,8 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use std::path::Path;
+use std::fs;
 use serde::{Deserialize, Serialize};
 
 pub type ObjectId = String;
@@ -257,28 +259,7 @@ impl SceneDatabase {
             }],
         }, None);
 
-        // Add green sphere (matches Bevy renderer)
-        db.add_object(SceneObjectData {
-            id: "sphere_green".to_string(),
-            name: "Green Sphere".to_string(),
-            object_type: ObjectType::Mesh(MeshType::Sphere),
-            transform: Transform {
-                position: [0.0, 1.0, 2.0],
-                rotation: [0.0, 0.0, 0.0],
-                scale: [1.0, 1.0, 1.0],
-            },
-            parent: None,
-            children: Vec::new(),
-            visible: true,
-            locked: false,
-            components: vec![Component::Material {
-                id: "green_metal".to_string(),
-                color: [0.2, 0.9, 0.3, 1.0],
-                metallic: 0.6,
-                roughness: 0.4,
-            }],
-        }, None);
-
+        // NO DEFAULT OBJECTS - start with empty scene
         db
     }
 
@@ -535,6 +516,89 @@ impl SceneDatabase {
         inner.history.undo_stack.clear();
         inner.history.redo_stack.clear();
     }
+    
+    /// Save scene to JSON file
+    pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), String> {
+        let inner = self.inner.read().unwrap();
+        
+        // Ensure parent directory exists
+        if let Some(parent) = path.as_ref().parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create directory: {}", e))?;
+        }
+        
+        // Get current timestamp
+        let now = chrono::Utc::now().to_rfc3339();
+        
+        // Create scene file format
+        let scene_file = SceneFile {
+            version: "1.0".to_string(),
+            objects: inner.objects.values().cloned().collect(),
+            metadata: SceneMetadata {
+                created: now.clone(),
+                modified: now,
+                editor_version: "0.1.0".to_string(),
+            },
+        };
+        
+        // Serialize to pretty JSON
+        let json = serde_json::to_string_pretty(&scene_file)
+            .map_err(|e| format!("Failed to serialize scene: {}", e))?;
+        
+        // Write to file
+        fs::write(&path, json)
+            .map_err(|e| format!("Failed to write scene file: {}", e))?;
+        
+        println!("[SCENE-DB] 💾 Scene saved successfully to: {:?}", path.as_ref());
+        Ok(())
+    }
+    
+    /// Load scene from JSON file
+    pub fn load_from_file<P: AsRef<Path>>(&self, path: P) -> Result<(), String> {
+        // Read file
+        let json = fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read scene file: {}", e))?;
+        
+        // Deserialize
+        let scene_file: SceneFile = serde_json::from_str(&json)
+            .map_err(|e| format!("Failed to parse scene file: {}", e))?;
+        
+        // Clear current scene
+        self.clear();
+        
+        // Load objects
+        let mut inner = self.inner.write().unwrap();
+        for object in scene_file.objects {
+            // Add to objects map
+            let id = object.id.clone();
+            inner.objects.insert(id.clone(), object.clone());
+            
+            // Add to root objects if no parent
+            if object.parent.is_none() {
+                inner.root_objects.push(id);
+            }
+        }
+        
+        drop(inner);
+        
+        println!("[SCENE-DB] 📂 Scene loaded successfully from {:?}", path.as_ref());
+        Ok(())
+    }
+}
+
+/// Scene file format for JSON serialization
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SceneFile {
+    pub version: String,
+    pub objects: Vec<SceneObjectData>,
+    pub metadata: SceneMetadata,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SceneMetadata {
+    pub created: String,
+    pub modified: String,
+    pub editor_version: String,
 }
 
 impl Default for Transform {

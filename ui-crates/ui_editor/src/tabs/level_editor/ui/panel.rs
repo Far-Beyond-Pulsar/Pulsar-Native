@@ -518,6 +518,68 @@ impl LevelEditorPanel {
         self.state.set_camera_mode(CameraMode::Side);
         cx.notify();
     }
+    
+    fn on_save_scene(&mut self, _: &SaveScene, _: &mut Window, cx: &mut Context<Self>) {
+        // If no current scene path, do Save As
+        if self.state.current_scene.is_none() {
+            cx.dispatch_action(&SaveSceneAs);
+            return;
+        }
+        
+        if let Some(ref path) = self.state.current_scene {
+            match self.state.scene_database.save_to_file(path) {
+                Ok(_) => {
+                    println!("[LEVEL-EDITOR] 💾 Scene saved: {:?}", path);
+                    self.state.has_unsaved_changes = false;
+                    cx.notify();
+                }
+                Err(e) => {
+                    println!("[LEVEL-EDITOR] ❌ Failed to save scene: {}", e);
+                }
+            }
+        }
+    }
+    
+    fn on_save_scene_as(&mut self, _: &SaveSceneAs, _window: &mut Window, cx: &mut Context<Self>) {
+        // TODO: Implement async file dialog
+        println!("[LEVEL-EDITOR] 💾 Save Scene As - TODO");
+        if let Some(ref path) = self.state.current_scene {
+            match self.state.scene_database.save_to_file(path) {
+                Ok(_) => {
+                    println!("[LEVEL-EDITOR] 💾 Scene saved: {:?}", path);
+                    self.state.has_unsaved_changes = false;
+                    cx.notify();
+                }
+                Err(e) => {
+                    println!("[LEVEL-EDITOR] ❌ Failed to save scene: {}", e);
+                }
+            }
+        }
+    }
+    
+    fn on_open_scene(&mut self, _: &OpenScene, _window: &mut Window, cx: &mut Context<Self>) {
+        // TODO: Implement async file dialog
+        println!("[LEVEL-EDITOR] 📂 Open Scene - TODO");
+        cx.notify();
+    }
+    
+    fn on_new_scene(&mut self, _: &NewScene, _: &mut Window, cx: &mut Context<Self>) {
+        // Warn if unsaved changes
+        if self.state.has_unsaved_changes {
+            // TODO: Show confirmation dialog
+        }
+        
+        // Clear scene and reset to defaults
+        self.state.scene_database.clear();
+        self.state.current_scene = None;
+        self.state.has_unsaved_changes = false;
+        
+        // Re-add default objects
+        self.state.scene_database = crate::tabs::level_editor::SceneDatabase::with_default_scene();
+        
+        println!("[LEVEL-EDITOR] 📄 New scene created");
+        cx.notify();
+    }
 
     fn on_toggle_snapping(&mut self, _: &ToggleSnapping, _: &mut Window, cx: &mut Context<Self>) {
         // Toggle snapping in gizmo state
@@ -614,14 +676,55 @@ impl Render for LevelEditorPanel {
         self.initialize_workspace(window, cx);
         
         // Sync viewport buffer index with Bevy's read index each frame
+        // ALSO sync selection state from Bevy back to GPUI
         if let Ok(engine_guard) = self.gpu_engine.try_lock() {
             if let Some(ref bevy_renderer) = engine_guard.bevy_renderer {
                 let read_idx = bevy_renderer.get_read_index();
                 let mut state = self.viewport_state.write();
                 state.set_active_buffer(read_idx);
 
-                // NO MORE DIRECT BEVY ACCESS - Everything goes through SharedGizmoStateResource
-                // The sync_gizmo_state_system in Bevy will handle the rest
+                // BIDIRECTIONAL SYNC: Poll Bevy's gizmo state for selection changes
+                if let Ok(bevy_gizmo) = bevy_renderer.gizmo_state.try_lock() {
+                    let bevy_selected_id = bevy_gizmo.selected_object_id.clone();
+                    drop(bevy_gizmo); // Release lock immediately
+                    
+                    // Check if Bevy's selection differs from GPUI's
+                    let gpui_selected_id = self.shared_state.read().selected_object();
+                    
+                    if bevy_selected_id != gpui_selected_id {
+                        // Bevy has a different selection - sync to GPUI!
+                        if let Some(ref new_id) = bevy_selected_id {
+                            println!("[LEVEL-EDITOR] 🔄 Syncing selection from Bevy: {}", new_id);
+                            self.shared_state.write().select_object(Some(new_id.clone()));
+                            cx.notify(); // Trigger UI update
+                        } else {
+                            // Bevy deselected
+                            println!("[LEVEL-EDITOR] 🔄 Syncing deselection from Bevy");
+                            self.shared_state.write().select_object(None);
+                            cx.notify();
+                        }
+                    }
+                }
+                
+                // TRANSFORM SYNC: Poll for transform updates from Bevy (e.g., from gizmo dragging)
+                if let Ok(bevy_gizmo) = bevy_renderer.gizmo_state.try_lock() {
+                    if let Some(ref updated_id) = bevy_gizmo.updated_object_id {
+                        if let Some(ref updated_transform) = bevy_gizmo.updated_transform {
+                            println!("[LEVEL-EDITOR] 🔄 Syncing transform update from Bevy: {}", updated_id);
+                            
+                            // Convert Bevy's SharedTransform to our Transform type
+                            let new_transform = crate::tabs::level_editor::scene_database::Transform {
+                                position: updated_transform.position,
+                                rotation: [0.0, 0.0, 0.0], // Euler angles - TODO: convert quaternion
+                                scale: updated_transform.scale,
+                            };
+                            
+                            // Update scene database
+                            self.shared_state.read().scene_database.update_transform(updated_id, new_transform);
+                            cx.notify(); // Trigger UI update
+                        }
+                    }
+                }
             }
         }
 
@@ -635,6 +738,11 @@ impl Render for LevelEditorPanel {
             // NO BACKGROUND - allow transparency for viewport
             .key_context("LevelEditor")
             .track_focus(&self.focus_handle)
+            // Scene operations
+            .on_action(cx.listener(Self::on_new_scene))
+            .on_action(cx.listener(Self::on_open_scene))
+            .on_action(cx.listener(Self::on_save_scene))
+            .on_action(cx.listener(Self::on_save_scene_as))
             // Transform tools - KEYBOARD: Q/W/E/R
             .on_action(cx.listener(Self::on_select_tool))
             .on_action(cx.listener(Self::on_move_tool))
@@ -707,7 +815,7 @@ impl Render for LevelEditorPanel {
             }))
             .child(
                 // Toolbar at the top
-                self.toolbar.render(&self.state, cx)
+                self.toolbar.render(&self.state, self.shared_state.clone(), cx)
             )
             .child(
                 // Workspace with draggable panels

@@ -2,9 +2,10 @@ use gpui::*;
 use ui::{
     button::{Button, ButtonVariants as _}, h_flex, ActiveTheme, IconName, Selectable, Sizable,
 };
+use std::sync::Arc;
 
 use super::state::{LevelEditorState, TransformTool};
-use super::actions::*;
+use crate::tabs::level_editor::scene_database::{ObjectType, MeshType, LightType};
 
 /// Toolbar - Transform tools and quick actions
 pub struct ToolbarPanel;
@@ -14,7 +15,7 @@ impl ToolbarPanel {
         Self
     }
 
-    pub fn render<V: 'static>(&self, state: &LevelEditorState, cx: &mut Context<V>) -> impl IntoElement
+    pub fn render<V: 'static>(&self, state: &LevelEditorState, state_arc: Arc<parking_lot::RwLock<LevelEditorState>>, cx: &mut Context<V>) -> impl IntoElement
     where
         V: EventEmitter<ui::dock::PanelEvent> + Render,
     {
@@ -31,42 +32,46 @@ impl ToolbarPanel {
                 // Transform tools
                 h_flex()
                     .gap_1()
-                    .child(
+                    .child({
+                        let state_clone = state_arc.clone();
                         Button::new("tool_select")
                             .icon(IconName::CursorPointer)
                             .tooltip("Select (S)")
                             .selected(matches!(state.current_tool, TransformTool::Select))
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.dispatch_action(&SelectTool);
-                            }))
-                    )
-                    .child(
+                            .on_click(move |_, _, _| {
+                                state_clone.write().set_tool(TransformTool::Select);
+                            })
+                    })
+                    .child({
+                        let state_clone = state_arc.clone();
                         Button::new("tool_move")
                             .icon(IconName::Drag)
                             .tooltip("Move (M)")
                             .selected(matches!(state.current_tool, TransformTool::Move))
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.dispatch_action(&MoveTool);
-                            }))
-                    )
-                    .child(
+                            .on_click(move |_, _, _| {
+                                state_clone.write().set_tool(TransformTool::Move);
+                            })
+                    })
+                    .child({
+                        let state_clone = state_arc.clone();
                         Button::new("tool_rotate")
                             .icon(IconName::RotateCameraRight)
                             .tooltip("Rotate (R)")
                             .selected(matches!(state.current_tool, TransformTool::Rotate))
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.dispatch_action(&RotateTool);
-                            }))
-                    )
-                    .child(
+                            .on_click(move |_, _, _| {
+                                state_clone.write().set_tool(TransformTool::Rotate);
+                            })
+                    })
+                    .child({
+                        let state_clone = state_arc.clone();
                         Button::new("tool_scale")
                             .icon(IconName::Enlarge)
                             .tooltip("Scale (T)")
                             .selected(matches!(state.current_tool, TransformTool::Scale))
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.dispatch_action(&ScaleTool);
-                            }))
-                    )
+                            .on_click(move |_, _, _| {
+                                state_clone.write().set_tool(TransformTool::Scale);
+                            })
+                    })
             )
             .child(
                 // Separator
@@ -80,14 +85,15 @@ impl ToolbarPanel {
                 // Play/Stop controls
                 h_flex()
                     .gap_1()
-                    .child(
+                    .child({
+                        let state_clone = state_arc.clone();
                         if state.is_edit_mode() {
                             Button::new("play")
                                 .icon(IconName::Play)
                                 .tooltip("Play (Ctrl+P)")
-                                .on_click(cx.listener(|_, _, _, cx| {
-                                    cx.dispatch_action(&PlayScene);
-                                }))
+                                .on_click(move |_, _, _| {
+                                    state_clone.write().enter_play_mode();
+                                })
                                 .into_any_element()
                         } else {
                             Button::new("play_disabled")
@@ -96,15 +102,16 @@ impl ToolbarPanel {
                                 .ghost()
                                 .into_any_element()
                         }
-                    )
-                    .child(
+                    })
+                    .child({
+                        let state_clone = state_arc.clone();
                         if state.is_play_mode() {
                             Button::new("stop")
                                 .icon(IconName::X)
                                 .tooltip("Stop (Ctrl+.)")
-                                .on_click(cx.listener(|_, _, _, cx| {
-                                    cx.dispatch_action(&StopScene);
-                                }))
+                                .on_click(move |_, _, _| {
+                                    state_clone.write().exit_play_mode();
+                                })
                                 .into_any_element()
                         } else {
                             Button::new("stop_disabled")
@@ -113,7 +120,7 @@ impl ToolbarPanel {
                                 .ghost()
                                 .into_any_element()
                         }
-                    )
+                    })
             )
             .child(
                 // Separator
@@ -127,36 +134,72 @@ impl ToolbarPanel {
                 // Object creation tools
                 h_flex()
                     .gap_1()
-                    .child(
+                    .child({
+                        let state_clone = state_arc.clone();
                         Button::new("add_mesh")
                             .icon(IconName::Plus)
                             .tooltip("Add Mesh")
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.dispatch_action(&AddObjectOfType {
-                                    object_type: "Mesh".to_string()
-                                });
-                            }))
-                    )
-                    .child(
+                            .on_click(move |_, _, _| {
+                                use crate::tabs::level_editor::scene_database::{SceneObjectData, Transform};
+                                let objects_count = state_clone.read().scene_objects().len();
+                                let new_object = SceneObjectData {
+                                    id: format!("mesh_{}", objects_count + 1),
+                                    name: "New Mesh".to_string(),
+                                    object_type: ObjectType::Mesh(MeshType::Cube),
+                                    transform: Transform::default(),
+                                    visible: true,
+                                    locked: false,
+                                    parent: None,
+                                    children: vec![],
+                                    components: vec![],
+                                };
+                                state_clone.read().scene_database.add_object(new_object, None);
+                            })
+                    })
+                    .child({
+                        let state_clone = state_arc.clone();
                         Button::new("add_light")
                             .icon(IconName::Sun)
                             .tooltip("Add Light")
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.dispatch_action(&AddObjectOfType {
-                                    object_type: "Light".to_string()
-                                });
-                            }))
-                    )
-                    .child(
+                            .on_click(move |_, _, _| {
+                                use crate::tabs::level_editor::scene_database::{SceneObjectData, Transform};
+                                let objects_count = state_clone.read().scene_objects().len();
+                                let new_object = SceneObjectData {
+                                    id: format!("light_{}", objects_count + 1),
+                                    name: "New Light".to_string(),
+                                    object_type: ObjectType::Light(LightType::Directional),
+                                    transform: Transform::default(),
+                                    visible: true,
+                                    locked: false,
+                                    parent: None,
+                                    children: vec![],
+                                    components: vec![],
+                                };
+                                state_clone.read().scene_database.add_object(new_object, None);
+                            })
+                    })
+                    .child({
+                        let state_clone = state_arc.clone();
                         Button::new("add_camera")
                             .icon(IconName::Camera)
                             .tooltip("Add Camera")
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.dispatch_action(&AddObjectOfType {
-                                    object_type: "Camera".to_string()
-                                });
-                            }))
-                    )
+                            .on_click(move |_, _, _| {
+                                use crate::tabs::level_editor::scene_database::{SceneObjectData, Transform};
+                                let objects_count = state_clone.read().scene_objects().len();
+                                let new_object = SceneObjectData {
+                                    id: format!("camera_{}", objects_count + 1),
+                                    name: "New Camera".to_string(),
+                                    object_type: ObjectType::Camera,
+                                    transform: Transform::default(),
+                                    visible: true,
+                                    locked: false,
+                                    parent: None,
+                                    children: vec![],
+                                    components: vec![],
+                                };
+                                state_clone.read().scene_database.add_object(new_object, None);
+                            })
+                    })
             )
             .child(
                 // Spacer
@@ -167,6 +210,7 @@ impl ToolbarPanel {
                 h_flex()
                     .gap_1()
                     .child({
+                        let state_clone = state_arc.clone();
                         let mut btn = Button::new("save_scene")
                             .icon(IconName::FloppyDisk)
                             .tooltip("Save Scene (Ctrl+S)");
@@ -175,26 +219,51 @@ impl ToolbarPanel {
                             btn = btn.text_color(cx.theme().warning);
                         }
 
-                        btn.on_click(cx.listener(|_, _, _, cx| {
-                            cx.dispatch_action(&SaveScene);
-                        }))
+                        btn.on_click(move |_, _, _| {
+                            let state_guard = state_clone.read();
+                            
+                            // Determine save path
+                            let save_path = if let Some(ref path) = state_guard.current_scene {
+                                path.clone()
+                            } else {
+                                // No current scene - save to default location
+                                let scenes_dir = std::path::PathBuf::from("scenes");
+                                if !scenes_dir.exists() {
+                                    std::fs::create_dir_all(&scenes_dir).ok();
+                                }
+                                
+                                // Generate timestamped filename
+                                let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+                                scenes_dir.join(format!("scene_{}.json", timestamp))
+                            };
+                            
+                            // Save the scene
+                            match state_guard.scene_database.save_to_file(&save_path) {
+                                Ok(_) => {
+                                    println!("[LEVEL-EDITOR] 💾 Scene saved: {:?}", save_path);
+                                    drop(state_guard); // Release read lock before write
+                                    state_clone.write().current_scene = Some(save_path);
+                                    state_clone.write().has_unsaved_changes = false;
+                                }
+                                Err(e) => {
+                                    println!("[LEVEL-EDITOR] ❌ Failed to save scene: {}", e);
+                                }
+                            }
+                        })
                     })
-                    .child(
-                        Button::new("open_scene")
-                            .icon(IconName::FolderOpen)
-                            .tooltip("Open Scene (Ctrl+O)")
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.dispatch_action(&OpenScene);
-                            }))
-                    )
-                    .child(
+                    .child({
+                        let state_clone = state_arc.clone();
                         Button::new("new_scene")
                             .icon(IconName::FolderPlus)
                             .tooltip("New Scene (Ctrl+N)")
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.dispatch_action(&NewScene);
-                            }))
-                    )
+                            .on_click(move |_, _, _| {
+                                state_clone.write().scene_database.clear();
+                                state_clone.write().scene_database = crate::tabs::level_editor::SceneDatabase::with_default_scene();
+                                state_clone.write().current_scene = None;
+                                state_clone.write().has_unsaved_changes = false;
+                                println!("[LEVEL-EDITOR] 📄 New scene created");
+                            })
+                    })
             )
     }
 }

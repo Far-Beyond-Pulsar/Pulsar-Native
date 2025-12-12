@@ -71,6 +71,7 @@ pub enum FileType {
     Class, // A folder containing graph_save.json
     Script,
     DawProject, // .pdaw files
+    LevelScene, // .level.json files
     Database, // .db, .sqlite, .sqlite3 files
     Config, // .toml files
     // Type System Files
@@ -160,12 +161,18 @@ impl FileItem {
             } else if file_name.ends_with(".alias.json") {
                 FileType::AliasType
             } else {
-                match path.extension().and_then(|s| s.to_str()) {
-                    Some("rs") => FileType::Script,
-                    Some("pdaw") => FileType::DawProject,
-                    Some("db") | Some("sqlite") | Some("sqlite3") => FileType::Database,
-                    Some("toml") => FileType::Config,
-                    _ => FileType::Other,
+                // Check for .level.json specifically
+                let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                if filename.ends_with(".level.json") {
+                    FileType::LevelScene
+                } else {
+                    match path.extension().and_then(|s| s.to_str()) {
+                        Some("rs") => FileType::Script,
+                        Some("pdaw") => FileType::DawProject,
+                        Some("db") | Some("sqlite") | Some("sqlite3") => FileType::Database,
+                        Some("toml") => FileType::Config,
+                        _ => FileType::Other,
+                    }
                 }
             }
         };
@@ -972,6 +979,7 @@ impl FileManagerDrawer {
             FileType::Class => IconName::Component,
             FileType::Script => IconName::Code,
             FileType::DawProject => IconName::MusicNote,
+            FileType::LevelScene => IconName::Map,
             FileType::Database => IconName::Database,
             FileType::Config => IconName::Settings,
             FileType::StructType => IconName::Box,
@@ -1107,6 +1115,7 @@ impl FileManagerDrawer {
                                         FileType::Folder => cx.theme().primary.opacity(0.08),
                                         FileType::Script => cx.theme().info.opacity(0.12),
                                         FileType::DawProject => cx.theme().success.opacity(0.12),
+                                        FileType::LevelScene => cx.theme().warning.opacity(0.12),
                                         _ => cx.theme().muted.opacity(0.08),
                                     })
                                     .border_1()
@@ -1115,6 +1124,7 @@ impl FileManagerDrawer {
                                         FileType::Folder => cx.theme().primary.opacity(0.18),
                                         FileType::Script => cx.theme().info.opacity(0.25),
                                         FileType::DawProject => cx.theme().success.opacity(0.25),
+                                        FileType::LevelScene => cx.theme().warning.opacity(0.25),
                                         _ => cx.theme().border.opacity(0.25),
                                     })
                                     .child(
@@ -1125,6 +1135,7 @@ impl FileManagerDrawer {
                                                 FileType::Folder => cx.theme().primary,
                                                 FileType::Script => cx.theme().info,
                                                 FileType::DawProject => cx.theme().success,
+                                                FileType::LevelScene => cx.theme().warning,
                                                 _ => cx.theme().muted_foreground,
                                             })
                                     )
@@ -1290,6 +1301,7 @@ impl FileManagerDrawer {
                                         FileType::Folder => cx.theme().primary.opacity(0.08),
                                         FileType::Script => cx.theme().info.opacity(0.1),
                                         FileType::DawProject => cx.theme().success.opacity(0.1),
+                                        FileType::LevelScene => cx.theme().warning.opacity(0.1),
                                         _ => cx.theme().muted.opacity(0.06),
                                     })
                                     .child(
@@ -1300,6 +1312,7 @@ impl FileManagerDrawer {
                                                 FileType::Folder => cx.theme().primary,
                                                 FileType::Script => cx.theme().info,
                                                 FileType::DawProject => cx.theme().success,
+                                                FileType::LevelScene => cx.theme().warning,
                                                 _ => cx.theme().muted_foreground,
                                             })
                                     )

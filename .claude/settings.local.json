@@ -86,7 +86,8 @@
       "Bash(tee:*)",
       "Bash(cargo tree:*)",
       "Bash(dir \"C:\\Users\\redst\\OneDrive\\Documents\\GitHub\\Pulsar-Native\" /b)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(git log:*)"
     ],
     "deny": [],
     "ask": []

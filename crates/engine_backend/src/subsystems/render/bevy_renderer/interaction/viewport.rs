@@ -134,11 +134,12 @@ pub fn viewport_poll_raycast_system(
             let result = block_on(task);
                 // Task completed! Apply result                
                 if let Some(selected_id) = result.selected_id {
-                    // Convert numeric ID to string ID
+                    // Convert numeric ID to string ID (matching scene database)
                     let string_id = match selected_id {
-                        1 => "red_cube".to_string(),
-                        2 => "blue_sphere".to_string(),
-                        3 => "gold_sphere".to_string(),
+                        1 => "cube_red".to_string(),
+                        2 => "sphere_blue".to_string(),
+                        3 => "sphere_gold".to_string(),
+                        4 => "sphere_green".to_string(),
                         _ => format!("object_{}", selected_id),
                     };
                     
@@ -220,10 +221,11 @@ pub fn gizmo_drag_system(
             // Store starting transform of selected object
             let selected_id_numeric = gizmo_state.selected_object_id.as_ref()
                 .and_then(|id| match id.as_str() {
-                    "red_cube" => Some(1),
-                    "blue_sphere" => Some(2),
-                    "gold_sphere" => Some(3),
-                    _ => id.parse::<u64>().ok(),
+                    "cube_red" => Some(1),
+                    "sphere_blue" => Some(2),
+                    "sphere_gold" => Some(3),
+                    "sphere_green" => Some(4),
+                    _ => id.strip_prefix("object_").and_then(|n| n.parse::<u64>().ok()),
                 });
             
             if let Some(id) = selected_id_numeric {
@@ -261,11 +263,12 @@ pub fn gizmo_drag_system(
                     // CRITICAL: Sync transform back to GPUI via SharedGizmoStateResource
                     // This allows GPUI to update its scene database
                     if let Ok(mut shared) = shared_gizmo_state.0.try_lock() {
-                        // Convert numeric ID to string ID for GPUI
+                        // Convert numeric ID to string ID for GPUI (matching scene database)
                         let string_id = match obj_id {
-                            1 => "red_cube".to_string(),
-                            2 => "blue_sphere".to_string(),
-                            3 => "gold_sphere".to_string(),
+                            1 => "cube_red".to_string(),
+                            2 => "sphere_blue".to_string(),
+                            3 => "sphere_gold".to_string(),
+                            4 => "sphere_green".to_string(),
                             _ => format!("object_{}", obj_id),
                         };
 

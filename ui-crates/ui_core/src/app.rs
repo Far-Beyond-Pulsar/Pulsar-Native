@@ -687,6 +687,10 @@ impl PulsarApp {
                 tracing::warn!("Opening DAW tab using legacy code: {:?}", event.path);
                 self.open_daw_tab(event.path.clone(), window, cx);
             }
+            FileType::LevelScene => {
+                tracing::info!("Opening level editor for scene: {:?}", event.path);
+                self.open_level_editor_tab(event.path.clone(), window, cx);
+            }
             FileType::Database => {
                 tracing::warn!("Opening database tab using legacy code: {:?}", event.path);
                 self.open_database_tab(event.path.clone(), window, cx);
@@ -1293,6 +1297,19 @@ impl PulsarApp {
         self.daw_editors.push(daw_editor);
 
         eprintln!("DEBUG: DAW tab opened successfully");
+    }
+
+    fn open_level_editor_tab(&mut self, _scene_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        use ui_editor::LevelEditorPanel;
+        
+        eprintln!("DEBUG: Opening level editor");
+        
+        // Just create a new level editor - it will start with empty scene
+        let level_editor = cx.new(|cx| LevelEditorPanel::new(window, cx));
+        
+        self.center_tabs.update(cx, |tabs, cx| {
+            tabs.add_panel(Arc::new(level_editor.clone()), window, cx);
+        });
     }
 
     /// Open a database editor tab for the given database path
