@@ -23,9 +23,11 @@ use device_query::{DeviceQuery, DeviceState, Keycode};
 
 // Windows API for cursor locking and raw input
 #[cfg(target_os = "windows")]
-use winapi::um::winuser::{ClipCursor, GetClientRect, ClientToScreen, GetCursorPos, SetCursorPos};
+use winapi::um::winuser::{ClipCursor, GetClientRect, ClientToScreen, GetCursorPos, SetCursorPos, ShowCursor};
 #[cfg(target_os = "windows")]
 use winapi::shared::windef::{RECT, POINT};
+#[cfg(target_os = "windows")]
+use winapi::shared::minwindef::FALSE;
 
 // Windows-specific cursor locking and repositioning functions
 #[cfg(target_os = "windows")]
@@ -105,10 +107,31 @@ fn unlock_cursor() {
     }
 }
 
+/// Hide cursor (Windows)
+#[cfg(target_os = "windows")]
+fn hide_cursor() {
+    unsafe {
+        // ShowCursor is counter-based - call until cursor is hidden
+        // The cursor is hidden when the counter < 0
+        while ShowCursor(FALSE) >= 0 {}
+        tracing::info!("[VIEWPORT] 👻 Cursor hidden (Win32 ShowCursor)");
+    }
+}
+
+/// Show cursor (Windows)
+#[cfg(target_os = "windows")]
+fn show_cursor() {
+    unsafe {
+        // ShowCursor is counter-based - call until cursor is shown
+        // The cursor is shown when the counter >= 0
+        while ShowCursor(1) < 0 {}
+        tracing::info!("[VIEWPORT] 👁️ Cursor shown (Win32 ShowCursor)");
+    }
+}
+
 /// Set cursor to absolute screen position (Windows)
 #[cfg(target_os = "windows")]
 fn set_cursor_position(screen_x: i32, screen_y: i32) {
-    use winapi::um::winuser::SetCursorPos;
     unsafe {
         SetCursorPos(screen_x, screen_y);
     }
@@ -199,6 +222,16 @@ fn set_cursor_position(screen_x: i32, screen_y: i32) {
 fn window_to_screen_position(_window: &Window, _window_x: f32, _window_y: f32) -> Option<(i32, i32)> {
     // TODO: Implement for X11/Wayland
     None
+}
+
+#[cfg(not(target_os = "windows"))]
+fn hide_cursor() {
+    // Will use GPUI's cursor style on other platforms
+}
+
+#[cfg(not(target_os = "windows"))]
+fn show_cursor() {
+    // Will use GPUI's cursor style on other platforms
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -710,20 +743,25 @@ impl ViewportPanel {
                     let is_panning = mouse_middle_captured.load(Ordering::Acquire);
 
                     if is_rotating || is_panning {
-                        // Keep cursor hidden during camera controls
-                        window.set_window_cursor_style(CursorStyle::None);
+                        // Keep cursor hidden during camera controls (GPUI might try to show it)
+                        #[cfg(target_os = "windows")]
+                        {
+                            // Ensure cursor stays hidden on Windows
+                            // Note: We don't call hide_cursor() repeatedly as it's counter-based
+                            // Just make sure GPUI doesn't override our hidden state
+                        }
 
-                        // NON-WINDOWS: Update position for input thread to calculate deltas
                         #[cfg(not(target_os = "windows"))]
                         {
+                            // Update position for input thread to calculate deltas
                             let x = (event.position.x.as_f32() * 1000.0) as i32;
                             let y = (event.position.y.as_f32() * 1000.0) as i32;
                             input_state_clone.mouse_x.store(x, Ordering::Relaxed);
                             input_state_clone.mouse_y.store(y, Ordering::Relaxed);
                         }
 
-                        // WINDOWS: Input thread handles everything via GetCursorPos/SetCursorPos
-                        // No need to track position here
+                        // Keep GPUI cursor style hidden as well
+                        window.set_window_cursor_style(CursorStyle::None);
                     } else {
                         // Not rotating/panning - update position normally for UI interactions
                         let x = (event.position.x.as_f32() * 1000.0) as i32;
@@ -785,9 +823,9 @@ impl ViewportPanel {
                         println!("[VIEWPORT] 🎥 Rotate mode activated (Right)");
                     }
 
-                    // Hide cursor
-                    window.set_window_cursor_style(CursorStyle::None);
-                    println!("[VIEWPORT] 👻 Cursor hidden");
+                    // Hide cursor using proper Windows API
+                    hide_cursor();
+                    window.set_window_cursor_style(CursorStyle::None); // Also set GPUI style for fallback
                 }
             })
             // Right-click UP anywhere = DEACTIVATE camera controls
@@ -807,8 +845,9 @@ impl ViewportPanel {
                     locked_cursor_screen_x.store(0, Ordering::Relaxed);
                     locked_cursor_screen_y.store(0, Ordering::Relaxed);
 
-                    // Restore cursor visibility and unlock from window bounds
-                    window.set_window_cursor_style(CursorStyle::Arrow);
+                    // Restore cursor visibility using proper Windows API
+                    show_cursor();
+                    window.set_window_cursor_style(CursorStyle::Arrow); // Also set GPUI style
                     unlock_cursor();
 
                     println!("[VIEWPORT] ✅ Camera controls deactivated, cursor restored");
