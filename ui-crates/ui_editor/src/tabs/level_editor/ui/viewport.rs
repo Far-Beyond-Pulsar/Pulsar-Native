@@ -1009,7 +1009,7 @@ impl ViewportPanel {
                         .absolute()
                         .top_4()
                         .left_4()
-                        .child(Self::render_viewport_options(state, state_arc_clone, cx))
+                        .child(Self::render_viewport_options(state, state_arc_clone, gpu_engine, cx))
                 )
             });
 
@@ -1149,6 +1149,7 @@ impl ViewportPanel {
     fn render_viewport_options<V: 'static>(
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
         cx: &mut Context<V>
     ) -> impl IntoElement
     where
@@ -1164,59 +1165,170 @@ impl ViewportPanel {
                 })
                 .into_any_element()
         } else {
-            // Expanded state - show full toolbar
-            h_flex()
+            // Expanded state - show full toolbar with view modes
+            v_flex()
                 .gap_1()
                 .p_1()
                 .bg(cx.theme().background.opacity(0.9))
                 .rounded(cx.theme().radius)
                 .border_1()
                 .border_color(cx.theme().border)
-                .justify_between()
-                .items_center()
+                // First row: View mode and debug visualization toggles
                 .child(
                     h_flex()
                         .gap_1()
+                        .items_center()
                         .child({
+                            let gpu_engine_clone = gpu_engine.clone();
                             let state_clone = state_arc.clone();
-                            Button::new("toggle_grid")
-                                .icon(IconName::LayoutDashboard)
-                                .tooltip("Toggle Grid")
-                                .selected(state.show_grid)
+                            Button::new("view_lit")
+                                .label("Lit")
+                                .tooltip("Full lighting and textures")
+                                .selected(matches!(state.current_view_mode, engine_backend::subsystems::render::ViewMode::Lit))
+                                .small()
                                 .on_click(move |_, _, _| {
-                                    state_clone.write().toggle_grid();
+                                    state_clone.write().current_view_mode = engine_backend::subsystems::render::ViewMode::Lit;
+                                    if let Ok(engine) = gpu_engine_clone.try_lock() {
+                                        engine.set_view_mode(engine_backend::subsystems::render::ViewMode::Lit);
+                                    }
                                 })
                         })
                         .child({
+                            let gpu_engine_clone = gpu_engine.clone();
                             let state_clone = state_arc.clone();
-                            Button::new("toggle_wireframe")
-                                .icon(IconName::Triangle)
-                                .tooltip("Toggle Wireframe")
-                                .selected(state.show_wireframe)
+                            Button::new("view_unlit")
+                                .label("Unlit")
+                                .tooltip("No lighting, base colors only")
+                                .selected(matches!(state.current_view_mode, engine_backend::subsystems::render::ViewMode::Unlit))
+                                .small()
                                 .on_click(move |_, _, _| {
-                                    state_clone.write().toggle_wireframe();
+                                    state_clone.write().current_view_mode = engine_backend::subsystems::render::ViewMode::Unlit;
+                                    if let Ok(engine) = gpu_engine_clone.try_lock() {
+                                        engine.set_view_mode(engine_backend::subsystems::render::ViewMode::Unlit);
+                                    }
                                 })
                         })
                         .child({
+                            let gpu_engine_clone = gpu_engine.clone();
                             let state_clone = state_arc.clone();
-                            Button::new("toggle_lighting")
-                                .icon(IconName::Sun)
-                                .tooltip("Toggle Lighting")
-                                .selected(state.show_lighting)
+                            Button::new("view_wireframe_only")
+                                .label("Wire")
+                                .tooltip("Wireframe only")
+                                .selected(matches!(state.current_view_mode, engine_backend::subsystems::render::ViewMode::Wireframe))
+                                .small()
                                 .on_click(move |_, _, _| {
-                                    state_clone.write().toggle_lighting();
+                                    state_clone.write().current_view_mode = engine_backend::subsystems::render::ViewMode::Wireframe;
+                                    if let Ok(engine) = gpu_engine_clone.try_lock() {
+                                        engine.set_view_mode(engine_backend::subsystems::render::ViewMode::Wireframe);
+                                    }
+                                })
+                        })
+                        .child({
+                            let gpu_engine_clone = gpu_engine.clone();
+                            let state_clone = state_arc.clone();
+                            Button::new("debug_shader")
+                                .label("Shader")
+                                .tooltip("Shader complexity heatmap")
+                                .selected(matches!(state.current_debug_viz, engine_backend::subsystems::render::DebugVisualization::ShaderComplexity))
+                                .small()
+                                .on_click(move |_, _, _| {
+                                    let new_viz = if matches!(state_clone.read().current_debug_viz, engine_backend::subsystems::render::DebugVisualization::ShaderComplexity) {
+                                        engine_backend::subsystems::render::DebugVisualization::None
+                                    } else {
+                                        engine_backend::subsystems::render::DebugVisualization::ShaderComplexity
+                                    };
+                                    state_clone.write().current_debug_viz = new_viz;
+                                    if let Ok(engine) = gpu_engine_clone.try_lock() {
+                                        engine.set_debug_visualization(new_viz);
+                                    }
+                                })
+                        })
+                        .child({
+                            let gpu_engine_clone = gpu_engine.clone();
+                            let state_clone = state_arc.clone();
+                            Button::new("debug_light")
+                                .label("Lighting")
+                                .tooltip("Light complexity (lights per pixel)")
+                                .selected(matches!(state.current_debug_viz, engine_backend::subsystems::render::DebugVisualization::LightComplexity))
+                                .small()
+                                .on_click(move |_, _, _| {
+                                    let new_viz = if matches!(state_clone.read().current_debug_viz, engine_backend::subsystems::render::DebugVisualization::LightComplexity) {
+                                        engine_backend::subsystems::render::DebugVisualization::None
+                                    } else {
+                                        engine_backend::subsystems::render::DebugVisualization::LightComplexity
+                                    };
+                                    state_clone.write().current_debug_viz = new_viz;
+                                    if let Ok(engine) = gpu_engine_clone.try_lock() {
+                                        engine.set_debug_visualization(new_viz);
+                                    }
                                 })
                         })
                 )
-                .child({
-                    let state_clone = state_arc.clone();
-                    Button::new("collapse_viewport_options")
-                        .icon(IconName::X)
-                        .ghost()
-                        .on_click(move |_, _, _| {
-                            state_clone.write().set_viewport_options_collapsed(true);
+                // Second row: Toggle buttons for grid, wireframe overlay, and lighting
+                .child(
+                    h_flex()
+                        .gap_1()
+                        .justify_between()
+                        .items_center()
+                        .child(
+                            h_flex()
+                                .gap_1()
+                                .child({
+                                    let state_clone = state_arc.clone();
+                                    let gpu_engine_clone = gpu_engine.clone();
+                                    Button::new("toggle_grid")
+                                        .icon(IconName::LayoutDashboard)
+                                        .tooltip("Toggle Grid")
+                                        .selected(state.show_grid)
+                                        .on_click(move |_, _, _| {
+                                            state_clone.write().toggle_grid();
+                                            // Update Bevy renderer
+                                            if let Ok(engine) = gpu_engine_clone.try_lock() {
+                                                engine.toggle_grid();
+                                            }
+                                        })
+                                })
+                                .child({
+                                    let state_clone = state_arc.clone();
+                                    let gpu_engine_clone = gpu_engine.clone();
+                                    Button::new("toggle_wireframe")
+                                        .icon(IconName::Triangle)
+                                        .tooltip("Toggle Wireframe")
+                                        .selected(state.show_wireframe)
+                                        .on_click(move |_, _, _| {
+                                            state_clone.write().toggle_wireframe();
+                                            // Update Bevy renderer
+                                            if let Ok(engine) = gpu_engine_clone.try_lock() {
+                                                engine.toggle_wireframe();
+                                            }
+                                        })
+                                })
+                                .child({
+                                    let state_clone = state_arc.clone();
+                                    let gpu_engine_clone = gpu_engine.clone();
+                                    Button::new("toggle_lighting")
+                                        .icon(IconName::Sun)
+                                        .tooltip("Toggle Lighting")
+                                        .selected(state.show_lighting)
+                                        .on_click(move |_, _, _| {
+                                            state_clone.write().toggle_lighting();
+                                            // Update Bevy renderer
+                                            if let Ok(engine) = gpu_engine_clone.try_lock() {
+                                                engine.toggle_lighting();
+                                            }
+                                        })
+                                })
+                        )
+                        .child({
+                            let state_clone = state_arc.clone();
+                            Button::new("collapse_viewport_options")
+                                .icon(IconName::X)
+                                .ghost()
+                                .on_click(move |_, _, _| {
+                                    state_clone.write().set_viewport_options_collapsed(true);
+                                })
                         })
-                })
+                )
                 .into_any_element()
         }
     }

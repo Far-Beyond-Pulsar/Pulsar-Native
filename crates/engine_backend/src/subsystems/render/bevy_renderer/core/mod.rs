@@ -21,10 +21,11 @@ pub mod resources;
 // Re-export commonly used types for convenience
 pub use types::{
     RenderMetrics, GpuProfilerData, DiagnosticMetric, CameraInput, SharedGpuTextures,
+    ViewMode, DebugVisualization, RenderingSettings,
 };
 pub use components::{MainCamera, GameObjectId, Selected, SelectionOutline};
 pub use resources::{
     SharedTexturesResource, ShutdownFlag, GameThreadResource, CameraInputResource,
-    SharedGizmoStateResource, SharedViewportMouseInputResource, MetricsResource,
-    GpuProfilerResource, WgpuProfilerResource,
+    SharedGizmoStateResource, SharedViewportMouseInputResource, SharedRenderingSettingsResource,
+    MetricsResource, GpuProfilerResource, WgpuProfilerResource,
 };

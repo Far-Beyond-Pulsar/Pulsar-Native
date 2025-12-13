@@ -262,6 +262,48 @@ impl GpuRenderer {
         }
     }
 
+    /// Toggle wireframe rendering
+    pub fn toggle_wireframe(&self) {
+        if let Some(ref renderer) = self.bevy_renderer {
+            renderer.toggle_wireframe();
+        }
+    }
+
+    /// Toggle lighting
+    pub fn toggle_lighting(&self) {
+        if let Some(ref renderer) = self.bevy_renderer {
+            renderer.toggle_lighting();
+        }
+    }
+
+    /// Toggle grid
+    pub fn toggle_grid(&self) {
+        if let Some(ref renderer) = self.bevy_renderer {
+            renderer.toggle_grid();
+        }
+    }
+
+    /// Toggle gizmos
+    pub fn toggle_gizmos(&self) {
+        if let Some(ref renderer) = self.bevy_renderer {
+            renderer.toggle_gizmos();
+        }
+    }
+
+    /// Set view mode
+    pub fn set_view_mode(&self, mode: crate::subsystems::render::ViewMode) {
+        if let Some(ref renderer) = self.bevy_renderer {
+            renderer.set_view_mode(mode);
+        }
+    }
+
+    /// Set debug visualization
+    pub fn set_debug_visualization(&self, viz: crate::subsystems::render::DebugVisualization) {
+        if let Some(ref renderer) = self.bevy_renderer {
+            renderer.set_debug_visualization(viz);
+        }
+    }
+
     pub fn resize(&mut self, display_width: u32, display_height: u32) {
         if self.display_width != display_width || self.display_height != display_height {
             self.render_width = display_width;
