@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use std::sync::atomic::Ordering;
 use crate::subsystems::render::bevy_renderer::core::{
     GameObjectId, GameThreadResource, SharedGizmoStateResource, SharedViewportMouseInputResource,
-    CameraInputResource, MainCamera, SharedRenderingSettingsResource, RenderingSettings,
+    CameraInputResource, MainCamera,
 };
 use crate::subsystems::render::bevy_renderer::gizmos::rendering::GizmoStateResource;
 use crate::subsystems::render::bevy_renderer::interaction::viewport::ViewportMouseInput;
@@ -38,7 +38,7 @@ pub fn sync_viewport_mouse_input_system(
         bevy_mouse.left_clicked = shared.left_clicked;
         bevy_mouse.left_down = shared.left_down;
         bevy_mouse.mouse_delta = shared.mouse_delta;
-
+        
         // Debug log when click is detected
         if shared.left_clicked {
             println!("[BEVY-SYNC] 🖱️ Mouse click synced: pos=({:.3}, {:.3})", shared.mouse_pos.x, shared.mouse_pos.y);
@@ -46,23 +46,6 @@ pub fn sync_viewport_mouse_input_system(
     }
 }
 
-/// Sync rendering settings from GPUI to Bevy's ECS resource
-/// This allows GPUI viewport overlay controls to change view modes, wireframe, lighting, etc.
-pub fn sync_rendering_settings_system(
-    shared_settings: Res<SharedRenderingSettingsResource>,
-    mut bevy_settings: ResMut<RenderingSettings>,
-) {
-    // Try to lock shared state (non-blocking)
-    if let Ok(shared) = shared_settings.0.try_lock() {
-        // Copy all rendering settings fields
-        bevy_settings.view_mode = shared.view_mode;
-        bevy_settings.lighting_enabled = shared.lighting_enabled;
-        bevy_settings.wireframe_enabled = shared.wireframe_enabled;
-        bevy_settings.grid_enabled = shared.grid_enabled;
-        bevy_settings.debug_visualization = shared.debug_visualization;
-        bevy_settings.gizmos_enabled = shared.gizmos_enabled;
-    }
-}
 
 /// Sync game thread object positions/rotations to Bevy entities
 /// This system reads from the game thread state and updates matching Bevy transforms

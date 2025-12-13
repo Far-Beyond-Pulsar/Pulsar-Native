@@ -5,19 +5,18 @@ use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 use std::time::Duration;
 
 use super::core::{
-    CameraInput, RenderMetrics, GpuProfilerData, SharedGpuTextures, RenderingSettings,
+    CameraInput, RenderMetrics, GpuProfilerData, SharedGpuTextures,
     SharedTexturesResource, ShutdownFlag, GameThreadResource, CameraInputResource,
-    SharedGizmoStateResource, SharedViewportMouseInputResource, SharedRenderingSettingsResource,
-    MetricsResource, GpuProfilerResource, WgpuProfilerResource, MainCamera, GameObjectId,
+    SharedGizmoStateResource, SharedViewportMouseInputResource, MetricsResource,
+    GpuProfilerResource, WgpuProfilerResource, MainCamera, GameObjectId,
 };
 use super::systems::{
     sync_camera_input_system, camera_movement_system,
-    sync_gizmo_state_system, sync_viewport_mouse_input_system, sync_rendering_settings_system,
+    sync_gizmo_state_system, sync_viewport_mouse_input_system,
     sync_game_objects_system, update_gizmo_target_system,
     update_camera_viewport_system,
     update_metrics_system, update_gpu_profiler_system,
     setup_scene, animate_objects_system, swap_render_buffers_system, debug_rendering_system,
-    apply_rendering_modes_system, apply_lighting_settings_system,
 };
 use super::textures::*;
 use super::gizmos::rendering::{
@@ -36,7 +35,6 @@ pub struct BevyRenderer {
     pub gpu_profiler: Arc<Mutex<GpuProfilerData>>,
     pub gizmo_state: Arc<Mutex<GizmoStateResource>>,
     pub viewport_mouse_input: Arc<parking_lot::Mutex<ViewportMouseInput>>,
-    pub rendering_settings: Arc<Mutex<RenderingSettings>>,
     shutdown: Arc<AtomicBool>,
     _render_thread: Option<std::thread::JoinHandle<()>>,
 }
@@ -58,13 +56,10 @@ impl BevyRenderer {
         
         // Create SHARED gizmo state (Arc<Mutex<>> accessible from both GPUI and Bevy)
         let gizmo_state = Arc::new(Mutex::new(GizmoStateResource::default()));
-
+        
         // Create SHARED viewport mouse input (parking_lot::Mutex for better performance)
         let viewport_mouse_input = Arc::new(parking_lot::Mutex::new(ViewportMouseInput::default()));
-
-        // Create SHARED rendering settings (Arc<Mutex<>> accessible from both GPUI and Bevy)
-        let rendering_settings = Arc::new(Mutex::new(RenderingSettings::default()));
-
+        
         let shutdown = Arc::new(AtomicBool::new(false));
 
         let shared_textures_clone = shared_textures.clone();
@@ -73,7 +68,6 @@ impl BevyRenderer {
         let gpu_profiler_clone = gpu_profiler.clone();
         let gizmo_state_clone = gizmo_state.clone();
         let viewport_mouse_input_clone = viewport_mouse_input.clone();
-        let rendering_settings_clone = rendering_settings.clone();
         let shutdown_clone = shutdown.clone();
         let game_thread_clone = game_thread_state.clone();
 
@@ -89,7 +83,6 @@ impl BevyRenderer {
                     gpu_profiler_clone,
                     gizmo_state_clone,
                     viewport_mouse_input_clone,
-                    rendering_settings_clone,
                     shutdown_clone,
                     game_thread_clone,
                 );
@@ -105,7 +98,6 @@ impl BevyRenderer {
             gpu_profiler,
             gizmo_state,
             viewport_mouse_input,
-            rendering_settings,
             shutdown,
             _render_thread: Some(render_thread),
         }
@@ -120,7 +112,6 @@ impl BevyRenderer {
         gpu_profiler: Arc<Mutex<GpuProfilerData>>,
         gizmo_state: Arc<Mutex<GizmoStateResource>>,
         viewport_mouse_input: Arc<parking_lot::Mutex<ViewportMouseInput>>,
-        rendering_settings: Arc<Mutex<RenderingSettings>>,
         shutdown: Arc<AtomicBool>,
         game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
     ) {
@@ -175,16 +166,13 @@ impl BevyRenderer {
             // Shared resources from GPUI (Arc<Mutex<>> accessible from both threads)
             .insert_resource(SharedGizmoStateResource(gizmo_state.clone()))
             .insert_resource(SharedViewportMouseInputResource(viewport_mouse_input.clone()))
-            .insert_resource(SharedRenderingSettingsResource(rendering_settings.clone()))
             // Local Bevy ECS resources (synced from shared resources each frame)
             .insert_resource(gizmo_state.lock().unwrap().clone()) // Level editor gizmos
             .insert_resource(viewport_mouse_input.lock().clone()) // Viewport mouse interaction
-            .insert_resource(rendering_settings.lock().unwrap().clone()) // Rendering settings
             .insert_resource(GizmoInteractionState::default()) // Gizmo drag state
             .insert_resource(ActiveRaycastTask::default()) // Async raycast task
             .add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin::default()) // Bevy frame time diagnostics
-            .add_plugins(bevy::render::diagnostic::RenderDiagnosticsPlugin::default()) // Bevy GPU render diagnostics
-            .add_plugins(bevy::pbr::wireframe::WireframePlugin::default()); // Wireframe rendering support
+            .add_plugins(bevy::render::diagnostic::RenderDiagnosticsPlugin::default()); // Bevy GPU render diagnostics
         
         // Main world systems - create textures FIRST, then setup scene
         app.add_systems(Startup, (create_shared_textures_startup, setup_scene).chain())
@@ -194,11 +182,7 @@ impl BevyRenderer {
             .add_systems(Update, update_camera_viewport_system)    // Update camera viewport to match GPUI bounds
             .add_systems(Update, sync_gizmo_state_system)          // NEW: Sync GPUI gizmo state to Bevy
             .add_systems(Update, sync_viewport_mouse_input_system) // NEW: Sync GPUI mouse clicks to Bevy
-            .add_systems(Update, sync_rendering_settings_system)   // NEW: Sync GPUI rendering settings to Bevy
             .add_systems(Update, sync_game_objects_system)         // Sync game thread to Bevy
-            // Rendering mode systems - apply settings after sync
-            .add_systems(Update, apply_rendering_modes_system)     // Apply wireframe, view modes, debug viz
-            .add_systems(Update, apply_lighting_settings_system)   // Apply lighting enable/disable
             // Game systems - run after sync
             .add_systems(Update, camera_movement_system)           // Unreal-style camera controls
             .add_systems(Update, animate_objects_system)           // ANIMATION: Smooth object rotation
@@ -251,58 +235,6 @@ impl BevyRenderer {
         if let Ok(mut cam) = self.camera_input.lock() {
             *cam = input;
         }
-    }
-
-    /// Update a specific rendering setting
-    pub fn update_rendering_settings<F>(&self, update: F)
-    where
-        F: FnOnce(&mut RenderingSettings),
-    {
-        if let Ok(mut settings) = self.rendering_settings.lock() {
-            update(&mut *settings);
-        }
-    }
-
-    /// Toggle wireframe rendering
-    pub fn toggle_wireframe(&self) {
-        self.update_rendering_settings(|settings| {
-            settings.wireframe_enabled = !settings.wireframe_enabled;
-        });
-    }
-
-    /// Toggle lighting
-    pub fn toggle_lighting(&self) {
-        self.update_rendering_settings(|settings| {
-            settings.lighting_enabled = !settings.lighting_enabled;
-        });
-    }
-
-    /// Toggle grid
-    pub fn toggle_grid(&self) {
-        self.update_rendering_settings(|settings| {
-            settings.grid_enabled = !settings.grid_enabled;
-        });
-    }
-
-    /// Toggle gizmos
-    pub fn toggle_gizmos(&self) {
-        self.update_rendering_settings(|settings| {
-            settings.gizmos_enabled = !settings.gizmos_enabled;
-        });
-    }
-
-    /// Set view mode
-    pub fn set_view_mode(&self, mode: super::core::ViewMode) {
-        self.update_rendering_settings(|settings| {
-            settings.view_mode = mode;
-        });
-    }
-
-    /// Set debug visualization
-    pub fn set_debug_visualization(&self, viz: super::core::DebugVisualization) {
-        self.update_rendering_settings(|settings| {
-            settings.debug_visualization = viz;
-        });
     }
 
     #[cfg(target_os = "windows")]

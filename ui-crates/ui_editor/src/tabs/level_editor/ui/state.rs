@@ -6,9 +6,6 @@ use std::sync::Arc;
 // Import our scene database and gizmo systems
 use crate::tabs::level_editor::{SceneDatabase, GizmoState, GizmoType};
 
-// Import rendering settings
-use engine_backend::subsystems::render::{ViewMode, DebugVisualization};
-
 /// Editor mode - Edit or Play
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EditorMode {
@@ -72,10 +69,6 @@ pub struct LevelEditorState {
     pub expanded_objects: HashSet<String>,
     /// Drag state for hierarchy reparenting
     pub hierarchy_drag_state: HierarchyDragState,
-    /// Current view mode
-    pub current_view_mode: ViewMode,
-    /// Current debug visualization
-    pub current_debug_viz: DebugVisualization,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -141,8 +134,6 @@ impl Default for LevelEditorState {
             show_ui_consistency_graph: false,
             expanded_objects: HashSet::new(),
             hierarchy_drag_state: HierarchyDragState::None,
-            current_view_mode: ViewMode::Lit,
-            current_debug_viz: DebugVisualization::None,
         }
     }
 }

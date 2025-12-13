@@ -59,7 +59,6 @@ pub mod renderer;
 // Re-export public API
 pub use core::{
     RenderMetrics, GpuProfilerData, DiagnosticMetric, CameraInput, SharedGpuTextures,
-    ViewMode, DebugVisualization, RenderingSettings,
 };
 pub use renderer::BevyRenderer;
 pub use textures::{RENDER_WIDTH, RENDER_HEIGHT};

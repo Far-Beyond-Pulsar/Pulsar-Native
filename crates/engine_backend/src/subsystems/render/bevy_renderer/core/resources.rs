@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 use std::sync::{Arc, Mutex, atomic::{AtomicBool, AtomicU32, AtomicU64}};
-use super::types::{CameraInput, SharedGpuTextures, GpuProfilerData, RenderingSettings};
+use super::types::{CameraInput, SharedGpuTextures, GpuProfilerData};
 
 #[derive(Resource)]
 pub struct SharedTexturesResource(pub Arc<Mutex<Option<SharedGpuTextures>>>);
@@ -26,9 +26,6 @@ pub struct SharedGizmoStateResource(pub Arc<Mutex<crate::subsystems::render::bev
 #[derive(Resource, Clone)]
 pub struct SharedViewportMouseInputResource(pub Arc<parking_lot::Mutex<crate::subsystems::render::bevy_renderer::interaction::viewport::ViewportMouseInput>>);
 
-/// Resource containing shared rendering settings from GPUI (updated by editor, read by Bevy)
-#[derive(Resource, Clone)]
-pub struct SharedRenderingSettingsResource(pub Arc<Mutex<RenderingSettings>>);
 
 /// Metrics tracking resource - shared between Bevy and the main thread
 #[derive(Resource, Clone)]

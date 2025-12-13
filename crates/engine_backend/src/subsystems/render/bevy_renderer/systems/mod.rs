@@ -16,7 +16,6 @@
 //!    - `sync_camera_input_system` - Camera input from input thread
 //!    - `sync_gizmo_state_system` - Gizmo state from GPUI editor
 //!    - `sync_viewport_mouse_input_system` - Mouse input from GPUI viewport
-//!    - `sync_rendering_settings_system` - Rendering settings from GPUI viewport overlay
 //!    - `sync_game_objects_system` - Object positions from game thread
 //!
 //! 2. **Update Phase** - Process game logic and user input
@@ -32,12 +31,11 @@ pub mod camera;
 pub mod sync;
 pub mod metrics;
 pub mod scene;
-pub mod rendering_modes;
 
 // Re-export system functions for easy registration
 pub use camera::{sync_camera_input_system, camera_movement_system};
 pub use sync::{
-    sync_gizmo_state_system, sync_viewport_mouse_input_system, sync_rendering_settings_system,
+    sync_gizmo_state_system, sync_viewport_mouse_input_system,
     sync_game_objects_system, update_gizmo_target_system,
     update_camera_viewport_system,
 };
@@ -45,4 +43,3 @@ pub use metrics::{update_metrics_system, update_gpu_profiler_system};
 pub use scene::{
     setup_scene, animate_objects_system, swap_render_buffers_system, debug_rendering_system,
 };
-pub use rendering_modes::{apply_rendering_modes_system, apply_lighting_settings_system};
