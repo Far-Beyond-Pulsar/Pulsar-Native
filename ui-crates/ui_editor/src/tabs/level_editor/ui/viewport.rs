@@ -21,13 +21,13 @@ use std::rc::Rc;
 // Raw input polling for viewport controls (cross-platform)
 use device_query::{DeviceQuery, DeviceState, Keycode};
 
-// Windows API for cursor locking (confining cursor to window bounds)
+// Windows API for cursor locking and raw input
 #[cfg(target_os = "windows")]
-use winapi::um::winuser::{ClipCursor, GetClientRect, ClientToScreen};
+use winapi::um::winuser::{ClipCursor, GetClientRect, ClientToScreen, GetCursorPos, SetCursorPos};
 #[cfg(target_os = "windows")]
 use winapi::shared::windef::{RECT, POINT};
 
-// Windows-specific cursor locking functions
+// Windows-specific cursor locking and repositioning functions
 #[cfg(target_os = "windows")]
 fn lock_cursor_to_window(window: &Window) {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -75,6 +75,27 @@ fn lock_cursor_to_window(window: &Window) {
     }
 }
 
+/// Lock cursor to a small area around a specific point (Windows)
+/// This prevents the cursor from escaping during fast movements
+#[cfg(target_os = "windows")]
+fn lock_cursor_to_point(screen_x: i32, screen_y: i32, radius: i32) {
+    unsafe {
+        let screen_rect = RECT {
+            left: screen_x - radius,
+            top: screen_y - radius,
+            right: screen_x + radius,
+            bottom: screen_y + radius,
+        };
+        ClipCursor(&screen_rect);
+        tracing::info!("[VIEWPORT] 🔒 Cursor confined to {}px radius around ({}, {})", radius, screen_x, screen_y);
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn lock_cursor_to_point(_screen_x: i32, _screen_y: i32, _radius: i32) {
+    // No-op on non-Windows (we rely on cursor repositioning)
+}
+
 #[cfg(target_os = "windows")]
 fn unlock_cursor() {
     unsafe {
@@ -84,15 +105,112 @@ fn unlock_cursor() {
     }
 }
 
+/// Set cursor to absolute screen position (Windows)
+#[cfg(target_os = "windows")]
+fn set_cursor_position(screen_x: i32, screen_y: i32) {
+    use winapi::um::winuser::SetCursorPos;
+    unsafe {
+        SetCursorPos(screen_x, screen_y);
+    }
+}
+
+/// Convert window-relative position to screen position (Windows)
+#[cfg(target_os = "windows")]
+fn window_to_screen_position(window: &Window, window_x: f32, window_y: f32) -> Option<(i32, i32)> {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+    match HasWindowHandle::window_handle(window) {
+        Ok(handle) => {
+            match handle.as_raw() {
+                RawWindowHandle::Win32(win32_handle) => {
+                    unsafe {
+                        let hwnd = win32_handle.hwnd.get() as *mut winapi::shared::windef::HWND__;
+                        let mut point = POINT {
+                            x: window_x as i32,
+                            y: window_y as i32
+                        };
+                        ClientToScreen(hwnd, &mut point);
+                        Some((point.x, point.y))
+                    }
+                }
+                _ => None,
+            }
+        }
+        Err(_) => None,
+    }
+}
+
+/// Set cursor to absolute screen position (macOS)
+#[cfg(target_os = "macos")]
+fn set_cursor_position(screen_x: i32, screen_y: i32) {
+    use core_graphics::display::CGDisplay;
+    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+
+    unsafe {
+        CGDisplay::warp_mouse_cursor_position(core_graphics::geometry::CGPoint {
+            x: screen_x as f64,
+            y: screen_y as f64,
+        }).ok();
+
+        // Disassociate mouse and cursor position momentarily to prevent the cursor
+        // from jumping back
+        CGEventSource::set_local_events_suppression_interval(0.0);
+    }
+}
+
+/// Convert window-relative position to screen position (macOS)
+#[cfg(target_os = "macos")]
+fn window_to_screen_position(window: &Window, window_x: f32, window_y: f32) -> Option<(i32, i32)> {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use objc2::runtime::AnyObject;
+    use objc2::{msg_send, msg_send_id};
+    use objc2_foundation::NSPoint;
+
+    match HasWindowHandle::window_handle(window) {
+        Ok(handle) => {
+            match handle.as_raw() {
+                RawWindowHandle::AppKit(appkit_handle) => {
+                    unsafe {
+                        let ns_window = appkit_handle.ns_window.as_ptr() as *mut AnyObject;
+                        let point = NSPoint {
+                            x: window_x as f64,
+                            y: window_y as f64,
+                        };
+                        let screen_point: NSPoint = msg_send![ns_window, convertPointToScreen: point];
+                        Some((screen_point.x as i32, screen_point.y as i32))
+                    }
+                }
+                _ => None,
+            }
+        }
+        Err(_) => None,
+    }
+}
+
+/// Set cursor to absolute screen position (Linux)
+#[cfg(target_os = "linux")]
+fn set_cursor_position(screen_x: i32, screen_y: i32) {
+    // TODO: Implement for X11/Wayland
+    tracing::warn!("[VIEWPORT] Cursor repositioning not yet implemented for Linux");
+}
+
+/// Convert window-relative position to screen position (Linux)
+#[cfg(target_os = "linux")]
+fn window_to_screen_position(_window: &Window, _window_x: f32, _window_y: f32) -> Option<(i32, i32)> {
+    // TODO: Implement for X11/Wayland
+    None
+}
+
 #[cfg(not(target_os = "windows"))]
 fn lock_cursor_to_window(_window: &Window) {
-    // No-op on non-Windows platforms
-    tracing::warn!("[VIEWPORT] Cursor locking not implemented for this platform");
+    // macOS and Linux don't need window confinement for our use case
+    // They use cursor repositioning instead
+    tracing::info!("[VIEWPORT] Cursor locking via repositioning");
 }
 
 #[cfg(not(target_os = "windows"))]
 fn unlock_cursor() {
-    // No-op on non-Windows platforms
+    // No-op on non-Windows platforms (we use cursor repositioning instead)
 }
 
 /// Lock-free input state using atomics - no mutex contention!
@@ -263,9 +381,12 @@ pub struct ViewportPanel {
     last_mouse_y: Arc<AtomicI32>,
     mouse_right_captured: Arc<AtomicBool>,
     mouse_middle_captured: Arc<AtomicBool>,
-    // Locked cursor position for infinite mouse movement during drag
+    // Locked cursor position for infinite mouse movement during drag (window-relative, * 1000)
     locked_cursor_x: Arc<AtomicI32>,
     locked_cursor_y: Arc<AtomicI32>,
+    // Locked cursor position in screen coordinates for repositioning
+    locked_cursor_screen_x: Arc<AtomicI32>,
+    locked_cursor_screen_y: Arc<AtomicI32>,
     // Keyboard state for WASD + modifiers - NOT NEEDED ANYMORE, using atomics directly!
     keys_pressed: Rc<RefCell<std::collections::HashSet<String>>>,
     alt_pressed: Rc<RefCell<bool>>,
@@ -313,6 +434,8 @@ impl ViewportPanel {
             mouse_middle_captured: Arc::new(AtomicBool::new(false)),
             locked_cursor_x: Arc::new(AtomicI32::new(0)),
             locked_cursor_y: Arc::new(AtomicI32::new(0)),
+            locked_cursor_screen_x: Arc::new(AtomicI32::new(0)),
+            locked_cursor_screen_y: Arc::new(AtomicI32::new(0)),
             keys_pressed: Rc::new(RefCell::new(std::collections::HashSet::new())),
             alt_pressed: Rc::new(RefCell::new(false)),
             focus_handle,
@@ -355,24 +478,24 @@ impl ViewportPanel {
                 loop {
                     // Mark when we start processing input
                     let input_start = std::time::Instant::now();
-                    
+
                     // Sleep for ~8ms (~120Hz processing rate)
                     std::thread::sleep(std::time::Duration::from_millis(8));
-                    
+
                     // Check if camera controls are active (set by GPUI mouse events)
                     let is_rotating = mouse_right_captured.load(Ordering::Acquire);
                     let is_panning = mouse_middle_captured.load(Ordering::Acquire);
-                    
+
                     if !is_rotating && !is_panning {
                         // Not active - clear ALL state immediately
                         last_mouse_pos = None;
-                        
+
                         // Clear atomic input state
                         input_state_for_thread.forward.store(0, Ordering::Relaxed);
                         input_state_for_thread.right.store(0, Ordering::Relaxed);
                         input_state_for_thread.up.store(0, Ordering::Relaxed);
                         input_state_for_thread.boost.store(false, Ordering::Relaxed);
-                        
+
                         // CRITICAL: Also push zeros to GPU to stop camera immediately
                         if let Ok(engine) = gpu_engine_for_thread.try_lock() {
                             if let Some(ref bevy_renderer) = engine.bevy_renderer {
@@ -389,54 +512,83 @@ impl ViewportPanel {
                                 }
                             }
                         }
-                        
+
                         continue; // Wait for activation
                     }
-                    
+
                     // Camera controls are ACTIVE - poll input at high frequency
                     // Poll keyboard for WASD
                     let keys: Vec<Keycode> = device_state.get_keys();
-                    
+
                     let forward = if keys.contains(&Keycode::W) { 1 } else if keys.contains(&Keycode::S) { -1 } else { 0 };
                     let right = if keys.contains(&Keycode::D) { 1 } else if keys.contains(&Keycode::A) { -1 } else { 0 };
-                    let up = if keys.contains(&Keycode::E) || keys.contains(&Keycode::Space) { 1 } 
-                            else if keys.contains(&Keycode::Q) || keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift) { -1 } 
+                    let up = if keys.contains(&Keycode::E) || keys.contains(&Keycode::Space) { 1 }
+                            else if keys.contains(&Keycode::Q) || keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift) { -1 }
                             else { 0 };
                     let boost = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
-                    
+
                     input_state_for_thread.forward.store(forward, Ordering::Relaxed);
                     input_state_for_thread.right.store(right, Ordering::Relaxed);
                     input_state_for_thread.up.store(up, Ordering::Relaxed);
                     input_state_for_thread.boost.store(boost, Ordering::Relaxed);
 
-                    // Get current mouse position from atomic state (updated by GPUI mouse events)
-                    let current_x = input_state_for_thread.mouse_x.load(Ordering::Relaxed);
-                    let current_y = input_state_for_thread.mouse_y.load(Ordering::Relaxed);
-                    
-                    // Calculate delta if we have a previous position
-                    if let Some((last_x, last_y)) = last_mouse_pos {
-                        let dx = current_x - last_x;
-                        let dy = current_y - last_y;
+                    // WINDOWS: Read cursor position directly and reset it (standard game approach)
+                    #[cfg(target_os = "windows")]
+                    {
+                        let locked_screen_x = locked_cursor_x.load(Ordering::Relaxed);
+                        let locked_screen_y = locked_cursor_y.load(Ordering::Relaxed);
 
-                        if dx != 0 || dy != 0 {
-                            // Store deltas based on mode (convert from i32 back to f32 for accumulation)
-                            if is_rotating {
-                                // Rotation mode - accumulate deltas
-                                input_state_for_thread.mouse_delta_x.fetch_add(dx, Ordering::Relaxed);
-                                input_state_for_thread.mouse_delta_y.fetch_add(dy, Ordering::Relaxed);
-                            }
-                            if is_panning {
-                                // Pan mode - accumulate deltas
-                                input_state_for_thread.pan_delta_x.fetch_add(dx, Ordering::Relaxed);
-                                input_state_for_thread.pan_delta_y.fetch_add(dy, Ordering::Relaxed);
-                            }
+                        if locked_screen_x != 0 || locked_screen_y != 0 {
+                            unsafe {
+                                let mut point = POINT { x: 0, y: 0 };
+                                if GetCursorPos(&mut point) != 0 {
+                                    // Calculate delta from locked position
+                                    let dx = point.x - locked_screen_x;
+                                    let dy = point.y - locked_screen_y;
 
-                            // Update last position for next frame
+                                    if dx != 0 || dy != 0 {
+                                        // Accumulate deltas (convert to * 1000 for precision)
+                                        if is_rotating {
+                                            input_state_for_thread.mouse_delta_x.fetch_add(dx * 1000, Ordering::Relaxed);
+                                            input_state_for_thread.mouse_delta_y.fetch_add(dy * 1000, Ordering::Relaxed);
+                                        }
+                                        if is_panning {
+                                            input_state_for_thread.pan_delta_x.fetch_add(dx * 1000, Ordering::Relaxed);
+                                            input_state_for_thread.pan_delta_y.fetch_add(dy * 1000, Ordering::Relaxed);
+                                        }
+
+                                        // Reset cursor to locked position (standard game technique)
+                                        SetCursorPos(locked_screen_x, locked_screen_y);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // NON-WINDOWS: Use GPUI mouse events (fallback)
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        let current_x = input_state_for_thread.mouse_x.load(Ordering::Relaxed);
+                        let current_y = input_state_for_thread.mouse_y.load(Ordering::Relaxed);
+
+                        if let Some((last_x, last_y)) = last_mouse_pos {
+                            let dx = current_x - last_x;
+                            let dy = current_y - last_y;
+
+                            if dx != 0 || dy != 0 {
+                                if is_rotating {
+                                    input_state_for_thread.mouse_delta_x.fetch_add(dx, Ordering::Relaxed);
+                                    input_state_for_thread.mouse_delta_y.fetch_add(dy, Ordering::Relaxed);
+                                }
+                                if is_panning {
+                                    input_state_for_thread.pan_delta_x.fetch_add(dx, Ordering::Relaxed);
+                                    input_state_for_thread.pan_delta_y.fetch_add(dy, Ordering::Relaxed);
+                                }
+                                last_mouse_pos = Some((current_x, current_y));
+                            }
+                        } else {
                             last_mouse_pos = Some((current_x, current_y));
                         }
-                    } else {
-                        // First frame of active state - initialize position
-                        last_mouse_pos = Some((current_x, current_y));
                     }
                     
                     // Try to push to GPU (non-blocking)
@@ -546,23 +698,38 @@ impl ViewportPanel {
                     }
                 }
             })
-            // Track mouse movement to update atomic position state
+            // Track mouse movement to update atomic position state (for non-Windows platforms)
             .on_mouse_move({
                 let input_state_clone = self.input_state.clone();
                 let mouse_right_captured = self.mouse_right_captured.clone();
                 let mouse_middle_captured = self.mouse_middle_captured.clone();
-                move |event, window, _cx| {
-                    // Always update mouse position for accurate tracking
-                    let x = (event.position.x.as_f32() * 1000.0) as i32;
-                    let y = (event.position.y.as_f32() * 1000.0) as i32;
-                    input_state_clone.mouse_x.store(x, Ordering::Relaxed);
-                    input_state_clone.mouse_y.store(y, Ordering::Relaxed);
 
-                    // Set cursor style based on whether camera controls are active
+                move |event, window, _cx| {
+                    // Check if camera controls are active
                     let is_rotating = mouse_right_captured.load(Ordering::Acquire);
                     let is_panning = mouse_middle_captured.load(Ordering::Acquire);
+
                     if is_rotating || is_panning {
+                        // Keep cursor hidden during camera controls
                         window.set_window_cursor_style(CursorStyle::None);
+
+                        // NON-WINDOWS: Update position for input thread to calculate deltas
+                        #[cfg(not(target_os = "windows"))]
+                        {
+                            let x = (event.position.x.as_f32() * 1000.0) as i32;
+                            let y = (event.position.y.as_f32() * 1000.0) as i32;
+                            input_state_clone.mouse_x.store(x, Ordering::Relaxed);
+                            input_state_clone.mouse_y.store(y, Ordering::Relaxed);
+                        }
+
+                        // WINDOWS: Input thread handles everything via GetCursorPos/SetCursorPos
+                        // No need to track position here
+                    } else {
+                        // Not rotating/panning - update position normally for UI interactions
+                        let x = (event.position.x.as_f32() * 1000.0) as i32;
+                        let y = (event.position.y.as_f32() * 1000.0) as i32;
+                        input_state_clone.mouse_x.store(x, Ordering::Relaxed);
+                        input_state_clone.mouse_y.store(y, Ordering::Relaxed);
                     }
                 }
             })
@@ -572,6 +739,8 @@ impl ViewportPanel {
                 let mouse_middle_captured = self.mouse_middle_captured.clone();
                 let locked_cursor_x = self.locked_cursor_x.clone();
                 let locked_cursor_y = self.locked_cursor_y.clone();
+                let locked_cursor_screen_x = self.locked_cursor_screen_x.clone();
+                let locked_cursor_screen_y = self.locked_cursor_screen_y.clone();
                 let input_state_clone = self.input_state.clone();
                 move |event, window, _cx| {
                     println!("[VIEWPORT] 🖱️ Right-click DOWN on viewport - ACTIVATING camera controls");
@@ -579,11 +748,30 @@ impl ViewportPanel {
                     // Check if Shift is held for pan mode
                     let shift_pressed = event.modifiers.shift;
 
-                    // Get cursor position from event and store it
-                    let x = (event.position.x.as_f32() * 1000.0) as i32;
-                    let y = (event.position.y.as_f32() * 1000.0) as i32;
-                    locked_cursor_x.store(x, Ordering::Relaxed);
-                    locked_cursor_y.store(y, Ordering::Relaxed);
+                    // Get cursor position from event
+                    let window_x = event.position.x.as_f32();
+                    let window_y = event.position.y.as_f32();
+
+                    // Convert to screen coordinates for cursor locking
+                    if let Some((screen_x, screen_y)) = window_to_screen_position(window, window_x, window_y) {
+                        // Store screen coordinates for input thread (Windows uses these directly)
+                        locked_cursor_x.store(screen_x, Ordering::Relaxed);
+                        locked_cursor_y.store(screen_y, Ordering::Relaxed);
+                        locked_cursor_screen_x.store(screen_x, Ordering::Relaxed);
+                        locked_cursor_screen_y.store(screen_y, Ordering::Relaxed);
+                        println!("[VIEWPORT] 📍 Locked cursor at screen position ({}, {})", screen_x, screen_y);
+
+                        // Confine cursor to window bounds (less aggressive than point lock)
+                        lock_cursor_to_window(window);
+                    } else {
+                        println!("[VIEWPORT] ⚠️ Failed to convert window position to screen position");
+                        // Fallback: lock to window bounds
+                        lock_cursor_to_window(window);
+                    }
+
+                    // Store window-relative position for non-Windows platforms
+                    let x = (window_x * 1000.0) as i32;
+                    let y = (window_y * 1000.0) as i32;
                     input_state_clone.mouse_x.store(x, Ordering::Relaxed);
                     input_state_clone.mouse_y.store(y, Ordering::Relaxed);
 
@@ -597,21 +785,27 @@ impl ViewportPanel {
                         println!("[VIEWPORT] 🎥 Rotate mode activated (Right)");
                     }
 
-                    // Hide cursor and lock it to window bounds
+                    // Hide cursor
                     window.set_window_cursor_style(CursorStyle::None);
-                    lock_cursor_to_window(window);
+                    println!("[VIEWPORT] 👻 Cursor hidden");
                 }
             })
             // Right-click UP anywhere = DEACTIVATE camera controls
             .on_mouse_up(gpui::MouseButton::Right, {
                 let mouse_right_captured = self.mouse_right_captured.clone();
                 let mouse_middle_captured = self.mouse_middle_captured.clone();
+                let locked_cursor_screen_x = self.locked_cursor_screen_x.clone();
+                let locked_cursor_screen_y = self.locked_cursor_screen_y.clone();
                 move |_event, window, _cx| {
                     println!("[VIEWPORT] 🖱️ Right-click UP - DEACTIVATING camera controls");
 
                     // Deactivate both modes
                     mouse_right_captured.store(false, Ordering::Release);
                     mouse_middle_captured.store(false, Ordering::Release);
+
+                    // Clear locked screen position
+                    locked_cursor_screen_x.store(0, Ordering::Relaxed);
+                    locked_cursor_screen_y.store(0, Ordering::Relaxed);
 
                     // Restore cursor visibility and unlock from window bounds
                     window.set_window_cursor_style(CursorStyle::Arrow);

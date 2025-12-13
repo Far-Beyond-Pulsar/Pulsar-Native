@@ -13,6 +13,16 @@ pub enum EditorMode {
     Play,  // Play mode - game running, gizmos hidden
 }
 
+/// Hierarchy drag state for reparenting objects
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HierarchyDragState {
+    None,
+    DraggingObject {
+        object_id: String,
+        original_parent: Option<String>,
+    },
+}
+
 /// Shared state for the Level Editor
 #[derive(Clone)]
 pub struct LevelEditorState {
@@ -57,6 +67,8 @@ pub struct LevelEditorState {
     pub show_ui_consistency_graph: bool,
     /// Expanded state for hierarchy items
     pub expanded_objects: HashSet<String>,
+    /// Drag state for hierarchy reparenting
+    pub hierarchy_drag_state: HierarchyDragState,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -121,6 +133,7 @@ impl Default for LevelEditorState {
             show_input_latency_graph: true,
             show_ui_consistency_graph: false,
             expanded_objects: HashSet::new(),
+            hierarchy_drag_state: HierarchyDragState::None,
         }
     }
 }

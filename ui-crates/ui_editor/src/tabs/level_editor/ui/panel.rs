@@ -200,7 +200,7 @@ impl LevelEditorPanel {
             // Create right panels (as tabs)
             let properties_panel = cx.new(|cx| {
                 use crate::tabs::level_editor::PropertiesPanelWrapper;
-                PropertiesPanelWrapper::new(shared_state.clone(), cx)
+                PropertiesPanelWrapper::new(shared_state.clone(), window, cx)
             });
             
             // Initialize workspace with draggable tabs on both sides
@@ -710,7 +710,6 @@ impl Render for LevelEditorPanel {
                 if let Ok(bevy_gizmo) = bevy_renderer.gizmo_state.try_lock() {
                     if let Some(ref updated_id) = bevy_gizmo.updated_object_id {
                         if let Some(ref updated_transform) = bevy_gizmo.updated_transform {
-                            println!("[LEVEL-EDITOR] 🔄 Syncing transform update from Bevy: {}", updated_id);
                             
                             // Convert Bevy's SharedTransform to our Transform type
                             let new_transform = crate::tabs::level_editor::scene_database::Transform {
@@ -810,6 +809,31 @@ impl Render for LevelEditorPanel {
                     "f" => cx.dispatch_action(&FocusSelected),
                     "[" => cx.dispatch_action(&DecreaseSnapIncrement),
                     "]" => cx.dispatch_action(&IncreaseSnapIncrement),
+                    _ => {}
+                }
+            }))
+            // Additional keyboard shortcuts for Alt+Up/Down (object reordering)
+            .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
+                // Only respond if Alt key is pressed and this panel has focus
+                if !this.focus_handle.is_focused(window) || !event.keystroke.modifiers.alt {
+                    return;
+                }
+
+                match event.keystroke.key.as_ref() {
+                    "up" => {
+                        // Move selected object up in hierarchy
+                        if let Some(id) = this.state.selected_object() {
+                            this.state.scene_database.move_object_up(&id);
+                            cx.notify();
+                        }
+                    },
+                    "down" => {
+                        // Move selected object down in hierarchy
+                        if let Some(id) = this.state.selected_object() {
+                            this.state.scene_database.move_object_down(&id);
+                            cx.notify();
+                        }
+                    },
                     _ => {}
                 }
             }))

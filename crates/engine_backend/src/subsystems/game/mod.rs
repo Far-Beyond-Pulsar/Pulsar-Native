@@ -236,7 +236,13 @@ impl GameThread {
             println!("[GAME-THREAD] Starting game loop at target {} TPS", target_tps);
             println!("[GAME-THREAD] Target frame time: {:?}", target_frame_time);
 
-            while enabled.load(Ordering::Relaxed) {
+            loop {
+                // Check if thread is disabled - if so, sleep and skip this iteration
+                if !enabled.load(Ordering::Relaxed) {
+                    thread::sleep(Duration::from_millis(100));
+                    continue;
+                }
+
                 let frame_start = Instant::now();
                 let delta = frame_start - last_tick;
                 last_tick = frame_start;

@@ -54,6 +54,7 @@ pub struct SceneObjectData {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ObjectType {
     Empty,
+    Folder,
     Camera,
     Light(LightType),
     Mesh(MeshType),
@@ -580,9 +581,132 @@ impl SceneDatabase {
         }
         
         drop(inner);
-        
+
         println!("[SCENE-DB] 📂 Scene loaded successfully from {:?}", path.as_ref());
         Ok(())
+    }
+
+    /// Reparent an object to a new parent (or make it a root object if parent is None)
+    pub fn reparent_object(&self, object_id: &str, new_parent: Option<String>) -> bool {
+        let mut inner = self.inner.write().unwrap();
+
+        // Get the object
+        let object = match inner.objects.get(object_id) {
+            Some(obj) => obj.clone(),
+            None => return false,
+        };
+
+        // Prevent circular references - check if new_parent is a descendant of object_id
+        if let Some(ref parent_id) = new_parent {
+            if Self::is_ancestor_of(object_id, parent_id, &inner.objects) {
+                return false;  // Would create a cycle
+            }
+        }
+
+        // Remove from old parent's children or root_objects
+        if let Some(ref old_parent_id) = object.parent {
+            if let Some(old_parent) = inner.objects.get_mut(old_parent_id) {
+                old_parent.children.retain(|id| id != object_id);
+            }
+        } else {
+            inner.root_objects.retain(|id| id != object_id);
+        }
+
+        // Add to new parent's children or root_objects
+        if let Some(ref new_parent_id) = new_parent {
+            if let Some(new_parent_obj) = inner.objects.get_mut(new_parent_id) {
+                new_parent_obj.children.push(object_id.to_string());
+            } else {
+                return false;
+            }
+        } else {
+            inner.root_objects.push(object_id.to_string());
+        }
+
+        // Update object's parent field
+        if let Some(obj) = inner.objects.get_mut(object_id) {
+            obj.parent = new_parent;
+        }
+
+        true
+    }
+
+    /// Check if potential_ancestor is an ancestor of object_id (to prevent circular references)
+    fn is_ancestor_of(potential_ancestor: &str, object_id: &str, objects: &std::collections::HashMap<String, SceneObjectData>) -> bool {
+        let mut current_id = object_id;
+        while let Some(obj) = objects.get(current_id) {
+            if let Some(ref parent_id) = obj.parent {
+                if parent_id == potential_ancestor {
+                    return true;
+                }
+                current_id = parent_id;
+            } else {
+                break;
+            }
+        }
+        false
+    }
+
+    /// Move an object up in its sibling list
+    pub fn move_object_up(&self, object_id: &str) -> bool {
+        let mut inner = self.inner.write().unwrap();
+
+        // Get parent ID first
+        let parent_id = inner.objects.get(object_id).and_then(|obj| obj.parent.clone());
+
+        // Get the appropriate sibling list
+        let sibling_list = if let Some(ref pid) = parent_id {
+            match inner.objects.get_mut(pid) {
+                Some(parent) => &mut parent.children,
+                None => return false,
+            }
+        } else {
+            &mut inner.root_objects
+        };
+
+        // Find position and swap with previous
+        let pos = match sibling_list.iter().position(|id| id == object_id) {
+            Some(p) => p,
+            None => return false,
+        };
+
+        if pos == 0 {
+            return false;  // Already first
+        }
+
+        sibling_list.swap(pos, pos - 1);
+        true
+    }
+
+    /// Move an object down in its sibling list
+    pub fn move_object_down(&self, object_id: &str) -> bool {
+        let mut inner = self.inner.write().unwrap();
+
+        // Get parent ID first
+        let parent_id = inner.objects.get(object_id).and_then(|obj| obj.parent.clone());
+
+        // Get the appropriate sibling list
+        let sibling_list = if let Some(ref pid) = parent_id {
+            match inner.objects.get_mut(pid) {
+                Some(parent) => &mut parent.children,
+                None => return false,
+            }
+        } else {
+            &mut inner.root_objects
+        };
+
+        // Find position and swap with next
+        let pos = match sibling_list.iter().position(|id| id == object_id) {
+            Some(p) => p,
+            None => return false,
+        };
+
+        if pos >= sibling_list.len() - 1 {
+            return false;  // Already last
+        }
+
+        sibling_list.swap(pos, pos + 1);
+        true
     }
 }
 

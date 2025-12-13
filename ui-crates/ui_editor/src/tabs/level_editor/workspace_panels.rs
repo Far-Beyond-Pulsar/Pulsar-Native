@@ -1,7 +1,7 @@
 //! Workspace panels for Level Editor
 
 use gpui::*;
-use ui::{ActiveTheme, StyledExt, dock::{Panel, PanelEvent}, v_flex};
+use ui::{ActiveTheme, StyledExt, dock::{Panel, PanelEvent}, v_flex, input::{TextInput, InputState}};
 use super::ui::{SceneBrowser, HierarchyPanel, PropertiesPanel, ViewportPanel, LevelEditorState};
 use std::sync::Arc;
 use std::rc::Rc;
@@ -102,14 +102,68 @@ pub struct PropertiesPanelWrapper {
     properties: PropertiesPanel,
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
     focus_handle: FocusHandle,
+    // Input state for property editing
+    editing_property: Option<String>,
+    property_input: Entity<InputState>,
 }
 
 impl PropertiesPanelWrapper {
-    pub fn new(state: Arc<parking_lot::RwLock<LevelEditorState>>, cx: &mut Context<Self>) -> Self {
+    pub fn new(state: Arc<parking_lot::RwLock<LevelEditorState>>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let property_input = cx.new(|cx| InputState::new(window, cx));
         Self {
             properties: PropertiesPanel::new(),
             state,
             focus_handle: cx.focus_handle(),
+            editing_property: None,
+            property_input,
+        }
+    }
+
+    fn start_editing_property(&mut self, property_path: String, current_value: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.editing_property = Some(property_path);
+        self.property_input.update(cx, |input, cx| {
+            input.set_value(&current_value, window, cx);
+            input.focus(window, cx);
+        });
+    }
+
+    fn commit_property_edit(&mut self, cx: &mut Context<Self>) {
+        if let Some(property_path) = self.editing_property.take() {
+            let new_value = self.property_input.read(cx).text().to_string();
+
+            // Parse and update the property
+            if let Ok(value) = new_value.parse::<f32>() {
+                self.update_transform_property(&property_path, value);
+            }
+        }
+    }
+
+    fn cancel_property_edit(&mut self, _cx: &mut Context<Self>) {
+        self.editing_property = None;
+    }
+
+    fn update_transform_property(&self, property_path: &str, value: f32) {
+        let state = self.state.read();
+        if let Some(object_id) = state.selected_object() {
+            if let Some(mut obj) = state.scene_database.get_object(&object_id) {
+                // Update the specific transform field
+                match property_path {
+                    "position.x" => obj.transform.position[0] = value,
+                    "position.y" => obj.transform.position[1] = value,
+                    "position.z" => obj.transform.position[2] = value,
+                    "rotation.x" => obj.transform.rotation[0] = value,
+                    "rotation.y" => obj.transform.rotation[1] = value,
+                    "rotation.z" => obj.transform.rotation[2] = value,
+                    "scale.x" => obj.transform.scale[0] = value,
+                    "scale.y" => obj.transform.scale[1] = value,
+                    "scale.z" => obj.transform.scale[2] = value,
+                    _ => return,
+                }
+
+                state.scene_database.update_object(obj);
+                drop(state);
+                self.state.write().has_unsaved_changes = true;
+            }
         }
     }
 }
@@ -117,12 +171,50 @@ impl PropertiesPanelWrapper {
 impl EventEmitter<PanelEvent> for PropertiesPanelWrapper {}
 
 impl Render for PropertiesPanelWrapper {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.state.read();
+
+        // Store editing trigger in a channel-like pattern
+        let editing_trigger = std::rc::Rc::new(std::cell::RefCell::new(None::<(String, String)>));
+        let editing_trigger_clone = editing_trigger.clone();
+
+        // Check if editing was triggered and update state
+        if let Some((path, value)) = editing_trigger.borrow_mut().take() {
+            self.property_input.update(cx, |input, cx| {
+                input.set_value(&value, window, cx);
+                input.focus(window, cx);
+            });
+            self.editing_property = Some(path);
+        }
+
         v_flex()
             .size_full()
             .bg(cx.theme().sidebar)
-            .child(self.properties.render(&*state, cx))
+            .child(self.properties.render(
+                &*state,
+                self.state.clone(),
+                &self.editing_property,
+                &self.property_input,
+                move |path: String, value: String| {
+                    *editing_trigger_clone.borrow_mut() = Some((path, value));
+                },
+                cx
+            ))
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                if this.editing_property.is_some() {
+                    match event.keystroke.key.as_str() {
+                        "enter" => {
+                            this.commit_property_edit(cx);
+                            cx.stop_propagation();
+                        }
+                        "escape" => {
+                            this.cancel_property_edit(cx);
+                            cx.stop_propagation();
+                        }
+                        _ => {}
+                    }
+                }
+            }))
     }
 }
 
