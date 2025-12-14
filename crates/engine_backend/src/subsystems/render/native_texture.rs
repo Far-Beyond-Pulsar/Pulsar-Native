@@ -120,6 +120,7 @@ impl NativeTextureHandle {
 
         #[cfg(target_os = "macos")]
         {
+            use foreign_types_shared::ForeignType;
             use wgpu_hal::api::Metal;
             
             // Get the HAL texture for Metal
@@ -127,7 +128,7 @@ impl NativeTextureHandle {
                 let metal_texture = &*hal_tex;
                 
                 // Get the raw MTLTexture pointer
-                let texture_ref = metal_texture.raw_texture();
+                let texture_ref = unsafe { metal_texture.raw_handle() };
                 let texture_ptr = texture_ref.as_ptr() as usize;
                 
                 println!("[NATIVE-TEXTURE] ✅ Extracted Metal texture: 0x{:X}", texture_ptr);

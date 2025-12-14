@@ -16,8 +16,11 @@ path = "src/lib.rs"
 name = "pulsar_engine"
 path = "src/main.rs"
 
+[features]
+default = []
+winit-external-window = []
+
 [dependencies]
-horizon.workspace = true
 anyhow.workspace = true
 gpui.workspace = true
 ui = { workspace = true, features = ["tree-sitter-languages"] }

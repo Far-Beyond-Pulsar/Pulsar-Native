@@ -47,16 +47,14 @@ debug = true
 # gpui_macros = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/gpui_macros" }
 # reqwest_client = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/reqwest_client" }
 # sum_tree = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/sum_tree" }
-gpui = { git = "https://github.com/tristanpoland/zed", rev="2047043a00dc138e3d8127c8921c96927acea8f8", features = ["runtime_shaders", "macos-blade"] }
-gpui_macros = { git = "https://github.com/tristanpoland/zed", rev="2047043a00dc138e3d8127c8921c96927acea8f8" }
-reqwest_client = { git = "https://github.com/tristanpoland/zed", rev = "2047043a00dc138e3d8127c8921c96927acea8f8" }
-sum_tree = { git = "https://github.com/tristanpoland/zed", rev = "2047043a00dc138e3d8127c8921c96927acea8f8" }
-
+gpui = { git = "https://github.com/zed-industries/zed", rev = "cc9af8d036270ad39953e6bc26e5167f84989af3", features = ["runtime_shaders", "macos-blade"] }
+gpui_macros = { git = "https://github.com/zed-industries/zed", rev = "cc9af8d036270ad39953e6bc26e5167f84989af3" }
+reqwest_client = { git = "https://github.com/zed-industries/zed", rev = "cc9af8d036270ad39953e6bc26e5167f84989af3" }
+sum_tree = { git = "https://github.com/zed-industries/zed", rev = "cc9af8d036270ad39953e6bc26e5167f84989af3" }
 ui = { path = "crates/ui" }
 gpui-component-macros = { path = "crates/macros" }
 pulsar_std = { path = "crates/pulsar_std" }
 ropey = { version = "=2.0.0-beta.1", features = ["metric_utf16", "metric_lines_lf"] }
-horizon = { git = "https://github.com/Far-Beyond-Dev/horizon" }
 engine_backend = { path = "crates/engine_backend" }
 engine_state = { path = "crates/engine_state" }
 engine_fs = { path = "crates/engine_fs" }

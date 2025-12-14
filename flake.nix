@@ -26,19 +26,23 @@
 
         naersk' = pkgs.callPackage naersk { };
 
+        rustToolchain = pkgs.rust-bin.nightly.latest.default.override {
+          extensions = [
+            "rust-src"
+            "cargo"
+            "rustc"
+            "clippy"
+            "rustfmt"
+          ];
+        };
+
         buildInputs = with pkgs; [
         ];
 
         nativeBuildInputs =
           with pkgs;
           [
-            (pkgs.rust-bin.stable.latest.default.override {
-              extensions = [
-                "rust-src"
-                "cargo"
-                "rustc"
-              ];
-            })
+            rustToolchain
 
             pkg-config
             protobuf
@@ -72,21 +76,13 @@
         };
 
         devShell = pkgs.mkShell {
-          RUST_SRC_PATH = "${
-            pkgs.rust-bin.stable.latest.default.override {
-              extensions = [ "rust-src" ];
-            }
-          }/lib/rustlib/src/rust/library";
+          RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
 
           nativeBuildInputs =
             with pkgs;
             [
               nixfmt
               cmake
-              rustc
-              rustfmt
-              cargo
-              clippy
               rust-analyzer
             ]
             ++ buildInputs

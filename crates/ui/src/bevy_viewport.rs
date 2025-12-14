@@ -11,11 +11,72 @@
 /// - Cross-platform ready (Windows: DXGI, macOS: IOSurface, Linux: DMA-BUF)
 
 use gpui::*;
-use gpui::prelude::FluentBuilder;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-// Re-export GPU canvas types from gpui
-pub use gpui::{GpuCanvasSource, GpuTextureHandle, gpu_canvas as gpu_canvas_element};
+/// 通用 GPU 纹理句柄（跨平台 native handle + 尺寸）。
+///
+/// 说明：上游 `gpui` 当前不暴露本仓库之前使用的 `GpuTextureHandle` / `GpuCanvasSource` API；
+/// 这里提供最小兼容类型以保持 UI/编辑器代码可编译。
+#[derive(Clone, Debug)]
+pub struct GpuTextureHandle {
+    pub native_handle: isize,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl GpuTextureHandle {
+    pub fn new(native_handle: isize, width: u32, height: u32) -> Self {
+        Self {
+            native_handle,
+            width,
+            height,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct GpuCanvasSourceInner {
+    buffers: [GpuTextureHandle; 2],
+    active_index: AtomicUsize,
+}
+
+/// 双缓冲纹理源（可跨线程共享）。
+#[derive(Clone, Debug)]
+pub struct GpuCanvasSource {
+    inner: Arc<GpuCanvasSourceInner>,
+}
+
+impl GpuCanvasSource {
+    pub fn new(buffer0: GpuTextureHandle, buffer1: GpuTextureHandle) -> Self {
+        Self {
+            inner: Arc::new(GpuCanvasSourceInner {
+                buffers: [buffer0, buffer1],
+                active_index: AtomicUsize::new(0),
+            }),
+        }
+    }
+
+    pub fn swap_buffers(&self) {
+        let current = self.inner.active_index.load(Ordering::Relaxed);
+        self.inner
+            .active_index
+            .store((current + 1) % 2, Ordering::Relaxed);
+    }
+
+    pub fn set_active_buffer(&self, index: usize) {
+        self.inner.active_index.store(index % 2, Ordering::Relaxed);
+    }
+
+    pub fn active_buffer(&self) -> usize {
+        self.inner.active_index.load(Ordering::Relaxed)
+    }
+
+    #[allow(dead_code)]
+    pub fn active_texture(&self) -> GpuTextureHandle {
+        self.inner.buffers[self.active_buffer()].clone()
+    }
+}
 
 /// Bevy viewport state that can be shared across threads
 #[derive(Clone)]

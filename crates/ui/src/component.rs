@@ -40,6 +40,7 @@ pub trait Component: Render + Sized + 'static {
         window_config: ComponentWindowConfig,
         cx: &mut App,
     ) -> Result<WindowHandle<Self>> {
+        let is_movable = window_config.kind != WindowKind::PopUp;
         let options = WindowOptions {
             window_bounds: window_config.bounds.map(WindowBounds::Windowed),
             titlebar: Some(TitlebarOptions {
@@ -51,7 +52,7 @@ pub trait Component: Render + Sized + 'static {
             focus: true,
             show: true,
             kind: window_config.kind,
-            is_movable: window_config.kind != WindowKind::PopUp,
+            is_movable,
             is_minimizable: true,
             is_resizable: true,
             display_id: window_config.display_id,

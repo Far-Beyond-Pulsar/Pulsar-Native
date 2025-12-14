@@ -13,6 +13,7 @@
 #[path = "build/doc_generator/mod.rs"]
 mod doc_generator;
 
+use std::fs;
 use std::path::Path;
 
 fn main() {
@@ -20,6 +21,10 @@ fn main() {
     println!("cargo:rerun-if-changed=../../crates/");
     println!("cargo:rerun-if-changed=../../ui-crates/");
     
+    // Ensure the embedded docs folder always exists so `rust-embed` can compile in debug builds.
+    let output_dir = Path::new("../../target/doc");
+    let _ = fs::create_dir_all(output_dir);
+
     // Only generate docs in release builds
     if std::env::var("PROFILE").unwrap_or_default() != "release" {
         println!("cargo:warning=Skipping doc generation in debug mode");
@@ -29,7 +34,6 @@ fn main() {
     println!("cargo:warning=Starting Pulsar documentation generation...");
     
     let workspace_root = Path::new("../../");
-    let output_dir = Path::new("../../target/doc");
     
     match doc_generator::generate_workspace_docs(workspace_root, output_dir) {
         Ok(count) => {
