@@ -568,6 +568,141 @@ impl DataTableEditor {
             })
     }
 
+    fn render_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let db_name = self.database_path
+            .as_ref()
+            .and_then(|p| p.file_stem())
+            .and_then(|s| s.to_str())
+            .unwrap_or("In-Memory Database")
+            .to_string();
+        
+        let is_expanded = self.expanded_databases.get(&db_name).copied().unwrap_or(true);
+        
+        v_flex()
+            .w_64()
+            .h_full()
+            .bg(cx.theme().muted.opacity(0.2))
+            .border_r_1()
+            .border_color(cx.theme().border)
+            .font_family("monospace")
+            .font(gpui::Font {
+                family: "Jetbrains Mono".to_string().into(),
+                weight: gpui::FontWeight::NORMAL,
+                style: gpui::FontStyle::Normal,
+                features: gpui::FontFeatures::default(),
+                fallbacks: Some(gpui::FontFallbacks::from_fonts(vec!["monospace".to_string()])),
+            })
+            .child(
+                // Header
+                div()
+                    .w_full()
+                    .px_4()
+                    .py_3()
+                    .border_b_1()
+                    .border_color(cx.theme().border)
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_semibold()
+                            .text_color(cx.theme().foreground)
+                            .child("Database Explorer")
+                    )
+            )
+            .child(
+                // Database item (like a folder)
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .h(px(28.0))
+                    .pl(px(12.0))
+                    .pr_3()
+                    .rounded_md()
+                    .cursor_pointer()
+                    .hover(|style| style.bg(cx.theme().accent.opacity(0.1)))
+                    .child(
+                        Icon::new(if is_expanded { IconName::FolderOpen } else { IconName::Folder })
+                            .size_4()
+                            .text_color(cx.theme().foreground)
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().foreground)
+                            .child(db_name.clone())
+                    )
+                    .on_mouse_down(gpui::MouseButton::Left, {
+                        let db_name = db_name.clone();
+                        cx.listener(move |this, _, _, cx| {
+                            let current = this.expanded_databases.get(&db_name).copied().unwrap_or(true);
+                            this.expanded_databases.insert(db_name.clone(), !current);
+                            cx.notify();
+                        })
+                    })
+            )
+            .child(
+                // Tables (like files in a folder)
+                v_flex()
+                    .flex_1()
+                    .when(is_expanded, |content| {
+                        content.children(self.available_tables.iter().enumerate().map(|(idx, table)| {
+                            let is_open = self.open_tabs.iter().any(|tab| {
+                                matches!(&tab.tab_type, TabType::Table { name, .. } if name == table)
+                            });
+                            let table_name = table.clone();
+                            
+                            div()
+                                .id(("table-item", idx))
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .h(px(28.0))
+                                .pl(px(28.0)) // Indented to show hierarchy
+                                .pr_3()
+                                .rounded_md()
+                                .cursor_pointer()
+                                .when(is_open, |style| style.bg(cx.theme().accent))
+                                .when(!is_open, |style| {
+                                    style.hover(|style| style.bg(cx.theme().accent.opacity(0.1)))
+                                })
+                                .child(
+                                    Icon::new(IconName::Table)
+                                        .size_4()
+                                        .when(is_open, |icon| icon.text_color(cx.theme().accent_foreground))
+                                        .when(!is_open, |icon| icon.text_color(cx.theme().foreground))
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .when(is_open, |style| style.text_color(cx.theme().accent_foreground))
+                                        .when(!is_open, |style| style.text_color(cx.theme().foreground))
+                                        .child(table.clone())
+                                )
+                                .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |editor, _, window, cx| {
+                                    if let Err(e) = editor.select_table(table_name.clone(), window, cx) {
+                                        eprintln!("Failed to select table: {}", e);
+                                    }
+                                }))
+                        }))
+                    })
+            )
+            .child(
+                // Footer with database path
+                div()
+                    .w_full()
+                    .px_4()
+                    .py_2()
+                    .border_t_1()
+                    .border_color(cx.theme().border)
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(db_name)
+                    )
+            )
+    }
+
 }
 
 impl Panel for DataTableEditor {
@@ -612,18 +747,8 @@ impl Render for DataTableEditor {
         // Initialize workspace on first render
         self.initialize_workspace_once(window, cx);
         
-        // Check for pending table selection from explorer
-        if let Some(explorer) = &self.explorer {
-            if let Some(table_name) = explorer.update(cx, |explorer, _| {
-                explorer.delegate_mut().take_pending_selection()
-            }) {
-                if let Err(e) = self.select_table(table_name, window, cx) {
-                    eprintln!("Failed to select table: {}", e);
-                }
-            }
-        }
-        
         let toolbar = self.render_toolbar(cx);
+        let sidebar = self.render_sidebar(cx);
         
         v_flex()
             .size_full()
@@ -633,17 +758,7 @@ impl Render for DataTableEditor {
                 h_flex()
                     .flex_1()
                     .w_full()
-                    .child(
-                        div()
-                            .w_64()
-                            .h_full()
-                            .bg(cx.theme().muted.opacity(0.2))
-                            .border_r_1()
-                            .border_color(cx.theme().border)
-                            .when_some(self.explorer.clone(), |this, explorer| {
-                                this.child(explorer)
-                            })
-                    )
+                    .child(sidebar)
                     .child(
                         div()
                             .flex_1()
