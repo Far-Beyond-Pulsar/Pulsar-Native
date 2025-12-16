@@ -535,14 +535,6 @@ impl DataTableEditor {
                                 editor.open_query_tab(window, cx);
                             }))
                     )
-                    .child(
-                        div().flex_1() // Spacer
-                    )
-                    .child(
-                        Label::new("💡 Click cell to edit • Enter to save • Esc to cancel")
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                    )
             )
     }
 
