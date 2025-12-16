@@ -697,9 +697,9 @@ impl Render for QueryEditorView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let show_sidebar = self.editor.read(cx).show_schema_sidebar;
 
-        let schema_sidebar = self.editor.update(cx, |editor, cx| {
-            editor.render_schema_sidebar(cx)
-        });
+        //let schema_sidebar = self.editor.update(cx, |editor, cx| {
+        //    editor.render_schema_sidebar(cx)
+        //});
 
         let query_input = self.editor.update(cx, |editor, cx| {
             editor.render_query_input(cx)
@@ -716,9 +716,6 @@ impl Render for QueryEditorView {
         h_flex()
             .size_full()
             .bg(cx.theme().background)
-            .when(show_sidebar, |this| {
-                this.child(schema_sidebar)
-            })
             .child(
                 v_flex()
                     .flex_1()
