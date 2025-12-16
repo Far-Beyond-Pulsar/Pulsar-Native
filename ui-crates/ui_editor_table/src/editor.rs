@@ -2,9 +2,8 @@ use gpui::{prelude::*, *};
 use ui::{
     h_flex, v_flex, button::{Button, ButtonVariants}, label::Label, divider::Divider,
     table::Table, ActiveTheme, Sizable, StyledExt, Disableable,
-    dock::{Panel, PanelEvent, DockChannel}, IconName,
+    dock::{Panel, PanelEvent, DockChannel}, IconName, Icon,
 };
-use ui_common::{HierarchicalExplorer, HierarchicalExplorerDelegate, HierarchicalEntry};
 use crate::{
     database::DatabaseManager,
     table_view::DataTableView,
@@ -34,118 +33,6 @@ struct EditorTab {
     tab_type: TabType,
 }
 
-struct DatabaseExplorerDelegate {
-    database_path: Option<PathBuf>,
-    available_tables: Vec<String>,
-    open_tables: HashMap<String, bool>,
-    expanded_databases: HashMap<String, bool>,
-    pending_table_selection: Option<String>,
-}
-
-impl DatabaseExplorerDelegate {
-    fn new(database_path: Option<PathBuf>, available_tables: Vec<String>) -> Self {
-        let mut expanded_databases = HashMap::new();
-        if let Some(ref path) = database_path {
-            if let Some(db_name) = path.file_stem().and_then(|s| s.to_str()) {
-                expanded_databases.insert(db_name.to_string(), true);
-            }
-        }
-        
-        Self {
-            database_path,
-            available_tables,
-            open_tables: HashMap::new(),
-            expanded_databases,
-            pending_table_selection: None,
-        }
-    }
-    
-    fn get_db_name(&self) -> String {
-        self.database_path
-            .as_ref()
-            .and_then(|p| p.file_stem())
-            .and_then(|s| s.to_str())
-            .unwrap_or("In-Memory Database")
-            .to_string()
-    }
-    
-    fn take_pending_selection(&mut self) -> Option<String> {
-        self.pending_table_selection.take()
-    }
-}
-
-impl HierarchicalExplorerDelegate for DatabaseExplorerDelegate {
-    fn entries(&self) -> Vec<HierarchicalEntry> {
-        let mut entries = Vec::new();
-        let db_name = self.get_db_name();
-        let is_expanded = self.expanded_databases.get(&db_name).copied().unwrap_or(true);
-        
-        // Database entry (like a folder)
-        entries.push(HierarchicalEntry {
-            id: format!("db:{}", db_name),
-            name: db_name.clone(),
-            is_parent: true,
-            is_expanded,
-            depth: 0,
-            icon: if is_expanded { IconName::FolderOpen } else { IconName::Folder },
-        });
-        
-        // Table entries (like files)
-        if is_expanded {
-            for table in &self.available_tables {
-                entries.push(HierarchicalEntry {
-                    id: format!("table:{}", table),
-                    name: table.clone(),
-                    is_parent: false,
-                    is_expanded: false,
-                    depth: 1,
-                    icon: IconName::Table,
-                });
-            }
-        }
-        
-        entries
-    }
-    
-    fn on_parent_clicked(&mut self, id: &str, cx: &mut Context<HierarchicalExplorer<Self>>) {
-        if let Some(db_name) = id.strip_prefix("db:") {
-            let current = self.expanded_databases.get(db_name).copied().unwrap_or(true);
-            self.expanded_databases.insert(db_name.to_string(), !current);
-            cx.notify();
-        }
-    }
-    
-    fn on_child_clicked(&mut self, id: &str, _window: &mut Window, cx: &mut Context<HierarchicalExplorer<Self>>) {
-        if let Some(table_name) = id.strip_prefix("table:") {
-            // Store the pending selection - parent will handle it
-            self.pending_table_selection = Some(table_name.to_string());
-            cx.notify();
-        }
-    }
-    
-    fn is_selected(&self, id: &str) -> bool {
-        if let Some(table_name) = id.strip_prefix("table:") {
-            self.open_tables.get(table_name).copied().unwrap_or(false)
-        } else {
-            false
-        }
-    }
-    
-    fn title(&self) -> &str {
-        "Database Explorer"
-    }
-    
-    fn footer_text(&self) -> String {
-        self.get_db_name()
-    }
-    
-    fn header_actions(&self, _cx: &mut Context<HierarchicalExplorer<Self>>) -> Vec<impl IntoElement> {
-        vec![
-            // Could add refresh, new query buttons here
-        ]
-    }
-}
-
 pub struct DataTableEditor {
     pub db: DatabaseManager,
     available_tables: Vec<String>,
@@ -158,8 +45,8 @@ pub struct DataTableEditor {
     workspace: Option<Entity<ui::workspace::Workspace>>,
     /// Track if workspace has been initialized
     workspace_initialized: bool,
-    /// Hierarchical explorer for database/table navigation
-    explorer: Option<Entity<HierarchicalExplorer<DatabaseExplorerDelegate>>>,
+    /// Track which databases are expanded (using database name as key)
+    expanded_databases: HashMap<String, bool>,
 }
 
 impl DataTableEditor {
@@ -175,10 +62,6 @@ impl DataTableEditor {
                 cx
             )
         });
-        
-        // Create explorer
-        let delegate = DatabaseExplorerDelegate::new(None, Vec::new());
-        let explorer = cx.new(|cx| HierarchicalExplorer::new(delegate, cx));
 
         Self {
             db,
@@ -190,7 +73,7 @@ impl DataTableEditor {
             focus_handle: cx.focus_handle(),
             workspace: Some(workspace),
             workspace_initialized: false,
-            explorer: Some(explorer),
+            expanded_databases: HashMap::new(),
         }
     }
 
@@ -212,9 +95,11 @@ impl DataTableEditor {
             )
         });
         
-        // Create explorer
-        let delegate = DatabaseExplorerDelegate::new(Some(path.clone()), available_tables.clone());
-        let explorer = cx.new(|cx| HierarchicalExplorer::new(delegate, cx));
+        // Initialize with database expanded by default
+        let mut expanded_databases = HashMap::new();
+        if let Some(db_name) = path.file_stem().and_then(|s| s.to_str()) {
+            expanded_databases.insert(db_name.to_string(), true);
+        }
 
         Ok(Self {
             db,
@@ -226,7 +111,7 @@ impl DataTableEditor {
             focus_handle: cx.focus_handle(),
             workspace: Some(workspace),
             workspace_initialized: false,
-            explorer: Some(explorer),
+            expanded_databases,
         })
     }
 
@@ -359,15 +244,6 @@ impl DataTableEditor {
             matches!(&tab.tab_type, TabType::Table { name, .. } if name == &table_name)
         }) {
             self.active_tab_idx = Some(idx);
-            
-            // Update explorer to show this table as selected
-            if let Some(explorer) = &self.explorer {
-                explorer.update(cx, |explorer, cx| {
-                    explorer.delegate_mut().open_tables.insert(table_name.clone(), true);
-                    cx.notify();
-                });
-            }
-            
             cx.notify();
             return Ok(());
         }
@@ -402,14 +278,6 @@ impl DataTableEditor {
         self.next_tab_id += 1;
         self.open_tabs.push(tab);
         self.active_tab_idx = Some(self.open_tabs.len() - 1);
-        
-        // Update explorer to show this table as selected
-        if let Some(explorer) = &self.explorer {
-            explorer.update(cx, |explorer, cx| {
-                explorer.delegate_mut().open_tables.insert(table_name.clone(), true);
-                cx.notify();
-            });
-        }
         
         // Add the new tab to the workspace efficiently
         self.add_pending_tabs_to_workspace(window, cx);
