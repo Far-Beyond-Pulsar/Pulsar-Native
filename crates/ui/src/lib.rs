@@ -51,6 +51,7 @@ pub mod drawer;
 pub mod dropdown;
 pub mod form;
 pub mod group_box;
+pub mod hierarchical_tree;
 pub mod highlighter;
 pub mod history;
 pub mod indicator;
@@ -104,6 +105,7 @@ pub use icon::*;
 pub use kbd::*;
 pub use theme::*;
 pub use component::*;
+pub use hierarchical_tree::{hierarchical_tree_container, render_tree_item, HierarchicalTreeConfig, TreeEntry};
 
 // Re-export engine types for UI crates
 pub use assets::Assets;

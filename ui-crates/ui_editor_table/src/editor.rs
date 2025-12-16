@@ -544,28 +544,6 @@ impl DataTableEditor {
                             .text_color(cx.theme().muted_foreground)
                     )
             )
-            .when(is_table_tab, |this| {
-                this.child(
-                    // Status/info bar
-                    h_flex()
-                        .w_full()
-                        .gap_2()
-                        .px_2()
-                        .py_1()
-                        .bg(cx.theme().muted.opacity(0.2))
-                        .border_b_1()
-                        .border_color(cx.theme().border)
-                        .child(
-                            Label::new("📊")
-                                .text_sm()
-                        )
-                        .child(
-                            Label::new(self.get_table_stats(cx))
-                                .text_xs()
-                                .text_color(cx.theme().muted_foreground)
-                        )
-                )
-            })
     }
 
     fn render_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -621,7 +599,7 @@ impl DataTableEditor {
                     .cursor_pointer()
                     .hover(|style| style.bg(cx.theme().accent.opacity(0.1)))
                     .child(
-                        Icon::new(if is_expanded { IconName::FolderOpen } else { IconName::Folder })
+                        Icon::new(IconName::Database)
                             .size_4()
                             .text_color(cx.theme().foreground)
                     )
