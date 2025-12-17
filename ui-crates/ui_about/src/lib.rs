@@ -1,5 +1,6 @@
 use gpui::*;
 use ui::{ActiveTheme, Root, Sizable, StyledExt, TitleBar, v_flex, button::{Button, ButtonVariants as _}};
+use chrono::Datelike;
 
 pub struct AboutWindow {
     focus_handle: FocusHandle,
@@ -81,7 +82,7 @@ impl Render for AboutWindow {
                                 div()
                                     .text_sm()
                                     .text_color(theme.muted_foreground)
-                                    .child("© 2024 Pulsar Engine Contributors")
+                                    .child(format!("© {} Pulsar Engine Contributors", chrono::Local::now().year()))
                             )
                     )
                     .child(

@@ -14181,6 +14181,7 @@ dependencies = [
 name = "ui_about"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "gpui",
  "ui",
 ]
