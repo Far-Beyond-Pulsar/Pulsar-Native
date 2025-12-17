@@ -50,7 +50,7 @@ pub trait Component: Render + Sized + 'static {
             window_background: WindowBackgroundAppearance::Opaque,
             focus: true,
             show: true,
-            kind: window_config.kind,
+            kind: window_config.kind.clone(),
             is_movable: window_config.kind != WindowKind::PopUp,
             is_minimizable: true,
             is_resizable: true,
