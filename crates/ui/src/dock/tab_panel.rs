@@ -287,6 +287,7 @@ impl TabPanel {
         .detach();
 
         cx.emit(PanelEvent::LayoutChanged);
+        cx.emit(PanelEvent::TabChanged { active_index: ix });
         cx.notify();
     }
 

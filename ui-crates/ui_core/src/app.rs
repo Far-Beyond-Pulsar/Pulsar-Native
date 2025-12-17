@@ -604,13 +604,16 @@ impl PulsarApp {
             analyzer.start(event.path.clone(), window, cx);
         });
 
+        // Update Discord presence with new project
+        self.update_discord_presence(cx);
+
         println!("Project selected: {:?}", event.path);
         cx.notify();
     }
 
     fn on_tab_panel_event(
         &mut self,
-        _tabs: &Entity<TabPanel>,
+        tabs: &Entity<TabPanel>,
         event: &PanelEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -634,6 +637,13 @@ impl PulsarApp {
                     .retain(|e| e.entity_id() != *entity_id);
                 self.alias_editors
                     .retain(|e| e.entity_id() != *entity_id);
+                    
+                // Update Discord presence when tab is closed
+                self.update_discord_presence(cx);
+            }
+            PanelEvent::TabChanged { active_index } => {
+                // Update Discord presence when active tab changes
+                self.update_discord_presence(cx);
             }
             _ => {}
         }
@@ -663,6 +673,10 @@ impl PulsarApp {
 
                 // Close the drawer
                 self.drawer_open = false;
+                
+                // Update Discord presence
+                self.update_discord_presence(cx);
+                
                 cx.notify();
                 return;
             }
@@ -1666,6 +1680,34 @@ impl PulsarApp {
                 }
                 _ => {}
             }
+        }
+    }
+
+    /// Update Discord Rich Presence with current editor state
+    fn update_discord_presence(&self, cx: &App) {
+        // Get engine state if available
+        if let Some(engine_state) = engine_state::EngineState::global() {
+            // Get project name
+            let project_name = self.project_path.as_ref().and_then(|path| {
+                path.file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|s| s.to_string())
+            });
+
+            // Get active tab info
+            let (tab_name, file_path) = self.center_tabs.read(cx).active_panel(cx)
+                .map(|panel| {
+                    let tab_name = panel.panel_name(cx).to_string();
+                    
+                    // Try to extract file path from panel if it's a file editor
+                    let file_path: Option<String> = None; // Would need panel-specific API to get this
+                    
+                    (Some(tab_name), file_path)
+                })
+                .unwrap_or((None, None));
+
+            // Update Discord presence
+            engine_state.update_discord_presence(project_name, tab_name, file_path);
         }
     }
 }

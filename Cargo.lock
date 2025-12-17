@@ -4554,6 +4554,7 @@ dependencies = [
  "anyhow",
  "dashmap",
  "parking_lot",
+ "rust-discord-activity",
  "serde",
  "serde_json",
  "tokio",
@@ -10917,6 +10918,18 @@ dependencies = [
  "hashlink 0.9.1",
  "libsqlite3-sys",
  "smallvec",
+]
+
+[[package]]
+name = "rust-discord-activity"
+version = "0.3.1"
+source = "git+https://github.com/Far-Beyond-Pulsar/Discord-RPC-RS?rev=2f07922277bc3632fd124e46d28008fc542367fc#2f07922277bc3632fd124e46d28008fc542367fc"
+dependencies = [
+ "byteorder",
+ "log",
+ "serde",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]

@@ -18,6 +18,8 @@ pub enum PanelEvent {
     /// Request to move a panel to a new window
     /// Contains the panel to move and the desired window position
     MoveToNewWindow(Arc<dyn PanelView>, gpui::Point<gpui::Pixels>),
+    /// Tab changed - fired when active tab is switched
+    TabChanged { active_index: usize },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

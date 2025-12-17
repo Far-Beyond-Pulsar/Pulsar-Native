@@ -10,10 +10,12 @@
 mod metadata;
 mod renderers;
 mod channels;
+mod discord;
 
 pub use metadata::Metadata;
 pub use renderers::{RendererRegistry, RendererHandle};
 pub use channels::{WindowRequest, WindowRequestSender, WindowRequestReceiver, window_request_channel};
+pub use discord::DiscordPresence;
 
 use std::sync::Arc;
 use parking_lot::RwLock;
@@ -29,6 +31,7 @@ struct EngineStateInner {
     renderers: RendererRegistry,
     window_count: usize,
     window_sender: Option<WindowRequestSender>,
+    discord_presence: Option<DiscordPresence>,
 }
 
 impl EngineState {
@@ -40,6 +43,7 @@ impl EngineState {
                 renderers: RendererRegistry::new(),
                 window_count: 0,
                 window_sender: None,
+                discord_presence: None,
             })),
         }
     }
@@ -124,6 +128,29 @@ impl EngineState {
     /// Get global instance (returns Option for compatibility)
     pub fn global() -> Option<&'static Self> {
         GLOBAL_STATE.get()
+    }
+
+    /// Initialize Discord Rich Presence
+    /// 
+    /// # Arguments
+    /// * `application_id` - Your Discord application ID (get from https://discord.com/developers/applications)
+    pub fn init_discord(&self, application_id: impl Into<String>) -> anyhow::Result<()> {
+        let presence = DiscordPresence::new(application_id);
+        presence.connect()?;
+        self.inner.write().discord_presence = Some(presence);
+        Ok(())
+    }
+
+    /// Get Discord presence instance
+    pub fn discord(&self) -> Option<DiscordPresence> {
+        self.inner.read().discord_presence.clone()
+    }
+
+    /// Update Discord presence with current project and editor state
+    pub fn update_discord_presence(&self, project_name: Option<String>, tab_name: Option<String>, file_path: Option<String>) {
+        if let Some(discord) = self.discord() {
+            discord.update_all(project_name, tab_name, file_path);
+        }
     }
 }
 

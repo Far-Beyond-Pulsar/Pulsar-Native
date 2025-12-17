@@ -173,6 +173,19 @@ fn main() {
     // Set global engine state for access from GPUI views
     engine_state.clone().set_global();
 
+    // Initialize Discord Rich Presence
+    // NOTE: Replace this with your Discord Application ID from https://discord.com/developers/applications
+    // To disable Discord integration, simply comment out these lines
+    let discord_app_id = "YOUR_DISCORD_APPLICATION_ID_HERE";
+    if discord_app_id != "YOUR_DISCORD_APPLICATION_ID_HERE" {
+        match engine_state.init_discord(discord_app_id) {
+            Ok(_) => tracing::info!("✅ Discord Rich Presence initialized"),
+            Err(e) => tracing::warn!("⚠️  Discord Rich Presence failed to initialize: {}", e),
+        }
+    } else {
+        tracing::info!("ℹ️  Discord Rich Presence not configured (set discord_app_id in main.rs)");
+    }
+
     let event_loop = EventLoop::new().expect("Failed to create event loop");
     // Use Wait mode for event-driven rendering (only render when needed)
     event_loop.set_control_flow(ControlFlow::Wait);
