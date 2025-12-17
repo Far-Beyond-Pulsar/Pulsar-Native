@@ -1,0 +1,21 @@
+{
+    "recommendations": [
+        "hediet.vscode-drawio",
+        "nopeslide.vscode-drawio-plugin-mermaid",
+        "rust-lang.rust-analyzer",
+        "naumovs.color-highlight",
+        "tamasfe.even-better-toml",
+        "ms-vsliveshare.vsliveshare",
+        "bierner.markdown-mermaid",
+        "bierner.markdown-preview-github-styles",
+        "esbenp.prettier-vscode",
+        "jinxdash.prettier-rust",
+        "ms-python.python",
+        "ms-python.debugpy",
+        "jscearcy.rust-doc-viewer",
+        "henoc.svgeditor",
+        "gruntfuggly.todo-tree",
+        "wgsl-analyzer.wgsl-analyzer"
+        
+    ]
+}
