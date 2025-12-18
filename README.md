@@ -13,8 +13,16 @@
 
 ## Before you continue!
 
-**Do you like this project?** You may like the Horizon game server from many of the same developers who work on Pulsar. [Check it out](https://github.com/Far-Beyond-Dev/Horizon
-)
+**Do you like this project?** You may like the Horizon game server from many of the same developers who work on Pulsar. [Check it out]()
+
+<a href="https://github.com/Far-Beyond-Dev/Horizon" target="_blank" rel="noopener">
+  <img
+    src="https://github.com/user-attachments/assets/54a8e1a6-32ce-42fb-853f-04e38a52ae00"
+    alt="Visit Horizon's GitHub"
+    width="440"
+    style="cursor: pointer;"
+  />
+</a>
 
 ## Temporarly loss of support for non-Windows platforms
 
