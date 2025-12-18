@@ -1,60 +1,157 @@
-# Pulsar_engine
-=======
+<!-- =============================== -->
 
-## Join the community
-<a href="https://discord.gg/5eAKDC53SX" target="_blank" rel="noopener">
-  <img
-    src="https://github.com/user-attachments/assets/a13941d3-409f-45e3-a7b4-254d465ea135"
-    alt="Join our Discord"
-    width="250"
-    style="cursor: pointer;"
-  />
-</a>
+<!--        PULSAR ENGINE            -->
 
-## Before you continue!
+<!-- =============================== -->
 
-**Do you like this project?** You may like the Horizon game server from many of the same developers who work on Pulsar. [Check it out]()
+<!-- LOGO PLACEHOLDER -->
 
-<a href="https://github.com/Far-Beyond-Dev/Horizon" target="_blank" rel="noopener">
-  <img
-    src="https://github.com/user-attachments/assets/54a8e1a6-32ce-42fb-853f-04e38a52ae00"
-    alt="Visit Horizon's GitHub"
-    width="440"
-    style="cursor: pointer;"
-  />
-</a>
+<p align="center">
+  <!-- Replace src with your logo -->
+  <img src="https://via.placeholder.com/600x200?text=Pulsar+Engine+Logo" alt="Pulsar Engine Logo" width="600" />
+</p>
 
-## Temporarly loss of support for non-Windows platforms
+<h1 align="center">Pulsar Engine</h1>
 
+<p align="center">
+  A next‑generation, experimental game engine focused on scalability, modularity, and modern systems design.
+</p>
+
+<p align="center">
+  <a href="https://discord.gg/5eAKDC53SX">
+    <img src="https://github.com/user-attachments/assets/a13941d3-409f-45e3-a7b4-254d465ea135" alt="Join our Discord" width="260" />
+  </a>
+</p>
+
+---
+
+## About Pulsar
+
+Pulsar Engine is an early-stage game engine built by developers who felt game engines deserved to be better from front to back.
+
+The focus is on questioning assumptions that have calcified in existing engines and rebuilding core systems and UI experiences with clarity and intent. Pulsar emphasizes:
+
+* Scalable world simulation and spatial partitioning
+* Modern, Rust-first tooling and workflows
+* Explicit and modular engine architecture
+* Long-term maintainability over short-term convenience
+* In-editor stability as a first priority
+---
+
+## 🤝 Join the Community
+
+Development happens in the open. Talk directly with the core developers, follow progress, and contribute ideas:
+
+* 💬 **Discord:** Real‑time discussion, dev updates, and experiments
+* 🧠 **GitHub Discussions:** Long‑form design conversations
+
+<p align="left">
+  <a href="https://discord.gg/5eAKDC53SX">
+    <img src="https://github.com/user-attachments/assets/a13941d3-409f-45e3-a7b4-254d465ea135" alt="Join our Discord" width="250" />
+  </a>
+</p>
+
+---
+
+## 🚧 Platform Support Notice
+
+### Temporary Loss of Support for Non‑Windows Platforms
+
+Non‑Windows support is temporarily limited while core architectural changes are underway.
+
+📌 **Tracking discussion:**
 [https://github.com/orgs/Far-Beyond-Pulsar/discussions/17](https://github.com/orgs/Far-Beyond-Pulsar/discussions/17)
 
-## You probably can't make a game in this yet!!
-WIP, Contribution encouraged progress checks at: https://github.com/orgs/Far-Beyond-Pulsar/projects/1
+We are actively working toward restoring cross‑platform compatibility.
+
+---
+
+## ⚠️ Project Status
+
+> **You probably can’t make a full game in Pulsar yet.**
+
+This repository is:
+
+* 🧪 Experimental
+* 🛠️ Under heavy development
+* 📈 Open to contributions
+
+Progress and milestones are tracked here:
+
+🔗 [https://github.com/orgs/Far-Beyond-Pulsar/projects/1](https://github.com/orgs/Far-Beyond-Pulsar/projects/1)
+
+---
 
 ## 🚀 Quick Start
 
-The Pulsar Engine automatically manages all dependencies and setup. Just run:
+Pulsar automatically manages dependencies and setup where possible.
 
 ```bash
 cargo run --release
 ```
 
-The engine will detect missing dependencies and guide you through installation automatically.
+If required dependencies are missing, the engine will guide you through installation before you can enter the launcher.
 
-<img width="3437" height="1439" alt="image" src="https://github.com/user-attachments/assets/1d18a87e-050e-47ed-bbcb-05c4d4850c6d" />
-<img width="2155" height="1109" alt="image" src="https://github.com/user-attachments/assets/9097fae6-2ce9-40a2-9581-e692a7b38770" />
-<img width="2515" height="1362" alt="image" src="https://github.com/user-attachments/assets/2baf8876-07ff-4de0-95ab-840c56ed8679" />
-<img width="2515" height="1362" alt="image" src="https://github.com/user-attachments/assets/cc584017-a4c4-4f16-bfa8-8ffc23a8370d" />
-<img width="2515" height="1362" alt="image" src="https://github.com/user-attachments/assets/01dc70b8-bce3-4824-b02b-fb4f3d2d755c" />
-<img width="2515" height="1362" alt="image" src="https://github.com/user-attachments/assets/9629be15-f6e4-4fd0-8e1d-462f5b2e7bc6" />
-<img width="1508" height="835" alt="image" src="https://github.com/user-attachments/assets/7595ed21-f115-473d-9504-42f68814c3a6" />
-<img width="1508" height="835" alt="image" src="https://github.com/user-attachments/assets/0a8934ed-e728-4754-bbd2-ed48bf50a0b4" />
-<img width="2515" height="1362" alt="image" src="https://github.com/user-attachments/assets/3ccc74d3-8086-4a9b-8294-e990ef4a0ba7" />
-<img width="2515" height="1362" alt="image" src="https://github.com/user-attachments/assets/6555fe9b-4ae5-480d-9061-cd90817d19a9" />
-<img width="2515" height="1362" alt="image" src="https://github.com/user-attachments/assets/021b1933-77a4-4830-a367-f6af19bdd4eb" />
-<img width="2515" height="1362" alt="image" src="https://github.com/user-attachments/assets/ec5a5148-4ba8-45bd-bb8f-d5746a73273f" />
-<img width="902" height="602" alt="image" src="https://github.com/user-attachments/assets/94e058e8-e179-44d1-bfb4-fa20e5ca7637" />
-<img width="1538" height="968" alt="image" src="https://github.com/user-attachments/assets/cf4fff8f-4d2f-49b8-ae4b-251dd0c398b7" />
-<img width="2560" height="1552" alt="image" src="https://github.com/user-attachments/assets/78ddfebf-4550-4de5-9bf0-11928d43ab1a" />
+---
 
-[Talk wth the core devs and community!](https://github.com/Far-Beyond-Pulsar/Pulsar-Native/discussions)
+## 🛰️ Related Project: Horizon
+
+If you’re interested in large‑scale multiplayer and server technology, you may also like **Horizon**, developed by many of the same contributors.
+
+<p align="left">
+  <a href="https://github.com/Far-Beyond-Dev/Horizon">
+    <img src="https://github.com/user-attachments/assets/54a8e1a6-32ce-42fb-853f-04e38a52ae00" alt="Horizon Game Server" width="440" />
+  </a>
+</p>
+
+---
+
+## Screenshots & Development Media
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/1d18a87e-050e-47ed-bbcb-05c4d4850c6d" width="48%" />
+  <img src="https://github.com/user-attachments/assets/9097fae6-2ce9-40a2-9581-e692a7b38770" width="48%" />
+</p>
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/2baf8876-07ff-4de0-95ab-840c56ed8679" width="48%" />
+  <img src="https://github.com/user-attachments/assets/cc584017-a4c4-4f16-bfa8-8ffc23a8370d" width="48%" />
+</p>
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/01dc70b8-bce3-4824-b02b-fb4f3d2d755c" width="48%" />
+  <img src="https://github.com/user-attachments/assets/9629be15-f6e4-4fd0-8e1d-462f5b2e7bc6" width="48%" />
+</p>
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/7595ed21-f115-473d-9504-42f68814c3a6" width="48%" />
+  <img src="https://github.com/user-attachments/assets/0a8934ed-e728-4754-bbd2-ed48bf50a0b4" width="48%" />
+</p>
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/3ccc74d3-8086-4a9b-8294-e990ef4a0ba7" width="48%" />
+  <img src="https://github.com/user-attachments/assets/6555fe9b-4ae5-480d-9061-cd90817d19a9" width="48%" />
+</p>
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/021b1933-77a4-4830-a367-f6af19bdd4eb" width="48%" />
+  <img src="https://github.com/user-attachments/assets/ec5a5148-4ba8-45bd-bb8f-d5746a73273f" width="48%" />
+</p>
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/94e058e8-e179-44d1-bfb4-fa20e5ca7637" width="48%" />
+  <img src="https://github.com/user-attachments/assets/cf4fff8f-4d2f-49b8-ae4b-251dd0c398b7" width="48%" />
+</p>
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/78ddfebf-4550-4de5-9bf0-11928d43ab1a" width="60%" />
+</p>
+
+---
+
+## 💬 Get Involved
+
+* 🧑‍💻 Talk with the core developers and community
+* 🐞 Report bugs or design concerns
+* 💡 Propose experimental ideas
+
+👉 [https://github.com/Far-Beyond-Pulsar/Pulsar-Native/discussions](https://github.com/Far-Beyond-Pulsar/Pulsar-Native/discussions)
+
+---
+
+<p align="center">
+  <em>Pulsar Engine developed by Tristan J. Poland and the Pulsar community.</em>
+</p>
