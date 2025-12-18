@@ -2,7 +2,14 @@
 =======
 
 ## Join the community
-[Discord](https://discord.gg/5eAKDC53SX)
+<a href="https://discord.gg/5eAKDC53SX" target="_blank" rel="noopener">
+  <img
+    src="https://github.com/user-attachments/assets/a13941d3-409f-45e3-a7b4-254d465ea135"
+    alt="Join our Discord"
+    width="250"
+    style="cursor: pointer;"
+  />
+</a>
 
 ## Before you continue!
 
