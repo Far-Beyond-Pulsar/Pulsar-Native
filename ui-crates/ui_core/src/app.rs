@@ -1699,23 +1699,26 @@ impl PulsarApp {
                     .map(|s| s.to_string())
             });
 
-            // Get active tab info
-            let (tab_name, file_path) = self.center_tabs.read(cx).active_panel(cx)
+            // Get active tab info including Discord icon key from the panel itself
+            let (tab_name, file_path, discord_icon_key) = self.center_tabs.read(cx).active_panel(cx)
                 .map(|panel| {
                     let tab_name = panel.panel_name(cx).to_string();
+                    let discord_key = panel.discord_icon_key(cx);
                     
                     // Try to extract file path from panel if it's a file editor
                     let file_path: Option<String> = None; // Would need panel-specific API to get this
                     
-                    (Some(tab_name), file_path)
+                    (Some(tab_name), file_path, Some(discord_key))
                 })
-                .unwrap_or((None, None));
+                .unwrap_or((None, None, None));
 
-            tracing::info!("🎮 Updating Discord presence: project={:?}, tab={:?}, file={:?}", 
-                project_name, tab_name, file_path);
+            tracing::info!("🎮 Updating Discord presence: project={:?}, tab={:?}, file={:?}, icon={:?}", 
+                project_name, tab_name, file_path, discord_icon_key);
 
-            // Update Discord presence
-            engine_state.update_discord_presence(project_name, tab_name, file_path);
+            // Update Discord presence with the icon key from the panel
+            if let Some(discord) = engine_state.discord() {
+                discord.update_all_with_icon(project_name, tab_name, file_path, discord_icon_key);
+            }
         } else {
             tracing::warn!("⚠️  Cannot update Discord presence: EngineState not available");
         }

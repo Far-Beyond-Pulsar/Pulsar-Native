@@ -143,6 +143,32 @@ pub trait Panel: EventEmitter<PanelEvent> + Render + Focusable {
     fn inner_padding(&self, cx: &App) -> bool {
         true
     }
+
+    // TODO This is cursed. When we do plugins their tabs will provide ALL RPC data to avoid this conditional garbage
+    /// The Discord Rich Presence icon key for this panel type.
+    /// 
+    /// This key corresponds to an image uploaded to your Discord Application's Rich Presence assets.
+    /// Default implementation derives the key from the panel name.
+    /// Override this to provide a custom icon key for your panel.
+    /// 
+    /// Common keys: "level_edit", "script_edit", "daw_edit", "database", "blueprint", etc.
+    fn discord_icon_key(&self, cx: &App) -> &'static str {
+        // Default implementation based on panel name
+        let name = self.panel_name();
+        if name.contains("Level") || name.contains("3D") {
+            "level_edit"
+        } else if name.contains("Script") || name.contains("Code") {
+            "script_edit"
+        } else if name.contains("DAW") || name.contains("Audio") {
+            "daw_edit"
+        } else if name.contains("Database") || name.contains("Table") {
+            "database"
+        } else if name.contains("Blueprint") {
+            "blueprint"
+        } else {
+            "editor"
+        }
+    }
 }
 
 /// The PanelView trait used to define the panel view.
@@ -165,6 +191,7 @@ pub trait PanelView: 'static + Send + Sync {
     fn focus_handle(&self, cx: &App) -> FocusHandle;
     fn dump(&self, cx: &App) -> PanelState;
     fn inner_padding(&self, cx: &App) -> bool;
+    fn discord_icon_key(&self, cx: &App) -> &'static str;
 }
 
 impl<T: Panel> PanelView for Entity<T> {
@@ -238,6 +265,10 @@ impl<T: Panel> PanelView for Entity<T> {
 
     fn inner_padding(&self, cx: &App) -> bool {
         self.read(cx).inner_padding(cx)
+    }
+
+    fn discord_icon_key(&self, cx: &App) -> &'static str {
+        self.read(cx).discord_icon_key(cx)
     }
 }
 

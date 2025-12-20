@@ -21,6 +21,7 @@ struct DiscordPresenceInner {
     project_name: Option<String>,
     active_tab: Option<String>,
     active_file: Option<String>,
+    discord_icon_key: Option<String>,  // Store the custom icon key
     start_time: u128,
     enabled: bool,
 }
@@ -44,6 +45,7 @@ impl DiscordPresence {
                 project_name: None,
                 active_tab: None,
                 active_file: None,
+                discord_icon_key: None,
                 start_time,
                 enabled: false,
             })),
@@ -105,12 +107,18 @@ impl DiscordPresence {
 
     /// Update all presence information at once
     pub fn update_all(&self, project_name: Option<String>, tab_name: Option<String>, file_path: Option<String>) {
-        eprintln!("🎮 Discord::update_all called: project={:?}, tab={:?}, file={:?}", 
-            project_name, tab_name, file_path);
+        self.update_all_with_icon(project_name, tab_name, file_path, None);
+    }
+
+    /// Update all presence information at once with custom Discord icon key
+    pub fn update_all_with_icon(&self, project_name: Option<String>, tab_name: Option<String>, file_path: Option<String>, icon_key: Option<&'static str>) {
+        eprintln!("🎮 Discord::update_all_with_icon called: project={:?}, tab={:?}, file={:?}, icon={:?}", 
+            project_name, tab_name, file_path, icon_key);
         let mut inner = self.inner.write();
         inner.project_name = project_name;
         inner.active_tab = tab_name;
         inner.active_file = file_path;
+        inner.discord_icon_key = icon_key.map(|s| s.to_string());
         drop(inner);
         self.update_presence();
     }
