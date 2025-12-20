@@ -472,6 +472,11 @@ impl PulsarApp {
             focus_handle: cx.focus_handle(),
         };
 
+        // Update Discord presence with initial tab if project is loaded
+        if project_path.is_some() && create_level_editor {
+            app.update_discord_presence(cx);
+        }
+
         app
     }
 
@@ -1706,8 +1711,13 @@ impl PulsarApp {
                 })
                 .unwrap_or((None, None));
 
+            tracing::info!("🎮 Updating Discord presence: project={:?}, tab={:?}, file={:?}", 
+                project_name, tab_name, file_path);
+
             // Update Discord presence
             engine_state.update_discord_presence(project_name, tab_name, file_path);
+        } else {
+            tracing::warn!("⚠️  Cannot update Discord presence: EngineState not available");
         }
     }
 }

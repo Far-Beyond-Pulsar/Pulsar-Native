@@ -105,6 +105,8 @@ impl DiscordPresence {
 
     /// Update all presence information at once
     pub fn update_all(&self, project_name: Option<String>, tab_name: Option<String>, file_path: Option<String>) {
+        eprintln!("🎮 Discord::update_all called: project={:?}, tab={:?}, file={:?}", 
+            project_name, tab_name, file_path);
         let mut inner = self.inner.write();
         inner.project_name = project_name;
         inner.active_tab = tab_name;
@@ -118,6 +120,8 @@ impl DiscordPresence {
         let inner = self.inner.read();
         
         if !inner.enabled || inner.client.is_none() {
+            eprintln!("⚠️  Discord presence update skipped: enabled={}, client={}", 
+                inner.enabled, inner.client.is_some());
             return;
         }
 
@@ -149,14 +153,16 @@ impl DiscordPresence {
             (None, None) => "Pulsar Game Engine".to_string(),
         };
 
+        eprintln!("📤 Sending Discord presence: state='{}', details='{}'", state, details);
+
         // Create timestamp
         let timestamp = Timestamp::new(Some(inner.start_time), None);
 
         // Create activity
         let mut activity = Activity::new();
         activity
-            .set_state(Some(state))
-            .set_details(Some(details))
+            .set_state(Some(state.clone()))
+            .set_details(Some(details.clone()))
             .set_timestamps(Some(timestamp))
             .set_activity_type(Some(ActivityType::GAME));
 
@@ -180,7 +186,9 @@ impl DiscordPresence {
             // SAFETY: We're just sending data, not modifying the client state in a conflicting way
             unsafe {
                 if let Err(e) = (*client_ptr).send_payload(payload) {
-                    eprintln!("Failed to update Discord presence: {:?}", e);
+                    eprintln!("❌ Failed to update Discord presence: {:?}", e);
+                } else {
+                    eprintln!("✅ Discord presence updated successfully!");
                 }
             }
         }

@@ -176,7 +176,7 @@ fn main() {
     // Initialize Discord Rich Presence
     // NOTE: Replace this with your Discord Application ID from https://discord.com/developers/applications
     // To disable Discord integration, simply comment out these lines
-    let discord_app_id = "YOUR_DISCORD_APPLICATION_ID_HERE";
+    let discord_app_id = "1450965386014228491";
     if discord_app_id != "YOUR_DISCORD_APPLICATION_ID_HERE" {
         match engine_state.init_discord(discord_app_id) {
             Ok(_) => tracing::info!("✅ Discord Rich Presence initialized"),
