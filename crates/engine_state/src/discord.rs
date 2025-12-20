@@ -166,6 +166,36 @@ impl DiscordPresence {
         // Create timestamp
         let timestamp = Timestamp::new(Some(inner.start_time), None);
 
+        // Create asset with large image (main Pulsar logo) and small image (editor icon)
+        let asset = if let Some(ref icon_key) = inner.discord_icon_key {
+            // Use the custom icon key provided by the panel
+            let small_image_text = inner.active_tab.as_ref()
+                .map(|s| s.as_str())
+                .unwrap_or("Editor");
+            
+            eprintln!("🎨 Using panel's Discord icon: large='pulsar_logo', small='{}', text='{}'", icon_key, small_image_text);
+            
+            // NOTE: You need to upload these images to your Discord Application's Rich Presence Art Assets
+            // Go to: https://discord.com/developers/applications/<app_id>/rich-presence/assets
+            // Each panel can define its own icon key via the discord_icon_key() method
+            
+            Some(Asset::new(
+                Some("pulsar_logo".into()),        // Large image key (main logo)
+                Some("Pulsar Engine".into()),      // Large image hover text
+                Some(icon_key.clone()),            // Small image key (from panel)
+                Some(small_image_text.into()),     // Small image hover text
+            ))
+        } else {
+            // No custom icon - just show main logo
+            eprintln!("🎨 Using default Discord icon: large='pulsar_logo', small=none");
+            Some(Asset::new(
+                Some("pulsar_logo".into()),
+                Some("Pulsar Engine".into()),
+                None,
+                None,
+            ))
+        };
+
         // Create activity
         let mut activity = Activity::new();
         activity
@@ -173,15 +203,11 @@ impl DiscordPresence {
             .set_details(Some(details.clone()))
             .set_timestamps(Some(timestamp))
             .set_activity_type(Some(ActivityType::GAME));
-
-        // You can customize with assets later:
-        // let asset = Asset::new(
-        //     Some("https://your-cdn.com/large-icon.png".into()),
-        //     Some("Pulsar Engine".into()),
-        //     Some("https://your-cdn.com/small-icon.png".into()),
-        //     Some("Active".into()),
-        // );
-        // activity.set_assets(Some(asset));
+        
+        // Set the assets!
+        if let Some(asset) = asset {
+            activity.set_assets(Some(asset));
+        }
 
         let payload = Payload::new(EventName::Activity, EventData::Activity(activity));
 
