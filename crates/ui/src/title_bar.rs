@@ -270,9 +270,8 @@ impl RenderOnce for TitleBar {
                         .flex_1()
                         .when(is_linux || is_windows, |this| {
                             this.on_mouse_down(MouseButton::Left, |_, window, cx| {
-                                // Start dragging - child elements should call cx.stop_propagation()
-                                // to prevent this from running
-                                window.start_window_move();
+                                // Don't call start_window_move() here - let the Winit-level handler in mouse.rs do it
+                                // Don't stop propagation - allow the event to reach Winit
                             })
                             .on_double_click(|_, window, _| {
                                 window.zoom_window();
