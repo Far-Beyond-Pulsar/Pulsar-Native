@@ -5,7 +5,10 @@
       "Bash(find:*)",
       "Bash(cargo check:*)",
       "Bash(grep:*)",
-      "Bash(cargo build:*)"
+      "Bash(cargo build:*)",
+      "Bash(git log:*)",
+      "Bash(cargo doc:*)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

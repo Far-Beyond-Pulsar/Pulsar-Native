@@ -6,12 +6,83 @@
 use gpui::*;
 use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, MouseButton as WinitMouseButton, MouseScrollDelta};
-use winit::window::WindowId;
+use winit::window::{WindowId, ResizeDirection, CursorIcon};
 use crate::window::{WinitGpuiApp, convert_mouse_button};
+
+// Constants for window manipulation (in logical pixels, will be scaled)
+const TITLEBAR_HEIGHT_LOGICAL: f64 = 34.0;  // Match TitleBar::TITLE_BAR_HEIGHT
+const RESIZE_BORDER: f64 = 8.0;     // Size of resize grip area in physical pixels
+const WINDOW_CONTROLS_WIDTH_LOGICAL: f64 = 138.0;  // Width of min/max/close buttons (3 * 46px) in logical pixels
+
+/// Determine if a position is in the titlebar drag area
+/// All parameters should be in physical pixels
+fn is_in_titlebar_drag_area(x: f64, y: f64, window_width: f64, scale_factor: f64, is_maximized: bool) -> bool {
+    if is_maximized {
+        return false;  // Can't drag maximized windows
+    }
+
+    let titlebar_height_physical = TITLEBAR_HEIGHT_LOGICAL * scale_factor;
+    let controls_width_physical = WINDOW_CONTROLS_WIDTH_LOGICAL * scale_factor;
+
+    // In titlebar height
+    if y > titlebar_height_physical {
+        return false;
+    }
+
+    // Not in window controls area (right side)
+    if x > window_width - controls_width_physical {
+        return false;
+    }
+
+    true
+}
+
+/// Determine resize direction based on cursor position
+fn get_resize_direction(x: f64, y: f64, window_width: f64, window_height: f64, is_maximized: bool) -> Option<ResizeDirection> {
+    if is_maximized {
+        return None;  // Can't resize maximized windows
+    }
+
+    let on_left = x < RESIZE_BORDER;
+    let on_right = x > window_width - RESIZE_BORDER;
+    let on_top = y < RESIZE_BORDER;
+    let on_bottom = y > window_height - RESIZE_BORDER;
+
+    // Corners take priority
+    if on_top && on_left {
+        return Some(ResizeDirection::NorthWest);
+    }
+    if on_top && on_right {
+        return Some(ResizeDirection::NorthEast);
+    }
+    if on_bottom && on_left {
+        return Some(ResizeDirection::SouthWest);
+    }
+    if on_bottom && on_right {
+        return Some(ResizeDirection::SouthEast);
+    }
+
+    // Edges
+    if on_top {
+        return Some(ResizeDirection::North);
+    }
+    if on_bottom {
+        return Some(ResizeDirection::South);
+    }
+    if on_left {
+        return Some(ResizeDirection::West);
+    }
+    if on_right {
+        return Some(ResizeDirection::East);
+    }
+
+    None
+}
 
 /// Handle cursor movement events
 ///
-/// Updates cursor position tracking and forwards mouse move events to GPUI.
+/// Updates cursor position tracking, updates cursor icon for resize areas,
+/// and forwards mouse move events to GPUI.
 /// Includes information about which button is pressed during the move (for drag operations).
 ///
 /// # Arguments
@@ -33,6 +104,30 @@ pub fn handle_cursor_moved(
     let logical_x = position.x as f32 / scale_factor;
     let logical_y = position.y as f32 / scale_factor;
     window_state.last_cursor_position = point(px(logical_x), px(logical_y));
+
+    // Update cursor icon based on position (for resize feedback)
+    let size = window_state.winit_window.inner_size();
+    let is_maximized = window_state.winit_window.is_maximized();
+
+    if let Some(direction) = get_resize_direction(
+        position.x,
+        position.y,
+        size.width as f64,
+        size.height as f64,
+        is_maximized,
+    ) {
+        // Set appropriate resize cursor
+        let cursor = match direction {
+            ResizeDirection::North | ResizeDirection::South => CursorIcon::NsResize,
+            ResizeDirection::East | ResizeDirection::West => CursorIcon::EwResize,
+            ResizeDirection::NorthEast | ResizeDirection::SouthWest => CursorIcon::NeswResize,
+            ResizeDirection::NorthWest | ResizeDirection::SouthEast => CursorIcon::NwseResize,
+        };
+        window_state.winit_window.set_cursor_icon(cursor);
+    } else {
+        // Reset to default cursor
+        window_state.winit_window.set_cursor_icon(CursorIcon::Default);
+    }
 
     // Forward mouse move events to GPUI using inject_input_event
     if let Some(gpui_window_ref) = window_state.gpui_window.as_ref() {
@@ -64,7 +159,7 @@ pub fn handle_cursor_moved(
 /// Handle mouse button events (clicks)
 ///
 /// Tracks button press/release state, handles double-click detection,
-/// and forwards mouse button events to GPUI.
+/// handles window dragging and resizing, and forwards mouse button events to GPUI.
 ///
 /// # Arguments
 /// * `app` - The application state
@@ -82,10 +177,11 @@ pub fn handle_mouse_input(
         return;
     };
 
-    // Forward mouse button events to GPUI
+    // First, forward ALL mouse events to GPUI and check if it handles them
+    let mut event_handled_by_gpui = false;
+
     if let Some(gpui_window_ref) = window_state.gpui_window.as_ref() {
         let gpui_button = convert_mouse_button(button);
-        // Use actual cursor position for clicks, not smoothed position!
         let position = window_state.last_cursor_position;
 
         match state {
@@ -109,6 +205,12 @@ pub fn handle_mouse_input(
                 eprintln!("🔽 Injecting MouseDown event...");
                 let result = window_state.gpui_app.update(|cx| gpui_window_ref.inject_input_event(cx, gpui_event));
                 eprintln!("📊 MouseDown result: {:?}", result);
+
+                // Check if GPUI handled the event (e.g., button was clicked)
+                // Event is handled if propagate is false (stopped) or default was prevented
+                if let Ok(dispatch_result) = result {
+                    event_handled_by_gpui = !dispatch_result.propagate || dispatch_result.default_prevented;
+                }
             }
             ElementState::Released => {
                 eprintln!("🖱️ MouseInput RELEASED: {:?}", button);
@@ -126,12 +228,65 @@ pub fn handle_mouse_input(
                 eprintln!("🔽 Injecting MouseUp event...");
                 let result = window_state.gpui_app.update(|cx| gpui_window_ref.inject_input_event(cx, gpui_event));
                 eprintln!("📊 MouseUp result: {:?}", result);
+
+                // Event is handled if propagate is false (stopped) or default was prevented
+                if let Ok(dispatch_result) = result {
+                    event_handled_by_gpui = !dispatch_result.propagate || dispatch_result.default_prevented;
+                }
             }
         }
 
         // Request redraw for click feedback
         window_state.needs_render = true;
         window_state.winit_window.request_redraw();
+    }
+
+    // Only handle window manipulation if GPUI didn't consume the event
+    // This allows titlebar buttons to "override" the drag handler
+    if !event_handled_by_gpui && button == WinitMouseButton::Left && state == ElementState::Pressed {
+        let position = window_state.last_cursor_position;
+        let size = window_state.winit_window.inner_size();
+        let scale_factor = window_state.winit_window.scale_factor();
+        let is_maximized = window_state.winit_window.is_maximized();
+
+        // Convert logical pixels (GPUI) to physical pixels (Winit) for comparison
+        let pos_x: f32 = position.x.into();
+        let pos_y: f32 = position.y.into();
+        let pos_x_physical = (pos_x * scale_factor as f32) as f64;
+        let pos_y_physical = (pos_y * scale_factor as f32) as f64;
+
+        // Check for resize at window edges/corners (use physical pixels)
+        if let Some(direction) = get_resize_direction(
+            pos_x_physical,
+            pos_y_physical,
+            size.width as f64,
+            size.height as f64,
+            is_maximized,
+        ) {
+            // Start window resize
+            if let Err(e) = window_state.winit_window.drag_resize_window(direction) {
+                eprintln!("❌ Failed to start window resize: {:?}", e);
+            } else {
+                println!("🔲 Starting window resize: {:?}", direction);
+            }
+            return;
+        }
+
+        // Check for titlebar drag area (use physical pixels)
+        if is_in_titlebar_drag_area(
+            pos_x_physical,
+            pos_y_physical,
+            size.width as f64,
+            scale_factor,
+            is_maximized,
+        ) {
+            // Start window drag
+            if let Err(e) = window_state.winit_window.drag_window() {
+                eprintln!("❌ Failed to start window drag: {:?}", e);
+            } else {
+                println!("👆 Starting window drag from titlebar");
+            }
+        }
     }
 }
 
