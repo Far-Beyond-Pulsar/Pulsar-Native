@@ -963,6 +963,9 @@ impl DockArea {
                     PanelEvent::MoveToNewWindow(_, _) => {
                         // This event will be handled by PulsarApp - do nothing here
                     }
+                    PanelEvent::TabChanged { active_index: _ } => {
+                        // Do nothing for TabChanged     
+                    }
                 },
             );
 

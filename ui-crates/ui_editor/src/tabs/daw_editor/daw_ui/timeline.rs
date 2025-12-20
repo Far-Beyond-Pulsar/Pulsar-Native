@@ -244,7 +244,7 @@ fn render_virtual_track_area(
                 })
             )
             .size_full()
-            .track_scroll(&vertical_scroll_handle)
+            .track_scroll(vertical_scroll_handle)
             .with_sizing_behavior(ListSizingBehavior::Infer)
         )
         // Scrollbar overlay for horizontal scrolling

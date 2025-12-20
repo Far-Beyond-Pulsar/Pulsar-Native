@@ -14307,6 +14307,7 @@ dependencies = [
  "smol 1.3.0",
  "symphonia",
  "syn 2.0.110",
+ "tempfile",
  "tokio",
  "tracing",
  "tree-sitter 0.20.10",

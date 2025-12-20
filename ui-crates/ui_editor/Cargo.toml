@@ -39,6 +39,7 @@ quote = "1.0"
 
 # File system
 notify.workspace = true
+tempfile = "3.12"
 walkdir = "2.4"
 
 # Utilities

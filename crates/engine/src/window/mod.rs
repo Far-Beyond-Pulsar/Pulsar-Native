@@ -31,6 +31,10 @@
 //! - `app` - Main application handler (WinitGpuiApp)
 //! - `events` - Event conversion and utilities
 //! - `d3d11` - Direct3D 11 rendering (Windows only)
+//! - `handlers` - Application lifecycle and event dispatching
+//! - `input` - Input event handling (keyboard, mouse, modifiers)
+//! - `rendering` - Rendering and composition (will contain compositor, Bevy integration)
+//! - `initialization` - Window and rendering initialization logic
 //!
 //! ## Zero-Copy Composition (Windows)
 //!
@@ -55,6 +59,12 @@ pub mod app;
 pub mod d3d11;
 pub mod events;
 pub mod state;
+
+// New modular structure
+pub mod handlers;
+pub mod input;
+pub mod rendering;
+pub mod initialization;
 
 pub use app::WinitGpuiApp;
 pub use events::{convert_modifiers, convert_mouse_button, MotionSmoother, SimpleClickState};
