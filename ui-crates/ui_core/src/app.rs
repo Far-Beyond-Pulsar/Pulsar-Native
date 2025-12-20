@@ -373,6 +373,9 @@ impl PulsarApp {
             None
         };
 
+        // Store project_path before moving it
+        let has_project = project_path.is_some();
+
         // Create file manager drawer with the project path if provided
         let file_manager_drawer =
             cx.new(|cx| FileManagerDrawer::new(project_path.clone(), window, cx));
@@ -473,7 +476,7 @@ impl PulsarApp {
         };
 
         // Update Discord presence with initial tab if project is loaded
-        if project_path.is_some() && create_level_editor {
+        if has_project && create_level_editor {
             app.update_discord_presence(cx);
         }
 
