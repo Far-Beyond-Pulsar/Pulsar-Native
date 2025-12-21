@@ -23,7 +23,7 @@
 //! crate::themes::init(cx);
 //! 
 //! // Theme will be loaded from last session
-//! // or default to "Default Light"
+//! // or default to "Default Dark"
 //! ```
 //!
 //! ## Implementation
@@ -64,7 +64,7 @@ struct State {
 impl Default for State {
     fn default() -> Self {
         Self {
-            theme: "Default Light".into(),
+            theme: "Default Dark".into(),
             scrollbar_show: None,
         }
     }

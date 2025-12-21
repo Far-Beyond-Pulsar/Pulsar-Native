@@ -58,7 +58,7 @@ fn default_max_viewport_fps() -> u32 {
 impl Default for EngineSettings {
     fn default() -> Self {
         Self {
-            active_theme: "Default Light".to_string(),
+            active_theme: "Default Dark".to_string(),
             editor: EditorSettings::default(),
             project: ProjectSettings::default(),
             advanced: AdvancedSettings::default(),
