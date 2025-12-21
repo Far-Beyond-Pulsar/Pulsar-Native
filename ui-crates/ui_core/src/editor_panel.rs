@@ -1,7 +1,7 @@
 //! Generic editor panel component
 
 use gpui::{prelude::*, div, px, AnyElement, App, Context, Entity, EventEmitter, Focusable, FocusHandle, IntoElement, Render, Window};
-use ui::{h_flex, v_flex, dock::{Panel, PanelEvent, PanelState}, ActiveTheme as _};
+use ui::{h_flex, v_flex, dock::{Panel, PanelEvent, PanelState}, ActiveTheme as _, StyledExt as _};
 
 use crate::types::EditorType;
 

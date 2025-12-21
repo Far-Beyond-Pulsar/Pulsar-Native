@@ -1,7 +1,7 @@
 //! Event handler implementations
 
-use gpui::{Context, Entity, Window};
-use ui::dock::PanelEvent;
+use gpui::{AppContext, Context, DismissEvent, Entity, Focusable, Window};
+use ui::{ContextModal, dock::PanelEvent};
 use ui::notification::Notification;
 use ui_editor::{FileManagerDrawer, FileSelected, DrawerFileType as FileType, PopoutFileManagerEvent, ProblemsDrawer, ScriptEditorPanel, TextEditorEvent};
 use ui_entry::{EntryScreen, ProjectSelected};
@@ -164,7 +164,7 @@ pub fn on_tab_panel_event(
             // Update Discord presence when tab is closed
             app.update_discord_presence(cx);
         }
-        PanelEvent::TabChanged { active_index } => {
+        PanelEvent::TabChanged { active_index: _ } => {
             // Update Discord presence when active tab changes
             app.update_discord_presence(cx);
         }
@@ -350,7 +350,7 @@ pub fn on_show_type_picker_request(
         let delegate = AnyPaletteDelegate::type_library(event.target_slot.clone());
         let palette = cx.new(|cx| GenericPalette::new(delegate, window, cx));
 
-        cx.subscribe_in(&palette, window, |app: &mut PulsarApp, palette, _event: &ui::DismissEvent, window, cx| {
+        cx.subscribe_in(&palette, window, |app: &mut PulsarApp, palette, _event: &DismissEvent, window, cx| {
             let selected_item = palette.update(cx, |palette, _cx| {
                 palette.delegate_mut().take_selected_command()
             });

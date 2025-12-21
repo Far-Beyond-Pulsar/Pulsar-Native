@@ -1,9 +1,9 @@
 //! Rendering implementation for PulsarApp
 
 use std::time::Duration;
-use gpui::{prelude::*, px, relative, rgb, Animation, AnimationExt as _, App, Context, Focusable, FocusHandle, Hsla, IntoElement, MouseButton, Render, Window};
+use gpui::{prelude::*, div, px, relative, rgb, Animation, AnimationExt as _, App, Context, Focusable, FocusHandle, Hsla, IntoElement, MouseButton, Render, Window};
 use ui::{
-    h_flex, v_flex, ActiveTheme as _, button::{Button, ButtonVariants as _}, Icon, IconName,
+    h_flex, v_flex, ActiveTheme as _, ContextModal as _, StyledExt as _, button::{Button, ButtonVariants as _}, Icon, IconName,
 };
 use ui::notification::Notification;
 use engine_backend::services::rust_analyzer_manager::AnalyzerStatus;

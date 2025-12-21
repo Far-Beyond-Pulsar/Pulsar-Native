@@ -1,7 +1,7 @@
 //! Tab management and file opening logic
 
 use std::{path::PathBuf, sync::Arc};
-use gpui::{Context, Window};
+use gpui::{AppContext, Context, Window};
 use ui_editor::{DawEditorPanel, FileSelected, DrawerFileType as FileType, LevelEditorPanel, ScriptEditorPanel};
 
 use super::{PulsarApp, event_handlers};

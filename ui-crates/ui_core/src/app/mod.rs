@@ -7,9 +7,9 @@ mod tab_management;
 mod window_management;
 mod render;
 
-use gpui::{App, Context, Window};
+use gpui::{App, AppContext, Context, DismissEvent, Focusable, Window};
 use ui_common::command_palette::{CommandOrFile, CommandType};
-use ui::notification::Notification;
+use ui::{ContextModal, notification::Notification};
 
 use crate::actions::*;
 
@@ -80,7 +80,7 @@ impl PulsarApp {
                 let delegate = AnyPaletteDelegate::command(self.state.project_path.clone());
                 let palette = cx.new(|cx| GenericPalette::new(delegate, window, cx));
 
-                cx.subscribe_in(&palette, window, |this: &mut PulsarApp, palette, _event: &ui::DismissEvent, window, cx| {
+                cx.subscribe_in(&palette, window, |this: &mut PulsarApp, palette, _event: &DismissEvent, window, cx| {
                     let selected_item = palette.update(cx, |palette, _cx| {
                         palette.delegate_mut().take_selected_command()
                     });

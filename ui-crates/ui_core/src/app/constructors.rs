@@ -1,7 +1,7 @@
 //! Constructor methods for PulsarApp
 
 use std::{path::PathBuf, sync::Arc};
-use gpui::{Context, Entity, Window};
+use gpui::{AppContext, Context, Entity, Window};
 use ui::dock::DockItem;
 use ui_editor::{FileManagerDrawer, LevelEditorPanel, ProblemsDrawer, TerminalDrawer};
 use ui_entry::EntryScreen;

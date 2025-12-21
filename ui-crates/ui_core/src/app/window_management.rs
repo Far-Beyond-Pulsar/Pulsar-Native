@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 use gpui::{px, size, Bounds, Context, Point, Window, WindowBounds, WindowKind, WindowOptions};
+use gpui::AppContext;
 use ui::Root;
 use ui_terminal::{Terminal, TerminalWindow};
 use ui_problems::ProblemsWindow;
