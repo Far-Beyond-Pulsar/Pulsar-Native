@@ -404,6 +404,7 @@ impl Render for PulsarApp {
                                         .child(
                                             div()
                                                 .flex_1()
+                                                .min_h_0()
                                                 .child(self.state.file_manager_drawer.clone())
                                         )
                                 )
