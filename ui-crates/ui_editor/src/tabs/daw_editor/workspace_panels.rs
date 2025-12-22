@@ -6,7 +6,7 @@
 use gpui::*;
 use ui::{ActiveTheme, StyledExt, dock::{Panel, PanelEvent}, v_flex, h_flex};
 use super::daw_ui::state::{DawUiState, BrowserTab, InspectorTab, ViewMode};
-use super::audio_types::*;
+use crate::tabs::daw_editor::audio_types::{Track, TrackId, SAMPLE_RATE};
 use std::sync::Arc;
 use parking_lot::RwLock;
 
@@ -34,39 +34,89 @@ impl Render for BrowserPanel {
         v_flex()
             .size_full()
             .bg(cx.theme().background)
-            .child(
-                // Render browser content directly instead of calling the render function
-                self.render_browser_content(&*state, cx)
-            )
-    }
-}
-
-impl BrowserPanel {
-    fn render_browser_content(&self, state: &DawUiState, cx: &mut Context<Self>) -> impl IntoElement {
-        use ui::{
-            button::*, Icon, IconName, Sizable, Selectable, divider::Divider,
-        };
-        
-        v_flex()
-            .w_full()
-            .h_full()
             .gap_0()
             // Tab bar
-            .child(self.render_browser_tabs(state, cx))
+            .child(self.render_browser_tabs(&*state, cx))
             // Search bar
-            .child(self.render_search_bar(state, cx))
-            // Content area - placeholder for now
+            .child(self.render_search_bar(&*state, cx))
+            // Content area
             .child(
                 div()
                     .flex_1()
                     .w_full()
                     .p_4()
+                    .overflow_hidden()
+                    .child(self.render_browser_content(&*state, cx))
+            )
+            // Footer stats
+            .child(self.render_footer(&*state, cx))
+    }
+}
+
+impl BrowserPanel {
+    fn render_browser_content(&self, state: &DawUiState, cx: &mut Context<Self>) -> Div {
+        match state.browser_tab {
+            BrowserTab::Files => self.render_files_tab(state, cx),
+            BrowserTab::Instruments => self.render_placeholder_tab("Instruments", cx),
+            BrowserTab::Effects => self.render_placeholder_tab("Effects", cx),
+            BrowserTab::Loops => self.render_placeholder_tab("Loops", cx),
+            BrowserTab::Samples => self.render_placeholder_tab("Samples", cx),
+        }
+    }
+    
+    fn render_files_tab(&self, state: &DawUiState, cx: &mut Context<Self>) -> Div {
+        v_flex()
+            .w_full()
+            .gap_2()
+            .children(state.audio_files.iter().map(|file| {
+                h_flex()
+                    .w_full()
+                    .p_2()
+                    .gap_2()
+                    .rounded_md()
+                    .hover(|style| style.bg(cx.theme().muted.opacity(0.1)))
+                    .child(
+                        ui::Icon::new(ui::IconName::Code)
+                            .size_4()
+                            .text_color(cx.theme().accent)
+                    )
                     .child(
                         div()
+                            .flex_1()
                             .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!("Browser - {:?} tab", state.browser_tab))
+                            .text_color(cx.theme().foreground)
+                            .child(file.name.clone())
                     )
+            }))
+    }
+    
+    fn render_placeholder_tab(&self, name: &str, cx: &mut Context<Self>) -> Div {
+        v_flex()
+            .w_full()
+            .h_full()
+            .items_center()
+            .justify_center()
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(format!("{} browser coming soon", name))
+            )
+    }
+    
+    fn render_footer(&self, state: &DawUiState, cx: &mut Context<Self>) -> impl IntoElement {
+        h_flex()
+            .w_full()
+            .px_3()
+            .py_2()
+            .border_t_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().muted.opacity(0.1))
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(format!("{} files", state.audio_files.len()))
             )
     }
     
@@ -170,7 +220,7 @@ impl EventEmitter<PanelEvent> for TimelinePanel {}
 
 impl Render for TimelinePanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let state = self.state.read();
+        let mut state = self.state.write();
         
         v_flex()
             .size_full()
@@ -180,41 +230,117 @@ impl Render for TimelinePanel {
             .child(self.render_toolbar(&*state, cx))
             // Transport controls below toolbar
             .child(self.render_transport(&*state, cx))
-            // Main timeline content
+            // Main timeline content - use the real timeline renderer
             .child(
                 div()
                     .flex_1()
                     .w_full()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        div()
-                            .text_xl()
-                            .text_color(cx.theme().foreground)
-                            .child("Timeline / Arrangement View")
-                    )
-            )
-            // Status bar at bottom
-            .child(
-                div()
-                    .w_full()
-                    .p_2()
-                    .border_t_1()
-                    .border_color(cx.theme().border)
-                    .bg(cx.theme().muted.opacity(0.1))
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!("Tracks: {} | Playhead: {:.2} beats", 
-                                state.project.as_ref().map(|p| p.tracks.len()).unwrap_or(0),
-                                state.selection.playhead_position))
-                    )
+                    .overflow_hidden()
+                    .child(self.render_timeline_content(&mut *state, cx))
             )
     }
 }
 
 impl TimelinePanel {
+    fn render_timeline_content(&self, state: &DawUiState, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .size_full()
+            .bg(cx.theme().background)
+            .child(
+                div()
+                    .w_full()
+                    .h(px(40.0))
+                    .bg(cx.theme().muted.opacity(0.2))
+                    .border_b_1()
+                    .border_color(cx.theme().border)
+                    .child(
+                        div()
+                            .p_2()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Timeline Ruler")
+                    )
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .w_full()
+                    .overflow_hidden()
+                    .child(self.render_tracks(state, cx))
+            )
+    }
+    
+    fn render_tracks(&self, state: &DawUiState, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .w_full()
+            .gap_0()
+            .children(
+                state.project.as_ref()
+                    .map(|p| &p.tracks)
+                    .unwrap_or(&vec![])
+                    .iter()
+                    .map(|track| self.render_track_row(track, state, cx))
+            )
+    }
+    
+    fn render_track_row(&self, track: &Track, state: &DawUiState, cx: &mut Context<Self>) -> impl IntoElement {
+        let height = *state.track_heights.get(&track.id)
+            .unwrap_or(&state.viewport.track_height);
+        let pixels_per_beat = state.viewport.zoom;
+        
+        h_flex()
+            .w_full()
+            .h(px(height))
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .child(
+                // Track header
+                div()
+                    .w(px(200.0))
+                    .h_full()
+                    .p_2()
+                    .bg(cx.theme().muted.opacity(0.1))
+                    .border_r_1()
+                    .border_color(cx.theme().border)
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_medium()
+                            .text_color(cx.theme().foreground)
+                            .child(track.name.clone())
+                    )
+            )
+            .child(
+                // Track content area
+                div()
+                    .flex_1()
+                    .h_full()
+                    .relative()
+                    .child(
+                        div()
+                            .absolute()
+                            .left(px(0.0))
+                            .top(px(0.0))
+                            .w(px(pixels_per_beat as f32 * 16.0)) // Show 16 beats
+                            .h_full()
+                            .bg(cx.theme().background)
+                            .children(track.clips.iter().map(|clip| {
+                                // For now, just show a placeholder clip
+                                div()
+                                    .absolute()
+                                    .left(px(0.0))
+                                    .top(px(10.0))
+                                    .w(px(100.0))
+                                    .h(px(height - 20.0))
+                                    .bg(cx.theme().accent.opacity(0.3))
+                                    .border_1()
+                                    .border_color(cx.theme().accent)
+                                    .rounded_sm()
+                            }))
+                    )
+            )
+    }
+    
     fn render_toolbar(&self, state: &DawUiState, cx: &mut Context<Self>) -> impl IntoElement {
         use ui::button::*;
         use ui::Selectable;
@@ -415,33 +541,83 @@ impl Render for MixerPanel {
         v_flex()
             .size_full()
             .bg(cx.theme().background)
+            .child(self.render_mixer_content(&*state, cx))
+    }
+}
+
+impl MixerPanel {
+    fn render_mixer_content(&self, state: &DawUiState, cx: &mut Context<Self>) -> impl IntoElement {
+        h_flex()
+            .w_full()
+            .h_full()
+            .gap_2()
+            .p_4()
+            .overflow_hidden()
+            .children(
+                state.project.as_ref()
+                    .map(|p| &p.tracks)
+                    .unwrap_or(&vec![])
+                    .iter()
+                    .map(|track| self.render_channel_strip(track, cx))
+            )
+            .child(self.render_master_strip(state, cx))
+    }
+    
+    fn render_channel_strip(&self, track: &Track, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .w(px(90.0))
+            .h_full()
+            .gap_2()
+            .p_2()
+            .bg(cx.theme().muted.opacity(0.1))
+            .rounded_md()
+            .border_1()
+            .border_color(cx.theme().border)
+            .child(
+                div()
+                    .text_sm()
+                    .font_medium()
+                    .text_color(cx.theme().foreground)
+                    .child(track.name.clone())
+            )
             .child(
                 div()
                     .flex_1()
                     .w_full()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        div()
-                            .text_xl()
-                            .text_color(cx.theme().foreground)
-                            .child("Mixer View")
-                    )
+                    .bg(cx.theme().muted.opacity(0.3))
+                    .rounded_sm()
             )
             .child(
                 div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(format!("{:+.1} dB", track.volume_db()))
+            )
+    }
+    
+    fn render_master_strip(&self, _state: &DawUiState, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .w(px(90.0))
+            .h_full()
+            .gap_2()
+            .p_2()
+            .bg(cx.theme().accent.opacity(0.1))
+            .rounded_md()
+            .border_1()
+            .border_color(cx.theme().accent)
+            .child(
+                div()
+                    .text_sm()
+                    .font_bold()
+                    .text_color(cx.theme().accent)
+                    .child("Master")
+            )
+            .child(
+                div()
+                    .flex_1()
                     .w_full()
-                    .p_2()
-                    .border_t_1()
-                    .border_color(cx.theme().border)
-                    .bg(cx.theme().muted.opacity(0.1))
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!("Channels: {}", 
-                                state.project.as_ref().map(|p| p.tracks.len()).unwrap_or(0)))
-                    )
+                    .bg(cx.theme().accent.opacity(0.3))
+                    .rounded_sm()
             )
     }
 }
