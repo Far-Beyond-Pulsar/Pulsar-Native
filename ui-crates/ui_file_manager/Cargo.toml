@@ -11,7 +11,9 @@ ui.workspace = true
 
 # UI crates
 ui_common.workspace = true
-# Engine (file_manager doesn't need engine deps)
+
+# Engine
+engine_fs.workspace = true
 
 # File system
 walkdir = "2.4"

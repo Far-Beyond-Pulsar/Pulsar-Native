@@ -14395,6 +14395,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "engine_fs",
  "gpui",
  "notify 7.0.0",
  "schemars",
