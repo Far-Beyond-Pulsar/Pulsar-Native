@@ -1,7 +1,7 @@
 //! Rendering implementation for PulsarApp
 
 use std::time::Duration;
-use gpui::{prelude::*, div, px, relative, rgb, Animation, AnimationExt as _, App, Context, Focusable, FocusHandle, Hsla, IntoElement, MouseButton, Render, Window};
+use gpui::{prelude::*, div, px, relative, rgb, Animation, AnimationExt as _, App, Context, Focusable, FocusHandle, Hsla, IntoElement, MouseButton, MouseMoveEvent, Render, Window};
 use ui::{
     h_flex, v_flex, ActiveTheme as _, ContextModal as _, StyledExt as _, button::{Button, ButtonVariants as _}, Icon, IconName,
 };
@@ -381,7 +381,7 @@ impl Render for PulsarApp {
                                 .bottom_0()
                                 .left_0()
                                 .right_0()
-                                .h(px(400.))
+                                .h(px(self.state.drawer_height))
                                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                                 .child(
                                     v_flex()
@@ -389,11 +389,16 @@ impl Render for PulsarApp {
                                         .child(
                                             // Resize handle at top  
                                             div()
+                                                .id("drawer-resize-handle")
                                                 .w_full()
                                                 .h(px(6.))
                                                 .cursor_ns_resize()
                                                 .bg(cx.theme().border.opacity(0.5))
                                                 .hover(|style| style.bg(cx.theme().accent).h(px(8.)))
+                                                .on_mouse_down(MouseButton::Left, cx.listener(|this, _event, _window, cx| {
+                                                    this.state.drawer_resizing = true;
+                                                    cx.notify();
+                                                }))
                                         )
                                         .child(
                                             div()
@@ -404,9 +409,25 @@ impl Render for PulsarApp {
                                 .with_animation(
                                     "slide-up",
                                     Animation::new(Duration::from_secs_f64(0.2)),
-                                    |this, delta| this.bottom(px(-400.) + delta * px(400.)),
+                                    {
+                                        let height = self.state.drawer_height;
+                                        move |this, delta| this.bottom(px(-height) + delta * px(height))
+                                    },
                                 ),
                         )
+                        .when(self.state.drawer_resizing, |this| {
+                            this.on_mouse_move(cx.listener(|app, event: &MouseMoveEvent, window, cx| {
+                                let window_height: f32 = window.viewport_size().height.into();
+                                let mouse_y: f32 = event.position.y.into();
+                                let new_height = window_height - mouse_y;
+                                app.state.drawer_height = new_height.clamp(200.0, 700.0);
+                                cx.notify();
+                            }))
+                            .on_mouse_up(MouseButton::Left, cx.listener(|app, _event, _window, cx| {
+                                app.state.drawer_resizing = false;
+                                cx.notify();
+                            }))
+                        })
                     }),
             )
             .child(self.render_footer(drawer_open, cx))

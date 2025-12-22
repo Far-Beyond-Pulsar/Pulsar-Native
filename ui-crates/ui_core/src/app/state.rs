@@ -26,6 +26,8 @@ pub struct AppState {
     // Drawers
     pub file_manager_drawer: Entity<FileManagerDrawer>,
     pub drawer_open: bool,
+    pub drawer_height: f32,
+    pub drawer_resizing: bool,
     pub problems_drawer: Entity<ProblemsDrawer>,
     pub terminal_drawer: Entity<TerminalDrawer>,
 

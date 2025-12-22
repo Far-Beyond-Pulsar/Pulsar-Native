@@ -193,6 +193,8 @@ impl PulsarApp {
                 entry_screen,
                 file_manager_drawer,
                 drawer_open: false,
+                drawer_height: 400.0,
+                drawer_resizing: false,
                 problems_drawer,
                 terminal_drawer,
                 center_tabs,

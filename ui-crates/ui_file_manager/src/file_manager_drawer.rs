@@ -285,14 +285,74 @@ impl FileManagerDrawer {
                 self.render_combined_toolbar(&items, window, cx)
             )
             .child(
-                // File grid - SCROLLABLE
+                // File content - SCROLLABLE
                 div()
-                    .id("file-grid-scroll")
+                    .id("file-content-scroll")
                     .flex_1()
                     .p_4()
                     .overflow_y_scroll()
-                    .child(self.render_grid_view(&items, window, cx))
+                    .child(
+                        match self.view_mode {
+                            ViewMode::Grid => self.render_grid_view(&items, window, cx).into_any_element(),
+                            ViewMode::List => self.render_list_view(&items, window, cx).into_any_element(),
+                        }
+                    )
             )
+    }
+
+    fn render_list_view(&mut self, items: &[FileItem], window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .w_full()
+            .gap_px()
+            .children(items.iter().map(|item| {
+                self.render_list_item(item, window, cx)
+            }))
+    }
+
+    fn render_list_item(&mut self, item: &FileItem, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let is_selected = self.selected_items.contains(&item.path);
+        let icon = get_icon_for_file_type(&item.file_type);
+        let icon_color = get_icon_color_for_file_type(&item.file_type, cx.theme());
+        let item_clone = item.clone();
+
+        h_flex()
+            .w_full()
+            .h(px(32.))
+            .px_3()
+            .py_1()
+            .gap_2()
+            .items_center()
+            .rounded(px(4.))
+            .when(is_selected, |this| {
+                this.bg(cx.theme().accent.opacity(0.15))
+            })
+            .hover(|this| {
+                this.bg(cx.theme().muted.opacity(0.2))
+            })
+            .cursor_pointer()
+            .child(
+                Icon::new(icon)
+                    .size_4()
+                    .text_color(icon_color)
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .text_sm()
+                    .text_color(cx.theme().foreground)
+                    .child(item.name.clone())
+            )
+            .when(!item.is_folder, |this| {
+                this.child(
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(format_file_size(item.size))
+                )
+            })
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
+                drawer.handle_item_click(&item_clone, &event.modifiers, cx);
+            }))
     }
 
     fn render_combined_toolbar(&mut self, items: &[FileItem], window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -328,7 +388,7 @@ impl FileManagerDrawer {
                 Button::new("lock")
                     .icon(IconName::Lock)
                     .ghost()
-                    .tooltip("Lock")
+                    .tooltip("Lock Files")
                     .on_click(cx.listener(|_drawer, _event, _window, _cx| {
                         // TODO: Implement lock functionality
                     }))
@@ -369,8 +429,8 @@ impl FileManagerDrawer {
                     .icon(IconName::PagePlus)
                     .ghost()
                     .tooltip("New File")
-                    .on_click(cx.listener(|_drawer, _event, _window, _cx| {
-                        // TODO: Implement new file
+                    .on_click(cx.listener(|drawer, _event, _window, cx| {
+                        drawer.start_new_file(cx);
                     }))
             )
             .child(
@@ -378,8 +438,8 @@ impl FileManagerDrawer {
                     .icon(IconName::FolderPlus)
                     .ghost()
                     .tooltip("New Folder")
-                    .on_click(cx.listener(|_drawer, _event, _window, _cx| {
-                        // TODO: Implement new folder
+                    .on_click(cx.listener(|drawer, _event, _window, cx| {
+                        drawer.start_new_folder(cx);
                     }))
             )
             // Refresh
@@ -646,6 +706,30 @@ impl FileManagerDrawer {
     // ========================================================================
     // ITEM MANAGEMENT
     // ========================================================================
+
+    fn start_new_file(&mut self, cx: &mut Context<Self>) {
+        if let Some(ref folder) = self.selected_folder {
+            let new_path = folder.join("untitled.txt");
+            if let Err(e) = std::fs::write(&new_path, "") {
+                eprintln!("Failed to create file: {}", e);
+                return;
+            }
+            self.renaming_item = Some(new_path);
+            cx.notify();
+        }
+    }
+
+    fn start_new_folder(&mut self, cx: &mut Context<Self>) {
+        if let Some(ref folder) = self.selected_folder {
+            let new_path = folder.join("New Folder");
+            if let Err(e) = std::fs::create_dir(&new_path) {
+                eprintln!("Failed to create folder: {}", e);
+                return;
+            }
+            self.renaming_item = Some(new_path);
+            cx.notify();
+        }
+    }
 
     fn get_filtered_items(&self) -> Vec<FileItem> {
         let Some(ref folder) = self.selected_folder else {
