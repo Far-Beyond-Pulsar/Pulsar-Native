@@ -298,7 +298,7 @@ impl FileManagerDrawer {
     fn render_combined_toolbar(&mut self, items: &[FileItem], window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         h_flex()
             .w_full()
-            .h(px(48.))
+            .h(px(56.))
             .px_4()
             .items_center()
             .gap_3()
@@ -306,14 +306,21 @@ impl FileManagerDrawer {
             .border_color(cx.theme().border)
             .bg(cx.theme().background)
             .child(
-                // Clickable breadcrumb path - takes remaining space
+                // Clickable breadcrumb path - takes remaining space with accent styling
                 self.render_clickable_breadcrumb(&items, window, cx)
             )
             .child(
-                // Item count
+                // Item count badge
                 div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
+                    .px_2()
+                    .py_1()
+                    .rounded(px(6.))
+                    .bg(cx.theme().accent.opacity(0.1))
+                    .border_1()
+                    .border_color(cx.theme().accent.opacity(0.3))
+                    .text_xs()
+                    .font_medium()
+                    .text_color(cx.theme().accent)
                     .child(format!("{} items", items.len()))
             )
             // Lock button
@@ -472,10 +479,16 @@ impl FileManagerDrawer {
             .flex_1()
             .items_center()
             .gap_1()
+            .px_2()
+            .py_1()
+            .rounded(px(8.))
+            .bg(cx.theme().muted.opacity(0.3))
+            .border_1()
+            .border_color(cx.theme().border)
             .child(
                 Icon::new(IconName::Folder)
                     .size_4()
-                    .text_color(cx.theme().muted_foreground)
+                    .text_color(cx.theme().accent)
             )
             .children(
                 path_parts.into_iter().enumerate().flat_map(|(i, (name, path))| {
@@ -483,10 +496,9 @@ impl FileManagerDrawer {
                     
                     if i > 0 {
                         elements.push(
-                            div()
-                                .text_sm()
+                            Icon::new(IconName::ChevronRight)
+                                .size_3()
                                 .text_color(cx.theme().muted_foreground)
-                                .child("/")
                                 .into_any_element()
                         );
                     }
@@ -499,8 +511,9 @@ impl FileManagerDrawer {
                             .py_px()
                             .rounded(px(4.))
                             .text_color(cx.theme().foreground)
+                            .font_medium()
                             .cursor_pointer()
-                            .hover(|style| style.bg(cx.theme().muted.opacity(0.3)))
+                            .hover(|style| style.bg(cx.theme().accent.opacity(0.15)))
                             .child(name)
                             .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, _event: &MouseDownEvent, _window: &mut Window, cx| {
                                 drawer.selected_folder = Some(path_clone.clone());
@@ -604,9 +617,6 @@ impl FileManagerDrawer {
             .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
                 drawer.handle_item_click(&item_clone, &event.modifiers, cx);
             }))
-            .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |drawer, event: &MouseDownEvent, window: &mut Window, cx| {
-                drawer.show_item_context_menu(&path, event.position, window, cx);
-            }))
     }
 
     fn handle_item_click(&mut self, item: &FileItem, modifiers: &Modifiers, cx: &mut Context<Self>) {
@@ -631,10 +641,6 @@ impl FileManagerDrawer {
         }
         
         cx.notify();
-    }
-
-    fn show_item_context_menu(&mut self, _path: &PathBuf, _position: Point<Pixels>, _window: &mut Window, _cx: &mut Context<Self>) {
-        // TODO: Implement context menu using context_menus module
     }
 
     // ========================================================================

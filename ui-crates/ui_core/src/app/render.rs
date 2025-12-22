@@ -381,13 +381,30 @@ impl Render for PulsarApp {
                                 .bottom_0()
                                 .left_0()
                                 .right_0()
-                                .h(px(300.))
+                                .h(px(400.))
                                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                                .child(self.state.file_manager_drawer.clone())
+                                .child(
+                                    v_flex()
+                                        .size_full()
+                                        .child(
+                                            // Resize handle at top  
+                                            div()
+                                                .w_full()
+                                                .h(px(6.))
+                                                .cursor_ns_resize()
+                                                .bg(cx.theme().border.opacity(0.5))
+                                                .hover(|style| style.bg(cx.theme().accent).h(px(8.)))
+                                        )
+                                        .child(
+                                            div()
+                                                .flex_1()
+                                                .child(self.state.file_manager_drawer.clone())
+                                        )
+                                )
                                 .with_animation(
                                     "slide-up",
                                     Animation::new(Duration::from_secs_f64(0.2)),
-                                    |this, delta| this.bottom(px(-300.) + delta * px(300.)),
+                                    |this, delta| this.bottom(px(-400.) + delta * px(400.)),
                                 ),
                         )
                     }),
