@@ -280,12 +280,8 @@ impl FileManagerDrawer {
             .size_full()
             .bg(cx.theme().background)
             .child(
-                // Top toolbar with all buttons
-                self.render_toolbar(window, cx)
-            )
-            .child(
-                // Breadcrumb/path bar
-                self.render_breadcrumb_bar(&items, window, cx)
+                // Combined toolbar with path and buttons
+                self.render_combined_toolbar(&items, window, cx)
             )
             .child(
                 div()
@@ -296,22 +292,36 @@ impl FileManagerDrawer {
             )
     }
 
-    fn render_toolbar(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_combined_toolbar(&mut self, items: &[FileItem], window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         h_flex()
             .w_full()
             .h(px(48.))
             .px_4()
             .items_center()
-            .gap_2()
+            .gap_3()
             .border_b_1()
             .border_color(cx.theme().border)
             .bg(cx.theme().background)
+            .child(
+                // Clickable breadcrumb path - takes remaining space
+                self.render_clickable_breadcrumb(&items, window, cx)
+            )
+            .child(
+                // Item count
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(format!("{} items", items.len()))
+            )
             // Lock button
             .child(
                 Button::new("lock")
                     .icon(IconName::Lock)
                     .ghost()
                     .tooltip("Lock")
+                    .on_click(cx.listener(|_drawer, _event, _window, _cx| {
+                        // TODO: Implement lock functionality
+                    }))
             )
             // Layout buttons
             .child(
@@ -339,6 +349,9 @@ impl FileManagerDrawer {
                     .icon(IconName::HorizontalSplit)
                     .ghost()
                     .tooltip("Split View")
+                    .on_click(cx.listener(|_drawer, _event, _window, _cx| {
+                        // TODO: Implement split view
+                    }))
             )
             // File operations
             .child(
@@ -346,12 +359,18 @@ impl FileManagerDrawer {
                     .icon(IconName::PagePlus)
                     .ghost()
                     .tooltip("New File")
+                    .on_click(cx.listener(|_drawer, _event, _window, _cx| {
+                        // TODO: Implement new file
+                    }))
             )
             .child(
                 Button::new("new-folder")
                     .icon(IconName::FolderPlus)
                     .ghost()
                     .tooltip("New Folder")
+                    .on_click(cx.listener(|_drawer, _event, _window, _cx| {
+                        // TODO: Implement new folder
+                    }))
             )
             // Refresh
             .child(
@@ -372,6 +391,9 @@ impl FileManagerDrawer {
                     .icon(IconName::Filter)
                     .ghost()
                     .tooltip("Filter")
+                    .on_click(cx.listener(|_drawer, _event, _window, _cx| {
+                        // TODO: Implement filter
+                    }))
             )
             // Show/hide
             .child(
@@ -390,6 +412,22 @@ impl FileManagerDrawer {
                     .icon(IconName::ExternalLink)
                     .ghost()
                     .tooltip("Open in File Explorer")
+                    .on_click(cx.listener(|drawer, _event, _window, _cx| {
+                        if let Some(ref folder) = drawer.selected_folder {
+                            #[cfg(target_os = "windows")]
+                            let _ = std::process::Command::new("explorer")
+                                .arg(folder)
+                                .spawn();
+                            #[cfg(target_os = "macos")]
+                            let _ = std::process::Command::new("open")
+                                .arg(folder)
+                                .spawn();
+                            #[cfg(target_os = "linux")]
+                            let _ = std::process::Command::new("xdg-open")
+                                .arg(folder)
+                                .spawn();
+                        }
+                    }))
             )
             // More options
             .child(
@@ -397,49 +435,79 @@ impl FileManagerDrawer {
                     .icon(IconName::Ellipsis)
                     .ghost()
                     .tooltip("More Options")
+                    .on_click(cx.listener(|_drawer, _event, _window, _cx| {
+                        // TODO: Implement more options menu
+                    }))
             )
     }
 
-    fn render_breadcrumb_bar(&mut self, items: &[FileItem], window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_clickable_breadcrumb(&mut self, items: &[FileItem], window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let mut path_parts = Vec::new();
+        
+        // Get path components
+        if let Some(ref selected) = self.selected_folder {
+            if let Some(ref project) = self.project_path {
+                if let Ok(relative) = selected.strip_prefix(project) {
+                    let mut current = project.clone();
+                    path_parts.push(("Project".to_string(), current.clone()));
+                    
+                    for component in relative.components() {
+                        if let Some(name) = component.as_os_str().to_str() {
+                            current = current.join(name);
+                            path_parts.push((name.to_string(), current.clone()));
+                        }
+                    }
+                }
+            }
+        }
+        
+        if path_parts.is_empty() {
+            path_parts.push(("Project".to_string(), self.project_path.clone().unwrap_or_default()));
+        }
+
         h_flex()
-            .w_full()
-            .h(px(40.))
-            .px_4()
+            .flex_1()
             .items_center()
-            .gap_2()
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .bg(cx.theme().background.opacity(0.5))
+            .gap_1()
             .child(
                 Icon::new(IconName::Folder)
                     .size_4()
                     .text_color(cx.theme().muted_foreground)
             )
-            .child(
-                div()
-                    .flex_1()
-                    .text_sm()
-                    .text_color(cx.theme().foreground)
-                    .child(
-                        self.selected_folder
-                            .as_ref()
-                            .and_then(|p| {
-                                if let Some(project) = &self.project_path {
-                                    p.strip_prefix(project).ok()
-                                        .and_then(|rel| rel.to_str())
-                                        .map(|s| format!("/{}", s))
-                                } else {
-                                    p.to_str().map(|s| s.to_string())
-                                }
-                            })
-                            .unwrap_or_else(|| "/Project".to_string())
-                    )
-            )
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(format!("{} items", items.len()))
+            .children(
+                path_parts.into_iter().enumerate().flat_map(|(i, (name, path))| {
+                    let mut elements: Vec<gpui::AnyElement> = Vec::new();
+                    
+                    if i > 0 {
+                        elements.push(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child("/")
+                                .into_any_element()
+                        );
+                    }
+                    
+                    let path_clone = path.clone();
+                    elements.push(
+                        div()
+                            .text_sm()
+                            .px_1()
+                            .py_px()
+                            .rounded(px(4.))
+                            .text_color(cx.theme().foreground)
+                            .cursor_pointer()
+                            .hover(|style| style.bg(cx.theme().muted.opacity(0.3)))
+                            .child(name)
+                            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, _event: &MouseDownEvent, _window: &mut Window, cx| {
+                                drawer.selected_folder = Some(path_clone.clone());
+                                cx.notify();
+                            }))
+                            .into_any_element()
+                    );
+                    
+                    elements
+                })
             )
     }
 
@@ -694,6 +762,15 @@ impl EventEmitter<FolderTreeAction> for FileManagerDrawer {}
 
 impl Render for FileManagerDrawer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.render_content(window, cx)
+        div()
+            .size_full()
+            .key_context("FileManagerDrawer")
+            .on_action(cx.listener(|this, _action: &RefreshFileManager, _window, cx| {
+                if let Some(ref path) = this.project_path {
+                    this.folder_tree = FolderNode::from_path(path);
+                }
+                cx.notify();
+            }))
+            .child(self.render_content(window, cx))
     }
 }
