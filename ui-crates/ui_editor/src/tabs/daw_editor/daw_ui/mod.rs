@@ -1,8 +1,8 @@
-/// Complete DAW UI Module
+/// DAW UI Module
 /// Production-quality interface components for the embedded DAW
 
-mod state;
-mod panel;
+pub mod state;
+pub mod panel;
 mod mixer;
 
 // Individual panels - to be implemented one by one
