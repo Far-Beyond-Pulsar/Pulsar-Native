@@ -130,7 +130,20 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
             .on_click(cx.listener({
                 let path = proj_path.clone();
                 move |this, _, _, cx| {
-                    let path_buf = std::path::PathBuf::from(&path);
+                    let mut path_buf = std::path::PathBuf::from(&path);
+                    
+                    //TODO: Why is this happening?
+                    // Fix doubled project folder name (e.g., blank_project/blank_project -> blank_project)
+                    if let (Some(file_name), Some(parent)) = (path_buf.file_name(), path_buf.parent()) {
+                        if let Some(parent_name) = parent.file_name() {
+                            if file_name == parent_name {
+                                // Path has doubled folder name, use parent instead
+                                path_buf = parent.to_path_buf();
+                                println!("[RECENT_PROJECTS] Fixed doubled path: {} -> {}", path, path_buf.display());
+                            }
+                        }
+                    }
+                    
                     this.launch_project(path_buf, cx);
                 }
             }))

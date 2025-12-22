@@ -122,6 +122,8 @@ pub fn on_project_selected(
     window: &mut Window,
     cx: &mut Context<PulsarApp>,
 ) {
+    println!("[PROJECT_SELECTED] Received path: {:?}", event.path);
+    
     app.state.project_path = Some(event.path.clone());
     app.state.entry_screen = None;
 

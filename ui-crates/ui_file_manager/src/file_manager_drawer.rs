@@ -128,9 +128,17 @@ impl FileManagerDrawer {
     }
 
     pub fn set_project_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        println!("[FILE_MANAGER] set_project_path called with: {:?}", path);
+        println!("[FILE_MANAGER] Path exists: {}", path.exists());
+        println!("[FILE_MANAGER] Path is_dir: {}", path.is_dir());
+        
         self.project_path = Some(path.clone());
         self.folder_tree = FolderNode::from_path(&path);
-        self.selected_folder = Some(path);
+        self.selected_folder = Some(path.clone());
+        
+        println!("[FILE_MANAGER] folder_tree is_some: {}", self.folder_tree.is_some());
+        println!("[FILE_MANAGER] selected_folder: {:?}", self.selected_folder);
+        
         cx.notify();
     }
 
