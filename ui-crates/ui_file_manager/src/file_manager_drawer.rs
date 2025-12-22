@@ -187,11 +187,12 @@ impl FileManagerDrawer {
                     )
             )
             .child(
-                // Folder tree content  
+                // Folder tree content - SCROLLABLE
                 div()
+                    .id("folder-tree-scroll")
                     .flex_1()
                     .p_2()
-                    .overflow_hidden()
+                    .overflow_y_scroll()
                     .when_some(self.folder_tree.clone(), |this, tree| {
                         this.child(self.render_folder_node(&tree, 0, window, cx))
                     })
@@ -284,10 +285,12 @@ impl FileManagerDrawer {
                 self.render_combined_toolbar(&items, window, cx)
             )
             .child(
+                // File grid - SCROLLABLE
                 div()
+                    .id("file-grid-scroll")
                     .flex_1()
                     .p_4()
-                    .overflow_hidden()
+                    .overflow_y_scroll()
                     .child(self.render_grid_view(&items, window, cx))
             )
     }
