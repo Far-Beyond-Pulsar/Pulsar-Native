@@ -13,25 +13,25 @@ use crate::tabs::daw_editor::audio_types::SAMPLE_RATE;
 pub fn render_transport(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     h_flex()
         .w_full()
-        .h(px(56.0))
+        .h(px(60.0))
         .px_4()
         .gap_3()
         .items_center()
-        .bg(cx.theme().background)
+        .bg(cx.theme().muted.opacity(0.15))
         .border_b_1()
         .border_color(cx.theme().border)
         // Transport buttons
         .child(render_transport_buttons(state, cx))
-        .child(Divider::vertical().h(px(32.0)))
+        .child(Divider::vertical().h(px(36.0)).bg(cx.theme().border))
         // Timeline position display
         .child(render_position_display(state, cx))
-        .child(Divider::vertical().h(px(32.0)))
+        .child(Divider::vertical().h(px(36.0)).bg(cx.theme().border))
         // Tempo and time signature
         .child(render_tempo_section(state, cx))
         .child(div().flex_1())
         // Loop section
         .child(render_loop_section(state, cx))
-        .child(Divider::vertical().h(px(32.0)))
+        .child(Divider::vertical().h(px(36.0)).bg(cx.theme().border))
         // Metronome and count-in
         .child(render_metronome_section(state, cx))
 }
@@ -106,38 +106,44 @@ fn render_position_display(state: &mut DawUiState, cx: &mut Context<DawPanel>) -
     let minutes = (seconds / 60.0).floor() as u32;
     let secs = (seconds % 60.0).floor() as u32;
     let millis = ((seconds % 1.0) * 1000.0).floor() as u32;
-    
+
     // Convert to bars:beats format
     let bars = (position / 4.0).floor() as u32 + 1;
     let beats = (position % 4.0).floor() as u32 + 1;
     let subdivisions = ((position % 1.0) * 100.0).floor() as u32;
-    
+
     h_flex()
         .gap_2()
         .items_center()
         .child(
             div()
                 .px_3()
-                .py_1()
+                .py_2()
                 .rounded_md()
-                .bg(cx.theme().muted)
+                .bg(cx.theme().background)
+                .border_1()
+                .border_color(cx.theme().border)
                 .child(
                     div()
                         .text_sm()
                         .font_family("monospace")
+                        .text_color(cx.theme().foreground)
                         .child(format!("{:02}:{:02}.{:03}", minutes, secs, millis))
                 )
         )
         .child(
             div()
                 .px_3()
-                .py_1()
+                .py_2()
                 .rounded_md()
-                .bg(cx.theme().muted)
+                .bg(cx.theme().background)
+                .border_1()
+                .border_color(cx.theme().border)
                 .child(
                     div()
                         .text_sm()
                         .font_family("monospace")
+                        .text_color(cx.theme().foreground)
                         .child(format!("{:03}.{}.{:02}", bars, beats, subdivisions))
                 )
         )
@@ -147,34 +153,38 @@ fn render_tempo_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> i
     let tempo = state.project.as_ref()
         .map(|p| p.transport.tempo)
         .unwrap_or(120.0);
-    
+
     let time_sig_num = state.project.as_ref()
         .map(|p| p.transport.time_signature_numerator)
         .unwrap_or(4);
-    
+
     let time_sig_denom = state.project.as_ref()
         .map(|p| p.transport.time_signature_denominator)
         .unwrap_or(4);
-    
+
     h_flex()
         .gap_2()
         .items_center()
         .child(
             div()
-                .px_2()
-                .py_1()
-                .rounded_sm()
+                .px_3()
+                .py_2()
+                .rounded_md()
                 .cursor_pointer()
-                .hover(|d| d.bg(cx.theme().muted))
+                .bg(cx.theme().background)
+                .border_1()
+                .border_color(cx.theme().border)
+                .hover(|d| d.bg(cx.theme().muted.opacity(0.2)))
                 .child(
                     h_flex()
-                        .gap_1()
+                        .gap_2()
                         .items_center()
-                        .child(Icon::new(IconName::Timer).size_4())
+                        .child(Icon::new(IconName::Timer).size_4().text_color(cx.theme().muted_foreground))
                         .child(
                             div()
                                 .text_sm()
                                 .font_semibold()
+                                .text_color(cx.theme().foreground)
                                 .child(format!("{:.1}", tempo))
                         )
                         .child(
@@ -187,20 +197,24 @@ fn render_tempo_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> i
         )
         .child(
             div()
-                .px_2()
-                .py_1()
-                .rounded_sm()
+                .px_3()
+                .py_2()
+                .rounded_md()
                 .cursor_pointer()
-                .hover(|d| d.bg(cx.theme().muted))
+                .bg(cx.theme().background)
+                .border_1()
+                .border_color(cx.theme().border)
+                .hover(|d| d.bg(cx.theme().muted.opacity(0.2)))
                 .child(
                     h_flex()
-                        .gap_1()
+                        .gap_2()
                         .items_center()
-                        .child(Icon::new(IconName::Heart).size_4())
+                        .child(Icon::new(IconName::Heart).size_4().text_color(cx.theme().muted_foreground))
                         .child(
                             div()
                                 .text_sm()
                                 .font_family("monospace")
+                                .text_color(cx.theme().foreground)
                                 .child(format!("{}/{}", time_sig_num, time_sig_denom))
                         )
                 )

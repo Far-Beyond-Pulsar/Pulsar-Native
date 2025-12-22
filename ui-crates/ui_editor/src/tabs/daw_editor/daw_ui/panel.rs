@@ -5,7 +5,7 @@ use super::state::*;
 use super::super::{audio_service::AudioService, audio_types::*};
 use gpui::*;
 use gpui::prelude::FluentBuilder;
-use ui::{v_flex, h_flex, StyledExt, ActiveTheme, PixelsExt};
+use ui::{v_flex, h_flex, StyledExt, ActiveTheme, PixelsExt, Sizable, Selectable, button::{Button, ButtonVariants}};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -546,76 +546,36 @@ impl DawPanel {
         v_flex()
             .w(px(300.0))
             .h_full()
-            .bg(cx.theme().muted.opacity(0.15))
+            .bg(cx.theme().background)
             .border_l_1()
             .border_color(cx.theme().border)
             // Tab bar
             .child(
                 h_flex()
                     .w_full()
-                    .h(px(40.0))
+                    .h(px(44.0))
                     .px_2()
                     .gap_1()
                     .items_center()
-                    .bg(cx.theme().muted.opacity(0.3))
+                    .bg(cx.theme().muted.opacity(0.2))
                     .border_b_1()
                     .border_color(cx.theme().border)
-                    .child(
-                        Button::new("inspector-tab-track")
-                            .label("Track")
-                            .small()
-                            .when(self.state.inspector_tab == InspectorTab::Track, |b| b.primary())
-                            .when(self.state.inspector_tab != InspectorTab::Track, |b| b.ghost())
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.state.inspector_tab = InspectorTab::Track;
-                                cx.notify();
-                            }))
-                    )
-                    .child(
-                        Button::new("inspector-tab-clip")
-                            .label("Clip")
-                            .small()
-                            .when(self.state.inspector_tab == InspectorTab::Clip, |b| b.primary())
-                            .when(self.state.inspector_tab != InspectorTab::Clip, |b| b.ghost())
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.state.inspector_tab = InspectorTab::Clip;
-                                cx.notify();
-                            }))
-                    )
-                    .child(
-                        Button::new("inspector-tab-automation")
-                            .label("Auto")
-                            .small()
-                            .when(self.state.inspector_tab == InspectorTab::Automation, |b| b.primary())
-                            .when(self.state.inspector_tab != InspectorTab::Automation, |b| b.ghost())
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.state.inspector_tab = InspectorTab::Automation;
-                                cx.notify();
-                            }))
-                    )
-                    .child(
-                        Button::new("inspector-tab-effects")
-                            .label("FX")
-                            .small()
-                            .when(self.state.inspector_tab == InspectorTab::Effects, |b| b.primary())
-                            .when(self.state.inspector_tab != InspectorTab::Effects, |b| b.ghost())
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.state.inspector_tab = InspectorTab::Effects;
-                                cx.notify();
-                            }))
-                    )
+                    .child(self.render_inspector_tab_button("Track", InspectorTab::Track, cx))
+                    .child(self.render_inspector_tab_button("Clip", InspectorTab::Clip, cx))
+                    .child(self.render_inspector_tab_button("Auto", InspectorTab::Automation, cx))
+                    .child(self.render_inspector_tab_button("FX", InspectorTab::Effects, cx))
             )
             // Content area
             .child(
                 div()
                     .flex_1()
                     .w_full()
-                    .p_3()
+                    .p_4()
                     .child(match self.state.inspector_tab {
                         InspectorTab::Track => self.render_track_inspector(selected_track_id, cx).into_any_element(),
-                        InspectorTab::Clip => div().child("📼 Clip Inspector - Select a clip to view properties").into_any_element(),
-                        InspectorTab::Automation => div().child("🎚️ Automation Inspector - Draw automation curves on timeline").into_any_element(),
-                        InspectorTab::Effects => div().child("🎛️ Effects Inspector - Add effects to track inserts").into_any_element(),
+                        InspectorTab::Clip => self.render_empty_inspector_message("Clip Inspector", "Select a clip to view and edit its properties", cx).into_any_element(),
+                        InspectorTab::Automation => self.render_empty_inspector_message("Automation", "Draw automation curves on the timeline to control parameters over time", cx).into_any_element(),
+                        InspectorTab::Effects => self.render_empty_inspector_message("Effects", "Add audio effects and processors to track inserts", cx).into_any_element(),
                     })
             )
     }
@@ -624,51 +584,156 @@ impl DawPanel {
         if let Some(track) = track_id.and_then(|id| self.state.get_track(id)) {
             v_flex()
                 .w_full()
-                .gap_2()
+                .gap_3()
+                .child(
+                    v_flex()
+                        .w_full()
+                        .gap_1()
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_semibold()
+                                .text_color(cx.theme().muted_foreground)
+                                .child("TRACK NAME")
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_medium()
+                                .text_color(cx.theme().foreground)
+                                .child(track.name.clone())
+                        )
+                )
                 .child(
                     div()
-                        .text_sm()
-                        .font_semibold()
-                        .child(format!("Track: {}", track.name))
+                        .w_full()
+                        .h(px(1.0))
+                        .bg(cx.theme().border)
                 )
                 .child(
                     v_flex()
                         .w_full()
-                        .gap_1()
-                        .child(div().text_xs().text_color(cx.theme().muted_foreground).child("Type"))
-                        .child(div().text_sm().child(format!("{:?}", track.track_type)))
-                )
-                .child(
-                    v_flex()
-                        .w_full()
-                        .gap_1()
-                        .child(div().text_xs().text_color(cx.theme().muted_foreground).child("Volume"))
-                        .child(div().text_sm().child(format!("{:+.1} dB", track.volume_db())))
-                )
-                .child(
-                    v_flex()
-                        .w_full()
-                        .gap_1()
-                        .child(div().text_xs().text_color(cx.theme().muted_foreground).child("Pan"))
-                        .child(div().text_sm().child(format!("{:.0}%", track.pan * 100.0)))
-                )
-                .child(
-                    v_flex()
-                        .w_full()
-                        .gap_1()
-                        .child(div().text_xs().text_color(cx.theme().muted_foreground).child("Clips"))
-                        .child(div().text_sm().child(format!("{} clips", track.clips.len())))
+                        .gap_3()
+                        .child(
+                            v_flex()
+                                .w_full()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Type")
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(cx.theme().foreground)
+                                        .child(format!("{:?}", track.track_type))
+                                )
+                        )
+                        .child(
+                            v_flex()
+                                .w_full()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Volume")
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .font_family("monospace")
+                                        .text_color(cx.theme().foreground)
+                                        .child(format!("{:+.1} dB", track.volume_db()))
+                                )
+                        )
+                        .child(
+                            v_flex()
+                                .w_full()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Pan")
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .font_family("monospace")
+                                        .text_color(cx.theme().foreground)
+                                        .child(format!("{:.0}%", track.pan * 100.0))
+                                )
+                        )
+                        .child(
+                            v_flex()
+                                .w_full()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Clips")
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(cx.theme().foreground)
+                                        .child(format!("{} clips", track.clips.len()))
+                                )
+                        )
                 )
                 .into_any_element()
         } else {
-            div()
-                .w_full()
-                .p_4()
-                .text_sm()
-                .text_color(cx.theme().muted_foreground)
-                .child("No track selected")
+            self.render_empty_inspector_message("Track Inspector", "Select a track to view and edit its properties", cx)
                 .into_any_element()
         }
+    }
+
+    fn render_inspector_tab_button(&self, label: &str, tab: InspectorTab, cx: &mut Context<Self>) -> impl IntoElement {
+        let is_active = self.state.inspector_tab == tab;
+        let label = label.to_string();
+
+        Button::new(ElementId::Name(format!("inspector-tab-{:?}", tab).into()))
+            .label(label)
+            .ghost()
+            .compact()
+            .small()
+            .when(is_active, |btn| btn.selected(true))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.state.inspector_tab = tab;
+                cx.notify();
+            }))
+    }
+
+    fn render_empty_inspector_message(&self, title: &str, description: &str, cx: &mut Context<Self>) -> impl IntoElement {
+        let title = title.to_string();
+        let description = description.to_string();
+
+        v_flex()
+            .w_full()
+            .h_full()
+            .items_center()
+            .justify_center()
+            .gap_2()
+            .child(
+                div()
+                    .text_sm()
+                    .font_medium()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(title)
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground.opacity(0.7))
+                    .text_center()
+                    .max_w(px(220.0))
+                    .line_height(rems(1.5))
+                    .child(description)
+            )
     }
 
     fn render_timeline(&mut self, cx: &mut Context<Self>) -> impl IntoElement {

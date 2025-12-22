@@ -18,7 +18,7 @@ pub fn render_browser(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> imp
     v_flex()
         .w(px(BROWSER_WIDTH))
         .h_full()
-        .bg(cx.theme().muted.opacity(0.2))
+        .bg(cx.theme().background)
         .border_r_1()
         .border_color(cx.theme().border)
         // Tab bar with icons
@@ -35,7 +35,7 @@ pub fn render_browser(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> imp
 
 fn render_browser_tabs(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     let current = state.browser_tab;
-    
+
     v_flex()
         .w_full()
         .border_b_1()
@@ -45,8 +45,9 @@ fn render_browser_tabs(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> im
                 .w_full()
                 .h(px(44.0))
                 .px_2()
-                .gap_0p5()
+                .gap_1()
                 .items_center()
+                .bg(cx.theme().muted.opacity(0.2))
                 .child(render_tab_button("Files", IconName::FolderOpen, BrowserTab::Files, current, cx))
                 .child(render_tab_button("Instruments", IconName::Album, BrowserTab::Instruments, current, cx))
                 .child(render_tab_button("FX", IconName::Activity, BrowserTab::Effects, current, cx))
@@ -62,17 +63,12 @@ fn render_tab_button(
     cx: &mut Context<DawPanel>,
 ) -> impl IntoElement {
     let is_active = tab == current;
-    let base_color = if is_active {
-        cx.theme().accent
-    } else {
-        cx.theme().muted_foreground.opacity(0.6)
-    };
-    
+
     Button::new(ElementId::Name(format!("browser-tab-{:?}", tab).into()))
+        .icon(Icon::new(icon).size_4())
         .ghost()
         .compact()
         .small()
-        .icon(Icon::new(icon).size_4().text_color(base_color))
         .when(is_active, |btn| btn.selected(true))
         .tooltip(label)
         .on_click(cx.listener(move |this, _, _window, cx| {
@@ -85,20 +81,20 @@ fn render_search_bar(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl
     let query = state.search_query.clone();
     let is_empty = query.is_empty();
     let display_text = if is_empty { "Search files...".to_string() } else { query.clone() };
-    
+
     h_flex()
         .w_full()
         .px_3()
-        .py_2()
-        .bg(cx.theme().background.opacity(0.5))
+        .py_3()
+        .bg(cx.theme().muted.opacity(0.1))
         .border_b_1()
         .border_color(cx.theme().border)
         .child(
             div()
                 .w_full()
-                .h(px(32.0))
-                .px_2()
-                .py_1()
+                .h(px(36.0))
+                .px_3()
+                .py_2()
                 .rounded_md()
                 .border_1()
                 .border_color(cx.theme().border)
@@ -114,7 +110,7 @@ fn render_search_bar(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl
                                 .flex_1()
                                 .text_sm()
                                 .text_color(if is_empty {
-                                    cx.theme().muted_foreground.opacity(0.5)
+                                    cx.theme().muted_foreground.opacity(0.6)
                                 } else {
                                     cx.theme().foreground
                                 })
@@ -135,14 +131,14 @@ fn render_search_bar(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl
 fn render_browser_toolbar(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     h_flex()
         .w_full()
-        .h(px(40.0))
+        .h(px(44.0))
         .px_3()
         .py_2()
         .gap_2()
         .items_center()
         .justify_between()
         .border_b_1()
-        .border_color(cx.theme().border.opacity(0.5))
+        .border_color(cx.theme().border)
         .child(
             h_flex()
                 .gap_1()
@@ -519,27 +515,29 @@ fn render_empty_state(
 fn render_browser_footer(state: &DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     let total_files = state.audio_files.len();
     let total_size_mb = state.audio_files.iter().map(|f| f.size_bytes).sum::<u64>() / (1024 * 1024);
-    
+
     h_flex()
         .w_full()
-        .h(px(32.0))
+        .h(px(36.0))
         .px_3()
         .gap_2()
         .items_center()
         .justify_between()
         .border_t_1()
         .border_color(cx.theme().border)
-        .bg(cx.theme().muted.opacity(0.1))
+        .bg(cx.theme().muted.opacity(0.15))
         .child(
             div()
                 .text_xs()
-                .text_color(cx.theme().muted_foreground.opacity(0.7))
+                .font_medium()
+                .text_color(cx.theme().muted_foreground)
                 .child(format!("{} files", total_files))
         )
         .child(
             div()
                 .text_xs()
-                .text_color(cx.theme().muted_foreground.opacity(0.7))
+                .font_medium()
+                .text_color(cx.theme().muted_foreground)
                 .child(format!("{} MB", total_size_mb))
         )
 }

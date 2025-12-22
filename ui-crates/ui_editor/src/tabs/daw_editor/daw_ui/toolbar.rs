@@ -13,21 +13,21 @@ pub fn render_toolbar(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> imp
     h_flex()
         .w_full()
         .h(px(48.0))
-        .px_3()
-        .gap_2()
+        .px_4()
+        .gap_3()
         .items_center()
-        .bg(cx.theme().muted)
+        .bg(cx.theme().muted.opacity(0.3))
         .border_b_1()
         .border_color(cx.theme().border)
         // File operations
         .child(render_file_section(state, cx))
-        .child(Divider::vertical().h(px(24.0)))
+        .child(Divider::vertical().h(px(24.0)).bg(cx.theme().border))
         // Edit tools
         .child(render_tools_section(state, cx))
-        .child(Divider::vertical().h(px(24.0)))
+        .child(Divider::vertical().h(px(24.0)).bg(cx.theme().border))
         // View options
         .child(render_view_section(state, cx))
-        .child(Divider::vertical().h(px(24.0)))
+        .child(Divider::vertical().h(px(24.0)).bg(cx.theme().border))
         // Snap settings
         .child(render_snap_section(state, cx))
         // Spacer
