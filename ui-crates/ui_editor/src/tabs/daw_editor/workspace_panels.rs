@@ -18,9 +18,7 @@ pub struct TimelinePanel {
 }
 
 impl TimelinePanel {
-    pub fn new(state: Arc<RwLock<DawUiState>>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let daw_panel = cx.new(|cx| DawPanel::new(window, cx));
-        
+    pub fn new(state: Arc<RwLock<DawUiState>>, daw_panel: Entity<DawPanel>, _window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
             state,
             daw_panel,
@@ -74,9 +72,7 @@ pub struct MixerPanel {
 }
 
 impl MixerPanel {
-    pub fn new(state: Arc<RwLock<DawUiState>>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let daw_panel = cx.new(|cx| DawPanel::new(window, cx));
-        
+    pub fn new(state: Arc<RwLock<DawUiState>>, daw_panel: Entity<DawPanel>, _window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
             state,
             daw_panel,
@@ -120,9 +116,7 @@ pub struct BrowserFilesPanel {
 }
 
 impl BrowserFilesPanel {
-    pub fn new(state: Arc<RwLock<DawUiState>>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let daw_panel = cx.new(|cx| DawPanel::new(window, cx));
-        
+    pub fn new(state: Arc<RwLock<DawUiState>>, daw_panel: Entity<DawPanel>, _window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
             state,
             daw_panel,
@@ -168,9 +162,7 @@ pub struct BrowserInstrumentsPanel {
 }
 
 impl BrowserInstrumentsPanel {
-    pub fn new(state: Arc<RwLock<DawUiState>>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let daw_panel = cx.new(|cx| DawPanel::new(window, cx));
-        
+    pub fn new(state: Arc<RwLock<DawUiState>>, daw_panel: Entity<DawPanel>, _window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
             state,
             daw_panel,
@@ -215,9 +207,7 @@ pub struct BrowserEffectsPanel {
 }
 
 impl BrowserEffectsPanel {
-    pub fn new(state: Arc<RwLock<DawUiState>>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let daw_panel = cx.new(|cx| DawPanel::new(window, cx));
-        
+    pub fn new(state: Arc<RwLock<DawUiState>>, daw_panel: Entity<DawPanel>, _window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
             state,
             daw_panel,
@@ -262,9 +252,7 @@ pub struct BrowserLoopsPanel {
 }
 
 impl BrowserLoopsPanel {
-    pub fn new(state: Arc<RwLock<DawUiState>>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let daw_panel = cx.new(|cx| DawPanel::new(window, cx));
-        
+    pub fn new(state: Arc<RwLock<DawUiState>>, daw_panel: Entity<DawPanel>, _window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
             state,
             daw_panel,
@@ -309,9 +297,7 @@ pub struct BrowserSamplesPanel {
 }
 
 impl BrowserSamplesPanel {
-    pub fn new(state: Arc<RwLock<DawUiState>>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let daw_panel = cx.new(|cx| DawPanel::new(window, cx));
-        
+    pub fn new(state: Arc<RwLock<DawUiState>>, daw_panel: Entity<DawPanel>, _window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
             state,
             daw_panel,

@@ -32,6 +32,7 @@ pub struct DawEditorPanel {
     focus_handle: FocusHandle,
     workspace: Entity<Workspace>,
     state: Arc<RwLock<daw_ui::state::DawUiState>>,
+    daw_panel: Entity<DawPanel>,
     project_path: Option<PathBuf>,
     audio_service: Option<Arc<AudioService>>,
 }
@@ -39,7 +40,7 @@ pub struct DawEditorPanel {
 impl DawEditorPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let state = Arc::new(RwLock::new(DawUiState::new()));
-        
+
         // Create workspace with Channel 2 to isolate DAW tabs from other editors
         let workspace = cx.new(|cx| {
             use ui::dock::DockChannel;
@@ -50,18 +51,22 @@ impl DawEditorPanel {
                 cx
             )
         });
-        
+
+        // Create shared DawPanel that will be used by all workspace panels
+        let daw_panel = cx.new(|cx| DawPanel::new(window, cx));
+
         let mut panel = Self {
             focus_handle: cx.focus_handle(),
             workspace,
             state: state.clone(),
+            daw_panel: daw_panel.clone(),
             project_path: None,
             audio_service: None,
         };
 
         // Initialize workspace layout
         panel.setup_workspace(window, cx);
-        
+
         // Initialize audio service
         panel.initialize_audio_service(window, cx);
 
@@ -80,17 +85,18 @@ impl DawEditorPanel {
     
     fn setup_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let state = self.state.clone();
-        
-        // Create browser tab panels
-        let browser_files = cx.new(|cx| workspace_panels::BrowserFilesPanel::new(state.clone(), window, cx));
-        let browser_instruments = cx.new(|cx| workspace_panels::BrowserInstrumentsPanel::new(state.clone(), window, cx));
-        let browser_effects = cx.new(|cx| workspace_panels::BrowserEffectsPanel::new(state.clone(), window, cx));
-        let browser_loops = cx.new(|cx| workspace_panels::BrowserLoopsPanel::new(state.clone(), window, cx));
-        let browser_samples = cx.new(|cx| workspace_panels::BrowserSamplesPanel::new(state.clone(), window, cx));
-        
-        // Create main panels
-        let timeline_panel = cx.new(|cx| workspace_panels::TimelinePanel::new(state.clone(), window, cx));
-        let mixer_panel = cx.new(|cx| workspace_panels::MixerPanel::new(state.clone(), window, cx));
+        let daw_panel = self.daw_panel.clone();
+
+        // Create browser tab panels - all share the same DawPanel
+        let browser_files = cx.new(|cx| workspace_panels::BrowserFilesPanel::new(state.clone(), daw_panel.clone(), window, cx));
+        let browser_instruments = cx.new(|cx| workspace_panels::BrowserInstrumentsPanel::new(state.clone(), daw_panel.clone(), window, cx));
+        let browser_effects = cx.new(|cx| workspace_panels::BrowserEffectsPanel::new(state.clone(), daw_panel.clone(), window, cx));
+        let browser_loops = cx.new(|cx| workspace_panels::BrowserLoopsPanel::new(state.clone(), daw_panel.clone(), window, cx));
+        let browser_samples = cx.new(|cx| workspace_panels::BrowserSamplesPanel::new(state.clone(), daw_panel.clone(), window, cx));
+
+        // Create main panels - all share the same DawPanel
+        let timeline_panel = cx.new(|cx| workspace_panels::TimelinePanel::new(state.clone(), daw_panel.clone(), window, cx));
+        let mixer_panel = cx.new(|cx| workspace_panels::MixerPanel::new(state.clone(), daw_panel.clone(), window, cx));
         let inspector_panel = cx.new(|cx| workspace_panels::InspectorPanel::new(state.clone(), window, cx));
         
         self.workspace.update(cx, |workspace, cx| {
@@ -143,6 +149,7 @@ impl DawEditorPanel {
 
     fn initialize_audio_service(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let state = self.state.clone();
+        let daw_panel = self.daw_panel.clone();
 
         cx.spawn(async move |this, cx| {
             match AudioService::new().await {
@@ -153,14 +160,19 @@ impl DawEditorPanel {
                         // Set audio service on DawEditorPanel
                         this.update(cx, |this, cx| {
                             this.audio_service = Some(service.clone());
-                            
+
                             // Set audio service on shared state
                             this.state.write().audio_service = Some(service.clone());
-                            
+
+                            // Set audio service on DawPanel's state
+                            this.daw_panel.update(cx, |panel, _cx| {
+                                panel.state.audio_service = Some(service.clone());
+                            });
+
                             // Start playhead and meter sync
                             this.start_playhead_sync(cx);
                             this.start_meter_sync(cx);
-                            
+
                             cx.notify();
                         }).ok();
                     }).ok();
@@ -175,10 +187,16 @@ impl DawEditorPanel {
 
     pub fn load_project(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         self.project_path = Some(path.clone());
-        
-        match self.state.write().load_project(path) {
+
+        match self.state.write().load_project(path.clone()) {
             Ok(_) => {
                 eprintln!("✅ DAW: Project loaded successfully");
+
+                // Sync project to DawPanel's state
+                self.daw_panel.update(cx, |panel, _cx| {
+                    let _ = panel.state.load_project(path);
+                });
+
                 self.sync_project_to_audio_service(cx);
                 cx.notify();
             }
@@ -201,7 +219,14 @@ impl DawEditorPanel {
 
     pub fn new_project(&mut self, name: String, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(ref project_dir) = self.state.read().project_dir {
-            self.state.write().new_project(name, project_dir.clone());
+            let project_dir = project_dir.clone();
+            self.state.write().new_project(name.clone(), project_dir.clone());
+
+            // Sync to DawPanel's state
+            self.daw_panel.update(cx, |panel, _cx| {
+                panel.state.new_project(name, project_dir);
+            });
+
             self.sync_project_to_audio_service(cx);
             cx.notify();
         }
