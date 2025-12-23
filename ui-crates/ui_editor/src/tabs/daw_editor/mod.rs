@@ -81,11 +81,17 @@ impl DawEditorPanel {
     fn setup_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let state = self.state.clone();
         
-        // Create panels (toolbar and transport are now embedded in timeline)
-        let browser_panel = cx.new(|cx| workspace_panels::BrowserPanel::new(state.clone(), cx));
-        let timeline_panel = cx.new(|cx| workspace_panels::TimelinePanel::new(state.clone(), cx));
-        let mixer_panel = cx.new(|cx| workspace_panels::MixerPanel::new(state.clone(), cx));
-        let inspector_panel = cx.new(|cx| workspace_panels::InspectorPanel::new(state.clone(), cx));
+        // Create browser tab panels
+        let browser_files = cx.new(|cx| workspace_panels::BrowserFilesPanel::new(state.clone(), window, cx));
+        let browser_instruments = cx.new(|cx| workspace_panels::BrowserInstrumentsPanel::new(state.clone(), window, cx));
+        let browser_effects = cx.new(|cx| workspace_panels::BrowserEffectsPanel::new(state.clone(), window, cx));
+        let browser_loops = cx.new(|cx| workspace_panels::BrowserLoopsPanel::new(state.clone(), window, cx));
+        let browser_samples = cx.new(|cx| workspace_panels::BrowserSamplesPanel::new(state.clone(), window, cx));
+        
+        // Create main panels
+        let timeline_panel = cx.new(|cx| workspace_panels::TimelinePanel::new(state.clone(), window, cx));
+        let mixer_panel = cx.new(|cx| workspace_panels::MixerPanel::new(state.clone(), window, cx));
+        let inspector_panel = cx.new(|cx| workspace_panels::InspectorPanel::new(state.clone(), window, cx));
         
         self.workspace.update(cx, |workspace, cx| {
             let dock_area = workspace.dock_area();
@@ -105,8 +111,20 @@ impl DawEditorPanel {
                 cx,
             );
             
-            // Create left sidebar (browser)
-            let left = DockItem::tab(browser_panel.clone(), &weak_dock, window, cx);
+            // Create left sidebar with browser tabs
+            let left = DockItem::tabs(
+                vec![
+                    Arc::new(browser_files) as Arc<dyn ui::dock::PanelView>,
+                    Arc::new(browser_instruments) as Arc<dyn ui::dock::PanelView>,
+                    Arc::new(browser_effects) as Arc<dyn ui::dock::PanelView>,
+                    Arc::new(browser_loops) as Arc<dyn ui::dock::PanelView>,
+                    Arc::new(browser_samples) as Arc<dyn ui::dock::PanelView>,
+                ],
+                Some(0), // Start with Files tab selected
+                &weak_dock,
+                window,
+                cx,
+            );
             
             // Create right sidebar (inspector)
             let right = DockItem::tab(inspector_panel.clone(), &weak_dock, window, cx);

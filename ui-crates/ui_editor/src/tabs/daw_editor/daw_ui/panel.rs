@@ -15,7 +15,7 @@ use futures::{SinkExt, StreamExt};
 
 pub struct DawPanel {
     focus_handle: FocusHandle,
-    pub(super) state: DawUiState,
+    pub state: DawUiState,
     /// Timeline element bounds for coordinate conversion (GPUI mouse events are window-relative)
     pub timeline_element_bounds: Option<gpui::Bounds<gpui::Pixels>>,
 }
@@ -496,11 +496,11 @@ impl DawPanel {
     }
 
     // Toolbar implementation
-    fn render_toolbar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub fn render_toolbar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         super::toolbar::render_toolbar(&mut self.state, cx)
     }
 
-    fn render_transport(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub fn render_transport(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         super::transport::render_transport(&mut self.state, cx)
     }
 
@@ -736,15 +736,15 @@ impl DawPanel {
             )
     }
 
-    fn render_timeline(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub fn render_timeline(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         super::timeline::render_timeline(&mut self.state, cx)
     }
 
-    fn render_mixer(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub fn render_mixer(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         super::mixer::render_mixer(&mut self.state, cx)
     }
 
-    fn render_browser(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub fn render_browser(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         super::browser::render_browser(&mut self.state, cx)
     }
 
