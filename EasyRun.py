@@ -5,7 +5,7 @@ import sys
 
 Pulsar = None
 
-CargoCommand="cargo run --release -p pulsar_engine"
+CargoCommand="cargo run --release -p pulsar_engine -j 4"
 ALTCargoCommand="cargo run -p pulsar_engine"
 
 States = {"Altcommand":False,"Active":True,"DebugMode":True}
