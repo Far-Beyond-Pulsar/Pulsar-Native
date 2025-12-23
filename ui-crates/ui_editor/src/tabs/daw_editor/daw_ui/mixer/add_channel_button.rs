@@ -42,13 +42,8 @@ pub fn render_add_channel_button(state_arc: Arc<RwLock<DawUiState>>, cx: &mut Co
                     };
                     project.tracks.push(new_track.clone());
 
-                    // Sync to audio service
-                    if let Some(ref service) = state_arc.read().audio_service {
-                        let service = service.clone();
-                        cx.spawn(async move {
-                            let _ = service.add_track(new_track).await;
-                        }).detach();
-                    }
+                    // TODO: Sync to audio service
+                    // Note: Audio service sync should be handled at a higher level
 
                     window.refresh();
                 }

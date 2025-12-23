@@ -1,6 +1,7 @@
 use gpui::*;
 use gpui::prelude::FluentBuilder;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use parking_lot::RwLock;
 use ui::{
     button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme, PixelsExt,
     h_virtual_list, scroll::{Scrollbar, ScrollbarAxis},
@@ -52,7 +53,7 @@ pub fn render_channel_strip(
                 .shadow_lg()
         })
         .on_mouse_down(MouseButton::Left, move |_event: &MouseDownEvent, window, _cx| {
-            state_arc.write().unwrap().select_track(track_id, false);
+            state_arc.write().select_track(track_id, false);
             window.refresh();
         })
         // Track color indicator at top with gradient

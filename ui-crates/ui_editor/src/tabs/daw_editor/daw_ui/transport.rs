@@ -12,7 +12,7 @@ use crate::tabs::daw_editor::audio_types::SAMPLE_RATE;
 use std::sync::Arc;
 use parking_lot::RwLock;
 
-pub fn render_transport(state: &mut DawUiState, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<super::panel::DawPanel>) -> impl IntoElement {
+pub fn render_transport<V: 'static>(state: &mut DawUiState, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<V>) -> impl IntoElement {
     h_flex()
         .w_full()
         .h(px(60.0))
@@ -38,7 +38,7 @@ pub fn render_transport(state: &mut DawUiState, state_arc: Arc<RwLock<DawUiState
         .child(render_metronome_section(state, state_arc.clone(), cx))
 }
 
-fn render_transport_buttons<V: 'static>(state: &mut DawUiState, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<super::panel::DawPanel>) -> impl IntoElement {
+fn render_transport_buttons<V: 'static>(state: &mut DawUiState, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<V>) -> impl IntoElement {
     h_flex()
         .gap_1()
         .items_center()
@@ -108,7 +108,7 @@ fn render_transport_buttons<V: 'static>(state: &mut DawUiState, state_arc: Arc<R
         })
 }
 
-fn render_position_display<V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>) -> impl IntoElement {
+fn render_position_display<V: 'static>(state: &mut DawUiState, cx: &mut Context<V>) -> impl IntoElement {
     let position = state.selection.playhead_position;
     let tempo = state.project.as_ref()
         .map(|p| p.transport.tempo)
@@ -162,7 +162,7 @@ fn render_position_display<V: 'static>(state: &mut DawUiState, cx: &mut Context<
         )
 }
 
-fn render_tempo_section<V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>) -> impl IntoElement {
+fn render_tempo_section<V: 'static>(state: &mut DawUiState, cx: &mut Context<V>) -> impl IntoElement {
     let tempo = state.project.as_ref()
         .map(|p| p.transport.tempo)
         .unwrap_or(120.0);
@@ -234,7 +234,7 @@ fn render_tempo_section<V: 'static>(state: &mut DawUiState, cx: &mut Context<sup
         )
 }
 
-fn render_loop_section<V: 'static>(state: &mut DawUiState, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<super::panel::DawPanel>) -> impl IntoElement {
+fn render_loop_section<V: 'static>(state: &mut DawUiState, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<V>) -> impl IntoElement {
     h_flex()
         .gap_1()
         .items_center()
@@ -275,7 +275,7 @@ fn render_loop_section<V: 'static>(state: &mut DawUiState, state_arc: Arc<RwLock
         })
 }
 
-fn render_metronome_section<V: 'static>(state: &mut DawUiState, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<super::panel::DawPanel>) -> impl IntoElement {
+fn render_metronome_section<V: 'static>(state: &mut DawUiState, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<V>) -> impl IntoElement {
     h_flex()
         .gap_1()
         .items_center()

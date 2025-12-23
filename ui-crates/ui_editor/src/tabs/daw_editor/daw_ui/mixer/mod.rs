@@ -6,7 +6,8 @@ use super::state::*;
 use super::panel::DawPanel;
 use gpui::*;
 use gpui::prelude::FluentBuilder;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use parking_lot::RwLock;
 use ui::{
     button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme, PixelsExt,
     h_virtual_list, scroll::{Scrollbar, ScrollbarAxis},
@@ -32,7 +33,7 @@ pub mod master_fader;
 pub const CHANNEL_STRIP_WIDTH: f32 = 90.0;
 pub const MIXER_PADDING: f32 = 8.0;
 
-pub fn render_mixer(state: &mut DawUiState, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<super::panel::DawPanel>) -> impl IntoElement {
+pub fn render_mixer<V: 'static>(state: &mut DawUiState, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<V>) -> impl IntoElement {
     let tracks = state.project.as_ref()
         .map(|p| p.tracks.clone())
         .unwrap_or_default();

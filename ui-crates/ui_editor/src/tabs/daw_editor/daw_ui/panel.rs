@@ -504,7 +504,10 @@ impl DawPanel {
     pub fn render_transport(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let state_arc = Arc::new(RwLock::new(std::mem::replace(&mut self.state, DawUiState::new())));
         let result = super::transport::render_transport(&mut *state_arc.write(), state_arc.clone(), cx);
-        self.state = Arc::try_unwrap(state_arc).unwrap().into_inner();
+        self.state = match Arc::try_unwrap(state_arc) {
+            Ok(lock) => lock.into_inner(),
+            Err(_) => panic!("Failed to unwrap Arc - multiple references exist"),
+        };
         result
     }
 
@@ -748,14 +751,20 @@ impl DawPanel {
         // For old monolithic DawPanel, create a temp Arc wrapper
         let state_arc = Arc::new(RwLock::new(std::mem::replace(&mut self.state, DawUiState::new())));
         let result = super::mixer::render_mixer(&mut *state_arc.write(), state_arc.clone(), cx);
-        self.state = Arc::try_unwrap(state_arc).unwrap().into_inner();
+        self.state = match Arc::try_unwrap(state_arc) {
+            Ok(lock) => lock.into_inner(),
+            Err(_) => panic!("Failed to unwrap Arc - multiple references exist"),
+        };
         result
     }
 
     pub fn render_browser(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let state_arc = Arc::new(RwLock::new(std::mem::replace(&mut self.state, DawUiState::new())));
         let result = super::browser::render_browser(&mut *state_arc.write(), state_arc.clone(), cx);
-        self.state = Arc::try_unwrap(state_arc).unwrap().into_inner();
+        self.state = match Arc::try_unwrap(state_arc) {
+            Ok(lock) => lock.into_inner(),
+            Err(_) => panic!("Failed to unwrap Arc - multiple references exist"),
+        };
         result
     }
 

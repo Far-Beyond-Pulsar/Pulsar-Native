@@ -197,7 +197,6 @@ impl Default for DragState {
 }
 
 /// Complete DAW UI state
-#[derive(Debug)]
 pub struct DawUiState {
     // Core data
     pub project: Option<DawProject>,

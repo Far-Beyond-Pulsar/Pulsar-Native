@@ -85,7 +85,8 @@ impl Render for MixerPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Render mixer with shared state
         let shared = self.state.clone();
-        super::daw_ui::mixer::render_mixer(&mut *shared.write(), cx)
+        let shared_clone = shared.clone();
+        super::daw_ui::mixer::render_mixer(&mut *shared.write(), shared_clone, cx)
     }
 }
 
