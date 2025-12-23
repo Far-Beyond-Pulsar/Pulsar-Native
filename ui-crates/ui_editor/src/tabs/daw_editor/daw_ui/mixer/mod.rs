@@ -53,6 +53,7 @@ pub fn render_mixer(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl 
         .h_full()
         .relative()
         .overflow_hidden()
+        .bg(cx.theme().background)
         .child(
             h_virtual_list(
                 panel_entity.clone(),
