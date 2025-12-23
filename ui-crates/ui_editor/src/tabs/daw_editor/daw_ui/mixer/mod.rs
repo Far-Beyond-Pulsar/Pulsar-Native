@@ -26,8 +26,6 @@ pub mod send_row;
 pub mod master_meters;
 pub mod master_fader;
 
-
-
 pub const CHANNEL_STRIP_WIDTH: f32 = 90.0;
 pub const MIXER_PADDING: f32 = 8.0;
 

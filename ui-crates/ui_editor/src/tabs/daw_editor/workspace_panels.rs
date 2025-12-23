@@ -137,6 +137,7 @@ impl Render for BrowserFilesPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Render browser through DawPanel
         self.daw_panel.update(cx, |panel, cx| {
+            panel.state.browser_tab = super::daw_ui::state::BrowserTab::Files;
             panel.render_browser(cx).into_any_element()
         })
     }
@@ -184,6 +185,7 @@ impl Render for BrowserInstrumentsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Render browser through DawPanel (all tabs use same browser render)
         self.daw_panel.update(cx, |panel, cx| {
+            panel.state.browser_tab = super::daw_ui::state::BrowserTab::Instruments;
             panel.render_browser(cx).into_any_element()
         })
     }
@@ -230,6 +232,7 @@ impl Render for BrowserEffectsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Render browser through DawPanel
         self.daw_panel.update(cx, |panel, cx| {
+            panel.state.browser_tab = super::daw_ui::state::BrowserTab::Effects;
             panel.render_browser(cx).into_any_element()
         })
     }
@@ -276,6 +279,7 @@ impl Render for BrowserLoopsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Render browser through DawPanel
         self.daw_panel.update(cx, |panel, cx| {
+            panel.state.browser_tab = super::daw_ui::state::BrowserTab::Loops;
             panel.render_browser(cx).into_any_element()
         })
     }
@@ -322,6 +326,7 @@ impl Render for BrowserSamplesPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Render browser through DawPanel
         self.daw_panel.update(cx, |panel, cx| {
+            panel.state.browser_tab = super::daw_ui::state::BrowserTab::Samples;
             panel.render_browser(cx).into_any_element()
         })
     }

@@ -21,8 +21,6 @@ pub fn render_browser(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> imp
         .bg(cx.theme().background)
         .border_r_1()
         .border_color(cx.theme().border)
-        // Tab bar with icons
-        .child(render_browser_tabs(state, cx))
         // Search bar
         .child(render_search_bar(state, cx))
         // Toolbar with actions
@@ -31,50 +29,6 @@ pub fn render_browser(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> imp
         .child(render_browser_content(state, cx))
         // Stats footer
         .child(render_browser_footer(state, cx))
-}
-
-fn render_browser_tabs(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
-    let current = state.browser_tab;
-
-    v_flex()
-        .w_full()
-        .border_b_1()
-        .border_color(cx.theme().border)
-        .child(
-            h_flex()
-                .w_full()
-                .h(px(44.0))
-                .px_2()
-                .gap_1()
-                .items_center()
-                .bg(cx.theme().muted.opacity(0.2))
-                .child(render_tab_button("Files", IconName::FolderOpen, BrowserTab::Files, current, cx))
-                .child(render_tab_button("Instruments", IconName::Album, BrowserTab::Instruments, current, cx))
-                .child(render_tab_button("FX", IconName::Activity, BrowserTab::Effects, current, cx))
-                .child(render_tab_button("Loops", IconName::AlbumCarousel, BrowserTab::Loops, current, cx))
-        )
-}
-
-fn render_tab_button(
-    label: &'static str,
-    icon: IconName,
-    tab: BrowserTab,
-    current: BrowserTab,
-    cx: &mut Context<DawPanel>,
-) -> impl IntoElement {
-    let is_active = tab == current;
-
-    Button::new(ElementId::Name(format!("browser-tab-{:?}", tab).into()))
-        .icon(Icon::new(icon).size_4())
-        .ghost()
-        .compact()
-        .small()
-        .when(is_active, |btn| btn.selected(true))
-        .tooltip(label)
-        .on_click(cx.listener(move |this, _, _window, cx| {
-            this.state.browser_tab = tab;
-            cx.notify();
-        }))
 }
 
 fn render_search_bar(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
