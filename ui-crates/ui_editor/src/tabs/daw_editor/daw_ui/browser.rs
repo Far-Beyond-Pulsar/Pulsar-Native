@@ -35,7 +35,7 @@ pub fn render_browser(state: &mut DawUiState, state_arc: Arc<RwLock<DawUiState>>
         .child(render_browser_footer(state, cx))
 }
 
-fn render_browser_tabs<V: 'static>(state: &mut DawUiState, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<super::panel::DawPanel>) -> impl IntoElement {
+fn render_browser_tabs(state: <V: 'static>(state: &mut DawUiState, state_arc:mut DawUiState, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<super::panel::DawPanel>) -> impl IntoElement {
     let current = state.browser_tab;
 
     v_flex()
@@ -57,7 +57,7 @@ fn render_browser_tabs<V: 'static>(state: &mut DawUiState, state_arc: Arc<RwLock
         )
 }
 
-fn render_tab_button<V: 'static>(
+fn render_tab_button(
     label: &'static str,
     icon: IconName,
     tab: BrowserTab,
@@ -80,7 +80,7 @@ fn render_tab_button<V: 'static>(
         })
 }
 
-fn render_search_bar<V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>) -> impl IntoElement {
+fn render_search_bar(state: <V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>)mut DawUiState, cx: <V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>)mut Context<super::panel::DawPanel>) -> impl IntoElement {
     let query = state.search_query.clone();
     let is_empty = query.is_empty();
     let display_text = if is_empty { "Search files...".to_string() } else { query.clone() };
@@ -131,7 +131,7 @@ fn render_search_bar<V: 'static>(state: &mut DawUiState, cx: &mut Context<super:
         )
 }
 
-fn render_browser_toolbar<V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>) -> impl IntoElement {
+fn render_browser_toolbar(state: <V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>)mut DawUiState, cx: <V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>)mut Context<super::panel::DawPanel>) -> impl IntoElement {
     h_flex()
         .w_full()
         .h(px(44.0))
@@ -193,7 +193,7 @@ fn render_browser_toolbar<V: 'static>(state: &mut DawUiState, cx: &mut Context<s
         )
 }
 
-fn render_browser_content<V: 'static>(state: &mut DawUiState, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<super::panel::DawPanel>) -> impl IntoElement {
+fn render_browser_content(state: <V: 'static>(state: &mut DawUiState, state_arc:mut DawUiState, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<super::panel::DawPanel>) -> impl IntoElement {
     div()
         .flex_1()
         .overflow_hidden()
@@ -213,7 +213,7 @@ fn render_browser_content<V: 'static>(state: &mut DawUiState, state_arc: Arc<RwL
         )
 }
 
-fn render_files_tab<V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>) -> impl IntoElement {
+fn render_files_tab(state: <V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>)mut DawUiState, cx: <V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>)mut Context<super::panel::DawPanel>) -> impl IntoElement {
     v_flex()
         .w_full()
         .gap_1()

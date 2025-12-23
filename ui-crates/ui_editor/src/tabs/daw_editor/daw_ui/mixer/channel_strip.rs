@@ -52,9 +52,12 @@ pub fn render_channel_strip(
                 })
                 .shadow_lg()
         })
-        .on_mouse_down(MouseButton::Left, move |_event: &MouseDownEvent, window, _cx| {
-            state_arc.write().select_track(track_id, false);
-            window.refresh();
+        .on_mouse_down(MouseButton::Left, {
+            let state_arc_click = state_arc.clone();
+            move |_event: &MouseDownEvent, window, _cx| {
+                state_arc_click.write().select_track(track_id, false);
+                window.refresh();
+            }
         })
         // Track color indicator at top with gradient
         .child(

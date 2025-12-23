@@ -36,7 +36,7 @@ pub fn render_toolbar(state: &mut DawUiState, cx: &mut Context<super::panel::Daw
         .child(render_project_info(state, cx))
 }
 
-fn render_file_section<V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>) -> impl IntoElement {
+fn render_file_section(state: <V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>)mut DawUiState, cx: <V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>)mut Context<super::panel::DawPanel>) -> impl IntoElement {
     h_flex()
         .gap_1()
         .items_center()
@@ -77,7 +77,7 @@ fn render_file_section<V: 'static>(state: &mut DawUiState, cx: &mut Context<supe
         )
 }
 
-fn render_tools_section<V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>) -> impl IntoElement {
+fn render_tools_section(state: <V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>)mut DawUiState, cx: <V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>)mut Context<super::panel::DawPanel>) -> impl IntoElement {
     h_flex()
         .gap_1()
         .items_center()
@@ -131,7 +131,7 @@ fn render_tools_section<V: 'static>(state: &mut DawUiState, cx: &mut Context<sup
         )
 }
 
-fn render_view_section<V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>) -> impl IntoElement {
+fn render_view_section(state: <V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>)mut DawUiState, cx: <V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>)mut Context<super::panel::DawPanel>) -> impl IntoElement {
     h_flex()
         .gap_1()
         .items_center()
@@ -170,7 +170,7 @@ fn render_view_section<V: 'static>(state: &mut DawUiState, cx: &mut Context<supe
         )
 }
 
-fn render_snap_section<V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>) -> impl IntoElement {
+fn render_snap_section(state: <V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>)mut DawUiState, cx: <V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>)mut Context<super::panel::DawPanel>) -> impl IntoElement {
     h_flex()
         .gap_1()
         .items_center()
@@ -210,7 +210,7 @@ fn render_snap_section<V: 'static>(state: &mut DawUiState, cx: &mut Context<supe
         )
 }
 
-fn render_project_info<V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>) -> impl IntoElement {
+fn render_project_info(state: <V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>)mut DawUiState, cx: <V: 'static>(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>)mut Context<super::panel::DawPanel>) -> impl IntoElement {
     let project_name = state.project.as_ref()
         .map(|p| p.name.clone())
         .unwrap_or_else(|| "No Project".to_string());
