@@ -4,14 +4,16 @@ use ui::{
     button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme, PixelsExt,
     h_virtual_list, scroll::{Scrollbar, ScrollbarAxis},
 };
-use super::super::DawPanel;
 use super::{Track, DawUiState, TrackId, DragState};
+use std::sync::Arc;
+use parking_lot::RwLock;
 
 /// Output routing dropdown - selects which bus/output this track routes to
 pub fn render_output_routing(
     track: &Track,
     track_id: TrackId,
-    cx: &mut Context<DawPanel>,
+    state_arc: Arc<RwLock<DawUiState>>,
+    cx: &mut Context<super::super::panel::DawPanel>,
 ) -> impl IntoElement {
     let output_name = "Master";
 
@@ -44,11 +46,10 @@ pub fn render_output_routing(
                         .bg(cx.theme().accent.opacity(0.45))
                         .shadow_sm()
                 })
-                .on_mouse_down(MouseButton::Left, cx.listener(move |_panel, _event: &MouseDownEvent, _window, cx| {
+                .on_mouse_down(MouseButton::Left, move |_event: &MouseDownEvent, _window, _cx| {
                     // Future: Show routing dropdown menu
                     eprintln!("🔌 Output routing clicked for track {}", track_id);
-                    cx.notify();
-                }))
+                })
                 .child(
                     div()
                         .text_xs()

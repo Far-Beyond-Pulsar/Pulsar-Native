@@ -7,7 +7,7 @@ use ui::{
 use super::super::DawPanel;
 use super::{Track, DawUiState, TrackId, DragState};
 
-pub fn render_meter_bar(level: f32, cx: &mut Context<DawPanel>) -> impl IntoElement {
+pub fn render_meter_bar(level: f32, cx: &mut Context<super::super::panel::DawPanel>) -> impl IntoElement {
     let level_clamped = level.clamp(0.0, 1.0);
     let segments = 12;
 

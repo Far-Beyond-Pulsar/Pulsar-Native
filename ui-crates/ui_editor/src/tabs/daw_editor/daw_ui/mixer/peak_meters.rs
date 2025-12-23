@@ -7,7 +7,7 @@ use ui::{
 use super::super::DawPanel;
 use super::{Track, DawUiState, TrackId, DragState};
 
-pub fn render_peak_meters(track: &Track, state: &DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
+pub fn render_peak_meters(track: &Track, state: &DawUiState, cx: &mut Context<super::super::panel::DawPanel>) -> impl IntoElement {
     // Get actual meter data from audio service
     let (left_peak, right_peak) = if let Some(meter) = state.track_meters.get(&track.id) {
         (meter.peak_left, meter.peak_right)

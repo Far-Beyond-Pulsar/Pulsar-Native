@@ -27,7 +27,7 @@ pub const TRACK_HEADER_WIDTH: f32 = 200.0;
 pub const MIN_TRACK_HEIGHT: f32 = 60.0;
 pub const MAX_TRACK_HEIGHT: f32 = 300.0;
 
-pub fn render_timeline(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
+pub fn render_timeline(state: &mut DawUiState, cx: &mut Context<super::panel::DawPanel>) -> impl IntoElement {
     // Prepare virtualization item sizes for tracks
     let track_sizes: Rc<Vec<Size<Pixels>>> = {
         let tracks = state.project.as_ref()
@@ -58,3 +58,4 @@ pub fn render_timeline(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> im
         // Scrollable track area with virtualization
         .child(virtual_track_area::render_virtual_track_area(state, track_sizes, cx))
 }
+

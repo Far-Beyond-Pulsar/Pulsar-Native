@@ -4,13 +4,15 @@ use ui::{
     button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme, PixelsExt,
     h_virtual_list, scroll::{Scrollbar, ScrollbarAxis},
 };
-use super::super::DawPanel;
 use super::{Track, DawUiState, TrackId, DragState};
+use std::sync::Arc;
+use parking_lot::RwLock;
 
 pub fn render_fader_slider(
     track: &Track,
     track_id: TrackId,
-    cx: &mut Context<DawPanel>,
+    state_arc: Arc<RwLock<DawUiState>>,
+    cx: &mut Context<super::super::panel::DawPanel>,
 ) -> impl IntoElement {
     let volume = track.volume;
     let volume_percent = ((volume / 1.5) * 100.0).clamp(0.0, 100.0);
@@ -47,14 +49,17 @@ pub fn render_fader_slider(
                         .rounded_sm()
                         .cursor_ns_resize()
                         // Click on track to jump to position
-                        .on_mouse_down(MouseButton::Left, cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
-                            panel.state.drag_state = DragState::DraggingFader {
-                                track_id,
-                                start_mouse_y: event.position.y.as_f32(),
-                                start_volume: volume,
-                            };
-                            cx.notify();
-                        }))
+                        .on_mouse_down(MouseButton::Left, {
+                            let state_arc = state_arc.clone();
+                            move |event: &MouseDownEvent, window, _cx| {
+                                state_arc.write().drag_state = DragState::DraggingFader {
+                                    track_id,
+                                    start_mouse_y: event.position.y.as_f32(),
+                                    start_volume: volume,
+                                };
+                                window.refresh();
+                            }
+                        })
                         .child(
                             // Volume fill - professional gradient
                             div()
@@ -85,14 +90,17 @@ pub fn render_fader_slider(
                                 .hover(|style| {
                                     style.shadow_xl()
                                 })
-                                .on_mouse_down(MouseButton::Left, cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
-                                    panel.state.drag_state = DragState::DraggingFader {
-                                        track_id,
-                                        start_mouse_y: event.position.y.as_f32(),
-                                        start_volume: volume,
-                                    };
-                                    cx.notify();
-                                }))
+                                .on_mouse_down(MouseButton::Left, {
+                                    let state_arc = state_arc.clone();
+                                    move |event: &MouseDownEvent, window, _cx| {
+                                        state_arc.write().drag_state = DragState::DraggingFader {
+                                            track_id,
+                                            start_mouse_y: event.position.y.as_f32(),
+                                            start_volume: volume,
+                                        };
+                                        window.refresh();
+                                    }
+                                })
                         )
                 )
         )
