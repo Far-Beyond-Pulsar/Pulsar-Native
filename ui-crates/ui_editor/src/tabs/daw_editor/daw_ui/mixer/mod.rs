@@ -20,6 +20,7 @@ pub mod insert_slots;
 pub mod master_channel;
 pub mod meter_bar;
 pub mod output_routing;
+pub mod pan_control;
 pub mod peak_meters;
 pub mod send_controls;
 pub mod send_row;

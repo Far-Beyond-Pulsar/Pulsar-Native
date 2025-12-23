@@ -85,8 +85,91 @@ pub fn render_channel_strip(
                         .child(track.name.clone())
                 )
         )
+        // Control buttons: Mute, Solo, Record Arm
+        .child(
+            h_flex()
+                .w_full()
+                .gap_0p5()
+                .child(
+                    // Mute button
+                    Button::new(ElementId::Name(format!("mute-{}", track_id).into()))
+                        .icon(Icon::new(IconName::Square).size_3())
+                        .compact()
+                        .small()
+                        .flex_1()
+                        .when(track.muted, |b| b.primary())
+                        .when(!track.muted, |b| b.ghost())
+                        .tooltip("Mute (M)")
+                        .on_click(cx.listener(move |panel, _, _window, cx| {
+                            if let Some(ref mut project) = panel.state.project {
+                                if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id) {
+                                    track.muted = !track.muted;
+
+                                    // Sync to audio service
+                                    if let Some(ref service) = panel.state.audio_service {
+                                        let service = service.clone();
+                                        let muted = track.muted;
+                                        cx.spawn(async move |_this, _cx| {
+                                            let _ = service.set_track_mute(track_id, muted).await;
+                                        }).detach();
+                                    }
+                                }
+                            }
+                            cx.notify();
+                        }))
+                )
+                .child(
+                    // Solo button
+                    Button::new(ElementId::Name(format!("solo-{}", track_id).into()))
+                        .icon(Icon::new(IconName::Heart).size_3())
+                        .compact()
+                        .small()
+                        .flex_1()
+                        .when(track.solo, |b| b.primary())
+                        .when(!track.solo, |b| b.ghost())
+                        .tooltip("Solo (S)")
+                        .on_click(cx.listener(move |panel, _, _window, cx| {
+                            if let Some(ref mut project) = panel.state.project {
+                                if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id) {
+                                    track.solo = !track.solo;
+
+                                    // Sync to audio service
+                                    if let Some(ref service) = panel.state.audio_service {
+                                        let service = service.clone();
+                                        let solo = track.solo;
+                                        cx.spawn(async move |_this, _cx| {
+                                            let _ = service.set_track_solo(track_id, solo).await;
+                                        }).detach();
+                                    }
+                                }
+                            }
+                            cx.notify();
+                        }))
+                )
+                .child(
+                    // Record Arm button
+                    Button::new(ElementId::Name(format!("record-arm-{}", track_id).into()))
+                        .icon(Icon::new(IconName::Circle).size_3())
+                        .compact()
+                        .small()
+                        .flex_1()
+                        .when(track.record_armed, |b| b.primary())
+                        .when(!track.record_armed, |b| b.ghost())
+                        .tooltip("Record Arm (R)")
+                        .on_click(cx.listener(move |panel, _, _window, cx| {
+                            if let Some(ref mut project) = panel.state.project {
+                                if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id) {
+                                    track.record_armed = !track.record_armed;
+                                }
+                            }
+                            cx.notify();
+                        }))
+                )
+        )
         // Output routing dropdown
         .child(super::output_routing::render_output_routing(track, track_id, cx))
+        // Pan control with visual feedback
+        .child(super::pan_control::render_pan_control(track, track_id, cx))
         // Insert slots (3 effect slots)
         .child(super::insert_slots::render_insert_slots(track, cx))
         // Send levels (A and B with pre/post toggle)
