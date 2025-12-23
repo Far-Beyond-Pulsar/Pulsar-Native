@@ -12,15 +12,10 @@ use ui::{
     badge::Badge,
 };
 
-const BROWSER_WIDTH: f32 = 280.0;
-
 pub fn render_browser(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     v_flex()
-        .w(px(BROWSER_WIDTH))
-        .h_full()
+        .size_full()
         .bg(cx.theme().background)
-        .border_r_1()
-        .border_color(cx.theme().border)
         // Search bar
         .child(render_search_bar(state, cx))
         // Toolbar with actions
