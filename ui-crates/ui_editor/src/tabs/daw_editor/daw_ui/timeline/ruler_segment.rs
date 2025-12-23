@@ -70,5 +70,3 @@ pub fn render_ruler_segment(
                 .child(super::playhead::render_playhead(state, cx))
         )
 }
-
-

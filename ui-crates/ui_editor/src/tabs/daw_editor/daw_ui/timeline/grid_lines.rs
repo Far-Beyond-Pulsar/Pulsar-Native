@@ -6,7 +6,7 @@ use ui::{
     scroll::{Scrollbar, ScrollbarAxis}, PixelsExt, h_virtual_list};
 
 /// Render grid lines
-pub fn render_grid_lines(state: &DawUiState, cx: &mut Context<super::super::panel::DawPanel>) -> impl IntoElement {
+pub fn render_grid_lines(state: &DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     let _zoom = state.viewport.zoom;
     let num_beats = 500; // Total beats to show
 
@@ -26,4 +26,3 @@ pub fn render_grid_lines(state: &DawUiState, cx: &mut Context<super::super::pane
                 .bg(cx.theme().border.opacity(0.3))
         }))
 }
-

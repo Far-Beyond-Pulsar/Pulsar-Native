@@ -5,7 +5,7 @@ use ui::{
     h_flex, v_flex, Icon, IconName, StyledExt, ActiveTheme,
     scroll::{Scrollbar, ScrollbarAxis}, PixelsExt, h_virtual_list};
 
-pub fn render_playhead(state: &DawUiState, cx: &mut Context<super::super::panel::DawPanel>) -> impl IntoElement {
+pub fn render_playhead(state: &DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     let x = state.beats_to_pixels(state.selection.playhead_position);
 
     div()
@@ -31,4 +31,3 @@ pub fn render_playhead(state: &DawUiState, cx: &mut Context<super::super::panel:
                 )
         )
 }
-

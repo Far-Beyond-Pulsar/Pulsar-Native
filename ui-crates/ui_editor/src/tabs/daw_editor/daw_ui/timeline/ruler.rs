@@ -5,7 +5,7 @@ use ui::{
     h_flex, v_flex, Icon, IconName, StyledExt, ActiveTheme,
     scroll::{Scrollbar, ScrollbarAxis}, PixelsExt, h_virtual_list};
 
-pub fn render_ruler(state: &mut DawUiState, cx: &mut Context<super::super::panel::DawPanel>) -> impl IntoElement {
+pub fn render_ruler(state: &DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     let _tempo = state.project.as_ref().map(|p| p.transport.tempo).unwrap_or(120.0);
     let _zoom = state.viewport.zoom;
     let horizontal_scroll_handle = state.timeline_scroll_handle.clone();
@@ -71,4 +71,3 @@ pub fn render_ruler(state: &mut DawUiState, cx: &mut Context<super::super::panel
                 )
         )
 }
-

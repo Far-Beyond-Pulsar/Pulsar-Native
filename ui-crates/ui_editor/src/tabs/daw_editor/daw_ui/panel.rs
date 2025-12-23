@@ -12,7 +12,6 @@ use std::time::Duration;
 use crate::tabs::daw_editor::audio_types::SAMPLE_RATE;
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
-use parking_lot::RwLock;
 
 pub struct DawPanel {
     focus_handle: FocusHandle,
@@ -502,13 +501,7 @@ impl DawPanel {
     }
 
     pub fn render_transport(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        let state_arc = Arc::new(RwLock::new(std::mem::replace(&mut self.state, DawUiState::new())));
-        let result = super::transport::render_transport(&mut *state_arc.write(), state_arc.clone(), cx);
-        self.state = match Arc::try_unwrap(state_arc) {
-            Ok(lock) => lock.into_inner(),
-            Err(_) => panic!("Failed to unwrap Arc - multiple references exist"),
-        };
-        result
+        super::transport::render_transport(&mut self.state, cx)
     }
 
     fn render_main_area(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -748,24 +741,11 @@ impl DawPanel {
     }
 
     pub fn render_mixer(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        // For old monolithic DawPanel, create a temp Arc wrapper
-        let state_arc = Arc::new(RwLock::new(std::mem::replace(&mut self.state, DawUiState::new())));
-        let result = super::mixer::render_mixer(&mut *state_arc.write(), state_arc.clone(), cx);
-        self.state = match Arc::try_unwrap(state_arc) {
-            Ok(lock) => lock.into_inner(),
-            Err(_) => panic!("Failed to unwrap Arc - multiple references exist"),
-        };
-        result
+        super::mixer::render_mixer(&mut self.state, cx)
     }
 
     pub fn render_browser(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        let state_arc = Arc::new(RwLock::new(std::mem::replace(&mut self.state, DawUiState::new())));
-        let result = super::browser::render_browser(&mut *state_arc.write(), state_arc.clone(), cx);
-        self.state = match Arc::try_unwrap(state_arc) {
-            Ok(lock) => lock.into_inner(),
-            Err(_) => panic!("Failed to unwrap Arc - multiple references exist"),
-        };
-        result
+        super::browser::render_browser(&mut self.state, cx)
     }
 
     fn render_clip_editor(&mut self, cx: &mut Context<Self>) -> impl IntoElement {

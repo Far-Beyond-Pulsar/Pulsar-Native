@@ -56,4 +56,3 @@ pub fn render_track_content_segment(
                 }))
         )
 }
-

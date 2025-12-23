@@ -58,4 +58,3 @@ pub fn render_virtual_track_area(
                 )
         )
 }
-

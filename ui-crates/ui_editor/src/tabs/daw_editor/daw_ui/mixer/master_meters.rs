@@ -7,7 +7,7 @@ use ui::{
 use super::super::DawPanel;
 use super::{Track, DawUiState, TrackId, DragState};
 
-pub fn render_master_meters(state: &DawUiState, cx: &mut Context<super::super::panel::DawPanel>) -> impl IntoElement {
+pub fn render_master_meters(state: &DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     let (left_peak, right_peak) = (state.master_meter.peak_left, state.master_meter.peak_right);
 
     h_flex()

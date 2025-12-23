@@ -30,4 +30,3 @@ pub fn render_track_content(
             super::clip::render_clip(clip, track_id, state, cx)
         }))
 }
-

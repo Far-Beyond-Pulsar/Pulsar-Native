@@ -4,11 +4,10 @@ use ui::{
     button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme, PixelsExt,
     h_virtual_list, scroll::{Scrollbar, ScrollbarAxis},
 };
+use super::super::DawPanel;
 use super::{Track, DawUiState, TrackId, DragState};
-use std::sync::Arc;
-use parking_lot::RwLock;
 
-pub fn render_master_channel(state: &DawUiState, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<super::super::panel::DawPanel>) -> impl IntoElement {
+pub fn render_master_channel(state: &DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     let master_volume = state.project.as_ref()
         .map(|p| p.master_track.volume)
         .unwrap_or(1.0);
@@ -54,7 +53,7 @@ pub fn render_master_channel(state: &DawUiState, state_arc: Arc<RwLock<DawUiStat
         // Master peak meters
         .child(super::master_meters::render_master_meters(state, cx))
         // Master fader
-        .child(super::master_fader::render_master_fader(master_volume, state_arc.clone(), cx))
+        .child(super::master_fader::render_master_fader(master_volume, cx))
         // Master volume readout with warning color
         .child(
             div()

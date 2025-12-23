@@ -4,15 +4,13 @@ use ui::{
     button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme, PixelsExt,
     h_virtual_list, scroll::{Scrollbar, ScrollbarAxis},
 };
+use super::super::DawPanel;
 use super::{Track, DawUiState, TrackId, DragState};
-use std::sync::Arc;
-use parking_lot::RwLock;
 
 pub fn render_send_controls(
     track: &Track,
     track_id: TrackId,
-    state_arc: Arc<RwLock<DawUiState>>,
-    cx: &mut Context<super::super::panel::DawPanel>,
+    cx: &mut Context<DawPanel>,
 ) -> impl IntoElement {
     // Get send values from track if available
     let send_a_amount = track.sends.get(0).map(|s| s.amount).unwrap_or(0.0);
@@ -34,7 +32,7 @@ pub fn render_send_controls(
             v_flex()
                 .w_full()
                 .gap_1()
-                .child(super::send_row::render_send_row("A", send_a_amount, send_a_pre, track_id, 0, state_arc.clone(), cx))
-                .child(super::send_row::render_send_row("B", send_b_amount, send_b_pre, track_id, 1, state_arc.clone(), cx))
+                .child(super::send_row::render_send_row("A", send_a_amount, send_a_pre, track_id, 0, cx))
+                .child(super::send_row::render_send_row("B", send_b_amount, send_b_pre, track_id, 1, cx))
         )
 }

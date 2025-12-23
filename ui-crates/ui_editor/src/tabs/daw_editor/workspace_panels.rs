@@ -13,13 +13,17 @@ use parking_lot::RwLock;
 /// Main Timeline Panel - wraps the timeline view with embedded toolbar and transport
 pub struct TimelinePanel {
     state: Arc<RwLock<DawUiState>>,
+    daw_panel: Entity<DawPanel>,
     focus_handle: FocusHandle,
 }
 
 impl TimelinePanel {
-    pub fn new(state: Arc<RwLock<DawUiState>>, _window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(state: Arc<RwLock<DawUiState>>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let daw_panel = cx.new(|cx| DawPanel::new(window, cx));
+        
         Self {
             state,
+            daw_panel,
             focus_handle: cx.focus_handle(),
         }
     }
@@ -29,22 +33,20 @@ impl EventEmitter<PanelEvent> for TimelinePanel {}
 
 impl Render for TimelinePanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Render with shared state directly
-        let shared = self.state.clone();
-        let toolbar = super::daw_ui::toolbar::render_toolbar(&mut *shared.write(), cx);
-        let transport = super::daw_ui::transport::render_transport(&mut *shared.write(), shared.clone(), cx);
-        let timeline = super::daw_ui::timeline::render_timeline(&mut *shared.write(), cx);
-        
-        v_flex()
-            .size_full()
-            .bg(cx.theme().background)
-            .gap_0()
-            // Toolbar at top
-            .child(toolbar)
-            // Transport below toolbar  
-            .child(transport)
-            // Timeline content
-            .child(timeline)
+        // Render only the timeline (not the whole DawPanel with sidebars)
+        self.daw_panel.update(cx, |panel, cx| {
+            v_flex()
+                .size_full()
+                .bg(cx.theme().background)
+                .gap_0()
+                // Toolbar at top
+                .child(panel.render_toolbar(cx))
+                // Transport below toolbar
+                .child(panel.render_transport(cx))
+                // Timeline content
+                .child(panel.render_timeline(cx))
+                .into_any_element()
+        })
     }
 }
 
@@ -67,13 +69,17 @@ impl Panel for TimelinePanel {
 /// Mixer Panel - wraps the mixer view
 pub struct MixerPanel {
     state: Arc<RwLock<DawUiState>>,
+    daw_panel: Entity<DawPanel>,
     focus_handle: FocusHandle,
 }
 
 impl MixerPanel {
-    pub fn new(state: Arc<RwLock<DawUiState>>, _window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(state: Arc<RwLock<DawUiState>>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let daw_panel = cx.new(|cx| DawPanel::new(window, cx));
+        
         Self {
             state,
+            daw_panel,
             focus_handle: cx.focus_handle(),
         }
     }
@@ -83,10 +89,10 @@ impl EventEmitter<PanelEvent> for MixerPanel {}
 
 impl Render for MixerPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Render mixer with shared state
-        let shared = self.state.clone();
-        let shared_clone = shared.clone();
-        super::daw_ui::mixer::render_mixer(&mut *shared.write(), shared_clone, cx)
+        // Render mixer through DawPanel
+        self.daw_panel.update(cx, |panel, cx| {
+            panel.render_mixer(cx).into_any_element()
+        })
     }
 }
 
@@ -109,13 +115,17 @@ impl Panel for MixerPanel {
 /// Browser Files Tab Panel
 pub struct BrowserFilesPanel {
     state: Arc<RwLock<DawUiState>>,
+    daw_panel: Entity<DawPanel>,
     focus_handle: FocusHandle,
 }
 
 impl BrowserFilesPanel {
-    pub fn new(state: Arc<RwLock<DawUiState>>, _window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(state: Arc<RwLock<DawUiState>>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let daw_panel = cx.new(|cx| DawPanel::new(window, cx));
+        
         Self {
             state,
+            daw_panel,
             focus_handle: cx.focus_handle(),
         }
     }
@@ -125,8 +135,10 @@ impl EventEmitter<PanelEvent> for BrowserFilesPanel {}
 
 impl Render for BrowserFilesPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Render browser with shared state
-        super::daw_ui::browser::render_browser(&mut *self.state.write(), self.state.clone(), cx)
+        // Render browser through DawPanel
+        self.daw_panel.update(cx, |panel, cx| {
+            panel.render_browser(cx).into_any_element()
+        })
     }
 }
 
@@ -170,8 +182,10 @@ impl EventEmitter<PanelEvent> for BrowserInstrumentsPanel {}
 
 impl Render for BrowserInstrumentsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Render browser with shared state (all tabs use same browser render)
-        super::daw_ui::browser::render_browser(&mut *self.state.write(), self.state.clone(), cx)
+        // Render browser through DawPanel (all tabs use same browser render)
+        self.daw_panel.update(cx, |panel, cx| {
+            panel.render_browser(cx).into_any_element()
+        })
     }
 }
 
@@ -214,8 +228,10 @@ impl EventEmitter<PanelEvent> for BrowserEffectsPanel {}
 
 impl Render for BrowserEffectsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Render browser with shared state
-        super::daw_ui::browser::render_browser(&mut *self.state.write(), self.state.clone(), cx)
+        // Render browser through DawPanel
+        self.daw_panel.update(cx, |panel, cx| {
+            panel.render_browser(cx).into_any_element()
+        })
     }
 }
 
@@ -258,8 +274,10 @@ impl EventEmitter<PanelEvent> for BrowserLoopsPanel {}
 
 impl Render for BrowserLoopsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Render browser with shared state
-        super::daw_ui::browser::render_browser(&mut *self.state.write(), self.state.clone(), cx)
+        // Render browser through DawPanel
+        self.daw_panel.update(cx, |panel, cx| {
+            panel.render_browser(cx).into_any_element()
+        })
     }
 }
 
@@ -302,8 +320,10 @@ impl EventEmitter<PanelEvent> for BrowserSamplesPanel {}
 
 impl Render for BrowserSamplesPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Render browser with shared state
-        super::daw_ui::browser::render_browser(&mut *self.state.write(), self.state.clone(), cx)
+        // Render browser through DawPanel
+        self.daw_panel.update(cx, |panel, cx| {
+            panel.render_browser(cx).into_any_element()
+        })
     }
 }
 
@@ -372,5 +392,4 @@ impl Panel for InspectorPanel {
         "Inspector".into_any_element()
     }
 }
-
 

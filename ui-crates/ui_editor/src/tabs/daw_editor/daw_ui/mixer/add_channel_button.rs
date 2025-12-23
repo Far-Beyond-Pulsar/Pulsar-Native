@@ -4,11 +4,10 @@ use ui::{
     button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme, PixelsExt,
     h_virtual_list, scroll::{Scrollbar, ScrollbarAxis},
 };
-use super::{Track, DawUiState};
-use std::sync::Arc;
-use parking_lot::RwLock;
+use super::super::DawPanel;
+use super::Track;
 
-pub fn render_add_channel_button(state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<super::super::panel::DawPanel>) -> impl IntoElement {
+pub fn render_add_channel_button(cx: &mut Context<DawPanel>) -> impl IntoElement {
     v_flex()
         .w(px(90.0))
         .h_full()
@@ -20,35 +19,37 @@ pub fn render_add_channel_button(state_arc: Arc<RwLock<DawUiState>>, cx: &mut Co
         .border_color(cx.theme().accent.opacity(0.3))
         .cursor_pointer()
         .hover(|style| style.bg(cx.theme().accent.opacity(0.2)))
-        .on_mouse_down(MouseButton::Left, {
-            let state_arc = state_arc.clone();
-            move |_event: &MouseDownEvent, window, cx| {
-                // Add a new track with sync to audio service
-                if let Some(ref mut project) = state_arc.write().project {
-                    let new_track_id = uuid::Uuid::new_v4();
-                    let new_track = Track {
-                        id: new_track_id,
-                        name: format!("Track {}", project.tracks.len() + 1),
-                        track_type: super::super::super::audio_types::TrackType::Audio,
-                        volume: 1.0,
-                        pan: 0.0,
-                        muted: false,
-                        solo: false,
-                        record_armed: false,
-                        clips: Vec::new(),
-                        sends: Vec::new(),
-                        automation: Vec::new(),
-                        color: [0.5, 0.5, 0.8],
-                    };
-                    project.tracks.push(new_track.clone());
+        .on_mouse_down(MouseButton::Left, cx.listener(|panel, _event: &MouseDownEvent, _window, cx| {
+            // Add a new track with sync to audio service
+            if let Some(ref mut project) = panel.state.project {
+                let new_track_id = uuid::Uuid::new_v4();
+                let new_track = Track {
+                    id: new_track_id,
+                    name: format!("Track {}", project.tracks.len() + 1),
+                    track_type: super::super::super::audio_types::TrackType::Audio,
+                    volume: 1.0,
+                    pan: 0.0,
+                    muted: false,
+                    solo: false,
+                    record_armed: false,
+                    clips: Vec::new(),
+                    sends: Vec::new(),
+                    automation: Vec::new(),
+                    color: [0.5, 0.5, 0.8],
+                };
+                project.tracks.push(new_track.clone());
 
-                    // TODO: Sync to audio service
-                    // Note: Audio service sync should be handled at a higher level
-
-                    window.refresh();
+                // Sync to audio service
+                if let Some(ref service) = panel.state.audio_service {
+                    let service = service.clone();
+                    cx.spawn(async move |_this, _cx| {
+                        let _ = service.add_track(new_track).await;
+                    }).detach();
                 }
+
+                cx.notify();
             }
-        })
+        }))
         .child(
             div()
                 .flex_1()

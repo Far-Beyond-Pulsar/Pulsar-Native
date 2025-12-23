@@ -1,7 +1,5 @@
 use gpui::*;
 use gpui::prelude::FluentBuilder;
-use std::sync::Arc;
-use parking_lot::RwLock;
 use ui::{
     button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme, PixelsExt,
     h_virtual_list, scroll::{Scrollbar, ScrollbarAxis},
@@ -13,8 +11,7 @@ pub fn render_channel_strip(
     track: &Track,
     idx: usize,
     state: &DawUiState,
-    state_arc: Arc<RwLock<DawUiState>>,
-    cx: &mut Context<super::super::panel::DawPanel>,
+    cx: &mut Context<DawPanel>,
 ) -> impl IntoElement {
     let is_selected = state.selection.selected_track_ids.contains(&track.id);
     let is_muted = track.muted || state.is_track_effectively_muted(track.id);
@@ -52,13 +49,10 @@ pub fn render_channel_strip(
                 })
                 .shadow_lg()
         })
-        .on_mouse_down(MouseButton::Left, {
-            let state_arc_click = state_arc.clone();
-            move |_event: &MouseDownEvent, window, _cx| {
-                state_arc_click.write().select_track(track_id, false);
-                window.refresh();
-            }
-        })
+        .on_mouse_down(MouseButton::Left, cx.listener(move |panel, _event: &MouseDownEvent, _window, cx| {
+            panel.state.select_track(track_id, false);
+            cx.notify();
+        }))
         // Track color indicator at top with gradient
         .child(
             div()
@@ -92,15 +86,15 @@ pub fn render_channel_strip(
                 )
         )
         // Output routing dropdown
-        .child(super::output_routing::render_output_routing(track, track_id, state_arc.clone(), cx))
+        .child(super::output_routing::render_output_routing(track, track_id, cx))
         // Insert slots (3 effect slots)
-        .child(super::insert_slots::render_insert_slots(track, state_arc.clone(), cx))
+        .child(super::insert_slots::render_insert_slots(track, cx))
         // Send levels (A and B with pre/post toggle)
-        .child(super::send_controls::render_send_controls(track, track_id, state_arc.clone(), cx))
+        .child(super::send_controls::render_send_controls(track, track_id, cx))
         // Peak meter LEDs with smooth animation
         .child(super::peak_meters::render_peak_meters(track, state, cx))
         // Vertical output fader slider
-        .child(super::fader_slider::render_fader_slider(track, track_id, state_arc.clone(), cx))
+        .child(super::fader_slider::render_fader_slider(track, track_id, cx))
         // Volume readout with dB display
         .child(
             div()

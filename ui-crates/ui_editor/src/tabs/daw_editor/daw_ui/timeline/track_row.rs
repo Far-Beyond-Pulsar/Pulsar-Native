@@ -84,4 +84,3 @@ pub fn render_track_row(
                 )
         )
 }
-

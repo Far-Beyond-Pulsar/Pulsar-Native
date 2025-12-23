@@ -36,4 +36,3 @@ pub fn render_grid_lines_segment(
                 })
         }))
 }
-

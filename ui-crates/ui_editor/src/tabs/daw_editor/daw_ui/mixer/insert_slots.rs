@@ -4,11 +4,10 @@ use ui::{
     button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme, PixelsExt,
     h_virtual_list, scroll::{Scrollbar, ScrollbarAxis},
 };
+use super::super::DawPanel;
 use super::{Track, DawUiState, TrackId, DragState};
-use std::sync::Arc;
-use parking_lot::RwLock;
 
-pub fn render_insert_slots(track: &Track, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<super::super::panel::DawPanel>) -> impl IntoElement {
+pub fn render_insert_slots(track: &Track, cx: &mut Context<DawPanel>) -> impl IntoElement {
     let track_id = track.id;
 
     v_flex()
@@ -60,10 +59,11 @@ pub fn render_insert_slots(track: &Track, state_arc: Arc<RwLock<DawUiState>>, cx
                                 .bg(cx.theme().accent.opacity(0.5))
                                 .shadow_sm()
                         })
-                        .on_mouse_down(MouseButton::Left, move |_event: &MouseDownEvent, _window, _cx| {
+                        .on_mouse_down(MouseButton::Left, cx.listener(move |_panel, _event: &MouseDownEvent, _window, cx| {
                             // Future: Show effect browser/menu
                             eprintln!("📦 Insert slot {} clicked for track {}", slot_idx, track_id);
-                        })
+                            cx.notify();
+                        }))
                         .child(if has_effect {
                             "FX".to_string()
                         } else {

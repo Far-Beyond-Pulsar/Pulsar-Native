@@ -6,7 +6,7 @@ use ui::{
     scroll::{Scrollbar, ScrollbarAxis}, PixelsExt, h_virtual_list};
 
 //TODO: Implement proper waveform data display
-pub fn render_waveform_placeholder(tint_color: Hsla, cx: &mut Context<super::super::panel::DawPanel>) -> impl IntoElement {
+pub fn render_waveform_placeholder(tint_color: Hsla, cx: &mut Context<DawPanel>) -> impl IntoElement {
     // Darken the tint color manually
     let darkened_color = hsla(
         tint_color.h,
@@ -26,4 +26,3 @@ pub fn render_waveform_placeholder(tint_color: Hsla, cx: &mut Context<super::sup
                 .text_color(darkened_color)
         )
 }
-

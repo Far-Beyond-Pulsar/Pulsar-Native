@@ -4,11 +4,10 @@ use ui::{
     button::*, h_flex, v_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme, PixelsExt,
     h_virtual_list, scroll::{Scrollbar, ScrollbarAxis},
 };
+use super::super::DawPanel;
 use super::{Track, DawUiState, TrackId, DragState};
-use std::sync::Arc;
-use parking_lot::RwLock;
 
-pub fn render_master_fader(master_volume: f32, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<super::super::panel::DawPanel>) -> impl IntoElement {
+pub fn render_master_fader(master_volume: f32, cx: &mut Context<DawPanel>) -> impl IntoElement {
     let volume_percent = ((master_volume / 1.5) * 100.0).clamp(0.0, 100.0);
 
     v_flex()
@@ -41,17 +40,14 @@ pub fn render_master_fader(master_volume: f32, state_arc: Arc<RwLock<DawUiState>
                         .bg(cx.theme().secondary.opacity(0.5))
                         .rounded_sm()
                         .cursor_ns_resize()
-                        .on_mouse_down(MouseButton::Left, {
-                            let state_arc = state_arc.clone();
-                            move |event: &MouseDownEvent, window, _cx| {
-                                state_arc.write().drag_state = DragState::DraggingFader {
-                                    track_id: uuid::Uuid::nil(),
-                                    start_mouse_y: event.position.y.as_f32(),
-                                    start_volume: master_volume,
-                                };
-                                window.refresh();
-                            }
-                        })
+                        .on_mouse_down(MouseButton::Left, cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
+                            panel.state.drag_state = DragState::DraggingFader {
+                                track_id: uuid::Uuid::nil(),
+                                start_mouse_y: event.position.y.as_f32(),
+                                start_volume: master_volume,
+                            };
+                            cx.notify();
+                        }))
                         .child(
                             div()
                                 .absolute()
@@ -80,19 +76,15 @@ pub fn render_master_fader(master_volume: f32, state_arc: Arc<RwLock<DawUiState>
                                 .hover(|style| {
                                     style.shadow_2xl()
                                 })
-                                .on_mouse_down(MouseButton::Left, {
-                                    let state_arc = state_arc.clone();
-                                    move |event: &MouseDownEvent, window, _cx| {
-                                        state_arc.write().drag_state = DragState::DraggingFader {
-                                            track_id: uuid::Uuid::nil(),
-                                            start_mouse_y: event.position.y.as_f32(),
-                                            start_volume: master_volume,
-                                        };
-                                        window.refresh();
-                                    }
-                                })
+                                .on_mouse_down(MouseButton::Left, cx.listener(move |panel, event: &MouseDownEvent, _window, cx| {
+                                    panel.state.drag_state = DragState::DraggingFader {
+                                        track_id: uuid::Uuid::nil(),
+                                        start_mouse_y: event.position.y.as_f32(),
+                                        start_volume: master_volume,
+                                    };
+                                    cx.notify();
+                                }))
                         )
                 )
         )
 }
-

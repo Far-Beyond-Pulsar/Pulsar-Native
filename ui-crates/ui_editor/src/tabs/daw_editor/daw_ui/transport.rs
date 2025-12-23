@@ -9,10 +9,8 @@ use ui::{
     button::*, h_flex, Icon, IconName, Sizable, StyledExt, ActiveTheme, divider::Divider,
 };
 use crate::tabs::daw_editor::audio_types::SAMPLE_RATE;
-use std::sync::Arc;
-use parking_lot::RwLock;
 
-pub fn render_transport<V: 'static>(state: &mut DawUiState, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<V>) -> impl IntoElement {
+pub fn render_transport(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     h_flex()
         .w_full()
         .h(px(60.0))
@@ -23,7 +21,7 @@ pub fn render_transport<V: 'static>(state: &mut DawUiState, state_arc: Arc<RwLoc
         .border_b_1()
         .border_color(cx.theme().border)
         // Transport buttons
-        .child(render_transport_buttons(state, state_arc.clone(), cx))
+        .child(render_transport_buttons(state, cx))
         .child(Divider::vertical().h(px(36.0)).bg(cx.theme().border))
         // Timeline position display
         .child(render_position_display(state, cx))
@@ -32,51 +30,44 @@ pub fn render_transport<V: 'static>(state: &mut DawUiState, state_arc: Arc<RwLoc
         .child(render_tempo_section(state, cx))
         .child(div().flex_1())
         // Loop section
-        .child(render_loop_section(state, state_arc.clone(), cx))
+        .child(render_loop_section(state, cx))
         .child(Divider::vertical().h(px(36.0)).bg(cx.theme().border))
         // Metronome and count-in
-        .child(render_metronome_section(state, state_arc.clone(), cx))
+        .child(render_metronome_section(state, cx))
 }
 
-fn render_transport_buttons<V: 'static>(state: &mut DawUiState, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<V>) -> impl IntoElement {
+fn render_transport_buttons(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     h_flex()
         .gap_1()
         .items_center()
         // Go to start
-        .child({
-            let state_arc = state_arc.clone();
+        .child(
             Button::new("transport-start")
                 .icon(Icon::new(IconName::ChevronLeft))
                 .ghost()
                 .small()
                 .tooltip("Go to Start")
-                .on_click(move |_, window, _cx| {
-                    state_arc.write().set_playhead(0.0);
-                    window.refresh();
-                })
-        })
+                .on_click(cx.listener(|this, _, _window, cx| {
+                    this.state.set_playhead(0.0);
+                    cx.notify();
+                }))
+        )
         // Stop
-        .child({
-            let state_arc = state_arc.clone();
+        .child(
             Button::new("transport-stop")
                 .icon(Icon::new(IconName::Square))
                 .ghost()
                 .small()
                 .tooltip("Stop")
-                .on_click(move |_, window, _cx| {
-                    let mut state = state_arc.write();
-                    state.is_playing = false;
-                    state.selection.playhead_position = 0.0;
-                    window.refresh();
-                })
-        })
+                .on_click(cx.listener(|this, _, window, cx| {
+                    handle_stop(&mut this.state, window, cx);
+                }))
+        )
         // Play/Pause
         .child({
             let tooltip_text = if state.is_playing { "Pause" } else { "Play" };
-            let is_playing = state.is_playing;
-            let state_arc = state_arc.clone();
             Button::new("transport-play")
-                .icon(Icon::new(if is_playing {
+                .icon(Icon::new(if state.is_playing {
                     IconName::Pause
                 } else {
                     IconName::Play
@@ -84,15 +75,12 @@ fn render_transport_buttons<V: 'static>(state: &mut DawUiState, state_arc: Arc<R
                 .primary()
                 .small()
                 .tooltip(tooltip_text)
-                .on_click(move |_, window, _cx| {
-                    let mut state = state_arc.write();
-                    state.is_playing = !state.is_playing;
-                    window.refresh();
-                })
+                .on_click(cx.listener(|this, _, window, cx| {
+                    handle_play_pause(&mut this.state, window, cx);
+                }))
         })
         // Record
-        .child({
-            let state_arc = state_arc.clone();
+        .child(
             Button::new("transport-record")
                 .icon(Icon::new(IconName::Circle))
                 .danger()
@@ -100,15 +88,14 @@ fn render_transport_buttons<V: 'static>(state: &mut DawUiState, state_arc: Arc<R
                 .when(state.is_recording, |b| b.danger())
                 .small()
                 .tooltip("Record")
-                .on_click(move |_, window, _cx| {
-                    let mut state = state_arc.write();
-                    state.is_recording = !state.is_recording;
-                    window.refresh();
-                })
-        })
+                .on_click(cx.listener(|this, _, _window, cx| {
+                    this.state.is_recording = !this.state.is_recording;
+                    cx.notify();
+                }))
+        )
 }
 
-fn render_position_display<V: 'static>(state: &mut DawUiState, cx: &mut Context<V>) -> impl IntoElement {
+fn render_position_display(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     let position = state.selection.playhead_position;
     let tempo = state.project.as_ref()
         .map(|p| p.transport.tempo)
@@ -162,7 +149,7 @@ fn render_position_display<V: 'static>(state: &mut DawUiState, cx: &mut Context<
         )
 }
 
-fn render_tempo_section<V: 'static>(state: &mut DawUiState, cx: &mut Context<V>) -> impl IntoElement {
+fn render_tempo_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     let tempo = state.project.as_ref()
         .map(|p| p.transport.tempo)
         .unwrap_or(120.0);
@@ -234,25 +221,22 @@ fn render_tempo_section<V: 'static>(state: &mut DawUiState, cx: &mut Context<V>)
         )
 }
 
-fn render_loop_section<V: 'static>(state: &mut DawUiState, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<V>) -> impl IntoElement {
+fn render_loop_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     h_flex()
         .gap_1()
         .items_center()
         // Loop
-        .child({
-            let state_arc = state_arc.clone();
+        .child(
             Button::new("transport-loop")
                 .icon(Icon::new(IconName::Repeat))
                 .ghost()
                 .small()
                 .when(state.is_looping, |b| b.primary())
                 .tooltip("Loop")
-                .on_click(move |_, window, _cx| {
-                    let mut state = state_arc.write();
-                    state.is_looping = !state.is_looping;
-                    window.refresh();
-                })
-        })
+                .on_click(cx.listener(|this, _, window, cx| {
+                    handle_loop_toggle(&mut this.state, window, cx);
+                }))
+        )
         .when(state.is_looping, |flex| {
             let loop_start = state.selection.loop_start.unwrap_or(0.0);
             let loop_end = state.selection.loop_end.unwrap_or(16.0);
@@ -275,38 +259,33 @@ fn render_loop_section<V: 'static>(state: &mut DawUiState, state_arc: Arc<RwLock
         })
 }
 
-fn render_metronome_section<V: 'static>(state: &mut DawUiState, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<V>) -> impl IntoElement {
+fn render_metronome_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> impl IntoElement {
     h_flex()
         .gap_1()
         .items_center()
-        .child({
-            let state_arc = state_arc.clone();
+        .child(
             Button::new("transport-metronome")
                 .icon(Icon::new(IconName::Heart))
                 .ghost()
                 .small()
                 .when(state.metronome_enabled, |b| b.primary())
                 .tooltip("Metronome")
-                .on_click(move |_, window, _cx| {
-                    let mut state = state_arc.write();
-                    state.metronome_enabled = !state.metronome_enabled;
-                    window.refresh();
-                })
-        })
-        .child({
-            let state_arc = state_arc.clone();
+                .on_click(cx.listener(|this, _, window, cx| {
+                    handle_metronome_toggle(&mut this.state, window, cx);
+                }))
+        )
+        .child(
             Button::new("transport-countin")
                 .icon(Icon::new(IconName::Clock))
                 .ghost()
                 .small()
                 .when(state.count_in_enabled, |b| b.primary())
                 .tooltip("Count-In")
-                .on_click(move |_, window, _cx| {
-                    let mut state = state_arc.write();
-                    state.count_in_enabled = !state.count_in_enabled;
-                    window.refresh();
-                })
-        })
+                .on_click(cx.listener(|this, _, _window, cx| {
+                    this.state.count_in_enabled = !this.state.count_in_enabled;
+                    cx.notify();
+                }))
+        )
 }
 
 // Event handlers
@@ -384,4 +363,3 @@ fn handle_metronome_toggle(state: &mut DawUiState, window: &mut Window, cx: &mut
 
     cx.notify();
 }
-

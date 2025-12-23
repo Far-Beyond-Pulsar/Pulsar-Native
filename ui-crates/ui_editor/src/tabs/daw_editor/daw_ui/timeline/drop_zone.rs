@@ -274,4 +274,3 @@ pub fn render_drop_zone(
             }
         }))
 }
-
