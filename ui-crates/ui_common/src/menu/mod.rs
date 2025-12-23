@@ -591,7 +591,7 @@ pub fn init_app_menus(title: impl Into<SharedString>, cx: &mut App) {
             },
             // Go Menu
             Menu {
-                name: "Go".into(),
+                name: "Go To".into(),
                 items: vec![
                     MenuItem::action("Go to File", GoToFile),
                     MenuItem::action("Go to Symbol", GoToSymbol),
