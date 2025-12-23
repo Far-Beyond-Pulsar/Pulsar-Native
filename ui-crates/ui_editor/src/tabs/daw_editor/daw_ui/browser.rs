@@ -35,7 +35,7 @@ pub fn render_browser(state: &mut DawUiState, state_arc: Arc<RwLock<DawUiState>>
         .child(render_browser_footer(state, cx))
 }
 
-fn render_browser_tabs(state: <V: 'static>(state: &mut DawUiState, state_arc:mut DawUiState, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<super::panel::DawPanel>) -> impl IntoElement {
+fn render_browser_tabs(state: &mut DawUiState, state_arc: Arc<RwLock<DawUiState>>, cx: &mut Context<super::panel::DawPanel>) -> impl IntoElement {
     let current = state.browser_tab;
 
     v_flex()
@@ -572,4 +572,3 @@ fn handle_import_audio(_state: &mut DawUiState, _window: &mut Window, cx: &mut C
     })
     .detach();
 }
-
