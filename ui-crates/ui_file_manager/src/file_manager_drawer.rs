@@ -380,9 +380,14 @@ impl FileManagerDrawer {
                 drawer.handle_item_click(&item_clone, &event.modifiers, cx);
             }))
             .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
-                // Select item on right-click if not already selected
+                // Select item on right-click if not already selected (without opening it)
                 if !drawer.selected_items.contains(&item_clone2.path) {
-                    drawer.handle_item_click(&item_clone2, &Modifiers::default(), cx);
+                    drawer.selected_items.clear();
+                    drawer.selected_items.insert(item_clone2.path.clone());
+                    if item_clone2.is_folder {
+                        drawer.selected_folder = Some(item_clone2.path.clone());
+                    }
+                    cx.notify();
                 }
             }))
             .context_menu(move |menu, _window, _cx| {
@@ -723,9 +728,14 @@ impl FileManagerDrawer {
                 drawer.handle_item_click(&item_clone, &event.modifiers, cx);
             }))
             .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
-                // Select item on right-click if not already selected
+                // Select item on right-click if not already selected (without opening it)
                 if !drawer.selected_items.contains(&item_clone2.path) {
-                    drawer.handle_item_click(&item_clone2, &Modifiers::default(), cx);
+                    drawer.selected_items.clear();
+                    drawer.selected_items.insert(item_clone2.path.clone());
+                    if item_clone2.is_folder {
+                        drawer.selected_folder = Some(item_clone2.path.clone());
+                    }
+                    cx.notify();
                 }
             }))
             .context_menu(move |menu, _window, _cx| {
