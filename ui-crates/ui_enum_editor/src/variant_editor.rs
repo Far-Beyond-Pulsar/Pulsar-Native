@@ -380,7 +380,7 @@ impl Render for VariantEditorView {
                                                         .child(format!("{}: {}", field.name, Self::type_ref_to_string(&field.type_ref)))
                                                 )
                                                 .child(
-                                                    Button::new(format!("remove-field-{}-{}", index, field_idx))
+                                                    Button::new(SharedString::from(format!("remove-field-{}-{}", index, field_idx)))
                                                         .ghost()
                                                         .with_size(ui::Size::XSmall)
                                                         .icon(IconName::Close)
