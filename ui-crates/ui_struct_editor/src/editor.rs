@@ -584,7 +584,7 @@ impl StructEditor {
             .child(
                 v_flex()
                     .flex_1()
-                    .gap_3()
+                    .min_h_0()
                     .overflow_hidden()
                     .child(
                         v_flex()
@@ -654,13 +654,9 @@ impl StructEditor {
             )
             .child(Divider::horizontal())
             .child(
-                div()
+                TextInput::new(&self.code_preview_input)
                     .flex_1()
-                    .overflow_hidden()
-                    .child(
-                        TextInput::new(&self.code_preview_input)
-                            .disabled(true)
-                    )
+                    .disabled(true)
             )
     }
 }
@@ -801,14 +797,9 @@ impl Render for StructEditor {
                             v_flex()
                                 .w(px(500.0))
                                 .h_full()
-                                .gap_3()
+                                .p_4()
                                 .overflow_hidden()
-                                .child(
-                                    v_flex()
-                                        .p_4()
-                                        .pb_0()
-                                        .child(self.render_code_preview(window, cx))
-                                )
+                                .child(self.render_code_preview(window, cx))
                         )
                     })
             )
