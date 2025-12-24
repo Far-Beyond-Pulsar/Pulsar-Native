@@ -117,13 +117,11 @@ impl DawEditorPanel {
                 cx,
             );
             
-            // Create left sidebar with browser tabs
-            let left = DockItem::tabs(
+            // Create left sidebar: split vertically
+            // Top half: Files and Samples tabs
+            let left_top = DockItem::tabs(
                 vec![
                     Arc::new(browser_files) as Arc<dyn ui::dock::PanelView>,
-                    Arc::new(browser_instruments) as Arc<dyn ui::dock::PanelView>,
-                    Arc::new(browser_effects) as Arc<dyn ui::dock::PanelView>,
-                    Arc::new(browser_loops) as Arc<dyn ui::dock::PanelView>,
                     Arc::new(browser_samples) as Arc<dyn ui::dock::PanelView>,
                 ],
                 Some(0), // Start with Files tab selected
@@ -131,9 +129,41 @@ impl DawEditorPanel {
                 window,
                 cx,
             );
-            
-            // Create right sidebar (inspector)
-            let right = DockItem::tab(inspector_panel.clone(), &weak_dock, window, cx);
+
+            // Bottom half: Instruments and Effects tabs
+            let left_bottom = DockItem::tabs(
+                vec![
+                    Arc::new(browser_instruments) as Arc<dyn ui::dock::PanelView>,
+                    Arc::new(browser_effects) as Arc<dyn ui::dock::PanelView>,
+                ],
+                Some(0), // Start with Instruments tab selected
+                &weak_dock,
+                window,
+                cx,
+            );
+
+            let left = DockItem::split(
+                gpui::Axis::Vertical,
+                vec![left_top, left_bottom],
+                &weak_dock,
+                window,
+                cx,
+            );
+
+            // Create right sidebar: split vertically
+            // Top half: Inspector
+            let right_top = DockItem::tab(inspector_panel.clone(), &weak_dock, window, cx);
+
+            // Bottom half: Loops
+            let right_bottom = DockItem::tab(browser_loops.clone(), &weak_dock, window, cx);
+
+            let right = DockItem::split(
+                gpui::Axis::Vertical,
+                vec![right_top, right_bottom],
+                &weak_dock,
+                window,
+                cx,
+            );
             
             // Initialize workspace with all panels
             workspace.initialize(
