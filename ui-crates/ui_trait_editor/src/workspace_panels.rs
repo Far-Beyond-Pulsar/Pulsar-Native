@@ -121,6 +121,7 @@ impl Render for PropertiesPanel {
             .size_full()
             .p_4()
             .gap_4()
+            .bg(cx.theme().sidebar)
             .child(
                 v_flex()
                     .gap_2()
@@ -333,6 +334,7 @@ impl Render for MethodsPanel {
         v_flex()
             .size_full()
             .gap_3()
+            .bg(cx.theme().sidebar)
             .child(
                 h_flex()
                     .items_center()
@@ -553,6 +555,7 @@ impl Render for CodePreviewPanel {
         v_flex()
             .size_full()
             .gap_2()
+            .bg(cx.theme().sidebar)
             .child(
                 h_flex()
                     .items_center()
