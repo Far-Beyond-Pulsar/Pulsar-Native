@@ -104,8 +104,14 @@ impl StructEditor {
                 CodePreviewPanel::new(asset_clone.clone(), window, cx)
             });
 
-            // Setup dock layout
-            let center = DockItem::panel(Arc::new(fields_panel));
+            // Setup dock layout - all panels in tabs for consistency
+            let center = DockItem::tabs(
+                vec![Arc::new(fields_panel) as Arc<dyn ui::dock::PanelView>],
+                Some(0),
+                &dock_area,
+                window,
+                cx,
+            );
             let left = DockItem::tabs(
                 vec![Arc::new(properties_panel) as Arc<dyn ui::dock::PanelView>],
                 Some(0),

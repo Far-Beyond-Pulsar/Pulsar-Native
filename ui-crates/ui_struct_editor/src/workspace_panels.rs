@@ -485,9 +485,9 @@ impl Render for CodePreviewPanel {
                     )
             )
             .child(
-                div()
+                TextInput::new(&self.code_input)
+                    .w_full()
                     .flex_1()
-                    .child(TextInput::new(&self.code_input))
             )
     }
 }
