@@ -4,12 +4,107 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="CargoProjects">
-    <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
+    <cargoProject FILE="$PROJECT_DIR$/Cargo.toml">
+      <package file="$PROJECT_DIR$/plugins/blueprint_editor_plugin">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/crates/engine_backend">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/crates/engine_fs">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/crates/engine_state">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/crates/macros">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/crates/plugin_editor_api">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/crates/plugin_manager">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/crates/multiuser_server">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/crates/pulsar_docs">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/crates/engine">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/crates/pulsar_macros">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/crates/pulsar_std">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/crates/ui">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/ui-crates/ui_about">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/ui-crates/ui_alias_editor">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/ui-crates/ui_common">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/ui-crates/ui_core">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/ui-crates/ui_documentation">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/ui-crates/ui_editor">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/ui-crates/ui_editor_table">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/ui-crates/ui_entry">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/ui-crates/ui_enum_editor">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/ui-crates/ui_file_manager">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/ui-crates/ui_loading_screen">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/ui-crates/ui_multiplayer">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/ui-crates/ui_problems">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/ui-crates/ui_project_launcher">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/ui-crates/ui_settings">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/ui-crates/ui_struct_editor">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/ui-crates/ui_terminal">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/ui-crates/ui_trait_editor">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/ui-crates/ui_types_common">
+        <feature name="default" enabled="true" />
+      </package>
+    </cargoProject>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="37bf5239-8e9d-4080-9e94-d72c76ae51cc" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
-    </list>
+    <list default="true" id="37bf5239-8e9d-4080-9e94-d72c76ae51cc" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -21,9 +116,13 @@
   <component name="MacroExpansionManager">
     <option name="directoryName" value="iETmRx2y" />
   </component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 7
-}]]></component>
+  <component name="McpProjectServerCommands">
+    <commands />
+    <urls />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 7
+}</component>
   <component name="ProjectId" id="37GP1fs4jz2ph5Zjy92Kt3S7eBM" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
@@ -32,6 +131,7 @@
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
     "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.MCP Project settings loaded": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
     "RunOnceActivity.rust.reset.selective.auto.import": "true",
@@ -57,7 +157,11 @@
       <option name="presentableId" value="Default" />
       <updated>1766526223223</updated>
       <workItem from="1766526224690" duration="30000" />
+      <workItem from="1766560771198" duration="73000" />
     </task>
     <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
   </component>
 </project>

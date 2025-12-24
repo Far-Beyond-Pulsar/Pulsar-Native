@@ -1,7 +1,46 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <module type="EMPTY_MODULE" version="4">
   <component name="NewModuleRootManager">
-    <content url="file://$MODULE_DIR$" />
+    <content url="file://$MODULE_DIR$">
+      <sourceFolder url="file://$MODULE_DIR$/crates/engine/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/engine_backend/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/engine_fs/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/engine_state/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/macros/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/multiuser_server/benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/multiuser_server/examples" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/multiuser_server/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/plugin_editor_api/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/plugin_manager/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/pulsar_docs/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/pulsar_macros/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/pulsar_std/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/pulsar_std/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/ui/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/ui/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/plugins/blueprint_editor_plugin/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_about/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_alias_editor/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_common/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_core/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_documentation/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_editor/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_editor_table/examples" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_editor_table/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_entry/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_enum_editor/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_file_manager/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_loading_screen/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_multiplayer/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_problems/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_project_launcher/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_settings/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_struct_editor/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_terminal/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_trait_editor/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_types_common/src" isTestSource="false" />
+      <excludeFolder url="file://$MODULE_DIR$/target" />
+    </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
