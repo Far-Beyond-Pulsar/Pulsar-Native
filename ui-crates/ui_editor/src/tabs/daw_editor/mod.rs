@@ -171,10 +171,10 @@ impl DawEditorPanel {
                 dock_area.set_center(center, window, cx);
 
                 // Set left dock with custom width (400px)
-                dock_area.set_left_dock(left, Some(px(400.0)), true, window, cx);
+                dock_area.set_left_dock(left, Some(px(325.0)), true, window, cx);
 
                 // Set right dock with custom width (400px)
-                dock_area.set_right_dock(right, Some(px(400.0)), true, window, cx);
+                dock_area.set_right_dock(right, Some(px(325.0)), true, window, cx);
             });
         });
     }

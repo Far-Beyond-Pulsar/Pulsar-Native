@@ -228,8 +228,8 @@ impl LevelEditorPanel {
             // Set center and docks with custom widths (400px)
             dock_area.update(cx, |dock_area, cx| {
                 dock_area.set_center(center, window, cx);
-                dock_area.set_left_dock(left, Some(px(400.0)), true, window, cx);
-                dock_area.set_right_dock(right, Some(px(400.0)), true, window, cx);
+                dock_area.set_left_dock(left, Some(px(325.0)), true, window, cx);
+                dock_area.set_right_dock(right, Some(px(325.0)), true, window, cx);
             });
         });
         
