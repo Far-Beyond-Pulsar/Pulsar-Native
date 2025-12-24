@@ -220,6 +220,19 @@ impl PulsarApp {
             },
         };
 
+        // Update file manager drawer with registered file types from plugin manager
+        let file_types: Vec<plugin_editor_api::FileTypeDefinition> = app.state.plugin_manager
+            .file_type_registry()
+            .get_all_file_types()
+            .into_iter()
+            .cloned()
+            .collect();
+
+        app.state.file_manager_drawer.update(cx, |drawer, cx| {
+            drawer.update_file_types(file_types);
+            cx.notify();
+        });
+
         // Update Discord presence with initial tab if project is loaded
         if has_project && create_level_editor {
             app.update_discord_presence(cx);
