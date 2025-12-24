@@ -210,7 +210,7 @@ pub fn on_file_selected(
         FileType::Class => {
             tracing::error!("Blueprint editor tried to load via legacy code, but it's now plugin-only!");
         }
-        FileType::Script => {
+        FileType::Script | FileType::Config | FileType::Document => {
             tracing::warn!("Opening script tab using legacy code (should use plugin system)");
             app.open_script_tab(event.path.clone(), window, cx);
         }
