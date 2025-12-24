@@ -6,7 +6,7 @@ use ui::{
     divider::Divider,
     input::{InputState, TextInput},
 };
-use ui_types_common::{EnumAsset, EnumVariant, TypeRef, Visibility, TypeKind};
+use ui_types_common::{EnumAsset, EnumVariant, TypeRef, Visibility, TypeKind, VariantPayload, StructField};
 use std::path::PathBuf;
 use crate::variant_editor::{VariantEditorView, VariantEditorEvent};
 
@@ -132,6 +132,9 @@ impl EnumEditor {
                     VariantEditorEvent::TypePickerRequested(index) => {
                         eprintln!("Type picker requested for variant {}", index);
                     }
+                    VariantEditorEvent::AddFieldRequested(index) => {
+                        eprintln!("Add field requested for variant {}", index);
+                    }
                 }
             }).detach();
 
@@ -254,7 +257,7 @@ impl EnumEditor {
     fn add_variant(&mut self, _: &AddVariant, window: &mut Window, cx: &mut Context<Self>) {
         let new_variant = EnumVariant {
             name: format!("Variant{}", self.asset.variants.len() + 1),
-            payload: None,
+            payload: VariantPayload::Unit,
             doc: None,
         };
 
@@ -279,6 +282,9 @@ impl EnumEditor {
                 }
                 VariantEditorEvent::TypePickerRequested(index) => {
                     eprintln!("Type picker requested for variant {}", index);
+                }
+                VariantEditorEvent::AddFieldRequested(index) => {
+                    eprintln!("Add field requested for variant {}", index);
                 }
             }
         }).detach();
@@ -346,7 +352,7 @@ impl EnumEditor {
         }
 
         // Add derives - enums typically need these
-        code.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n");
+        code.push_str("#[derive(Debug, Clone, PartialEq, Eq)]\n");
 
         // Visibility
         let visibility = match self.asset.visibility {
@@ -365,11 +371,33 @@ impl EnumEditor {
                 code.push_str(&format!("    /// {}\n", doc));
             }
 
-            if let Some(payload) = &variant.payload {
-                let type_str = self.type_ref_to_string(payload);
-                code.push_str(&format!("    {}({}),\n", variant.name, type_str));
-            } else {
-                code.push_str(&format!("    {},\n", variant.name));
+            match &variant.payload {
+                VariantPayload::Unit => {
+                    code.push_str(&format!("    {},\n", variant.name));
+                }
+                VariantPayload::Single(type_ref) => {
+                    let type_str = self.type_ref_to_string(type_ref);
+                    code.push_str(&format!("    {}({}),\n", variant.name, type_str));
+                }
+                VariantPayload::Struct(fields) => {
+                    code.push_str(&format!("    {} {{\n", variant.name));
+                    for field in fields {
+                        if let Some(doc) = &field.doc {
+                            code.push_str(&format!("        /// {}\n", doc));
+                        }
+                        
+                        let field_visibility = match field.visibility {
+                            Visibility::Public => "pub ",
+                            Visibility::Private => "",
+                            Visibility::Crate => "pub(crate) ",
+                            Visibility::Super => "pub(super) ",
+                        };
+                        
+                        let type_str = self.type_ref_to_string(&field.type_ref);
+                        code.push_str(&format!("        {}{}: {},\n", field_visibility, field.name, type_str));
+                    }
+                    code.push_str("    },\n");
+                }
             }
         }
 

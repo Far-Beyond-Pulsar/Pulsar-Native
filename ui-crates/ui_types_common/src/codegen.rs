@@ -1,6 +1,6 @@
 use crate::{
     TypeRef, TypeAstNode, StructAsset, EnumAsset, TraitAsset, AliasAsset,
-    Visibility, TypeSystemError, Result,
+    Visibility, TypeSystemError, Result, VariantPayload,
 };
 
 /// Renders a type reference to Rust code
@@ -159,15 +159,36 @@ pub fn generate_enum(asset: &EnumAsset) -> Result<String> {
         }
 
         match &variant.payload {
-            None => {
+            VariantPayload::Unit => {
                 code.push_str(&format!("    {},\n", variant.name));
             }
-            Some(payload) => {
+            VariantPayload::Single(type_ref) => {
                 code.push_str(&format!(
                     "    {}({}),\n",
                     variant.name,
-                    render_type_ref(payload)
+                    render_type_ref(type_ref)
                 ));
+            }
+            VariantPayload::Struct(fields) => {
+                code.push_str(&format!("    {} {{\n", variant.name));
+                for field in fields {
+                    if let Some(doc) = &field.doc {
+                        code.push_str(&format!("        /// {}\n", doc));
+                    }
+                    let vis = match field.visibility {
+                        Visibility::Public => "pub ",
+                        Visibility::Private => "",
+                        Visibility::Crate => "pub(crate) ",
+                        Visibility::Super => "pub(super) ",
+                    };
+                    code.push_str(&format!(
+                        "        {}{}: {},\n",
+                        vis,
+                        field.name,
+                        render_type_ref(&field.type_ref)
+                    ));
+                }
+                code.push_str("    },\n");
             }
         }
     }

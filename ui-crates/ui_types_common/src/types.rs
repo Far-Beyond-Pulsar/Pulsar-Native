@@ -170,12 +170,18 @@ pub enum VariantPayload {
     Struct(Vec<StructField>),
 }
 
+impl Default for VariantPayload {
+    fn default() -> Self {
+        VariantPayload::Unit
+    }
+}
+
 /// Enum variant
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct EnumVariant {
     pub name: String,
     #[serde(default)]
-    pub payload: Option<TypeRef>,
+    pub payload: VariantPayload,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub doc: Option<String>,
 }

@@ -1,6 +1,6 @@
 use gpui::{prelude::*, InteractiveElement as _, StatefulInteractiveElement as _, *};
 use ui::{v_flex, h_flex, ActiveTheme, StyledExt, IconName, Icon, Sizable, button::{Button, ButtonVariants}, input::{InputState, TextInput}};
-use ui_types_common::{EnumVariant, TypeRef};
+use ui_types_common::{EnumVariant, TypeRef, VariantPayload, StructField, Visibility};
 
 /// Component for editing a single enum variant
 pub struct VariantEditorView {
@@ -24,6 +24,7 @@ pub enum VariantEditorEvent {
     VariantChanged(usize, EnumVariant),
     RemoveRequested(usize),
     TypePickerRequested(usize),
+    AddFieldRequested(usize),
 }
 
 impl VariantEditorView {
@@ -125,7 +126,6 @@ impl EventEmitter<VariantEditorEvent> for VariantEditorView {}
 impl Render for VariantEditorView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let index = self.index;
-        let type_str = self.variant.payload.as_ref().map(|t| Self::type_ref_to_string(t));
 
         v_flex()
             .w_full()
@@ -182,109 +182,237 @@ impl Render for VariantEditorView {
                             }))
                     )
             )
-            .when(self.variant.payload.is_some(), |this| {
-                this.child(
-                    v_flex()
-                        .gap_2()
-                        .child(
-                            h_flex()
-                                .items_center()
-                                .justify_between()
-                                .child(
+            // Render payload based on type
+            .child(
+                match &self.variant.payload {
+                    VariantPayload::Unit => {
+                        // Unit variant - show buttons to add data
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new(("add-tuple-payload", index))
+                                    .label("Add Tuple Data")
+                                    .icon(IconName::Plus)
+                                    .with_size(ui::Size::Small)
+                                    .on_click(cx.listener(move |this, _, _window, cx| {
+                                        this.variant.payload = VariantPayload::Single(TypeRef::Primitive { name: "String".to_string() });
+                                        cx.emit(VariantEditorEvent::VariantChanged(index, this.variant.clone()));
+                                        cx.notify();
+                                    }))
+                            )
+                            .child(
+                                Button::new(("add-struct-payload", index))
+                                    .label("Add Struct Data")
+                                    .icon(IconName::Plus)
+                                    .with_size(ui::Size::Small)
+                                    .on_click(cx.listener(move |this, _, _window, cx| {
+                                        this.variant.payload = VariantPayload::Struct(vec![
+                                            StructField {
+                                                name: "field1".to_string(),
+                                                type_ref: TypeRef::Primitive { name: "String".to_string() },
+                                                visibility: Visibility::Public,
+                                                doc: None,
+                                            }
+                                        ]);
+                                        cx.emit(VariantEditorEvent::VariantChanged(index, this.variant.clone()));
+                                        cx.notify();
+                                    }))
+                            )
+                            .into_any_element()
+                    }
+                    VariantPayload::Single(type_ref) => {
+                        // Tuple variant - show type editor
+                        v_flex()
+                            .gap_2()
+                            .child(
+                                h_flex()
+                                    .items_center()
+                                    .justify_between()
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_semibold()
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child("Tuple Payload")
+                                    )
+                                    .child(
+                                        h_flex()
+                                            .gap_1()
+                                            .child(
+                                                Button::new(("convert-to-struct", index))
+                                                    .ghost()
+                                                    .with_size(ui::Size::XSmall)
+                                                    .label("→ Struct")
+                                                    .on_click(cx.listener({
+                                                        let type_ref = type_ref.clone();
+                                                        move |this, _, _window, cx| {
+                                                            this.variant.payload = VariantPayload::Struct(vec![
+                                                                StructField {
+                                                                    name: "value".to_string(),
+                                                                    type_ref: type_ref.clone(),
+                                                                    visibility: Visibility::Public,
+                                                                    doc: None,
+                                                                }
+                                                            ]);
+                                                            cx.emit(VariantEditorEvent::VariantChanged(index, this.variant.clone()));
+                                                            cx.notify();
+                                                        }
+                                                    }))
+                                            )
+                                            .child(
+                                                Button::new(("remove-payload", index))
+                                                    .ghost()
+                                                    .with_size(ui::Size::XSmall)
+                                                    .icon(IconName::Close)
+                                                    .on_click(cx.listener(move |this, _, _window, cx| {
+                                                        this.variant.payload = VariantPayload::Unit;
+                                                        cx.emit(VariantEditorEvent::VariantChanged(index, this.variant.clone()));
+                                                        cx.notify();
+                                                    }))
+                                            )
+                                    )
+                            )
+                            .child(
+                                Button::new(("variant-type-picker", index))
+                                    .w_full()
+                                    .ghost()
+                                    .on_click(cx.listener(move |this, _, _window, cx| {
+                                        cx.emit(VariantEditorEvent::TypePickerRequested(index));
+                                    }))
+                                    .child(
+                                        h_flex()
+                                            .items_center()
+                                            .gap_2()
+                                            .p_2()
+                                            .rounded(px(4.0))
+                                            .bg(cx.theme().secondary.opacity(0.3))
+                                            .border_1()
+                                            .border_color(cx.theme().border.opacity(0.5))
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .font_semibold()
+                                                    .text_color(cx.theme().muted_foreground)
+                                                    .child("Type:")
+                                            )
+                                            .child(
+                                                div()
+                                                    .flex_1()
+                                                    .text_sm()
+                                                    .text_color(cx.theme().accent)
+                                                    .child(Self::type_ref_to_string(type_ref))
+                                            )
+                                            .child(
+                                                Icon::new(IconName::ChevronRight)
+                                                    .text_color(cx.theme().muted_foreground)
+                                                    .size_3p5()
+                                            )
+                                    )
+                            )
+                            .into_any_element()
+                    }
+                    VariantPayload::Struct(fields) => {
+                        // Struct variant - show field list
+                        v_flex()
+                            .gap_2()
+                            .child(
+                                h_flex()
+                                    .items_center()
+                                    .justify_between()
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_semibold()
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child(format!("Struct Payload ({} fields)", fields.len()))
+                                    )
+                                    .child(
+                                        h_flex()
+                                            .gap_1()
+                                            .child(
+                                                Button::new(("add-field", index))
+                                                    .ghost()
+                                                    .with_size(ui::Size::XSmall)
+                                                    .icon(IconName::Plus)
+                                                    .on_click(cx.listener(move |this, _, _window, cx| {
+                                                        if let VariantPayload::Struct(ref mut fields) = this.variant.payload {
+                                                            fields.push(StructField {
+                                                                name: format!("field{}", fields.len() + 1),
+                                                                type_ref: TypeRef::Primitive { name: "String".to_string() },
+                                                                visibility: Visibility::Public,
+                                                                doc: None,
+                                                            });
+                                                            cx.emit(VariantEditorEvent::VariantChanged(index, this.variant.clone()));
+                                                            cx.notify();
+                                                        }
+                                                    }))
+                                            )
+                                            .child(
+                                                Button::new(("remove-payload", index))
+                                                    .ghost()
+                                                    .with_size(ui::Size::XSmall)
+                                                    .icon(IconName::Close)
+                                                    .on_click(cx.listener(move |this, _, _window, cx| {
+                                                        this.variant.payload = VariantPayload::Unit;
+                                                        cx.emit(VariantEditorEvent::VariantChanged(index, this.variant.clone()));
+                                                        cx.notify();
+                                                    }))
+                                            )
+                                    )
+                            )
+                            .child(
+                                v_flex()
+                                    .gap_2()
+                                    .children(
+                                        fields.iter().enumerate().map(|(field_idx, field)| {
+                                            h_flex()
+                                                .gap_2()
+                                                .p_2()
+                                                .rounded(px(4.0))
+                                                .bg(cx.theme().secondary.opacity(0.2))
+                                                .border_1()
+                                                .border_color(cx.theme().border.opacity(0.3))
+                                                .child(
+                                                    div()
+                                                        .flex_1()
+                                                        .text_sm()
+                                                        .text_color(cx.theme().foreground)
+                                                        .child(format!("{}: {}", field.name, Self::type_ref_to_string(&field.type_ref)))
+                                                )
+                                                .child(
+                                                    Button::new(format!("remove-field-{}-{}", index, field_idx))
+                                                        .ghost()
+                                                        .with_size(ui::Size::XSmall)
+                                                        .icon(IconName::Close)
+                                                        .on_click(cx.listener(move |this, _, _window, cx| {
+                                                            if let VariantPayload::Struct(ref mut fields) = this.variant.payload {
+                                                                if field_idx < fields.len() {
+                                                                    fields.remove(field_idx);
+                                                                    cx.emit(VariantEditorEvent::VariantChanged(index, this.variant.clone()));
+                                                                    cx.notify();
+                                                                }
+                                                            }
+                                                        }))
+                                                )
+                                        })
+                                    )
+                            )
+                            .when(fields.is_empty(), |this| {
+                                this.child(
                                     div()
-                                        .text_xs()
-                                        .font_semibold()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child("Payload Type")
-                                )
-                                .child(
-                                    Button::new(("remove-payload", index))
-                                        .ghost()
-                                        .with_size(ui::Size::XSmall)
-                                        .icon(IconName::Close)
-                                        .on_click(cx.listener(move |this, _, _window, cx| {
-                                            this.variant.payload = None;
-                                            cx.emit(VariantEditorEvent::VariantChanged(index, this.variant.clone()));
-                                            cx.notify();
-                                        }))
-                                )
-                        )
-                        .child(
-                            // Payload type row
-                            Button::new(("variant-type-picker", index))
-                                .w_full()
-                                .ghost()
-                                .on_click(cx.listener(move |this, _, _window, cx| {
-                                    cx.emit(VariantEditorEvent::TypePickerRequested(index));
-                                }))
-                                .child(
-                                    h_flex()
-                                        .items_center()
-                                        .gap_2()
-                                        .p_2()
-                                        .rounded(px(4.0))
-                                        .bg(cx.theme().secondary.opacity(0.3))
-                                        .border_1()
-                                        .border_color(cx.theme().border.opacity(0.5))
-                                        .child(
-                                            div()
-                                                .text_xs()
-                                                .font_semibold()
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child("Type:")
-                                        )
-                                        .child(
-                                            div()
-                                                .flex_1()
-                                                .text_sm()
-                                                .text_color(cx.theme().accent)
-                                                .child(type_str.unwrap_or_else(|| "None".to_string()))
-                                        )
-                                        .child(
-                                            Icon::new(IconName::ChevronRight)
-                                                .text_color(cx.theme().muted_foreground)
-                                                .size_3p5()
-                                        )
-                                )
-                        )
-                )
-            })
-            .when(self.variant.payload.is_none(), |this| {
-                this.child(
-                    h_flex()
-                        .gap_2()
-                        .child(
-                            Button::new(("add-tuple-payload", index))
-                                .label("Add Tuple Data")
-                                .icon(IconName::Plus)
-                                .with_size(ui::Size::Small)
-                                .on_click(cx.listener(move |this, _, _window, cx| {
-                                    // Add simple tuple payload
-                                    this.variant.payload = Some(TypeRef::Primitive { name: "String".to_string() });
-                                    cx.emit(VariantEditorEvent::VariantChanged(index, this.variant.clone()));
-                                    cx.notify();
-                                }))
-                        )
-                        .child(
-                            div()
-                                .px_2()
-                                .py_1()
-                                .rounded(px(4.0))
-                                .bg(cx.theme().muted.opacity(0.1))
-                                .border_1()
-                                .border_color(cx.theme().border.opacity(0.3))
-                                .child(
-                                    div()
+                                        .p_3()
+                                        .text_center()
                                         .text_xs()
                                         .text_color(cx.theme().muted_foreground.opacity(0.7))
-                                        .child("💡 Struct-style variants coming soon")
+                                        .child("No fields - click + to add")
                                 )
-                        )
-                )
-            })
+                            })
+                            .into_any_element()
+                    }
+                }
+            )
             .when(self.variant.doc.is_some() || self.editing_doc, |this| {
                 this.child(
-                    // Documentation row
                     v_flex()
                         .gap_2()
                         .child(

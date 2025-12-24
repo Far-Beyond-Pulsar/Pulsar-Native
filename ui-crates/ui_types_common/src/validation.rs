@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::{
     TypeRef, TypeAstNode, TypeIndex, TypeKind, AliasAsset,
     StructAsset, EnumAsset, TraitAsset, TypeSystemError, Result, PRIMITIVES, CONSTRUCTORS,
+    VariantPayload,
 };
 
 lazy_static::lazy_static! {
@@ -208,8 +209,17 @@ pub fn validate_enum(asset: &EnumAsset, index: &TypeIndex) -> Result<()> {
 
     for variant in &asset.variants {
         validate_name(&variant.name)?;
-        if let Some(payload) = &variant.payload {
-            validate_type_ref(payload, index)?;
+        match &variant.payload {
+            VariantPayload::Unit => {}
+            VariantPayload::Single(type_ref) => {
+                validate_type_ref(type_ref, index)?;
+            }
+            VariantPayload::Struct(fields) => {
+                for field in fields {
+                    validate_name(&field.name)?;
+                    validate_type_ref(&field.type_ref, index)?;
+                }
+            }
         }
     }
 
