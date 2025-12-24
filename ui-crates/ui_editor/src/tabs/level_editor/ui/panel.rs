@@ -203,32 +203,34 @@ impl LevelEditorPanel {
                 PropertiesPanelWrapper::new(shared_state.clone(), window, cx)
             });
             
-            // Initialize workspace with draggable tabs on both sides
-            workspace.initialize(
-                DockItem::panel(std::sync::Arc::new(viewport_panel)),
-                Some(DockItem::tabs(
-                    vec![
-                        std::sync::Arc::new(scene_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
-                        std::sync::Arc::new(hierarchy_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
-                    ],
-                    Some(0),
-                    &dock_area,
-                    window,
-                    cx,
-                )),
-                Some(DockItem::tabs(
-                    vec![
-                        std::sync::Arc::new(properties_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
-                    ],
-                    Some(0),
-                    &dock_area,
-                    window,
-                    cx,
-                )),
-                None,
+            // Initialize workspace with custom dock sizes
+            let center = DockItem::panel(std::sync::Arc::new(viewport_panel));
+            let left = DockItem::tabs(
+                vec![
+                    std::sync::Arc::new(scene_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
+                    std::sync::Arc::new(hierarchy_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
+                ],
+                Some(0),
+                &dock_area,
                 window,
                 cx,
             );
+            let right = DockItem::tabs(
+                vec![
+                    std::sync::Arc::new(properties_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
+                ],
+                Some(0),
+                &dock_area,
+                window,
+                cx,
+            );
+
+            // Set center and docks with custom widths (400px)
+            dock_area.update(cx, |dock_area, cx| {
+                dock_area.set_center(center, window, cx);
+                dock_area.set_left_dock(left, Some(px(400.0)), true, window, cx);
+                dock_area.set_right_dock(right, Some(px(400.0)), true, window, cx);
+            });
         });
         
         self.workspace = Some(workspace);
