@@ -141,7 +141,7 @@ impl WinitGpuiApp {
             WindowRequest::Settings => ("Settings", (800.0, 600.0)),
             WindowRequest::About => ("About Pulsar Engine", (600.0, 500.0)),
             WindowRequest::Documentation => ("Documentation", (1400.0, 900.0)),
-            WindowRequest::ProjectEditor { .. } => ("Pulsar Engine - Project Editor", (1280.0, 800.0)),
+            WindowRequest::ProjectEditor { .. } => ("Pulsar Engine - Project Editor", (1920.0, 1080.0)),
             WindowRequest::ProjectSplash { .. } => ("Loading Project...", (960.0, 540.0)),
             WindowRequest::CloseWindow { .. } => return, // Handled elsewhere
         };
