@@ -14486,6 +14486,7 @@ dependencies = [
  "anyhow",
  "engine_state",
  "gpui",
+ "parking_lot",
  "serde",
  "serde_json",
  "ui",

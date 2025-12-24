@@ -15,5 +15,5 @@ mod field_editor;
 mod workspace_panels;
 
 pub use editor::StructEditor;
-pub use field_editor::FieldEditorView;
-pub use workspace_panels::*;
+pub use field_editor::{FieldEditorView, FieldEditorEvent};
+pub use workspace_panels::{PropertiesPanel, FieldsPanel, CodePreviewPanel};
