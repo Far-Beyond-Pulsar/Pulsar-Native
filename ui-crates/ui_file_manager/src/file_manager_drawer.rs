@@ -658,7 +658,6 @@ impl FileManagerDrawer {
         let is_folder = item.is_folder;
 
         div()
-            .id(SharedString::from(format!("grid-item-{}", item.name)))
             .w(px(100.0))
             .h(px(110.0))
             .rounded(px(8.0))
@@ -680,6 +679,7 @@ impl FileManagerDrawer {
             })
             .child(
                 v_flex()
+                    .id(SharedString::from(format!("grid-item-{}", item.name)))
                     .w_full()
                     .h_full()
                     .p_3()
@@ -723,28 +723,28 @@ impl FileManagerDrawer {
                                 .into_any_element()
                         }
                     )
+                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
+                        drawer.handle_item_click(&item_clone, &event.modifiers, cx);
+                    }))
+                    .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
+                        // Select item on right-click if not already selected (without changing folder view)
+                        if !drawer.selected_items.contains(&item_clone2.path) {
+                            drawer.selected_items.clear();
+                            drawer.selected_items.insert(item_clone2.path.clone());
+                            // Don't change selected_folder on right-click to avoid navigating
+                            cx.notify();
+                        }
+                        // Stop propagation so parent container's context menu doesn't show
+                        cx.stop_propagation();
+                    }))
+                    .context_menu(move |menu, _window, _cx| {
+                        if is_folder {
+                            context_menus::folder_context_menu(item_path.clone(), has_clipboard)(menu, _window, _cx)
+                        } else {
+                            context_menus::item_context_menu(item_path.clone(), has_clipboard, is_class)(menu, _window, _cx)
+                        }
+                    })
             )
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
-                drawer.handle_item_click(&item_clone, &event.modifiers, cx);
-            }))
-            .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
-                // Select item on right-click if not already selected (without changing folder view)
-                if !drawer.selected_items.contains(&item_clone2.path) {
-                    drawer.selected_items.clear();
-                    drawer.selected_items.insert(item_clone2.path.clone());
-                    // Don't change selected_folder on right-click to avoid navigating
-                    cx.notify();
-                }
-                // Stop propagation so parent container's context menu doesn't show
-                cx.stop_propagation();
-            }))
-            .context_menu(move |menu, _window, _cx| {
-                if is_folder {
-                    context_menus::folder_context_menu(item_path.clone(), has_clipboard)(menu, _window, _cx)
-                } else {
-                    context_menus::item_context_menu(item_path.clone(), has_clipboard, is_class)(menu, _window, _cx)
-                }
-            })
     }
 
     fn handle_item_click(&mut self, item: &FileItem, modifiers: &Modifiers, cx: &mut Context<Self>) {
