@@ -56,7 +56,7 @@ impl PulsarApp {
             FileType::Class => {
                 tracing::error!("Blueprint editor tried to load from external window, but it's now plugin-only!");
             }
-            FileType::Script => {
+            FileType::Script | FileType::Config | FileType::Document => {
                 tracing::debug!("Opening script tab from external window");
                 self.open_script_tab(event.path.clone(), window, cx);
             }
