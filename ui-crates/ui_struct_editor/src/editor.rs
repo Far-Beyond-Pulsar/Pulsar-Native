@@ -340,6 +340,18 @@ impl StructEditor {
     }
 
     fn update_preview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // Sync current input values to asset before generating code
+        self.name_input.update(cx, |input, _cx| {
+            self.asset.name = input.text().to_string();
+        });
+        self.display_name_input.update(cx, |input, _cx| {
+            self.asset.display_name = input.text().to_string();
+        });
+        self.description_input.update(cx, |input, _cx| {
+            let desc = input.text().to_string();
+            self.asset.description = if desc.is_empty() { None } else { Some(desc) };
+        });
+        
         let code = self.generate_rust_code();
         self.code_preview_input.update(cx, |input, cx| {
             input.replace_text_in_range(None, &code, window, cx);

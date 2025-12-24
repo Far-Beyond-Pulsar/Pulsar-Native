@@ -42,6 +42,15 @@ impl FieldEditorView {
         // Subscribe to input events
         cx.subscribe_in(&name_input, window, |this, _state, event: &ui::input::InputEvent, _window, cx| {
             match event {
+                ui::input::InputEvent::Change => {
+                    if this.editing_name {
+                        this.name_input.update(cx, |input, _cx| {
+                            this.field.name = input.text().to_string();
+                        });
+                        cx.emit(FieldEditorEvent::FieldChanged(this.index, this.field.clone()));
+                        cx.notify();
+                    }
+                }
                 ui::input::InputEvent::Blur => {
                     if this.editing_name {
                         this.editing_name = false;
@@ -58,6 +67,16 @@ impl FieldEditorView {
 
         cx.subscribe_in(&doc_input, window, |this, _state, event: &ui::input::InputEvent, _window, cx| {
             match event {
+                ui::input::InputEvent::Change => {
+                    if this.editing_doc {
+                        this.doc_input.update(cx, |input, _cx| {
+                            let doc = input.text().to_string();
+                            this.field.doc = if doc.is_empty() { None } else { Some(doc) };
+                        });
+                        cx.emit(FieldEditorEvent::FieldChanged(this.index, this.field.clone()));
+                        cx.notify();
+                    }
+                }
                 ui::input::InputEvent::Blur => {
                     if this.editing_doc {
                         this.editing_doc = false;
