@@ -227,6 +227,29 @@ impl FieldsPanel {
 
         for (index, field) in asset_read.fields.iter().enumerate() {
             let editor = cx.new(|cx| FieldEditorView::new(field.clone(), index, window, cx));
+
+            // Subscribe to field editor events
+            cx.subscribe(&editor, |this: &mut Self, _, event: &crate::field_editor::FieldEditorEvent, cx| {
+                match event {
+                    crate::field_editor::FieldEditorEvent::FieldChanged(index, field) => {
+                        let mut asset = this.asset.write();
+                        if *index < asset.fields.len() {
+                            asset.fields[*index] = field.clone();
+                            drop(asset);
+                            this.notify_modified();
+                            cx.emit(PanelEvent::LayoutChanged);
+                            cx.notify();
+                        }
+                    }
+                    crate::field_editor::FieldEditorEvent::RemoveRequested(index) => {
+                        this.remove_field(*index, cx);
+                    }
+                    crate::field_editor::FieldEditorEvent::TypePickerRequested(index) => {
+                        eprintln!("Type picker requested for field {}", index);
+                    }
+                }
+            }).detach();
+
             field_editors.push(editor);
         }
         drop(asset_read);
@@ -265,11 +288,54 @@ impl FieldsPanel {
         let index = self.field_editors.len();
         let editor = cx.new(|cx| FieldEditorView::new(new_field.clone(), index, window, cx));
 
+        // Subscribe to the new editor's events
+        cx.subscribe(&editor, |this: &mut Self, _, event: &crate::field_editor::FieldEditorEvent, cx| {
+            match event {
+                crate::field_editor::FieldEditorEvent::FieldChanged(index, field) => {
+                    let mut asset = this.asset.write();
+                    if *index < asset.fields.len() {
+                        asset.fields[*index] = field.clone();
+                        drop(asset);
+                        this.notify_modified();
+                        cx.emit(PanelEvent::LayoutChanged);
+                        cx.notify();
+                    }
+                }
+                crate::field_editor::FieldEditorEvent::RemoveRequested(index) => {
+                    this.remove_field(*index, cx);
+                }
+                crate::field_editor::FieldEditorEvent::TypePickerRequested(index) => {
+                    eprintln!("Type picker requested for field {}", index);
+                }
+            }
+        }).detach();
+
         self.field_editors.push(editor);
         self.asset.write().fields.push(new_field);
         self.notify_modified();
         cx.emit(PanelEvent::LayoutChanged);
         cx.notify();
+    }
+
+    fn remove_field(&mut self, index: usize, cx: &mut Context<Self>) {
+        if index < self.field_editors.len() {
+            // Remove from asset
+            self.asset.write().fields.remove(index);
+
+            // Remove editor
+            self.field_editors.remove(index);
+
+            // Update indices for remaining editors
+            for (i, editor) in self.field_editors.iter().enumerate() {
+                editor.update(cx, |ed, _cx| {
+                    ed.index = i;
+                });
+            }
+
+            self.notify_modified();
+            cx.emit(PanelEvent::LayoutChanged);
+            cx.notify();
+        }
     }
 }
 
