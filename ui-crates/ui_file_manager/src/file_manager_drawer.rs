@@ -7,6 +7,7 @@ use ui::{
     h_flex, v_flex,
     input::{InputState, TextInput},
     resizable::{h_resizable, resizable_panel, ResizableState},
+    menu::context_menu::ContextMenuExt,
     ActiveTheme as _, Icon, IconName, StyledExt,
 };
 
@@ -17,6 +18,7 @@ use crate::drawer::{
     tree::FolderNode,
     operations::FileOperations,
     utils::*,
+    context_menus,
 };
 
 // ============================================================================
@@ -284,6 +286,8 @@ impl FileManagerDrawer {
 
     fn render_file_content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let items = self.get_filtered_items();
+        let has_clipboard = self.clipboard.is_some();
+        let selected_folder = self.selected_folder.clone();
 
         v_flex()
             .size_full()
@@ -299,6 +303,14 @@ impl FileManagerDrawer {
                     .flex_1()
                     .p_4()
                     .overflow_y_scroll()
+                    .context_menu(move |menu, _window, _cx| {
+                        // Show folder context menu for blank area
+                        if let Some(path) = selected_folder.clone() {
+                            context_menus::folder_context_menu(path, has_clipboard)(menu, _window, _cx)
+                        } else {
+                            menu
+                        }
+                    })
                     .child(
                         match self.view_mode {
                             ViewMode::Grid => self.render_grid_view(&items, window, cx).into_any_element(),
@@ -322,8 +334,14 @@ impl FileManagerDrawer {
         let icon = get_icon_for_file_type(&item.file_type);
         let icon_color = get_icon_color_for_file_type(&item.file_type, cx.theme());
         let item_clone = item.clone();
+        let item_clone2 = item.clone();
+        let item_path = item.path.clone();
+        let has_clipboard = self.clipboard.is_some();
+        let is_class = item.file_type == FileType::Class;
+        let is_folder = item.is_folder;
 
         h_flex()
+            .id(SharedString::from(format!("list-item-{}", item.name)))
             .w_full()
             .h(px(32.))
             .px_3()
@@ -361,6 +379,19 @@ impl FileManagerDrawer {
             .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
                 drawer.handle_item_click(&item_clone, &event.modifiers, cx);
             }))
+            .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
+                // Select item on right-click if not already selected
+                if !drawer.selected_items.contains(&item_clone2.path) {
+                    drawer.handle_item_click(&item_clone2, &Modifiers::default(), cx);
+                }
+            }))
+            .context_menu(move |menu, _window, _cx| {
+                if is_folder {
+                    context_menus::folder_context_menu(item_path.clone(), has_clipboard)(menu, _window, _cx)
+                } else {
+                    context_menus::item_context_menu(item_path.clone(), has_clipboard, is_class)(menu, _window, _cx)
+                }
+            })
     }
 
     fn render_combined_toolbar(&mut self, items: &[FileItem], window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -615,8 +646,14 @@ impl FileManagerDrawer {
         let icon = get_icon_for_file_type(&item.file_type);
         let icon_color = get_icon_color_for_file_type(&item.file_type, cx.theme());
         let item_clone = item.clone();
+        let item_clone2 = item.clone();
+        let item_path = item.path.clone();
+        let has_clipboard = self.clipboard.is_some();
+        let is_class = item.file_type == FileType::Class;
+        let is_folder = item.is_folder;
 
         div()
+            .id(SharedString::from(format!("grid-item-{}", item.name)))
             .w(px(100.0))
             .h(px(110.0))
             .rounded(px(8.0))
@@ -685,6 +722,19 @@ impl FileManagerDrawer {
             .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
                 drawer.handle_item_click(&item_clone, &event.modifiers, cx);
             }))
+            .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
+                // Select item on right-click if not already selected
+                if !drawer.selected_items.contains(&item_clone2.path) {
+                    drawer.handle_item_click(&item_clone2, &Modifiers::default(), cx);
+                }
+            }))
+            .context_menu(move |menu, _window, _cx| {
+                if is_folder {
+                    context_menus::folder_context_menu(item_path.clone(), has_clipboard)(menu, _window, _cx)
+                } else {
+                    context_menus::item_context_menu(item_path.clone(), has_clipboard, is_class)(menu, _window, _cx)
+                }
+            })
     }
 
     fn handle_item_click(&mut self, item: &FileItem, modifiers: &Modifiers, cx: &mut Context<Self>) {
