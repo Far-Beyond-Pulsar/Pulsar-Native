@@ -391,11 +391,9 @@ impl FileManagerDrawer {
                 cx.stop_propagation();
             }))
             .context_menu(move |menu, _window, _cx| {
-                if is_folder {
-                    context_menus::folder_context_menu(item_path.clone(), has_clipboard)(menu, _window, _cx)
-                } else {
-                    context_menus::item_context_menu(item_path.clone(), has_clipboard, is_class)(menu, _window, _cx)
-                }
+                // All items (files and folders) use item_context_menu
+                // Only blank area uses folder_context_menu with "New" options
+                context_menus::item_context_menu(item_path.clone(), has_clipboard, is_class)(menu, _window, _cx)
             })
     }
 
@@ -738,11 +736,9 @@ impl FileManagerDrawer {
                         cx.stop_propagation();
                     }))
                     .context_menu(move |menu, _window, _cx| {
-                        if is_folder {
-                            context_menus::folder_context_menu(item_path.clone(), has_clipboard)(menu, _window, _cx)
-                        } else {
-                            context_menus::item_context_menu(item_path.clone(), has_clipboard, is_class)(menu, _window, _cx)
-                        }
+                        // All items (files and folders) use item_context_menu
+                        // Only blank area uses folder_context_menu with "New" options
+                        context_menus::item_context_menu(item_path.clone(), has_clipboard, is_class)(menu, _window, _cx)
                     })
             )
     }
