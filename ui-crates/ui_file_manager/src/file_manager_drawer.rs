@@ -380,15 +380,15 @@ impl FileManagerDrawer {
                 drawer.handle_item_click(&item_clone, &event.modifiers, cx);
             }))
             .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
-                // Select item on right-click if not already selected (without opening it)
+                // Select item on right-click if not already selected (without changing folder view)
                 if !drawer.selected_items.contains(&item_clone2.path) {
                     drawer.selected_items.clear();
                     drawer.selected_items.insert(item_clone2.path.clone());
-                    if item_clone2.is_folder {
-                        drawer.selected_folder = Some(item_clone2.path.clone());
-                    }
+                    // Don't change selected_folder on right-click to avoid navigating
                     cx.notify();
                 }
+                // Stop propagation so parent container's context menu doesn't show
+                cx.stop_propagation();
             }))
             .context_menu(move |menu, _window, _cx| {
                 if is_folder {
@@ -728,15 +728,15 @@ impl FileManagerDrawer {
                 drawer.handle_item_click(&item_clone, &event.modifiers, cx);
             }))
             .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
-                // Select item on right-click if not already selected (without opening it)
+                // Select item on right-click if not already selected (without changing folder view)
                 if !drawer.selected_items.contains(&item_clone2.path) {
                     drawer.selected_items.clear();
                     drawer.selected_items.insert(item_clone2.path.clone());
-                    if item_clone2.is_folder {
-                        drawer.selected_folder = Some(item_clone2.path.clone());
-                    }
+                    // Don't change selected_folder on right-click to avoid navigating
                     cx.notify();
                 }
+                // Stop propagation so parent container's context menu doesn't show
+                cx.stop_propagation();
             }))
             .context_menu(move |menu, _window, _cx| {
                 if is_folder {
