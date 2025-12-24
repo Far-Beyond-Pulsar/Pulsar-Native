@@ -1,5 +1,5 @@
 use gpui::{prelude::*, InteractiveElement as _, StatefulInteractiveElement as _, *};
-use ui::{v_flex, h_flex, ActiveTheme, StyledExt, IconName, button::{Button, ButtonVariants}, input::{InputState, TextInput}};
+use ui::{v_flex, h_flex, ActiveTheme, StyledExt, IconName, Icon, Sizable, button::{Button, ButtonVariants}, input::{InputState, TextInput}};
 use ui_types_common::{StructField, TypeRef, Visibility};
 
 /// Component for editing a single struct field
@@ -118,31 +118,44 @@ impl Render for FieldEditorView {
         v_flex()
             .w_full()
             .p_3()
-            .gap_2()
-            .bg(cx.theme().secondary.opacity(0.3))
+            .gap_3()
+            .bg(cx.theme().secondary.opacity(0.4))
             .border_1()
             .border_color(cx.theme().border)
-            .rounded(px(6.0))
+            .rounded(px(8.0))
             .child(
                 // Header row with name and actions
                 h_flex()
                     .items_center()
-                    .gap_2()
+                    .gap_3()
                     .child(
-                        // Field name
+                        // Field name - editable inline
                         if self.editing_name {
                             TextInput::new(&self.name_input)
                                 .flex_1()
                                 .into_any_element()
                         } else {
-                            Button::new(("field-name", index))
+                            h_flex()
                                 .flex_1()
-                                .text()
-                                .label(self.field.name.clone())
-                                .on_click(cx.listener(|this, _, _window, cx| {
-                                    this.editing_name = true;
-                                    cx.notify();
-                                }))
+                                .items_center()
+                                .child(
+                                    div()
+                                        .text_base()
+                                        .font_semibold()
+                                        .text_color(cx.theme().foreground)
+                                        .child(self.field.name.clone())
+                                )
+                                .child(
+                                    Button::new(("edit-name", index))
+                                        .ghost()
+                                        .with_size(ui::Size::XSmall)
+                                        .icon(IconName::Edit)
+                                        .ml_2()
+                                        .on_click(cx.listener(|this, _, _window, cx| {
+                                            this.editing_name = true;
+                                            cx.notify();
+                                        }))
+                                )
                                 .into_any_element()
                         }
                     )
@@ -150,6 +163,7 @@ impl Render for FieldEditorView {
                         // Visibility badge
                         Button::new(("visibility", index))
                             .ghost()
+                            .with_size(ui::Size::Small)
                             .label(match self.field.visibility {
                                 Visibility::Public => "pub",
                                 Visibility::Private => "priv",
@@ -163,8 +177,8 @@ impl Render for FieldEditorView {
                     .child(
                         // Remove button
                         Button::new(("remove", index))
-                            .danger()
-                            .label("Remove")
+                            .ghost()
+                            .with_size(ui::Size::Small)
                             .icon(IconName::Delete)
                             .on_click(cx.listener(move |this, _, _window, cx| {
                                 cx.emit(FieldEditorEvent::RemoveRequested(index));
@@ -172,49 +186,84 @@ impl Render for FieldEditorView {
                     )
             )
             .child(
-                // Type row
-                h_flex()
-                    .items_center()
-                    .gap_2()
+                // Type row - clickable to open type picker
+                Button::new(("field-type-picker", index))
+                    .w_full()
+                    .ghost()
+                    .on_click(cx.listener(move |this, _, _window, cx| {
+                        cx.emit(FieldEditorEvent::TypePickerRequested(index));
+                    }))
                     .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("Type:")
-                    )
-                    .child(
-                        Button::new(("field-type", index))
-                            .flex_1()
-                            .text()
-                            .label(type_str)
-                            .on_click(cx.listener(move |this, _, _window, cx| {
-                                cx.emit(FieldEditorEvent::TypePickerRequested(index));
-                            }))
+                        h_flex()
+                            .items_center()
+                            .gap_2()
+                            .p_2()
+                            .rounded(px(4.0))
+                            .bg(cx.theme().secondary.opacity(0.3))
+                            .border_1()
+                            .border_color(cx.theme().border.opacity(0.5))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_semibold()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Type:")
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .text_sm()
+                                    .text_color(cx.theme().accent)
+                                    .child(type_str)
+                            )
+                            .child(
+                                Icon::new(IconName::ChevronRight)
+                                    .text_color(cx.theme().muted_foreground)
+                                    .size_3p5()
+                            )
                     )
             )
             .when(self.field.doc.is_some() || self.editing_doc, |this| {
                 this.child(
                     // Documentation row
                     v_flex()
-                        .gap_1()
+                        .gap_2()
                         .child(
-                            div()
-                                .text_xs()
-                                .text_color(cx.theme().muted_foreground)
-                                .child("Documentation:")
+                            h_flex()
+                                .items_center()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .font_semibold()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Documentation")
+                                )
+                                .when(!self.editing_doc, |this| {
+                                    this.child(
+                                        Button::new(("edit-doc", index))
+                                            .ghost()
+                                            .with_size(ui::Size::XSmall)
+                                            .icon(IconName::Edit)
+                                            .on_click(cx.listener(|this, _, _window, cx| {
+                                                this.editing_doc = true;
+                                                cx.notify();
+                                            }))
+                                    )
+                                })
                         )
                         .child(
                             if self.editing_doc {
                                 TextInput::new(&self.doc_input)
                                     .into_any_element()
                             } else {
-                                Button::new(("field-doc", index))
-                                    .text()
-                                    .label(format!("/// {}", self.field.doc.as_ref().unwrap_or(&String::from("Click to add documentation"))))
-                                    .on_click(cx.listener(|this, _, _window, cx| {
-                                        this.editing_doc = true;
-                                        cx.notify();
-                                    }))
+                                div()
+                                    .p_2()
+                                    .rounded(px(4.0))
+                                    .bg(cx.theme().secondary.opacity(0.2))
+                                    .text_sm()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(format!("/// {}", self.field.doc.as_ref().unwrap_or(&String::from("Click to add documentation"))))
                                     .into_any_element()
                             }
                         )
