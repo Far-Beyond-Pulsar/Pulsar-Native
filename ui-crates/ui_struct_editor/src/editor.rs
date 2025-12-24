@@ -558,6 +558,7 @@ impl StructEditor {
 
     fn render_fields_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
+            .size_full()
             .gap_3()
             .child(
                 h_flex()
@@ -582,45 +583,52 @@ impl StructEditor {
             .child(Divider::horizontal())
             .child(
                 v_flex()
+                    .flex_1()
                     .gap_3()
-                    .scrollable(gpui::Axis::Vertical)
-                    .children(
-                        self.field_editors.iter().map(|editor| editor.clone())
+                    .overflow_hidden()
+                    .child(
+                        v_flex()
+                            .gap_3()
+                            .scrollable(gpui::Axis::Vertical)
+                            .children(
+                                self.field_editors.iter().map(|editor| editor.clone())
+                            )
+                            .when(self.field_editors.is_empty(), |this| {
+                                this.child(
+                                    div()
+                                        .w_full()
+                                        .p_8()
+                                        .flex()
+                                        .flex_col()
+                                        .items_center()
+                                        .justify_center()
+                                        .gap_2()
+                                        .child(
+                                            div()
+                                                .text_3xl()
+                                                .child("📦")
+                                        )
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child("No fields yet")
+                                        )
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().muted_foreground.opacity(0.7))
+                                                .child("Click 'Add Field' to get started")
+                                        )
+                                )
+                            })
                     )
-                    .when(self.field_editors.is_empty(), |this| {
-                        this.child(
-                            div()
-                                .w_full()
-                                .p_8()
-                                .flex()
-                                .flex_col()
-                                .items_center()
-                                .justify_center()
-                                .gap_2()
-                                .child(
-                                    div()
-                                        .text_3xl()
-                                        .child("📦")
-                                )
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child("No fields yet")
-                                )
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(cx.theme().muted_foreground.opacity(0.7))
-                                        .child("Click 'Add Field' to get started")
-                                )
-                        )
-                    })
             )
     }
 
     fn render_code_preview(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
+            .size_full()
             .gap_2()
             .child(
                 h_flex()
@@ -745,20 +753,33 @@ impl Render for StructEditor {
                         v_flex()
                             .w(px(300.0))
                             .h_full()
-                            .p_4()
                             .gap_4()
                             .border_r_1()
                             .border_color(cx.theme().border)
-                            .scrollable(gpui::Axis::Vertical)
+                            .child(
+                                v_flex()
+                                    .p_4()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .text_base()
+                                            .font_bold()
+                                            .text_color(cx.theme().foreground)
+                                            .child("Properties")
+                                    )
+                                    .child(Divider::horizontal())
+                            )
                             .child(
                                 div()
-                                    .text_base()
-                                    .font_bold()
-                                    .text_color(cx.theme().foreground)
-                                    .child("Properties")
+                                    .flex_1()
+                                    .px_4()
+                                    .overflow_hidden()
+                                    .child(
+                                        v_flex()
+                                            .scrollable(gpui::Axis::Vertical)
+                                            .child(self.render_properties_panel(window, cx))
+                                    )
                             )
-                            .child(Divider::horizontal())
-                            .child(self.render_properties_panel(window, cx))
                     )
                     .child(
                         // Center panel - Fields
@@ -766,6 +787,7 @@ impl Render for StructEditor {
                             .flex_1()
                             .h_full()
                             .p_4()
+                            .gap_3()
                             .overflow_hidden()
                             .when(self.show_preview, |this| {
                                 this.border_r_1()
@@ -779,10 +801,14 @@ impl Render for StructEditor {
                             v_flex()
                                 .w(px(500.0))
                                 .h_full()
-                                .p_4()
                                 .gap_3()
                                 .overflow_hidden()
-                                .child(self.render_code_preview(window, cx))
+                                .child(
+                                    v_flex()
+                                        .p_4()
+                                        .pb_0()
+                                        .child(self.render_code_preview(window, cx))
+                                )
                         )
                     })
             )
