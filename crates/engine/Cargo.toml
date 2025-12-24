@@ -3,7 +3,7 @@ edition = "2021"
 name = "pulsar_engine"
 description = "A modern high-performance game engine written in Rust"
 publish = false
-version = "0.1.60"
+version = "0.1.61"
 
 [profile.dev.package."*"]
 opt-level = 3
