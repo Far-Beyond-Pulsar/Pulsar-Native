@@ -14,6 +14,9 @@ pub struct FieldEditorView {
     // Editing state
     editing_name: bool,
     editing_doc: bool,
+    
+    // Subscriptions
+    _subscriptions: Vec<gpui::Subscription>,
 }
 
 #[derive(Clone, Debug)]
@@ -40,7 +43,7 @@ impl FieldEditorView {
         }
 
         // Subscribe to input events
-        cx.subscribe_in(&name_input, window, |this, _state, event: &ui::input::InputEvent, _window, cx| {
+        let sub1 = cx.subscribe_in(&name_input, window, |this, _state, event: &ui::input::InputEvent, _window, cx| {
             match event {
                 ui::input::InputEvent::Change => {
                     if this.editing_name {
@@ -63,9 +66,9 @@ impl FieldEditorView {
                 }
                 _ => {}
             }
-        }).detach();
+        });
 
-        cx.subscribe_in(&doc_input, window, |this, _state, event: &ui::input::InputEvent, _window, cx| {
+        let sub2 = cx.subscribe_in(&doc_input, window, |this, _state, event: &ui::input::InputEvent, _window, cx| {
             match event {
                 ui::input::InputEvent::Change => {
                     if this.editing_doc {
@@ -90,7 +93,7 @@ impl FieldEditorView {
                 }
                 _ => {}
             }
-        }).detach();
+        });
 
         Self {
             field,
@@ -99,6 +102,7 @@ impl FieldEditorView {
             doc_input,
             editing_name: false,
             editing_doc: false,
+            _subscriptions: vec![sub1, sub2],
         }
     }
 

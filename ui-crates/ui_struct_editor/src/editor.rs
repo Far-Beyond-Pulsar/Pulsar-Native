@@ -47,6 +47,9 @@ pub struct StructEditor {
 
     // Modified flag
     modified: bool,
+    
+    // Subscriptions to keep them alive
+    _subscriptions: Vec<gpui::Subscription>,
 }
 
 impl StructEditor {
@@ -106,6 +109,7 @@ impl StructEditor {
             cx.subscribe(&editor, |this: &mut Self, _, event: &FieldEditorEvent, cx| {
                 match event {
                     FieldEditorEvent::FieldChanged(index, field) => {
+                        eprintln!("DEBUG: Field changed: index={}, field={:?}", index, field.name);
                         if *index < this.asset.fields.len() {
                             this.asset.fields[*index] = field.clone();
                             this.modified = true;
@@ -143,7 +147,31 @@ impl StructEditor {
         }
 
         // Subscribe to input changes for the main properties
-        cx.subscribe_in(&name_input, window, |this, _state, event: &ui::input::InputEvent, _window, cx| {
+        let sub1 = cx.subscribe_in(&name_input, window, |this, _state, event: &ui::input::InputEvent, _window, cx| {
+            match event {
+                ui::input::InputEvent::Change => {
+                    eprintln!("DEBUG: Name input changed");
+                    this.modified = true;
+                    this.preview_needs_update = true;
+                    cx.emit(StructEditorEvent::Modified);
+                    cx.notify();
+                }
+                _ => {}
+            }
+        });
+
+        let sub2 = cx.subscribe_in(&display_name_input, window, |this, _state, event: &ui::input::InputEvent, _window, cx| {
+            match event {
+                ui::input::InputEvent::Change => {
+                    this.modified = true;
+                    cx.emit(StructEditorEvent::Modified);
+                    cx.notify();
+                }
+                _ => {}
+            }
+        });
+
+        let sub3 = cx.subscribe_in(&description_input, window, |this, _state, event: &ui::input::InputEvent, _window, cx| {
             match event {
                 ui::input::InputEvent::Change => {
                     this.modified = true;
@@ -153,30 +181,7 @@ impl StructEditor {
                 }
                 _ => {}
             }
-        }).detach();
-
-        cx.subscribe_in(&display_name_input, window, |this, _state, event: &ui::input::InputEvent, _window, cx| {
-            match event {
-                ui::input::InputEvent::Change => {
-                    this.modified = true;
-                    cx.emit(StructEditorEvent::Modified);
-                    cx.notify();
-                }
-                _ => {}
-            }
-        }).detach();
-
-        cx.subscribe_in(&description_input, window, |this, _state, event: &ui::input::InputEvent, _window, cx| {
-            match event {
-                ui::input::InputEvent::Change => {
-                    this.modified = true;
-                    this.preview_needs_update = true;
-                    cx.emit(StructEditorEvent::Modified);
-                    cx.notify();
-                }
-                _ => {}
-            }
-        }).detach();
+        });
 
         let mut editor = Self {
             file_path: Some(file_path),
@@ -192,6 +197,7 @@ impl StructEditor {
             horizontal_resizable_state,
             modified: false,
             field_editors,
+            _subscriptions: vec![sub1, sub2, sub3],
         };
 
         // Initialize preview
@@ -680,6 +686,7 @@ impl Render for StructEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Update preview if needed
         if self.preview_needs_update {
+            eprintln!("DEBUG: Updating preview in render");
             self.update_preview(window, cx);
             self.preview_needs_update = false;
         }
