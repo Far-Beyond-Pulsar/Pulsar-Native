@@ -164,16 +164,18 @@ impl DawEditorPanel {
                 window,
                 cx,
             );
-            
-            // Initialize workspace with all panels
-            workspace.initialize(
-                center,
-                Some(left),
-                Some(right),
-                None, // No bottom dock
-                window,
-                cx,
-            );
+
+            // Initialize workspace with custom dock sizes (about 2x default width)
+            // Set center first
+            dock_area.update(cx, |dock_area, cx| {
+                dock_area.set_center(center, window, cx);
+
+                // Set left dock with custom width (500px, about 2x default ~250px)
+                dock_area.set_left_dock(left, Some(px(500.0)), true, window, cx);
+
+                // Set right dock with custom width (500px, about 2x default ~250px)
+                dock_area.set_right_dock(right, Some(px(500.0)), true, window, cx);
+            });
         });
     }
 
