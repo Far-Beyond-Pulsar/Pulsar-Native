@@ -46,6 +46,9 @@ pub struct FileManagerDrawer {
 
     // Rename state
     renaming_item: Option<PathBuf>,
+
+    // Cached registered file types from plugin system
+    registered_file_types: Vec<plugin_editor_api::FileTypeDefinition>,
     rename_input_state: Entity<InputState>,
 
     // Search
@@ -122,6 +125,7 @@ impl FileManagerDrawer {
             file_filter_state,
             show_hidden_files: false,
             clipboard: None,
+            registered_file_types: Vec::new(), // Will be populated from plugin manager
         }
     }
 
@@ -129,15 +133,20 @@ impl FileManagerDrawer {
         Self::new(project_path, window, cx)
     }
 
+    /// Update registered file types from the plugin manager
+    pub fn update_file_types(&mut self, file_types: Vec<plugin_editor_api::FileTypeDefinition>) {
+        self.registered_file_types = file_types;
+    }
+
     pub fn set_project_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         println!("[FILE_MANAGER] set_project_path called with: {:?}", path);
         println!("[FILE_MANAGER] Path exists: {}", path.exists());
         println!("[FILE_MANAGER] Path is_dir: {}", path.is_dir());
-        
+
         self.project_path = Some(path.clone());
         self.folder_tree = FolderNode::from_path(&path);
         self.selected_folder = Some(path.clone());
-        
+
         println!("[FILE_MANAGER] folder_tree is_some: {}", self.folder_tree.is_some());
         println!("[FILE_MANAGER] selected_folder: {:?}", self.selected_folder);
         
@@ -288,6 +297,7 @@ impl FileManagerDrawer {
         let items = self.get_filtered_items();
         let has_clipboard = self.clipboard.is_some();
         let selected_folder = self.selected_folder.clone();
+        let file_types = self.registered_file_types.clone();
 
         v_flex()
             .size_full()
@@ -306,7 +316,7 @@ impl FileManagerDrawer {
                     .context_menu(move |menu, _window, _cx| {
                         // Show folder context menu for blank area
                         if let Some(path) = selected_folder.clone() {
-                            context_menus::folder_context_menu(path, has_clipboard)(menu, _window, _cx)
+                            context_menus::folder_context_menu(path, has_clipboard, file_types.clone())(menu, _window, _cx)
                         } else {
                             menu
                         }

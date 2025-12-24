@@ -27,6 +27,17 @@ pub struct NewClass {
     pub folder_path: String,
 }
 
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager)]
+pub struct CreateAsset {
+    #[serde(default)]
+    pub file_type_id: String,
+    #[serde(default)]
+    pub display_name: String,
+    #[serde(default)]
+    pub extension: String,
+}
+
 #[derive(Action, Clone, Debug, Default, PartialEq, Eq, Deserialize, JsonSchema)]
 #[action(namespace = file_manager)]
 pub struct DeleteItem {

@@ -15,6 +15,9 @@ ui_common.workspace = true
 # Engine
 engine_fs.workspace = true
 
+# Plugin system
+plugin_editor_api = { path = "../../crates/plugin_editor_api" }
+
 # File system
 walkdir = "2.4"
 notify.workspace = true

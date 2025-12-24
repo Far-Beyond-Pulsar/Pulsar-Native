@@ -14398,6 +14398,7 @@ dependencies = [
  "engine_fs",
  "gpui",
  "notify 7.0.0",
+ "plugin_editor_api",
  "schemars",
  "serde",
  "serde_json",

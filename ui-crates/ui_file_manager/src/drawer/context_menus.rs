@@ -12,12 +12,29 @@ use super::actions::*;
 pub fn folder_context_menu(
     path: PathBuf,
     has_clipboard: bool,
+    file_types: Vec<plugin_editor_api::FileTypeDefinition>,
 ) -> impl Fn(ui::popup_menu::PopupMenu, &mut Window, &mut Context<ui::popup_menu::PopupMenu>) -> ui::popup_menu::PopupMenu + 'static {
-    move |menu, _window, _cx| {
+    move |menu, window, cx| {
+        let file_types_clone = file_types.clone();
         let mut menu = menu
-            .menu("New Folder", Box::new(NewFolder::default()))
-            .menu("New File", Box::new(NewFile::default()))
-            .menu("New Class", Box::new(NewClass::default()))
+            .submenu("Create", window, cx, move |submenu, _window, _cx| {
+                let mut submenu = submenu
+                    .menu("Folder", Box::new(NewFolder::default()));
+
+                // Add all registered file types from plugins
+                for file_type in file_types_clone.iter() {
+                    submenu = submenu.menu(
+                        file_type.display_name.clone(),
+                        Box::new(CreateAsset {
+                            file_type_id: file_type.id.as_str().to_string(),
+                            display_name: file_type.display_name.clone(),
+                            extension: file_type.extension.clone(),
+                        })
+                    );
+                }
+
+                submenu
+            })
             .separator()
             .menu("Cut", Box::new(Cut))
             .menu("Copy", Box::new(Copy));
