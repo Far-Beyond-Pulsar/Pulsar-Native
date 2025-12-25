@@ -45,16 +45,21 @@ debug = true
 
 [workspace.dependencies]
 ######################### TGPUI #########################
-gpui = { git = "https://github.com/tristanpoland/zed", rev="433b9ae0dce0e0dae03c4ac44d70575c981c530c", features = ["runtime_shaders", "macos-blade"] }
-gpui_macros = { git = "https://github.com/tristanpoland/zed", rev="433b9ae0dce0e0dae03c4ac44d70575c981c530c" }
-reqwest_client = { git = "https://github.com/tristanpoland/zed", rev = "433b9ae0dce0e0dae03c4ac44d70575c981c530c" }
-sum_tree = { git = "https://github.com/tristanpoland/zed", rev = "433b9ae0dce0e0dae03c4ac44d70575c981c530c" }
+#gpui = { git = "https://github.com/tristanpoland/zed", rev="433b9ae0dce0e0dae03c4ac44d70575c981c530c", features = ["runtime_shaders", "macos-blade"] }
+#gpui_macros = { git = "https://github.com/tristanpoland/zed", rev="433b9ae0dce0e0dae03c4ac44d70575c981c530c" }
+#reqwest_client = { git = "https://github.com/tristanpoland/zed", rev = "433b9ae0dce0e0dae03c4ac44d70575c981c530c" }
+#sum_tree = { git = "https://github.com/tristanpoland/zed", rev = "433b9ae0dce0e0dae03c4ac44d70575c981c530c" }
 
 ###################### Local WGPUI ######################
 # gpui = { path = "C:/Users/redst/OneDrive/Documents/GitHub/gpui-ce/crates/gpui", features = ["runtime_shaders", "macos-blade"] }
 # gpui_macros = { path = "C:/Users/redst/OneDrive/Documents/GitHub/gpui-ce/crates/gpui_macros" }
 # reqwest_client = { path = "C:/Users/redst/OneDrive/Documents/GitHub/gpui-ce/crates/reqwest_client" }
 # sum_tree = { path = "C:/Users/redst/OneDrive/Documents/GitHub/gpui-ce/crates/sum_tree" }
+
+gpui = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/gpui", features = ["runtime_shaders", "macos-blade"] }
+gpui_macros = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/gpui_macros" }
+reqwest_client = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/reqwest_client" }
+sum_tree = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/sum_tree" }
 
 ######################### WGPUI #########################
 # gpui = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev="6f6e5f30a5306a08e9a409ad39b9a0458f0ddf01", features = ["runtime_shaders", "macos-blade"] }

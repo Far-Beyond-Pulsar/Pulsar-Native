@@ -14,6 +14,8 @@ ui_common.workspace = true
 
 # Engine
 engine_fs.workspace = true
+engine_state.workspace = true
+tracing.workspace = true
 
 # Plugin system
 plugin_editor_api = { path = "../../crates/plugin_editor_api" }
