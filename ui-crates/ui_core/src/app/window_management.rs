@@ -6,6 +6,7 @@ use gpui::AppContext;
 use ui::Root;
 use ui_terminal::{Terminal, TerminalWindow};
 use ui_problems::ProblemsWindow;
+use ui_type_debugger::TypeDebuggerWindow;
 use ui_multiplayer::MultiplayerWindow;
 
 use super::PulsarApp;
@@ -104,6 +105,39 @@ impl PulsarApp {
             |window, cx| {
                 let problems_window = cx.new(|cx| ProblemsWindow::new(problems_drawer, window, cx));
                 cx.new(|cx| Root::new(problems_window.into(), window, cx))
+            },
+        );
+    }
+
+    pub(super) fn toggle_type_debugger(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let type_debugger_drawer = self.state.type_debugger_drawer.clone();
+
+        let _ = cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds {
+                    origin: Point {
+                        x: px(120.0),
+                        y: px(120.0),
+                    },
+                    size: size(px(1000.0), px(700.0)),
+                })),
+                titlebar: Some(gpui::TitlebarOptions {
+                    title: None,
+                    appears_transparent: true,
+                    traffic_light_position: None,
+                }),
+                kind: WindowKind::Normal,
+                is_resizable: true,
+                window_decorations: Some(gpui::WindowDecorations::Client),
+                window_min_size: Some(gpui::Size {
+                    width: px(600.),
+                    height: px(400.),
+                }),
+                ..Default::default()
+            },
+            |window, cx| {
+                let type_debugger_window = cx.new(|cx| TypeDebuggerWindow::new(type_debugger_drawer, window, cx));
+                cx.new(|cx| Root::new(type_debugger_window.into(), window, cx))
             },
         );
     }

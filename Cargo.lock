@@ -4543,6 +4543,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "type_db",
 ]
 
 [[package]]
@@ -14283,6 +14284,7 @@ dependencies = [
  "ui_struct_editor",
  "ui_terminal",
  "ui_trait_editor",
+ "ui_type_debugger",
  "walkdir",
 ]
 
@@ -14559,6 +14561,18 @@ dependencies = [
  "ui_common",
  "ui_types_common",
  "uuid",
+]
+
+[[package]]
+name = "ui_type_debugger"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "gpui",
+ "serde",
+ "type_db",
+ "ui",
+ "ui_common",
 ]
 
 [[package]]

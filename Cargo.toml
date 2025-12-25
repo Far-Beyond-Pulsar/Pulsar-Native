@@ -33,6 +33,7 @@ members = [
     "ui-crates/ui_enum_editor",
     "ui-crates/ui_trait_editor",
     "ui-crates/ui_alias_editor",
+    "ui-crates/ui_type_debugger",
     "crates/type_db",
 ]
 
@@ -90,6 +91,7 @@ ui_struct_editor = { path = "ui-crates/ui_struct_editor" }
 ui_enum_editor = { path = "ui-crates/ui_enum_editor" }
 ui_trait_editor = { path = "ui-crates/ui_trait_editor" }
 ui_alias_editor = { path = "ui-crates/ui_alias_editor" }
+ui_type_debugger = { path = "ui-crates/ui_type_debugger" }
 type_db = { path = "crates/type_db" }
 
 anyhow = "1"

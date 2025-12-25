@@ -10,7 +10,8 @@
       "Bash(cargo doc:*)",
       "WebFetch(domain:github.com)",
       "Bash(git checkout:*)",
-      "Bash(rustc:*)"
+      "Bash(rustc:*)",
+      "Bash(cargo test:*)"
     ]
   }
 }

@@ -47,6 +47,15 @@ impl PulsarApp {
         self.toggle_terminal(window, cx);
     }
 
+    fn on_toggle_type_debugger(
+        &mut self,
+        _: &ToggleTypeDebugger,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.toggle_type_debugger(window, cx);
+    }
+
     fn on_toggle_multiplayer(
         &mut self,
         _: &ToggleMultiplayer,

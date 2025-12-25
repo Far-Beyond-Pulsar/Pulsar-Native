@@ -11,14 +11,30 @@
 //!
 //! ## Example
 //! ```rust
-//! use type_db::{TypeDatabase};
+//! use type_db::{TypeDatabase, TypeKind};
 //! let mut db = TypeDatabase::new();
-//! let id = db.register("Vector3", Some("Math".to_string()), Some("3D vector".to_string()));
+//! let id = db.register_simple("Vector3", TypeKind::Struct);
 //! let found = db.get(id);
 //! assert!(found.is_some());
 //! ```
 
 use dashmap::DashMap;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::SystemTime;
+
+/// Categorizes different kinds of types in the database.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TypeKind {
+    /// Type alias
+    Alias,
+    /// Struct definition
+    Struct,
+    /// Enum definition
+    Enum,
+    /// Trait definition
+    Trait,
+}
 
 /// Represents a runtime type created by the user in the engine.
 ///
@@ -34,6 +50,16 @@ pub struct TypeInfo {
     pub category: Option<String>,
     /// Optional description of the type
     pub description: Option<String>,
+    /// File path where this type is defined
+    pub file_path: Option<PathBuf>,
+    /// Kind of type (Struct, Enum, Trait, Alias)
+    pub type_kind: TypeKind,
+    /// Display name for UI (may differ from name)
+    pub display_name: String,
+    /// AST representation for type aliases (optional, serialized as JSON string)
+    pub ast: Option<String>,
+    /// Last modified timestamp
+    pub last_modified: Option<SystemTime>,
 }
 
 
@@ -44,15 +70,15 @@ pub struct TypeInfo {
 ///
 /// # Example
 /// ```rust
-/// use type_db::TypeDatabase;
-/// 
+/// use type_db::{TypeDatabase, TypeKind};
+///
 /// let mut db = TypeDatabase::new();
-/// let id = db.register("Vector3", Some("Math".to_string()), None);
+/// let id = db.register_simple("Vector3", TypeKind::Struct);
 /// let found = db.get(id);
 /// assert!(found.is_some());
 /// ```
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct TypeDatabase {
     /// Map of type ID to type info
     types: DashMap<u64, TypeInfo>,
@@ -60,8 +86,22 @@ pub struct TypeDatabase {
     name_index: DashMap<String, Vec<u64>>,
     /// Index for category-based lookups
     category_index: DashMap<String, Vec<u64>>,
-    /// Next available type ID
-    next_id: u64,
+    /// Index for file path-based lookups (file path -> type ID)
+    file_path_index: DashMap<PathBuf, u64>,
+    /// Next available type ID (atomic for interior mutability)
+    next_id: AtomicU64,
+}
+
+impl Default for TypeDatabase {
+    fn default() -> Self {
+        Self {
+            types: DashMap::new(),
+            name_index: DashMap::new(),
+            category_index: DashMap::new(),
+            file_path_index: DashMap::new(),
+            next_id: AtomicU64::new(0),
+        }
+    }
 }
 
 impl TypeDatabase {
@@ -73,33 +113,54 @@ impl TypeDatabase {
         Self::default()
     }
 
-    /// Registers a new type and returns its assigned unique ID.
+    /// Registers a new type with all available fields and returns its assigned unique ID.
     ///
     /// # Arguments
     /// * `name` - The display name of the type (case-insensitive for lookups).
     /// * `category` - Optional category for grouping types.
     /// * `description` - Optional description for documentation/UI.
+    /// * `file_path` - Optional file path where the type is defined.
+    /// * `type_kind` - The kind of type (Struct, Enum, Trait, Alias).
+    /// * `display_name` - Optional display name for UI (defaults to name if None).
+    /// * `ast` - Optional AST representation (serialized as JSON string).
+    /// * `last_modified` - Optional last modified timestamp.
     ///
     /// # Returns
     /// The unique ID assigned to the new type.
     ///
     /// # Example
     /// ```rust
-    /// use type_db::TypeDatabase;
-    /// 
+    /// use type_db::{TypeDatabase, TypeKind};
+    ///
     /// let mut db = TypeDatabase::new();
-    /// let id = db.register("Vector3", Some("Math".to_string()), None);
+    /// let id = db.register("Vector3", Some("Math".to_string()), None, None, TypeKind::Struct, None, None, None);
     /// ```
-    pub fn register(&mut self, name: impl Into<String>, category: Option<String>, description: Option<String>) -> u64 {
-        let id = self.next_id;
-        self.next_id += 1;
+    pub fn register(
+        &self,
+        name: impl Into<String>,
+        category: Option<String>,
+        description: Option<String>,
+        file_path: Option<PathBuf>,
+        type_kind: TypeKind,
+        display_name: Option<String>,
+        ast: Option<String>,
+        last_modified: Option<SystemTime>,
+    ) -> u64 {
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
 
         let name = name.into();
+        let display_name = display_name.unwrap_or_else(|| name.clone());
+
         let type_info = TypeInfo {
             id,
             name: name.clone(),
             category: category.clone(),
             description,
+            file_path: file_path.clone(),
+            type_kind,
+            display_name,
+            ast,
+            last_modified,
         };
 
         // Add to name index
@@ -116,8 +177,83 @@ impl TypeDatabase {
                 .push(id);
         }
 
+        // Add to file path index
+        if let Some(path) = &file_path {
+            self.file_path_index.insert(path.clone(), id);
+        }
+
         self.types.insert(id, type_info);
         id
+    }
+
+    /// Registers a simple type without all optional fields (backward compatibility).
+    ///
+    /// # Arguments
+    /// * `name` - The display name of the type.
+    /// * `type_kind` - The kind of type (Struct, Enum, Trait, Alias).
+    ///
+    /// # Returns
+    /// The unique ID assigned to the new type.
+    ///
+    /// # Example
+    /// ```rust
+    /// use type_db::{TypeDatabase, TypeKind};
+    ///
+    /// let mut db = TypeDatabase::new();
+    /// let id = db.register_simple("MyStruct", TypeKind::Struct);
+    /// ```
+    pub fn register_simple(&self, name: impl Into<String>, type_kind: TypeKind) -> u64 {
+        self.register(name, None, None, None, type_kind, None, None, None)
+    }
+
+    /// Registers a type with file path (common case for engine_fs).
+    ///
+    /// This method automatically extracts the last_modified timestamp from the file system.
+    ///
+    /// # Arguments
+    /// * `name` - The display name of the type.
+    /// * `file_path` - File path where the type is defined.
+    /// * `type_kind` - The kind of type (Struct, Enum, Trait, Alias).
+    /// * `display_name` - Optional display name for UI.
+    /// * `description` - Optional description.
+    /// * `ast` - Optional AST representation (serialized as JSON string).
+    ///
+    /// # Returns
+    /// `Ok(id)` on success, or `Err(String)` if the file metadata cannot be read.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// use type_db::{TypeDatabase, TypeKind};
+    /// use std::path::PathBuf;
+    ///
+    /// let mut db = TypeDatabase::new();
+    /// let path = PathBuf::from("/path/to/file.rs");
+    /// let id = db.register_with_path("MyType", path, TypeKind::Struct, None, None, None).unwrap();
+    /// ```
+    pub fn register_with_path(
+        &self,
+        name: impl Into<String>,
+        file_path: PathBuf,
+        type_kind: TypeKind,
+        display_name: Option<String>,
+        description: Option<String>,
+        ast: Option<String>,
+    ) -> Result<u64, String> {
+        // Get file metadata for last_modified
+        let last_modified = std::fs::metadata(&file_path)
+            .ok()
+            .and_then(|m| m.modified().ok());
+
+        Ok(self.register(
+            name,
+            None,
+            description,
+            Some(file_path),
+            type_kind,
+            display_name,
+            ast,
+            last_modified,
+        ))
     }
 
     /// Removes a type by its ID.
@@ -130,14 +266,14 @@ impl TypeDatabase {
     ///
     /// # Example
     /// ```rust
-    /// use type_db::TypeDatabase;
+    /// use type_db::{TypeDatabase, TypeKind};
     ///
     /// let mut db = TypeDatabase::new();
-    /// let id = db.register("Foo", None, None);
+    /// let id = db.register_simple("Foo", TypeKind::Struct);
     /// let removed = db.unregister(id);
     /// assert!(removed.is_some());
     /// ```
-    pub fn unregister(&mut self, id: u64) -> Option<TypeInfo> {
+    pub fn unregister(&self, id: u64) -> Option<TypeInfo> {
         if let Some((_, type_info)) = self.types.remove(&id) {
             // Remove from name index
             if let Some(mut ids) = self.name_index.get_mut(&type_info.name.to_lowercase()) {
@@ -151,10 +287,117 @@ impl TypeDatabase {
                 }
             }
 
+            // Remove from file path index
+            if let Some(path) = &type_info.file_path {
+                self.file_path_index.remove(path);
+            }
+
             Some(type_info)
         } else {
             None
         }
+    }
+
+    /// Gets a type by file path.
+    ///
+    /// # Arguments
+    /// * `file_path` - The file path of the type.
+    ///
+    /// # Returns
+    /// `Some(TypeInfo)` if found, or `None` if not found.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// use type_db::{TypeDatabase, TypeKind};
+    /// use std::path::PathBuf;
+    ///
+    /// let mut db = TypeDatabase::new();
+    /// let path = PathBuf::from("/test/file.rs");
+    /// let id = db.register_with_path("TestType", path.clone(), TypeKind::Struct, None, None, None).unwrap();
+    /// let found = db.get_by_path(&path);
+    /// assert!(found.is_some());
+    /// ```
+    pub fn get_by_path(&self, file_path: &PathBuf) -> Option<TypeInfo> {
+        self.file_path_index
+            .get(file_path)
+            .and_then(|id| self.types.get(&id).map(|v| v.clone()))
+    }
+
+    /// Unregisters a type by file path.
+    ///
+    /// # Arguments
+    /// * `file_path` - The file path of the type to remove.
+    ///
+    /// # Returns
+    /// The removed `TypeInfo` if it existed, or `None` if not found.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// use type_db::{TypeDatabase, TypeKind};
+    /// use std::path::PathBuf;
+    ///
+    /// let mut db = TypeDatabase::new();
+    /// let path = PathBuf::from("/test/file.rs");
+    /// db.register_with_path("TestType", path.clone(), TypeKind::Struct, None, None, None).unwrap();
+    /// let removed = db.unregister_by_path(&path);
+    /// assert!(removed.is_some());
+    /// ```
+    pub fn unregister_by_path(&self, file_path: &PathBuf) -> Option<TypeInfo> {
+        if let Some((_, id)) = self.file_path_index.remove(file_path) {
+            self.unregister(id)
+        } else {
+            None
+        }
+    }
+
+    /// Gets all types of a specific kind.
+    ///
+    /// # Arguments
+    /// * `kind` - The type kind to filter by.
+    ///
+    /// # Returns
+    /// A vector of all `TypeInfo` matching the specified kind.
+    ///
+    /// # Example
+    /// ```rust
+    /// use type_db::{TypeDatabase, TypeKind};
+    ///
+    /// let mut db = TypeDatabase::new();
+    /// db.register_simple("Struct1", TypeKind::Struct);
+    /// db.register_simple("Struct2", TypeKind::Struct);
+    /// db.register_simple("Enum1", TypeKind::Enum);
+    ///
+    /// let structs = db.get_by_kind(TypeKind::Struct);
+    /// assert_eq!(structs.len(), 2);
+    /// ```
+    pub fn get_by_kind(&self, kind: TypeKind) -> Vec<TypeInfo> {
+        self.types
+            .iter()
+            .filter(|t| t.type_kind == kind)
+            .map(|t| t.clone())
+            .collect()
+    }
+
+    /// Gets the count of types of a specific kind.
+    ///
+    /// # Arguments
+    /// * `kind` - The type kind to count.
+    ///
+    /// # Returns
+    /// The number of types matching the specified kind.
+    ///
+    /// # Example
+    /// ```rust
+    /// use type_db::{TypeDatabase, TypeKind};
+    ///
+    /// let mut db = TypeDatabase::new();
+    /// db.register_simple("Struct1", TypeKind::Struct);
+    /// db.register_simple("Struct2", TypeKind::Struct);
+    ///
+    /// assert_eq!(db.count_by_kind(TypeKind::Struct), 2);
+    /// ```
+    pub fn count_by_kind(&self, kind: TypeKind) -> usize {
+        self.types.iter().filter(|t| t.type_kind == kind).count()
     }
 
     /// Gets a type by its unique ID.
@@ -266,11 +509,13 @@ impl TypeDatabase {
 
     /// Clears all registered types from the database.
     ///
-    /// This removes all types, names, and category indices.
-    pub fn clear(&mut self) {
+    /// This removes all types, names, category indices, and file path indices.
+    pub fn clear(&self) {
         self.types.clear();
         self.name_index.clear();
         self.category_index.clear();
+        self.file_path_index.clear();
+        self.next_id.store(0, Ordering::SeqCst);
     }
 }
 
@@ -339,19 +584,20 @@ mod tests {
     #[test]
     fn test_register_and_get() {
         let mut db = TypeDatabase::new();
-        let id = db.register("Vector3", Some("Math".to_string()), None);
+        let id = db.register("Vector3", Some("Math".to_string()), None, None, TypeKind::Struct, None, None, None);
 
         let type_info = db.get(id).unwrap();
         assert_eq!(type_info.name, "Vector3");
         assert_eq!(type_info.category, Some("Math".to_string()));
+        assert_eq!(type_info.type_kind, TypeKind::Struct);
     }
 
     #[test]
     fn test_search() {
         let mut db = TypeDatabase::new();
-        db.register("Vector2", Some("Math".to_string()), None);
-        db.register("Vector3", Some("Math".to_string()), None);
-        db.register("String", Some("Primitives".to_string()), None);
+        db.register("Vector2", Some("Math".to_string()), None, None, TypeKind::Struct, None, None, None);
+        db.register("Vector3", Some("Math".to_string()), None, None, TypeKind::Struct, None, None, None);
+        db.register("String", Some("Primitives".to_string()), None, None, TypeKind::Struct, None, None, None);
 
         let results = db.search("vec");
         assert_eq!(results.len(), 2);
@@ -360,9 +606,9 @@ mod tests {
     #[test]
     fn test_fuzzy_search() {
         let mut db = TypeDatabase::new();
-        db.register("PlayerController", None, None);
-        db.register("EnemyController", None, None);
-        db.register("GameManager", None, None);
+        db.register_simple("PlayerController", TypeKind::Struct);
+        db.register_simple("EnemyController", TypeKind::Struct);
+        db.register_simple("GameManager", TypeKind::Struct);
 
         let results = db.search_fuzzy("pc");
         assert!(!results.is_empty());
@@ -372,9 +618,9 @@ mod tests {
     #[test]
     fn test_category_lookup() {
         let mut db = TypeDatabase::new();
-        db.register("Vector2", Some("Math".to_string()), None);
-        db.register("Vector3", Some("Math".to_string()), None);
-        db.register("String", Some("Primitives".to_string()), None);
+        db.register("Vector2", Some("Math".to_string()), None, None, TypeKind::Struct, None, None, None);
+        db.register("Vector3", Some("Math".to_string()), None, None, TypeKind::Struct, None, None, None);
+        db.register("String", Some("Primitives".to_string()), None, None, TypeKind::Struct, None, None, None);
 
         let math_types = db.get_by_category("math");
         assert_eq!(math_types.len(), 2);
@@ -383,7 +629,7 @@ mod tests {
     #[test]
     fn test_unregister() {
         let mut db = TypeDatabase::new();
-        let id = db.register("TestType", Some("TestCat".to_string()), Some("desc".to_string()));
+        let id = db.register("TestType", Some("TestCat".to_string()), Some("desc".to_string()), None, TypeKind::Struct, None, None, None);
         assert!(db.get(id).is_some());
         let removed = db.unregister(id);
         assert!(removed.is_some());
@@ -395,8 +641,8 @@ mod tests {
     #[test]
     fn test_clear_and_is_empty() {
         let mut db = TypeDatabase::new();
-        db.register("A", None, None);
-        db.register("B", None, None);
+        db.register_simple("A", TypeKind::Struct);
+        db.register_simple("B", TypeKind::Struct);
         assert!(!db.is_empty());
         db.clear();
         assert!(db.is_empty());
@@ -406,8 +652,8 @@ mod tests {
     #[test]
     fn test_duplicate_names() {
         let mut db = TypeDatabase::new();
-        let id1 = db.register("DupType", None, None);
-        let id2 = db.register("DupType", None, None);
+        let id1 = db.register_simple("DupType", TypeKind::Struct);
+        let id2 = db.register_simple("DupType", TypeKind::Struct);
         let found = db.get_by_name("DupType");
         assert_eq!(found.len(), 2);
         assert!(found.iter().any(|t| t.id == id1));
@@ -417,7 +663,7 @@ mod tests {
     #[test]
     fn test_case_insensitive_lookup() {
         let mut db = TypeDatabase::new();
-        db.register("CaseType", Some("Category".to_string()), None);
+        db.register("CaseType", Some("Category".to_string()), None, None, TypeKind::Struct, None, None, None);
         let found = db.get_by_name("casetype");
         assert_eq!(found.len(), 1);
         let found_cat = db.get_by_category("category");
@@ -427,8 +673,8 @@ mod tests {
     #[test]
     fn test_all_returns_all_types() {
         let mut db = TypeDatabase::new();
-        db.register("A", None, None);
-        db.register("B", None, None);
+        db.register_simple("A", TypeKind::Struct);
+        db.register_simple("B", TypeKind::Struct);
         let all = db.all();
         assert_eq!(all.len(), 2);
     }
@@ -436,7 +682,7 @@ mod tests {
     #[test]
     fn test_search_no_results() {
         let mut db = TypeDatabase::new();
-        db.register("Alpha", None, None);
+        db.register_simple("Alpha", TypeKind::Struct);
         let results = db.search("Beta");
         assert!(results.is_empty());
     }
@@ -444,7 +690,7 @@ mod tests {
     #[test]
     fn test_fuzzy_search_no_results() {
         let mut db = TypeDatabase::new();
-        db.register("Alpha", None, None);
+        db.register_simple("Alpha", TypeKind::Struct);
         let results = db.search_fuzzy("zzz");
         assert!(results.is_empty());
     }
@@ -455,7 +701,7 @@ mod tests {
         let count = 10_000;
         let start = Instant::now();
         for i in 0..count {
-            db.register(format!("Type{}", i), Some("Perf".to_string()), None);
+            db.register(format!("Type{}", i), Some("Perf".to_string()), None, None, TypeKind::Struct, None, None, None);
         }
         let duration = start.elapsed();
         assert_eq!(db.len(), count as usize);
@@ -472,7 +718,7 @@ mod tests {
             thread::spawn(move || {
                 for i in 0..2_000 {
                     let mut db = db.lock().unwrap();
-                    db.register(format!("T{}_{}", t, i), Some("Cat".to_string()), None);
+                    db.register(format!("T{}_{}", t, i), Some("Cat".to_string()), None, None, TypeKind::Struct, None, None, None);
                 }
             })
         }).collect();
@@ -485,7 +731,7 @@ mod tests {
     fn test_concurrent_reads() {
         let mut db = TypeDatabase::new();
         for i in 0..1000 {
-            db.register(format!("Type{}", i), Some("Cat".to_string()), None);
+            db.register(format!("Type{}", i), Some("Cat".to_string()), None, None, TypeKind::Struct, None, None, None);
         }
         let db = Arc::new(db);
         let threads: Vec<_> = (0..4).map(|_| {
@@ -497,5 +743,59 @@ mod tests {
             })
         }).collect();
         for th in threads { th.join().unwrap(); }
+    }
+
+    #[test]
+    fn test_file_path_lookup() {
+        let mut db = TypeDatabase::new();
+        let path = PathBuf::from("/test/file.rs");
+        let id = db.register(
+            "TestType",
+            None,
+            None,
+            Some(path.clone()),
+            TypeKind::Struct,
+            None,
+            None,
+            None,
+        );
+
+        let found = db.get_by_path(&path);
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().id, id);
+
+        let removed = db.unregister_by_path(&path);
+        assert!(removed.is_some());
+        assert!(db.get_by_path(&path).is_none());
+    }
+
+    #[test]
+    fn test_get_by_kind() {
+        let mut db = TypeDatabase::new();
+        db.register_simple("Struct1", TypeKind::Struct);
+        db.register_simple("Struct2", TypeKind::Struct);
+        db.register_simple("Enum1", TypeKind::Enum);
+        db.register_simple("Trait1", TypeKind::Trait);
+
+        let structs = db.get_by_kind(TypeKind::Struct);
+        assert_eq!(structs.len(), 2);
+
+        let enums = db.get_by_kind(TypeKind::Enum);
+        assert_eq!(enums.len(), 1);
+
+        let traits = db.get_by_kind(TypeKind::Trait);
+        assert_eq!(traits.len(), 1);
+    }
+
+    #[test]
+    fn test_count_by_kind() {
+        let mut db = TypeDatabase::new();
+        db.register_simple("Struct1", TypeKind::Struct);
+        db.register_simple("Struct2", TypeKind::Struct);
+        db.register_simple("Enum1", TypeKind::Enum);
+
+        assert_eq!(db.count_by_kind(TypeKind::Struct), 2);
+        assert_eq!(db.count_by_kind(TypeKind::Enum), 1);
+        assert_eq!(db.count_by_kind(TypeKind::Trait), 0);
     }
 }

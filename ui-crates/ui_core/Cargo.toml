@@ -17,6 +17,7 @@ ui_settings.workspace = true
 ui_multiplayer.workspace = true
 ui_terminal.workspace = true
 ui_problems.workspace = true
+ui_type_debugger.workspace = true
 ui_file_manager.workspace = true
 ui_loading_screen.workspace = true
 ui_project_launcher.workspace = true

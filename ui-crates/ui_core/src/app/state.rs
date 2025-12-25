@@ -7,6 +7,7 @@ use ui_editor::{
     DawEditorPanel, FileManagerDrawer, LevelEditorPanel, ProblemsDrawer,
     ScriptEditorPanel, TerminalDrawer,
 };
+use ui_type_debugger::TypeDebuggerDrawer;
 use ui_entry::EntryScreen;
 use ui_common::command_palette::GenericPalette;
 use crate::unified_palette::AnyPaletteDelegate;
@@ -29,6 +30,7 @@ pub struct AppState {
     pub drawer_height: f32,
     pub drawer_resizing: bool,
     pub problems_drawer: Entity<ProblemsDrawer>,
+    pub type_debugger_drawer: Entity<TypeDebuggerDrawer>,
     pub terminal_drawer: Entity<TerminalDrawer>,
 
     // Editor tracking

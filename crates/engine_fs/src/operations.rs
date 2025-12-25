@@ -5,53 +5,57 @@
 use anyhow::{Result, Context};
 use std::path::PathBuf;
 use std::sync::Arc;
-use super::{AssetRegistry, TypeAliasIndex};
+use type_db::{TypeDatabase, TypeKind};
 
 /// Handles asset file operations
 pub struct AssetOperations {
     project_root: PathBuf,
-    registry: Arc<AssetRegistry>,
-    type_index: Arc<TypeAliasIndex>,
+    type_database: Arc<TypeDatabase>,
 }
 
 impl AssetOperations {
     pub fn new(
         project_root: PathBuf,
-        registry: Arc<AssetRegistry>,
-        type_index: Arc<TypeAliasIndex>,
+        type_database: Arc<TypeDatabase>,
     ) -> Self {
         Self {
             project_root,
-            registry,
-            type_index,
+            type_database,
         }
     }
     
     /// Create a new type alias file
     pub fn create_type_alias(&self, name: &str, content: &str) -> Result<PathBuf> {
         // Validate name is unique
-        if !self.type_index.is_name_available(name) {
+        if !self.type_database.get_by_name(name).is_empty() {
             anyhow::bail!("Type alias name '{}' is already in use", name);
         }
-        
+
         // Determine file path
         let file_path = self.project_root
             .join("types")
             .join("aliases")
             .join(format!("{}.alias.json", name));
-        
+
         // Create parent directories
         if let Some(parent) = file_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        
+
         // Write file
         std::fs::write(&file_path, content)
             .context("Failed to write alias file")?;
-        
-        // Register in index
-        self.type_index.register(&file_path)?;
-        
+
+        // Register in type database
+        self.type_database.register_with_path(
+            name.to_string(),
+            file_path.clone(),
+            TypeKind::Alias,
+            None,
+            Some(format!("Type alias: {}", name)),
+            None,
+        );
+
         Ok(file_path)
     }
     
@@ -60,49 +64,89 @@ impl AssetOperations {
         // Parse to validate before writing
         let asset: ui_types_common::AliasAsset = serde_json::from_str(content)
             .context("Invalid alias JSON")?;
-        
+
         // Validate name is still unique (or same file)
-        self.type_index.validate_name(&asset.name, file_path)?;
-        
+        let existing_types = self.type_database.get_by_name(&asset.name);
+        for existing in &existing_types {
+            if existing.file_path.as_ref() != Some(file_path) {
+                anyhow::bail!("Type alias name '{}' is already in use", asset.name);
+            }
+        }
+
         // Write file
         std::fs::write(file_path, content)
             .context("Failed to write alias file")?;
-        
-        // Update index
-        self.type_index.register(file_path)?;
-        
+
+        // Update in type database
+        self.type_database.register_with_path(
+            asset.name.clone(),
+            file_path.clone(),
+            TypeKind::Alias,
+            None,
+            Some(format!("Type alias: {}", asset.name)),
+            None,
+        );
+
         Ok(())
     }
-    
+
     /// Delete a type alias file
     pub fn delete_type_alias(&self, file_path: &PathBuf) -> Result<()> {
-        // Remove from index first
-        self.type_index.unregister_by_path(file_path);
-        
+        // Remove from type database first
+        self.type_database.unregister_by_path(file_path);
+
         // Delete file
         std::fs::remove_file(file_path)
             .context("Failed to delete alias file")?;
-        
+
         Ok(())
     }
-    
+
     /// Register an existing type alias file (for scanning)
     pub fn register_type_alias(&self, file_path: &PathBuf) -> Result<()> {
-        self.type_index.register(file_path)
+        // Read and parse the file to get the name
+        let content = std::fs::read_to_string(file_path)
+            .context("Failed to read alias file")?;
+        let asset: ui_types_common::AliasAsset = serde_json::from_str(&content)
+            .context("Invalid alias JSON")?;
+
+        // Register in type database
+        self.type_database.register_with_path(
+            asset.name.clone(),
+            file_path.clone(),
+            TypeKind::Alias,
+            None,
+            Some(format!("Type alias: {}", asset.name)),
+            None,
+        );
+
+        Ok(())
     }
-    
+
     /// Move/rename a type alias file
     pub fn move_type_alias(&self, old_path: &PathBuf, new_path: &PathBuf) -> Result<()> {
         // Unregister old
-        self.type_index.unregister_by_path(old_path);
-        
+        self.type_database.unregister_by_path(old_path);
+
         // Move file
         std::fs::rename(old_path, new_path)
             .context("Failed to move alias file")?;
-        
-        // Register new
-        self.type_index.register(new_path)?;
-        
+
+        // Read and register at new location
+        let content = std::fs::read_to_string(new_path)
+            .context("Failed to read alias file")?;
+        let asset: ui_types_common::AliasAsset = serde_json::from_str(&content)
+            .context("Invalid alias JSON")?;
+
+        self.type_database.register_with_path(
+            asset.name.clone(),
+            new_path.clone(),
+            TypeKind::Alias,
+            None,
+            Some(format!("Type alias: {}", asset.name)),
+            None,
+        );
+
         Ok(())
     }
     
@@ -152,73 +196,97 @@ impl AssetOperations {
         Ok(file_path)
     }
     
-    /// Register an asset in the appropriate index
+    /// Register an asset in the type database
     fn register_asset(&self, file_path: &PathBuf, kind: super::asset_templates::AssetKind) -> Result<()> {
         use super::asset_templates::AssetKind;
-        
-        match kind {
-            AssetKind::TypeAlias => {
-                self.type_index.register(file_path)?;
-            }
-            AssetKind::Struct => {
-                self.registry.register_struct(file_path)?;
-            }
-            AssetKind::Enum => {
-                self.registry.register_enum(file_path)?;
-            }
-            AssetKind::Trait => {
-                self.registry.register_trait(file_path)?;
-            }
-            _ => {
-                // Other asset types don't need indexing yet
-            }
-        }
-        
+
+        // Get the file name to use as the type name
+        let name = file_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        let type_kind = match kind {
+            AssetKind::TypeAlias => TypeKind::Alias,
+            AssetKind::Struct => TypeKind::Struct,
+            AssetKind::Enum => TypeKind::Enum,
+            AssetKind::Trait => TypeKind::Trait,
+            _ => return Ok(()), // Other asset types don't need indexing yet
+        };
+
+        self.type_database.register_with_path(
+            name.clone(),
+            file_path.clone(),
+            type_kind,
+            None,
+            Some(format!("{:?}: {}", type_kind, name)),
+            None,
+        );
+
         Ok(())
     }
     
     /// Delete any asset file
     pub fn delete_asset(&self, file_path: &PathBuf) -> Result<()> {
-        // Try to unregister from all indexes
-        self.type_index.unregister_by_path(file_path);
-        // TODO: Unregister from other indexes
-        
+        // Unregister from type database
+        self.type_database.unregister_by_path(file_path);
+
         // Delete file
         std::fs::remove_file(file_path)
             .context("Failed to delete asset file")?;
-        
+
         Ok(())
     }
-    
+
     /// Rename/move any asset file
     pub fn move_asset(&self, old_path: &PathBuf, new_path: &PathBuf) -> Result<()> {
-        // Unregister from indexes
-        self.type_index.unregister_by_path(old_path);
-        
+        // Unregister from type database
+        self.type_database.unregister_by_path(old_path);
+
         // Create parent directory for new path
         if let Some(parent) = new_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        
+
         // Move file
         std::fs::rename(old_path, new_path)
             .context("Failed to move asset file")?;
-        
+
         // Re-register at new location
         // Auto-detect type from extension
         if let Some(ext) = new_path.extension() {
             let ext_str = ext.to_string_lossy();
-            if ext_str.contains("alias") {
-                self.type_index.register(new_path)?;
+            let name = new_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown")
+                .to_string();
+
+            let type_kind = if ext_str.contains("alias") {
+                Some(TypeKind::Alias)
             } else if ext_str.contains("struct") {
-                self.registry.register_struct(new_path)?;
+                Some(TypeKind::Struct)
             } else if ext_str.contains("enum") {
-                self.registry.register_enum(new_path)?;
+                Some(TypeKind::Enum)
             } else if ext_str.contains("trait") {
-                self.registry.register_trait(new_path)?;
+                Some(TypeKind::Trait)
+            } else {
+                None
+            };
+
+            if let Some(kind) = type_kind {
+                self.type_database.register_with_path(
+                    name.clone(),
+                    new_path.clone(),
+                    kind,
+                    None,
+                    Some(format!("{:?}: {}", kind, name)),
+            None,
+                );
             }
         }
-        
+
         Ok(())
     }
 }

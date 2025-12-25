@@ -5,6 +5,9 @@ edition = "2021"
 publish = false
 
 [dependencies]
+# Type database
+type_db.workspace = true
+
 # Thread-safe data structures
 dashmap = "6.1.0"
 parking_lot = "0.12"

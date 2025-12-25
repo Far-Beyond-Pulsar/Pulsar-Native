@@ -4,6 +4,7 @@ use std::{path::PathBuf, sync::Arc};
 use gpui::{AppContext, Context, Entity, Window};
 use ui::dock::DockItem;
 use ui_editor::{FileManagerDrawer, LevelEditorPanel, ProblemsDrawer, TerminalDrawer};
+use ui_type_debugger::TypeDebuggerDrawer;
 use ui_entry::EntryScreen;
 use plugin_manager::PluginManager;
 use engine_backend::services::rust_analyzer_manager::RustAnalyzerManager;
@@ -132,6 +133,7 @@ impl PulsarApp {
         // Create drawers
         let file_manager_drawer = cx.new(|cx| FileManagerDrawer::new(project_path.clone(), window, cx));
         let problems_drawer = cx.new(|cx| ProblemsDrawer::new(window, cx));
+        let type_debugger_drawer = cx.new(|cx| TypeDebuggerDrawer::new(window, cx));
         let terminal_drawer = cx.new(|cx| TerminalDrawer::new(window, cx));
 
         // Subscribe to drawer events
@@ -196,6 +198,7 @@ impl PulsarApp {
                 drawer_height: 400.0,
                 drawer_resizing: false,
                 problems_drawer,
+                type_debugger_drawer,
                 terminal_drawer,
                 center_tabs,
                 script_editor: None,

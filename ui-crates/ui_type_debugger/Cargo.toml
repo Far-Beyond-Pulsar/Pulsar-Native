@@ -1,0 +1,20 @@
+[package]
+name = "ui_type_debugger"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# UI framework
+gpui.workspace = true
+ui.workspace = true
+
+# UI crates
+ui_common.workspace = true
+
+# Engine dependencies
+type_db.workspace = true
+
+# Utilities
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }

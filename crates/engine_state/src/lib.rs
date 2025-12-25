@@ -19,6 +19,7 @@ pub use discord::DiscordPresence;
 
 use std::sync::Arc;
 use parking_lot::RwLock;
+use type_db::TypeDatabase;
 
 /// Global engine state
 #[derive(Clone)]
@@ -32,6 +33,7 @@ struct EngineStateInner {
     window_count: usize,
     window_sender: Option<WindowRequestSender>,
     discord_presence: Option<DiscordPresence>,
+    type_database: Option<Arc<TypeDatabase>>,
 }
 
 impl EngineState {
@@ -44,6 +46,7 @@ impl EngineState {
                 window_count: 0,
                 window_sender: None,
                 discord_presence: None,
+                type_database: None,
             })),
         }
     }
@@ -151,6 +154,16 @@ impl EngineState {
         if let Some(discord) = self.discord() {
             discord.update_all(project_name, tab_name, file_path);
         }
+    }
+
+    /// Set the global TypeDatabase instance
+    pub fn set_type_database(&self, type_database: Arc<TypeDatabase>) {
+        self.inner.write().type_database = Some(type_database);
+    }
+
+    /// Get the global TypeDatabase instance
+    pub fn type_database(&self) -> Option<Arc<TypeDatabase>> {
+        self.inner.read().type_database.clone()
     }
 }
 

@@ -26,6 +26,11 @@ impl PulsarApp {
             .read(cx)
             .count_by_severity(ui_problems::DiagnosticSeverity::Warning);
 
+        let type_count = self
+            .state.type_debugger_drawer
+            .read(cx)
+            .total_count();
+
         let (status_color, status_icon) = match status {
             AnalyzerStatus::Ready => (cx.theme().success, IconName::CheckCircle),
             AnalyzerStatus::Indexing { .. } | AnalyzerStatus::Starting => {
@@ -145,6 +150,46 @@ impl PulsarApp {
                                     ))
                                     .on_click(cx.listener(|app, _, window, cx| {
                                         app.toggle_problems(window, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("toggle-type-debugger")
+                                    .ghost()
+                                    .icon(
+                                        Icon::new(IconName::Database)
+                                            .size(px(16.))
+                                            .text_color(cx.theme().accent)
+                                    )
+                                    .relative()
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(4.))
+                                    .when(type_count > 0, |this| {
+                                        this.child(
+                                            div()
+                                                .absolute()
+                                                .top(px(-4.))
+                                                .right(px(-4.))
+                                                .min_w(px(16.))
+                                                .h(px(16.))
+                                                .px_1()
+                                                .rounded(px(8.))
+                                                .bg(cx.theme().accent)
+                                                .flex()
+                                                .items_center()
+                                                .justify_center()
+                                                .child(
+                                                    div()
+                                                        .text_xs()
+                                                        .font_bold()
+                                                        .text_color(rgb(0xFFFFFF))
+                                                        .child(format!("{}", type_count)),
+                                                ),
+                                        )
+                                    })
+                                    .tooltip(format!("{} Types", type_count))
+                                    .on_click(cx.listener(|app, _, window, cx| {
+                                        app.toggle_type_debugger(window, cx);
                                     })),
                             )
                             .child(
@@ -352,6 +397,7 @@ impl Render for PulsarApp {
             .track_focus(&self.state.focus_handle)
             .on_action(cx.listener(Self::on_toggle_file_manager))
             .on_action(cx.listener(Self::on_toggle_problems))
+            .on_action(cx.listener(Self::on_toggle_type_debugger))
             .on_action(cx.listener(Self::on_toggle_terminal))
             .on_action(cx.listener(Self::on_toggle_command_palette))
             .child(
