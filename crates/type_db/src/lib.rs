@@ -1,6 +1,29 @@
+//! # Type Database
+//!
+//! This crate provides an in-memory, thread-safe database for storing and searching user-defined runtime types.
+//! It is designed for use in game engines or similar systems where types may be registered, queried, and removed at runtime.
+//!
+//! ## Features
+//! - Fast registration and lookup by ID, name, or category
+//! - Case-insensitive and fuzzy search
+//! - Thread-safe with concurrent access (using DashMap)
+//! - Simple API for integration
+//!
+//! ## Example
+//! ```rust
+//! use type_db::{TypeDatabase};
+//! let mut db = TypeDatabase::new();
+//! let id = db.register("Vector3", Some("Math".to_string()), Some("3D vector".to_string()));
+//! let found = db.get(id);
+//! assert!(found.is_some());
+//! ```
+
 use dashmap::DashMap;
 
-/// Represents a runtime type created by the user in the engine
+/// Represents a runtime type created by the user in the engine.
+///
+/// Each `TypeInfo` contains a unique ID, a display name, an optional category for grouping,
+/// and an optional description. This struct is intended to be lightweight and easily clonable.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TypeInfo {
     /// Unique identifier for the type
@@ -13,7 +36,21 @@ pub struct TypeInfo {
     pub description: Option<String>,
 }
 
-/// An in-memory database for storing and searching user-created runtime types
+
+/// An in-memory, thread-safe database for storing and searching user-created runtime types.
+///
+/// `TypeDatabase` supports fast registration, removal, and lookup of types by ID, name, or category.
+/// It uses `DashMap` internally for concurrent access, making it suitable for multi-threaded environments.
+///
+/// # Example
+/// ```rust
+/// use type_db::TypeDatabase;
+/// 
+/// let mut db = TypeDatabase::new();
+/// let id = db.register("Vector3", Some("Math".to_string()), None);
+/// let found = db.get(id);
+/// assert!(found.is_some());
+/// ```
 
 #[derive(Debug, Default)]
 pub struct TypeDatabase {
@@ -28,12 +65,31 @@ pub struct TypeDatabase {
 }
 
 impl TypeDatabase {
-    /// Creates a new empty type database
+    /// Creates a new, empty type database.
+    ///
+    /// # Returns
+    /// A new `TypeDatabase` instance.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Registers a new type and returns its assigned ID
+    /// Registers a new type and returns its assigned unique ID.
+    ///
+    /// # Arguments
+    /// * `name` - The display name of the type (case-insensitive for lookups).
+    /// * `category` - Optional category for grouping types.
+    /// * `description` - Optional description for documentation/UI.
+    ///
+    /// # Returns
+    /// The unique ID assigned to the new type.
+    ///
+    /// # Example
+    /// ```rust
+    /// use type_db::TypeDatabase;
+    /// 
+    /// let mut db = TypeDatabase::new();
+    /// let id = db.register("Vector3", Some("Math".to_string()), None);
+    /// ```
     pub fn register(&mut self, name: impl Into<String>, category: Option<String>, description: Option<String>) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
@@ -64,7 +120,23 @@ impl TypeDatabase {
         id
     }
 
-    /// Removes a type by its ID
+    /// Removes a type by its ID.
+    ///
+    /// # Arguments
+    /// * `id` - The unique ID of the type to remove.
+    ///
+    /// # Returns
+    /// The removed `TypeInfo` if it existed, or `None` if not found.
+    ///
+    /// # Example
+    /// ```rust
+    /// use type_db::TypeDatabase;
+    ///
+    /// let mut db = TypeDatabase::new();
+    /// let id = db.register("Foo", None, None);
+    /// let removed = db.unregister(id);
+    /// assert!(removed.is_some());
+    /// ```
     pub fn unregister(&mut self, id: u64) -> Option<TypeInfo> {
         if let Some((_, type_info)) = self.types.remove(&id) {
             // Remove from name index
@@ -85,12 +157,24 @@ impl TypeDatabase {
         }
     }
 
-    /// Gets a type by its ID
+    /// Gets a type by its unique ID.
+    ///
+    /// # Arguments
+    /// * `id` - The unique ID of the type.
+    ///
+    /// # Returns
+    /// `Some(TypeInfo)` if found, or `None` if not found.
     pub fn get(&self, id: u64) -> Option<TypeInfo> {
         self.types.get(&id).map(|v| v.clone())
     }
 
-    /// Gets a type by its exact name
+    /// Gets all types with the given exact name (case-insensitive).
+    ///
+    /// # Arguments
+    /// * `name` - The name to search for (case-insensitive).
+    ///
+    /// # Returns
+    /// A vector of all matching `TypeInfo`.
     pub fn get_by_name(&self, name: &str) -> Vec<TypeInfo> {
         self.name_index
             .get(&name.to_lowercase())
@@ -98,7 +182,13 @@ impl TypeDatabase {
             .unwrap_or_default()
     }
 
-    /// Searches for types whose names contain the query string (case-insensitive)
+    /// Searches for types whose names contain the query string (case-insensitive substring match).
+    ///
+    /// # Arguments
+    /// * `query` - The substring to search for (case-insensitive).
+    ///
+    /// # Returns
+    /// A vector of all matching `TypeInfo`.
     pub fn search(&self, query: &str) -> Vec<TypeInfo> {
         let query_lower = query.to_lowercase();
         self.types
@@ -108,7 +198,15 @@ impl TypeDatabase {
             .collect()
     }
 
-    /// Searches for types with fuzzy matching on the name
+    /// Searches for types with fuzzy matching on the name.
+    ///
+    /// Uses a simple scoring algorithm to rank results by relevance.
+    ///
+    /// # Arguments
+    /// * `query` - The fuzzy pattern to search for (case-insensitive, non-contiguous).
+    ///
+    /// # Returns
+    /// A vector of all matching `TypeInfo`, sorted by descending score.
     pub fn search_fuzzy(&self, query: &str) -> Vec<TypeInfo> {
         let query_lower = query.to_lowercase();
         let query_chars: Vec<char> = query_lower.chars().collect();
@@ -131,7 +229,13 @@ impl TypeDatabase {
         results.into_iter().map(|(t, _)| t).collect()
     }
 
-    /// Gets all types in a category
+    /// Gets all types in a given category (case-insensitive).
+    ///
+    /// # Arguments
+    /// * `category` - The category name to search for (case-insensitive).
+    ///
+    /// # Returns
+    /// A vector of all types in the category.
     pub fn get_by_category(&self, category: &str) -> Vec<TypeInfo> {
         self.category_index
             .get(&category.to_lowercase())
@@ -139,22 +243,30 @@ impl TypeDatabase {
             .unwrap_or_default()
     }
 
-    /// Returns all registered types
+    /// Returns all registered types in the database.
+    ///
+    /// # Returns
+    /// A vector of all `TypeInfo` currently registered.
     pub fn all(&self) -> Vec<TypeInfo> {
         self.types.iter().map(|t| t.clone()).collect()
     }
 
-    /// Returns the number of registered types
+    /// Returns the number of registered types in the database.
+    ///
+    /// # Returns
+    /// The number of types currently registered.
     pub fn len(&self) -> usize {
         self.types.len()
     }
 
-    /// Returns true if no types are registered
+    /// Returns `true` if no types are registered in the database.
     pub fn is_empty(&self) -> bool {
         self.types.is_empty()
     }
 
-    /// Clears all registered types
+    /// Clears all registered types from the database.
+    ///
+    /// This removes all types, names, and category indices.
     pub fn clear(&mut self) {
         self.types.clear();
         self.name_index.clear();
@@ -162,7 +274,18 @@ impl TypeDatabase {
     }
 }
 
-/// Simple fuzzy matching algorithm that returns a score
+/// Simple fuzzy matching algorithm that returns a score.
+///
+/// Returns a positive score if all pattern characters are found in order in the text.
+/// Higher scores are given for consecutive matches and matches at word/segment boundaries.
+/// Returns 0 if the pattern is not fully matched.
+///
+/// # Arguments
+/// * `pattern` - The pattern as a slice of lowercase chars.
+/// * `text` - The text to search (already lowercase).
+///
+/// # Returns
+/// An integer score (0 = no match, higher is better).
 fn fuzzy_match(pattern: &[char], text: &str) -> i32 {
     let text_chars: Vec<char> = text.chars().collect();
     let mut pattern_idx = 0;
@@ -201,6 +324,13 @@ fn fuzzy_match(pattern: &[char], text: &str) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // # TypeDatabase Tests
+    //
+    // This module contains unit and performance tests for the TypeDatabase.
+    // It covers registration, lookup, removal, edge cases, and basic performance/concurrency.
+    //
+    // Performance tests are not strict benchmarks, but will fail if operations are unreasonably slow.
 
     use std::time::Instant;
     use std::thread;
