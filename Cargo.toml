@@ -33,6 +33,7 @@ members = [
     "ui-crates/ui_enum_editor",
     "ui-crates/ui_trait_editor",
     "ui-crates/ui_alias_editor",
+    "crates/type_db",
 ]
 
 default-members = ["crates/engine"]

@@ -3993,6 +3993,19 @@ dependencies = [
 
 [[package]]
 name = "dashmap"
+version = "5.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "978747c1d849a7d2ee5e8adc0159961c48fb7e5db2f06af6723b80123bb53856"
+dependencies = [
+ "cfg-if",
+ "hashbrown 0.14.5",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core",
+]
+
+[[package]]
+name = "dashmap"
 version = "6.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5041cc499144891f3790297212f32a74fb938e5136a14943f338ef9e0ae276cf"
@@ -4509,7 +4522,7 @@ name = "engine_fs"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "dashmap",
+ "dashmap 6.1.0",
  "notify 6.1.1",
  "serde",
  "serde_json",
@@ -4523,7 +4536,7 @@ name = "engine_state"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "dashmap",
+ "dashmap 6.1.0",
  "parking_lot",
  "rust-discord-activity",
  "serde",
@@ -6062,7 +6075,7 @@ dependencies = [
  "base64 0.22.1",
  "compact_str",
  "const_format",
- "dashmap",
+ "dashmap 6.1.0",
  "flate2",
  "futures",
  "lazy_static",
@@ -9454,7 +9467,7 @@ version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Dev/horizon#46eff52740fe4485cae229f03de5c261627565bd"
 dependencies = [
  "async-trait",
- "dashmap",
+ "dashmap 6.1.0",
  "horizon_event_system",
  "libloading 0.8.9",
  "luminal_rt",
@@ -9956,7 +9969,7 @@ dependencies = [
  "colored",
  "config 0.14.1",
  "criterion",
- "dashmap",
+ "dashmap 6.1.0",
  "ed25519-dalek",
  "futures",
  "futures-util",
@@ -10027,7 +10040,7 @@ dependencies = [
  "claxon",
  "cpal",
  "crossbeam",
- "dashmap",
+ "dashmap 6.1.0",
  "device_query",
  "directories",
  "engine_backend",
@@ -14047,6 +14060,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ea3136b675547379c4bd395ca6b938e5ad3c3d20fad76e7fe85f9e0d011419c"
 
 [[package]]
+name = "type_db"
+version = "0.1.0"
+dependencies = [
+ "dashmap 5.5.3",
+ "serde",
+]
+
+[[package]]
 name = "typeid"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -14279,7 +14300,7 @@ dependencies = [
  "core-graphics 0.23.2",
  "cpal",
  "crossbeam",
- "dashmap",
+ "dashmap 6.1.0",
  "device_query",
  "engine_backend",
  "engine_state",
@@ -14329,7 +14350,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
- "dashmap",
+ "dashmap 6.1.0",
  "engine_state",
  "gpui",
  "parking_lot",
