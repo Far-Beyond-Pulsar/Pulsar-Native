@@ -105,6 +105,7 @@ pub struct TypeAliasIndex {
     aliases: DashMap<String, TypeAliasSignature>,
 }
 
+// TODO: We have a dedicated type_db crate now, this code should no longer be necessary here.
 impl TypeAliasIndex {
     pub fn new() -> Self {
         Self {
