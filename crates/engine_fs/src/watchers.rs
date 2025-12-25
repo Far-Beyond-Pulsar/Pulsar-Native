@@ -38,6 +38,8 @@ pub fn start_watcher(
 }
 
 fn handle_fs_event(event: &Event, type_index: &TypeAliasIndex) {
+    println!("Filesystem event: {:?}", event);
+
     match &event.kind {
         EventKind::Create(_) | EventKind::Modify(_) => {
             // File created or modified
