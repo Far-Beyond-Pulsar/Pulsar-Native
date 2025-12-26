@@ -104,7 +104,7 @@ unsafe fn initialize_shared_texture(window_state: &mut crate::window::WindowStat
     });
 
     if let Ok(opt_handle_ptr) = handle_result {
-        if let Some(handle_ptr) = opt_handle_ptr {
+        if let Ok(Some(handle_ptr)) = opt_handle_ptr {
             println!("✨ Got shared texture handle from GPUI: {:?}", handle_ptr);
 
             let handle_value: isize = *(&handle_ptr as *const _ as *const isize);

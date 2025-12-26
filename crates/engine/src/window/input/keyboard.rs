@@ -136,6 +136,7 @@ pub fn handle_keyboard_input(
 
     // Forward keyboard events to GPUI
     if let Some(gpui_window_ref) = window_state.gpui_window.as_ref() {
+        // gpui_window_ref.inject_input_event(cx, event)
         // Store event and create keystroke before borrowing
         let current_modifiers_val = window_state.current_modifiers;
 
@@ -154,6 +155,7 @@ pub fn handle_keyboard_input(
                         key_char,
                     })
                 } else {
+                    println!("⚠️ Unsupported key code: {:?}", code);
                     None
                 }
             }
@@ -177,7 +179,7 @@ pub fn handle_keyboard_input(
                 }
             };
 
-            let _ = window_state.gpui_app.update(|cx| gpui_window_ref.inject_input_event(cx, gpui_event));
+            window_state.gpui_app.update(|cx| gpui_window_ref.inject_input_event(cx, gpui_event)).unwrap();
         }
     }
 
