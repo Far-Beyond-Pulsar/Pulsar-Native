@@ -45,10 +45,10 @@ debug = true
 
 [workspace.dependencies]
 ######################### TGPUI #########################
-#gpui = { git = "https://github.com/tristanpoland/zed", rev="433b9ae0dce0e0dae03c4ac44d70575c981c530c", features = ["runtime_shaders", "macos-blade"] }
-#gpui_macros = { git = "https://github.com/tristanpoland/zed", rev="433b9ae0dce0e0dae03c4ac44d70575c981c530c" }
-#reqwest_client = { git = "https://github.com/tristanpoland/zed", rev = "433b9ae0dce0e0dae03c4ac44d70575c981c530c" }
-#sum_tree = { git = "https://github.com/tristanpoland/zed", rev = "433b9ae0dce0e0dae03c4ac44d70575c981c530c" }
+gpui = { git = "https://github.com/tristanpoland/zed", rev="2047043a00dc138e3d8127c8921c96927acea8f8", features = ["runtime_shaders", "macos-blade"] }
+gpui_macros = { git = "https://github.com/tristanpoland/zed", rev="2047043a00dc138e3d8127c8921c96927acea8f8" }
+reqwest_client = { git = "https://github.com/tristanpoland/zed", rev = "2047043a00dc138e3d8127c8921c96927acea8f8" }
+sum_tree = { git = "https://github.com/tristanpoland/zed", rev = "2047043a00dc138e3d8127c8921c96927acea8f8" }
 
 ###################### Local WGPUI ######################
 # gpui = { path = "C:/Users/redst/OneDrive/Documents/GitHub/gpui-ce/crates/gpui", features = ["runtime_shaders", "macos-blade"] }
@@ -56,10 +56,10 @@ debug = true
 # reqwest_client = { path = "C:/Users/redst/OneDrive/Documents/GitHub/gpui-ce/crates/reqwest_client" }
 # sum_tree = { path = "C:/Users/redst/OneDrive/Documents/GitHub/gpui-ce/crates/sum_tree" }
 
-gpui = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/gpui", features = ["runtime_shaders", "macos-blade"] }
-gpui_macros = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/gpui_macros" }
-reqwest_client = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/reqwest_client" }
-sum_tree = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/sum_tree" }
+#gpui = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/gpui", features = ["runtime_shaders", "macos-blade"] }
+#gpui_macros = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/gpui_macros" }
+#reqwest_client = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/reqwest_client" }
+#sum_tree = { path = "C:/Users/redst/OneDrive/Documents/GitHub/zed/crates/sum_tree" }
 
 ######################### WGPUI #########################
 # gpui = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev="6f6e5f30a5306a08e9a409ad39b9a0458f0ddf01", features = ["runtime_shaders", "macos-blade"] }
@@ -78,7 +78,7 @@ engine_fs = { path = "crates/engine_fs" }
 
 # UI component crates
 ui_core = { path = "ui-crates/ui_core" }
-ui_entry = { path = "ui-crates/ui_entry" }
+ui_entry = { path = "ui-crates/ui_entry" }  
 ui_editor = { path = "ui-crates/ui_editor" }
 ui_settings = { path = "ui-crates/ui_settings" }
 ui_multiplayer = { path = "ui-crates/ui_multiplayer" }
