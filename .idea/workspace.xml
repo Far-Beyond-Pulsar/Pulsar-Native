@@ -41,6 +41,9 @@
       <package file="$PROJECT_DIR$/crates/pulsar_std">
         <feature name="default" enabled="true" />
       </package>
+      <package file="$PROJECT_DIR$/crates/type_db">
+        <feature name="default" enabled="true" />
+      </package>
       <package file="$PROJECT_DIR$/crates/ui">
         <feature name="default" enabled="true" />
       </package>
@@ -98,6 +101,9 @@
       <package file="$PROJECT_DIR$/ui-crates/ui_trait_editor">
         <feature name="default" enabled="true" />
       </package>
+      <package file="$PROJECT_DIR$/ui-crates/ui_type_debugger">
+        <feature name="default" enabled="true" />
+      </package>
       <package file="$PROJECT_DIR$/ui-crates/ui_types_common">
         <feature name="default" enabled="true" />
       </package>
@@ -140,6 +146,7 @@
     "git-widget-placeholder": "main",
     "ignore.virus.scanning.warn.message": "true",
     "junie.onboarding.icon.badge.shown": "true",
+    "nodejs_package_manager_path": "npm",
     "org.rust.cargo.project.model.PROJECT_DISCOVERY": "true",
     "org.rust.first.attach.projects": "true",
     "to.speed.mode.migration.done": "true",
@@ -158,6 +165,7 @@
       <updated>1766526223223</updated>
       <workItem from="1766526224690" duration="30000" />
       <workItem from="1766560771198" duration="73000" />
+      <workItem from="1766717308008" duration="24000" />
     </task>
     <servers />
   </component>

@@ -39,6 +39,8 @@
       <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_terminal/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_trait_editor/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_types_common/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/type_db/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ui-crates/ui_type_debugger/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

@@ -93,8 +93,11 @@ impl EngineFs {
 
     /// Register a single asset file
     fn register_asset(&self, path: PathBuf) -> Result<()> {
+        use type_db::TypeKind;
+
         if let Some(extension) = path.extension() {
-            match extension.to_string_lossy().as_ref() {
+            let ext_str = extension.to_string_lossy();
+            match ext_str.as_ref() {
                 "alias" | "json" if path.file_name()
                     .and_then(|n| n.to_str())
                     .map(|n| n.contains("alias"))
@@ -104,8 +107,27 @@ impl EngineFs {
                     self.operations.register_type_alias(&path)?;
                 }
                 "struct" | "enum" | "trait" => {
-                    // Other type definitions - handled by operations
-                    // We could add specific registration here if needed
+                    // Register struct, enum, or trait in type database
+                    let name = path.file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("unknown")
+                        .to_string();
+
+                    let type_kind = match ext_str.as_ref() {
+                        "struct" => TypeKind::Struct,
+                        "enum" => TypeKind::Enum,
+                        "trait" => TypeKind::Trait,
+                        _ => return Ok(()),
+                    };
+
+                    self.type_database.register_with_path(
+                        name.clone(),
+                        path.clone(),
+                        type_kind,
+                        None,
+                        Some(format!("{:?}: {}", type_kind, name)),
+                        None,
+                    );
                 }
                 _ => {}
             }
