@@ -259,9 +259,9 @@ impl TypeDebuggerDrawer {
 
     fn render_empty_state(
         &self,
-        container: Div,
+        container: Stateful<Div>,
         cx: &mut Context<Self>,
-    ) -> Div {
+    ) -> Stateful<Div> {
         let theme = cx.theme();
 
         container.child(
@@ -375,10 +375,10 @@ impl TypeDebuggerDrawer {
 
     fn kind_color(&self, kind: &TypeKind, _cx: &App) -> Hsla {
         match kind {
-            TypeKind::Alias => Hsla { h: 210.0, s: 0.80, l: 0.60, a: 1.0 }, // Blue
-            TypeKind::Struct => Hsla { h: 150.0, s: 0.70, l: 0.50, a: 1.0 }, // Green
-            TypeKind::Enum => Hsla { h: 38.0, s: 0.95, l: 0.55, a: 1.0 },   // Orange
-            TypeKind::Trait => Hsla { h: 280.0, s: 0.75, l: 0.60, a: 1.0 }, // Purple
+            TypeKind::Alias => gpui::rgb(0x607D8B).into(),   // Blue Gray (matches FileType::AliasType)
+            TypeKind::Struct => gpui::rgb(0x00BCD4).into(),  // Cyan (matches FileType::StructType)
+            TypeKind::Enum => gpui::rgb(0x673AB7).into(),    // Deep Purple (matches FileType::EnumType)
+            TypeKind::Trait => gpui::rgb(0x3F51B5).into(),   // Indigo (matches FileType::TraitType)
         }
     }
 
@@ -393,10 +393,10 @@ impl TypeDebuggerDrawer {
 
     fn render_flat_view(
         &self,
-        container: Div,
+        container: Stateful<Div>,
         types: Vec<TypeInfo>,
         cx: &mut Context<Self>,
-    ) -> Div {
+    ) -> Stateful<Div> {
         let mut result = container;
         for type_info in types {
             result = result.child(self.render_type_item(&type_info, cx));
@@ -406,9 +406,9 @@ impl TypeDebuggerDrawer {
 
     fn render_grouped_view(
         &self,
-        container: Div,
+        container: Stateful<Div>,
         cx: &mut Context<Self>,
-    ) -> Div {
+    ) -> Stateful<Div> {
         let grouped = self.get_grouped_types();
         let mut result = container;
 
@@ -481,7 +481,9 @@ impl Render for TypeDebuggerDrawer {
             ))
             .child(
                 div()
+                    .id("type-debugger-content")
                     .flex_1()
+                    .overflow_scroll()
                     .when(filtered_types.is_empty(), |container| {
                         self.render_empty_state(container, cx)
                     })

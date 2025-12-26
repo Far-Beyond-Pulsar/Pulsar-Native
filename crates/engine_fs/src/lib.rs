@@ -95,41 +95,41 @@ impl EngineFs {
     fn register_asset(&self, path: PathBuf) -> Result<()> {
         use type_db::TypeKind;
 
+        // Check if it's a JSON file
         if let Some(extension) = path.extension() {
-            let ext_str = extension.to_string_lossy();
-            match ext_str.as_ref() {
-                "alias" | "json" if path.file_name()
-                    .and_then(|n| n.to_str())
-                    .map(|n| n.contains("alias"))
-                    .unwrap_or(false) =>
-                {
-                    // Type alias file
-                    self.operations.register_type_alias(&path)?;
-                }
-                "struct" | "enum" | "trait" => {
-                    // Register struct, enum, or trait in type database
-                    let name = path.file_stem()
-                        .and_then(|s| s.to_str())
+            if extension == "json" {
+                // Get the filename (e.g., "struct.json", "enum.json", "trait.json", "alias.json")
+                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                    // Get the parent folder name as the type name (e.g., "GameState", "Drawable")
+                    let type_name = path.parent()
+                        .and_then(|p| p.file_name())
+                        .and_then(|n| n.to_str())
                         .unwrap_or("unknown")
                         .to_string();
 
-                    let type_kind = match ext_str.as_ref() {
-                        "struct" => TypeKind::Struct,
-                        "enum" => TypeKind::Enum,
-                        "trait" => TypeKind::Trait,
-                        _ => return Ok(()),
+                    let type_kind = match file_name {
+                        "struct.json" => Some(TypeKind::Struct),
+                        "enum.json" => Some(TypeKind::Enum),
+                        "trait.json" => Some(TypeKind::Trait),
+                        _ if file_name.contains("alias") => {
+                            // Handle alias.json or *.alias.json
+                            self.operations.register_type_alias(&path)?;
+                            return Ok(());
+                        }
+                        _ => None,
                     };
 
-                    self.type_database.register_with_path(
-                        name.clone(),
-                        path.clone(),
-                        type_kind,
-                        None,
-                        Some(format!("{:?}: {}", type_kind, name)),
-                        None,
-                    );
+                    if let Some(kind) = type_kind {
+                        self.type_database.register_with_path(
+                            type_name.clone(),
+                            path.clone(),
+                            kind,
+                            None,
+                            Some(format!("{:?}: {}", kind, type_name)),
+                            None,
+                        );
+                    }
                 }
-                _ => {}
             }
         }
         Ok(())

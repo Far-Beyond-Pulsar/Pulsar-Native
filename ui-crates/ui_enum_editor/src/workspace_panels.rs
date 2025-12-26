@@ -379,9 +379,11 @@ impl Render for VariantsPanel {
             )
             .child(
                 v_flex()
+                    .id("enum-variants-content")
                     .px_3()
                     .gap_2()
                     .flex_1()
+                    .overflow_scroll()
                     .children(
                         self.variant_editors.iter().map(|editor| editor.clone())
                     )

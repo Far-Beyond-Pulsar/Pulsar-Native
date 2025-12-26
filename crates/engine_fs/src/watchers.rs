@@ -70,19 +70,25 @@ fn handle_fs_event(event: &Event, type_database: &TypeDatabase) {
 fn get_type_info(path: &PathBuf) -> Option<(String, TypeKind)> {
     let extension = path.extension()?.to_str()?;
     let file_name = path.file_name()?.to_str()?;
-    let name = path.file_stem()?.to_str()?.to_string();
 
-    let kind = if extension == "alias" || (extension == "json" && file_name.contains("alias")) {
-        TypeKind::Alias
-    } else if extension == "struct" {
-        TypeKind::Struct
-    } else if extension == "enum" {
-        TypeKind::Enum
-    } else if extension == "trait" {
-        TypeKind::Trait
-    } else {
-        return None;
-    };
+    // For JSON files, check the filename to determine type
+    if extension == "json" {
+        // Get parent folder name as the type name
+        let type_name = path.parent()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())?
+            .to_string();
 
-    Some((name, kind))
+        let kind = match file_name {
+            "struct.json" => TypeKind::Struct,
+            "enum.json" => TypeKind::Enum,
+            "trait.json" => TypeKind::Trait,
+            _ if file_name.contains("alias") => TypeKind::Alias,
+            _ => return None,
+        };
+
+        return Some((type_name, kind));
+    }
+
+    None
 }

@@ -11,7 +11,8 @@
       "WebFetch(domain:github.com)",
       "Bash(git checkout:*)",
       "Bash(rustc:*)",
-      "Bash(cargo test:*)"
+      "Bash(cargo test:*)",
+      "Bash(ls:*)"
     ]
   }
 }

@@ -376,9 +376,11 @@ impl Render for FieldsPanel {
             )
             .child(
                 v_flex()
+                    .id("struct-fields-content")
                     .px_3()
                     .gap_2()
                     .flex_1()
+                    .overflow_scroll()
                     .children(
                         self.field_editors.iter().map(|editor| editor.clone())
                     )

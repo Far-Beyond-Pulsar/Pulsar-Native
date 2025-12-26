@@ -362,9 +362,11 @@ impl Render for MethodsPanel {
             )
             .child(
                 v_flex()
+                    .id("trait-methods-content")
                     .px_3()
                     .gap_2()
                     .flex_1()
+                    .overflow_scroll()
                     .children(
                         self.method_editors.iter().map(|editor| editor.clone())
                     )
