@@ -7,11 +7,6 @@
         "**/node_modules/**": true,
         "**/.vscode/**": true
     },
-    "cmake.generator": "Ninja",
-    "cmake.exportCompileCommandsFile": true,
-    "rust-analyzer.cargo.extraEnv": {
-        "CMAKE_GENERATOR": "Ninja"
-    },
     "python-envs.defaultEnvManager": "ms-python.python:system",
     "python-envs.pythonProjects": []
 }

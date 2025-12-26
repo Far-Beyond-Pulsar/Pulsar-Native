@@ -723,7 +723,9 @@ impl InputState {
         cx: &mut Context<Self>,
     ) {
         let text: SharedString = text.into();
-        self.replace_text_in_range_silent(None, &text, window, cx);
+        let cursor_utf16 = self.range_to_utf16(&(self.cursor()..self.cursor()));
+
+        self.replace_text_in_range_silent(Some(cursor_utf16), &text, window, cx);
         self.selected_range = (self.selected_range.end..self.selected_range.end).into();
     }
 
@@ -1962,7 +1964,7 @@ impl InputState {
 
         //FIX: This patched the inability to type in WINIT windows
         let text = event.keystroke.key_char.clone().unwrap_or("".into());
-        self.insert(text, window, cx);
+        self.replace(text, window, cx);
     }
 
     pub(super) fn on_drag_move(
