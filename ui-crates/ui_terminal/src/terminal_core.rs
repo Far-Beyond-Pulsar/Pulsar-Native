@@ -746,7 +746,7 @@ impl Terminal {
     pub fn handle_input(&mut self, text: &str, _window: &mut Window, cx: &mut Context<Self>) {
         if let Some(session) = self.active_session_mut() {
             // Regular text input - send as bytes
-            // session.send_input(text);
+            session.send_input(text);
             cx.notify();
         }
     }

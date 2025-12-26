@@ -236,19 +236,6 @@ impl PulsarApp {
             cx.notify();
         });
 
-        // Sync TypeDatabase to UI if we have a project
-        if has_project {
-            if let Some(engine_state) = engine_state::EngineState::global() {
-                if let Some(type_database) = engine_state.type_database() {
-                    let types = type_database.all();
-                    tracing::info!("📊 Syncing {} types to TypeDebuggerDrawer", types.len());
-                    app.state.type_debugger_drawer.update(cx, |drawer, cx| {
-                        drawer.set_types(types, cx);
-                    });
-                }
-            }
-        }
-
         // Update Discord presence with initial tab if project is loaded
         if has_project && create_level_editor {
             app.update_discord_presence(cx);
