@@ -44,9 +44,9 @@ pub fn camera_movement_system(
 
     let delta_time = time.delta_secs();
     
-    // --- Unreal-style movement ramp-up (acceleration) ---
-    // Static mut for velocity (per frame, not per camera, but sufficient for editor use)
+    // --- Unreal-style movement ramp-up (acceleration) with doubled ramp and mouse smoothing ---
     static mut VELOCITY: Vec3 = Vec3::ZERO;
+    static mut SMOOTHED_MOUSE_DELTA: (f32, f32) = (0.0, 0.0);
     let mut input_dir = Vec3::ZERO;
     if camera_input.forward.abs() > 0.001 {
         input_dir += transform.forward().as_vec3() * camera_input.forward;
@@ -65,21 +65,19 @@ pub fn camera_movement_system(
     } else {
         camera_input.move_speed
     };
-    let accel = base_speed * 6.0; // acceleration rate (higher = snappier)
-    let friction = 8.0; // how quickly you stop (higher = stops faster)
+    let accel = base_speed * 12.0; // doubled acceleration rate
+    let friction = 8.0;
     unsafe {
         // Accelerate towards input direction
         let desired_velocity = input_dir * base_speed;
         let delta_v = desired_velocity - VELOCITY;
         let accel_step = accel * delta_time;
         let friction_step = friction * delta_time;
-        // Apply acceleration
         if delta_v.length() > accel_step {
             VELOCITY += delta_v.normalize() * accel_step;
         } else {
             VELOCITY = desired_velocity;
         }
-        // Apply friction if no input
         if input_dir == Vec3::ZERO {
             let speed = VELOCITY.length();
             if speed > friction_step {
@@ -88,9 +86,29 @@ pub fn camera_movement_system(
                 VELOCITY = Vec3::ZERO;
             }
         }
-        // Move camera
         transform.translation += VELOCITY * delta_time;
     }
+
+    // --- Mouse delta smoothing for rotation ---
+    let smoothing = 0.25; // 0 = no smoothing, 1 = infinite smoothing
+    unsafe {
+        let (prev_x, prev_y) = SMOOTHED_MOUSE_DELTA;
+        let target_x = camera_input.mouse_delta_x;
+        let target_y = camera_input.mouse_delta_y;
+        let smooth_x = prev_x + (target_x - prev_x) * smoothing;
+        let smooth_y = prev_y + (target_y - prev_y) * smoothing;
+        SMOOTHED_MOUSE_DELTA = (smooth_x, smooth_y);
+        // Use smoothed deltas for rotation
+        if smooth_x.abs() > 0.001 || smooth_y.abs() > 0.001 {
+            let yaw_delta = -smooth_x * camera_input.look_sensitivity * delta_time;
+            transform.rotate_y(yaw_delta);
+            let pitch_delta = -smooth_y * camera_input.look_sensitivity * delta_time;
+            transform.rotate_local_x(pitch_delta);
+        }
+    }
+    // Clear mouse deltas after use
+    camera_input.mouse_delta_x = 0.0;
+    camera_input.mouse_delta_y = 0.0;
     
     // === ROTATION (Right mouse + drag) ===
     if camera_input.mouse_delta_x.abs() > 0.001 || camera_input.mouse_delta_y.abs() > 0.001 {
