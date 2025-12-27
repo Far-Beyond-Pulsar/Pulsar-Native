@@ -179,7 +179,7 @@ impl DropdownStory {
         _cx: &mut Context<Self>,
     ) {
         match event {
-            DropdownEvent::Confirm(value) => println!("Selected country: {:?}", value),
+            DropdownEvent::Confirm(value) => tracing::info!("Selected country: {:?}", value),
         }
     }
 

@@ -48,7 +48,7 @@ impl HelloWorld {
     pub async fn greet<T: AsRef<str>>(&self, names: &[T]) -> Result<()> {
         for name in names {
             time::sleep(Duration::from_millis(100)).await;
-            println!("Hello, {}!", name.as_ref());
+            tracing::info!("Hello, {}!", name.as_ref());
         }
         Ok(())
     }
@@ -87,8 +87,8 @@ async fn main() -> Result<()> {
     greeter.configure(config);
 
     match greeter.greet(&["Alice", "Bob"]).await {
-        Ok(_) => println!("Greetings sent successfully"),
-        Err(e) => eprintln!("Error: {}", e),
+        Ok(_) => tracing::info!("Greetings sent successfully"),
+        Err(e) => tracing::error!("Error: {}", e),
     }
 
     Ok(())

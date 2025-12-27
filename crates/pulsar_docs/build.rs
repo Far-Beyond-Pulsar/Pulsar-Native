@@ -16,27 +16,27 @@ mod doc_generator;
 use std::path::Path;
 
 fn main() {
-    println!("cargo:rerun-if-changed=../../Cargo.toml");
-    println!("cargo:rerun-if-changed=../../crates/");
-    println!("cargo:rerun-if-changed=../../ui-crates/");
+    tracing::info!("cargo:rerun-if-changed=../../Cargo.toml");
+    tracing::info!("cargo:rerun-if-changed=../../crates/");
+    tracing::info!("cargo:rerun-if-changed=../../ui-crates/");
     
     // Only generate docs in release builds
     if std::env::var("PROFILE").unwrap_or_default() != "release" {
-        println!("cargo:warning=Skipping doc generation in debug mode");
+        tracing::info!("cargo:warning=Skipping doc generation in debug mode");
         return;
     }
     
-    println!("cargo:warning=Starting Pulsar documentation generation...");
+    tracing::info!("cargo:warning=Starting Pulsar documentation generation...");
     
     let workspace_root = Path::new("../../");
     let output_dir = Path::new("../../target/doc");
     
     match doc_generator::generate_workspace_docs(workspace_root, output_dir) {
         Ok(count) => {
-            println!("cargo:warning=Successfully generated documentation for {} crates", count);
+            tracing::info!("cargo:warning=Successfully generated documentation for {} crates", count);
         }
         Err(e) => {
-            println!("cargo:warning=Documentation generation failed: {}", e);
+            tracing::info!("cargo:warning=Documentation generation failed: {}", e);
         }
     }
 }
