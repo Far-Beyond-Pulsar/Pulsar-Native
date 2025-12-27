@@ -76,7 +76,7 @@ impl BlueprintEditorPanel {
                 .map_err(|e| format!("Failed to write {}: {}", event_file.display(), e))?;
 
             mod_exports.push(event_name.clone());
-            println!("Compiled event '{}' to {}", event_node.title, event_file.display());
+            tracing::info!("Compiled event '{}' to {}", event_node.title, event_file.display());
         }
 
         // Create mod.rs

@@ -209,25 +209,25 @@ impl BlueprintEditorPanel {
         let content = format!("{}{}", header, json);
         std::fs::write(file_path, content).map_err(|e| format!("Failed to write file: {}", e))?;
 
-        println!("💾 ═══════════════════════════════════════════════════════════════");
-        println!("💾 BLUEPRINT SAVED SUCCESSFULLY");
-        println!("💾 ═══════════════════════════════════════════════════════════════");
-        println!("💾 File: {}", file_path);
-        println!("💾");
-        println!("💾 📊 Content Summary:");
-        println!("💾   ✓ Main Event Graph: {} nodes, {} connections",
+        tracing::info!("💾 ═══════════════════════════════════════════════════════════════");
+        tracing::info!("💾 BLUEPRINT SAVED SUCCESSFULLY");
+        tracing::info!("💾 ═══════════════════════════════════════════════════════════════");
+        tracing::info!("💾 File: {}", file_path);
+        tracing::info!("💾");
+        tracing::info!("💾 📊 Content Summary:");
+        tracing::info!("💾   ✓ Main Event Graph: {} nodes, {} connections",
             main_tab.graph.nodes.len(),
             main_tab.graph.connections.len());
-        println!("💾   ✓ Local Macros: {}", self.local_macros.len());
+        tracing::info!("💾   ✓ Local Macros: {}", self.local_macros.len());
         for macro_def in &self.local_macros {
-            println!("💾     - {} ({})", macro_def.name, macro_def.id);
+            tracing::info!("💾     - {} ({})", macro_def.name, macro_def.id);
         }
-        println!("💾   ✓ Class Variables: {}", self.class_variables.len());
-        println!("💾   ✓ Open Tabs: {}", self.open_tabs.len());
-        println!("💾   ✓ Active Tab: {} ({})",
+        tracing::info!("💾   ✓ Class Variables: {}", self.class_variables.len());
+        tracing::info!("💾   ✓ Open Tabs: {}", self.open_tabs.len());
+        tracing::info!("💾   ✓ Active Tab: {} ({})",
             self.open_tabs.get(self.active_tab_index).map(|t| t.name.as_str()).unwrap_or("Unknown"),
             self.active_tab_index);
-        println!("💾 ═══════════════════════════════════════════════════════════════");
+        tracing::info!("💾 ═══════════════════════════════════════════════════════════════");
 
         // Also save separate files for legacy support
         self.save_local_macros()?;
@@ -244,7 +244,7 @@ impl BlueprintEditorPanel {
                 .map_err(|e| format!("Failed to serialize local macros: {}", e))?;
             std::fs::write(&macros_file, json)
                 .map_err(|e| format!("Failed to write macros.json: {}", e))?;
-            println!("💾 Saved {} local macros to macros.json", self.local_macros.len());
+            tracing::info!("💾 Saved {} local macros to macros.json", self.local_macros.len());
         }
         Ok(())
     }
@@ -267,7 +267,7 @@ impl BlueprintEditorPanel {
                 .map_err(|e| format!("Failed to serialize tabs: {}", e))?;
             std::fs::write(&tabs_file, json)
                 .map_err(|e| format!("Failed to write tabs.json: {}", e))?;
-            println!("💾 Saved {} tab states to tabs.json", serialized_tabs.len());
+            tracing::info!("💾 Saved {} tab states to tabs.json", serialized_tabs.len());
         }
         Ok(())
     }
@@ -279,10 +279,10 @@ impl BlueprintEditorPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
-        println!("📂 ═══════════════════════════════════════════════════════════════");
-        println!("📂 LOADING BLUEPRINT FROM FILE");
-        println!("📂 ═══════════════════════════════════════════════════════════════");
-        println!("📂 File: {}", file_path);
+        tracing::info!("📂 ═══════════════════════════════════════════════════════════════");
+        tracing::info!("📂 LOADING BLUEPRINT FROM FILE");
+        tracing::info!("📂 ═══════════════════════════════════════════════════════════════");
+        tracing::info!("📂 File: {}", file_path);
         
         let content = std::fs::read_to_string(file_path)
             .map_err(|e| {
@@ -291,7 +291,7 @@ impl BlueprintEditorPanel {
                 error_msg
             })?;
 
-        println!("📂 ✓ File read successfully ({} bytes)", content.len());
+        tracing::info!("📂 ✓ File read successfully ({} bytes)", content.len());
 
         // Strip header comments
         let json = content.lines()
@@ -302,21 +302,21 @@ impl BlueprintEditorPanel {
         // Try new unified format first
         match serde_json::from_str::<BlueprintAsset>(&json) {
             Ok(blueprint_asset) => {
-                println!("📂 ✓ Detected unified blueprint format");
+                tracing::info!("📂 ✓ Detected unified blueprint format");
                 self.load_from_blueprint_asset(blueprint_asset, file_path, window, cx)?;
             },
             Err(unified_err) => {
-                println!("📂 ⚠️  Unified format parse failed:");
-                println!("📂    Error: {}", unified_err);
-                println!("📂    Line: {}, Column: {}", unified_err.line(), unified_err.column());
+                tracing::info!("📂 ⚠️  Unified format parse failed:");
+                tracing::info!("📂    Error: {}", unified_err);
+                tracing::info!("📂    Line: {}, Column: {}", unified_err.line(), unified_err.column());
                 
                 // Show context around the error location
                 let lines: Vec<&str> = json.lines().collect();
                 let error_line = unified_err.line().saturating_sub(1);
                 if error_line < lines.len() {
-                    println!("📂    Context:");
+                    tracing::info!("📂    Context:");
                     for i in error_line.saturating_sub(2)..=error_line.saturating_add(2).min(lines.len().saturating_sub(1)) {
-                        println!("📂      {}{}: {}", 
+                        tracing::info!("📂      {}{}: {}", 
                             if i == error_line { ">>> " } else { "    " },
                             i + 1,
                             lines.get(i).unwrap_or(&"")
@@ -324,7 +324,7 @@ impl BlueprintEditorPanel {
                     }
                 }
                 
-                println!("📂 ✓ Trying legacy format...");
+                tracing::info!("📂 ✓ Trying legacy format...");
                 
                 // Try parsing as legacy format first, then convert to new format
                 let legacy_graph: LegacyGraphDescription = serde_json::from_str(&json)
@@ -334,7 +334,7 @@ impl BlueprintEditorPanel {
                         error_msg
                     })?;
                 
-                println!("📂 ✓ Legacy format parsed successfully");
+                tracing::info!("📂 ✓ Legacy format parsed successfully");
                 let graph_description: GraphDescription = legacy_graph.into();
                 self.graph = self.convert_graph_description_to_blueprint(&graph_description, window, cx)?;
 
@@ -359,7 +359,7 @@ impl BlueprintEditorPanel {
                     let _ = self.load_variables_from_class(parent);
                 }
 
-                println!("📂 Loaded blueprint in legacy format");
+                tracing::info!("📂 Loaded blueprint in legacy format");
             }
         }
 
@@ -476,13 +476,13 @@ impl BlueprintEditorPanel {
             }
         }
 
-        println!("📂 Loaded unified blueprint format");
-        println!("📂   ✓ Main Graph: {} nodes", self.graph.nodes.len());
-        println!("📂   ✓ Local Macros: {}", self.local_macros.len());
-        println!("📂   ✓ Variables: {}", self.class_variables.len());
-        println!("📂   ✓ Open Tabs: {}", self.open_tabs.len());
-        println!("📂   ✓ Active Tab Index: {}", self.active_tab_index);
-        println!("📂 ═══════════════════════════════════════════════════════════════");
+        tracing::info!("📂 Loaded unified blueprint format");
+        tracing::info!("📂   ✓ Main Graph: {} nodes", self.graph.nodes.len());
+        tracing::info!("📂   ✓ Local Macros: {}", self.local_macros.len());
+        tracing::info!("📂   ✓ Variables: {}", self.class_variables.len());
+        tracing::info!("📂   ✓ Open Tabs: {}", self.open_tabs.len());
+        tracing::info!("📂   ✓ Active Tab Index: {}", self.active_tab_index);
+        tracing::info!("📂 ═══════════════════════════════════════════════════════════════");
 
         Ok(())
     }
@@ -501,7 +501,7 @@ impl BlueprintEditorPanel {
             .map_err(|e| format!("Failed to parse macros.json: {}", e))?;
 
         self.local_macros = macros;
-        println!("📂 Loaded {} local macros from macros.json", self.local_macros.len());
+        tracing::info!("📂 Loaded {} local macros from macros.json", self.local_macros.len());
         Ok(())
     }
 
@@ -568,7 +568,7 @@ impl BlueprintEditorPanel {
             }
         }
 
-        println!("📂 Restored {} tabs from tabs.json", self.open_tabs.len());
+        tracing::info!("📂 Restored {} tabs from tabs.json", self.open_tabs.len());
         Ok(())
     }
 }

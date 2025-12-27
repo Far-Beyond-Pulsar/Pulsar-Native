@@ -257,7 +257,7 @@ impl MultiplayerWindow {
                                         move |_, _| SharedString::from(id.clone())
                                     })
                                     .on_copied(|_, window, cx| {
-                                        println!("Session ID copied to clipboard");
+                                        tracing::info!("Session ID copied to clipboard");
                                     })
                             )
                     )
@@ -290,7 +290,7 @@ impl MultiplayerWindow {
                                         move |_, _| SharedString::from(token.clone())
                                     })
                                     .on_copied(|_, window, cx| {
-                                        println!("Password copied to clipboard");
+                                        tracing::info!("Password copied to clipboard");
                                     })
                             )
                     )
@@ -346,7 +346,7 @@ impl MultiplayerWindow {
                                         move |_, _| SharedString::from(format!("Session: {}\nPassword: {}", id, token))
                                     })
                                     .on_copied(|_, window, cx| {
-                                        println!("Join credentials copied to clipboard");
+                                        tracing::info!("Join credentials copied to clipboard");
                                     })
                             )
                     )

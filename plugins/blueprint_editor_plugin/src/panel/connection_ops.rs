@@ -16,7 +16,7 @@ impl BlueprintEditorPanel {
     ) {
         if let Some(node) = self.graph.nodes.iter().find(|n| n.id == node_id) {
             if let Some(pin) = node.outputs.iter().find(|p| p.id == pin_id) {
-                println!("Starting connection drag from pin {} on node {}", pin_id, node_id);
+                tracing::info!("Starting connection drag from pin {} on node {}", pin_id, node_id);
                 self.dragging_connection = Some(ConnectionDrag {
                     source_node: node_id,
                     source_pin: pin_id,
@@ -83,7 +83,7 @@ impl BlueprintEditorPanel {
                         // Remove old connections based on pin types
                         if drag.source_pin_type == GraphDataType::Execution || source_is_reroute {
                             // Execution pins and reroute outputs: single connection from source
-                            println!("Removing old connection from source {}:{}", drag.source_node, drag.source_pin);
+                            tracing::info!("Removing old connection from source {}:{}", drag.source_node, drag.source_pin);
                             self.graph.connections.retain(|conn| {
                                 !(conn.source_node == drag.source_node && conn.source_pin == drag.source_pin)
                             });
@@ -91,7 +91,7 @@ impl BlueprintEditorPanel {
                         
                         if drag.source_pin_type == GraphDataType::Execution || target_is_reroute || pin.data_type != GraphDataType::Execution {
                             // Execution targets, reroute inputs, or data inputs: single connection to target
-                            println!("Removing old connection to target {}:{}", node_id, pin_id);
+                            tracing::info!("Removing old connection to target {}:{}", node_id, pin_id);
                             self.graph.connections.retain(|conn| {
                                 !(conn.target_node == node_id && conn.target_pin == pin_id)
                             });
@@ -99,6 +99,7 @@ impl BlueprintEditorPanel {
 
                         println!("Creating connection from {}:{} to {}:{}", 
                             drag.source_node, drag.source_pin, node_id, pin_id);
+                        tracing::info!("Creating connection from {}:{} to {}:{}", drag.source_node, drag.source_pin, node_id, pin_id);
 
                         // Create new connection
                         let connection_type = if pin.data_type == GraphDataType::Execution {
@@ -116,7 +117,7 @@ impl BlueprintEditorPanel {
                             connection_type,
                         };
                         self.graph.connections.push(connection);
-                        println!("Connection created successfully!");
+                        tracing::info!("Connection created successfully!");
 
                         // Propagate types through reroute nodes
                         if target_is_reroute {
@@ -127,7 +128,7 @@ impl BlueprintEditorPanel {
 
                         cx.notify();
                     } else {
-                        println!("Incompatible pin types or same node");
+                        tracing::info!("Incompatible pin types or same node");
                     }
                 }
             }

@@ -477,7 +477,7 @@ impl QueryEditor {
             writeln!(file, "{}", row_str)?;
         }
 
-        println!("✓ Exported {} rows to {}", results.row_count, filename);
+            tracing::info!("✓ Exported {} rows to {}", results.row_count, filename);
         Ok(())
     }
 

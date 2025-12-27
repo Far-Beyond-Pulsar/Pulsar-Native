@@ -176,7 +176,7 @@ impl BlueprintEditorPanel {
         if let Err(e) = panel.load_blueprint(file_path.to_str().unwrap(), window, cx) {
             eprintln!("❌ Failed to load blueprint: {}", e);
         } else {
-            println!("✅ Loaded blueprint from {:?}", file_path);
+            tracing::info!("✅ Loaded blueprint from {:?}", file_path);
         }
         
         panel
@@ -196,7 +196,7 @@ impl BlueprintEditorPanel {
             main_tab.name = format!("{} Overview", library_name);
         }
         
-        println!("📚 Created blueprint editor for library: {}", library_name);
+        tracing::info!("📚 Created blueprint editor for library: {}", library_name);
         panel
     }
 

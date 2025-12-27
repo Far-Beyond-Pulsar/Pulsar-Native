@@ -120,12 +120,12 @@ impl NodeGraphRenderer {
                 gpui::MouseButton::Left,
                 cx.listener(|panel, event: &MouseDownEvent, _window, cx| {
                     // Debug: Print raw event position and calculated offset
-                    println!("[MOUSE] Raw window position: x={}, y={}", event.position.x.as_f32(), event.position.y.as_f32());
-                    println!("[MOUSE] Stored element bounds: {:?}", panel.graph_element_bounds);
+                    tracing::info!("[MOUSE] Raw window position: x={}, y={}", event.position.x.as_f32(), event.position.y.as_f32());
+                    tracing::info!("[MOUSE] Stored element bounds: {:?}", panel.graph_element_bounds);
 
                     // Convert window-relative coordinates to element-relative coordinates
                     let element_pos = Self::window_to_graph_element_pos(event.position, panel);
-                    println!("[MOUSE] Calculated element-relative position: x={}, y={}", element_pos.x.as_f32(), element_pos.y.as_f32());
+                    tracing::info!("[MOUSE] Calculated element-relative position: x={}, y={}", element_pos.x.as_f32(), element_pos.y.as_f32());
 
                     // Expected: if you click at the top-left corner of the graph, element_pos should be close to (0, 0)
                     // If not, our offset is wrong!
@@ -134,9 +134,9 @@ impl NodeGraphRenderer {
                     let graph_pos = Self::screen_to_graph_pos(element_pos, &panel.graph);
                     let mouse_pos = Point::new(element_pos.x.as_f32(), element_pos.y.as_f32());
 
-                    println!("[MOUSE] Converted to graph pos: x={}, y={}", graph_pos.x, graph_pos.y);
-                    println!("[MOUSE] Pan offset: x={}, y={}", panel.graph.pan_offset.x, panel.graph.pan_offset.y);
-                    println!("[MOUSE] Zoom level: {}", panel.graph.zoom_level);
+                    tracing::info!("[MOUSE] Converted to graph pos: x={}, y={}", graph_pos.x, graph_pos.y);
+                    tracing::info!("[MOUSE] Pan offset: x={}, y={}", panel.graph.pan_offset.x, panel.graph.pan_offset.y);
+                    tracing::info!("[MOUSE] Zoom level: {}", panel.graph.zoom_level);
 
                     // Node picker handles its own dismissal
 
@@ -153,7 +153,7 @@ impl NodeGraphRenderer {
                             && graph_pos.y <= node_bottom;
 
                         if is_inside {
-                            println!("[MOUSE] Clicked on node '{}' at graph pos ({}, {})", node.title, node.position.x, node.position.y);
+                            tracing::info!("[MOUSE] Clicked on node '{}' at graph pos ({}, {})", node.title, node.position.x, node.position.y);
                         }
 
                         is_inside
@@ -270,7 +270,7 @@ impl NodeGraphRenderer {
                 panel.handle_zoom(delta_y, element_pos, cx);
             }))
             .on_key_down(cx.listener(|panel, event: &KeyDownEvent, window, cx| {
-                println!("Key pressed: {:?}", event.keystroke.key);
+                tracing::info!("Key pressed: {:?}", event.keystroke.key);
 
                 let key_lower = event.keystroke.key.to_lowercase();
 
@@ -293,7 +293,7 @@ impl NodeGraphRenderer {
                         panel.cancel_connection_drag(cx);
                     }
                 } else if key_lower == "delete" || key_lower == "backspace" {
-                    println!(
+                    tracing::info!(
                         "Delete key pressed! Selected nodes: {:?}",
                         panel.graph.selected_nodes
                     );
@@ -665,7 +665,7 @@ impl NodeGraphRenderer {
 
         // Debug info for virtualization
         if cfg!(debug_assertions) && panel.graph.nodes.len() != visible_nodes.len() {
-            println!(
+            tracing::info!(
                 "[BLUEPRINT-VIRTUALIZATION] Rendering {} of {} nodes (saved {:.1}%)",
                 visible_nodes.len(),
                 panel.graph.nodes.len(),
@@ -874,7 +874,7 @@ impl NodeGraphRenderer {
                                             if let Some(local_macro) = panel.local_macros.iter().find(|m| m.id == subgraph_id) {
                                                 panel.open_local_macro(subgraph_id.clone(), local_macro.name.clone(), cx);
                                             } else {
-                                                println!("⚠️ Macro '{}' not found", node_title);
+                                                tracing::info!("⚠️ Macro '{}' not found", node_title);
                                             }
                                         }
                                         
@@ -1230,7 +1230,7 @@ impl NodeGraphRenderer {
 
         // Debug info for connection virtualization
         if cfg!(debug_assertions) && panel.graph.connections.len() != visible_connections.len() {
-            println!(
+            tracing::info!(
                 "[BLUEPRINT-VIRTUALIZATION] Rendering {} of {} connections (saved {:.1}%)",
                 visible_connections.len(),
                 panel.graph.connections.len(),

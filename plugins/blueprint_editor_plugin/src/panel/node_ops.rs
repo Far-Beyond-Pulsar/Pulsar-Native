@@ -9,7 +9,7 @@ use super::super::{BlueprintNode, NodeType};
 impl BlueprintEditorPanel {
     /// Add a node to the graph
     pub fn add_node(&mut self, node: BlueprintNode, cx: &mut Context<Self>) {
-        println!("Adding node: {} at position {:?}", node.title, node.position);
+        tracing::info!("Adding node: {} at position {:?}", node.title, node.position);
         self.graph.nodes.push(node);
         
         // Mark tab as dirty
@@ -45,20 +45,20 @@ impl BlueprintEditorPanel {
     /// Copy node (placeholder)
     pub fn copy_node(&mut self, node_id: String, _cx: &mut Context<Self>) {
         if let Some(node) = self.graph.nodes.iter().find(|n| n.id == node_id) {
-            println!("Copied node: {}", node.title);
+            tracing::info!("Copied node: {}", node.title);
             // TODO: Store in clipboard
         }
     }
 
     /// Paste node (placeholder)
     pub fn paste_node(&mut self, cx: &mut Context<Self>) {
-        println!("Paste node not yet implemented");
+        tracing::info!("Paste node not yet implemented");
         cx.notify();
     }
 
     /// Start dragging a node
     pub fn start_drag(&mut self, node_id: String, mouse_pos: Point<f32>, cx: &mut Context<Self>) {
-        println!("Starting drag for node {} at mouse position {:?}", node_id, mouse_pos);
+        tracing::info!("Starting drag for node {} at mouse position {:?}", node_id, mouse_pos);
         
         if let Some(node) = self.graph.nodes.iter().find(|n| n.id == node_id) {
             self.dragging_node = Some(node_id.clone());

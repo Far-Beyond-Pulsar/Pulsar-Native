@@ -20,7 +20,7 @@ fn test_metadata_collection() {
     assert_eq!(add_node.return_type, Some("i64"));
     assert!(!add_node.documentation.is_empty(), "Documentation should be collected");
 
-    println!("Add node docs: {:?}", add_node.documentation);
+        tracing::info!("Add node docs: {:?}", add_node.documentation);
 
     // Test 'branch' node
     let branch_node = get_node_by_name("branch").expect("Should find 'branch' node");
@@ -32,7 +32,7 @@ fn test_metadata_collection() {
     assert!(branch_node.exec_outputs.contains(&"False"));
     assert!(!branch_node.documentation.is_empty(), "Documentation should be collected");
 
-    println!("Branch node docs: {:?}", branch_node.documentation);
+        tracing::info!("Branch node docs: {:?}", branch_node.documentation);
 
     // Test 'print_string' node
     let print_node = get_node_by_name("print_string").expect("Should find 'print_string' node");
@@ -40,7 +40,7 @@ fn test_metadata_collection() {
     assert_eq!(print_node.category, "Debug");
     assert_eq!(print_node.color, Some("#7ED321"), "Color should be collected");
 
-    println!("Print node docs: {:?}", print_node.documentation);
+        tracing::info!("Print node docs: {:?}", print_node.documentation);
 }
 
 #[test]
@@ -55,7 +55,7 @@ fn test_all_nodes_have_metadata() {
         assert!(!node.category.is_empty(), "Node '{}' should have a category", node.name);
 
         // Print node info
-        println!("Node: {} | Category: {} | Color: {:?} | Docs: {} lines",
+            tracing::info!("Node: {} | Category: {} | Color: {:?} | Docs: {} lines",
             node.name,
             node.category,
             node.color,

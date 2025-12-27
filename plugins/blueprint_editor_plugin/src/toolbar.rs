@@ -74,7 +74,7 @@ impl ToolbarRenderer {
                                             if let Err(e) = panel.save_blueprint(save_path.to_str().unwrap()) {
                                                 eprintln!("Failed to save blueprint: {}", e);
                                             } else {
-                                                println!("Blueprint saved to {}", save_path.display());
+                                                tracing::info!("Blueprint saved to {}", save_path.display());
                                             }
                                         } else {
                                             eprintln!("No class loaded - cannot save");

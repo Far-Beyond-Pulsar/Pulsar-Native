@@ -46,7 +46,7 @@ impl BlueprintEditorPanel {
             let distance = ((end.x - start.x).powi(2) + (end.y - start.y).powi(2)).sqrt();
             if distance < 5.0 {
                 self.graph.selected_nodes.clear();
-                println!("[SELECTION] Cleared selection (click on empty space)");
+                tracing::info!("[SELECTION] Cleared selection (click on empty space)");
             }
         }
 
@@ -90,8 +90,8 @@ impl BlueprintEditorPanel {
 
     /// Delete all selected nodes
     pub fn delete_selected_nodes(&mut self, cx: &mut Context<Self>) {
-        println!("[DELETE] Selected nodes count: {}", self.graph.selected_nodes.len());
-        println!("[DELETE] Selected node IDs: {:?}", self.graph.selected_nodes);
+        tracing::info!("[DELETE] Selected nodes count: {}", self.graph.selected_nodes.len());
+        tracing::info!("[DELETE] Selected node IDs: {:?}", self.graph.selected_nodes);
 
         if !self.graph.selected_nodes.is_empty() {
             let node_count_before = self.graph.nodes.len();
@@ -100,7 +100,7 @@ impl BlueprintEditorPanel {
             self.graph.nodes.retain(|node| !self.graph.selected_nodes.contains(&node.id));
 
             let node_count_after = self.graph.nodes.len();
-            println!(
+            tracing::info!(
                 "[DELETE] Deleted {} nodes ({} -> {})",
                 node_count_before - node_count_after,
                 node_count_before,
@@ -116,7 +116,7 @@ impl BlueprintEditorPanel {
             self.graph.selected_nodes.clear();
             cx.notify();
         } else {
-            println!("[DELETE] No nodes selected, nothing to delete");
+            tracing::info!("[DELETE] No nodes selected, nothing to delete");
         }
     }
 
@@ -133,7 +133,7 @@ impl BlueprintEditorPanel {
             let time_diff = now.duration_since(last_time).as_millis();
             let pos_diff =
                 ((graph_pos.x - last_pos.x).powi(2) + (graph_pos.y - last_pos.y).powi(2)).sqrt();
-            println!(
+            tracing::info!(
                 "[REROUTE] Double-click check: time_diff={}ms, pos_diff={:.2}px",
                 time_diff, pos_diff
             );
@@ -143,10 +143,10 @@ impl BlueprintEditorPanel {
         };
 
         if is_double_click {
-            println!("[REROUTE] Double-click detected! Checking for nearby connections...");
+            tracing::info!("[REROUTE] Double-click detected! Checking for nearby connections...");
             
             if let Some(connection) = self.find_connection_near_point(graph_pos) {
-                println!("[REROUTE] Found connection near click point!");
+                tracing::info!("[REROUTE] Found connection near click point!");
                 
                 if let Some(data_type) = self.get_connection_data_type(&connection) {
                     // Create reroute node
