@@ -116,6 +116,8 @@ lsp-types = "0.97.0"
 directories = "5"
 itertools = "0.13"
 rapier3d = { version = "*", features = [ "simd-stable" ] }
+sysuri = "0.2"
+urlencoding = "2.1"
 
 [workspace.dependencies.windows]
 features = ["Wdk", "Wdk_System", "Wdk_System_SystemServices", "Win32_System_Threading", "Win32_System_SystemInformation", "Win32_Graphics_Direct3D_Fxc"]
