@@ -332,9 +332,6 @@ unsafe fn render_bevy_layer(window_state: &mut crate::window::WindowState, conte
     if bevy_tex_desc.Width != window_size.width || bevy_tex_desc.Height != window_size.height {
         static mut SIZE_MISMATCH_COUNT: u32 = 0;
         SIZE_MISMATCH_COUNT += 1;
-        if SIZE_MISMATCH_COUNT == 1 || SIZE_MISMATCH_COUNT % 60 == 0 {
-            tracing::error!("[COMPOSITOR] ⚠️ Bevy texture size mismatch - stretching to fit");
-        }
     }
 
     // Create or reuse SRV
