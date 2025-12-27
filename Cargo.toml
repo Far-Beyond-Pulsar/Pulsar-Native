@@ -12,8 +12,6 @@ members = [
     # Plugin system
     "crates/plugin_editor_api",
     "crates/plugin_manager",
-    # Editor plugins
-    "plugins/blueprint_editor_plugin",
     # UI component crates
     "ui-crates/ui_common",
     "ui-crates/ui_core",

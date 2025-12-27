@@ -2682,6 +2682,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smol 2.0.2",
+ "tracing",
  "ui",
  "ui_common",
  "uuid",
