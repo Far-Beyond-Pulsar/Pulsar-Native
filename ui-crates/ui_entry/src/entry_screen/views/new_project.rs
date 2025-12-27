@@ -2,18 +2,13 @@ use gpui::{prelude::*, *};
 use ui::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, ActiveTheme as _, divider::Divider,
+    input::TextInput,
 };
 use crate::entry_screen::EntryScreen;
 
-pub fn render_new_project(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {
+pub fn render_new_project(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();
-    let project_name_owned = screen.new_project_name.clone();
-    let project_name_empty = project_name_owned.is_empty();
-    let project_name_display: String = if project_name_empty {
-        "Enter project name...".to_string()
-    } else {
-        project_name_owned.clone()
-    };
+    let project_name_empty = screen.new_project_name.is_empty();
     let project_path_display = screen.new_project_path.as_ref()
         .and_then(|p| p.to_str())
         .unwrap_or("Click Browse to select location...")
@@ -49,22 +44,7 @@ pub fn render_new_project(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -
                                 .text_color(theme.foreground)
                                 .child("Project Name")
                         )
-                        .child(
-                            div()
-                                .px_3()
-                                .py_2()
-                                .border_1()
-                                .border_color(theme.border)
-                                .rounded_md()
-                                .bg(theme.background)
-                                .text_sm()
-                                .text_color(if project_name_empty {
-                                    theme.muted_foreground
-                                } else {
-                                    theme.foreground
-                                })
-                                .child(project_name_display)
-                        )
+                        .child(TextInput::new(&screen.new_project_name_input))
                         .child(
                             div()
                                 .text_xs()

@@ -3,16 +3,13 @@ use ui::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, Icon, IconName, ActiveTheme as _,
     divider::Divider, progress::Progress,
+    input::TextInput,
 };
 use crate::entry_screen::EntryScreen;
 
-pub fn render_clone_git(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {
+pub fn render_clone_git(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();
-    let git_url_display = if screen.git_repo_url.is_empty() {
-        "Enter repository URL...".to_string()
-    } else {
-        screen.git_repo_url.clone()
-    };
+
     let progress_message = screen.clone_progress.as_ref()
         .map(|p| {
             let prog = p.lock();
@@ -59,22 +56,7 @@ pub fn render_clone_git(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> 
                                 .text_color(theme.foreground)
                                 .child("Repository URL")
                         )
-                        .child(
-                            div()
-                                .px_3()
-                                .py_2()
-                                .border_1()
-                                .border_color(theme.border)
-                                .rounded_md()
-                                .bg(theme.background)
-                                .text_sm()
-                                .text_color(if screen.git_repo_url.is_empty() {
-                                    theme.muted_foreground
-                                } else {
-                                    theme.foreground
-                                })
-                                .child(git_url_display.clone())
-                        )
+                        .child(TextInput::new(&screen.git_repo_url_input))
                         .child(
                             div()
                                 .text_xs()

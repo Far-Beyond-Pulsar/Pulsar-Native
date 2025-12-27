@@ -9,7 +9,7 @@ use types::{EntryScreenView, Template, CloneProgress, SharedCloneProgress, GitFe
 use git_operations::{clone_repository, setup_template_remotes, add_user_upstream, init_repository, is_git_repo, check_for_updates, pull_updates};
 
 use gpui::{prelude::*, *};
-use ui::{h_flex, v_flex, TitleBar, ActiveTheme as _};
+use ui::{h_flex, v_flex, TitleBar, ActiveTheme as _, input::InputState};
 use std::path::PathBuf;
 use std::collections::HashMap;
 use recent_projects::{RecentProject, RecentProjectsList};
@@ -36,6 +36,10 @@ pub struct EntryScreen {
     pub(crate) show_dependency_setup: bool,
     pub(crate) dependency_status: Option<DependencyStatus>,
     pub(crate) install_progress: Option<InstallProgress>,
+    // Input states for interactive text fields
+    pub(crate) git_repo_url_input: Entity<InputState>,
+    pub(crate) git_upstream_url_input: Entity<InputState>,
+    pub(crate) new_project_name_input: Entity<InputState>,
 }
 
 #[derive(Clone, Debug)]
@@ -66,10 +70,24 @@ impl EntryScreen {
         let recent_projects_path = directories::ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
             .map(|proj| proj.data_dir().join("recent_projects.json"))
             .unwrap_or_else(|| PathBuf::from("recent_projects.json"));
-        
+
         let recent_projects = RecentProjectsList::load(&recent_projects_path);
         let templates = get_default_templates();
-        
+
+        // Create InputState entities for text inputs
+        let git_repo_url_input = cx.new(|cx| {
+            InputState::new(_window, cx)
+                .placeholder("https://github.com/user/repo.git")
+        });
+        let git_upstream_url_input = cx.new(|cx| {
+            InputState::new(_window, cx)
+                .placeholder("https://github.com/your-username/your-repo.git")
+        });
+        let new_project_name_input = cx.new(|cx| {
+            InputState::new(_window, cx)
+                .placeholder("my_awesome_game")
+        });
+
         let mut screen = Self {
             view: EntryScreenView::Recent,
             recent_projects,
@@ -89,11 +107,55 @@ impl EntryScreen {
             show_dependency_setup: false,
             dependency_status: None,
             install_progress: None,
+            git_repo_url_input: git_repo_url_input.clone(),
+            git_upstream_url_input: git_upstream_url_input.clone(),
+            new_project_name_input: new_project_name_input.clone(),
         };
-        
+
+        // Subscribe to input events
+        cx.subscribe(&git_repo_url_input, |this, _input, event: &ui::input::InputEvent, cx| {
+            match event {
+                ui::input::InputEvent::Change => {
+                    this.git_repo_url = this.git_repo_url_input.read(cx).text().to_string();
+                    cx.notify();
+                }
+                ui::input::InputEvent::PressEnter { .. } => {
+                    // Note: Will need window parameter for clone_git_repo - will be handled in a later fix
+                    // For now, skipping this functionality
+                }
+                _ => {}
+            }
+        }).detach();
+
+        cx.subscribe(&git_upstream_url_input, |this, _input, event: &ui::input::InputEvent, cx| {
+            match event {
+                ui::input::InputEvent::Change => {
+                    this.git_upstream_url = this.git_upstream_url_input.read(cx).text().to_string();
+                    cx.notify();
+                }
+                ui::input::InputEvent::PressEnter { .. } => {
+                    this.setup_git_upstream(false, cx);
+                }
+                _ => {}
+            }
+        }).detach();
+
+        cx.subscribe(&new_project_name_input, |this, _input, event: &ui::input::InputEvent, cx| {
+            match event {
+                ui::input::InputEvent::Change => {
+                    this.new_project_name = this.new_project_name_input.read(cx).text().to_string();
+                    cx.notify();
+                }
+                ui::input::InputEvent::PressEnter { .. } => {
+                    // Note: Will need window parameter for create_new_project - will be handled via button click
+                }
+                _ => {}
+            }
+        }).detach();
+
         // Check dependencies on background thread
         screen.check_dependencies_async(cx);
-        
+
         screen
     }
     

@@ -110,7 +110,12 @@
     </cargoProject>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="37bf5239-8e9d-4080-9e94-d72c76ae51cc" name="Changes" comment="" />
+    <list default="true" id="37bf5239-8e9d-4080-9e94-d72c76ae51cc" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/ui-crates/ui_entry/src/entry_screen/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/ui-crates/ui_entry/src/entry_screen/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ui-crates/ui_entry/src/entry_screen/views/clone_git.rs" beforeDir="false" afterPath="$PROJECT_DIR$/ui-crates/ui_entry/src/entry_screen/views/clone_git.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ui-crates/ui_entry/src/entry_screen/views/new_project.rs" beforeDir="false" afterPath="$PROJECT_DIR$/ui-crates/ui_entry/src/entry_screen/views/new_project.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ui-crates/ui_entry/src/entry_screen/views/upstream_prompt.rs" beforeDir="false" afterPath="$PROJECT_DIR$/ui-crates/ui_entry/src/entry_screen/views/upstream_prompt.rs" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -146,6 +151,10 @@
     "git-widget-placeholder": "main",
     "ignore.virus.scanning.warn.message": "true",
     "junie.onboarding.icon.badge.shown": "true",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
     "nodejs_package_manager_path": "npm",
     "org.rust.cargo.project.model.PROJECT_DISCOVERY": "true",
     "org.rust.first.attach.projects": "true",
@@ -166,6 +175,7 @@
       <workItem from="1766526224690" duration="30000" />
       <workItem from="1766560771198" duration="73000" />
       <workItem from="1766717308008" duration="24000" />
+      <workItem from="1766769700129" duration="162000" />
     </task>
     <servers />
   </component>

@@ -2,18 +2,14 @@ use gpui::{prelude::*, *};
 use ui::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, Icon, IconName, ActiveTheme as _,
+    input::TextInput,
 };
 use crate::entry_screen::EntryScreen;
 
-pub fn render_upstream_prompt(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {
+pub fn render_upstream_prompt(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();
     let (_, template_url) = screen.show_git_upstream_prompt.as_ref().unwrap();
     let is_template = !template_url.is_empty();
-    let git_url_display = if screen.git_upstream_url.is_empty() {
-        "https://github.com/your-username/your-repo.git".to_string()
-    } else {
-        screen.git_upstream_url.clone()
-    };
     
     div()
         .absolute()
@@ -104,25 +100,7 @@ pub fn render_upstream_prompt(screen: &EntryScreen, cx: &mut Context<EntryScreen
                                 .text_color(theme.foreground)
                                 .child("Your Repository URL")
                         )
-                        .child(
-                            div()
-                                .w_full()
-                                .h(px(40.))
-                                .px_3()
-                                .rounded_lg()
-                                .bg(theme.background)
-                                .border_1()
-                                .border_color(theme.border)
-                                .flex()
-                                .items_center()
-                                .text_sm()
-                                .text_color(if screen.git_upstream_url.is_empty() {
-                                    theme.muted_foreground
-                                } else {
-                                    theme.foreground
-                                })
-                                .child(git_url_display)
-                        )
+                        .child(TextInput::new(&screen.git_upstream_url_input))
                         .child(
                             div()
                                 .text_xs()
