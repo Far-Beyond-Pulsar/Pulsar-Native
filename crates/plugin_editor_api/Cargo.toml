@@ -13,6 +13,9 @@ tracing = "0.1.41"
 gpui = { workspace = true }
 ui = { workspace = true }
 
+[build-dependencies]
+tracing = "0.1.41"
+
 [dev-dependencies]
 tracing = "0.1.41"
 
