@@ -63,13 +63,13 @@ pub fn print_banner(config: &Config) {
         "Production-grade multiplayer editing".bright_white()
     );
 
-    println!("{}", banner);
+    tracing::info!("{}", banner);
 }
 
 /// Display configuration in a pretty formatted way
 pub fn log_config(config: &Config) {
-    println!("\n{}", "📋 Configuration".bright_cyan().bold());
-    println!("{}", "━".repeat(60).bright_black());
+    tracing::info!("\n{}", "📋 Configuration".bright_cyan().bold());
+    tracing::info!("{}", "━".repeat(60).bright_black());
     
     log_config_item("HTTP Server", &format!("{}", config.http_bind), "🌐");
     log_config_item("QUIC Relay", &format!("{}", config.quic_bind), "⚡");
@@ -106,12 +106,12 @@ pub fn log_config(config: &Config) {
         log_config_item("Telemetry", endpoint, "📡");
     }
     
-    println!("{}\n", "━".repeat(60).bright_black());
+    tracing::info!("{}\n", "━".repeat(60).bright_black());
 }
 
 /// Log a single configuration item with emoji and formatting
 fn log_config_item(label: &str, value: &str, emoji: &str) {
-    println!(
+    tracing::info!(
         "  {} {:<18} {}",
         emoji,
         label.bright_white().bold(),

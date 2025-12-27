@@ -17,11 +17,11 @@ async fn main() -> Result<()> {
     let base_url = std::env::var("PULSAR_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
     let client = reqwest::Client::new();
 
-    println!("Pulsar MultiEdit - Example Client");
-    println!("=================================\n");
+    tracing::info!("Pulsar MultiEdit - Example Client");
+    tracing::info!("=================================\n");
 
     // Step 1: Create a session
-    println!("1. Creating session...");
+    tracing::info!("1. Creating session...");
     let create_resp = client
         .post(format!("{}/v1/sessions", base_url))
         .json(&json!({
@@ -42,13 +42,13 @@ async fn main() -> Result<()> {
     let session_id = create_data["session_id"].as_str().unwrap();
     let join_token = create_data["join_token"].as_str().unwrap();
 
-    println!("   ✓ Session created:");
-    println!("     - ID: {}", session_id);
-    println!("     - Token: {}...", &join_token[..20]);
-    println!();
+    tracing::info!("   ✓ Session created:");
+    tracing::info!("     - ID: {}", session_id);
+    tracing::info!("     - Token: {}...", &join_token[..20]);
+    tracing::info!("");
 
     // Step 2: Join the session
-    println!("2. Joining session as peer...");
+    tracing::info!("2. Joining session as peer...");
     let join_resp = client
         .post(format!("{}/v1/sessions/{}/join", base_url, session_id))
         .json(&json!({
@@ -63,14 +63,14 @@ async fn main() -> Result<()> {
     }
 
     let join_data: serde_json::Value = join_resp.json().await?;
-    println!("   ✓ Joined session:");
-    println!("     - Peer ID: {}", join_data["peer_id"]);
-    println!("     - Role: {}", join_data["role"]);
-    println!("     - Participants: {}", join_data["participant_count"]);
-    println!();
+    tracing::info!("   ✓ Joined session:");
+    tracing::info!("     - Peer ID: {}", join_data["peer_id"]);
+    tracing::info!("     - Role: {}", join_data["role"]);
+    tracing::info!("     - Participants: {}", join_data["participant_count"]);
+    tracing::info!("");
 
     // Step 3: Get session info
-    println!("3. Fetching session details...");
+    tracing::info!("3. Fetching session details...");
     let session_resp = client
         .get(format!("{}/v1/sessions/{}", base_url, session_id))
         .send()
@@ -78,15 +78,15 @@ async fn main() -> Result<()> {
 
     if session_resp.status().is_success() {
         let session_data: serde_json::Value = session_resp.json().await?;
-        println!("   ✓ Session details:");
-        println!("     - Host: {}", session_data["host_id"]);
-        println!("     - Created: {}", session_data["created_at"]);
-        println!("     - Expires: {}", session_data["expires_at"]);
-        println!();
+        tracing::info!("   ✓ Session details:");
+        tracing::info!("     - Host: {}", session_data["host_id"]);
+        tracing::info!("     - Created: {}", session_data["created_at"]);
+        tracing::info!("     - Expires: {}", session_data["expires_at"]);
+        tracing::info!("");
     }
 
     // Step 4: Check health
-    println!("4. Checking service health...");
+    tracing::info!("4. Checking service health...");
     let health_resp = client
         .get(format!("{}/health", base_url))
         .send()
@@ -94,30 +94,30 @@ async fn main() -> Result<()> {
 
     if health_resp.status().is_success() {
         let health_data: serde_json::Value = health_resp.json().await?;
-        println!("   ✓ Service health: {}", health_data["status"]);
+        tracing::info!("   ✓ Service health: {}", health_data["status"]);
         if let Some(checks) = health_data["checks"].as_array() {
             for check in checks {
-                println!("     - {}: {}", check["name"], check["status"]);
+                tracing::info!("     - {}: {}", check["name"], check["status"]);
             }
         }
-        println!();
+        tracing::info!("");
     }
 
     // Step 5: Close session
-    println!("5. Closing session...");
+    tracing::info!("5. Closing session...");
     let close_resp = client
         .post(format!("{}/v1/sessions/{}/close", base_url, session_id))
         .send()
         .await?;
 
     if close_resp.status().is_success() {
-        println!("   ✓ Session closed");
+        tracing::info!("   ✓ Session closed");
     } else {
-        println!("   ✗ Failed to close session: {}", close_resp.status());
+        tracing::info!("   ✗ Failed to close session: {}", close_resp.status());
     }
-    println!();
+    tracing::info!("");
 
-    println!("Example completed successfully!");
+    tracing::info!("Example completed successfully!");
 
     Ok(())
 }
