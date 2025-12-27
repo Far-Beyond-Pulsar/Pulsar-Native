@@ -1246,7 +1246,7 @@ impl TabPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        println!("DROP: Panel being dropped on channel {:?}, drag from channel {:?}", self.channel, drag.channel);
+        tracing::debug!("DROP: Panel being dropped on channel {:?}, drag from channel {:?}", self.channel, drag.channel);
         
         // Reset drag state
         self.in_valid_drag = false;
@@ -1254,7 +1254,7 @@ impl TabPanel {
         // Verify that the drag is from the same channel
         // This prevents tabs from different dock systems from interfering with each other
         if drag.channel != self.channel {
-            println!("DROP: Rejected - drag from different channel (cross-channel drops not allowed)");
+            tracing::debug!("DROP: Rejected - drag from different channel (cross-channel drops not allowed)");
             return;
         }
         
@@ -1270,7 +1270,7 @@ impl TabPanel {
         let target_entity = cx.entity().clone();
         let panels_count = self.panels.len();
         let in_tiles = self.in_tiles;
-        println!("DROP: is_same_tab={}, ix={:?}, will_split={:?}", is_same_tab, ix, will_split);
+        tracing::debug!("DROP: is_same_tab={}, ix={:?}, will_split={:?}", is_same_tab, ix, will_split);
         
         // Defer ALL drop handling to avoid entity borrow conflicts
         // Use window.defer instead of cx.defer_in to ensure we're outside the render phase
@@ -1368,38 +1368,38 @@ impl TabPanel {
             }
 
             // Insert into target (and detach if same tab, all in one update)
-            println!("DROP: Inserting panel into target, will_split={:?}, is_same_tab={}", will_split, is_same_tab);
+            tracing::debug!("DROP: Inserting panel into target, will_split={:?}, is_same_tab={}", will_split, is_same_tab);
             _ = target_entity.update(cx, |view, cx| {
                 if let Some(placement) = will_split {
-                    println!("DROP: Splitting with placement {:?}", placement);
+                    tracing::debug!("DROP: Splitting with placement {:?}", placement);
                     // When splitting, handle detach differently
                     if is_same_tab {
-                        println!("DROP: Splitting from same tab - split_panel will handle panel management");
+                        tracing::debug!("DROP: Splitting from same tab - split_panel will handle panel management");
                         // Don't detach yet - split_panel needs the current panel structure intact
                         view.split_panel(panel.clone(), placement, None, window, cx);
                         // Now detach from the original tab after split is created
                         view.detach_panel(panel.clone(), window, cx);
                     } else {
-                        println!("DROP: Splitting from different tab");
+                        tracing::debug!("DROP: Splitting from different tab");
                         view.split_panel(panel.clone(), placement, None, window, cx);
                     }
                 } else {
                     // If same tab, detach first within this same update
                     if is_same_tab {
-                        println!("DROP: Not splitting, detaching from same tab first");
+                        tracing::debug!("DROP: Not splitting, detaching from same tab first");
                         view.detach_panel(panel.clone(), window, cx);
                     }
 
                     if let Some(ix) = ix {
-                        println!("DROP: Inserting at index {}", ix);
+                        tracing::debug!("DROP: Inserting at index {}", ix);
                         view.insert_panel_at(panel.clone(), ix, window, cx)
                     } else {
-                        println!("DROP: Adding panel with active={}", active);
+                        tracing::debug!("DROP: Adding panel with active={}", active);
                         view.add_panel_with_active(panel.clone(), active, window, cx)
                     }
                 }
 
-                println!("DROP: Drop complete, checking if empty");
+                tracing::debug!("DROP: Drop complete, checking if empty");
                 view.remove_self_if_empty(window, cx);
                 cx.emit(PanelEvent::LayoutChanged);
             });
@@ -1415,7 +1415,7 @@ impl TabPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        println!("SPLIT: split_panel called with placement {:?}", placement);
+        tracing::debug!("SPLIT: split_panel called with placement {:?}", placement);
         let dock_area = self.dock_area.clone();
         // wrap the panel in a TabPanel
         let channel = self.channel;
@@ -1424,17 +1424,17 @@ impl TabPanel {
         new_tab_panel.update(cx, |view, cx| {
             view.add_panel(panel_for_new_tab, window, cx);
         });
-        println!("SPLIT: Created new tab panel");
+        tracing::debug!("SPLIT: Created new tab panel");
 
         let stack_panel = match self.stack_panel.as_ref().and_then(|panel| panel.upgrade()) {
             Some(panel) => {
-                println!("SPLIT: Found parent StackPanel");
+                tracing::debug!("SPLIT: Found parent StackPanel");
                 panel
             },
             None => {
-                println!("SPLIT: No parent StackPanel - handling root-level split");
-                println!("SPLIT: Current TabPanel entity: {:?}", cx.entity());
-                println!("SPLIT: Current TabPanel has {} panels", self.panels.len());
+                tracing::debug!("SPLIT: No parent StackPanel - handling root-level split");
+                tracing::debug!("SPLIT: Current TabPanel entity: {:?}", cx.entity());
+                tracing::debug!("SPLIT: Current TabPanel has {} panels", self.panels.len());
 
                 // Handle root-level split: create a new StackPanel and update DockArea
                 let axis = placement.axis();
@@ -1461,7 +1461,7 @@ impl TabPanel {
                         // Check if the panel exists in current tab before detaching
                         if view.panels.iter().any(|p| Arc::ptr_eq(p, &panel_clone)) {
                             view.detach_panel(panel_clone.clone(), window, cx);
-                            println!("SPLIT: Detached panel from current tab");
+                            tracing::debug!("SPLIT: Detached panel from current tab");
                         }
                     });
 
@@ -1497,7 +1497,7 @@ impl TabPanel {
                     _ = dock_area_clone.upgrade().map(|dock| {
                         dock.update(cx, |dock_area, cx| {
                             let current_tab_id = current_tab_clone.entity_id();
-                            println!("SPLIT: Looking for TabPanel {:?} in DockArea", current_tab_id);
+                            tracing::debug!("SPLIT: Looking for TabPanel {:?} in DockArea", current_tab_id);
 
                             // Helper to check if a DockItem contains our TabPanel
                             let contains_tab_panel = |item: &DockItem| -> bool {
@@ -1519,14 +1519,14 @@ impl TabPanel {
 
                             // Check center (items)
                             if contains_tab_panel(&dock_area.items) {
-                                println!("SPLIT: Found in center (items), replacing it");
+                                tracing::debug!("SPLIT: Found in center (items), replacing it");
                                 dock_area.items = new_dock_item.clone();
                                 found = true;
                             }
                             // Check left dock
                             else if let Some(left_dock) = &dock_area.left_dock {
                                 if contains_tab_panel(&left_dock.read(cx).panel) {
-                                    println!("SPLIT: Found in left_dock, replacing its panel");
+                                    tracing::debug!("SPLIT: Found in left_dock, replacing its panel");
                                     let left_dock_entity = left_dock.clone();
                                     left_dock_entity.update(cx, |dock, cx| {
                                         dock.set_panel(new_dock_item.clone(), window, cx);
@@ -1538,7 +1538,7 @@ impl TabPanel {
                             if !found {
                                 if let Some(right_dock) = &dock_area.right_dock {
                                     if contains_tab_panel(&right_dock.read(cx).panel) {
-                                        println!("SPLIT: Found in right_dock, replacing its panel");
+                                        tracing::debug!("SPLIT: Found in right_dock, replacing its panel");
                                         let right_dock_entity = right_dock.clone();
                                         right_dock_entity.update(cx, |dock, cx| {
                                             dock.set_panel(new_dock_item.clone(), window, cx);
@@ -1551,7 +1551,7 @@ impl TabPanel {
                             if !found {
                                 if let Some(bottom_dock) = &dock_area.bottom_dock {
                                     if contains_tab_panel(&bottom_dock.read(cx).panel) {
-                                        println!("SPLIT: Found in bottom_dock, replacing its panel");
+                                        tracing::debug!("SPLIT: Found in bottom_dock, replacing its panel");
                                         let bottom_dock_entity = bottom_dock.clone();
                                         bottom_dock_entity.update(cx, |dock, cx| {
                                             dock.set_panel(new_dock_item.clone(), window, cx);
@@ -1562,14 +1562,14 @@ impl TabPanel {
                             }
 
                             if !found {
-                                println!("SPLIT: WARNING - Could not find TabPanel in any dock location!");
+                                tracing::debug!("SPLIT: WARNING - Could not find TabPanel in any dock location!");
                             }
 
                             cx.notify();
                         })
                     });
 
-                    println!("SPLIT: Created root-level split with StackPanel");
+                    tracing::debug!("SPLIT: Created root-level split with StackPanel");
                 });
 
                 return; // Early return since we've deferred everything
