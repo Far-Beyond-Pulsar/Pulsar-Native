@@ -8,3 +8,4 @@ pulsar_macros = { path = "../pulsar_macros" }
 linkme = "0.3"
 rand = "0.9.2"
 rlua = "0.20" 
+tracing = "0.1.41"

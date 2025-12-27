@@ -9451,6 +9451,7 @@ dependencies = [
  "gpui",
  "serde",
  "serde_json",
+ "tracing",
  "ui",
  "uuid",
 ]
@@ -10035,6 +10036,7 @@ dependencies = [
  "serde_json",
  "syn 2.0.110",
  "toml 0.8.23",
+ "tracing",
  "walkdir",
 ]
 
@@ -10136,6 +10138,7 @@ dependencies = [
  "pulsar_macros",
  "rand 0.9.2",
  "rlua",
+ "tracing",
 ]
 
 [[package]]

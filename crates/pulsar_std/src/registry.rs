@@ -83,7 +83,7 @@ pub static BLUEPRINT_REGISTRY: [NodeMetadata] = [..];
 ///
 /// let nodes = get_all_nodes();
 /// for node in nodes {
-///     println!("Node: {} (category: {})", node.name, node.category);
+///     tracing::info!("Node: {} (category: {})", node.name, node.category);
 /// }
 /// ```
 pub fn get_all_nodes() -> &'static [NodeMetadata] {

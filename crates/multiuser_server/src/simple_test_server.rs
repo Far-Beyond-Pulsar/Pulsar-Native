@@ -17,7 +17,7 @@ pub fn run() -> anyhow::Result<()> {
                 thread::spawn(|| handle_client(stream));
             }
             Err(e) => {
-                eprintln!("Connection failed: {}", e);
+                tracing::error!("Connection failed: {}", e);
             }
         }
     }
@@ -47,13 +47,13 @@ fn handle_client(mut stream: TcpStream) {
             );
             
             if let Err(e) = stream.write_all(response.as_bytes()) {
-                eprintln!("Failed to send response: {}", e);
+                tracing::error!("Failed to send response: {}", e);
             } else {
                 tracing::info!("✅ Sent response to {}", peer_addr);
             }
         }
         Err(e) => {
-            eprintln!("Failed to read from {}: {}", peer_addr, e);
+            tracing::error!("Failed to read from {}: {}", peer_addr, e);
         }
     }
 }

@@ -42,7 +42,7 @@ use crate::blueprint;
 /// Prints a string to the console with [DEBUG] prefix.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn print_string(message: &str) {
-    println!("[DEBUG] {}", message);
+    tracing::info!("[DEBUG] {}", message);
 }
 
 /// Print a number to the console for debugging.
@@ -68,7 +68,7 @@ pub fn print_string(message: &str) {
 /// Prints a number to the console with [DEBUG] prefix.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn print_number(value: f64) {
-    println!("[DEBUG] Number: {}", value);
+    tracing::info!("[DEBUG] Number: {}", value);
 }
 
 /// Print a boolean value to the console for debugging.
@@ -98,7 +98,7 @@ pub fn print_number(value: f64) {
 /// Prints a boolean value to the console with [DEBUG] prefix.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn print_bool(value: bool) {
-    println!("[DEBUG] Boolean: {}", value);
+    tracing::info!("[DEBUG] Boolean: {}", value);
 }
 
 /// Print a message to the console without any prefix.
@@ -124,7 +124,7 @@ pub fn print_bool(value: bool) {
 /// Prints a message to the console.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn println(message: String) {
-    println!("{}", message);
+    tracing::info!("{}", message);
 }
 
 /// Print a formatted message with placeholder replacements.
@@ -160,7 +160,7 @@ pub fn print_formatted(format: String, value0: String, value1: String, value2: S
         .replace("{0}", &value0)
         .replace("{1}", &value1)
         .replace("{2}", &value2);
-    println!("[DEBUG] {}", message);
+    tracing::info!("[DEBUG] {}", message);
 }
 
 /// Print a message only if a condition is true.
@@ -189,7 +189,7 @@ pub fn print_formatted(format: String, value0: String, value1: String, value2: S
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn conditional_print(condition: bool, message: String) {
     if condition {
-        println!("[CONDITIONAL] {}", message);
+        tracing::info!("[CONDITIONAL] {}", message);
     }
 }
 
@@ -220,7 +220,7 @@ pub fn conditional_print(condition: bool, message: String) {
 /// Inspects and prints a value with detailed type information.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn debug_inspect_value(value: String) {
-    println!(
+    tracing::info!(
         "[INSPECT] Value: '{}', Length: {}, Type: String",
         value,
         value.len()
@@ -252,9 +252,9 @@ pub fn debug_inspect_value(value: String) {
 /// Prints a simple stack trace with function name, thread ID, and timestamp.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn debug_stack_trace(function_name: String) {
-    println!("[STACK_TRACE] Current function: {}", function_name);
-    println!("[STACK_TRACE] Thread: {:?}", std::thread::current().id());
-    println!("[STACK_TRACE] Time: {:?}", std::time::SystemTime::now());
+    tracing::info!("[STACK_TRACE] Current function: {}", function_name);
+    tracing::info!("[STACK_TRACE] Thread: {:?}", std::thread::current().id());
+    tracing::info!("[STACK_TRACE] Time: {:?}", std::time::SystemTime::now());
 }
 
 /// Print current memory usage information for debugging.
@@ -282,7 +282,7 @@ pub fn debug_stack_trace(function_name: String) {
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn debug_memory_usage() {
     // Print process ID
-    println!("[MEMORY] Current process ID: {}", std::process::id());
+    tracing::info!("[MEMORY] Current process ID: {}", std::process::id());
 
     // Try to get memory info via system commands
     use std::process::Command;
@@ -329,7 +329,7 @@ pub fn log_info(message: String) {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    println!("[INFO {}] {}", now, message);
+    tracing::info!("[INFO {}] {}", now, message);
 }
 
 /// Log a warning message with a timestamp.
@@ -361,7 +361,7 @@ pub fn log_warn(message: String) {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    eprintln!("[WARN {}] {}", now, message);
+    tracing::warn!("[WARN {}] {}", now, message);
 }
 
 /// Log an error message with a timestamp.
@@ -393,7 +393,7 @@ pub fn log_error(message: String) {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    eprintln!("[ERROR {}] {}", now, message);
+    tracing::error!("[ERROR {}] {}", now, message);
 }
 
 // =============================================================================
@@ -483,8 +483,8 @@ pub fn assert_equals(a: String, b: String, message: String) {
 /// Simulates a breakpoint by printing a message and waiting for user input.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn breakpoint(message: String) {
-    println!("BREAKPOINT: {}", message);
-    println!("Press Enter to continue...");
+    tracing::info!("BREAKPOINT: {}", message);
+    tracing::info!("Press Enter to continue...");
     let mut input = String::new();
     std::io::stdin().read_line(&mut input).unwrap();
 }
@@ -526,6 +526,6 @@ pub fn benchmark_function(name: String) -> u64 {
     // via the exec_code mechanism. For now, we just measure the overhead.
     let duration = start.elapsed();
     let ms = duration.as_millis() as u64;
-    println!("[BENCHMARK] '{}' took {} ms", name, ms);
+    tracing::info!("[BENCHMARK] '{}' took {} ms", name, ms);
     ms
 }

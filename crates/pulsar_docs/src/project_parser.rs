@@ -136,7 +136,7 @@ pub fn parse_project_docs(project_path: &Path) -> Result<ProjectDocumentation, B
                 constants.extend(file_docs.constants);
             }
             Err(e) => {
-                eprintln!("Warning: Failed to parse {}: {}", file_path.display(), e);
+                tracing::warn!("Warning: Failed to parse {}: {}", file_path.display(), e);
             }
         }
     }
