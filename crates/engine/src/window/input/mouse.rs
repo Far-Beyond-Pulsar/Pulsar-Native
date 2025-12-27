@@ -186,7 +186,7 @@ pub fn handle_mouse_input(
 
         match state {
             ElementState::Pressed => {
-                tracing::error!("🖱️ MouseInput PRESSED: {:?} at {:?}", button, position);
+                tracing::debug!("🖱️ MouseInput PRESSED: {:?} at {:?}", button, position);
 
                 // Track pressed button
                 window_state.pressed_mouse_buttons.insert(gpui_button);
@@ -202,9 +202,9 @@ pub fn handle_mouse_input(
                     first_mouse: false,
                 });
 
-                tracing::error!("🔽 Injecting MouseDown event...");
+                tracing::debug!("🔽 Injecting MouseDown event...");
                 let result = window_state.gpui_app.update(|cx| gpui_window_ref.inject_input_event(cx, gpui_event));
-                tracing::error!("📊 MouseDown result: {:?}", result);
+                tracing::debug!("📊 MouseDown result: {:?}", result);
 
                 // Check if GPUI handled the event (e.g., button was clicked)
                 // Event is handled if propagate is false (stopped) or default was prevented
@@ -213,7 +213,7 @@ pub fn handle_mouse_input(
                 }
             }
             ElementState::Released => {
-                tracing::error!("🖱️ MouseInput RELEASED: {:?}", button);
+                tracing::debug!("🖱️ MouseInput RELEASED: {:?}", button);
 
                 // Remove pressed button
                 window_state.pressed_mouse_buttons.remove(&gpui_button);
@@ -225,9 +225,9 @@ pub fn handle_mouse_input(
                     click_count: window_state.click_state.current_count,
                 });
 
-                tracing::error!("🔽 Injecting MouseUp event...");
+                tracing::debug!("🔽 Injecting MouseUp event...");
                 let result = window_state.gpui_app.update(|cx| gpui_window_ref.inject_input_event(cx, gpui_event));
-                tracing::error!("📊 MouseUp result: {:?}", result);
+                tracing::debug!("📊 MouseUp result: {:?}", result);
 
                 // Event is handled if propagate is false (stopped) or default was prevented
                 if let Ok(dispatch_result) = result {

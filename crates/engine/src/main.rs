@@ -94,8 +94,8 @@ fn main() {
         )
         .with_target(true)
         .with_thread_ids(true)
-        .with_file(true)
-        .with_line_number(true)
+        //.with_file(true)
+        //.with_line_number(true)
         .init();
 
     tracing::info!("{}", ENGINE_NAME);
