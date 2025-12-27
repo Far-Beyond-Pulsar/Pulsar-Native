@@ -44,29 +44,52 @@ pub fn camera_movement_system(
 
     let delta_time = time.delta_secs();
     
-    // Calculate effective move speed (with boost)
-    let effective_speed = if camera_input.boost {
+    // --- Unreal-style movement ramp-up (acceleration) ---
+    // Static mut for velocity (per frame, not per camera, but sufficient for editor use)
+    static mut VELOCITY: Vec3 = Vec3::ZERO;
+    let mut input_dir = Vec3::ZERO;
+    if camera_input.forward.abs() > 0.001 {
+        input_dir += transform.forward().as_vec3() * camera_input.forward;
+    }
+    if camera_input.right.abs() > 0.001 {
+        input_dir += transform.right().as_vec3() * camera_input.right;
+    }
+    if camera_input.up.abs() > 0.001 {
+        input_dir += Vec3::Y * camera_input.up;
+    }
+    if input_dir.length_squared() > 0.0 {
+        input_dir = input_dir.normalize();
+    }
+    let base_speed = if camera_input.boost {
         camera_input.move_speed * 3.0
     } else {
         camera_input.move_speed
     };
-    
-    // === FPS-STYLE MOVEMENT (Right mouse + WASD) ===
-    // Forward/backward movement (local Z axis)
-    if camera_input.forward.abs() > 0.001 {
-        let forward = transform.forward();
-        transform.translation += forward.as_vec3() * camera_input.forward * effective_speed * delta_time;
-    }
-    
-    // Left/right strafe (local X axis)
-    if camera_input.right.abs() > 0.001 {
-        let right = transform.right();
-        transform.translation += right.as_vec3() * camera_input.right * effective_speed * delta_time;
-    }
-    
-    // Up/down movement (world Y axis)
-    if camera_input.up.abs() > 0.001 {
-        transform.translation.y += camera_input.up * effective_speed * delta_time;
+    let accel = base_speed * 6.0; // acceleration rate (higher = snappier)
+    let friction = 8.0; // how quickly you stop (higher = stops faster)
+    unsafe {
+        // Accelerate towards input direction
+        let desired_velocity = input_dir * base_speed;
+        let delta_v = desired_velocity - VELOCITY;
+        let accel_step = accel * delta_time;
+        let friction_step = friction * delta_time;
+        // Apply acceleration
+        if delta_v.length() > accel_step {
+            VELOCITY += delta_v.normalize() * accel_step;
+        } else {
+            VELOCITY = desired_velocity;
+        }
+        // Apply friction if no input
+        if input_dir == Vec3::ZERO {
+            let speed = VELOCITY.length();
+            if speed > friction_step {
+                VELOCITY -= VELOCITY.normalize() * friction_step;
+            } else {
+                VELOCITY = Vec3::ZERO;
+            }
+        }
+        // Move camera
+        transform.translation += VELOCITY * delta_time;
     }
     
     // === ROTATION (Right mouse + drag) ===
