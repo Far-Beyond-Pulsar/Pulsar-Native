@@ -22,6 +22,9 @@ tokio = { version = "1", features = ["sync", "rt"] }
 # Error handling
 anyhow = "1.0"
 
+# Logging
+tracing.workspace = true
+
 # Discord Rich Presence
 # Use the local cross-platform version until it's pushed to the repo
 rust-discord-activity = { git = "https://github.com/Far-Beyond-Pulsar/Discord-RPC-RS", rev = "2f07922277bc3632fd124e46d28008fc542367fc"}

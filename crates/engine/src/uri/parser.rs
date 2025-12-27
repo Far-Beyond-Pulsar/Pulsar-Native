@@ -130,7 +130,8 @@ mod tests {
         fs::write(project_path.join("Pulsar.toml"), "").unwrap();
 
         // URL-encode the path
-        let encoded_path = urlencoding::encode(&project_path.to_string_lossy());
+        let project_path_str = project_path.to_string_lossy().to_string();
+        let encoded_path = urlencoding::encode(&project_path_str);
         let uri = format!("pulsar://open_project/{}", encoded_path);
 
         // Parse the URI
@@ -151,7 +152,8 @@ mod tests {
         let project_path = temp_dir.path();
 
         // URL-encode the path
-        let encoded_path = urlencoding::encode(&project_path.to_string_lossy());
+        let project_path_str = project_path.to_string_lossy();
+        let encoded_path = urlencoding::encode(&project_path_str);
         let uri = format!("pulsar://open_project/{}", encoded_path);
 
         // Parse the URI - should fail

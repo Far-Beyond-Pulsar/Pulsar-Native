@@ -309,10 +309,10 @@ impl EntryScreen {
                     }
                 }
                 Ok(Err(e)) => {
-                    eprintln!("Failed to pull updates: {}", e);
+                    tracing::error!("Failed to pull updates: {}", e);
                 }
                 Err(_) => {
-                    eprintln!("Thread panicked during pull");
+                    tracing::error!("Thread panicked during pull");
                 }
             }
             
@@ -353,7 +353,7 @@ impl EntryScreen {
                 let toml_path = path.join("Pulsar.toml");
                 
                 if !toml_path.exists() {
-                    eprintln!("Invalid project: Pulsar.toml not found");
+                    tracing::error!("Invalid project: Pulsar.toml not found");
                     return;
                 }
                 
@@ -435,7 +435,7 @@ impl EntryScreen {
                         // If template, rename origin to template
                         if is_template {
                             if let Err(e) = setup_template_remotes(&target_path, &repo_url) {
-                                eprintln!("Failed to setup template remotes: {}", e);
+                                tracing::error!("Failed to setup template remotes: {}", e);
                             }
                         }
                         
@@ -498,7 +498,7 @@ impl EntryScreen {
             if !skip && !self.git_upstream_url.trim().is_empty() {
                 // Add user's upstream
                 if let Err(e) = add_user_upstream(&project_path, &self.git_upstream_url) {
-                    eprintln!("Failed to add upstream: {}", e);
+                    tracing::error!("Failed to add upstream: {}", e);
                 }
             }
             
@@ -697,7 +697,7 @@ impl EntryScreen {
         
         cx.spawn(async move |this, cx| {
             if let Err(e) = std::fs::create_dir_all(&project_path) {
-                eprintln!("Failed to create project directory: {}", e);
+                tracing::error!("Failed to create project directory: {}", e);
                 return;
             }
             
@@ -714,7 +714,7 @@ default_scene = "scenes/main.scene"
             );
             
             if let Err(e) = std::fs::write(project_path.join("Pulsar.toml"), toml_content) {
-                eprintln!("Failed to create Pulsar.toml: {}", e);
+                tracing::error!("Failed to create Pulsar.toml: {}", e);
                 return;
             }
             

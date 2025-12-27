@@ -32,7 +32,7 @@ impl DawPanel {
     pub fn load_project(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         match self.state.load_project(path) {
             Ok(_) => {
-                eprintln!("✅ DAW: Project loaded successfully");
+                tracing::error!("✅ DAW: Project loaded successfully");
 
                 // Sync loaded project to audio service
                 self.sync_project_to_audio_service(cx);
@@ -40,7 +40,7 @@ impl DawPanel {
                 cx.notify();
             }
             Err(e) => {
-                eprintln!("❌ DAW: Failed to load project: {}", e);
+                tracing::error!("❌ DAW: Failed to load project: {}", e);
             }
         }
     }
@@ -52,7 +52,7 @@ impl DawPanel {
             let project = project.clone();
 
             cx.spawn(async move |_this, _cx| {
-                eprintln!("🔄 Syncing project to audio service...");
+                tracing::error!("🔄 Syncing project to audio service...");
 
                 // Extract values first to avoid borrow issues
                 let tempo = project.transport.tempo;
@@ -64,7 +64,7 @@ impl DawPanel {
 
                 // Set tempo
                 if let Err(e) = service.set_tempo(tempo).await {
-                    eprintln!("❌ Failed to set tempo: {}", e);
+                    tracing::error!("❌ Failed to set tempo: {}", e);
                 }
 
                 // Set loop settings
@@ -73,40 +73,40 @@ impl DawPanel {
                     loop_start,
                     loop_end
                 ).await {
-                    eprintln!("❌ Failed to set loop: {}", e);
+                    tracing::error!("❌ Failed to set loop: {}", e);
                 }
 
                 // Set metronome
                 if let Err(e) = service.set_metronome(metronome_enabled).await {
-                    eprintln!("❌ Failed to set metronome: {}", e);
+                    tracing::error!("❌ Failed to set metronome: {}", e);
                 }
 
                 // Add all tracks
                 for track in &project.tracks {
                     let track_id = service.add_track(track.clone()).await;
-                    eprintln!("  ✅ Added track: '{}' ({})", track.name, track_id);
+                    tracing::error!("  ✅ Added track: '{}' ({})", track.name, track_id);
 
                     // Sync track state
                     if let Err(e) = service.set_track_volume(track_id, track.volume).await {
-                        eprintln!("    ❌ Failed to set volume: {}", e);
+                        tracing::error!("    ❌ Failed to set volume: {}", e);
                     }
                     if let Err(e) = service.set_track_pan(track_id, track.pan).await {
-                        eprintln!("    ❌ Failed to set pan: {}", e);
+                        tracing::error!("    ❌ Failed to set pan: {}", e);
                     }
                     if let Err(e) = service.set_track_mute(track_id, track.muted).await {
-                        eprintln!("    ❌ Failed to set mute: {}", e);
+                        tracing::error!("    ❌ Failed to set mute: {}", e);
                     }
                     if let Err(e) = service.set_track_solo(track_id, track.solo).await {
-                        eprintln!("    ❌ Failed to set solo: {}", e);
+                        tracing::error!("    ❌ Failed to set solo: {}", e);
                     }
                 }
 
                 // Set master track volume
                 if let Err(e) = service.set_master_volume(master_volume).await {
-                    eprintln!("❌ Failed to set master volume: {}", e);
+                    tracing::error!("❌ Failed to set master volume: {}", e);
                 }
 
-                eprintln!("✅ Project sync complete");
+                tracing::error!("✅ Project sync complete");
             }).detach();
         }
     }
@@ -187,7 +187,7 @@ impl DawPanel {
                 }
             }).detach();
 
-            eprintln!("✅ Playhead sync started with GPUI background executor");
+            tracing::error!("✅ Playhead sync started with GPUI background executor");
         }
     }
 
@@ -232,7 +232,7 @@ impl DawPanel {
                 }
             }).detach();
 
-            eprintln!("✅ Meter sync started at 30 FPS");
+            tracing::error!("✅ Meter sync started at 30 FPS");
         }
     }
 
@@ -444,7 +444,7 @@ impl Render for DawPanel {
                                 .unwrap_or(0.0);
 
                             // Future: Sync send levels to audio service
-                            eprintln!("🎚️ Send {} level set to: {:.0}%", send_idx_val, send_amount * 100.0);
+                            tracing::error!("🎚️ Send {} level set to: {:.0}%", send_idx_val, send_amount * 100.0);
                             // let _ = service.set_send_level(track_id_val, send_idx_val, send_amount).await;
                         }
                     }

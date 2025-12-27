@@ -41,9 +41,9 @@ pub fn setup_rust_autocomplete(
     input_state.lsp.definition_provider = Some(rust_provider_rc.clone());
     input_state.lsp.hover_provider = Some(rust_provider_rc); // Use rust-analyzer for hover too!
     
-    println!("✓ Autocomplete, Hover, and Go-to-Definition configured for: {:?} (workspace: {:?})", file_path.file_name(), workspace);
+    tracing::info!("✓ Autocomplete, Hover, and Go-to-Definition configured for: {:?} (workspace: {:?})", file_path.file_name(), workspace);
 }
-
+
 /// Helper function to set up autocomplete for JavaScript/TypeScript files
 pub fn setup_javascript_autocomplete(
     input_state: &mut InputState,
@@ -56,7 +56,7 @@ pub fn setup_javascript_autocomplete(
     input_state.lsp.completion_provider = Some(Rc::new(provider));
     
     let workspace = workspace_root.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-    println!("✓ JavaScript/TypeScript autocomplete configured for: {:?} (workspace: {:?})", file_path.file_name(), workspace);
+    tracing::info!("✓ JavaScript/TypeScript autocomplete configured for: {:?} (workspace: {:?})", file_path.file_name(), workspace);
 }
 
 /// Helper function to set up autocomplete for Python files
@@ -71,7 +71,7 @@ pub fn setup_python_autocomplete(
     input_state.lsp.completion_provider = Some(Rc::new(provider));
     
     let workspace = workspace_root.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-    println!("✓ Python autocomplete configured for: {:?} (workspace: {:?})", file_path.file_name(), workspace);
+    tracing::info!("✓ Python autocomplete configured for: {:?} (workspace: {:?})", file_path.file_name(), workspace);
 }
 
 /// Helper function to set up autocomplete for plain text files
@@ -86,7 +86,7 @@ pub fn setup_text_autocomplete(
     input_state.lsp.completion_provider = Some(Rc::new(provider));
     
     let workspace = workspace_root.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-    println!("✓ Text autocomplete configured for: {:?} (workspace: {:?})", file_path.file_name(), workspace);
+    tracing::info!("✓ Text autocomplete configured for: {:?} (workspace: {:?})", file_path.file_name(), workspace);
 }
 
 /// Detect language and set up appropriate autocomplete with global rust-analyzer

@@ -314,9 +314,9 @@ pub fn render_metadata_tab(settings: &ProjectSettings, cx: &mut Context<EntryScr
                                         }
                                         
                                         if missing.is_empty() {
-                                            println!("✓ Project structure is valid");
+                                            tracing::info!("✓ Project structure is valid");
                                         } else {
-                                            println!("⚠ Missing directories: {}", missing.join(", "));
+                                            tracing::info!("⚠ Missing directories: {}", missing.join(", "));
                                         }
                                     }
                                 })
@@ -334,7 +334,7 @@ pub fn render_metadata_tab(settings: &ProjectSettings, cx: &mut Context<EntryScr
                                         for dir in dirs {
                                             let _ = std::fs::create_dir_all(path.join(dir));
                                         }
-                                        println!("✓ Created project folders");
+                                        tracing::info!("✓ Created project folders");
                                     }
                                 })
                         )

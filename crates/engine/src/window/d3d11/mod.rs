@@ -112,7 +112,7 @@ mod windows_impl {
         );
 
         if result.is_err() {
-            eprintln!("❌ Failed to create D3D11 device");
+            tracing::error!("❌ Failed to create D3D11 device");
             return None;
         }
 
@@ -189,7 +189,7 @@ mod windows_impl {
                     err.GetBufferPointer() as *const u8,
                     err.GetBufferSize()
                 );
-                eprintln!("❌ Shader compile error: {}", String::from_utf8_lossy(err_msg));
+                tracing::error!("❌ Shader compile error: {}", String::from_utf8_lossy(err_msg));
             }
             return None;
         }
@@ -220,7 +220,7 @@ mod windows_impl {
     pub unsafe fn create_shaders(
         device: &ID3D11Device
     ) -> Option<(ID3D11VertexShader, ID3D11PixelShader, Vec<u8>)> {
-        println!("🔨 Compiling shaders at runtime...");
+        tracing::info!("🔨 Compiling shaders at runtime...");
 
         // Compile both shaders
         let vs_bytecode = compile_shader(VERTEX_SHADER_SOURCE, "vs_5_0")?;
@@ -233,7 +233,7 @@ mod windows_impl {
         device.CreateVertexShader(&vs_bytecode, None, Some(&mut vertex_shader as *mut _)).ok()?;
         device.CreatePixelShader(&ps_bytecode, None, Some(&mut pixel_shader as *mut _)).ok()?;
 
-        println!("✅ Shaders compiled successfully");
+        tracing::info!("✅ Shaders compiled successfully");
 
         Some((vertex_shader?, pixel_shader?, vs_bytecode))
     }

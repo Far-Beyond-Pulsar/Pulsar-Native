@@ -153,19 +153,19 @@ impl LoadingWindow {
     fn check_completion(&mut self, cx: &mut Context<Self>) {
         // Complete immediately when initial tasks are done - don't wait for analyzer
         if self.initial_tasks_complete {
-            println!("🎉 Loading complete! Opening editor window...");
+            tracing::info!("🎉 Loading complete! Opening editor window...");
             let project_path = self.project_path.clone();
             let rust_analyzer = self.rust_analyzer.clone().expect("Rust Analyzer should be initialized");
 
             // Request editor window to be opened and close this splash
             if let Some(engine_state) = crate::EngineState::global() {
-                println!("📝 Requesting editor window for: {:?}", project_path);
+                tracing::info!("📝 Requesting editor window for: {:?}", project_path);
                 engine_state.request_window(crate::WindowRequest::ProjectEditor {
                     project_path: project_path.to_string_lossy().to_string(),
                 });
 
                 // Close this splash window
-                println!("🔚 Closing splash window (ID: {})", self.window_id);
+                tracing::info!("🔚 Closing splash window (ID: {})", self.window_id);
                 engine_state.request_window(crate::WindowRequest::CloseWindow {
                     window_id: self.window_id,
                 });

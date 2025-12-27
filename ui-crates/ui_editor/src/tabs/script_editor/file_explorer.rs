@@ -402,14 +402,14 @@ impl FileExplorer {
     fn cut_file(&mut self, path: PathBuf, _window: &mut Window, cx: &mut Context<Self>) {
         self.clipboard_path = Some(path);
         self.clipboard_operation = Some(ClipboardOperation::Cut);
-        println!("📋 Cut: {:?}", self.clipboard_path);
+        tracing::info!("📋 Cut: {:?}", self.clipboard_path);
         cx.notify();
     }
 
     fn copy_file(&mut self, path: PathBuf, _window: &mut Window, cx: &mut Context<Self>) {
         self.clipboard_path = Some(path);
         self.clipboard_operation = Some(ClipboardOperation::Copy);
-        println!("📋 Copy: {:?}", self.clipboard_path);
+        tracing::info!("📋 Copy: {:?}", self.clipboard_path);
         cx.notify();
     }
 
@@ -421,9 +421,9 @@ impl FileExplorer {
             match operation {
                 ClipboardOperation::Cut => {
                     if let Err(e) = fs::rename(source_path, &dest_path) {
-                        eprintln!("Failed to move file: {}", e);
+                        tracing::error!("Failed to move file: {}", e);
                     } else {
-                        println!("✓ Moved: {:?} -> {:?}", source_path, dest_path);
+                        tracing::info!("✓ Moved: {:?} -> {:?}", source_path, dest_path);
                         self.clipboard_path = None;
                         self.clipboard_operation = None;
                         self.refresh_file_tree(cx);
@@ -433,16 +433,16 @@ impl FileExplorer {
                     if source_path.is_dir() {
                         // Recursive directory copy
                         if let Err(e) = self.copy_dir_recursive(source_path, &dest_path) {
-                            eprintln!("Failed to copy directory: {}", e);
+                            tracing::error!("Failed to copy directory: {}", e);
                         } else {
-                            println!("✓ Copied directory: {:?} -> {:?}", source_path, dest_path);
+                            tracing::info!("✓ Copied directory: {:?} -> {:?}", source_path, dest_path);
                             self.refresh_file_tree(cx);
                         }
                     } else {
                         if let Err(e) = fs::copy(source_path, &dest_path) {
-                            eprintln!("Failed to copy file: {}", e);
+                            tracing::error!("Failed to copy file: {}", e);
                         } else {
-                            println!("✓ Copied: {:?} -> {:?}", source_path, dest_path);
+                            tracing::info!("✓ Copied: {:?} -> {:?}", source_path, dest_path);
                             self.refresh_file_tree(cx);
                         }
                     }
@@ -479,11 +479,11 @@ impl FileExplorer {
 
         match result {
             Ok(_) => {
-                println!("✓ Deleted: {:?}", path);
+                tracing::info!("✓ Deleted: {:?}", path);
                 self.refresh_file_tree(cx);
             }
             Err(e) => {
-                eprintln!("Failed to delete: {}", e);
+                tracing::error!("Failed to delete: {}", e);
             }
         }
         cx.notify();
@@ -497,7 +497,7 @@ impl FileExplorer {
     fn copy_path_to_clipboard(&self, path: &Path, cx: &mut App) {
         let path_str = path.to_string_lossy().to_string();
         cx.write_to_clipboard(ClipboardItem::new_string(path_str.clone()));
-        println!("📋 Copied path to clipboard: {}", path_str);
+        tracing::info!("📋 Copied path to clipboard: {}", path_str);
     }
 
     fn copy_relative_path_to_clipboard(&self, path: &Path, cx: &mut App) {
@@ -505,7 +505,7 @@ impl FileExplorer {
             if let Ok(relative) = path.strip_prefix(root) {
                 let path_str = relative.to_string_lossy().to_string();
                 cx.write_to_clipboard(ClipboardItem::new_string(path_str.clone()));
-                println!("📋 Copied relative path to clipboard: {}", path_str);
+                tracing::info!("📋 Copied relative path to clipboard: {}", path_str);
                 return;
             }
         }
@@ -536,7 +536,7 @@ impl FileExplorer {
                     .spawn();
             }
         }
-        println!("📂 Revealed in file manager: {:?}", path);
+        tracing::info!("📂 Revealed in file manager: {:?}", path);
     }
 
     fn create_file_in_directory(&mut self, dir_path: PathBuf, _window: &mut Window, cx: &mut Context<Self>) {
@@ -585,7 +585,7 @@ impl FileExplorer {
         
         // Debug: print when using fallback
         if self.last_viewport_bounds.is_none() {
-            println!("⚠️  Using fallback viewport height: 600px");
+            tracing::info!("⚠️  Using fallback viewport height: 600px");
         }
         
         height

@@ -46,7 +46,7 @@ pub fn render_output_routing(
                 })
                 .on_mouse_down(MouseButton::Left, cx.listener(move |_panel, _event: &MouseDownEvent, _window, cx| {
                     // Future: Show routing dropdown menu
-                    eprintln!("🔌 Output routing clicked for track {}", track_id);
+                    tracing::error!("🔌 Output routing clicked for track {}", track_id);
                     cx.notify();
                 }))
                 .child(

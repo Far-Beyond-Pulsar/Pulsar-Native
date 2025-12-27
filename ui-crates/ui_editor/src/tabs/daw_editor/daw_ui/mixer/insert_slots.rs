@@ -61,7 +61,7 @@ pub fn render_insert_slots(track: &Track, cx: &mut Context<DawPanel>) -> impl In
                         })
                         .on_mouse_down(MouseButton::Left, cx.listener(move |_panel, _event: &MouseDownEvent, _window, cx| {
                             // Future: Show effect browser/menu
-                            eprintln!("📦 Insert slot {} clicked for track {}", slot_idx, track_id);
+                            tracing::error!("📦 Insert slot {} clicked for track {}", slot_idx, track_id);
                             cx.notify();
                         }))
                         .child(if has_effect {

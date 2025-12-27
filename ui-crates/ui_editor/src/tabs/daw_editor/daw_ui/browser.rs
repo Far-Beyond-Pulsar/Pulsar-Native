@@ -303,7 +303,7 @@ fn render_audio_file_item(
         // Handle click to start drag
         .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _event: &MouseDownEvent, _window, cx| {
             // Set drag state
-            eprintln!("🎵 Starting drag for file: {} at path: {:?}", file_name_for_closure, file_path);
+            tracing::error!("🎵 Starting drag for file: {} at path: {:?}", file_name_for_closure, file_path);
             this.state.drag_state = DragState::DraggingFile {
                 file_path: file_path.clone(),
                 file_name: file_name_for_closure.clone(),
@@ -508,7 +508,7 @@ fn handle_import_audio(_state: &mut DawUiState, _window: &mut Window, cx: &mut C
                 let _ = cx.update(|cx| {
                     let _ = this.update(cx, |this, cx| {
                         if let Ok(_) = this.state.import_audio_file(source) {
-                            println!("✅ Audio file imported successfully");
+                            tracing::info!("✅ Audio file imported successfully");
                         }
                         cx.notify();
                     });

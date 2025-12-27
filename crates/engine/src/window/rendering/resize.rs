@@ -58,9 +58,9 @@ pub fn handle_resize(
             let _ = gpui_window_ref.update(app, |_view, window, _cx| {
                 // Resize renderer (GPU buffers) - platform-agnostic
                 if let Err(e) = window.resize_renderer(physical_size) {
-                    eprintln!("❌ Failed to resize GPUI renderer: {:?}", e);
+                    tracing::error!("❌ Failed to resize GPUI renderer: {:?}", e);
                 } else {
-                    println!("✨ Resized GPUI renderer to {:?}", physical_size);
+                    tracing::info!("✨ Resized GPUI renderer to {:?}", physical_size);
 
                     // CRITICAL: GPUI recreates its texture when resizing
                     // Mark for re-initialization
@@ -71,13 +71,13 @@ pub fn handle_resize(
                         window_state.persistent_gpui_texture = None;
                         window_state.persistent_gpui_srv = None;
 
-                        println!("🔄 Marked GPUI shared texture for re-initialization after resize");
+                        tracing::info!("🔄 Marked GPUI shared texture for re-initialization after resize");
                     }
                 }
 
                 // Update logical size (for UI layout)
                 window.update_logical_size(logical_size);
-                println!("✨ Updated GPUI logical size to {:?} (scale {})", logical_size, scale_factor);
+                tracing::info!("✨ Updated GPUI logical size to {:?} (scale {})", logical_size, scale_factor);
 
                 // Mark window as dirty to trigger UI re-layout
                 window.refresh();
@@ -105,7 +105,7 @@ unsafe fn resize_d3d11_swap_chain(
     if let (Some(swap_chain), Some(d3d_device), Some(d3d_context)) =
         (window_state.swap_chain.as_ref(), window_state.d3d_device.as_ref(), window_state.d3d_context.as_ref()) {
 
-        println!("🖼️ Resizing D3D11 swap chain to {}x{}", new_size.width, new_size.height);
+        tracing::info!("🖼️ Resizing D3D11 swap chain to {}x{}", new_size.width, new_size.height);
 
         // Flush any pending commands to ensure context is clean
         d3d_context.Flush();
@@ -113,7 +113,7 @@ unsafe fn resize_d3d11_swap_chain(
         // Must release render target view before resizing
         if window_state.render_target_view.is_some() {
             window_state.render_target_view = None;
-            println!("🔄 Released render target view before resize");
+            tracing::info!("🔄 Released render target view before resize");
         }
 
         // Resize the swap chain buffers
@@ -126,22 +126,22 @@ unsafe fn resize_d3d11_swap_chain(
         );
 
         if let Err(e) = resize_result {
-            eprintln!("❌ Failed to resize swap chain: {:?}", e);
-            eprintln!("❌ This may indicate a device lost condition - rendering may be degraded");
+            tracing::error!("❌ Failed to resize swap chain: {:?}", e);
+            tracing::error!("❌ This may indicate a device lost condition - rendering may be degraded");
         } else {
-            println!("✨ Successfully resized swap chain");
+            tracing::info!("✨ Successfully resized swap chain");
 
             // Recreate render target view with new back buffer
             if let Ok(back_buffer) = swap_chain.GetBuffer::<ID3D11Texture2D>(0) {
                 let mut rtv: Option<ID3D11RenderTargetView> = None;
                 if d3d_device.CreateRenderTargetView(&back_buffer, None, Some(&mut rtv as *mut _)).is_ok() {
                     window_state.render_target_view = rtv;
-                    println!("✨ Recreated render target view for resized swap chain");
+                    tracing::info!("✨ Recreated render target view for resized swap chain");
                 } else {
-                    eprintln!("❌ Failed to recreate render target view");
+                    tracing::error!("❌ Failed to recreate render target view");
                 }
             } else {
-                eprintln!("❌ Failed to get back buffer after resize");
+                tracing::error!("❌ Failed to get back buffer after resize");
             }
         }
     }

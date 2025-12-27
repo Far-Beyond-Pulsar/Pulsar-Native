@@ -22,22 +22,22 @@ pub fn create_shared_textures_startup(
     shared_textures: Res<SharedTexturesResource>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    println!("[BEVY] 🔧 create_shared_textures_startup() CALLED - Creating placeholder Images...");
-    println!("[BEVY] 📍 This runs in STARTUP schedule (main world) BEFORE rendering begins");
+    tracing::info!("[BEVY] 🔧 create_shared_textures_startup() CALLED - Creating placeholder Images...");
+    tracing::info!("[BEVY] 📍 This runs in STARTUP schedule (main world) BEFORE rendering begins");
 
     // Check if already created
     if let Ok(lock) = shared_textures.0.lock() {
         if let Some(ref textures) = *lock {
             if let Ok(native_lock) = textures.native_handles.lock() {
                 if native_lock.is_some() {
-                    println!("[BEVY] ⚠️  Textures already created, skipping");
+                    tracing::info!("[BEVY] ⚠️  Textures already created, skipping");
                     return;
                 }
             }
         }
     }
 
-    println!("[BEVY] 📦 Creating placeholder Images (actual DXGI textures created in render world)...");
+    tracing::info!("[BEVY] 📦 Creating placeholder Images (actual DXGI textures created in render world)...");
     let bytes_per_pixel = 4; // BGRA8
     let texture_size = (RENDER_WIDTH * RENDER_HEIGHT * bytes_per_pixel) as usize;
     
@@ -94,7 +94,7 @@ pub fn create_shared_textures_startup(
         });
     }
 
-    println!("[BEVY] ✅ Placeholder render target Images created");
+    tracing::info!("[BEVY] ✅ Placeholder render target Images created");
 }
 
 /// Create shared textures for non-Windows platforms (stub for now)
@@ -103,12 +103,12 @@ pub fn create_shared_textures_startup(
     shared_textures: Res<SharedTexturesResource>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    println!("[BEVY] 🔧 Creating shared textures (non-Windows)...");
+    tracing::info!("[BEVY] 🔧 Creating shared textures (non-Windows)...");
 
     // Check if already created
     if let Ok(lock) = shared_textures.0.lock() {
         if lock.is_some() {
-            println!("[BEVY] ⚠️ Textures already created");
+            tracing::info!("[BEVY] ⚠️ Textures already created");
             return;
         }
     }
@@ -170,7 +170,7 @@ pub fn create_shared_textures_startup(
         });
     }
 
-    println!("[BEVY] ✅ Render target Images created");
+    tracing::info!("[BEVY] ✅ Render target Images created");
 }
 
 /// Create DXGI shared textures and inject them into Bevy's render pipeline
@@ -184,13 +184,13 @@ pub fn create_shared_textures(
     use wgpu_hal::api::Dx12;
     use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
 
-    println!("[BEVY] 🔧 create_shared_textures() CALLED - Replacing render targets with DXGI shared textures...");
-    println!("[BEVY] 📍 This should only run ONCE on the first render cycle");
+    tracing::info!("[BEVY] 🔧 create_shared_textures() CALLED - Replacing render targets with DXGI shared textures...");
+    tracing::info!("[BEVY] 📍 This should only run ONCE on the first render cycle");
 
     let texture_handles = match shared_textures.0.lock().ok().and_then(|l| l.as_ref().map(|t| t.textures.clone())) {
         Some(handles) => handles,
         None => {
-            println!("[BEVY] ❌ No texture handles available");
+            tracing::info!("[BEVY] ❌ No texture handles available");
             return;
         }
     };
@@ -212,7 +212,7 @@ pub fn create_shared_textures(
         match render_device.wgpu_device().as_hal::<Dx12>() {
             Some(hal_device) => hal_device.raw_device().clone(),
             None => {
-                println!("[BEVY] ❌ Failed to get D3D12 device");
+                tracing::info!("[BEVY] ❌ Failed to get D3D12 device");
                 return;
             }
         }
@@ -223,7 +223,7 @@ pub fn create_shared_textures(
         match crate::subsystems::render::DxgiSharedTexture::create(&d3d12_device, RENDER_WIDTH, RENDER_HEIGHT, DXGI_FORMAT_B8G8R8A8_UNORM) {
             Ok(t) => t,
             Err(e) => {
-                println!("[BEVY] ❌ Failed to create texture 0: {}", e);
+                tracing::info!("[BEVY] ❌ Failed to create texture 0: {}", e);
                 return;
             }
         }
@@ -233,7 +233,7 @@ pub fn create_shared_textures(
         match crate::subsystems::render::DxgiSharedTexture::create(&d3d12_device, RENDER_WIDTH, RENDER_HEIGHT, DXGI_FORMAT_B8G8R8A8_UNORM) {
             Ok(t) => t,
             Err(e) => {
-                println!("[BEVY] ❌ Failed to create texture 1: {}", e);
+                tracing::info!("[BEVY] ❌ Failed to create texture 1: {}", e);
                 return;
             }
         }
@@ -242,8 +242,8 @@ pub fn create_shared_textures(
     let handle_0 = tex_0.handle_value();
     let handle_1 = tex_1.handle_value();
 
-    println!("[BEVY] ✅ Created DXGI textures: 0x{:X}, 0x{:X}", handle_0, handle_1);
-    println!("[BEVY] 🎯 Handles will now be stored for GPUI compositor access");
+    tracing::info!("[BEVY] ✅ Created DXGI textures: 0x{:X}, 0x{:X}", handle_0, handle_1);
+    tracing::info!("[BEVY] 🎯 Handles will now be stored for GPUI compositor access");
 
     // Store handles for GPUI - both in global storage and in SharedGpuTextures
     crate::subsystems::render::native_texture::store_shared_handles(vec![handle_0, handle_1]);
@@ -256,7 +256,7 @@ pub fn create_shared_textures(
                     crate::subsystems::render::NativeTextureHandle::D3D11(handle_0),
                     crate::subsystems::render::NativeTextureHandle::D3D11(handle_1),
                 ]);
-                println!("[BEVY] 💾 Stored native handles in SharedGpuTextures");
+                tracing::info!("[BEVY] 💾 Stored native handles in SharedGpuTextures");
             }
         }
     }
@@ -341,12 +341,12 @@ pub fn create_shared_textures(
         };
 
         // CRITICAL: Inject our textures into Bevy's render assets
-        println!("[BEVY] 📍 Injecting DXGI texture into asset ID 0: {:?}", texture_handles[0].id());
-        println!("[BEVY] 📍 Injecting DXGI texture into asset ID 1: {:?}", texture_handles[1].id());
+        tracing::info!("[BEVY] 📍 Injecting DXGI texture into asset ID 0: {:?}", texture_handles[0].id());
+        tracing::info!("[BEVY] 📍 Injecting DXGI texture into asset ID 1: {:?}", texture_handles[1].id());
         gpu_images.insert(&texture_handles[0], gpu_img_0);
         gpu_images.insert(&texture_handles[1], gpu_img_1);
 
-        println!("[BEVY] ✅ Injected DXGI textures into Bevy - Rendering DIRECTLY to shared GPU memory!");
+        tracing::info!("[BEVY] ✅ Injected DXGI textures into Bevy - Rendering DIRECTLY to shared GPU memory!");
 
         // Keep textures alive
         std::mem::forget(tex_0);

@@ -11,13 +11,13 @@ pub fn setup_scene(
     mut materials: ResMut<Assets<StandardMaterial>>,
     shared_textures: Res<SharedTexturesResource>,
 ) {
-    println!("[BEVY] 🎬 Setting up scene...");
+    tracing::info!("[BEVY] 🎬 Setting up scene...");
 
     // Get the shared textures to determine which buffer to render to
     let textures = match shared_textures.0.lock().ok().and_then(|l| l.as_ref().cloned()) {
         Some(t) => t,
         None => {
-            println!("[BEVY] ❌ No render targets available");
+            tracing::info!("[BEVY] ❌ No render targets available");
             return;
         }
     };
@@ -26,15 +26,15 @@ pub fn setup_scene(
     let write_index = textures.write_index.load(std::sync::atomic::Ordering::Acquire);
     let render_target = textures.textures[write_index].clone();
     
-    println!("[BEVY] ✅ Got render target handles");
-    println!("[BEVY] 📍 Initial write_index={}, read_index={}", 
+    tracing::info!("[BEVY] ✅ Got render target handles");
+    tracing::info!("[BEVY] 📍 Initial write_index={}, read_index={}", 
              write_index, 
              textures.read_index.load(std::sync::atomic::Ordering::Acquire));
-    println!("[BEVY] 🎯 Camera will initially render to buffer {} (asset ID: {:?})", 
+    tracing::info!("[BEVY] 🎯 Camera will initially render to buffer {} (asset ID: {:?})", 
              write_index, render_target.id());
 
     // Camera rendering to shared DXGI texture with TONEMAPPING DISABLED
-    println!("[BEVY] 📹 Creating camera targeting shared texture");
+    tracing::info!("[BEVY] 📹 Creating camera targeting shared texture");
     commands.spawn((
         Camera3d::default(),
         Camera {
@@ -46,11 +46,11 @@ pub fn setup_scene(
         Tonemapping::None, // CRITICAL: Disable tonemapping for proper color reproduction
         MainCamera,
     ));
-    println!("[BEVY] ✅ Camera spawned with tonemapping DISABLED - double-buffering enabled!");
-    println!("[BEVY] 🔄 Camera renders to write buffer, GPUI reads from read buffer");
+    tracing::info!("[BEVY] ✅ Camera spawned with tonemapping DISABLED - double-buffering enabled!");
+    tracing::info!("[BEVY] 🔄 Camera renders to write buffer, GPUI reads from read buffer");
 
     // Scene objects - SUPER BRIGHT AND OBVIOUS
-    println!("[BEVY] 🎨 Spawning HIGH-VISIBILITY scene objects...");
+    tracing::info!("[BEVY] 🎨 Spawning HIGH-VISIBILITY scene objects...");
     
     // Bright grey ground plane (concrete-like)
     commands.spawn((
@@ -64,7 +64,7 @@ pub fn setup_scene(
         })),
         Transform::from_xyz(0.0, 0.0, 0.0),
     ));
-    println!("[BEVY] ✅ Ground plane spawned");
+    tracing::info!("[BEVY] ✅ Ground plane spawned");
 
     // Red metallic cube (left) - GAME OBJECT 1
     commands.spawn((
@@ -79,7 +79,7 @@ pub fn setup_scene(
         Transform::from_xyz(-2.0, 1.0, 0.0),
         GameObjectId(1), // Link to game thread object ID 1
     ));
-    println!("[BEVY] ✅ Red metallic cube spawned (Game Object #1)");
+    tracing::info!("[BEVY] ✅ Red metallic cube spawned (Game Object #1)");
 
     // Blue metallic sphere (right) - GAME OBJECT 2
     commands.spawn((
@@ -94,7 +94,7 @@ pub fn setup_scene(
         Transform::from_xyz(2.0, 1.0, 0.0),
         GameObjectId(2), // Link to game thread object ID 2
     ));
-    println!("[BEVY] ✅ Blue metallic sphere spawned (Game Object #2)");
+    tracing::info!("[BEVY] ✅ Blue metallic sphere spawned (Game Object #2)");
 
     // Gold metallic sphere (top) - GAME OBJECT 3
     commands.spawn((
@@ -109,7 +109,7 @@ pub fn setup_scene(
         Transform::from_xyz(0.0, 3.0, 0.0),
         GameObjectId(3), // Link to game thread object ID 3
     ));
-    println!("[BEVY] ✅ Gold metallic sphere spawned (Game Object #3)");
+    tracing::info!("[BEVY] ✅ Gold metallic sphere spawned (Game Object #3)");
 
     // Green metallic sphere (front) - GAME OBJECT 4
     commands.spawn((
@@ -124,7 +124,7 @@ pub fn setup_scene(
         Transform::from_xyz(0.0, 1.0, 2.0),
         GameObjectId(4), // Link to game thread object ID 4
     ));
-    println!("[BEVY] ✅ Green metallic sphere spawned (Game Object #4)");
+    tracing::info!("[BEVY] ✅ Green metallic sphere spawned (Game Object #4)");
 
     // Primary directional light (sun)
     commands.spawn((
@@ -155,18 +155,18 @@ pub fn setup_scene(
         affects_lightmapped_meshes: true,
     });
     
-    println!("[BEVY] ✅ PBR lighting enabled with 2 directional lights + ambient");
+    tracing::info!("[BEVY] ✅ PBR lighting enabled with 2 directional lights + ambient");
 
-    println!("[BEVY] ✅ Scene ready!");
-    println!("[BEVY] 🎨 You should see:");
-    println!("[BEVY] 🔵 Dark grey-blue background");
-    println!("[BEVY] ⬜ Light grey ground plane");
-    println!("[BEVY] 🔴 Red metallic cube (left)");
-    println!("[BEVY] 🔵 Blue metallic sphere (right)");
-    println!("[BEVY] 🟡 Gold metallic sphere (top)");
-    println!("[BEVY] 🟢 Green metallic sphere (front)");
-    println!("[BEVY] 💡 PBR lighting with 2-point lighting + ambient");
-    println!("[BEVY] 🔄 Animation enabled - objects will rotate smoothly");
+    tracing::info!("[BEVY] ✅ Scene ready!");
+    tracing::info!("[BEVY] 🎨 You should see:");
+    tracing::info!("[BEVY] 🔵 Dark grey-blue background");
+    tracing::info!("[BEVY] ⬜ Light grey ground plane");
+    tracing::info!("[BEVY] 🔴 Red metallic cube (left)");
+    tracing::info!("[BEVY] 🔵 Blue metallic sphere (right)");
+    tracing::info!("[BEVY] 🟡 Gold metallic sphere (top)");
+    tracing::info!("[BEVY] 🟢 Green metallic sphere (front)");
+    tracing::info!("[BEVY] 💡 PBR lighting with 2-point lighting + ambient");
+    tracing::info!("[BEVY] 🔄 Animation enabled - objects will rotate smoothly");
 }
 
 /// Smooth rotation animation system - rotates all GameObjects

@@ -50,7 +50,7 @@ impl AudioService {
         let gpu_dsp = match GpuDsp::new().await {
             Ok(dsp) => Arc::new(RwLock::new(Some(dsp))),
             Err(e) => {
-                eprintln!("Failed to initialize GPU DSP: {}. GPU features disabled.", e);
+                tracing::error!("Failed to initialize GPU DSP: {}. GPU features disabled.", e);
                 Arc::new(RwLock::new(None))
             }
         };

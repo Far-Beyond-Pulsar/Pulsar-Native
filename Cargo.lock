@@ -4527,6 +4527,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tracing",
  "type_db",
  "ui_types_common",
  "walkdir",
@@ -4543,6 +4544,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tracing",
  "type_db",
 ]
 
@@ -14413,6 +14415,7 @@ dependencies = [
  "sha2",
  "sys-info",
  "toml 0.8.23",
+ "tracing",
  "ui",
  "ui_common",
  "walkdir",
@@ -14465,6 +14468,7 @@ dependencies = [
  "engine_state",
  "gpui",
  "serde",
+ "tracing",
  "ui",
  "ui_entry",
 ]

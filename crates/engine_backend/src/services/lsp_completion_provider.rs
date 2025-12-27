@@ -116,7 +116,7 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
             }).ok().and_then(|r| r.ok()) {
                 Some(rx) => rx,
                 None => {
-                    eprintln!("⚠️  Failed to send completion request");
+                    tracing::error!("⚠️  Failed to send completion request");
                     return Ok(lsp_types::CompletionResponse::Array(vec![]));
                 }
             };
@@ -125,14 +125,14 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
             let response = match response_rx.recv_async().await {
                 Ok(resp) => resp,
                 Err(e) => {
-                    eprintln!("⚠️  Failed to receive completion response: {}", e);
+                    tracing::error!("⚠️  Failed to receive completion response: {}", e);
                     return Ok(lsp_types::CompletionResponse::Array(vec![]));
                 }
             };
 
             // Check for error in response
             if let Some(error) = response.get("error") {
-                eprintln!("❌ rust-analyzer completion error: {}", error);
+                tracing::error!("❌ rust-analyzer completion error: {}", error);
                 return Ok(lsp_types::CompletionResponse::Array(vec![]));
             }
             
@@ -140,7 +140,7 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
             if let Some(result) = response.get("result") {
                 // Check if result is null
                 if result.is_null() {
-                    println!("📦 Received 0 completions (null result)");
+                    tracing::info!("📦 Received 0 completions (null result)");
                     return Ok(lsp_types::CompletionResponse::Array(vec![]));
                 }
                 
@@ -157,7 +157,7 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
                         }
                     });
                     
-                    println!("📦 Received {} completions (Array)", items.len());
+                    tracing::info!("📦 Received {} completions (Array)", items.len());
                     return Ok(lsp_types::CompletionResponse::Array(items));
                 }
                 
@@ -173,18 +173,18 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
                         }
                     });
                     
-                    println!("📦 Received {} completions (List)", list.items.len());
+                    tracing::info!("📦 Received {} completions (List)", list.items.len());
                     return Ok(lsp_types::CompletionResponse::List(list));
                 }
                 
                 // If we get here, parsing failed
-                eprintln!("⚠️  Failed to parse completion response: {:?}", result);
+                tracing::error!("⚠️  Failed to parse completion response: {:?}", result);
             } else {
-                eprintln!("⚠️  No 'result' field in response");
+                tracing::error!("⚠️  No 'result' field in response");
             }
 
             // Return empty on error or no response
-            println!("❌ No completions - hiding menu");
+            tracing::info!("❌ No completions - hiding menu");
             Ok(lsp_types::CompletionResponse::Array(vec![]))
         })
     }
@@ -245,7 +245,7 @@ impl DefinitionProvider for GlobalRustAnalyzerCompletionProvider {
         // Check if analyzer is ready (fast check)
         let is_ready = self.analyzer.read(cx).is_running();
         if !is_ready {
-            println!("⚠️  rust-analyzer is not running, cannot get definitions");
+            tracing::info!("⚠️  rust-analyzer is not running, cannot get definitions");
             return Task::ready(Ok(vec![]));
         }
 
@@ -268,7 +268,7 @@ impl DefinitionProvider for GlobalRustAnalyzerCompletionProvider {
         let response_rx = match self.analyzer.read(cx).send_request_async("textDocument/definition", params) {
             Ok(rx) => rx,
             Err(e) => {
-                eprintln!("⚠️  Failed to send definition request: {}", e);
+                tracing::error!("⚠️  Failed to send definition request: {}", e);
                 return Task::ready(Ok(vec![]));
             }
         };
@@ -280,27 +280,27 @@ impl DefinitionProvider for GlobalRustAnalyzerCompletionProvider {
             let response = match response_rx.recv_async().await {
                 Ok(resp) => resp,
                 Err(e) => {
-                    eprintln!("⚠️  Failed to receive definition response: {}", e);
+                    tracing::error!("⚠️  Failed to receive definition response: {}", e);
                     return Ok(vec![]);
                 }
             };
             
             // Check for errors
             if let Some(error) = response.get("error") {
-                eprintln!("❌ rust-analyzer definition error: {}", error);
+                tracing::error!("❌ rust-analyzer definition error: {}", error);
                 return Ok(vec![]);
             }
             
             // Parse the result
             if let Some(result) = response.get("result") {
                 if result.is_null() {
-                    println!("📍 No definition found for '{}'", word);
+                    tracing::info!("📍 No definition found for '{}'", word);
                     return Ok(vec![]);
                 }
                 
                 // Try to parse as LocationLink array
                 if let Ok(links) = serde_json::from_value::<Vec<lsp_types::LocationLink>>(result.clone()) {
-                    println!("✅ Found {} definition(s) for '{}'", links.len(), word);
+                    tracing::info!("✅ Found {} definition(s) for '{}'", links.len(), word);
                     return Ok(links);
                 }
                 
@@ -315,7 +315,7 @@ impl DefinitionProvider for GlobalRustAnalyzerCompletionProvider {
                             target_selection_range: loc.range,
                         })
                         .collect();
-                    println!("✅ Found {} definition(s) for '{}'", links.len(), word);
+                    tracing::info!("✅ Found {} definition(s) for '{}'", links.len(), word);
                     return Ok(links);
                 }
                 
@@ -327,11 +327,11 @@ impl DefinitionProvider for GlobalRustAnalyzerCompletionProvider {
                         target_range: location.range,
                         target_selection_range: location.range,
                     };
-                    println!("✅ Found definition for '{}'", word);
+                    tracing::info!("✅ Found definition for '{}'", word);
                     return Ok(vec![link]);
                 }
                 
-                eprintln!("⚠️  Unexpected definition response format");
+                tracing::error!("⚠️  Unexpected definition response format");
             }
             
             Ok(vec![])
@@ -350,7 +350,7 @@ impl ui::input::HoverProvider for GlobalRustAnalyzerCompletionProvider {
         // Check if analyzer is ready (fast check)
         let is_ready = self.analyzer.read(cx).is_running();
         if !is_ready {
-            println!("⚠️  rust-analyzer is not running, cannot get hover info");
+            tracing::info!("⚠️  rust-analyzer is not running, cannot get hover info");
             return Task::ready(Ok(None));
         }
 
@@ -373,7 +373,7 @@ impl ui::input::HoverProvider for GlobalRustAnalyzerCompletionProvider {
         let response_rx = match self.analyzer.read(cx).send_request_async("textDocument/hover", params) {
             Ok(rx) => rx,
             Err(e) => {
-                eprintln!("⚠️  Failed to send hover request: {}", e);
+                tracing::error!("⚠️  Failed to send hover request: {}", e);
                 return Task::ready(Ok(None));
             }
         };
@@ -385,14 +385,14 @@ impl ui::input::HoverProvider for GlobalRustAnalyzerCompletionProvider {
             let response = match response_rx.recv_async().await {
                 Ok(resp) => resp,
                 Err(e) => {
-                    eprintln!("⚠️  Failed to receive hover response: {}", e);
+                    tracing::error!("⚠️  Failed to receive hover response: {}", e);
                     return Ok(None);
                 }
             };
             
             // Check for errors
             if let Some(error) = response.get("error") {
-                eprintln!("❌ rust-analyzer hover error: {}", error);
+                tracing::error!("❌ rust-analyzer hover error: {}", error);
                 return Ok(None);
             }
             
@@ -407,7 +407,7 @@ impl ui::input::HoverProvider for GlobalRustAnalyzerCompletionProvider {
                     return Ok(Some(hover));
                 }
                 
-                eprintln!("⚠️  Unexpected hover response format: {:?}", result);
+                tracing::error!("⚠️  Unexpected hover response format: {:?}", result);
             }
             
             Ok(None)

@@ -133,31 +133,31 @@ impl PulsarApp {
 
     /// Open a DAW editor tab for the given project path
     pub(super) fn open_daw_tab(&mut self, project_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        eprintln!("DEBUG: open_daw_tab called with path: {:?}", project_path);
+        tracing::error!("DEBUG: open_daw_tab called with path: {:?}", project_path);
 
         if !self.state.daw_editors.is_empty() {
-            eprintln!("DEBUG: DAW editor already exists, focusing first one");
+            tracing::error!("DEBUG: DAW editor already exists, focusing first one");
             return;
         }
 
-        eprintln!("DEBUG: Creating new DAW editor panel");
+        tracing::error!("DEBUG: Creating new DAW editor panel");
         self.state.next_tab_id += 1;
 
         let daw_editor = cx.new(|cx| DawEditorPanel::new_with_project(project_path.clone(), window, cx));
 
-        eprintln!("DEBUG: Adding DAW editor to tab panel");
+        tracing::error!("DEBUG: Adding DAW editor to tab panel");
         self.state.center_tabs.update(cx, |tabs, cx| {
             tabs.add_panel(Arc::new(daw_editor.clone()), window, cx);
         });
 
-        eprintln!("DEBUG: Storing DAW editor reference");
+        tracing::error!("DEBUG: Storing DAW editor reference");
         self.state.daw_editors.push(daw_editor);
 
-        eprintln!("DEBUG: DAW tab opened successfully");
+        tracing::error!("DEBUG: DAW tab opened successfully");
     }
 
     pub(super) fn open_level_editor_tab(&mut self, _scene_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        eprintln!("DEBUG: Opening level editor");
+        tracing::error!("DEBUG: Opening level editor");
 
         let level_editor = cx.new(|cx| LevelEditorPanel::new(window, cx));
 
@@ -168,7 +168,7 @@ impl PulsarApp {
 
     /// Open a database editor tab for the given database path
     pub(super) fn open_database_tab(&mut self, db_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        eprintln!("DEBUG: open_database_tab called with path: {:?}", db_path);
+        tracing::error!("DEBUG: open_database_tab called with path: {:?}", db_path);
 
         // Check if a database editor for this path is already open
         let already_open = self
@@ -186,7 +186,7 @@ impl PulsarApp {
             });
 
         if let Some(ix) = already_open {
-            eprintln!("DEBUG: Database editor already exists, focusing it");
+            tracing::error!("DEBUG: Database editor already exists, focusing it");
             if let Some(editor_entity) = self.state.database_editors.get(ix) {
                 let target_id = editor_entity.entity_id();
                 self.state.center_tabs.update(cx, |tabs, cx| {
@@ -198,31 +198,31 @@ impl PulsarApp {
             return;
         }
 
-        eprintln!("DEBUG: Creating new database editor");
+        tracing::error!("DEBUG: Creating new database editor");
         self.state.next_tab_id += 1;
 
         let database_editor = cx.new(|cx| {
             ui_editor_table::DataTableEditor::open_database(db_path.clone(), window, cx)
                 .unwrap_or_else(|e| {
-                    eprintln!("Failed to open database: {}", e);
+                    tracing::error!("Failed to open database: {}", e);
                     ui_editor_table::DataTableEditor::new(window, cx)
                 })
         });
 
-        eprintln!("DEBUG: Adding database editor to tab panel");
+        tracing::error!("DEBUG: Adding database editor to tab panel");
         self.state.center_tabs.update(cx, |tabs, cx| {
             tabs.add_panel(Arc::new(database_editor.clone()), window, cx);
         });
 
-        eprintln!("DEBUG: Storing database editor reference");
+        tracing::error!("DEBUG: Storing database editor reference");
         self.state.database_editors.push(database_editor);
 
-        eprintln!("DEBUG: Database tab opened successfully");
+        tracing::error!("DEBUG: Database tab opened successfully");
     }
 
     /// Open a struct editor tab for the given struct file
     pub(super) fn open_struct_tab(&mut self, file_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        eprintln!("DEBUG: open_struct_tab called with path: {:?}", file_path);
+        tracing::error!("DEBUG: open_struct_tab called with path: {:?}", file_path);
 
         let actual_file_path = if file_path.is_dir() {
             file_path.join("struct.json")
@@ -244,7 +244,7 @@ impl PulsarApp {
             });
 
         if let Some(ix) = already_open {
-            eprintln!("DEBUG: Struct editor already exists, focusing it");
+            tracing::error!("DEBUG: Struct editor already exists, focusing it");
             if let Some(editor_entity) = self.state.struct_editors.get(ix) {
                 let target_id = editor_entity.entity_id();
                 self.state.center_tabs.update(cx, |tabs, cx| {
@@ -256,27 +256,27 @@ impl PulsarApp {
             return;
         }
 
-        eprintln!("DEBUG: Creating new struct editor");
+        tracing::error!("DEBUG: Creating new struct editor");
         self.state.next_tab_id += 1;
 
         let struct_editor = cx.new(|cx| {
             ui_struct_editor::StructEditor::new_with_file(actual_file_path.clone(), window, cx)
         });
 
-        eprintln!("DEBUG: Adding struct editor to tab panel");
+        tracing::error!("DEBUG: Adding struct editor to tab panel");
         self.state.center_tabs.update(cx, |tabs, cx| {
             tabs.add_panel(Arc::new(struct_editor.clone()), window, cx);
         });
 
-        eprintln!("DEBUG: Storing struct editor reference");
+        tracing::error!("DEBUG: Storing struct editor reference");
         self.state.struct_editors.push(struct_editor);
 
-        eprintln!("DEBUG: Struct tab opened successfully");
+        tracing::error!("DEBUG: Struct tab opened successfully");
     }
 
     /// Open an enum editor tab for the given enum file
     pub(super) fn open_enum_tab(&mut self, file_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        eprintln!("DEBUG: open_enum_tab called with path: {:?}", file_path);
+        tracing::error!("DEBUG: open_enum_tab called with path: {:?}", file_path);
 
         let actual_file_path = if file_path.is_dir() {
             file_path.join("enum.json")
@@ -298,7 +298,7 @@ impl PulsarApp {
             });
 
         if let Some(ix) = already_open {
-            eprintln!("DEBUG: Enum editor already exists, focusing it");
+            tracing::error!("DEBUG: Enum editor already exists, focusing it");
             if let Some(editor_entity) = self.state.enum_editors.get(ix) {
                 let target_id = editor_entity.entity_id();
                 self.state.center_tabs.update(cx, |tabs, cx| {
@@ -310,27 +310,27 @@ impl PulsarApp {
             return;
         }
 
-        eprintln!("DEBUG: Creating new enum editor");
+        tracing::error!("DEBUG: Creating new enum editor");
         self.state.next_tab_id += 1;
 
         let enum_editor = cx.new(|cx| {
             ui_enum_editor::EnumEditor::new_with_file(actual_file_path.clone(), window, cx)
         });
 
-        eprintln!("DEBUG: Adding enum editor to tab panel");
+        tracing::error!("DEBUG: Adding enum editor to tab panel");
         self.state.center_tabs.update(cx, |tabs, cx| {
             tabs.add_panel(Arc::new(enum_editor.clone()), window, cx);
         });
 
-        eprintln!("DEBUG: Storing enum editor reference");
+        tracing::error!("DEBUG: Storing enum editor reference");
         self.state.enum_editors.push(enum_editor);
 
-        eprintln!("DEBUG: Enum tab opened successfully");
+        tracing::error!("DEBUG: Enum tab opened successfully");
     }
 
     /// Open a trait editor tab for the given trait file
     pub(super) fn open_trait_tab(&mut self, file_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        eprintln!("DEBUG: open_trait_tab called with path: {:?}", file_path);
+        tracing::error!("DEBUG: open_trait_tab called with path: {:?}", file_path);
 
         let actual_file_path = if file_path.is_dir() {
             file_path.join("trait.json")
@@ -352,7 +352,7 @@ impl PulsarApp {
             });
 
         if let Some(ix) = already_open {
-            eprintln!("DEBUG: Trait editor already exists, focusing it");
+            tracing::error!("DEBUG: Trait editor already exists, focusing it");
             if let Some(editor_entity) = self.state.trait_editors.get(ix) {
                 let target_id = editor_entity.entity_id();
                 self.state.center_tabs.update(cx, |tabs, cx| {
@@ -364,27 +364,27 @@ impl PulsarApp {
             return;
         }
 
-        eprintln!("DEBUG: Creating new trait editor");
+        tracing::error!("DEBUG: Creating new trait editor");
         self.state.next_tab_id += 1;
 
         let trait_editor = cx.new(|cx| {
             ui_trait_editor::TraitEditor::new_with_file(actual_file_path.clone(), window, cx)
         });
 
-        eprintln!("DEBUG: Adding trait editor to tab panel");
+        tracing::error!("DEBUG: Adding trait editor to tab panel");
         self.state.center_tabs.update(cx, |tabs, cx| {
             tabs.add_panel(Arc::new(trait_editor.clone()), window, cx);
         });
 
-        eprintln!("DEBUG: Storing trait editor reference");
+        tracing::error!("DEBUG: Storing trait editor reference");
         self.state.trait_editors.push(trait_editor);
 
-        eprintln!("DEBUG: Trait tab opened successfully");
+        tracing::error!("DEBUG: Trait tab opened successfully");
     }
 
     /// Open an alias editor tab for the given alias file
     pub(super) fn open_alias_tab(&mut self, file_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        eprintln!("DEBUG: open_alias_tab called with path: {:?}", file_path);
+        tracing::error!("DEBUG: open_alias_tab called with path: {:?}", file_path);
 
         let actual_file_path = if file_path.is_dir() {
             file_path.join("alias.json")
@@ -406,7 +406,7 @@ impl PulsarApp {
             });
 
         if let Some(ix) = already_open {
-            eprintln!("DEBUG: Alias editor already exists, focusing it");
+            tracing::error!("DEBUG: Alias editor already exists, focusing it");
             if let Some(editor_entity) = self.state.alias_editors.get(ix) {
                 let target_id = editor_entity.entity_id();
                 self.state.center_tabs.update(cx, |tabs, cx| {
@@ -418,7 +418,7 @@ impl PulsarApp {
             return;
         }
 
-        eprintln!("DEBUG: Creating new alias editor");
+        tracing::error!("DEBUG: Creating new alias editor");
         self.state.next_tab_id += 1;
 
         let alias_editor = cx.new(|cx| {
@@ -427,14 +427,14 @@ impl PulsarApp {
 
         cx.subscribe_in(&alias_editor, window, event_handlers::on_show_type_picker_request).detach();
 
-        eprintln!("DEBUG: Adding alias editor to tab panel");
+        tracing::error!("DEBUG: Adding alias editor to tab panel");
         self.state.center_tabs.update(cx, |tabs, cx| {
             tabs.add_panel(Arc::new(alias_editor.clone()), window, cx);
         });
 
-        eprintln!("DEBUG: Storing alias editor reference");
+        tracing::error!("DEBUG: Storing alias editor reference");
         self.state.alias_editors.push(alias_editor);
 
-        eprintln!("DEBUG: Alias tab opened successfully");
+        tracing::error!("DEBUG: Alias tab opened successfully");
     }
 }

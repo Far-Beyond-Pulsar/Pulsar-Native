@@ -122,7 +122,7 @@ pub fn on_project_selected(
     window: &mut Window,
     cx: &mut Context<PulsarApp>,
 ) {
-    println!("[PROJECT_SELECTED] Received path: {:?}", event.path);
+    tracing::info!("[PROJECT_SELECTED] Received path: {:?}", event.path);
     
     app.state.project_path = Some(event.path.clone());
     app.state.entry_screen = None;
@@ -140,7 +140,7 @@ pub fn on_project_selected(
     // Update Discord presence with new project
     app.update_discord_presence(cx);
 
-    println!("Project selected: {:?}", event.path);
+    tracing::info!("Project selected: {:?}", event.path);
     cx.notify();
 }
 
@@ -304,7 +304,7 @@ pub fn on_navigate_to_diagnostic(
     window: &mut Window,
     cx: &mut Context<PulsarApp>,
 ) {
-    println!(
+    tracing::info!(
         "📂 Navigating to diagnostic: {:?} at line {}, column {}",
         event.file_path, event.line, event.column
     );

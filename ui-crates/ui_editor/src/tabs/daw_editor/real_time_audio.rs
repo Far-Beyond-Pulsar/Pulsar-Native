@@ -99,7 +99,7 @@ impl RealTimeAudio {
         let sample_rate = config.sample_rate().0;
         let channels = config.channels();
 
-        println!(
+        tracing::info!(
             "Audio device: {} - {} Hz, {} channels",
             device.name().unwrap_or_else(|_| "Unknown".to_string()),
             sample_rate,
@@ -235,7 +235,7 @@ impl RealTimeAudio {
                 }
             },
             move |err| {
-                eprintln!("Audio stream error: {}", err);
+                tracing::error!("Audio stream error: {}", err);
             },
             None,
         )?;

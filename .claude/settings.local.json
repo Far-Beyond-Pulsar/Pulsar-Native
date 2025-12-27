@@ -16,7 +16,8 @@
       "Bash(where:*)",
       "Bash(cat:*)",
       "Bash(powershell.exe:*)",
-      "Bash(cmd.exe /c start \"\" \"pulsar://open_project/C%3A%5CUsers%5Credst%5COneDrive%5CDocuments%5CPulsar_Projects%5Cblank_project\")"
+      "Bash(cmd.exe /c start \"\" \"pulsar://open_project/C%3A%5CUsers%5Credst%5COneDrive%5CDocuments%5CPulsar_Projects%5Cblank_project\")",
+      "Bash(bash:*)"
     ]
   }
 }

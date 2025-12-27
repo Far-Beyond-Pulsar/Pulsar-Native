@@ -115,7 +115,7 @@ impl BevyRenderer {
         shutdown: Arc<AtomicBool>,
         game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
     ) {
-        println!("[BEVY] 🚀 Starting headless renderer {}x{}", width, height);
+        tracing::info!("[BEVY] 🚀 Starting headless renderer {}x{}", width, height);
 
         let mut app = App::new();
 
@@ -152,7 +152,7 @@ impl BevyRenderer {
             Duration::from_secs_f64(1.0 / 3000.0),
         ));
 
-        println!("[BEVY] ✅ Plugins configured");
+        tracing::info!("[BEVY] ✅ Plugins configured");
 
         // Resources
         app.insert_resource(ClearColor(Color::srgb(0.1, 0.2, 0.3)))
@@ -224,11 +224,11 @@ impl BevyRenderer {
             );
         }
 
-        println!("[BEVY] ✅ Starting render loop...");
-        println!("[BEVY] 🎯 Note: Render loop will block this thread until shutdown");
-        println!("[BEVY] 📊 Shared textures will be created on first render cycle");
+        tracing::info!("[BEVY] ✅ Starting render loop...");
+        tracing::info!("[BEVY] 🎯 Note: Render loop will block this thread until shutdown");
+        tracing::info!("[BEVY] 📊 Shared textures will be created on first render cycle");
         app.run();
-        println!("[BEVY] 🛑 Render loop ended");
+        tracing::info!("[BEVY] 🛑 Render loop ended");
     }
 
     pub fn update_camera_input(&mut self, input: CameraInput) {
@@ -281,35 +281,35 @@ impl BevyRenderer {
                         unsafe {
                             //TODO: Re-enable with log levels
                             // if CHECK_COUNT == 1 || CHECK_COUNT % 300 == 0 {
-                            //     println!("[BEVY] ✅ Returning handle for buffer {}", read_idx);
+                            //     tracing::info!("[BEVY] ✅ Returning handle for buffer {}", read_idx);
                             // }
                         }
                         return Some(handles[read_idx].clone());
                     } else {
                         unsafe {
                             if CHECK_COUNT == 1 || CHECK_COUNT % 300 == 0 {
-                                println!("[BEVY] ⚠️  native_handles is None - textures not created yet");
+                                tracing::info!("[BEVY] ⚠️  native_handles is None - textures not created yet");
                             }
                         }
                     }
                 } else {
                     unsafe {
                         if CHECK_COUNT == 1 || CHECK_COUNT % 300 == 0 {
-                            println!("[BEVY] ⚠️  Failed to lock native_handles");
+                            tracing::info!("[BEVY] ⚠️  Failed to lock native_handles");
                         }
                     }
                 }
             } else {
                 unsafe {
                     if CHECK_COUNT == 1 || CHECK_COUNT % 300 == 0 {
-                        println!("[BEVY] ⚠️  shared_textures is None - SharedGpuTextures not initialized");
+                        tracing::info!("[BEVY] ⚠️  shared_textures is None - SharedGpuTextures not initialized");
                     }
                 }
             }
         } else {
             unsafe {
                 if CHECK_COUNT == 1 || CHECK_COUNT % 300 == 0 {
-                    println!("[BEVY] ⚠️  Failed to lock shared_textures");
+                    tracing::info!("[BEVY] ⚠️  Failed to lock shared_textures");
                 }
             }
         }
@@ -366,7 +366,7 @@ impl BevyRenderer {
     pub fn resize(&mut self, _width: u32, _height: u32) {
         // For now, resizing not supported with DXGI shared textures
         // Would require recreating the textures
-        println!("[BEVY] ⚠️ Resize not yet implemented for DXGI shared textures");
+        tracing::info!("[BEVY] ⚠️ Resize not yet implemented for DXGI shared textures");
     }
 
     pub fn shutdown(&self) {
@@ -382,7 +382,7 @@ impl Drop for BevyRenderer {
 
 fn check_shutdown(shutdown: Res<ShutdownFlag>, mut exit: MessageWriter<AppExit>) {
     if shutdown.0.load(Ordering::Acquire) {
-        println!("[BEVY] 🛑 Shutdown requested");
+        tracing::info!("[BEVY] 🛑 Shutdown requested");
         exit.write(AppExit::Success);
     }
 }

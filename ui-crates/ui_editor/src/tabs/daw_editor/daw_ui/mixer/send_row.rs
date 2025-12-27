@@ -42,7 +42,7 @@ pub fn render_send_row(
                             }
                             if let Some(send) = track.sends.get_mut(send_idx) {
                                 send.pre_fader = !send.pre_fader;
-                                eprintln!("🎚️ Send {} set to {}", label, if send.pre_fader { "PRE" } else { "POST" });
+                                tracing::error!("🎚️ Send {} set to {}", label, if send.pre_fader { "PRE" } else { "POST" });
                             }
                         }
                     }

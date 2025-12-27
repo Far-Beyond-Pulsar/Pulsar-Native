@@ -550,7 +550,7 @@ impl SceneDatabase {
         fs::write(&path, json)
             .map_err(|e| format!("Failed to write scene file: {}", e))?;
         
-        println!("[SCENE-DB] 💾 Scene saved successfully to: {:?}", path.as_ref());
+        tracing::info!("[SCENE-DB] 💾 Scene saved successfully to: {:?}", path.as_ref());
         Ok(())
     }
     
@@ -582,7 +582,7 @@ impl SceneDatabase {
         
         drop(inner);
 
-        println!("[SCENE-DB] 📂 Scene loaded successfully from {:?}", path.as_ref());
+        tracing::info!("[SCENE-DB] 📂 Scene loaded successfully from {:?}", path.as_ref());
         Ok(())
     }
 

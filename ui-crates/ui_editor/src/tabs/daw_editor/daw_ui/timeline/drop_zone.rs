@@ -26,9 +26,9 @@ pub fn render_drop_zone(
         })
         // Handle mouse up to drop files onto track
         .on_mouse_up(gpui::MouseButton::Left, cx.listener(move |this, event: &MouseUpEvent, _window, cx| {
-            eprintln!("🖱️ Mouse up on track {} with drag state: {:?}", track_id, this.state.drag_state);
+            tracing::error!("🖱️ Mouse up on track {} with drag state: {:?}", track_id, this.state.drag_state);
             if let DragState::DraggingFile { file_path, file_name } = &this.state.drag_state.clone() {
-                eprintln!("📁 Dropping file '{}' onto track {}", file_name, track_id);
+                tracing::error!("📁 Dropping file '{}' onto track {}", file_name, track_id);
                 // Convert window position to element-local position
                 let element_pos = DawPanel::window_to_timeline_pos(event.position, this);
                 let mouse_x = element_pos.x.as_f32();
@@ -55,10 +55,10 @@ pub fn render_drop_zone(
 
                 // Check if audio service exists before spawning
                 let has_service = this.state.audio_service.is_some();
-                eprintln!("🔍 Audio service available: {}", has_service);
+                tracing::error!("🔍 Audio service available: {}", has_service);
 
                 if !has_service {
-                    eprintln!("❌ No audio service - cannot load audio file");
+                    tracing::error!("❌ No audio service - cannot load audio file");
                     // Clear drag state
                     this.state.drag_state = DragState::None;
                     cx.notify();
@@ -67,7 +67,7 @@ pub fn render_drop_zone(
 
                 // Load audio file asynchronously to get real duration
                 cx.spawn(async move |this, cx| {
-                    eprintln!("🔄 Async task started for loading audio file");
+                    tracing::error!("🔄 Async task started for loading audio file");
 
                     // Get the audio service
                     let service = match cx.update(|cx| {
@@ -77,16 +77,16 @@ pub fn render_drop_zone(
                     }) {
                         Ok(Ok(Some(svc))) => svc,
                         _ => {
-                            eprintln!("❌ Failed to get audio service in async task");
+                            tracing::error!("❌ Failed to get audio service in async task");
                             return;
                         }
                     };
 
-                    eprintln!("📂 Loading audio file: {:?}", file_path_clone);
+                    tracing::error!("📂 Loading audio file: {:?}", file_path_clone);
                     match service.load_asset(file_path_clone.clone()).await {
                             Ok(asset) => {
                                 let duration_samples = asset.asset_ref.duration_samples as u64;
-                                eprintln!("✅ Audio file loaded successfully: {} samples", duration_samples);
+                                tracing::error!("✅ Audio file loaded successfully: {} samples", duration_samples);
 
                                 // Update UI with the clip using real duration
                                 cx.update(|cx| {
@@ -110,7 +110,7 @@ pub fn render_drop_zone(
                                                 track.clips.push(clip);
 
                                                 let duration_beats = (duration_samples as f64 * tempo_val as f64) / (60.0 * SAMPLE_RATE as f64);
-                                                eprintln!("📎 Created clip '{}' at beat {} on track '{}' (duration: {:.2} beats, {} samples)",
+                                                tracing::error!("📎 Created clip '{}' at beat {} on track '{}' (duration: {:.2} beats, {} samples)",
                                                     file_name_clone, snapped_beat_val, track.name, duration_beats, duration_samples);
 
                                                 // IMPORTANT: Add clip to audio service's graph too!
@@ -119,9 +119,9 @@ pub fn render_drop_zone(
                                                     let track_id = track_id_val;
                                                     cx.spawn(async move |_this, _cx| {
                                                         if let Err(e) = service.add_clip_to_track(track_id, clip_clone).await {
-                                                            eprintln!("❌ Failed to add clip to audio service: {}", e);
+                                                            tracing::error!("❌ Failed to add clip to audio service: {}", e);
                                                         } else {
-                                                            eprintln!("✅ Added clip to audio service graph");
+                                                            tracing::error!("✅ Added clip to audio service graph");
                                                         }
                                                     }).detach();
                                                 }
@@ -132,7 +132,7 @@ pub fn render_drop_zone(
                                 }).ok();
                             }
                             Err(e) => {
-                                eprintln!("❌ Failed to load audio file '{}': {}", file_name_clone, e);
+                                tracing::error!("❌ Failed to load audio file '{}': {}", file_name_clone, e);
 
                                 // Fallback: create clip with default duration
                                 cx.update(|cx| {
@@ -149,7 +149,7 @@ pub fn render_drop_zone(
                                                 );
                                                 let clip_clone = clip.clone();
                                                 track.clips.push(clip);
-                                                eprintln!("📎 Created clip '{}' at beat {} with fallback duration (failed to load audio)",
+                                                tracing::error!("📎 Created clip '{}' at beat {} with fallback duration (failed to load audio)",
                                                     file_name_clone, snapped_beat_val);
 
                                                 // Add to audio service even if load failed (will try again at playback)
@@ -158,9 +158,9 @@ pub fn render_drop_zone(
                                                     let track_id = track_id_val;
                                                     cx.spawn(async move |_this, _cx| {
                                                         if let Err(e) = service.add_clip_to_track(track_id, clip_clone).await {
-                                                            eprintln!("❌ Failed to add clip to audio service: {}", e);
+                                                            tracing::error!("❌ Failed to add clip to audio service: {}", e);
                                                         } else {
-                                                            eprintln!("✅ Added clip to audio service graph (fallback)");
+                                                            tracing::error!("✅ Added clip to audio service graph (fallback)");
                                                         }
                                                     }).detach();
                                                 }
@@ -234,7 +234,7 @@ pub fn render_drop_zone(
                     new_beat
                 }.max(0.0);
 
-                eprintln!("📍 Dropped clip at beat {} (snapped from {})",
+                tracing::error!("📍 Dropped clip at beat {} (snapped from {})",
                     snapped_beat, new_beat);
 
                 // Finalize clip position
@@ -242,7 +242,7 @@ pub fn render_drop_zone(
                     if let Some(track) = project.tracks.iter_mut().find(|t| t.id == track_id) {
                         if let Some(clip) = track.clips.iter_mut().find(|c| c.id == *clip_id) {
                             clip.set_start_beat(snapped_beat, tempo);
-                            eprintln!("✅ Final clip position: beat {}",
+                            tracing::error!("✅ Final clip position: beat {}",
                                 snapped_beat);
                             Some(clip.clone())
                         } else { None }
@@ -257,12 +257,12 @@ pub fn render_drop_zone(
                         cx.spawn(async move |_this, _cx| {
                             // Remove old clip and add updated one
                             if let Err(e) = service.remove_clip_from_track(track_id_copy, clip.id).await {
-                                eprintln!("❌ Failed to remove old clip from audio service: {}", e);
+                                tracing::error!("❌ Failed to remove old clip from audio service: {}", e);
                             }
                             if let Err(e) = service.add_clip_to_track(track_id_copy, clip).await {
-                                eprintln!("❌ Failed to add updated clip to audio service: {}", e);
+                                tracing::error!("❌ Failed to add updated clip to audio service: {}", e);
                             } else {
-                                eprintln!("✅ Updated clip position in audio service");
+                                tracing::error!("✅ Updated clip position in audio service");
                             }
                         }).detach();
                     }

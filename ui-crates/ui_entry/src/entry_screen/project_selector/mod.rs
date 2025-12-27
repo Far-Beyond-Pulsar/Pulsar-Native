@@ -31,7 +31,7 @@ impl ProjectSelector {
                 let toml_path = path.join("Pulsar.toml");
                 if !toml_path.exists() {
                     // Show error - not a valid Pulsar project
-                    eprintln!("Invalid project: Pulsar.toml not found in selected folder");
+                    tracing::error!("Invalid project: Pulsar.toml not found in selected folder");
                     return;
                 }
 

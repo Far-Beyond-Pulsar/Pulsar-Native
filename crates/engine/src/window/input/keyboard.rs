@@ -127,7 +127,7 @@ pub fn handle_keyboard_input(
     window_id: WindowId,
     event: KeyEvent,
 ) {
-    println!("🎹 Keyboard event: {:?}, repeat: {}", event.physical_key, event.repeat);
+    tracing::info!("🎹 Keyboard event: {:?}, repeat: {}", event.physical_key, event.repeat);
 
     // Get the window state
     let Some(window_state) = app.windows.get_mut(&window_id) else {
@@ -155,7 +155,7 @@ pub fn handle_keyboard_input(
                         key_char,
                     })
                 } else {
-                    println!("⚠️ Unsupported key code: {:?}", code);
+                    tracing::info!("⚠️ Unsupported key code: {:?}", code);
                     None
                 }
             }
@@ -165,7 +165,7 @@ pub fn handle_keyboard_input(
         if let Some(keystroke) = keystroke_opt {
             let gpui_event = match event.state {
                 ElementState::Pressed => {
-                    println!("🔽 KeyDown: {:?}", keystroke);
+                    tracing::info!("🔽 KeyDown: {:?}", keystroke);
 
                     PlatformInput::KeyDown(KeyDownEvent {
                         keystroke,
@@ -173,7 +173,7 @@ pub fn handle_keyboard_input(
                     })
                 }
                 ElementState::Released => {
-                    println!("🔽 KeyUp: {:?}", keystroke);
+                    tracing::info!("🔽 KeyUp: {:?}", keystroke);
 
                     PlatformInput::KeyUp(KeyUpEvent { keystroke })
                 }

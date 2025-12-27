@@ -253,7 +253,7 @@ impl AssetKind {
                     "// {}\n\
                      // Auto-generated Rust script\n\n\
                      fn main() {{\n    \
-                         println!(\"Hello from {}\");\n\
+                         tracing::info!(\"Hello from {}\");\n\
                      }}\n",
                     name, name
                 )

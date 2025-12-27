@@ -54,9 +54,9 @@ pub fn create_entry_component(
     // Subscribe to ProjectSelected event - open loading window and close entry window
     let engine_state_clone = engine_state.clone();
     cx.subscribe(&entry_screen, move |_view: Entity<EntryScreen>, event: &ProjectSelected, _cx: &mut App| {
-        println!("🎯 [ENTRY] Project selected: {:?}", event.path);
-        println!("🎯 [ENTRY] Path exists: {}", event.path.exists());
-        println!("🎯 [ENTRY] Path is_dir: {}", event.path.is_dir());
+        tracing::info!("🎯 [ENTRY] Project selected: {:?}", event.path);
+        tracing::info!("🎯 [ENTRY] Path exists: {}", event.path.exists());
+        tracing::info!("🎯 [ENTRY] Path is_dir: {}", event.path.is_dir());
         
         // Request loading/splash window
         engine_state_clone.request_window(WindowRequest::ProjectSplash {
@@ -65,7 +65,7 @@ pub fn create_entry_component(
         
         // Close the entry window
         if window_id != 0 {
-            println!("🗑️ Closing entry window {}", window_id);
+            tracing::info!("🗑️ Closing entry window {}", window_id);
             engine_state_clone.request_window(WindowRequest::CloseWindow {
                 window_id,
             });

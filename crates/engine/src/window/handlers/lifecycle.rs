@@ -45,7 +45,7 @@ pub fn handle_resumed(
         }
     }
 
-    println!("✨ Creating main entry window...");
+    tracing::info!("✨ Creating main entry window...");
 
     // Default: Create the main entry window using the modular system
     app.create_window(event_loop, WindowRequest::Entry);
@@ -94,7 +94,7 @@ pub fn handle_about_to_wait(
                 // Find and close the window with this ID
                 let window_id_native = unsafe { std::mem::transmute::<u64, WindowId>(window_id) };
                 if app.windows.remove(&window_id_native).is_some() {
-                    println!("✨ Closed window with ID: {:?}", window_id);
+                    tracing::info!("✨ Closed window with ID: {:?}", window_id);
                     app.engine_state.decrement_window_count();
                 }
             }
@@ -125,7 +125,7 @@ pub fn handle_about_to_wait(
             // Mark as initialized
             let window_state = app.windows.get_mut(&window_id).expect("Window must exist");
             window_state.gpui_window_initialized = true;
-            println!("✨ GPUI window opened! Ready for GPU composition!\n");
+            tracing::info!("✨ GPUI window opened! Ready for GPU composition!\n");
         }
     }
 }

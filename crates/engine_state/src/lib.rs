@@ -82,10 +82,10 @@ impl EngineState {
         let inner = self.inner.read();
         if let Some(sender) = &inner.window_sender {
             if let Err(e) = sender.send(request) {
-                eprintln!("❌ Failed to send window request: {}", e);
+                tracing::error!("❌ Failed to send window request: {}", e);
             }
         } else {
-            eprintln!("❌ Window sender not initialized!");
+            tracing::error!("❌ Window sender not initialized!");
         }
     }
 

@@ -998,7 +998,7 @@ impl AppTitleBar {
     }
 }
 
-// TODO: (From @tristanpoland) Near as I can tell this println! call is never executed. Look into this when debugging the titlebar
+// TODO: (From @tristanpoland) Near as I can tell this tracing::info! call is never executed. Look into this when debugging the titlebar
 impl Render for AppTitleBar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let notifications_count = window.notifications(cx).len();

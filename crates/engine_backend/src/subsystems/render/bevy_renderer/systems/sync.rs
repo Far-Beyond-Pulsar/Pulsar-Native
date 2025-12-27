@@ -41,7 +41,7 @@ pub fn sync_viewport_mouse_input_system(
         
         // Debug log when click is detected
         if shared.left_clicked {
-            println!("[BEVY-SYNC] 🖱️ Mouse click synced: pos=({:.3}, {:.3})", shared.mouse_pos.x, shared.mouse_pos.y);
+            tracing::info!("[BEVY-SYNC] 🖱️ Mouse click synced: pos=({:.3}, {:.3})", shared.mouse_pos.x, shared.mouse_pos.y);
         }
     }
 }
@@ -176,7 +176,7 @@ pub fn update_camera_viewport_system(
                     let last = LAST_LOG.load(Ordering::Relaxed);
                     if now - last > 1 { // Log at most once per second
                         // TODO: Better logo levels later
-                        // println!("[BEVY-VIEWPORT] 🔄 Resizing render target: {}x{} -> {}x{}", 
+                        // tracing::info!("[BEVY-VIEWPORT] 🔄 Resizing render target: {}x{} -> {}x{}", 
                         //         current_width, current_height, width, height);
                         // LAST_LOG.store(now, Ordering::Relaxed);
                     }

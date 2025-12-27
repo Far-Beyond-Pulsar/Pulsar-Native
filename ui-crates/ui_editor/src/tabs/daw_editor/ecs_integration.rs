@@ -111,7 +111,7 @@ impl EcsAudioBridge {
     /// Dispatch an audio event (processes immediately)
     pub async fn dispatch_event(&self, event: AudioEvent) {
         if let Err(e) = Self::process_event(&self.audio_service, event).await {
-            eprintln!("Failed to process audio event: {}", e);
+            tracing::error!("Failed to process audio event: {}", e);
         }
     }
 

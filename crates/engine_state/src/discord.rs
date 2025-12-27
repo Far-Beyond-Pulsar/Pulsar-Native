@@ -112,7 +112,7 @@ impl DiscordPresence {
 
     /// Update all presence information at once with custom Discord icon key
     pub fn update_all_with_icon(&self, project_name: Option<String>, tab_name: Option<String>, file_path: Option<String>, icon_key: Option<&'static str>) {
-        eprintln!("🎮 Discord::update_all_with_icon called: project={:?}, tab={:?}, file={:?}, icon={:?}", 
+        tracing::info!("🎮 Discord::update_all_with_icon called: project={:?}, tab={:?}, file={:?}, icon={:?}", 
             project_name, tab_name, file_path, icon_key);
         let mut inner = self.inner.write();
         inner.project_name = project_name;
@@ -128,7 +128,7 @@ impl DiscordPresence {
         let inner = self.inner.read();
         
         if !inner.enabled || inner.client.is_none() {
-            eprintln!("⚠️  Discord presence update skipped: enabled={}, client={}", 
+            tracing::info!("⚠️  Discord presence update skipped: enabled={}, client={}", 
                 inner.enabled, inner.client.is_some());
             return;
         }
@@ -161,7 +161,7 @@ impl DiscordPresence {
             (None, None) => "Pulsar Game Engine".to_string(),
         };
 
-        eprintln!("📤 Sending Discord presence: state='{}', details='{}'", state, details);
+        tracing::info!("📤 Sending Discord presence: state='{}', details='{}'", state, details);
 
         // Create timestamp
         let timestamp = Timestamp::new(Some(inner.start_time), None);
@@ -173,7 +173,7 @@ impl DiscordPresence {
                 .map(|s| s.as_str())
                 .unwrap_or("Editor");
             
-            eprintln!("🎨 Using panel's Discord icon: large='pulsar_logo', small='{}', text='{}'", icon_key, small_image_text);
+            tracing::info!("🎨 Using panel's Discord icon: large='pulsar_logo', small='{}', text='{}'", icon_key, small_image_text);
             
             // NOTE: You need to upload these images to your Discord Application's Rich Presence Art Assets
             // Go to: https://discord.com/developers/applications/<app_id>/rich-presence/assets
@@ -187,7 +187,7 @@ impl DiscordPresence {
             ))
         } else {
             // No custom icon - just show main logo
-            eprintln!("🎨 Using default Discord icon: large='pulsar_logo', small=none");
+            tracing::info!("🎨 Using default Discord icon: large='pulsar_logo', small=none");
             Some(Asset::new(
                 Some("pulsar_logo".into()),
                 Some("Pulsar Engine".into()),
@@ -220,9 +220,9 @@ impl DiscordPresence {
             // SAFETY: We're just sending data, not modifying the client state in a conflicting way
             unsafe {
                 if let Err(e) = (*client_ptr).send_payload(payload) {
-                    eprintln!("❌ Failed to update Discord presence: {:?}", e);
+                    tracing::info!("❌ Failed to update Discord presence: {:?}", e);
                 } else {
-                    eprintln!("✅ Discord presence updated successfully!");
+                    tracing::info!("✅ Discord presence updated successfully!");
                 }
             }
         }

@@ -39,7 +39,7 @@ impl HierarchyPanel {
                 if event.keystroke.key.as_str() == "escape" {
                     let mut state = state_arc_for_esc.write();
                     if !matches!(state.hierarchy_drag_state, HierarchyDragState::None) {
-                        println!("[HIERARCHY] ❌ Drag cancelled");
+                        tracing::info!("[HIERARCHY] ❌ Drag cancelled");
                         state.hierarchy_drag_state = HierarchyDragState::None;
                         cx.notify();
                     }
@@ -171,7 +171,7 @@ impl HierarchyPanel {
                                             let dragged_id = dragged_id.clone();
                                             let success = state_write.scene_database.reparent_object(&dragged_id, None);
                                             if success {
-                                                println!("[HIERARCHY] 🏠 Made '{}' a root-level object", dragged_id);
+                                                tracing::info!("[HIERARCHY] 🏠 Made '{}' a root-level object", dragged_id);
                                             }
                                             state_write.hierarchy_drag_state = HierarchyDragState::None;
                                         }
@@ -269,7 +269,7 @@ impl HierarchyPanel {
                         if dragged_id != target_id {
                             let success = state_write.scene_database.reparent_object(&dragged_id, Some(target_id.clone()));
                             if success {
-                                println!("[HIERARCHY] 🎯 Reparented '{}' as child of '{}'", dragged_id, target_id);
+                                tracing::info!("[HIERARCHY] 🎯 Reparented '{}' as child of '{}'", dragged_id, target_id);
                                 // Expand the target to show the new child
                                 state_write.expanded_objects.insert(target_id);
                             }
@@ -302,7 +302,7 @@ impl HierarchyPanel {
                                 object_id: object_id_for_drag_start.clone(),
                                 original_parent: parent,
                             };
-                            println!("[HIERARCHY] 🖱️ Started dragging '{}'", object_id_for_drag_start);
+                            tracing::info!("[HIERARCHY] 🖱️ Started dragging '{}'", object_id_for_drag_start);
                         }
                     })
                     .child(

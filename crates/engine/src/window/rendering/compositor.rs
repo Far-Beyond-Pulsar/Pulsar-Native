@@ -105,7 +105,7 @@ unsafe fn initialize_shared_texture(window_state: &mut crate::window::WindowStat
 
     if let Ok(opt_handle_ptr) = handle_result {
         if let Ok(Some(handle_ptr)) = opt_handle_ptr {
-            println!("✨ Got shared texture handle from GPUI: {:?}", handle_ptr);
+            tracing::info!("✨ Got shared texture handle from GPUI: {:?}", handle_ptr);
 
             let handle_value: isize = *(&handle_ptr as *const _ as *const isize);
             let mut texture: Option<ID3D11Texture2D> = None;
@@ -135,29 +135,29 @@ unsafe fn initialize_shared_texture(window_state: &mut crate::window::WindowStat
 
                             if srv_result.is_ok() && srv.is_some() {
                                 window_state.persistent_gpui_srv = srv;
-                                println!("✨ Created cached SRV for persistent texture");
+                                tracing::info!("✨ Created cached SRV for persistent texture");
                             } else {
-                                eprintln!("❌ Failed to create SRV: {:?}", srv_result);
+                                tracing::error!("❌ Failed to create SRV: {:?}", srv_result);
                             }
 
                             window_state.persistent_gpui_texture = persistent_texture;
-                            println!("✨ Created persistent GPUI texture buffer!");
+                            tracing::info!("✨ Created persistent GPUI texture buffer!");
                         } else {
-                            eprintln!("❌ Failed to create persistent texture: {:?}", create_result);
+                            tracing::error!("❌ Failed to create persistent texture: {:?}", create_result);
                         }
 
                         window_state.shared_texture = Some(shared_texture_val);
                         window_state.shared_texture_initialized = true;
-                        println!("✨ Opened shared texture in winit D3D11 device!");
+                        tracing::info!("✨ Opened shared texture in winit D3D11 device!");
                     }
                 }
                 Err(e) => {
-                    println!("❌ Failed to open shared texture: {:?}", e);
+                    tracing::info!("❌ Failed to open shared texture: {:?}", e);
                     window_state.shared_texture_initialized = true;
                 }
             }
         } else {
-            println!("⏳ GPUI hasn't created shared texture yet, will retry next frame");
+            tracing::info!("⏳ GPUI hasn't created shared texture yet, will retry next frame");
         }
     }
 }
@@ -210,7 +210,7 @@ unsafe fn compose_frame(window_state: &mut crate::window::WindowState, should_re
         if let Some(device) = window_state.d3d_device.as_ref() {
             let device_reason = device.GetDeviceRemovedReason();
             if device_reason.is_err() {
-                eprintln!("[COMPOSITOR] ⚠️ D3D11 device has been removed! Reason: {:?}", device_reason);
+                tracing::error!("[COMPOSITOR] ⚠️ D3D11 device has been removed! Reason: {:?}", device_reason);
                 window_state.bevy_texture = None;
                 window_state.bevy_srv = None;
             }
@@ -263,7 +263,7 @@ unsafe fn compose_frame(window_state: &mut crate::window::WindowState, should_re
         static mut PRESENT_ERROR_COUNT: u32 = 0;
         PRESENT_ERROR_COUNT += 1;
         if PRESENT_ERROR_COUNT == 1 || PRESENT_ERROR_COUNT % 600 == 0 {
-            eprintln!("[COMPOSITOR] ❌ Present failed: {:?}", present_result);
+            tracing::error!("[COMPOSITOR] ❌ Present failed: {:?}", present_result);
         }
     }
 }
@@ -308,7 +308,7 @@ unsafe fn render_bevy_layer(window_state: &mut crate::window::WindowState, conte
 
         if is_device_error {
             if !LAST_WAS_DEVICE_ERROR || OPEN_ERROR_COUNT % 600 == 1 {
-                eprintln!("[COMPOSITOR] ❌ GPU DEVICE REMOVED/SUSPENDED: {:?}", e);
+                tracing::error!("[COMPOSITOR] ❌ GPU DEVICE REMOVED/SUSPENDED: {:?}", e);
                 LAST_WAS_DEVICE_ERROR = true;
             }
             window_state.bevy_texture = None;
@@ -316,7 +316,7 @@ unsafe fn render_bevy_layer(window_state: &mut crate::window::WindowState, conte
         } else {
             LAST_WAS_DEVICE_ERROR = false;
             if OPEN_ERROR_COUNT == 1 || OPEN_ERROR_COUNT % 60 == 0 {
-                eprintln!("[COMPOSITOR] ❌ Failed to open Bevy shared resource: {:?} (count: {})", e, OPEN_ERROR_COUNT);
+                tracing::error!("[COMPOSITOR] ❌ Failed to open Bevy shared resource: {:?} (count: {})", e, OPEN_ERROR_COUNT);
             }
         }
         return;
@@ -333,7 +333,7 @@ unsafe fn render_bevy_layer(window_state: &mut crate::window::WindowState, conte
         static mut SIZE_MISMATCH_COUNT: u32 = 0;
         SIZE_MISMATCH_COUNT += 1;
         if SIZE_MISMATCH_COUNT == 1 || SIZE_MISMATCH_COUNT % 60 == 0 {
-            eprintln!("[COMPOSITOR] ⚠️ Bevy texture size mismatch - stretching to fit");
+            tracing::error!("[COMPOSITOR] ⚠️ Bevy texture size mismatch - stretching to fit");
         }
     }
 
@@ -402,12 +402,12 @@ unsafe fn create_bevy_srv(window_state: &mut crate::window::WindowState, bevy_te
         SRV_ERROR_COUNT += 1;
         if is_device_error {
             if SRV_ERROR_COUNT == 1 || SRV_ERROR_COUNT % 600 == 0 {
-                eprintln!("[COMPOSITOR] ❌ GPU device error creating SRV: {:?}", e);
+                tracing::error!("[COMPOSITOR] ❌ GPU device error creating SRV: {:?}", e);
             }
             window_state.bevy_texture = None;
             window_state.bevy_srv = None;
         } else if SRV_ERROR_COUNT == 1 || SRV_ERROR_COUNT % 60 == 0 {
-            eprintln!("[COMPOSITOR] ❌ Failed to create SRV: {:?} (count: {})", e, SRV_ERROR_COUNT);
+            tracing::error!("[COMPOSITOR] ❌ Failed to create SRV: {:?} (count: {})", e, SRV_ERROR_COUNT);
         }
     }
 

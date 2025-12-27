@@ -60,9 +60,9 @@ fn render_file_section(state: &mut DawUiState, cx: &mut Context<DawPanel>) -> im
                 .tooltip("Save Project")
                 .on_click(cx.listener(|this, _, _window, cx| {
                     if let Err(e) = this.state.save_project() {
-                        eprintln!("❌ Save failed: {}", e);
+                        tracing::error!("❌ Save failed: {}", e);
                     } else {
-                        eprintln!("✅ Project saved");
+                        tracing::error!("✅ Project saved");
                     }
                     cx.notify();
                 }))

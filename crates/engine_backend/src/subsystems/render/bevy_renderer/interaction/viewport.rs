@@ -64,7 +64,7 @@ pub fn viewport_click_initiate_raycast_system(
         
     // Get camera
     let Ok((camera, camera_transform)) = camera_query.single() else {
-        println!("[RAYCAST] ⚠️ No camera found!");
+        tracing::info!("[RAYCAST] ⚠️ No camera found!");
         return;
     };
     
@@ -143,7 +143,7 @@ pub fn viewport_poll_raycast_system(
                         _ => format!("object_{}", selected_id),
                     };
                     
-                    println!("[RAYCAST] 🎯 Selected '{}' at distance {:.3}", 
+                    tracing::info!("[RAYCAST] 🎯 Selected '{}' at distance {:.3}", 
                         string_id, result.hit_distance.unwrap_or(0.0));
                     
                     // Update local Bevy ECS resource
@@ -163,7 +163,7 @@ pub fn viewport_poll_raycast_system(
                     }
                 } else {
                     // No hits - deselect
-                    println!("[RAYCAST] ⭕ No hits - deselected");
+                    tracing::info!("[RAYCAST] ⭕ No hits - deselected");
                     gizmo_state.selected_object_id = None;
                     
                     if let Ok(mut shared) = shared_gizmo_state.0.try_lock() {
@@ -294,7 +294,7 @@ pub fn gizmo_drag_system(
 
     // End drag
     if !mouse_input.left_down && interaction_state.is_dragging {
-        println!("[BEVY-GIZMO] ✅ Gizmo drag ended - transform changes synced to GPUI");
+        tracing::info!("[BEVY-GIZMO] ✅ Gizmo drag ended - transform changes synced to GPUI");
         interaction_state.is_dragging = false;
         interaction_state.drag_axis = None;
         interaction_state.drag_start_transform = None;

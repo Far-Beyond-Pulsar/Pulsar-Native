@@ -419,7 +419,7 @@ pub fn update_selection_highlighting(
                 color: Color::srgb(1.0, 0.7, 0.0), // Orange outline
                 width: 0.05,
             });
-            println!("[BEVY-GIZMO] ✅ Selected object {} (ID: {})", game_obj_id.0, gizmo_state.selected_object_id.as_ref().unwrap_or(&"none".to_string()));
+            tracing::info!("[BEVY-GIZMO] ✅ Selected object {} (ID: {})", game_obj_id.0, gizmo_state.selected_object_id.as_ref().unwrap_or(&"none".to_string()));
         } else if !should_be_selected && has_selected.is_some() {
             // Remove selection marker and outline
             commands.entity(entity).remove::<Selected>();

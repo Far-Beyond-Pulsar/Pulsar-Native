@@ -139,7 +139,7 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
                             if file_name == parent_name {
                                 // Path has doubled folder name, use parent instead
                                 path_buf = parent.to_path_buf();
-                                println!("[RECENT_PROJECTS] Fixed doubled path: {} -> {}", path, path_buf.display());
+                                tracing::info!("[RECENT_PROJECTS] Fixed doubled path: {} -> {}", path, path_buf.display());
                             }
                         }
                     }

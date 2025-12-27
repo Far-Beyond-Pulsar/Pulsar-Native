@@ -189,10 +189,10 @@ mod tests {
         let total_aligned = aligned_row * height as usize;
         let total_unaligned = (width * height * 4) as usize;
         
-        println!("1920x1080 frame:");
-        println!("  Unaligned: {} bytes ({:.2} MB)", total_unaligned, total_unaligned as f32 / 1_048_576.0);
-        println!("  Aligned: {} bytes ({:.2} MB)", total_aligned, total_aligned as f32 / 1_048_576.0);
-        println!("  Overhead: {} bytes ({:.2}%)", 
+        tracing::info!("1920x1080 frame:");
+        tracing::info!("  Unaligned: {} bytes ({:.2} MB)", total_unaligned, total_unaligned as f32 / 1_048_576.0);
+        tracing::info!("  Aligned: {} bytes ({:.2} MB)", total_aligned, total_aligned as f32 / 1_048_576.0);
+        tracing::info!("  Overhead: {} bytes ({:.2}%)", 
             total_aligned - total_unaligned,
             ((total_aligned - total_unaligned) as f32 / total_unaligned as f32) * 100.0
         );
