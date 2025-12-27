@@ -14459,11 +14459,14 @@ name = "ui_loading_screen"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
+ "directories",
  "engine_backend",
  "engine_state",
  "gpui",
  "serde",
  "ui",
+ "ui_entry",
 ]
 
 [[package]]

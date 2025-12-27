@@ -43,6 +43,7 @@ use pulsar_engine::*;
 
 // Binary-only modules
 mod window;  // Winit integration (Winit + GPUI coordination)
+mod uri;     // URI scheme handling
 
 // Use engine_state crate
 pub use engine_state::{EngineState, WindowRequest, WindowRequestSender, WindowRequestReceiver, window_request_channel};
@@ -102,6 +103,15 @@ fn main() {
     tracing::info!("Authors: {}", ENGINE_AUTHORS);
     tracing::info!("Description: {}", ENGINE_DESCRIPTION);
     tracing::info!("🚀 Starting Pulsar Engine with Winit + GPUI Zero-Copy Composition");
+
+    // Parse command-line arguments for URI launch
+    let uri_command = match uri::parse_launch_args() {
+        Ok(cmd) => cmd,
+        Err(e) => {
+            tracing::warn!("Failed to parse URI arguments: {}", e);
+            None
+        }
+    };
 
     // Determine app data directory
     let proj_dirs = ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
@@ -170,6 +180,15 @@ fn main() {
     // Create shared engine state with window sender
     let engine_state = EngineState::new().with_window_sender(window_tx.clone());
 
+    // Store URI project path if present
+    if let Some(uri::UriCommand::OpenProject { path }) = uri_command {
+        tracing::info!("Launching project from URI: {}", path.display());
+        engine_state.set_metadata(
+            "uri_project_path".to_string(),
+            path.to_string_lossy().to_string()
+        );
+    }
+
     // Set global engine state for access from GPUI views
     engine_state.clone().set_global();
 
@@ -185,6 +204,14 @@ fn main() {
     } else {
         tracing::info!("ℹ️  Discord Rich Presence not configured (set discord_app_id in main.rs)");
     }
+
+    // Register URI scheme with OS (background task)
+    // Uses Tokio runtime created earlier
+    rt.spawn(async {
+        if let Err(e) = uri::ensure_uri_scheme_registered() {
+            tracing::error!("Failed to register URI scheme: {}", e);
+        }
+    });
 
     let event_loop = EventLoop::new().expect("Failed to create event loop");
     // Use Wait mode for event-driven rendering (only render when needed)

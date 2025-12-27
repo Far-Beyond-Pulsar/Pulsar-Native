@@ -10,3 +10,6 @@ engine_backend.workspace = true
 engine_state.workspace = true
 serde.workspace = true
 anyhow.workspace = true
+ui_entry.workspace = true
+directories.workspace = true
+chrono = "0.4"
