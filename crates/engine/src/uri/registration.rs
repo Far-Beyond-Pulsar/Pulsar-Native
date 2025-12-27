@@ -29,14 +29,14 @@ pub fn ensure_uri_scheme_registered() -> Result<()> {
     // Check if already registered
     match is_registered(SCHEME_NAME) {
         Ok(true) => {
-            tracing::info!("✓ pulsar:// URI scheme already registered");
+            tracing::info!("✅ pulsar:// URI scheme already registered");
             return Ok(());
         }
         Ok(false) => {
-            tracing::info!("URI scheme not registered, registering now...");
+            tracing::info!("ℹ️  URI scheme not registered, registering now...");
         }
         Err(e) => {
-            tracing::warn!("Failed to check registration status: {}, attempting registration", e);
+            tracing::warn!("⚠️  Failed to check registration status: {}, attempting registration", e);
         }
     }
 

@@ -336,7 +336,7 @@ impl Render for LoadingScreen {
 fn update_recent_projects(project_path: &Path) {
     // Get recent projects path
     let Some(proj_dirs) = ProjectDirs::from("com", "Pulsar", "Pulsar_Engine") else {
-        tracing::warn!("Failed to get project directories for recent projects update");
+        println!("Failed to get project directories for recent projects update");
         return;
     };
 
@@ -360,9 +360,6 @@ fn update_recent_projects(project_path: &Path) {
 
     // Add/update and save
     recent_projects.add_or_update(project);
-    if let Err(e) = recent_projects.save(&recent_projects_path) {
-        tracing::error!("Failed to save recent projects: {}", e);
-    } else {
-        tracing::debug!("Updated recent projects for: {}", project_path.display());
-    }
+    recent_projects.save(&recent_projects_path);
+    println!("Updated recent projects for: {}", project_path.display());
 }

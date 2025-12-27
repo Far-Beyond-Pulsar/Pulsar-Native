@@ -105,10 +105,16 @@ fn main() {
     tracing::info!("🚀 Starting Pulsar Engine with Winit + GPUI Zero-Copy Composition");
 
     // Parse command-line arguments for URI launch
+    tracing::info!("Command-line arguments: {:?}", std::env::args().collect::<Vec<_>>());
     let uri_command = match uri::parse_launch_args() {
-        Ok(cmd) => cmd,
+        Ok(cmd) => {
+            if cmd.is_some() {
+                tracing::info!("✅ Successfully parsed URI command: {:?}", cmd);
+            }
+            cmd
+        },
         Err(e) => {
-            tracing::warn!("Failed to parse URI arguments: {}", e);
+            tracing::warn!("❌ Failed to parse URI arguments: {}", e);
             None
         }
     };
