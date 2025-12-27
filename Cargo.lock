@@ -2668,27 +2668,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "blueprint_editor_plugin"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "engine_backend",
- "futures",
- "gpui",
- "log",
- "plugin_editor_api",
- "pulsar_std",
- "schemars",
- "serde",
- "serde_json",
- "smol 2.0.2",
- "tracing",
- "ui",
- "ui_common",
- "uuid",
-]
-
-[[package]]
 name = "borsh"
 version = "1.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

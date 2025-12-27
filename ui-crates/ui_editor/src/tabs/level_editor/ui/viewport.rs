@@ -288,7 +288,7 @@ impl InputState {
             pan_delta_x: Arc::new(AtomicI32::new(0)),
             pan_delta_y: Arc::new(AtomicI32::new(0)),
             zoom_delta: Arc::new(AtomicI32::new(0)),
-            move_speed: Arc::new(AtomicI32::new(1000)), // 10.0 * 100
+            move_speed: Arc::new(AtomicI32::new(2000)), // 20.0 * 100
             input_latency_us: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         }
     }
