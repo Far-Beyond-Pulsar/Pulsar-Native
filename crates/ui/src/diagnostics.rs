@@ -43,6 +43,9 @@ pub struct Diagnostic {
     pub source: Option<String>,
     /// Quick fixes / code actions associated with this diagnostic
     pub code_actions: Vec<CodeAction>,
+    /// Raw JSON of the original LSP diagnostic (for code action requests)
+    #[serde(skip)]
+    pub raw_lsp_diagnostic: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

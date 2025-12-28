@@ -7,6 +7,9 @@ use ui_entry::{EntryScreen, ProjectSelected};
 use ui_alias_editor::ShowTypePickerRequest;
 use engine_backend::services::rust_analyzer_manager::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager};
 use std::path::PathBuf;
+use futures::FutureExt;
+use smol::Timer;
+use std::time::Duration;
 
 use super::PulsarApp;
 
@@ -17,6 +20,14 @@ pub fn on_analyzer_event(
     window: &mut Window,
     cx: &mut Context<PulsarApp>,
 ) {
+    tracing::info!("🎯 on_analyzer_event CALLED with event type: {}", match event {
+        AnalyzerEvent::StatusChanged(_) => "StatusChanged",
+        AnalyzerEvent::Ready => "Ready",
+        AnalyzerEvent::Error(_) => "Error",
+        AnalyzerEvent::Diagnostics(_) => "Diagnostics",
+        AnalyzerEvent::IndexingProgress { .. } => "IndexingProgress",
+    });
+    
     match event {
         AnalyzerEvent::StatusChanged(status) => {
             match status {
@@ -94,6 +105,8 @@ pub fn on_analyzer_event(
             // Convert and forward diagnostics to the problems drawer
             // Then asynchronously request code actions for each diagnostic
             
+            tracing::info!("🔔 DIAGNOSTICS EVENT RECEIVED: {} diagnostics", diagnostics.len());
+            
             // First, separate hints from errors/warnings
             let mut errors_warnings: Vec<_> = Vec::new();
             let mut hints: Vec<_> = Vec::new();
@@ -105,8 +118,42 @@ pub fn on_analyzer_event(
                 }
             }
             
-            // Convert errors/warnings to problems diagnostics (with loading state)
+            // Convert errors/warnings to problems diagnostics
+            // Also convert any embedded code_actions from relatedInformation into hints
             let mut problems_diagnostics: Vec<ui_problems::Diagnostic> = errors_warnings.iter().map(|d| {
+                // Convert embedded code_actions to hints with before/after content
+                let embedded_hints: Vec<_> = d.code_actions.iter().filter_map(|action| {
+                    if action.edits.is_empty() {
+                        return None;
+                    }
+                    
+                    let first_edit = &action.edits[0];
+                    let edit_file = &first_edit.file_path;
+                    
+                    tracing::info!("🔧 Converting embedded code action '{}' to hint for {}", action.title, edit_file);
+                    let (before_content, after_content) = compute_before_after(edit_file, &action.edits);
+                    
+                    tracing::info!("✓ Embedded hint - before: {} chars, after: {} chars",
+                        before_content.as_ref().map(|s| s.len()).unwrap_or(0),
+                        after_content.as_ref().map(|s| s.len()).unwrap_or(0));
+                    
+                    Some(ui_problems::Hint {
+                        message: action.title.clone(),
+                        before_content,
+                        after_content,
+                        file_path: Some(edit_file.clone()),
+                        line: Some(first_edit.start_line),
+                        loading: false,
+                    })
+                }).collect();
+                
+                // If we have embedded hints, we don't need to load more
+                let loading_actions = embedded_hints.is_empty();
+                
+                if !embedded_hints.is_empty() {
+                    tracing::info!("📋 Diagnostic has {} embedded code action hints", embedded_hints.len());
+                }
+                
                 ui_problems::Diagnostic {
                     file_path: d.file_path.clone(),
                     line: d.line,
@@ -121,9 +168,9 @@ pub fn on_analyzer_event(
                     },
                     message: d.message.clone(),
                     source: d.source.clone(),
-                    hints: Vec::new(),
+                    hints: embedded_hints,
                     subitems: Vec::new(),
-                    loading_actions: true, // Mark as loading
+                    loading_actions,
                 }
             }).collect();
             
@@ -179,8 +226,9 @@ pub fn on_analyzer_event(
             let rust_analyzer = app.state.rust_analyzer.clone();
             let problems_drawer = app.state.problems_drawer.clone();
             
-            // Store diagnostic info for code action requests
-            let diagnostic_infos: Vec<_> = problems_diagnostics.iter().enumerate().map(|(idx, d)| {
+            // Store diagnostic info for code action requests (including raw LSP diagnostic)
+            // Also track if the diagnostic already has embedded code actions (from relatedInformation)
+            let diagnostic_infos: Vec<_> = errors_warnings.iter().enumerate().map(|(idx, d)| {
                 (
                     idx,
                     d.file_path.clone(),
@@ -188,36 +236,69 @@ pub fn on_analyzer_event(
                     d.column,
                     d.end_line.unwrap_or(d.line),
                     d.end_column.unwrap_or(d.column + 1),
+                    d.message.clone(),
+                    d.raw_lsp_diagnostic.clone(),
+                    !d.code_actions.is_empty(), // has_embedded_actions
                 )
             }).collect();
             
-            // Set the diagnostics (with loading state)
+            // Set the diagnostics (with embedded hints already populated)
             app.state.problems_drawer.update(cx, |drawer, cx| {
                 drawer.set_diagnostics(problems_diagnostics, cx);
             });
             cx.notify();
             
-            // Spawn async task to fetch code actions for each diagnostic
+            // Spawn async task to fetch code actions for diagnostics that don't have embedded actions
+            let diagnostics_needing_fetch: Vec<_> = diagnostic_infos.iter()
+                .filter(|(_, _, _, _, _, _, _, _, has_embedded)| !has_embedded)
+                .cloned()
+                .collect();
+            
+            tracing::info!("🚀 Spawning code action fetch task for {} diagnostics (skipping {} with embedded actions)", 
+                diagnostics_needing_fetch.len(),
+                diagnostic_infos.len() - diagnostics_needing_fetch.len());
+            
             cx.spawn(async move |_this, cx| {
-                for (idx, file_path, line, column, end_line, end_column) in diagnostic_infos {
-                    tracing::info!("🔍 Requesting code actions for {}:{}:{}", file_path, line, column);
+                tracing::info!("🎯 Code action task started, processing {} diagnostics", diagnostics_needing_fetch.len());
+                for (idx, file_path, line, column, end_line, end_column, message, raw_diagnostic, _) in diagnostics_needing_fetch {
+                    tracing::info!("🔍 Requesting code actions for {}:{}:{} - {} (has raw: {})", 
+                        file_path, line, column, message, raw_diagnostic.is_some());
                     
-                    // Try to request code actions
+                    // Try to request code actions - prefer using raw diagnostic if available
                     let rx_result = cx.update(|cx| {
-                        rust_analyzer.read(cx).request_code_actions_async(
-                            &PathBuf::from(&file_path),
-                            line,
-                            column,
-                            end_line,
-                            end_column,
-                        )
+                        let analyzer = rust_analyzer.read(cx);
+                        if let Some(ref raw_diag) = raw_diagnostic {
+                            // Use the raw diagnostic for better code action matching
+                            analyzer.request_code_actions_with_diagnostic(
+                                &PathBuf::from(&file_path),
+                                raw_diag,
+                            )
+                        } else {
+                            // Fall back to reconstructed diagnostic
+                            analyzer.request_code_actions_async(
+                                &PathBuf::from(&file_path),
+                                line,
+                                column,
+                                end_line,
+                                end_column,
+                                Some(&message),
+                            )
+                        }
                     });
                     
                     let hints = match rx_result {
                         Ok(Ok(rx)) => {
-                            // Wait for response with timeout
-                            match rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                                Ok(response) => {
+                            // Wait for response with async timeout
+                            let recv_future = rx.recv_async();
+                            let timeout_future = Timer::after(Duration::from_secs(5));
+                            
+                            let response_result = futures::select! {
+                                response = recv_future.fuse() => Some(response),
+                                _ = timeout_future.fuse() => None,
+                            };
+                            
+                            match response_result {
+                                Some(Ok(response)) => {
                                     tracing::info!("📦 Got code action response: {} items in array", 
                                         response.as_array().map(|a| a.len()).unwrap_or(0));
                                     
@@ -241,7 +322,16 @@ pub fn on_analyzer_event(
                                         });
                                         
                                         if let Ok(Ok(resolve_rx)) = resolve_rx {
-                                            if let Ok(resolved) = resolve_rx.recv_timeout(std::time::Duration::from_secs(2)) {
+                                            // Async timeout for resolve
+                                            let resolve_future = resolve_rx.recv_async();
+                                            let resolve_timeout = Timer::after(Duration::from_secs(2));
+                                            
+                                            let resolve_result = futures::select! {
+                                                resolved = resolve_future.fuse() => Some(resolved),
+                                                _ = resolve_timeout.fuse() => None,
+                                            };
+                                            
+                                            if let Some(Ok(resolved)) = resolve_result {
                                                 // Parse the resolved action
                                                 if let Some(action) = RustAnalyzerManager::parse_single_code_action(&resolved) {
                                                     tracing::info!("✓ Resolved action '{}' with {} edits", action.title, action.edits.len());
@@ -286,8 +376,12 @@ pub fn on_analyzer_event(
                                         })
                                     }).collect::<Vec<_>>()
                                 }
-                                Err(e) => {
-                                    tracing::warn!("⚠️ Code actions request timed out: {:?}", e);
+                                Some(Err(e)) => {
+                                    tracing::warn!("⚠️ Code actions request error: {:?}", e);
+                                    Vec::new()
+                                }
+                                None => {
+                                    tracing::warn!("⚠️ Code actions request timed out");
                                     Vec::new()
                                 },
                             }

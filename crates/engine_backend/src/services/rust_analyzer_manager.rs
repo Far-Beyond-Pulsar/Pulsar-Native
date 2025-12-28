@@ -789,6 +789,12 @@ impl RustAnalyzerManager {
                                 if let Some(uri) = params.get("uri").and_then(|u| u.as_str()) {
                                     let mut diagnostics = Vec::new();
                                     
+                                    // Log first few raw diagnostics to understand their structure
+                                    if !diagnostics_array.is_empty() {
+                                        tracing::info!("📋 Raw diagnostic from rust-analyzer: {}", 
+                                            serde_json::to_string_pretty(&diagnostics_array[0]).unwrap_or_default());
+                                    }
+                                    
                                     for diag in diagnostics_array {
                                         if let (Some(range), Some(message)) = (
                                             diag.get("range"),
@@ -819,6 +825,17 @@ impl RustAnalyzerManager {
                                                 };
                                                 
                                                 let file_path = uri.trim_start_matches("file:///").replace("%20", " ");
+                                                
+                                                // Extract code from diagnostic
+                                                let code = diag.get("code").and_then(|c| {
+                                                    if c.is_string() {
+                                                        c.as_str().map(|s| s.to_string())
+                                                    } else if c.is_number() {
+                                                        c.as_i64().map(|n| n.to_string())
+                                                    } else {
+                                                        None
+                                                    }
+                                                });
                                                 
                                                 // Extract code actions from the diagnostic's data field
                                                 // rust-analyzer stores quick fix info here
@@ -909,6 +926,62 @@ impl RustAnalyzerManager {
                                                     }
                                                 }
                                                 
+                                                // Also extract code actions from relatedInformation
+                                                // rustc provides fix suggestions here for things like unused imports
+                                                // Format: relatedInformation[].message contains action like "remove the whole `use` item"
+                                                // and relatedInformation[].location.range contains the range to delete
+                                                if let Some(related_info) = diag.get("relatedInformation").and_then(|r| r.as_array()) {
+                                                    for info in related_info {
+                                                        if let Some(info_message) = info.get("message").and_then(|m| m.as_str()) {
+                                                            // Check if this is a removal suggestion
+                                                            let is_removal = info_message.to_lowercase().contains("remove");
+                                                            
+                                                            if is_removal {
+                                                                if let Some(location) = info.get("location") {
+                                                                    if let Some(info_range) = location.get("range") {
+                                                                        if let (Some(info_start), Some(info_end)) = (
+                                                                            info_range.get("start"),
+                                                                            info_range.get("end")
+                                                                        ) {
+                                                                            // Get the file from the location URI
+                                                                            let info_uri = location.get("uri")
+                                                                                .and_then(|u| u.as_str())
+                                                                                .map(|u| u.trim_start_matches("file:///").replace("%20", " "))
+                                                                                .unwrap_or_else(|| file_path.clone());
+                                                                            
+                                                                            let start_line = info_start.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as usize + 1;
+                                                                            let start_col = info_start.get("character").and_then(|c| c.as_u64()).unwrap_or(0) as usize + 1;
+                                                                            let end_line = info_end.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as usize + 1;
+                                                                            let end_col = info_end.get("character").and_then(|c| c.as_u64()).unwrap_or(0) as usize + 1;
+                                                                            
+                                                                            tracing::info!("🔧 Found removal suggestion in relatedInformation: '{}' at {}:{}-{}:{}", 
+                                                                                info_message, start_line, start_col, end_line, end_col);
+                                                                            
+                                                                            // Create a code action for removal (delete the range)
+                                                                            let edit = ui::diagnostics::TextEdit {
+                                                                                file_path: info_uri,
+                                                                                start_line,
+                                                                                start_column: start_col,
+                                                                                end_line,
+                                                                                end_column: end_col,
+                                                                                new_text: String::new(), // Empty = delete
+                                                                            };
+                                                                            
+                                                                            // Use the message as the title, capitalized nicely
+                                                                            let title = format!("{}", info_message.trim_end_matches('.'));
+                                                                            
+                                                                            code_actions.push(ui::diagnostics::CodeAction {
+                                                                                title,
+                                                                                edits: vec![edit],
+                                                                            });
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                
                                                 diagnostics.push(Diagnostic {
                                                     file_path,
                                                     line,
@@ -917,9 +990,10 @@ impl RustAnalyzerManager {
                                                     end_column,
                                                     severity,
                                                     message: message.to_string(),
-                                                    code: None,
+                                                    code,
                                                     source: Some("rust-analyzer".to_string()),
                                                     code_actions,
+                                                    raw_lsp_diagnostic: Some(diag.clone()),
                                                 });
                                             }
                                         }
@@ -1287,6 +1361,7 @@ impl RustAnalyzerManager {
                     }
                 }
                 
+                tracing::info!("📤 EMITTING AnalyzerEvent::Diagnostics with {} diagnostics", diagnostics.len());
                 cx.emit(AnalyzerEvent::Diagnostics(diagnostics));
                 // Don't notify here, let the app handle it
             }
@@ -1352,12 +1427,38 @@ impl RustAnalyzerManager {
         start_column: usize,
         end_line: usize,
         end_column: usize,
+        diagnostic_message: Option<&str>,
     ) -> Result<flume::Receiver<Value>> {
         if !self.is_running() {
+            tracing::warn!("📛 request_code_actions_async: rust-analyzer is not running!");
             return Err(anyhow!("rust-analyzer is not running"));
         }
+        
+        tracing::info!("📤 request_code_actions_async: file={:?}, range={}:{}-{}:{}, msg={:?}",
+            file_path, start_line, start_column, end_line, end_column, diagnostic_message);
 
         let uri = self.path_to_uri(file_path);
+        
+        // Build the diagnostic context if we have a message
+        let diagnostics = if let Some(msg) = diagnostic_message {
+            vec![json!({
+                "range": {
+                    "start": {
+                        "line": start_line.saturating_sub(1),
+                        "character": start_column.saturating_sub(1)
+                    },
+                    "end": {
+                        "line": end_line.saturating_sub(1),
+                        "character": end_column.saturating_sub(1)
+                    }
+                },
+                "message": msg,
+                "severity": 1
+            })]
+        } else {
+            vec![]
+        };
+        
         let params = json!({
             "textDocument": {
                 "uri": uri
@@ -1373,11 +1474,54 @@ impl RustAnalyzerManager {
                 }
             },
             "context": {
-                "diagnostics": [],
+                "diagnostics": diagnostics,
                 "only": ["quickfix"],
                 "triggerKind": 1
             }
         });
+        
+        tracing::info!("📤 Sending codeAction request: {}", serde_json::to_string_pretty(&params).unwrap_or_default());
+
+        self.send_request_async("textDocument/codeAction", params)
+    }
+    
+    /// Request code actions using the raw LSP diagnostic
+    /// This provides better matching than reconstructing the diagnostic
+    pub fn request_code_actions_with_diagnostic(
+        &self,
+        file_path: &PathBuf,
+        raw_diagnostic: &Value,
+    ) -> Result<flume::Receiver<Value>> {
+        if !self.is_running() {
+            tracing::warn!("📛 request_code_actions_with_diagnostic: rust-analyzer is not running!");
+            return Err(anyhow!("rust-analyzer is not running"));
+        }
+        
+        let uri = self.path_to_uri(file_path);
+        
+        // Extract range from the raw diagnostic
+        let range = raw_diagnostic.get("range").cloned().unwrap_or_else(|| json!({
+            "start": {"line": 0, "character": 0},
+            "end": {"line": 0, "character": 0}
+        }));
+        
+        tracing::info!("📤 request_code_actions_with_diagnostic: file={:?}, raw_diag={}", 
+            file_path, serde_json::to_string_pretty(raw_diagnostic).unwrap_or_default());
+        
+        let params = json!({
+            "textDocument": {
+                "uri": uri
+            },
+            "range": range,
+            "context": {
+                "diagnostics": [raw_diagnostic],
+                "only": ["quickfix"],
+                "triggerKind": 1
+            }
+        });
+        
+        tracing::info!("📤 Sending codeAction request with raw diagnostic: {}", 
+            serde_json::to_string_pretty(&params).unwrap_or_default());
 
         self.send_request_async("textDocument/codeAction", params)
     }
@@ -1387,8 +1531,11 @@ impl RustAnalyzerManager {
     pub fn parse_code_actions(response: &Value) -> Vec<ui::diagnostics::CodeAction> {
         let mut actions = Vec::new();
         
+        tracing::info!("📥 parse_code_actions received: {}", serde_json::to_string_pretty(response).unwrap_or_default());
+        
         if let Some(arr) = response.as_array() {
             for action in arr {
+                tracing::info!("📋 Parsing action: {}", action.get("title").and_then(|t| t.as_str()).unwrap_or("no title"));
                 if let Some(parsed) = Self::parse_single_code_action(action) {
                     actions.push(parsed);
                 }
