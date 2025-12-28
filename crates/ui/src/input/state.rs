@@ -1503,8 +1503,18 @@ impl InputState {
             .as_ref()
             .map(|layout| layout.line_height)
             .unwrap_or(window.line_height());
-        let delta = event.delta.pixel_delta(line_height);
-        self.update_scroll_offset(Some(self.scroll_handle.offset() + delta), cx);
+
+        // If shift is held and soft_wrap is off, scroll horizontally
+        if event.modifiers.shift && !self.soft_wrap {
+            let delta = event.delta.pixel_delta(line_height);
+            let mut offset = self.scroll_handle.offset();
+            // Swap y and x for horizontal scroll
+            offset.x += delta.y;
+            self.update_scroll_offset(Some(offset), cx);
+        } else {
+            let delta = event.delta.pixel_delta(line_height);
+            self.update_scroll_offset(Some(self.scroll_handle.offset() + delta), cx);
+        }
         self.diagnostic_popover = None;
     }
 
