@@ -2312,6 +2312,7 @@ impl ViewportPanel {
                         )
                         .child(
                             div()
+                                .relative()
                                 .h(px(80.))
                                 .w_full()
                                 .child(if *fps_graph_state.borrow() {
@@ -2327,6 +2328,9 @@ impl ViewportPanel {
                                         .linear()
                                         .tick_margin(10)
                                         .min_y_range(16.6)
+                                        .reference_line(33.3, cx.theme().accent.opacity(0.3), SharedString::from("30fps (33.3ms)"))
+                                        .reference_line(16.6, cx.theme().success.opacity(0.3), SharedString::from("60fps (16.6ms)"))
+                                        .reference_line(8.3, cx.theme().warning.opacity(0.3), SharedString::from("120fps (8.3ms)"))
                                         .into_any_element()
                                 } else {
                                     // Bar mode
@@ -2338,6 +2342,9 @@ impl ViewportPanel {
                                         .fill(move |_d| chart_color)
                                         .tick_margin(10)
                                         .min_y_range(16.6)
+                                        .reference_line(33.3, cx.theme().accent.opacity(0.3), SharedString::from("30fps (33.3ms)"))
+                                        .reference_line(16.6, cx.theme().success.opacity(0.3), SharedString::from("60fps (16.6ms)"))
+                                        .reference_line(8.3, cx.theme().warning.opacity(0.3), SharedString::from("120fps (8.3ms)"))
                                         .into_any_element()
                                 })
                         )

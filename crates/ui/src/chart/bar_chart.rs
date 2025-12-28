@@ -29,6 +29,7 @@ where
     label: Option<Rc<dyn Fn(&T) -> SharedString>>,
     min_y_range: Option<f64>,
     max_y_range: Option<f64>,
+    reference_lines: Vec<(f64, Hsla, SharedString)>,
 }
 
 impl<T, X, Y> BarChart<T, X, Y>
@@ -49,6 +50,7 @@ where
             label: None,
             min_y_range: None,
             max_y_range: None,
+            reference_lines: vec![],
         }
     }
 
@@ -90,6 +92,11 @@ where
 
     pub fn max_y_range(mut self, max: f64) -> Self {
         self.max_y_range = Some(max);
+        self
+    }
+
+    pub fn reference_line(mut self, y_value: f64, stroke: impl Into<Hsla>, label: impl Into<SharedString>) -> Self {
+        self.reference_lines.push((y_value, stroke.into(), label.into()));
         self
     }
 }
@@ -200,12 +207,13 @@ where
         let default_fill = cx.theme().chart_2;
         let fill = self.fill.clone();
         let label_color = cx.theme().foreground;
+        let y_clone = y.clone();
         let mut bar = Bar::new()
             .data(&self.data)
             .band_width(band_width)
             .x(move |d| x.tick(&x_fn(d)))
             .y0(height)
-            .y1(move |d| y.tick(&y_fn(d)))
+            .y1(move |d| y_clone.tick(&y_fn(d)))
             .fill(move |d| fill.as_ref().map(|f| f(d)).unwrap_or(default_fill));
 
         if let Some(label) = self.label.as_ref() {
@@ -214,5 +222,16 @@ where
         }
 
         bar.paint(&bounds, window, cx);
+
+        // Draw reference lines
+        for (y_value, color, _label) in &self.reference_lines {
+            if let Some(y_tick) = y.tick(&Y::from_f64(*y_value).unwrap_or_else(Y::zero)) {
+                Grid::new()
+                    .y(vec![y_tick])
+                    .stroke(*color)
+                    .dash_array(&[px(2.), px(2.)])
+                    .paint(&bounds, window);
+            }
+        }
     }
 }

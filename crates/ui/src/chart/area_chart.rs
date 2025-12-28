@@ -29,6 +29,7 @@ where
     tick_margin: usize,
     min_y_range: Option<f64>,
     max_y_range: Option<f64>,
+    reference_lines: Vec<(f64, Hsla, SharedString)>,
 }
 
 impl<T, X, Y> AreaChart<T, X, Y>
@@ -50,6 +51,7 @@ where
             y: vec![],
             min_y_range: None,
             max_y_range: None,
+            reference_lines: vec![],
         }
     }
 
@@ -90,6 +92,11 @@ where
 
     pub fn max_y_range(mut self, max: f64) -> Self {
         self.max_y_range = Some(max);
+        self
+    }
+
+    pub fn reference_line(mut self, y_value: f64, stroke: impl Into<Hsla>, label: impl Into<SharedString>) -> Self {
+        self.reference_lines.push((y_value, stroke.into(), label.into()));
         self
     }
 }
@@ -226,6 +233,17 @@ where
                 .stroke_style(self.stroke_style)
                 .fill(fill)
                 .paint(&bounds, window);
+        }
+
+        // Draw reference lines
+        for (y_value, color, _label) in &self.reference_lines {
+            if let Some(y_tick) = y.tick(&Y::from_f64(*y_value).unwrap_or_else(Y::zero)) {
+                Grid::new()
+                    .y(vec![y_tick])
+                    .stroke(*color)
+                    .dash_array(&[px(2.), px(2.)])
+                    .paint(&bounds, window);
+            }
         }
     }
 }

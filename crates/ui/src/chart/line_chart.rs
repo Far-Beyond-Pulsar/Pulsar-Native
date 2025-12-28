@@ -29,6 +29,7 @@ where
     tick_margin: usize,
     min_y_range: Option<f64>,
     max_y_range: Option<f64>,
+    reference_lines: Vec<(f64, Hsla, SharedString)>,
 }
 
 impl<T, X, Y> LineChart<T, X, Y>
@@ -50,6 +51,7 @@ where
             tick_margin: 1,
             min_y_range: None,
             max_y_range: None,
+            reference_lines: vec![],
         }
     }
 
@@ -85,6 +87,11 @@ where
 
     pub fn max_y_range(mut self, max: f64) -> Self {
         self.max_y_range = Some(max);
+        self
+    }
+
+    pub fn reference_line(mut self, y_value: f64, stroke: impl Into<Hsla>, label: impl Into<SharedString>) -> Self {
+        self.reference_lines.push((y_value, stroke.into(), label.into()));
         self
     }
 }
@@ -197,10 +204,11 @@ where
         let stroke = self.stroke.unwrap_or(cx.theme().chart_2);
         let x_fn = x_fn.clone();
         let y_fn = y_fn.clone();
+        let y_clone = y.clone();
         let mut line = Line::new()
             .data(&self.data)
             .x(move |d| x.tick(&x_fn(d)))
-            .y(move |d| y.tick(&y_fn(d)))
+            .y(move |d| y_clone.tick(&y_fn(d)))
             .stroke(stroke)
             .stroke_style(self.stroke_style)
             .stroke_width(2.);
@@ -210,5 +218,16 @@ where
         }
 
         line.paint(&bounds, window);
+
+        // Draw reference lines
+        for (y_value, color, _label) in &self.reference_lines {
+            if let Some(y_tick) = y.tick(&Y::from_f64(*y_value).unwrap_or_else(Y::zero)) {
+                Grid::new()
+                    .y(vec![y_tick])
+                    .stroke(*color)
+                    .dash_array(&[px(2.), px(2.)])
+                    .paint(&bounds, window);
+            }
+        }
     }
 }
