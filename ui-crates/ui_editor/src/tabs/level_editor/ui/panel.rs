@@ -220,7 +220,7 @@ impl LevelEditorPanel {
             );
             let _ = dock_area.update(cx, |dock_area, cx| {
                 dock_area.set_center(center_tabs, window, cx);
-                dock_area.set_right_dock(right, Some(px(325.0)), true, window, cx);
+                dock_area.set_right_dock(right, Some(px(400.0)), true, window, cx);
             });
         });
 
