@@ -14485,6 +14485,7 @@ dependencies = [
  "anyhow",
  "gpui",
  "serde",
+ "similar",
  "tracing",
  "ui",
  "ui_common",

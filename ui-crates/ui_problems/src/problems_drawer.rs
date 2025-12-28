@@ -13,6 +13,56 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use std::fs;
+use similar::{ChangeTag, TextDiff};
+
+/// Represents the type of a diff line for rendering
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum DiffLineType {
+    Unchanged,
+    Added,
+    Deleted,
+    Spacer, // Empty line to align both sides
+}
+
+/// Compute aligned diff lines for side-by-side display
+/// Returns (left_lines, right_lines) where each line is (line_number, type, content)
+fn compute_aligned_diff(before: &str, after: &str) -> (Vec<(Option<usize>, DiffLineType, String)>, Vec<(Option<usize>, DiffLineType, String)>) {
+    let diff = TextDiff::from_lines(before, after);
+    
+    let mut left_lines: Vec<(Option<usize>, DiffLineType, String)> = Vec::new();
+    let mut right_lines: Vec<(Option<usize>, DiffLineType, String)> = Vec::new();
+    
+    let mut left_line_num = 1usize;
+    let mut right_line_num = 1usize;
+    
+    for change in diff.iter_all_changes() {
+        let content = change.value().trim_end_matches('\n').to_string();
+        
+        match change.tag() {
+            ChangeTag::Equal => {
+                // Unchanged line appears on both sides
+                left_lines.push((Some(left_line_num), DiffLineType::Unchanged, content.clone()));
+                right_lines.push((Some(right_line_num), DiffLineType::Unchanged, content));
+                left_line_num += 1;
+                right_line_num += 1;
+            }
+            ChangeTag::Delete => {
+                // Deleted line only appears on left side, add spacer on right
+                left_lines.push((Some(left_line_num), DiffLineType::Deleted, content));
+                right_lines.push((None, DiffLineType::Spacer, "".to_string()));
+                left_line_num += 1;
+            }
+            ChangeTag::Insert => {
+                // Added line only appears on right side, add spacer on left
+                left_lines.push((None, DiffLineType::Spacer, "".to_string()));
+                right_lines.push((Some(right_line_num), DiffLineType::Added, content));
+                right_line_num += 1;
+            }
+        }
+    }
+    
+    (left_lines, right_lines)
+}
 
 // Local diagnostic types
 #[derive(Clone, Debug)]
@@ -948,12 +998,13 @@ impl ProblemsDrawer {
     }
 
     /// Render a hint with side-by-side diff view (before/after)
+    /// Uses line-by-line diff with highlighting and spacers for alignment
     fn render_hint_diff(
         &mut self,
-        diagnostic_index: usize,
+        _diagnostic_index: usize,
         hint_index: usize,
         hint: &Hint,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Div {
         // If we don't have diff content, just show the message
@@ -976,77 +1027,122 @@ impl ProblemsDrawer {
                 );
         }
         
-        let key = (diagnostic_index, hint_index);
-        
-        // Get or create the diff editors for this hint
-        let (before_editor, after_editor) = if let Some(editors) = self.diff_editors.get(&key) {
-            editors.clone()
-        } else {
-            // Get the content for before/after
-            let before_content = hint.before_content.clone().unwrap_or_default();
-            let after_content = hint.after_content.clone().unwrap_or_default();
-            
-            tracing::info!("🎨 Creating diff editors for hint {}: before='{}', after='{}'",
-                hint_index, 
-                before_content.chars().take(50).collect::<String>(),
-                after_content.chars().take(50).collect::<String>());
-            
-            // Determine language from file extension
-            let language = hint.file_path.as_ref()
-                .and_then(|fp| std::path::Path::new(fp).extension())
-                .and_then(|ext| ext.to_str())
-                .map(|ext| match ext {
-                    "rs" => "rust",
-                    "js" => "javascript",
-                    "ts" => "typescript",
-                    "py" => "python",
-                    "toml" => "toml",
-                    "json" => "json",
-                    "md" => "markdown",
-                    "html" => "html",
-                    "css" => "css",
-                    _ => "text",
-                })
-                .unwrap_or("rust");
-            
-            // Count lines in the content (max of before/after)
-            let before_lines = before_content.lines().count().max(1);
-            let after_lines = after_content.lines().count().max(1);
-            let num_lines = before_lines.max(after_lines);
-            
-            // Create before editor (original code)
-            let before_editor = cx.new(|cx| {
-                let mut state = InputState::new(window, cx)
-                    .code_editor(language)
-                    .soft_wrap(false)
-                    .line_number(true)
-                    .rows(num_lines);
-                state.set_value(&before_content, window, cx);
-                state
-            });
-            
-            // Create after editor (suggested fix)
-            let after_editor = cx.new(|cx| {
-                let mut state = InputState::new(window, cx)
-                    .code_editor(language)
-                    .soft_wrap(false)
-                    .line_number(true)
-                    .rows(num_lines);
-                state.set_value(&after_content, window, cx);
-                state
-            });
-            
-            self.diff_editors.insert(key, (before_editor.clone(), after_editor.clone()));
-            (before_editor, after_editor)
-        };
-        
-        // Calculate height based on content (no scrolling - expand to fit)
+        // Get the content for before/after
         let before_content = hint.before_content.clone().unwrap_or_default();
         let after_content = hint.after_content.clone().unwrap_or_default();
-        let before_lines = before_content.lines().count().max(1);
-        let after_lines = after_content.lines().count().max(1);
-        let num_lines = before_lines.max(after_lines);
-        let editor_height = (num_lines as f32 * 20.0 + 16.0).max(60.0); // 20px per line + padding
+        
+        // Compute the aligned diff lines
+        let (left_lines, right_lines) = compute_aligned_diff(&before_content, &after_content);
+        
+        // Colors for diff highlighting
+        let deleted_bg = Hsla { h: 0.0, s: 0.4, l: 0.15, a: 1.0 };      // Dark red background
+        let deleted_text = Hsla { h: 0.0, s: 0.7, l: 0.7, a: 1.0 };     // Light red text
+        let added_bg = Hsla { h: 120.0, s: 0.4, l: 0.15, a: 1.0 };      // Dark green background
+        let added_text = Hsla { h: 120.0, s: 0.7, l: 0.7, a: 1.0 };     // Light green text
+        let spacer_bg = Hsla { h: 0.0, s: 0.0, l: 0.12, a: 1.0 };       // Dark gray for spacers
+        let unchanged_bg = cx.theme().sidebar;
+        let unchanged_text = cx.theme().foreground;
+        let line_num_color = cx.theme().muted_foreground;
+        
+        // Build left side (before) lines
+        let mut left_container = v_flex().w_full();
+        for (line_num, line_type, content) in &left_lines {
+            let (bg, text_color) = match line_type {
+                DiffLineType::Deleted => (deleted_bg, deleted_text),
+                DiffLineType::Spacer => (spacer_bg, line_num_color),
+                DiffLineType::Unchanged => (unchanged_bg, unchanged_text),
+                _ => (unchanged_bg, unchanged_text),
+            };
+            
+            left_container = left_container.child(
+                h_flex()
+                    .w_full()
+                    .h(px(20.0))
+                    .bg(bg)
+                    .child(
+                        div()
+                            .w(px(40.0))
+                            .h_full()
+                            .flex()
+                            .items_center()
+                            .justify_end()
+                            .pr_2()
+                            .text_xs()
+                            .font_family("JetBrains Mono")
+                            .text_color(line_num_color)
+                            .child(if *line_type == DiffLineType::Spacer { 
+                                "".to_string() 
+                            } else { 
+                                line_num.map(|n| n.to_string()).unwrap_or_default()
+                            })
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .h_full()
+                            .flex()
+                            .items_center()
+                            .pl_2()
+                            .text_xs()
+                            .font_family("JetBrains Mono")
+                            .text_color(text_color)
+                            .overflow_x_hidden()
+                            .child(content.clone())
+                    )
+            );
+        }
+        
+        // Build right side (after) lines
+        let mut right_container = v_flex().w_full();
+        for (line_num, line_type, content) in &right_lines {
+            let (bg, text_color) = match line_type {
+                DiffLineType::Added => (added_bg, added_text),
+                DiffLineType::Spacer => (spacer_bg, line_num_color),
+                DiffLineType::Unchanged => (unchanged_bg, unchanged_text),
+                _ => (unchanged_bg, unchanged_text),
+            };
+            
+            right_container = right_container.child(
+                h_flex()
+                    .w_full()
+                    .h(px(20.0))
+                    .bg(bg)
+                    .child(
+                        div()
+                            .w(px(40.0))
+                            .h_full()
+                            .flex()
+                            .items_center()
+                            .justify_end()
+                            .pr_2()
+                            .text_xs()
+                            .font_family("JetBrains Mono")
+                            .text_color(line_num_color)
+                            .child(if *line_type == DiffLineType::Spacer { 
+                                "".to_string() 
+                            } else { 
+                                line_num.map(|n| n.to_string()).unwrap_or_default()
+                            })
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .h_full()
+                            .flex()
+                            .items_center()
+                            .pl_2()
+                            .text_xs()
+                            .font_family("JetBrains Mono")
+                            .text_color(text_color)
+                            .overflow_x_hidden()
+                            .child(content.clone())
+                    )
+            );
+        }
+        
+        // Calculate the total height based on number of lines
+        let total_lines = left_lines.len().max(right_lines.len());
+        let content_height = (total_lines as f32 * 20.0).max(40.0);
         
         // Build the hint element
         v_flex()
@@ -1106,50 +1202,27 @@ impl ProblemsDrawer {
                             )
                     )
             )
-            // Side-by-side editors
+            // Side-by-side diff content
             .child(
-                h_flex()
+                div()
+                    .id("diff-scroll-container")
                     .w_full()
+                    .h(px(content_height))
+                    .overflow_y_scroll()
                     .child(
-                        div()
-                            .flex_1()
-                            .border_r_1()
-                            .border_color(cx.theme().border)
-                            .bg(Hsla { h: 0.0, s: 0.1, l: 0.08, a: 1.0 }) // Subtle red tint
+                        h_flex()
+                            .w_full()
                             .child(
-                                TextInput::new(&before_editor)
-                                    .w_full()
-                                    .h(px(editor_height))
-                                    .font_family("JetBrains Mono")
-                                    .font(gpui::Font {
-                                        family: "JetBrains Mono".to_string().into(),
-                                        weight: gpui::FontWeight::NORMAL,
-                                        style: gpui::FontStyle::Normal,
-                                        features: gpui::FontFeatures::default(),
-                                        fallbacks: Some(gpui::FontFallbacks::from_fonts(vec!["Consolas".to_string(), "Menlo".to_string(), "Monaco".to_string()])),
-                                    })
-                                    .text_size(px(12.0))
-                                    .border_0()
+                                div()
+                                    .flex_1()
+                                    .border_r_1()
+                                    .border_color(cx.theme().border)
+                                    .child(left_container)
                             )
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .bg(Hsla { h: 120.0, s: 0.1, l: 0.08, a: 1.0 }) // Subtle green tint
                             .child(
-                                TextInput::new(&after_editor)
-                                    .w_full()
-                                    .h(px(editor_height))
-                                    .font_family("JetBrains Mono")
-                                    .font(gpui::Font {
-                                        family: "JetBrains Mono".to_string().into(),
-                                        weight: gpui::FontWeight::NORMAL,
-                                        style: gpui::FontStyle::Normal,
-                                        features: gpui::FontFeatures::default(),
-                                        fallbacks: Some(gpui::FontFallbacks::from_fonts(vec!["Consolas".to_string(), "Menlo".to_string(), "Monaco".to_string()])),
-                                    })
-                                    .text_size(px(12.0))
-                                    .border_0()
+                                div()
+                                    .flex_1()
+                                    .child(right_container)
                             )
                     )
             )
