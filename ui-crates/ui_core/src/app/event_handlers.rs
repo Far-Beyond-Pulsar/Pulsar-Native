@@ -149,10 +149,45 @@ pub fn on_analyzer_event(
                 }
                 
                 if let Some(parent_idx) = best_match {
+                    // Read the original file content around the hint line
+                    let (before_content, after_content) = {
+                        let context_lines = 2;
+                        let before = if let Ok(content) = std::fs::read_to_string(&hint.file_path) {
+                            let lines: Vec<&str> = content.lines().collect();
+                            let hint_line = hint.line.saturating_sub(1); // 0-indexed
+                            if hint_line < lines.len() {
+                                let start = hint_line.saturating_sub(context_lines);
+                                let end = (hint_line + context_lines + 1).min(lines.len());
+                                Some(lines[start..end].join("\n"))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+                        
+                        // For now, the after_content is the hint message if it looks like code
+                        // rust-analyzer hints often contain the suggested replacement
+                        let after = if hint.message.contains('\n') || hint.message.contains("fn ") 
+                            || hint.message.contains("let ") || hint.message.contains("use ") 
+                            || hint.message.contains("impl ") || hint.message.contains("struct ")
+                            || hint.message.contains("pub ") || hint.message.contains("::") {
+                            Some(hint.message.clone())
+                        } else {
+                            // Otherwise, just show the message as-is
+                            Some(hint.message.clone())
+                        };
+                        
+                        (before, after)
+                    };
+                    
                     // Attach as a hint to the parent
                     problems_diagnostics[parent_idx].hints.push(ui_problems::Hint {
                         message: hint.message.clone(),
-                        excerpt: None, // Could add file excerpt here if available
+                        before_content,
+                        after_content,
+                        file_path: Some(hint.file_path.clone()),
+                        line: Some(hint.line),
                     });
                 } else {
                     // No parent found, add as a standalone diagnostic
