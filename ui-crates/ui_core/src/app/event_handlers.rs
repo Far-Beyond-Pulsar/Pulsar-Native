@@ -2,11 +2,11 @@
 
 use gpui::{AppContext, Context, DismissEvent, Entity, Focusable, Window};
 use ui::{ContextModal, dock::PanelEvent};
-use ui::notification::Notification;
 use ui_editor::{FileManagerDrawer, FileSelected, DrawerFileType as FileType, PopoutFileManagerEvent, ProblemsDrawer, ScriptEditorPanel, TextEditorEvent};
 use ui_entry::{EntryScreen, ProjectSelected};
 use ui_alias_editor::ShowTypePickerRequest;
 use engine_backend::services::rust_analyzer_manager::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager};
+use std::path::PathBuf;
 
 use super::PulsarApp;
 
@@ -92,9 +92,7 @@ pub fn on_analyzer_event(
         }
         AnalyzerEvent::Diagnostics(diagnostics) => {
             // Convert and forward diagnostics to the problems drawer
-            // Group hints with their parent errors based on file path and line proximity
-            // TODO: Surely there's a more accurate way to do this?
-
+            // Then asynchronously request code actions for each diagnostic
             
             // First, separate hints from errors/warnings
             let mut errors_warnings: Vec<_> = Vec::new();
@@ -107,12 +105,14 @@ pub fn on_analyzer_event(
                 }
             }
             
-            // Convert errors/warnings to problems diagnostics
+            // Convert errors/warnings to problems diagnostics (with loading state)
             let mut problems_diagnostics: Vec<ui_problems::Diagnostic> = errors_warnings.iter().map(|d| {
                 ui_problems::Diagnostic {
                     file_path: d.file_path.clone(),
                     line: d.line,
                     column: d.column,
+                    end_line: d.end_line,
+                    end_column: d.end_column,
                     severity: match d.severity {
                         ui_common::DiagnosticSeverity::Error => ui_problems::DiagnosticSeverity::Error,
                         ui_common::DiagnosticSeverity::Warning => ui_problems::DiagnosticSeverity::Warning,
@@ -123,18 +123,17 @@ pub fn on_analyzer_event(
                     source: d.source.clone(),
                     hints: Vec::new(),
                     subitems: Vec::new(),
+                    loading_actions: true, // Mark as loading
                 }
             }).collect();
             
             // Attach hints to their closest parent error/warning in the same file
             for hint in hints {
-                // Find the best matching parent (same file, closest line before or equal)
                 let mut best_match: Option<usize> = None;
                 let mut best_distance: usize = usize::MAX;
                 
                 for (i, parent) in problems_diagnostics.iter().enumerate() {
                     if parent.file_path == hint.file_path {
-                        // Prefer errors/warnings on the same line or close by
                         let distance = if hint.line >= parent.line {
                             hint.line - parent.line
                         } else {
@@ -149,45 +148,14 @@ pub fn on_analyzer_event(
                 }
                 
                 if let Some(parent_idx) = best_match {
-                    // Read the original file content around the hint line
-                    let (before_content, after_content) = {
-                        let context_lines = 2;
-                        let before = if let Ok(content) = std::fs::read_to_string(&hint.file_path) {
-                            let lines: Vec<&str> = content.lines().collect();
-                            let hint_line = hint.line.saturating_sub(1); // 0-indexed
-                            if hint_line < lines.len() {
-                                let start = hint_line.saturating_sub(context_lines);
-                                let end = (hint_line + context_lines + 1).min(lines.len());
-                                Some(lines[start..end].join("\n"))
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        };
-                        
-                        // For now, the after_content is the hint message if it looks like code
-                        // rust-analyzer hints often contain the suggested replacement
-                        let after = if hint.message.contains('\n') || hint.message.contains("fn ") 
-                            || hint.message.contains("let ") || hint.message.contains("use ") 
-                            || hint.message.contains("impl ") || hint.message.contains("struct ")
-                            || hint.message.contains("pub ") || hint.message.contains("::") {
-                            Some(hint.message.clone())
-                        } else {
-                            // Otherwise, just show the message as-is
-                            Some(hint.message.clone())
-                        };
-                        
-                        (before, after)
-                    };
-                    
-                    // Attach as a hint to the parent
+                    // Add the hint message (actual code actions will be fetched async)
                     problems_diagnostics[parent_idx].hints.push(ui_problems::Hint {
                         message: hint.message.clone(),
-                        before_content,
-                        after_content,
+                        before_content: None,
+                        after_content: None,
                         file_path: Some(hint.file_path.clone()),
                         line: Some(hint.line),
+                        loading: false,
                     });
                 } else {
                     // No parent found, add as a standalone diagnostic
@@ -195,21 +163,278 @@ pub fn on_analyzer_event(
                         file_path: hint.file_path.clone(),
                         line: hint.line,
                         column: hint.column,
+                        end_line: None,
+                        end_column: None,
                         severity: ui_problems::DiagnosticSeverity::Hint,
                         message: hint.message.clone(),
                         source: hint.source.clone(),
                         hints: Vec::new(),
                         subitems: Vec::new(),
+                        loading_actions: false,
                     });
                 }
             }
             
+            // Clone what we need for the async task
+            let rust_analyzer = app.state.rust_analyzer.clone();
+            let problems_drawer = app.state.problems_drawer.clone();
+            
+            // Store diagnostic info for code action requests
+            let diagnostic_infos: Vec<_> = problems_diagnostics.iter().enumerate().map(|(idx, d)| {
+                (
+                    idx,
+                    d.file_path.clone(),
+                    d.line,
+                    d.column,
+                    d.end_line.unwrap_or(d.line),
+                    d.end_column.unwrap_or(d.column + 1),
+                )
+            }).collect();
+            
+            // Set the diagnostics (with loading state)
             app.state.problems_drawer.update(cx, |drawer, cx| {
                 drawer.set_diagnostics(problems_diagnostics, cx);
             });
             cx.notify();
+            
+            // Spawn async task to fetch code actions for each diagnostic
+            cx.spawn(async move |_this, cx| {
+                for (idx, file_path, line, column, end_line, end_column) in diagnostic_infos {
+                    tracing::info!("🔍 Requesting code actions for {}:{}:{}", file_path, line, column);
+                    
+                    // Try to request code actions
+                    let rx_result = cx.update(|cx| {
+                        rust_analyzer.read(cx).request_code_actions_async(
+                            &PathBuf::from(&file_path),
+                            line,
+                            column,
+                            end_line,
+                            end_column,
+                        )
+                    });
+                    
+                    let hints = match rx_result {
+                        Ok(Ok(rx)) => {
+                            // Wait for response with timeout
+                            match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                                Ok(response) => {
+                                    tracing::info!("📦 Got code action response: {} items in array", 
+                                        response.as_array().map(|a| a.len()).unwrap_or(0));
+                                    
+                                    // First, get already resolved actions
+                                    let mut all_actions = RustAnalyzerManager::parse_code_actions(&response);
+                                    tracing::info!("✓ Parsed {} already-resolved actions", all_actions.len());
+                                    
+                                    // Then resolve any unresolved actions
+                                    let unresolved = RustAnalyzerManager::get_unresolved_actions(&response);
+                                    tracing::info!("🔄 Found {} unresolved actions to resolve", unresolved.len());
+                                    
+                                    for unresolved_action in unresolved {
+                                        let title = unresolved_action.get("title")
+                                            .and_then(|t| t.as_str())
+                                            .unwrap_or("unknown");
+                                        tracing::info!("🔄 Resolving action: {}", title);
+                                        
+                                        // Try to resolve
+                                        let resolve_rx = cx.update(|cx| {
+                                            rust_analyzer.read(cx).resolve_code_action_async(&unresolved_action)
+                                        });
+                                        
+                                        if let Ok(Ok(resolve_rx)) = resolve_rx {
+                                            if let Ok(resolved) = resolve_rx.recv_timeout(std::time::Duration::from_secs(2)) {
+                                                // Parse the resolved action
+                                                if let Some(action) = RustAnalyzerManager::parse_single_code_action(&resolved) {
+                                                    tracing::info!("✓ Resolved action '{}' with {} edits", action.title, action.edits.len());
+                                                    all_actions.push(action);
+                                                } else {
+                                                    tracing::warn!("⚠️ Failed to parse resolved action: {:?}", resolved);
+                                                }
+                                            } else {
+                                                tracing::warn!("⚠️ Resolve timeout for action: {}", title);
+                                            }
+                                        } else {
+                                            tracing::warn!("⚠️ Failed to send resolve request for: {}", title);
+                                        }
+                                    }
+                                    
+                                    tracing::info!("📋 Total actions after resolving: {}", all_actions.len());
+                                    
+                                    // Convert to hints with before/after content
+                                    all_actions.into_iter().filter_map(|action| {
+                                        if action.edits.is_empty() {
+                                            tracing::info!("⚠️ Skipping action '{}' with no edits", action.title);
+                                            return None;
+                                        }
+                                        
+                                        let first_edit = &action.edits[0];
+                                        let edit_file = &first_edit.file_path;
+                                        
+                                        tracing::info!("🔧 Computing diff for '{}' on {}", action.title, edit_file);
+                                        let (before_content, after_content) = compute_before_after(edit_file, &action.edits);
+                                        
+                                        tracing::info!("✓ Diff computed - before: {} chars, after: {} chars",
+                                            before_content.as_ref().map(|s| s.len()).unwrap_or(0),
+                                            after_content.as_ref().map(|s| s.len()).unwrap_or(0));
+                                        
+                                        Some(ui_problems::Hint {
+                                            message: action.title.clone(),
+                                            before_content,
+                                            after_content,
+                                            file_path: Some(edit_file.clone()),
+                                            line: Some(first_edit.start_line),
+                                            loading: false,
+                                        })
+                                    }).collect::<Vec<_>>()
+                                }
+                                Err(e) => {
+                                    tracing::warn!("⚠️ Code actions request timed out: {:?}", e);
+                                    Vec::new()
+                                },
+                            }
+                        }
+                        Ok(Err(e)) => {
+                            tracing::warn!("⚠️ Failed to request code actions: {:?}", e);
+                            Vec::new()
+                        }
+                        Err(e) => {
+                            tracing::warn!("⚠️ Context update failed: {:?}", e);
+                            Vec::new()
+                        }
+                    };
+                    
+                    tracing::info!("📋 Updating diagnostic {} with {} hints", idx, hints.len());
+                    
+                    // Update the drawer with the loaded hints
+                    let _ = cx.update(|cx| {
+                        problems_drawer.update(cx, |drawer, cx| {
+                            drawer.update_diagnostic_hints(idx, hints, cx);
+                        });
+                    });
+                }
+            }).detach();
         }
     }
+}
+
+/// Helper function to compute before/after content from text edits
+fn compute_before_after(file_path: &str, edits: &[ui_common::TextEdit]) -> (Option<String>, Option<String>) {
+    if edits.is_empty() {
+        return (None, None);
+    }
+    
+    let first_edit = &edits[0];
+    
+    let before_content = if let Ok(content) = std::fs::read_to_string(file_path) {
+        let lines: Vec<&str> = content.lines().collect();
+        
+        // Find the range that covers all edits
+        let mut min_line = first_edit.start_line.saturating_sub(1);
+        let mut max_line = first_edit.end_line.saturating_sub(1);
+        
+        for edit in edits {
+            min_line = min_line.min(edit.start_line.saturating_sub(1));
+            max_line = max_line.max(edit.end_line.saturating_sub(1));
+        }
+        
+        // Add context lines
+        let context = 2;
+        let start = min_line.saturating_sub(context);
+        let end = (max_line + context + 1).min(lines.len());
+        
+        if start < lines.len() {
+            Some(lines[start..end].join("\n"))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    
+    let after_content = if let Ok(content) = std::fs::read_to_string(file_path) {
+        let lines: Vec<&str> = content.lines().collect();
+        
+        // Find the range that covers all edits
+        let mut min_line = first_edit.start_line.saturating_sub(1);
+        let mut max_line = first_edit.end_line.saturating_sub(1);
+        
+        for edit in edits {
+            min_line = min_line.min(edit.start_line.saturating_sub(1));
+            max_line = max_line.max(edit.end_line.saturating_sub(1));
+        }
+        
+        // Add context lines
+        let context = 2;
+        let start = min_line.saturating_sub(context);
+        let end = (max_line + context + 1).min(lines.len());
+        
+        if start < lines.len() {
+            // Apply edits to compute after content
+            let mut modified_content = content.clone();
+            
+            // Sort edits by position (reverse order so we can apply from end to start)
+            let mut sorted_edits = edits.to_vec();
+            sorted_edits.sort_by(|a, b| {
+                let a_pos = (a.start_line, a.start_column);
+                let b_pos = (b.start_line, b.start_column);
+                b_pos.cmp(&a_pos) // Reverse order
+            });
+            
+            for edit in &sorted_edits {
+                // Convert line/column to byte offset
+                let mut offset_start = 0;
+                let mut offset_end = 0;
+                let mut current_line = 1;
+                let mut current_col = 1;
+                
+                for (i, ch) in modified_content.char_indices() {
+                    if current_line == edit.start_line && current_col == edit.start_column {
+                        offset_start = i;
+                    }
+                    if current_line == edit.end_line && current_col == edit.end_column {
+                        offset_end = i;
+                    }
+                    
+                    if ch == '\n' {
+                        current_line += 1;
+                        current_col = 1;
+                    } else {
+                        current_col += 1;
+                    }
+                }
+                
+                // Handle end of file
+                if edit.end_line > current_line || 
+                   (edit.end_line == current_line && edit.end_column > current_col) {
+                    offset_end = modified_content.len();
+                }
+                
+                // Apply the edit
+                if offset_start <= offset_end && offset_end <= modified_content.len() {
+                    modified_content = format!(
+                        "{}{}{}",
+                        &modified_content[..offset_start],
+                        &edit.new_text,
+                        &modified_content[offset_end..]
+                    );
+                }
+            }
+            
+            // Extract the same range from modified content
+            let modified_lines: Vec<&str> = modified_content.lines().collect();
+            let mod_end = end.min(modified_lines.len());
+            if start < modified_lines.len() {
+                Some(modified_lines[start..mod_end].join("\n"))
+            } else {
+                Some(first_edit.new_text.clone())
+            }
+        } else {
+            Some(first_edit.new_text.clone())
+        }
+    } else {
+        Some(first_edit.new_text.clone())
+    };
+    
+    (before_content, after_content)
 }
 
 pub fn on_project_selected(

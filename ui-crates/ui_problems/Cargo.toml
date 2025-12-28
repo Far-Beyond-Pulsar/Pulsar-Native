@@ -16,3 +16,4 @@ ui_common.workspace = true
 # Utilities
 anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
+tracing = "0.1.44"

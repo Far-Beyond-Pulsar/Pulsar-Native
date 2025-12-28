@@ -801,6 +801,15 @@ impl RustAnalyzerManager {
                                                 let line = start.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as usize + 1;
                                                 let column = start.get("character").and_then(|c| c.as_u64()).unwrap_or(0) as usize + 1;
                                                 
+                                                // Extract end position
+                                                let (end_line, end_column) = if let Some(end) = range.get("end") {
+                                                    let el = end.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as usize + 1;
+                                                    let ec = end.get("character").and_then(|c| c.as_u64()).unwrap_or(0) as usize + 1;
+                                                    (Some(el), Some(ec))
+                                                } else {
+                                                    (None, None)
+                                                };
+                                                
                                                 let severity = match severity_num {
                                                     1 => DiagnosticSeverity::Error,
                                                     2 => DiagnosticSeverity::Warning,
@@ -811,14 +820,106 @@ impl RustAnalyzerManager {
                                                 
                                                 let file_path = uri.trim_start_matches("file:///").replace("%20", " ");
                                                 
+                                                // Extract code actions from the diagnostic's data field
+                                                // rust-analyzer stores quick fix info here
+                                                let mut code_actions = Vec::new();
+                                                if let Some(data) = diag.get("data") {
+                                                    tracing::debug!("📋 Diagnostic data: {:?}", data);
+                                                    // rust-analyzer may include fix suggestions in data
+                                                    if let Some(fixes) = data.get("fixes").and_then(|f| f.as_array()) {
+                                                        tracing::info!("🔧 Found {} fixes in diagnostic data", fixes.len());
+                                                        for fix in fixes {
+                                                            if let Some(title) = fix.get("title").and_then(|t| t.as_str()) {
+                                                                tracing::info!("  📝 Fix: {}", title);
+                                                                let mut edits = Vec::new();
+                                                                
+                                                                // Extract text edits from the fix
+                                                                if let Some(edit) = fix.get("edit") {
+                                                                    if let Some(changes) = edit.get("changes").and_then(|c| c.as_object()) {
+                                                                        for (edit_uri, edit_array) in changes {
+                                                                            if let Some(edit_list) = edit_array.as_array() {
+                                                                                let edit_file = edit_uri.trim_start_matches("file:///").replace("%20", " ");
+                                                                                for text_edit in edit_list {
+                                                                                    if let (Some(edit_range), Some(new_text)) = (
+                                                                                        text_edit.get("range"),
+                                                                                        text_edit.get("newText").and_then(|t| t.as_str())
+                                                                                    ) {
+                                                                                        if let (Some(edit_start), Some(edit_end)) = (
+                                                                                            edit_range.get("start"),
+                                                                                            edit_range.get("end")
+                                                                                        ) {
+                                                                                            edits.push(ui::diagnostics::TextEdit {
+                                                                                                file_path: edit_file.clone(),
+                                                                                                start_line: edit_start.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as usize + 1,
+                                                                                                start_column: edit_start.get("character").and_then(|c| c.as_u64()).unwrap_or(0) as usize + 1,
+                                                                                                end_line: edit_end.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as usize + 1,
+                                                                                                end_column: edit_end.get("character").and_then(|c| c.as_u64()).unwrap_or(0) as usize + 1,
+                                                                                                new_text: new_text.to_string(),
+                                                                                            });
+                                                                                        }
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                    // Also check documentChanges format
+                                                                    if let Some(doc_changes) = edit.get("documentChanges").and_then(|c| c.as_array()) {
+                                                                        for doc_change in doc_changes {
+                                                                            if let Some(text_doc) = doc_change.get("textDocument") {
+                                                                                let edit_file = text_doc.get("uri")
+                                                                                    .and_then(|u| u.as_str())
+                                                                                    .map(|u| u.trim_start_matches("file:///").replace("%20", " "))
+                                                                                    .unwrap_or_default();
+                                                                                
+                                                                                if let Some(edit_list) = doc_change.get("edits").and_then(|e| e.as_array()) {
+                                                                                    for text_edit in edit_list {
+                                                                                        if let (Some(edit_range), Some(new_text)) = (
+                                                                                            text_edit.get("range"),
+                                                                                            text_edit.get("newText").and_then(|t| t.as_str())
+                                                                                        ) {
+                                                                                            if let (Some(edit_start), Some(edit_end)) = (
+                                                                                                edit_range.get("start"),
+                                                                                                edit_range.get("end")
+                                                                                            ) {
+                                                                                                edits.push(ui::diagnostics::TextEdit {
+                                                                                                    file_path: edit_file.clone(),
+                                                                                                    start_line: edit_start.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as usize + 1,
+                                                                                                    start_column: edit_start.get("character").and_then(|c| c.as_u64()).unwrap_or(0) as usize + 1,
+                                                                                                    end_line: edit_end.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as usize + 1,
+                                                                                                    end_column: edit_end.get("character").and_then(|c| c.as_u64()).unwrap_or(0) as usize + 1,
+                                                                                                    new_text: new_text.to_string(),
+                                                                                                });
+                                                                                            }
+                                                                                        }
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                                
+                                                                if !edits.is_empty() {
+                                                                    code_actions.push(ui::diagnostics::CodeAction {
+                                                                        title: title.to_string(),
+                                                                        edits,
+                                                                    });
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                
                                                 diagnostics.push(Diagnostic {
                                                     file_path,
                                                     line,
                                                     column,
+                                                    end_line,
+                                                    end_column,
                                                     severity,
                                                     message: message.to_string(),
                                                     code: None,
                                                     source: Some("rust-analyzer".to_string()),
+                                                    code_actions,
                                                 });
                                             }
                                         }
@@ -1240,6 +1341,170 @@ impl RustAnalyzerManager {
         });
 
         self.send_request("textDocument/definition", params)
+    }
+
+    /// Request code actions (quick fixes) for a specific range
+    /// Returns a receiver for async awaiting the response
+    pub fn request_code_actions_async(
+        &self,
+        file_path: &PathBuf,
+        start_line: usize,
+        start_column: usize,
+        end_line: usize,
+        end_column: usize,
+    ) -> Result<flume::Receiver<Value>> {
+        if !self.is_running() {
+            return Err(anyhow!("rust-analyzer is not running"));
+        }
+
+        let uri = self.path_to_uri(file_path);
+        let params = json!({
+            "textDocument": {
+                "uri": uri
+            },
+            "range": {
+                "start": {
+                    "line": start_line.saturating_sub(1),
+                    "character": start_column.saturating_sub(1)
+                },
+                "end": {
+                    "line": end_line.saturating_sub(1),
+                    "character": end_column.saturating_sub(1)
+                }
+            },
+            "context": {
+                "diagnostics": [],
+                "only": ["quickfix"],
+                "triggerKind": 1
+            }
+        });
+
+        self.send_request_async("textDocument/codeAction", params)
+    }
+
+    /// Parse code action response into TextEdits
+    /// Returns a list of parsed actions, along with actions that need resolution (have data but no edit)
+    pub fn parse_code_actions(response: &Value) -> Vec<ui::diagnostics::CodeAction> {
+        let mut actions = Vec::new();
+        
+        if let Some(arr) = response.as_array() {
+            for action in arr {
+                if let Some(parsed) = Self::parse_single_code_action(action) {
+                    actions.push(parsed);
+                }
+            }
+        }
+        
+        actions
+    }
+    
+    /// Parse a single code action from JSON
+    pub fn parse_single_code_action(action: &Value) -> Option<ui::diagnostics::CodeAction> {
+        // Get title
+        let title = action.get("title")
+            .and_then(|t| t.as_str())
+            .unwrap_or("Unknown action")
+            .to_string();
+        
+        let mut edits = Vec::new();
+        
+        // Check if this is a resolved action with edit
+        if let Some(edit) = action.get("edit") {
+            // Check changes format
+            if let Some(changes) = edit.get("changes").and_then(|c| c.as_object()) {
+                for (uri, edit_array) in changes {
+                    if let Some(edit_list) = edit_array.as_array() {
+                        let file_path = Self::uri_to_path(uri);
+                        for text_edit in edit_list {
+                            if let Some(te) = Self::parse_text_edit(text_edit, &file_path) {
+                                edits.push(te);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Check documentChanges format
+            if let Some(doc_changes) = edit.get("documentChanges").and_then(|c| c.as_array()) {
+                for doc_change in doc_changes {
+                    // Handle TextDocumentEdit
+                    if let Some(text_doc) = doc_change.get("textDocument") {
+                        let file_path = text_doc.get("uri")
+                            .and_then(|u| u.as_str())
+                            .map(Self::uri_to_path)
+                            .unwrap_or_default();
+                        
+                        if let Some(edit_list) = doc_change.get("edits").and_then(|e| e.as_array()) {
+                            for text_edit in edit_list {
+                                if let Some(te) = Self::parse_text_edit(text_edit, &file_path) {
+                                    edits.push(te);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        if !edits.is_empty() {
+            Some(ui::diagnostics::CodeAction { title, edits })
+        } else {
+            None
+        }
+    }
+    
+    /// Convert a file URI to a local path
+    fn uri_to_path(uri: &str) -> String {
+        let path = uri.trim_start_matches("file:///");
+        // Handle common URL encoding manually
+        path.replace("%20", " ")
+            .replace("%3A", ":")
+            .replace("%5C", "\\")
+            .replace("%2F", "/")
+            .replace("%23", "#")
+            .replace("%25", "%")
+    }
+    
+    /// Get unresolved code actions from a response (actions that have data but no edit)
+    pub fn get_unresolved_actions(response: &Value) -> Vec<Value> {
+        let mut unresolved = Vec::new();
+        
+        if let Some(arr) = response.as_array() {
+            for action in arr {
+                // If it has data but no edit, it needs resolving
+                if action.get("data").is_some() && action.get("edit").is_none() {
+                    unresolved.push(action.clone());
+                }
+            }
+        }
+        
+        unresolved
+    }
+    
+    /// Resolve a code action to get its actual text edits
+    pub fn resolve_code_action_async(&self, action: &Value) -> Result<flume::Receiver<Value>> {
+        if !self.is_running() {
+            return Err(anyhow!("rust-analyzer is not running"));
+        }
+        
+        self.send_request_async("codeAction/resolve", action.clone())
+    }
+    
+    /// Parse a single text edit from JSON
+    fn parse_text_edit(text_edit: &Value, file_path: &str) -> Option<ui::diagnostics::TextEdit> {
+        let range = text_edit.get("range")?;
+        let new_text = text_edit.get("newText").and_then(|t| t.as_str())?;
+        let start = range.get("start")?;
+        let end = range.get("end")?;
+        
+        Some(ui::diagnostics::TextEdit {
+            file_path: file_path.to_string(),
+            start_line: start.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as usize + 1,
+            start_column: start.get("character").and_then(|c| c.as_u64()).unwrap_or(0) as usize + 1,
+            end_line: end.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as usize + 1,
+            end_column: end.get("character").and_then(|c| c.as_u64()).unwrap_or(0) as usize + 1,
+            new_text: new_text.to_string(),
+        })
     }
 }
 

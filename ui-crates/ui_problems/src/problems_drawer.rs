@@ -6,6 +6,7 @@ use ui::{
     button::{Button, ButtonVariants as _, ButtonVariant},
     h_flex, v_flex, ActiveTheme as _, IconName, Sizable as _,
     input::{InputState, TextInput},
+    indicator::Indicator,
 };
 use ui::StyledExt;
 use std::path::PathBuf;
@@ -19,11 +20,17 @@ pub struct Diagnostic {
     pub file_path: String,
     pub line: usize,
     pub column: usize,
+    /// End line of the diagnostic range (for code action requests)
+    pub end_line: Option<usize>,
+    /// End column of the diagnostic range (for code action requests)
+    pub end_column: Option<usize>,
     pub severity: DiagnosticSeverity,
     pub message: String,
     pub source: Option<String>,
     pub hints: Vec<Hint>,
     pub subitems: Vec<Diagnostic>,
+    /// Whether we're currently loading code actions for this diagnostic
+    pub loading_actions: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -37,6 +44,8 @@ pub struct Hint {
     pub file_path: Option<String>,
     /// The line number this hint applies to
     pub line: Option<usize>,
+    /// Whether we're currently loading code actions for this hint
+    pub loading: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -140,7 +149,55 @@ impl ProblemsDrawer {
         }
         self.selected_index = None;
         self.preview_inputs.clear();
+        self.diff_editors.clear();
         cx.notify();
+    }
+
+    /// Update a specific diagnostic with loaded code actions
+    /// This MERGES new hints with existing ones (doesn't replace)
+    pub fn update_diagnostic_hints(&mut self, diagnostic_index: usize, new_hints: Vec<Hint>, cx: &mut Context<Self>) {
+        {
+            let mut diagnostics = self.diagnostics.lock().unwrap();
+            if let Some(diag) = diagnostics.get_mut(diagnostic_index) {
+                // Merge: keep existing hints that don't have before/after content,
+                // add new hints that do have before/after content
+                if !new_hints.is_empty() {
+                    // Add new code action hints
+                    for hint in new_hints {
+                        diag.hints.push(hint);
+                    }
+                }
+                diag.loading_actions = false;
+            }
+        }
+        // Clear cached diff editors for this diagnostic so they get recreated
+        self.diff_editors.retain(|(d_idx, _), _| *d_idx != diagnostic_index);
+        cx.notify();
+    }
+
+    /// Mark a diagnostic as loading code actions
+    pub fn set_diagnostic_loading(&mut self, diagnostic_index: usize, loading: bool, cx: &mut Context<Self>) {
+        {
+            let mut diagnostics = self.diagnostics.lock().unwrap();
+            if let Some(diag) = diagnostics.get_mut(diagnostic_index) {
+                diag.loading_actions = loading;
+            }
+        }
+        cx.notify();
+    }
+
+    /// Get diagnostic info for requesting code actions
+    pub fn get_diagnostic_info(&self, index: usize) -> Option<(String, usize, usize, usize, usize)> {
+        let diagnostics = self.diagnostics.lock().unwrap();
+        diagnostics.get(index).map(|d| {
+            (
+                d.file_path.clone(),
+                d.line,
+                d.column,
+                d.end_line.unwrap_or(d.line),
+                d.end_column.unwrap_or(d.column),
+            )
+        })
     }
 
     fn get_filtered_diagnostics(&self) -> Vec<Diagnostic> {
@@ -766,8 +823,36 @@ impl ProblemsDrawer {
                 self.render_file_preview(&diagnostic, window, cx)
             );
 
+        // Show loading indicator while fetching code actions
+        if diagnostic.loading_actions {
+            main = main.child(
+                h_flex()
+                    .gap_2()
+                    .items_center()
+                    .mt_2()
+                    .p_2()
+                    .rounded_md()
+                    .bg(cx.theme().secondary)
+                    .child(
+                        Indicator::new()
+                            .with_size(ui::Size::Small)
+                            .color(cx.theme().muted_foreground)
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Loading quick fixes...")
+                    )
+            );
+        }
+
         // Render hints with side-by-side diff editors
-        if !diagnostic.hints.is_empty() {
+        tracing::info!("🎨 Rendering diagnostic {}: hints={}, loading={}", 
+            diagnostic_index, diagnostic.hints.len(), diagnostic.loading_actions);
+        
+        if !diagnostic.hints.is_empty() && !diagnostic.loading_actions {
+            tracing::info!("🎨 Rendering {} hints for diagnostic {}", diagnostic.hints.len(), diagnostic_index);
             let mut hints_container = v_flex()
                 .gap_2()
                 .w_full()
@@ -781,6 +866,10 @@ impl ProblemsDrawer {
                 );
             
             for (hint_index, hint) in diagnostic.hints.iter().enumerate() {
+                tracing::info!("🎨 Rendering hint {}: before={} chars, after={} chars",
+                    hint_index,
+                    hint.before_content.as_ref().map(|s| s.len()).unwrap_or(0),
+                    hint.after_content.as_ref().map(|s| s.len()).unwrap_or(0));
                 let hint_el = self.render_hint_diff(diagnostic_index, hint_index, hint, window, cx);
                 hints_container = hints_container.child(hint_el);
             }
@@ -867,6 +956,26 @@ impl ProblemsDrawer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Div {
+        // If we don't have diff content, just show the message
+        if hint.before_content.is_none() && hint.after_content.is_none() {
+            tracing::info!("🎨 Hint {} has no diff content, showing message only", hint_index);
+            return v_flex()
+                .gap_1()
+                .w_full()
+                .px_3()
+                .py_2()
+                .rounded_md()
+                .border_1()
+                .border_color(cx.theme().border)
+                .bg(cx.theme().sidebar)
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().foreground)
+                        .child(format!("💡 {}", hint.message))
+                );
+        }
+        
         let key = (diagnostic_index, hint_index);
         
         // Get or create the diff editors for this hint
@@ -876,6 +985,11 @@ impl ProblemsDrawer {
             // Get the content for before/after
             let before_content = hint.before_content.clone().unwrap_or_default();
             let after_content = hint.after_content.clone().unwrap_or_default();
+            
+            tracing::info!("🎨 Creating diff editors for hint {}: before='{}', after='{}'",
+                hint_index, 
+                before_content.chars().take(50).collect::<String>(),
+                after_content.chars().take(50).collect::<String>());
             
             // Determine language from file extension
             let language = hint.file_path.as_ref()
@@ -1006,13 +1120,13 @@ impl ProblemsDrawer {
                                 TextInput::new(&before_editor)
                                     .w_full()
                                     .h(px(editor_height))
-                                    .font_family("monospace")
+                                    .font_family("JetBrains Mono")
                                     .font(gpui::Font {
-                                        family: "Jetbrains Mono".to_string().into(),
+                                        family: "JetBrains Mono".to_string().into(),
                                         weight: gpui::FontWeight::NORMAL,
                                         style: gpui::FontStyle::Normal,
                                         features: gpui::FontFeatures::default(),
-                                        fallbacks: Some(gpui::FontFallbacks::from_fonts(vec!["monospace".to_string()])),
+                                        fallbacks: Some(gpui::FontFallbacks::from_fonts(vec!["Consolas".to_string(), "Menlo".to_string(), "Monaco".to_string()])),
                                     })
                                     .text_size(px(12.0))
                                     .border_0()
@@ -1026,13 +1140,13 @@ impl ProblemsDrawer {
                                 TextInput::new(&after_editor)
                                     .w_full()
                                     .h(px(editor_height))
-                                    .font_family("monospace")
+                                    .font_family("JetBrains Mono")
                                     .font(gpui::Font {
-                                        family: "Jetbrains Mono".to_string().into(),
+                                        family: "JetBrains Mono".to_string().into(),
                                         weight: gpui::FontWeight::NORMAL,
                                         style: gpui::FontStyle::Normal,
                                         features: gpui::FontFeatures::default(),
-                                        fallbacks: Some(gpui::FontFallbacks::from_fonts(vec!["monospace".to_string()])),
+                                        fallbacks: Some(gpui::FontFallbacks::from_fonts(vec!["Consolas".to_string(), "Menlo".to_string(), "Monaco".to_string()])),
                                     })
                                     .text_size(px(12.0))
                                     .border_0()
@@ -1110,13 +1224,13 @@ impl ProblemsDrawer {
                         TextInput::new(&input_state)
                             .w_full()
                             .h(px((end_line - start_line) as f32 * 20.0 + 8.0)) // Approximate line height
-                            .font_family("monospace")
+                            .font_family("JetBrains Mono")
                             .font(gpui::Font {
-                                family: "Jetbrains Mono".to_string().into(),
+                                family: "JetBrains Mono".to_string().into(),
                                 weight: gpui::FontWeight::NORMAL,
                                 style: gpui::FontStyle::Normal,
                                 features: gpui::FontFeatures::default(),
-                                fallbacks: Some(gpui::FontFallbacks::from_fonts(vec!["monospace".to_string()])),
+                                fallbacks: Some(gpui::FontFallbacks::from_fonts(vec!["Consolas".to_string(), "Menlo".to_string(), "Monaco".to_string()])),
                             })
                             .text_size(px(12.0))
                             .border_0()
