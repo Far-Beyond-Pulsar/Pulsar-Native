@@ -7,6 +7,7 @@ use ui::{
     h_flex, v_flex, ActiveTheme as _, IconName, Sizable as _,
     input::{InputState, TextInput},
     indicator::Indicator,
+    scroll::ScrollbarAxis,
 };
 use ui::StyledExt;
 use std::path::PathBuf;
@@ -346,12 +347,12 @@ impl Render for ProblemsDrawer {
         let group_by_file = self.group_by_file;
 
         // Pre-render content area based on state
-        let content = if filtered_diagnostics.is_empty() {
-            self.render_empty_state(div().flex_1(), cx)
+        let content: AnyElement = if filtered_diagnostics.is_empty() {
+            self.render_empty_state(cx).into_any_element()
         } else if group_by_file {
-            self.render_grouped_view(div().flex_1(), selected_index, window, cx)
+            self.render_grouped_view(selected_index, window, cx).into_any_element()
         } else {
-            self.render_flat_view(div().flex_1(), filtered_diagnostics, selected_index, window, cx)
+            self.render_flat_view(filtered_diagnostics, selected_index, window, cx).into_any_element()
         };
 
         v_flex()
@@ -359,8 +360,13 @@ impl Render for ProblemsDrawer {
             .bg(cx.theme().background)
             // Professional header with search
             .child(self.render_header(error_count, warning_count, info_count, total_count, cx))
-            // Main content area
-            .child(content)
+            // Main content area - flex_1 + overflow_hidden to constrain scroll
+            .child(
+                div()
+                    .flex_1()
+                    .overflow_hidden()
+                    .child(content)
+            )
     }
 }
 
@@ -592,8 +598,8 @@ impl ProblemsDrawer {
             )
     }
 
-    fn render_empty_state(&self, container: Div, cx: &App) -> Div {
-        container.child(
+    fn render_empty_state(&self, cx: &App) -> Div {
+        div().size_full().child(
             div()
                 .size_full()
                 .flex()
@@ -632,12 +638,11 @@ impl ProblemsDrawer {
 
     fn render_flat_view(
         &mut self,
-        container: Div,
         filtered_diagnostics: Vec<Diagnostic>,
         selected_index: Option<usize>,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> Div {
+    ) -> impl IntoElement {
         let drawer_entity = cx.entity().clone();
         
         // Pre-render all diagnostic items with mutable access
@@ -658,26 +663,25 @@ impl ProblemsDrawer {
             })
             .collect();
         
-        container.child(
-            div()
-                .id("problems-scroll-container")
-                .size_full()
-                .overflow_y_scroll()
-                .child(
-                    v_flex()
-                        .w_full()
-                        .children(items)
-                )
-        )
+        div()
+            .id("problems-scroll-container")
+            .size_full()
+            .scrollable(ScrollbarAxis::Vertical)
+            .child(
+                v_flex()
+                    .w_full()
+                    .p_2()
+                    .gap_2()
+                    .children(items)
+            )
     }
 
     fn render_grouped_view(
         &mut self,
-        container: Div,
         selected_index: Option<usize>,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> Div {
+    ) -> impl IntoElement {
         let grouped = self.get_grouped_diagnostics();
         let mut files: Vec<_> = grouped.keys().cloned().collect();
         files.sort();
@@ -780,17 +784,17 @@ impl ProblemsDrawer {
             file_groups.push(file_group);
         }
 
-        container.child(
-            div()
-                .id("problems-scroll-container-grouped")
-                .size_full()
-                .overflow_y_scroll()
-                .child(
-                    v_flex()
-                        .w_full()
-                        .children(file_groups)
-                )
-        )
+        div()
+            .id("problems-scroll-container-grouped")
+            .size_full()
+            .scrollable(ScrollbarAxis::Vertical)
+            .child(
+                v_flex()
+                    .w_full()
+                    .p_2()
+                    .gap_2()
+                    .children(file_groups)
+            )
     }
 
     fn render_diagnostic_item<F>(
@@ -867,10 +871,6 @@ impl ProblemsDrawer {
                     .text_color(cx.theme().foreground)
                     .line_height(rems(1.4))
                     .child(diagnostic.message.clone())
-            )
-            // Inline file preview
-            .child(
-                self.render_file_preview(&diagnostic, window, cx)
             );
 
         // Show loading indicator while fetching code actions
@@ -898,11 +898,11 @@ impl ProblemsDrawer {
         }
 
         // Render hints with side-by-side diff editors
-        tracing::info!("🎨 Rendering diagnostic {}: hints={}, loading={}", 
+        tracing::debug!("🎨 Rendering diagnostic {}: hints={}, loading={}", 
             diagnostic_index, diagnostic.hints.len(), diagnostic.loading_actions);
         
         if !diagnostic.hints.is_empty() && !diagnostic.loading_actions {
-            tracing::info!("🎨 Rendering {} hints for diagnostic {}", diagnostic.hints.len(), diagnostic_index);
+            tracing::debug!("🎨 Rendering {} hints for diagnostic {}", diagnostic.hints.len(), diagnostic_index);
             let mut hints_container = v_flex()
                 .gap_2()
                 .w_full()
@@ -916,7 +916,7 @@ impl ProblemsDrawer {
                 );
             
             for (hint_index, hint) in diagnostic.hints.iter().enumerate() {
-                tracing::info!("🎨 Rendering hint {}: before={} chars, after={} chars",
+                tracing::debug!("🎨 Rendering hint {}: before={} chars, after={} chars",
                     hint_index,
                     hint.before_content.as_ref().map(|s| s.len()).unwrap_or(0),
                     hint.after_content.as_ref().map(|s| s.len()).unwrap_or(0));
@@ -1009,7 +1009,7 @@ impl ProblemsDrawer {
     ) -> Div {
         // If we don't have diff content, just show the message
         if hint.before_content.is_none() && hint.after_content.is_none() {
-            tracing::info!("🎨 Hint {} has no diff content, showing message only", hint_index);
+            tracing::debug!("🎨 Hint {} has no diff content, showing message only", hint_index);
             return v_flex()
                 .gap_1()
                 .w_full()
@@ -1292,6 +1292,10 @@ impl ProblemsDrawer {
                     new_state
                 };
                 
+                // Calculate height to match diff view (20px per line + some padding)
+                let num_lines = end_line - start_line;
+                let calculated_height = num_lines as f32 * 20.0 + 16.0; // Match diff view line height
+                
                 return div()
                     .w_full()
                     .mt_2()
@@ -1303,15 +1307,8 @@ impl ProblemsDrawer {
                     .child(
                         TextInput::new(&input_state)
                             .w_full()
-                            .h(px((end_line - start_line) as f32 * 20.0 + 8.0)) // Approximate line height
+                            .h(px(calculated_height))
                             .font_family("JetBrains Mono")
-                            .font(gpui::Font {
-                                family: "JetBrains Mono".to_string().into(),
-                                weight: gpui::FontWeight::NORMAL,
-                                style: gpui::FontStyle::Normal,
-                                features: gpui::FontFeatures::default(),
-                                fallbacks: Some(gpui::FontFallbacks::from_fonts(vec!["Consolas".to_string(), "Menlo".to_string(), "Monaco".to_string()])),
-                            })
                             .text_size(px(12.0))
                             .border_0()
                     );
