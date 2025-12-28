@@ -3,7 +3,7 @@
 
 use gpui::{prelude::*, *};
 use ui::{
-    button::{Button, ButtonVariants as _, ButtonVariant},
+    button::{Button, ButtonVariants as _},
     h_flex, v_flex, ActiveTheme as _, IconName, Sizable as _,
     input::{InputState, TextInput},
     indicator::Indicator,
@@ -156,12 +156,22 @@ pub struct ProblemsDrawer {
     preview_inputs: HashMap<(String, usize), Entity<InputState>>,
     /// Cache of InputState entities for diff views (before, after), keyed by diagnostic index and hint index
     diff_editors: HashMap<(usize, usize), (Entity<InputState>, Entity<InputState>)>,
+    /// InputState for the search bar
+    search_input: Entity<InputState>,
+    /// Whether the filter dropdown is open
+    filter_dropdown_open: bool,
 }
 
 impl ProblemsDrawer {
-    pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
         let diagnostics = Arc::new(Mutex::new(Vec::new()));
+
+        // Create search input state
+        let search_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Search problems...")
+        });
 
         Self {
             focus_handle,
@@ -172,6 +182,8 @@ impl ProblemsDrawer {
             group_by_file: true,
             preview_inputs: HashMap::new(),
             diff_editors: HashMap::new(),
+            search_input,
+            filter_dropdown_open: false,
         }
     }
 
@@ -314,6 +326,11 @@ impl ProblemsDrawer {
         cx.notify();
     }
 
+    fn toggle_filter_dropdown(&mut self, cx: &mut Context<Self>) {
+        self.filter_dropdown_open = !self.filter_dropdown_open;
+        cx.notify();
+    }
+
     fn select_diagnostic(&mut self, index: usize, cx: &mut Context<Self>) {
         self.selected_index = Some(index);
         cx.notify();
@@ -337,6 +354,12 @@ impl Focusable for ProblemsDrawer {
 
 impl Render for ProblemsDrawer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Update search query from input state
+        let current_input_value = self.search_input.read(cx).value().to_string();
+        if current_input_value != self.search_query {
+            self.search_query = current_input_value;
+        }
+
         let error_count = self.count_by_severity(DiagnosticSeverity::Error);
         let warning_count = self.count_by_severity(DiagnosticSeverity::Warning);
         let info_count = self.count_by_severity(DiagnosticSeverity::Information);
@@ -372,13 +395,21 @@ impl Render for ProblemsDrawer {
 
 impl ProblemsDrawer {
     fn render_header(
-        &self,
+        &mut self,
         error_count: usize,
         warning_count: usize,
         info_count: usize,
         total_count: usize,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let current_filter_label = match &self.filtered_severity {
+            None => format!("All Problems ({})", total_count),
+            Some(DiagnosticSeverity::Error) => format!("Errors ({})", error_count),
+            Some(DiagnosticSeverity::Warning) => format!("Warnings ({})", warning_count),
+            Some(DiagnosticSeverity::Information) => format!("Info ({})", info_count),
+            Some(DiagnosticSeverity::Hint) => "Hints".to_string(),
+        };
+
         v_flex()
             .w_full()
             .gap_3()
@@ -387,7 +418,7 @@ impl ProblemsDrawer {
             .border_b_1()
             .border_color(cx.theme().border)
             .bg(cx.theme().sidebar)
-            // Top row: Title and actions
+            // Top row: Title, stats, and actions
             .child(
                 h_flex()
                     .w_full()
@@ -400,7 +431,7 @@ impl ProblemsDrawer {
                             .child(
                                 div()
                                     .text_base()
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .font_weight(gpui::FontWeight::BOLD)
                                     .text_color(cx.theme().foreground)
                                     .child("Problems")
                             )
@@ -434,7 +465,7 @@ impl ProblemsDrawer {
                     )
                     .child(
                         h_flex()
-                            .gap_1()
+                            .gap_2()
                             .child(
                                 Button::new("toggle-grouping")
                                     .ghost()
@@ -465,108 +496,44 @@ impl ProblemsDrawer {
                             )
                     )
             )
-            // Search bar
+            // Search and filter row
             .child(
                 h_flex()
                     .w_full()
                     .gap_2()
-                    .px_3()
-                    .py_2()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(cx.theme().border)
-                    .bg(cx.theme().background)
                     .items_center()
-                    .child(
-                        ui::Icon::new(IconName::Search)
-                            .size_4()
-                            .text_color(cx.theme().muted_foreground)
-                    )
+                    // Functional search bar
                     .child(
                         div()
                             .flex_1()
-                            .text_sm()
-                            .text_color(if self.search_query.is_empty() {
-                                cx.theme().muted_foreground
-                            } else {
-                                cx.theme().foreground
-                            })
-                            .child(if self.search_query.is_empty() {
-                                "Search problems...".to_string()
-                            } else {
-                                self.search_query.clone()
-                            })
+                            .min_w(px(200.0))
+                            .child(
+                                TextInput::new(&self.search_input)
+                                    .w_full()
+                                    .prefix(
+                                        ui::Icon::new(IconName::Search)
+                                            .size_4()
+                                            .text_color(cx.theme().muted_foreground)
+                                    )
+                            )
                     )
-            )
-            // Filter chips
-            .child(
-                h_flex()
-                    .w_full()
-                    .gap_2()
+                    // Filter dropdown button
                     .child(
-                        Button::new("filter-all")
-                            .small()
-                            .when(self.filtered_severity.is_none(), |btn| {
-                                btn.with_variant(ButtonVariant::Primary)
+                        div()
+                            .relative()
+                            .child(
+                                Button::new("filter-dropdown")
+                                    .ghost()
+                                    .small()
+                                    .icon(IconName::Filter)
+                                    .label(current_filter_label.clone())
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.toggle_filter_dropdown(cx);
+                                    }))
+                            )
+                            .when(self.filter_dropdown_open, |this| {
+                                this.child(self.render_filter_dropdown(error_count, warning_count, info_count, total_count, cx))
                             })
-                            .when(self.filtered_severity.is_some(), |btn| {
-                                btn.ghost()
-                            })
-                            .label(format!("All ({})", total_count))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.set_filter(None, cx);
-                            }))
-                    )
-                    .child(
-                        Button::new("filter-errors")
-                            .small()
-                            .when(
-                                self.filtered_severity == Some(DiagnosticSeverity::Error),
-                                |btn| btn.with_variant(ButtonVariant::Danger)
-                            )
-                            .when(
-                                self.filtered_severity != Some(DiagnosticSeverity::Error),
-                                |btn| btn.ghost()
-                            )
-                            .icon(IconName::Close)
-                            .label(error_count.to_string())
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.set_filter(Some(DiagnosticSeverity::Error), cx);
-                            }))
-                    )
-                    .child(
-                        Button::new("filter-warnings")
-                            .small()
-                            .when(
-                                self.filtered_severity == Some(DiagnosticSeverity::Warning),
-                                |btn| btn.with_variant(ButtonVariant::Warning)
-                            )
-                            .when(
-                                self.filtered_severity != Some(DiagnosticSeverity::Warning),
-                                |btn| btn.ghost()
-                            )
-                            .icon(IconName::TriangleAlert)
-                            .label(warning_count.to_string())
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.set_filter(Some(DiagnosticSeverity::Warning), cx);
-                            }))
-                    )
-                    .child(
-                        Button::new("filter-info")
-                            .small()
-                            .when(
-                                self.filtered_severity == Some(DiagnosticSeverity::Information),
-                                |btn| btn.with_variant(ButtonVariant::Primary)
-                            )
-                            .when(
-                                self.filtered_severity != Some(DiagnosticSeverity::Information),
-                                |btn| btn.ghost()
-                            )
-                            .icon(IconName::Info)
-                            .label(info_count.to_string())
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.set_filter(Some(DiagnosticSeverity::Information), cx);
-                            }))
                     )
             )
     }
@@ -598,6 +565,159 @@ impl ProblemsDrawer {
             )
     }
 
+    fn render_filter_dropdown(
+        &self,
+        error_count: usize,
+        warning_count: usize,
+        info_count: usize,
+        total_count: usize,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        div()
+            .absolute()
+            .top(px(32.0))
+            .right(px(0.0))
+            .w(px(220.0))
+            .rounded_md()
+            .border_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().sidebar)
+            .shadow_lg()
+            .overflow_hidden()
+            .child(
+                v_flex()
+                    .w_full()
+                    .child(self.render_filter_option("All Problems", total_count, None, cx))
+                    .child(
+                        div()
+                            .h(px(1.0))
+                            .w_full()
+                            .bg(cx.theme().border)
+                    )
+                    .child(self.render_filter_option_with_severity("Errors", error_count, DiagnosticSeverity::Error, cx))
+                    .child(self.render_filter_option_with_severity("Warnings", warning_count, DiagnosticSeverity::Warning, cx))
+                    .child(self.render_filter_option_with_severity("Information", info_count, DiagnosticSeverity::Information, cx))
+            )
+    }
+
+    fn render_filter_option(
+        &self,
+        label: &'static str,
+        count: usize,
+        severity: Option<DiagnosticSeverity>,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let is_selected = self.filtered_severity == severity;
+
+        h_flex()
+            .w_full()
+            .px_3()
+            .py_2()
+            .gap_2()
+            .items_center()
+            .justify_between()
+            .when(is_selected, |this| {
+                this.bg(cx.theme().accent.opacity(0.15))
+                    .border_l_2()
+                    .border_color(cx.theme().accent)
+            })
+            .hover(|this| this.bg(cx.theme().secondary))
+            .cursor_pointer()
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                this.set_filter(severity.clone(), cx);
+                this.toggle_filter_dropdown(cx);
+            }))
+            .child(
+                h_flex()
+                    .gap_2()
+                    .items_center()
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(if is_selected {
+                                cx.theme().foreground
+                            } else {
+                                cx.theme().muted_foreground
+                            })
+                            .child(label)
+                    )
+            )
+            .child(
+                div()
+                    .px_1p5()
+                    .py_0p5()
+                    .rounded_sm()
+                    .bg(cx.theme().border)
+                    .text_xs()
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(cx.theme().muted_foreground)
+                    .child(count.to_string())
+            )
+    }
+
+    fn render_filter_option_with_severity(
+        &self,
+        label: &'static str,
+        count: usize,
+        severity: DiagnosticSeverity,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let is_selected = self.filtered_severity == Some(severity.clone());
+        let severity_for_closure = severity.clone();
+        let severity_icon = severity.icon();
+        let severity_color = severity.color(cx);
+
+        h_flex()
+            .w_full()
+            .px_3()
+            .py_2()
+            .gap_2()
+            .items_center()
+            .justify_between()
+            .when(is_selected, |this| {
+                this.bg(cx.theme().accent.opacity(0.15))
+                    .border_l_2()
+                    .border_color(cx.theme().accent)
+            })
+            .hover(|this| this.bg(cx.theme().secondary))
+            .cursor_pointer()
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                this.set_filter(Some(severity_for_closure.clone()), cx);
+                this.toggle_filter_dropdown(cx);
+            }))
+            .child(
+                h_flex()
+                    .gap_2()
+                    .items_center()
+                    .child(
+                        ui::Icon::new(severity_icon)
+                            .size_4()
+                            .text_color(severity_color)
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(if is_selected {
+                                cx.theme().foreground
+                            } else {
+                                cx.theme().muted_foreground
+                            })
+                            .child(label)
+                    )
+            )
+            .child(
+                div()
+                    .px_1p5()
+                    .py_0p5()
+                    .rounded_sm()
+                    .bg(severity_color.opacity(0.15))
+                    .text_xs()
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(severity_color)
+                    .child(count.to_string())
+            )
+    }
+
     fn render_empty_state(&self, cx: &App) -> Div {
         div().size_full().child(
             div()
@@ -608,28 +728,47 @@ impl ProblemsDrawer {
                 .p_8()
                 .child(
                     v_flex()
-                        .gap_3()
+                        .gap_4()
                         .items_center()
+                        .max_w(px(400.0))
+                        .px_6()
+                        .py_8()
+                        .rounded_xl()
+                        .bg(cx.theme().secondary.opacity(0.2))
+                        .border_1()
+                        .border_color(cx.theme().border.opacity(0.3))
                         .child(
-                            ui::Icon::new(IconName::Check)
-                                .size(px(48.0))
-                                .text_color(cx.theme().success)
+                            div()
+                                .w(px(64.0))
+                                .h(px(64.0))
+                                .rounded_full()
+                                .bg(cx.theme().success.opacity(0.15))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .child(
+                                    ui::Icon::new(IconName::Check)
+                                        .size(px(32.0))
+                                        .text_color(cx.theme().success)
+                                )
                         )
                         .child(
                             div()
-                                .text_base()
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_lg()
+                                .font_weight(gpui::FontWeight::BOLD)
                                 .text_color(cx.theme().foreground)
                                 .child("No problems detected")
                         )
                         .child(
                             div()
                                 .text_sm()
+                                .text_center()
                                 .text_color(cx.theme().muted_foreground)
+                                .line_height(rems(1.5))
                                 .child(if !self.search_query.is_empty() {
-                                    "Try a different search query"
+                                    "No problems match your search. Try a different query."
                                 } else {
-                                    "Your code is looking good!"
+                                    "Your code is looking great! Keep up the good work."
                                 })
                         )
                 )
@@ -715,68 +854,86 @@ impl ProblemsDrawer {
 
             let file_group = v_flex()
                 .w_full()
+                .px_3()
                 .child(
-                    // File header
-                    h_flex()
+                    // File header - styled like a section header
+                    div()
                         .w_full()
-                        .px_4()
+                        .px_3()
                         .py_2()
-                        .gap_2()
-                        .items_center()
-                        .bg(cx.theme().sidebar)
-                        .border_b_1()
-                        .border_color(cx.theme().border)
-                        .child(
-                            ui::Icon::new(IconName::Folder)
-                                .size_3()
-                                .text_color(cx.theme().muted_foreground)
-                        )
-                        .child(
-                            div()
-                                .text_sm()
-                                .font_weight(gpui::FontWeight::MEDIUM)
-                                .text_color(cx.theme().foreground)
-                                .child(file_path.clone())
-                        )
+                        .mb_2()
+                        .rounded_md()
+                        .bg(cx.theme().secondary.opacity(0.3))
+                        .border_1()
+                        .border_color(cx.theme().border.opacity(0.3))
                         .child(
                             h_flex()
-                                .gap_2()
-                                .when(file_error_count > 0, |this| {
-                                    this.child(
-                                        h_flex()
-                                            .gap_1()
-                                            .items_center()
-                                            .child(
-                                                ui::Icon::new(IconName::Close)
-                                                    .size_3()
-                                                    .text_color(DiagnosticSeverity::Error.color(cx))
+                                .w_full()
+                                .gap_3()
+                                .items_center()
+                                .child(
+                                    ui::Icon::new(IconName::Folder)
+                                        .size_4()
+                                        .text_color(cx.theme().accent)
+                                )
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .text_sm()
+                                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                                        .text_color(cx.theme().foreground)
+                                        .child(file_path.clone())
+                                )
+                                .child(
+                                    h_flex()
+                                        .gap_2()
+                                        .when(file_error_count > 0, |this| {
+                                            this.child(
+                                                h_flex()
+                                                    .gap_1()
+                                                    .items_center()
+                                                    .px_2()
+                                                    .py_0p5()
+                                                    .rounded_sm()
+                                                    .bg(DiagnosticSeverity::Error.color(cx).opacity(0.15))
+                                                    .child(
+                                                        ui::Icon::new(IconName::Close)
+                                                            .size_3()
+                                                            .text_color(DiagnosticSeverity::Error.color(cx))
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .text_xs()
+                                                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                            .text_color(DiagnosticSeverity::Error.color(cx))
+                                                            .child(file_error_count.to_string())
+                                                    )
                                             )
-                                            .child(
-                                                div()
-                                                    .text_xs()
-                                                    .text_color(cx.theme().muted_foreground)
-                                                    .child(file_error_count.to_string())
+                                        })
+                                        .when(file_warning_count > 0, |this| {
+                                            this.child(
+                                                h_flex()
+                                                    .gap_1()
+                                                    .items_center()
+                                                    .px_2()
+                                                    .py_0p5()
+                                                    .rounded_sm()
+                                                    .bg(DiagnosticSeverity::Warning.color(cx).opacity(0.15))
+                                                    .child(
+                                                        ui::Icon::new(IconName::TriangleAlert)
+                                                            .size_3()
+                                                            .text_color(DiagnosticSeverity::Warning.color(cx))
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .text_xs()
+                                                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                            .text_color(DiagnosticSeverity::Warning.color(cx))
+                                                            .child(file_warning_count.to_string())
+                                                    )
                                             )
-                                    )
-                                })
-                                .when(file_warning_count > 0, |this| {
-                                    this.child(
-                                        h_flex()
-                                            .gap_1()
-                                            .items_center()
-                                            .child(
-                                                ui::Icon::new(IconName::TriangleAlert)
-                                                    .size_3()
-                                                    .text_color(DiagnosticSeverity::Warning.color(cx))
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_xs()
-                                                    .text_color(cx.theme().muted_foreground)
-                                                    .child(file_warning_count.to_string())
-                                            )
-                                    )
-                                })
+                                        })
+                                )
                         )
                 )
                 .children(items);
@@ -980,21 +1137,40 @@ impl ProblemsDrawer {
 
         div()
             .w_full()
-            .px_4()
-            .py_3()
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .when(is_selected, |this| {
-                this.bg(cx.theme().selection)
-                    .border_l_2()
-                    .border_color(cx.theme().accent)
-            })
-            .hover(|this| this.bg(cx.theme().secondary))
-            .cursor_pointer()
-            .on_mouse_down(gpui::MouseButton::Left, move |_, _window, cx| {
-                on_click(_window, cx);
-            })
-            .child(main)
+            .px_3()
+            .py_2()
+            .child(
+                div()
+                    .w_full()
+                    .px_4()
+                    .py_3()
+                    .rounded_lg()
+                    .border_1()
+                    .border_color(if is_selected {
+                        cx.theme().accent
+                    } else {
+                        cx.theme().border.opacity(0.5)
+                    })
+                    .bg(if is_selected {
+                        cx.theme().accent.opacity(0.08)
+                    } else {
+                        cx.theme().sidebar.opacity(0.5)
+                    })
+                    .shadow_sm()
+                    .when(is_selected, |this| {
+                        this.border_l_3()
+                            .border_color(cx.theme().accent)
+                    })
+                    .hover(|this| {
+                        this.bg(cx.theme().secondary.opacity(0.7))
+                            .border_color(cx.theme().accent.opacity(0.5))
+                    })
+                    .cursor_pointer()
+                    .on_mouse_down(gpui::MouseButton::Left, move |_, _window, cx| {
+                        on_click(_window, cx);
+                    })
+                    .child(main)
+            )
     }
 
     /// Render a hint with side-by-side diff view (before/after)
@@ -1144,27 +1320,44 @@ impl ProblemsDrawer {
         let total_lines = left_lines.len().max(right_lines.len());
         let content_height = (total_lines as f32 * 20.0).max(40.0);
         
-        // Build the hint element
+        // Build the hint element with enhanced styling
         v_flex()
-            .gap_1()
+            .gap_0()
             .w_full()
-            .rounded_md()
+            .rounded_lg()
             .border_1()
-            .border_color(cx.theme().border)
-            .bg(cx.theme().sidebar)
+            .border_color(cx.theme().accent.opacity(0.3))
+            .bg(cx.theme().background.opacity(0.5))
             .overflow_hidden()
-            // Hint message
+            .shadow_md()
+            // Hint message header with accent
             .child(
                 div()
-                    .px_3()
-                    .py_2()
+                    .px_4()
+                    .py_2p5()
                     .border_b_1()
                     .border_color(cx.theme().border)
-                    .text_xs()
-                    .text_color(cx.theme().foreground)
-                    .child(hint.message.clone())
+                    .bg(cx.theme().accent.opacity(0.05))
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                ui::Icon::new(IconName::Info)
+                                    .size_4()
+                                    .text_color(cx.theme().accent)
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .text_sm()
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .text_color(cx.theme().foreground)
+                                    .child(hint.message.clone())
+                            )
+                    )
             )
-            // Side-by-side diff headers
+            // Side-by-side diff headers with improved styling
             .child(
                 h_flex()
                     .w_full()
@@ -1173,17 +1366,27 @@ impl ProblemsDrawer {
                             .w_1_2()
                             .min_w_0()
                             .px_3()
-                            .py_1()
+                            .py_1p5()
                             .border_r_1()
                             .border_b_1()
-                            .border_color(cx.theme().border)
-                            .bg(Hsla { h: 0.0, s: 0.3, l: 0.15, a: 1.0 }) // Reddish for "before"
+                            .border_color(cx.theme().border.opacity(0.6))
+                            .bg(Hsla { h: 0.0, s: 0.4, l: 0.12, a: 1.0 })
                             .child(
-                                div()
-                                    .text_xs()
-                                    .font_semibold()
-                                    .text_color(Hsla { h: 0.0, s: 0.7, l: 0.6, a: 1.0 })
-                                    .child("BEFORE")
+                                h_flex()
+                                    .gap_1p5()
+                                    .items_center()
+                                    .child(
+                                        ui::Icon::new(IconName::Close)
+                                            .size_3()
+                                            .text_color(Hsla { h: 0.0, s: 0.8, l: 0.6, a: 1.0 })
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_weight(gpui::FontWeight::BOLD)
+                                            .text_color(Hsla { h: 0.0, s: 0.7, l: 0.65, a: 1.0 })
+                                            .child("BEFORE")
+                                    )
                             )
                     )
                     .child(
@@ -1191,16 +1394,26 @@ impl ProblemsDrawer {
                             .w_1_2()
                             .min_w_0()
                             .px_3()
-                            .py_1()
+                            .py_1p5()
                             .border_b_1()
-                            .border_color(cx.theme().border)
-                            .bg(Hsla { h: 120.0, s: 0.3, l: 0.15, a: 1.0 }) // Greenish for "after"
+                            .border_color(cx.theme().border.opacity(0.6))
+                            .bg(Hsla { h: 120.0, s: 0.4, l: 0.12, a: 1.0 })
                             .child(
-                                div()
-                                    .text_xs()
-                                    .font_semibold()
-                                    .text_color(Hsla { h: 120.0, s: 0.7, l: 0.5, a: 1.0 })
-                                    .child("AFTER")
+                                h_flex()
+                                    .gap_1p5()
+                                    .items_center()
+                                    .child(
+                                        ui::Icon::new(IconName::Check)
+                                            .size_3()
+                                            .text_color(Hsla { h: 120.0, s: 0.8, l: 0.5, a: 1.0 })
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_weight(gpui::FontWeight::BOLD)
+                                            .text_color(Hsla { h: 120.0, s: 0.7, l: 0.55, a: 1.0 })
+                                            .child("AFTER")
+                                    )
                             )
                     )
             )
@@ -1217,17 +1430,17 @@ impl ProblemsDrawer {
                             .w_full()
                             .child(
                                 div()
-                                    .w_1_2() // 50% width
-                                    .min_w_0() // Allow shrinking
+                                    .w_1_2()
+                                    .min_w_0()
                                     .overflow_hidden()
                                     .border_r_1()
-                                    .border_color(cx.theme().border)
+                                    .border_color(cx.theme().border.opacity(0.4))
                                     .child(left_container)
                             )
                             .child(
                                 div()
-                                    .w_1_2() // 50% width
-                                    .min_w_0() // Allow shrinking
+                                    .w_1_2()
+                                    .min_w_0()
                                     .overflow_hidden()
                                     .child(right_container)
                             )
