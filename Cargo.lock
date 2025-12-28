@@ -10022,7 +10022,7 @@ dependencies = [
 
 [[package]]
 name = "pulsar_engine"
-version = "0.1.72"
+version = "0.1.73"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
