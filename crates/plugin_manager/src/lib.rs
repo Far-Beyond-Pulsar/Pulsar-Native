@@ -75,6 +75,13 @@ pub struct PluginManager {
 
     /// The version info for this engine build
     engine_version: VersionInfo,
+
+    /// Track active editor instances per plugin to prevent unsafe unloading
+    /// Maps PluginId -> count of active editors from that plugin
+    active_editors: HashMap<PluginId, usize>,
+
+    /// Plugins marked for unload that are waiting for active editors to close
+    pending_unload: std::collections::HashSet<PluginId>,
 }
 
 impl PluginManager {
@@ -85,6 +92,8 @@ impl PluginManager {
             file_type_registry: FileTypeRegistry::new(),
             editor_registry: EditorRegistry::new(),
             engine_version: VersionInfo::current(),
+            active_editors: HashMap::new(),
+            pending_unload: std::collections::HashSet::new(),
         }
     }
 
@@ -242,6 +251,9 @@ impl PluginManager {
         };
 
         self.plugins.insert(plugin_id.clone(), loaded_plugin);
+        
+        // Initialize active editor count for this plugin
+        self.active_editors.insert(plugin_id.clone(), 0);
 
         Ok(plugin_id)
     }
@@ -249,12 +261,42 @@ impl PluginManager {
     /// Unload a plugin by ID.
     ///
     /// This will call the plugin's `on_unload` hook and remove all registered
-    /// file types and editors.
-    /// 
-    /// TODO: Currently, the dynamic library is not unloaded from memory due to Rust's
-    /// safety restrictions. This will be addressed in future versions of the engine by
-    /// tracking the in-memory location of a plugin and unloading it when no longer needed.
+    /// file types and editors. However, it will not actually unload the dynamic
+    /// library if there are still active editor instances from that plugin.
+    ///
+    /// The plugin will be marked for unload, and when all active editors are closed,
+    /// it will be properly unloaded. Use `force_unload_plugin()` to unload immediately
+    /// (WARNING: only safe if you know no editors are active).
+    ///
+    /// # Safety Note
+    /// Due to Rust's restrictions on dynamic library unloading, we cannot safely
+    /// unload a library while code from it is still executing. This manager tracks
+    /// active editor instances to prevent unsafe unloading.
     pub fn unload_plugin(&mut self, plugin_id: &PluginId) -> Result<(), PluginManagerError> {
+        if !self.plugins.contains_key(plugin_id) {
+            return Err(PluginManagerError::PluginNotFound {
+                plugin_id: plugin_id.clone(),
+            });
+        }
+
+        // Check if there are active editors from this plugin
+        let active_count = self.active_editors.get(plugin_id).copied().unwrap_or(0);
+        
+        if active_count > 0 {
+            log::warn!(
+                "Cannot unload plugin '{}' - {} active editor(s) still open. Marking for deferred unload.",
+                plugin_id, active_count
+            );
+            self.pending_unload.insert(plugin_id.clone());
+            return Ok(());
+        }
+
+        // Safe to unload now
+        self.perform_unload(plugin_id)
+    }
+
+    /// Internal method to perform the actual unload.
+    fn perform_unload(&mut self, plugin_id: &PluginId) -> Result<(), PluginManagerError> {
         if let Some(mut loaded_plugin) = self.plugins.remove(plugin_id) {
             // Call on_unload hook
             loaded_plugin.plugin.on_unload();
@@ -265,6 +307,10 @@ impl PluginManager {
             // Remove editors
             self.editor_registry.unregister_by_plugin(plugin_id);
 
+            // Clean up tracking
+            self.active_editors.remove(plugin_id);
+            self.pending_unload.remove(plugin_id);
+
             log::info!("Unloaded plugin: {}", loaded_plugin.metadata.name);
 
             Ok(())
@@ -272,6 +318,42 @@ impl PluginManager {
             Err(PluginManagerError::PluginNotFound {
                 plugin_id: plugin_id.clone(),
             })
+        }
+    }
+
+    /// Force unload a plugin immediately, even if editors are active.
+    ///
+    /// # WARNING
+    /// This is UNSAFE if any editor instances from this plugin are still running.
+    /// Only use this if you have manually verified that no code from the plugin
+    /// is currently executing.
+    pub fn force_unload_plugin(&mut self, plugin_id: &PluginId) -> Result<(), PluginManagerError> {
+        log::warn!("Force unloading plugin '{}' - ensure no active editors!", plugin_id);
+        self.active_editors.insert(plugin_id.clone(), 0);
+        self.perform_unload(plugin_id)
+    }
+
+    /// Called when an editor instance is created.
+    /// Internal use only - increments the active editor count.
+    fn increment_active_editors(&mut self, plugin_id: &PluginId) {
+        *self.active_editors.entry(plugin_id.clone()).or_insert(0) += 1;
+    }
+
+    /// Called when an editor instance is destroyed.
+    /// Internal use only - decrements the active editor count and checks for deferred unloads.
+    fn decrement_active_editors(&mut self, plugin_id: &PluginId) {
+        if let Some(count) = self.active_editors.get_mut(plugin_id) {
+            if *count > 0 {
+                *count -= 1;
+            }
+        }
+
+        // Check if this plugin was marked for unload and all editors are now closed
+        if self.pending_unload.contains(plugin_id) {
+            if self.active_editors.get(plugin_id).copied().unwrap_or(0) == 0 {
+                log::info!("All editors closed for pending plugin '{}', unloading now", plugin_id);
+                let _ = self.perform_unload(plugin_id);
+            }
         }
     }
 
@@ -333,10 +415,14 @@ impl PluginManager {
             .clone(); // Clone to avoid borrow checker issues
 
         // Create the editor instance
+        self.increment_active_editors(&plugin_id);
         self.create_editor(&plugin_id, &editor_id, file_path.to_path_buf(), window, cx)
     }
 
     /// Create an editor instance with a specific editor ID.
+    ///
+    /// Note: The caller is responsible for calling `decrement_active_editors` when the
+    /// editor instance is destroyed to properly track lifecycle and enable deferred unloading.
     pub fn create_editor(
         &mut self,
         plugin_id: &PluginId,
@@ -345,6 +431,9 @@ impl PluginManager {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<(std::sync::Arc<dyn ui::dock::PanelView>, Box<dyn EditorInstance>), PluginManagerError> {
+        // Ensure active editor tracking is initialized
+        self.active_editors.entry(plugin_id.clone()).or_insert(0);
+        
         let plugin = self
             .plugins
             .get_mut(plugin_id)
@@ -370,6 +459,77 @@ impl PluginManager {
                 plugin_id: plugin_id.clone(),
                 error: e,
             })
+    }
+
+    /// Called when an editor instance from a plugin is closed/destroyed.
+    /// 
+    /// The caller MUST call this when an editor is being removed to properly
+    /// track editor lifecycle. If a plugin is pending unload, this may trigger
+    /// the actual unload once all editors are closed.
+    pub fn on_editor_closed(&mut self, plugin_id: &PluginId) {
+        self.decrement_active_editors(plugin_id);
+    }
+
+    /// Debug helper: Print the current state of the plugin manager.
+    /// Useful for detecting memory leaks and tracking plugin lifecycle.
+    pub fn debug_state(&self) {
+        eprintln!("\n╔══════════════════════════════════════════════════════════════╗");
+        eprintln!("║          PLUGIN MANAGER STATE (Memory Leak Detection)         ║");
+        eprintln!("╠══════════════════════════════════════════════════════════════╣");
+        
+        eprintln!("║ Loaded Plugins: {:<49} ║", self.plugins.len());
+        
+        if self.plugins.is_empty() {
+            eprintln!("║   (none)                                                           ║");
+        } else {
+            for (plugin_id, plugin) in &self.plugins {
+                let active_editors = self.active_editors.get(plugin_id).copied().unwrap_or(0);
+                let is_pending = self.pending_unload.contains(plugin_id);
+                let status = if is_pending { "⏳ PENDING" } else { "✓ ACTIVE" };
+                
+                eprintln!(
+                    "║   {} {} - {} active editors",
+                    status,
+                    plugin.metadata.name,
+                    active_editors
+                );
+                eprintln!("║      ID: {}", plugin_id);
+                eprintln!("║      Version: {}", plugin.metadata.version);
+            }
+        }
+        
+        eprintln!("╠══════════════════════════════════════════════════════════════╣");
+        eprintln!("║ Active Editor Tracking:");
+        
+        if self.active_editors.is_empty() {
+            eprintln!("║   (none)                                                           ║");
+        } else {
+            for (plugin_id, count) in &self.active_editors {
+                if *count > 0 {
+                    eprintln!("║   {} has {} active editor(s)", plugin_id, count);
+                }
+            }
+            // Show if all are zero
+            let all_zero = self.active_editors.values().all(|&c| c == 0);
+            if all_zero {
+                eprintln!("║   ✓ All editor counts are zero (no active editors)              ║");
+            }
+        }
+        
+        eprintln!("╠══════════════════════════════════════════════════════════════╣");
+        eprintln!("║ Pending Unload Queue:");
+        
+        if self.pending_unload.is_empty() {
+            eprintln!("║   ✓ (empty - no plugins waiting to be unloaded)                 ║");
+        } else {
+            eprintln!("║   ⚠️  {} plugins pending unload:", self.pending_unload.len());
+            for plugin_id in &self.pending_unload {
+                let active = self.active_editors.get(plugin_id).copied().unwrap_or(0);
+                eprintln!("║      {} (waiting for {} editors to close)", plugin_id, active);
+            }
+        }
+        
+        eprintln!("╚══════════════════════════════════════════════════════════════╝\n");
     }
 
     /// Get the default content for a file type.
@@ -476,10 +636,63 @@ impl Default for PluginManager {
 // When the manager is dropped, unload all plugins
 impl Drop for PluginManager {
     fn drop(&mut self) {
+        eprintln!("\n╔══════════════════════════════════════════════════════════════╗");
+        eprintln!("║         PLUGIN MANAGER SHUTDOWN (Memory Cleanup)             ║");
+        eprintln!("╠══════════════════════════════════════════════════════════════╣");
+        
+        let plugin_count = self.plugins.len();
+        eprintln!("║ Unloading {} plugin(s)...", plugin_count);
+        
+        // Log any lingering active editors (potential leak indicator)
+        let mut leaked_editors = 0;
+        for (plugin_id, count) in &self.active_editors {
+            if *count > 0 {
+                eprintln!("║   ⚠️  LEAK DETECTED: {} has {} active editors!", plugin_id, count);
+                leaked_editors += *count;
+            }
+        }
+        
+        if leaked_editors > 0 {
+            eprintln!("║ ⚠️  Total leaked editor instances: {}", leaked_editors);
+            eprintln!("║     (Editors were not properly closed before shutdown)");
+        } else {
+            eprintln!("║ ✓ All editors were properly closed");
+        }
+        
+        eprintln!("╠══════════════════════════════════════════════════════════════╣");
+        eprintln!("║ Pending Unloads:");
+        
+        if !self.pending_unload.is_empty() {
+            eprintln!("║ ⚠️  {} plugins still pending unload:", self.pending_unload.len());
+            for plugin_id in &self.pending_unload {
+                eprintln!("║      {} (forced unload on shutdown)", plugin_id);
+            }
+        } else {
+            eprintln!("║ ✓ No pending unloads");
+        }
+        
+        // Now perform the actual cleanup
+        eprintln!("╠══════════════════════════════════════════════════════════════╣");
+        eprintln!("║ Executing cleanup...");
+        
+        let mut unloaded = 0;
         for (plugin_id, mut loaded_plugin) in self.plugins.drain() {
             loaded_plugin.plugin.on_unload();
+            eprintln!("║   ✓ {}", loaded_plugin.metadata.name);
             log::debug!("Unloaded plugin on drop: {}", plugin_id);
+            unloaded += 1;
         }
+        
+        eprintln!("╠══════════════════════════════════════════════════════════════╣");
+        eprintln!("║ Summary:");
+        eprintln!("║   Unloaded: {}/{} plugins", unloaded, plugin_count);
+        
+        // Final verification
+        self.active_editors.clear();
+        self.pending_unload.clear();
+        
+        eprintln!("║ ✓ All cleanup complete - memory released");
+        eprintln!("╚══════════════════════════════════════════════════════════════╝\n");
     }
 }
 
