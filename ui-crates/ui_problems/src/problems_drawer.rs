@@ -1,5 +1,5 @@
-//! Problems Drawer - Studio-quality diagnostics panel
-//! Displays rust-analyzer diagnostics with professional UI and search capabilities
+// Problems Drawer - Studio-quality diagnostics panel
+// Displays rust-analyzer diagnostics with professional UI and search capabilities
 
 use gpui::{prelude::*, *};
 use ui::{
@@ -19,6 +19,14 @@ pub struct Diagnostic {
     pub severity: DiagnosticSeverity,
     pub message: String,
     pub source: Option<String>,
+    pub hints: Vec<Hint>,
+    pub subitems: Vec<Diagnostic>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Hint {
+    pub message: String,
+    pub excerpt: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -645,11 +653,168 @@ impl ProblemsDrawer {
         is_selected: bool,
         on_click: F,
         cx: &App,
-    ) -> impl IntoElement
+    ) -> Div
     where
         F: Fn(&mut Window, &mut App) + 'static,
     {
         let on_click = Arc::new(on_click);
+
+        let mut main = v_flex()
+            .gap_2()
+            .w_full()
+            // Severity and location
+            .child(
+                h_flex()
+                    .gap_3()
+                    .items_center()
+                    .w_full()
+                    .child(
+                        h_flex()
+                            .gap_1p5()
+                            .items_center()
+                            .child(
+                                ui::Icon::new(diagnostic.severity.icon())
+                                    .size_4()
+                                    .text_color(diagnostic.severity.color(cx))
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(diagnostic.severity.color(cx))
+                                    .child(diagnostic.severity.label())
+                            )
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_xs()
+                            .font_family("monospace")
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!(
+                                "{}:{}",
+                                diagnostic.line,
+                                diagnostic.column
+                            ))
+                    )
+                    .when_some(diagnostic.source.as_ref(), |this, source| {
+                        this.child(
+                            div()
+                                .px_1p5()
+                                .py_0p5()
+                                .rounded_sm()
+                                .bg(cx.theme().border)
+                                .text_xs()
+                                .font_family("monospace")
+                                .text_color(cx.theme().muted_foreground)
+                                .child(source.clone())
+                        )
+                    })
+            )
+            // Message
+            .child(
+                div()
+                    .w_full()
+                    .text_sm()
+                    .text_color(cx.theme().foreground)
+                    .line_height(rems(1.4))
+                    .child(diagnostic.message.clone())
+            );
+
+        // Render hints inline using a for loop
+        if !diagnostic.hints.is_empty() {
+            let mut hints_container = v_flex()
+                .gap_1()
+                .w_full()
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(gpui::FontWeight::BOLD)
+                        .text_color(cx.theme().muted_foreground)
+                        .child("Hint(s):")
+                );
+            
+            for hint in &diagnostic.hints {
+                let mut hint_el = v_flex()
+                    .gap_0p5()
+                    .w_full()
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(hint.message.clone())
+                    );
+                
+                if let Some(excerpt) = &hint.excerpt {
+                    hint_el = hint_el.child(
+                        div()
+                            .px_2()
+                            .py_1()
+                            .rounded_sm()
+                            .bg(cx.theme().sidebar)
+                            .font_family("monospace")
+                            .text_xs()
+                            .text_color(cx.theme().foreground)
+                            .child(excerpt.clone())
+                    );
+                }
+                
+                hints_container = hints_container.child(hint_el);
+            }
+            
+            main = main.child(hints_container);
+        }
+
+        // Render subitems inline (one level only, no recursion)
+        if !diagnostic.subitems.is_empty() {
+            let mut subitems_container = v_flex()
+                .gap_1()
+                .w_full()
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(gpui::FontWeight::BOLD)
+                        .text_color(cx.theme().muted_foreground)
+                        .child("Related:")
+                );
+            
+            for sub in &diagnostic.subitems {
+                let subitem_el = div()
+                    .pl_4()
+                    .py_1()
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        ui::Icon::new(sub.severity.icon())
+                                            .size_3()
+                                            .text_color(sub.severity.color(cx))
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_family("monospace")
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child(format!("{}:{}", sub.line, sub.column))
+                                    )
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().foreground)
+                                    .child(sub.message.clone())
+                            )
+                    );
+                
+                subitems_container = subitems_container.child(subitem_el);
+            }
+            
+            main = main.child(subitems_container);
+        }
 
         div()
             .w_full()
@@ -667,68 +832,6 @@ impl ProblemsDrawer {
             .on_mouse_down(gpui::MouseButton::Left, move |_, _window, cx| {
                 on_click(_window, cx);
             })
-            .child(
-                v_flex()
-                    .gap_2()
-                    .w_full()
-                    // Severity and location
-                    .child(
-                        h_flex()
-                            .gap_3()
-                            .items_center()
-                            .w_full()
-                            .child(
-                                h_flex()
-                                    .gap_1p5()
-                                    .items_center()
-                                    .child(
-                                        ui::Icon::new(diagnostic.severity.icon())
-                                            .size_4()
-                                            .text_color(diagnostic.severity.color(cx))
-                                    )
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                                            .text_color(diagnostic.severity.color(cx))
-                                            .child(diagnostic.severity.label())
-                                    )
-                            )
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .text_xs()
-                                    .font_family("monospace")
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(format!(
-                                        "{}:{}",
-                                        diagnostic.line,
-                                        diagnostic.column
-                                    ))
-                            )
-                            .when_some(diagnostic.source.as_ref(), |this, source| {
-                                this.child(
-                                    div()
-                                        .px_1p5()
-                                        .py_0p5()
-                                        .rounded_sm()
-                                        .bg(cx.theme().border)
-                                        .text_xs()
-                                        .font_family("monospace")
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child(source.clone())
-                                )
-                            })
-                    )
-                    // Message
-                    .child(
-                        div()
-                            .w_full()
-                            .text_sm()
-                            .text_color(cx.theme().foreground)
-                            .line_height(rems(1.4))
-                            .child(diagnostic.message.clone())
-                    )
-            )
+            .child(main)
     }
 }

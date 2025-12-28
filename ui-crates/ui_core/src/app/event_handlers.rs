@@ -92,7 +92,23 @@ pub fn on_analyzer_event(
         }
         AnalyzerEvent::Diagnostics(diagnostics) => {
             // Convert and forward diagnostics to the problems drawer
-            let problems_diagnostics: Vec<ui_problems::Diagnostic> = diagnostics.iter().map(|d| {
+            // Group hints with their parent errors based on file path and line proximity
+            // TODO: Surely there's a more accurate way to do this?
+
+            
+            // First, separate hints from errors/warnings
+            let mut errors_warnings: Vec<_> = Vec::new();
+            let mut hints: Vec<_> = Vec::new();
+            
+            for d in diagnostics.iter() {
+                match d.severity {
+                    ui_common::DiagnosticSeverity::Hint => hints.push(d),
+                    _ => errors_warnings.push(d),
+                }
+            }
+            
+            // Convert errors/warnings to problems diagnostics
+            let mut problems_diagnostics: Vec<ui_problems::Diagnostic> = errors_warnings.iter().map(|d| {
                 ui_problems::Diagnostic {
                     file_path: d.file_path.clone(),
                     line: d.line,
@@ -105,8 +121,54 @@ pub fn on_analyzer_event(
                     },
                     message: d.message.clone(),
                     source: d.source.clone(),
+                    hints: Vec::new(),
+                    subitems: Vec::new(),
                 }
             }).collect();
+            
+            // Attach hints to their closest parent error/warning in the same file
+            for hint in hints {
+                // Find the best matching parent (same file, closest line before or equal)
+                let mut best_match: Option<usize> = None;
+                let mut best_distance: usize = usize::MAX;
+                
+                for (i, parent) in problems_diagnostics.iter().enumerate() {
+                    if parent.file_path == hint.file_path {
+                        // Prefer errors/warnings on the same line or close by
+                        let distance = if hint.line >= parent.line {
+                            hint.line - parent.line
+                        } else {
+                            parent.line - hint.line
+                        };
+                        
+                        if distance < best_distance {
+                            best_distance = distance;
+                            best_match = Some(i);
+                        }
+                    }
+                }
+                
+                if let Some(parent_idx) = best_match {
+                    // Attach as a hint to the parent
+                    problems_diagnostics[parent_idx].hints.push(ui_problems::Hint {
+                        message: hint.message.clone(),
+                        excerpt: None, // Could add file excerpt here if available
+                    });
+                } else {
+                    // No parent found, add as a standalone diagnostic
+                    problems_diagnostics.push(ui_problems::Diagnostic {
+                        file_path: hint.file_path.clone(),
+                        line: hint.line,
+                        column: hint.column,
+                        severity: ui_problems::DiagnosticSeverity::Hint,
+                        message: hint.message.clone(),
+                        source: hint.source.clone(),
+                        hints: Vec::new(),
+                        subitems: Vec::new(),
+                    });
+                }
+            }
+            
             app.state.problems_drawer.update(cx, |drawer, cx| {
                 drawer.set_diagnostics(problems_diagnostics, cx);
             });

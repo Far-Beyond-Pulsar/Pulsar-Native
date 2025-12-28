@@ -66,7 +66,7 @@ pub fn camera_movement_system(
         camera_input.move_speed
     };
     let accel = base_speed * 12.0; // doubled acceleration rate
-    let friction = 8.0;
+    let friction = 4.0;
     unsafe {
         // Accelerate towards input direction
         let desired_velocity = input_dir * base_speed;
