@@ -91,20 +91,31 @@ pub fn camera_movement_system(
 
     // --- Mouse delta smoothing for rotation ---
     let smoothing = 0.25; // 0 = no smoothing, 1 = infinite smoothing
-    unsafe {
+    let (smooth_x, smooth_y) = unsafe {
         let (prev_x, prev_y) = SMOOTHED_MOUSE_DELTA;
         let target_x = camera_input.mouse_delta_x;
         let target_y = camera_input.mouse_delta_y;
         let smooth_x = prev_x + (target_x - prev_x) * smoothing;
         let smooth_y = prev_y + (target_y - prev_y) * smoothing;
         SMOOTHED_MOUSE_DELTA = (smooth_x, smooth_y);
-        // Use smoothed deltas for rotation
-        if smooth_x.abs() > 0.001 || smooth_y.abs() > 0.001 {
-            let yaw_delta = -smooth_x * camera_input.look_sensitivity * delta_time;
-            transform.rotate_y(yaw_delta);
-            let pitch_delta = -smooth_y * camera_input.look_sensitivity * delta_time;
-            transform.rotate_local_x(pitch_delta);
+        (smooth_x, smooth_y)
+    };
+    // Use smoothed deltas for rotation
+    if smooth_x.abs() > 0.001 || smooth_y.abs() > 0.001 {
+        let yaw_delta = -smooth_x * camera_input.look_sensitivity * delta_time;
+        let (mut yaw, mut pitch, mut roll) = transform.rotation.to_euler(EulerRot::YXZ);
+        yaw += yaw_delta;
+        let pitch_delta = -smooth_y * camera_input.look_sensitivity * delta_time;
+        pitch += pitch_delta;
+        // Clamp pitch between -89 and 89 degrees (in radians)
+        let min_pitch = -std::f32::consts::FRAC_PI_2 + 0.01745; // ~-89 deg
+        let max_pitch = std::f32::consts::FRAC_PI_2 - 0.01745;  // ~89 deg
+        if pitch < min_pitch {
+            pitch = min_pitch;
+        } else if pitch > max_pitch {
+            pitch = max_pitch;
         }
+        transform.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, roll);
     }
     // Clear mouse deltas after use
     camera_input.mouse_delta_x = 0.0;
@@ -112,14 +123,21 @@ pub fn camera_movement_system(
     
     // === ROTATION (Right mouse + drag) ===
     if camera_input.mouse_delta_x.abs() > 0.001 || camera_input.mouse_delta_y.abs() > 0.001 {
-        // Yaw (rotate around world Y axis)
+        // Yaw (rotate around world Y axis) and clamp pitch
         let yaw_delta = -camera_input.mouse_delta_x * camera_input.look_sensitivity * delta_time;
-        transform.rotate_y(yaw_delta);
-        
-        // Pitch (rotate around local X axis)
+        let (mut yaw, mut pitch, mut roll) = transform.rotation.to_euler(EulerRot::YXZ);
+        yaw += yaw_delta;
         let pitch_delta = -camera_input.mouse_delta_y * camera_input.look_sensitivity * delta_time;
-        transform.rotate_local_x(pitch_delta);
-        
+        pitch += pitch_delta;
+        // Clamp pitch between -89 and 89 degrees (in radians)
+        let min_pitch = -std::f32::consts::FRAC_PI_2 + 0.01745; // ~-89 deg
+        let max_pitch = std::f32::consts::FRAC_PI_2 - 0.01745;  // ~89 deg
+        if pitch < min_pitch {
+            pitch = min_pitch;
+        } else if pitch > max_pitch {
+            pitch = max_pitch;
+        }
+        transform.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, roll);
         // Clear mouse deltas after use
         camera_input.mouse_delta_x = 0.0;
         camera_input.mouse_delta_y = 0.0;

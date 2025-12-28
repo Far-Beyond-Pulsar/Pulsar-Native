@@ -2319,7 +2319,6 @@ impl ViewportPanel {
                                     let theme = cx.theme();
                                     let stroke_color = theme.chart_3;
                                     let fill_color = stroke_color.opacity(0.2);
-                                    
                                     AreaChart::new(frame_time_data.clone())
                                         .x(|d| SharedString::from(format!("{}", d.index)))
                                         .y(|d| d.frame_time_ms)
@@ -2327,17 +2326,18 @@ impl ViewportPanel {
                                         .fill(fill_color)
                                         .linear()
                                         .tick_margin(10)
+                                        .min_y_range(8.3)
                                         .into_any_element()
                                 } else {
                                     // Bar mode
                                     let theme = cx.theme();
                                     let chart_color = theme.chart_3;
-                                    
                                     BarChart::new(frame_time_data.clone())
                                         .x(|d| SharedString::from(format!("{}", d.index)))
                                         .y(|d| d.frame_time_ms)
                                         .fill(move |_d| chart_color)
                                         .tick_margin(10)
+                                        .min_y_range(8.3)
                                         .into_any_element()
                                 })
                         )

@@ -498,7 +498,8 @@ impl TextEditor {
                 })
                 // Disable soft wrap for large files for better performance
                 // Files with more than 5k lines or 500KB get no wrapping
-                .soft_wrap(lines_count < 5_000 && file_size < 500_000);
+                .soft_wrap(lines_count < 5_000 && file_size < 500_000)
+                .soft_wrap(false);
 
             // Set the content after creating the state
             state.set_value(&content, window, cx);

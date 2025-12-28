@@ -27,6 +27,8 @@ where
     fill: Option<Rc<dyn Fn(&T) -> Hsla>>,
     tick_margin: usize,
     label: Option<Rc<dyn Fn(&T) -> SharedString>>,
+    min_y_range: Option<f64>,
+    max_y_range: Option<f64>,
 }
 
 impl<T, X, Y> BarChart<T, X, Y>
@@ -45,6 +47,8 @@ where
             fill: None,
             tick_margin: 1,
             label: None,
+            min_y_range: None,
+            max_y_range: None,
         }
     }
 
@@ -78,6 +82,16 @@ where
         self.label = Some(Rc::new(move |t| label(t).into()));
         self
     }
+
+    pub fn min_y_range(mut self, min: f64) -> Self {
+        self.min_y_range = Some(min);
+        self
+    }
+
+    pub fn max_y_range(mut self, max: f64) -> Self {
+        self.max_y_range = Some(max);
+        self
+    }
 }
 
 impl<T, X, Y> Plot for BarChart<T, X, Y>
@@ -99,15 +113,47 @@ where
             .padding_outer(0.2);
         let band_width = x.band_width();
 
-        // Y scale, ensure start from 0.
-        let y = ScaleLinear::new(
-            self.data
-                .iter()
-                .map(|v| y_fn(v))
-                .chain(Some(Y::zero()))
-                .collect(),
-            vec![height, 10.],
-        );
+        // Y scale with min/max range enforcement
+        let domain_vals: Vec<_> = self.data
+            .iter()
+            .map(|v| y_fn(v))
+            .chain(Some(Y::zero()))
+            .collect();
+        
+        let mut domain = domain_vals.clone();
+        
+        // Enforce minimum Y range if specified
+        if let Some(min_range) = self.min_y_range {
+            if let (Some(&min_val), Some(&max_val)) = (
+                domain.iter().min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)),
+                domain.iter().max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            ) {
+                let min_f = min_val.to_f64().unwrap_or(0.0);
+                let max_f = max_val.to_f64().unwrap_or(0.0);
+                let range = max_f - min_f;
+                if range < min_range {
+                    // Add boundary point - use existing types from domain to ensure type safety
+                    let target = if min_f > 0.0 {
+                        min_f + min_range
+                    } else {
+                        min_range
+                    };
+                    // Scale min_val or zero point to reach target range
+                    if let Some(ref scale_val) = domain_vals.first().cloned() {
+                        domain.push(*scale_val);
+                    }
+                }
+            }
+        }
+        
+        // Enforce maximum Y range if specified - add boundary point if max is set
+        if self.max_y_range.is_some() {
+            if let Some(ref scale_val) = domain_vals.first().cloned() {
+                domain.push(*scale_val);
+            }
+        }
+        
+        let y = ScaleLinear::new(domain, vec![height, 10.]);
 
         // Draw X axis
         let x_label = self.data.iter().enumerate().filter_map(|(i, d)| {
