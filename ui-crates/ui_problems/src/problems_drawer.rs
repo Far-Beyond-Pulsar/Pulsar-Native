@@ -8,6 +8,7 @@ use ui::{
     input::{InputState, TextInput},
     indicator::Indicator,
     scroll::ScrollbarAxis,
+    popup_menu::{PopupMenu, PopupMenuExt},
 };
 use ui::StyledExt;
 use std::path::PathBuf;
@@ -15,6 +16,9 @@ use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use std::fs;
 use similar::{ChangeTag, TextDiff};
+
+// Define actions for filter menu
+actions!(problems_drawer, [FilterAll, FilterErrors, FilterWarnings, FilterInfo]);
 
 /// Represents the type of a diff line for rendering
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -158,8 +162,6 @@ pub struct ProblemsDrawer {
     diff_editors: HashMap<(usize, usize), (Entity<InputState>, Entity<InputState>)>,
     /// InputState for the search bar
     search_input: Entity<InputState>,
-    /// Whether the filter dropdown is open
-    filter_dropdown_open: bool,
 }
 
 impl ProblemsDrawer {
@@ -183,7 +185,6 @@ impl ProblemsDrawer {
             preview_inputs: HashMap::new(),
             diff_editors: HashMap::new(),
             search_input,
-            filter_dropdown_open: false,
         }
     }
 
@@ -326,11 +327,6 @@ impl ProblemsDrawer {
         cx.notify();
     }
 
-    fn toggle_filter_dropdown(&mut self, cx: &mut Context<Self>) {
-        self.filter_dropdown_open = !self.filter_dropdown_open;
-        cx.notify();
-    }
-
     fn select_diagnostic(&mut self, index: usize, cx: &mut Context<Self>) {
         self.selected_index = Some(index);
         cx.notify();
@@ -343,6 +339,23 @@ impl ProblemsDrawer {
             line: diagnostic.line,
             column: diagnostic.column,
         });
+    }
+
+    // Action handlers for filter menu
+    fn on_filter_all(&mut self, _: &FilterAll, _: &mut Window, cx: &mut Context<Self>) {
+        self.set_filter(None, cx);
+    }
+
+    fn on_filter_errors(&mut self, _: &FilterErrors, _: &mut Window, cx: &mut Context<Self>) {
+        self.set_filter(Some(DiagnosticSeverity::Error), cx);
+    }
+
+    fn on_filter_warnings(&mut self, _: &FilterWarnings, _: &mut Window, cx: &mut Context<Self>) {
+        self.set_filter(Some(DiagnosticSeverity::Warning), cx);
+    }
+
+    fn on_filter_info(&mut self, _: &FilterInfo, _: &mut Window, cx: &mut Context<Self>) {
+        self.set_filter(Some(DiagnosticSeverity::Information), cx);
     }
 }
 
@@ -381,6 +394,11 @@ impl Render for ProblemsDrawer {
         v_flex()
             .size_full()
             .bg(cx.theme().background)
+            // Register action handlers for filter menu
+            .on_action(cx.listener(Self::on_filter_all))
+            .on_action(cx.listener(Self::on_filter_errors))
+            .on_action(cx.listener(Self::on_filter_warnings))
+            .on_action(cx.listener(Self::on_filter_info))
             // Professional header with search
             .child(self.render_header(error_count, warning_count, info_count, total_count, cx))
             // Main content area - flex_1 + overflow_hidden to constrain scroll
@@ -517,24 +535,26 @@ impl ProblemsDrawer {
                                     )
                             )
                     )
-                    // Filter dropdown button
-                    .child(
-                        div()
-                            .relative()
-                            .child(
-                                Button::new("filter-dropdown")
-                                    .ghost()
-                                    .small()
-                                    .icon(IconName::Filter)
-                                    .label(current_filter_label.clone())
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.toggle_filter_dropdown(cx);
-                                    }))
-                            )
-                            .when(self.filter_dropdown_open, |this| {
-                                this.child(self.render_filter_dropdown(error_count, warning_count, info_count, total_count, cx))
+                    // Filter dropdown button using proper PopupMenu
+                    .child({
+                        let is_all_selected = self.filtered_severity.is_none();
+                        let is_errors_selected = self.filtered_severity == Some(DiagnosticSeverity::Error);
+                        let is_warnings_selected = self.filtered_severity == Some(DiagnosticSeverity::Warning);
+                        let is_info_selected = self.filtered_severity == Some(DiagnosticSeverity::Information);
+
+                        Button::new("filter-dropdown")
+                            .ghost()
+                            .small()
+                            .icon(IconName::Filter)
+                            .label(current_filter_label.clone())
+                            .popup_menu_with_anchor(Corner::BottomRight, move |menu, _window, _cx| {
+                                menu.menu_with_check("All Problems", is_all_selected, Box::new(FilterAll))
+                                    .separator()
+                                    .menu_with_check("Errors", is_errors_selected, Box::new(FilterErrors))
+                                    .menu_with_check("Warnings", is_warnings_selected, Box::new(FilterWarnings))
+                                    .menu_with_check("Information", is_info_selected, Box::new(FilterInfo))
                             })
-                    )
+                    })
             )
     }
 
@@ -561,159 +581,6 @@ impl ProblemsDrawer {
                     .text_xs()
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(severity.color(cx))
-                    .child(count.to_string())
-            )
-    }
-
-    fn render_filter_dropdown(
-        &self,
-        error_count: usize,
-        warning_count: usize,
-        info_count: usize,
-        total_count: usize,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        div()
-            .absolute()
-            .top(px(32.0))
-            .right(px(0.0))
-            .w(px(220.0))
-            .rounded_md()
-            .border_1()
-            .border_color(cx.theme().border)
-            .bg(cx.theme().sidebar)
-            .shadow_lg()
-            .overflow_hidden()
-            .child(
-                v_flex()
-                    .w_full()
-                    .child(self.render_filter_option("All Problems", total_count, None, cx))
-                    .child(
-                        div()
-                            .h(px(1.0))
-                            .w_full()
-                            .bg(cx.theme().border)
-                    )
-                    .child(self.render_filter_option_with_severity("Errors", error_count, DiagnosticSeverity::Error, cx))
-                    .child(self.render_filter_option_with_severity("Warnings", warning_count, DiagnosticSeverity::Warning, cx))
-                    .child(self.render_filter_option_with_severity("Information", info_count, DiagnosticSeverity::Information, cx))
-            )
-    }
-
-    fn render_filter_option(
-        &self,
-        label: &'static str,
-        count: usize,
-        severity: Option<DiagnosticSeverity>,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let is_selected = self.filtered_severity == severity;
-
-        h_flex()
-            .w_full()
-            .px_3()
-            .py_2()
-            .gap_2()
-            .items_center()
-            .justify_between()
-            .when(is_selected, |this| {
-                this.bg(cx.theme().accent.opacity(0.15))
-                    .border_l_2()
-                    .border_color(cx.theme().accent)
-            })
-            .hover(|this| this.bg(cx.theme().secondary))
-            .cursor_pointer()
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                this.set_filter(severity.clone(), cx);
-                this.toggle_filter_dropdown(cx);
-            }))
-            .child(
-                h_flex()
-                    .gap_2()
-                    .items_center()
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(if is_selected {
-                                cx.theme().foreground
-                            } else {
-                                cx.theme().muted_foreground
-                            })
-                            .child(label)
-                    )
-            )
-            .child(
-                div()
-                    .px_1p5()
-                    .py_0p5()
-                    .rounded_sm()
-                    .bg(cx.theme().border)
-                    .text_xs()
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(cx.theme().muted_foreground)
-                    .child(count.to_string())
-            )
-    }
-
-    fn render_filter_option_with_severity(
-        &self,
-        label: &'static str,
-        count: usize,
-        severity: DiagnosticSeverity,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let is_selected = self.filtered_severity == Some(severity.clone());
-        let severity_for_closure = severity.clone();
-        let severity_icon = severity.icon();
-        let severity_color = severity.color(cx);
-
-        h_flex()
-            .w_full()
-            .px_3()
-            .py_2()
-            .gap_2()
-            .items_center()
-            .justify_between()
-            .when(is_selected, |this| {
-                this.bg(cx.theme().accent.opacity(0.15))
-                    .border_l_2()
-                    .border_color(cx.theme().accent)
-            })
-            .hover(|this| this.bg(cx.theme().secondary))
-            .cursor_pointer()
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                this.set_filter(Some(severity_for_closure.clone()), cx);
-                this.toggle_filter_dropdown(cx);
-            }))
-            .child(
-                h_flex()
-                    .gap_2()
-                    .items_center()
-                    .child(
-                        ui::Icon::new(severity_icon)
-                            .size_4()
-                            .text_color(severity_color)
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(if is_selected {
-                                cx.theme().foreground
-                            } else {
-                                cx.theme().muted_foreground
-                            })
-                            .child(label)
-                    )
-            )
-            .child(
-                div()
-                    .px_1p5()
-                    .py_0p5()
-                    .rounded_sm()
-                    .bg(severity_color.opacity(0.15))
-                    .text_xs()
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(severity_color)
                     .child(count.to_string())
             )
     }
