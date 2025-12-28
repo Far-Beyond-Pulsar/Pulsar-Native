@@ -1170,7 +1170,8 @@ impl ProblemsDrawer {
                     .w_full()
                     .child(
                         div()
-                            .flex_1()
+                            .w_1_2()
+                            .min_w_0()
                             .px_3()
                             .py_1()
                             .border_r_1()
@@ -1187,7 +1188,8 @@ impl ProblemsDrawer {
                     )
                     .child(
                         div()
-                            .flex_1()
+                            .w_1_2()
+                            .min_w_0()
                             .px_3()
                             .py_1()
                             .border_b_1()
@@ -1209,19 +1211,24 @@ impl ProblemsDrawer {
                     .w_full()
                     .h(px(content_height))
                     .overflow_y_scroll()
+                    .overflow_x_hidden()
                     .child(
                         h_flex()
                             .w_full()
                             .child(
                                 div()
-                                    .flex_1()
+                                    .w_1_2() // 50% width
+                                    .min_w_0() // Allow shrinking
+                                    .overflow_hidden()
                                     .border_r_1()
                                     .border_color(cx.theme().border)
                                     .child(left_container)
                             )
                             .child(
                                 div()
-                                    .flex_1()
+                                    .w_1_2() // 50% width
+                                    .min_w_0() // Allow shrinking
+                                    .overflow_hidden()
                                     .child(right_container)
                             )
                     )

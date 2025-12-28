@@ -411,6 +411,8 @@ pub fn on_analyzer_event(
 }
 
 /// Helper function to compute before/after content from text edits
+/// Returns the FULL modified file content for both before and after
+/// The diff algorithm will handle alignment with spacers
 fn compute_before_after(file_path: &str, edits: &[ui_common::TextEdit]) -> (Option<String>, Option<String>) {
     if edits.is_empty() {
         return (None, None);
@@ -418,114 +420,122 @@ fn compute_before_after(file_path: &str, edits: &[ui_common::TextEdit]) -> (Opti
     
     let first_edit = &edits[0];
     
-    let before_content = if let Ok(content) = std::fs::read_to_string(file_path) {
-        let lines: Vec<&str> = content.lines().collect();
-        
-        // Find the range that covers all edits
-        let mut min_line = first_edit.start_line.saturating_sub(1);
-        let mut max_line = first_edit.end_line.saturating_sub(1);
-        
-        for edit in edits {
-            min_line = min_line.min(edit.start_line.saturating_sub(1));
-            max_line = max_line.max(edit.end_line.saturating_sub(1));
-        }
-        
-        // Add context lines
-        let context = 2;
-        let start = min_line.saturating_sub(context);
-        let end = (max_line + context + 1).min(lines.len());
-        
-        if start < lines.len() {
-            Some(lines[start..end].join("\n"))
-        } else {
-            None
-        }
+    // Read the original file content
+    let content = match std::fs::read_to_string(file_path) {
+        Ok(c) => c,
+        Err(_) => return (None, Some(first_edit.new_text.clone())),
+    };
+    
+    let lines: Vec<&str> = content.lines().collect();
+    
+    // Find the range that covers all edits
+    let mut min_line = first_edit.start_line.saturating_sub(1);
+    let mut max_line = first_edit.end_line.saturating_sub(1);
+    
+    for edit in edits {
+        min_line = min_line.min(edit.start_line.saturating_sub(1));
+        max_line = max_line.max(edit.end_line.saturating_sub(1));
+    }
+    
+    // Add context lines
+    let context = 2;
+    let start = min_line.saturating_sub(context);
+    let end = (max_line + context + 1).min(lines.len());
+    
+    // Extract before content from original file
+    let before_content = if start < lines.len() {
+        Some(lines[start..end].join("\n"))
     } else {
         None
     };
     
-    let after_content = if let Ok(content) = std::fs::read_to_string(file_path) {
-        let lines: Vec<&str> = content.lines().collect();
+    // Apply edits to compute after content
+    let mut modified_content = content.clone();
+    
+    // Sort edits by position (reverse order so we can apply from end to start)
+    let mut sorted_edits = edits.to_vec();
+    sorted_edits.sort_by(|a, b| {
+        let a_pos = (a.start_line, a.start_column);
+        let b_pos = (b.start_line, b.start_column);
+        b_pos.cmp(&a_pos) // Reverse order
+    });
+    
+    for edit in &sorted_edits {
+        // Convert line/column to byte offset
+        let mut offset_start = 0;
+        let mut offset_end = 0;
+        let mut current_line = 1;
+        let mut current_col = 1;
+        let mut found_start = false;
+        let mut found_end = false;
         
-        // Find the range that covers all edits
-        let mut min_line = first_edit.start_line.saturating_sub(1);
-        let mut max_line = first_edit.end_line.saturating_sub(1);
-        
-        for edit in edits {
-            min_line = min_line.min(edit.start_line.saturating_sub(1));
-            max_line = max_line.max(edit.end_line.saturating_sub(1));
-        }
-        
-        // Add context lines
-        let context = 2;
-        let start = min_line.saturating_sub(context);
-        let end = (max_line + context + 1).min(lines.len());
-        
-        if start < lines.len() {
-            // Apply edits to compute after content
-            let mut modified_content = content.clone();
-            
-            // Sort edits by position (reverse order so we can apply from end to start)
-            let mut sorted_edits = edits.to_vec();
-            sorted_edits.sort_by(|a, b| {
-                let a_pos = (a.start_line, a.start_column);
-                let b_pos = (b.start_line, b.start_column);
-                b_pos.cmp(&a_pos) // Reverse order
-            });
-            
-            for edit in &sorted_edits {
-                // Convert line/column to byte offset
-                let mut offset_start = 0;
-                let mut offset_end = 0;
-                let mut current_line = 1;
-                let mut current_col = 1;
-                
-                for (i, ch) in modified_content.char_indices() {
-                    if current_line == edit.start_line && current_col == edit.start_column {
-                        offset_start = i;
-                    }
-                    if current_line == edit.end_line && current_col == edit.end_column {
-                        offset_end = i;
-                    }
-                    
-                    if ch == '\n' {
-                        current_line += 1;
-                        current_col = 1;
-                    } else {
-                        current_col += 1;
-                    }
-                }
-                
-                // Handle end of file
-                if edit.end_line > current_line || 
-                   (edit.end_line == current_line && edit.end_column > current_col) {
-                    offset_end = modified_content.len();
-                }
-                
-                // Apply the edit
-                if offset_start <= offset_end && offset_end <= modified_content.len() {
-                    modified_content = format!(
-                        "{}{}{}",
-                        &modified_content[..offset_start],
-                        &edit.new_text,
-                        &modified_content[offset_end..]
-                    );
-                }
+        for (i, ch) in modified_content.char_indices() {
+            if current_line == edit.start_line && current_col == edit.start_column {
+                offset_start = i;
+                found_start = true;
+            }
+            if current_line == edit.end_line && current_col == edit.end_column {
+                offset_end = i;
+                found_end = true;
             }
             
-            // Extract the same range from modified content
-            let modified_lines: Vec<&str> = modified_content.lines().collect();
-            let mod_end = end.min(modified_lines.len());
-            if start < modified_lines.len() {
-                Some(modified_lines[start..mod_end].join("\n"))
+            if ch == '\n' {
+                current_line += 1;
+                current_col = 1;
             } else {
-                Some(first_edit.new_text.clone())
+                current_col += 1;
             }
-        } else {
-            Some(first_edit.new_text.clone())
         }
-    } else {
+        
+        // Handle end of file or end of line
+        if !found_end {
+            if edit.end_line > current_line || 
+               (edit.end_line == current_line && edit.end_column > current_col) {
+                offset_end = modified_content.len();
+            }
+        }
+        
+        // Apply the edit
+        if found_start && offset_start <= offset_end && offset_end <= modified_content.len() {
+            modified_content = format!(
+                "{}{}{}",
+                &modified_content[..offset_start],
+                &edit.new_text,
+                &modified_content[offset_end..]
+            );
+        }
+    }
+    
+    // Extract the SAME context range from modified content
+    // But use line counting to get equivalent context
+    let modified_lines: Vec<&str> = modified_content.lines().collect();
+    
+    // Calculate how many lines were added/removed by the edits
+    let mut lines_delta: i32 = 0;
+    for edit in edits {
+        let deleted_lines = (edit.end_line as i32) - (edit.start_line as i32);
+        let added_lines = edit.new_text.matches('\n').count() as i32;
+        // If edit.end_line == edit.start_line but there's content, it's a single line edit
+        // If new_text is empty but range spans lines, those lines are deleted
+        if edit.end_line > edit.start_line {
+            lines_delta += added_lines - deleted_lines;
+        } else {
+            lines_delta += added_lines;
+        }
+    }
+    
+    // For the "after" content, we want to show the equivalent region
+    // The start stays the same (context before the edit)
+    // The end adjusts based on how many lines were added/removed
+    let after_end = ((end as i32) + lines_delta).max(0) as usize;
+    let after_end = after_end.min(modified_lines.len());
+    
+    let after_content = if start < modified_lines.len() {
+        Some(modified_lines[start..after_end].join("\n"))
+    } else if !first_edit.new_text.is_empty() {
         Some(first_edit.new_text.clone())
+    } else {
+        Some(String::new())
     };
     
     (before_content, after_content)
