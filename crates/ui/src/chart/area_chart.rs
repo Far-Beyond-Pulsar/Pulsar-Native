@@ -238,11 +238,15 @@ where
         // Draw reference lines
         for (y_value, color, _label) in &self.reference_lines {
             if let Some(y_tick) = y.tick(&Y::from_f64(*y_value).unwrap_or_else(Y::zero)) {
+                // y_tick is in pixel space relative to bounds
+                eprintln!("DEBUG AreaChart: ref_line y_value={} y_tick={}", y_value, y_tick);
                 Grid::new()
                     .y(vec![y_tick])
                     .stroke(*color)
                     .dash_array(&[px(2.), px(2.)])
                     .paint(&bounds, window);
+            } else {
+                eprintln!("DEBUG AreaChart: ref_line y_value={} FAILED to tick", y_value);
             }
         }
     }
