@@ -2326,7 +2326,7 @@ impl ViewportPanel {
                                         .fill(fill_color)
                                         .linear()
                                         .tick_margin(10)
-                                        .min_y_range(8.3)
+                                        .min_y_range(16.6)
                                         .into_any_element()
                                 } else {
                                     // Bar mode
@@ -2337,7 +2337,7 @@ impl ViewportPanel {
                                         .y(|d| d.frame_time_ms)
                                         .fill(move |_d| chart_color)
                                         .tick_margin(10)
-                                        .min_y_range(8.3)
+                                        .min_y_range(16.6)
                                         .into_any_element()
                                 })
                         )

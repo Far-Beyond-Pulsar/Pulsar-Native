@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use gpui::{px, App, Bounds, Hsla, Pixels, SharedString, TextAlign, Window};
 use gpui_component_macros::IntoPlot;
-use num_traits::{Num, ToPrimitive};
+use num_traits::{Num, ToPrimitive, FromPrimitive};
 
 use crate::{
     plot::{
@@ -18,7 +18,7 @@ pub struct LineChart<T, X, Y>
 where
     T: 'static,
     X: PartialEq + Into<SharedString> + 'static,
-    Y: Copy + PartialOrd + Num + ToPrimitive + Sealed + 'static,
+    Y: Copy + PartialOrd + Num + ToPrimitive + FromPrimitive + Sealed + 'static,
 {
     data: Vec<T>,
     x: Option<Rc<dyn Fn(&T) -> X>>,
@@ -34,7 +34,7 @@ where
 impl<T, X, Y> LineChart<T, X, Y>
 where
     X: PartialEq + Into<SharedString> + 'static,
-    Y: Copy + PartialOrd + Num + ToPrimitive + Sealed + 'static,
+    Y: Copy + PartialOrd + Num + ToPrimitive + FromPrimitive + Sealed + 'static,
 {
     pub fn new<I>(data: I) -> Self
     where
@@ -92,7 +92,7 @@ where
 impl<T, X, Y> Plot for LineChart<T, X, Y>
 where
     X: PartialEq + Into<SharedString> + 'static,
-    Y: Copy + PartialOrd + Num + ToPrimitive + Sealed + 'static,
+    Y: Copy + PartialOrd + Num + ToPrimitive + FromPrimitive + Sealed + 'static,
 {
     fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let (Some(x_fn), Some(y_fn)) = (self.x.as_ref(), self.y.as_ref()) else {
@@ -114,28 +114,44 @@ where
         
         let mut domain = domain_vals.clone();
         
-        // Enforce minimum Y range if specified
+        // Enforce minimum Y range if specified by ensuring domain spans at least min_y_range
         if let Some(min_range) = self.min_y_range {
-            if let (Some(&min_val), Some(&max_val)) = (
-                domain.iter().min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)),
-                domain.iter().max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-            ) {
-                let min_f = min_val.to_f64().unwrap_or(0.0);
-                let max_f = max_val.to_f64().unwrap_or(0.0);
+            let mut min_f = f64::INFINITY;
+            let mut max_f = f64::NEG_INFINITY;
+            
+            // Calculate actual data range
+            for &val in domain.iter() {
+                if let Some(f) = val.to_f64() {
+                    min_f = min_f.min(f);
+                    max_f = max_f.max(f);
+                }
+            }
+            
+            // If range is smaller than minimum, extend it
+            if !min_f.is_infinite() && !max_f.is_infinite() {
                 let range = max_f - min_f;
-                if range < min_range {
-                    // Add boundary point - use existing types from domain
-                    if let Some(ref scale_val) = domain_vals.first().cloned() {
-                        domain.push(*scale_val);
+                if range < min_range && range.is_finite() {
+                    // Calculate the target maximum value
+                    let target_max = min_f + min_range;
+                    
+                    // Ensure target_max is in the domain
+                    if let Some(target_y) = Y::from_f64(target_max) {
+                        // Check if we already have this value
+                        let already_present = domain.iter().any(|&v| {
+                            v.to_f64().map_or(false, |f| (f - target_max).abs() < 0.0001)
+                        });
+                        if !already_present {
+                            domain.push(target_y);
+                        }
                     }
                 }
             }
         }
         
         // Enforce maximum Y range if specified
-        if self.max_y_range.is_some() {
-            if let Some(ref scale_val) = domain_vals.first().cloned() {
-                domain.push(*scale_val);
+        if let Some(max_range) = self.max_y_range {
+            if let Some(capped_max) = Y::from_f64(max_range) {
+                domain.push(capped_max);
             }
         }
         
