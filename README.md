@@ -133,7 +133,7 @@ If you’re interested in large‑scale multiplayer and server technology, you m
   <img src="https://github.com/user-attachments/assets/ec5a5148-4ba8-45bd-bb8f-d5746a73273f" width="48%" />
 </p>
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/94e058e8-e179-44d1-bfb4-fa20e5ca7637" width="48%" />
+  <img width="26%"  src="https://github.com/user-attachments/assets/57ddbf72-2b2f-42f0-9463-09cc4701401f" />
   <img src="https://github.com/user-attachments/assets/cf4fff8f-4d2f-49b8-ae4b-251dd0c398b7" width="48%" />
 </p>
 <p align="center">
