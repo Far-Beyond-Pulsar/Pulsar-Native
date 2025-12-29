@@ -38,11 +38,6 @@ pub fn sync_viewport_mouse_input_system(
         bevy_mouse.left_clicked = shared.left_clicked;
         bevy_mouse.left_down = shared.left_down;
         bevy_mouse.mouse_delta = shared.mouse_delta;
-        
-        // Debug log when click is detected
-        if shared.left_clicked {
-            tracing::info!("[BEVY-SYNC] 🖱️ Mouse click synced: pos=({:.3}, {:.3})", shared.mouse_pos.x, shared.mouse_pos.y);
-        }
     }
 }
 
