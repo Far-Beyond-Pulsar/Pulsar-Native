@@ -4,11 +4,25 @@
 //! Features: Animated gradient background, smooth text transitions, continue button
 
 use gpui::*;
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 use ui::{h_flex, v_flex, ActiveTheme, IconName, StyledExt};
 
 use super::gradient::AnimatedGradient;
 use super::audio::IntroAudio;
+
+/// Guard to prevent multiple animation loops
+static INTRO_SCREEN_CREATED: AtomicBool = AtomicBool::new(false);
+
+/// Shared animation start time - all instances use this for consistent timing
+static ANIMATION_START_TIME: OnceLock<Instant> = OnceLock::new();
+
+/// Shared phase start time - updated atomically (stored as millis since animation start)
+static PHASE_START_MILLIS: AtomicU8 = AtomicU8::new(0);
+
+/// Shared current phase
+static CURRENT_PHASE: AtomicU8 = AtomicU8::new(0);
 
 /// The current phase of the intro sequence
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -53,15 +67,29 @@ impl EventEmitter<IntroComplete> for IntroScreen {}
 
 impl IntroScreen {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
-        tracing::info!("🎬 [IntroScreen::new] Creating new IntroScreen instance");
+        // Initialize shared animation start time (first call wins)
+        let start_time = *ANIMATION_START_TIME.get_or_init(Instant::now);
+        
+        // Guard against multiple animation loops - only start once
+        let already_created = INTRO_SCREEN_CREATED.swap(true, Ordering::SeqCst);
+        if already_created {
+            tracing::warn!("🎬 [IntroScreen::new] IntroScreen already exists, using shared timing");
+        } else {
+            tracing::info!("🎬 [IntroScreen::new] Creating new IntroScreen instance (first time)");
+            // Reset phase tracking for new session
+            CURRENT_PHASE.store(0, Ordering::SeqCst);
+        }
         
         let audio = IntroAudio::new();
-        audio.play_ambient();
+        if !already_created {
+            audio.play_ambient();
+        }
 
+        // Use shared start time so all instances have consistent timing
         let screen = Self {
             phase: IntroPhase::FadeIn,
-            start_time: Instant::now(),
-            phase_start_time: Instant::now(),
+            start_time,
+            phase_start_time: start_time,
             gradient: AnimatedGradient::arc_style(),
             audio,
             headline: "Welcome to Pulsar".to_string(),
@@ -71,25 +99,29 @@ impl IntroScreen {
             frame_count: 0,
         };
 
-        // Start the animation loop
-        tracing::info!("🎬 [IntroScreen] Starting animation loop");
-        cx.spawn(async move |this, mut cx| {
-            loop {
-                cx.background_executor().timer(Duration::from_millis(16)).await; // ~60fps
-                
-                let should_continue = cx.update(|cx| {
-                    this.update(cx, |screen, cx| {
-                        screen.tick(cx);
-                        screen.phase != IntroPhase::Complete
-                    }).unwrap_or(false)
-                }).unwrap_or(false);
+        // Start the animation loop only on first creation
+        if !already_created {
+            tracing::info!("🎬 [IntroScreen] Starting animation loop");
+            cx.spawn(async move |this, mut cx| {
+                loop {
+                    cx.background_executor().timer(Duration::from_millis(16)).await; // ~60fps
+                    
+                    let should_continue = cx.update(|cx| {
+                        this.update(cx, |screen, cx| {
+                            screen.tick(cx);
+                            screen.phase != IntroPhase::Complete
+                        }).unwrap_or(false)
+                    }).unwrap_or(false);
 
-                if !should_continue {
-                    tracing::info!("🎬 [IntroScreen] Animation loop complete");
-                    break;
+                    if !should_continue {
+                        tracing::info!("🎬 [IntroScreen] Animation loop complete");
+                        // Reset the guard when done so it can be created again if needed
+                        INTRO_SCREEN_CREATED.store(false, Ordering::SeqCst);
+                        break;
+                    }
                 }
-            }
-        }).detach();
+            }).detach();
+        }
 
         screen
     }
@@ -402,8 +434,6 @@ impl Render for IntroScreen {
             )
     }
 }
-
-use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Session flag to prevent OOBE loop when --OOBE is used
 static OOBE_SHOWN_THIS_SESSION: AtomicBool = AtomicBool::new(false);
