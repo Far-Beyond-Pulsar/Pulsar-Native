@@ -6,8 +6,6 @@ index.scip
 *.log
 *.exe
 blueprint.json
-*.wav
-*.mp3
 *.stacks
 profile.json.gz
 .envrc
