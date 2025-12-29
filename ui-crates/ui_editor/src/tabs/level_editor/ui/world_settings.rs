@@ -179,12 +179,12 @@ impl WorldSettings {
                     .child(
                         ui::Icon::new(chevron_icon)
                             .size(px(14.0))
-                            .text_color(cx.theme().muted_foreground)
+                            .text_color(cx.theme().foreground)
                     )
                     .child(
                         ui::Icon::new(icon)
                             .size(px(14.0))
-                            .text_color(cx.theme().accent)
+                            .text_color(cx.theme().foreground)
                     )
                     .child(
                         div()
