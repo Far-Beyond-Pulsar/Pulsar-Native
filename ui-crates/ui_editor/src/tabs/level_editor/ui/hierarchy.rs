@@ -267,6 +267,8 @@ impl HierarchyPanel {
         let object_id_for_drag_start = object_id.clone();
         let state_clone_for_drop = state_arc.clone();
         let object_id_for_drop = object_id.clone();
+        let state_clone_for_expand = state_arc.clone();
+        let object_id_for_expand_click = object_id_for_expand.clone();
 
         // Container for the entire item (for drop target)
         let mut container = v_flex()
@@ -340,6 +342,8 @@ impl HierarchyPanel {
                     // Expand/collapse arrow for items with children
                     .child(
                         if has_children {
+                            let state_for_expand = state_clone_for_expand.clone();
+                            let id_for_expand = object_id_for_expand_click.clone();
                             div()
                                 .w_4()
                                 .h_4()
@@ -354,12 +358,15 @@ impl HierarchyPanel {
                                         .size(px(12.0))
                                         .text_color(muted_color)
                                 )
-                                .on_mouse_down(MouseButton::Left, cx.listener(move |view, _, _, cx| {
+                                .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
                                     cx.stop_propagation();
-                                    cx.dispatch_action(&ToggleObjectExpanded {
-                                        object_id: object_id_for_expand.clone()
-                                    });
-                                }))
+                                    let mut state_write = state_for_expand.write();
+                                    if state_write.is_object_expanded(&id_for_expand) {
+                                        state_write.expanded_objects.remove(&id_for_expand);
+                                    } else {
+                                        state_write.expanded_objects.insert(id_for_expand.clone());
+                                    }
+                                })
                                 .into_any_element()
                         } else {
                             div()
