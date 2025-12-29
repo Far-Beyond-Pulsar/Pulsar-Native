@@ -253,53 +253,56 @@ impl IntroScreen {
     }
 
     /// Calculate opacity using simple timeline-based animation
-    /// Timeline: 0-0.5s fade in BG, 0.3-1.0s title, 0.8-1.5s subtitle, 1.3-2.0s button
+    /// Timeline: staggered fade-ins with smooth easing
     fn calculate_element_opacity(&self, element: &str) -> f32 {
         let elapsed = self.get_total_elapsed();
         let current_phase = self.get_phase();
         
-        // During fade out, everything fades together
+        // During fade out, everything fades together with smooth easing
         if current_phase == IntroPhase::FadeOut {
             let fade_elapsed = self.get_phase_elapsed().as_secs_f32();
-            return 1.0 - (fade_elapsed / 0.5).min(1.0);
+            return ease_out_cubic(1.0 - (fade_elapsed / 0.6).min(1.0));
         }
         
         if current_phase == IntroPhase::Complete {
             return 0.0;
         }
         
-        // Simple timeline: each element fades in at its own time
+        // Smooth staggered timeline with generous overlap
         match element {
-            "background" => ease_in_out((elapsed / 0.5).min(1.0)),
+            "background" => ease_out_cubic((elapsed / 0.8).min(1.0)),
             "title" => {
-                if elapsed < 0.3 { 0.0 }
-                else { ease_in_out(((elapsed - 0.3) / 0.7).min(1.0)) }
+                if elapsed < 0.2 { 0.0 }
+                else { ease_out_quart(((elapsed - 0.2) / 1.0).min(1.0)) }
             }
             "subtitle" => {
-                if elapsed < 0.8 { 0.0 }
-                else { ease_in_out(((elapsed - 0.8) / 0.7).min(1.0)) }
+                if elapsed < 0.6 { 0.0 }
+                else { ease_out_quart(((elapsed - 0.6) / 1.0).min(1.0)) }
             }
             "button" => {
-                if elapsed < 1.3 { 0.0 }
-                else { ease_in_out(((elapsed - 1.3) / 0.7).min(1.0)) }
+                if elapsed < 1.0 { 0.0 }
+                else { ease_out_quart(((elapsed - 1.0) / 0.8).min(1.0)) }
             }
             _ => 1.0,
         }
     }
     
-    /// Calculate slide offset (30px to 0px as opacity goes 0 to 1)
+    /// Calculate slide offset with smoother motion (20px to 0px)
     fn calculate_element_offset(&self, element: &str) -> f32 {
-        30.0 * (1.0 - self.calculate_element_opacity(element))
+        let opacity = self.calculate_element_opacity(element);
+        // Use ease-out for the slide so it decelerates smoothly
+        20.0 * (1.0 - opacity)
     }
 }
 
-/// Simple ease-in-out function for smoother animations
-fn ease_in_out(t: f32) -> f32 {
-    if t < 0.5 {
-        2.0 * t * t
-    } else {
-        1.0 - (-2.0 * t + 2.0).powi(2) / 2.0
-    }
+/// Smooth ease-out cubic - decelerates nicely
+fn ease_out_cubic(t: f32) -> f32 {
+    1.0 - (1.0 - t).powi(3)
+}
+
+/// Even smoother ease-out quartic - more dramatic deceleration
+fn ease_out_quart(t: f32) -> f32 {
+    1.0 - (1.0 - t).powi(4)
 }
 
 impl Render for IntroScreen {
