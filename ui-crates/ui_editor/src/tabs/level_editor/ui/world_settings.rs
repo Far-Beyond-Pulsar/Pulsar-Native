@@ -5,8 +5,10 @@ use ui::{
     IconName,
 };
 use std::sync::Arc;
+use std::collections::HashSet;
 
 use super::state::LevelEditorState;
+use crate::tabs::level_editor::WorldSettingsPanel;
 
 /// World Settings Panel - Configure global world/scene settings
 /// Styled to match the Properties (Details) panel
@@ -19,9 +21,10 @@ impl WorldSettings {
 
     pub fn render(
         &self,
-        state: &LevelEditorState,
-        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
-        cx: &mut App
+        _state: &LevelEditorState,
+        _state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        collapsed_sections: &HashSet<String>,
+        cx: &mut Context<WorldSettingsPanel>
     ) -> impl IntoElement {
         v_flex()
             .size_full()
@@ -43,17 +46,17 @@ impl WorldSettings {
                                     .p_3()
                                     .gap_4()
                                     .child(Self::render_world_header(cx))
-                                    .child(Self::render_environment_section(cx))
-                                    .child(Self::render_lighting_section(cx))
-                                    .child(Self::render_fog_section(cx))
-                                    .child(Self::render_physics_section(cx))
-                                    .child(Self::render_audio_section(cx))
+                                    .child(Self::render_collapsible_section("Environment", IconName::Cloud, collapsed_sections.contains("Environment"), cx))
+                                    .child(Self::render_collapsible_section("Global Illumination", IconName::Sun, collapsed_sections.contains("Global Illumination"), cx))
+                                    .child(Self::render_collapsible_section("Fog & Atmosphere", IconName::Fog, collapsed_sections.contains("Fog & Atmosphere"), cx))
+                                    .child(Self::render_collapsible_section("Physics", IconName::Activity, collapsed_sections.contains("Physics"), cx))
+                                    .child(Self::render_collapsible_section("Audio", IconName::MusicNote, collapsed_sections.contains("Audio"), cx))
                             )
                     )
             )
     }
 
-    fn render_header(&self, cx: &App) -> impl IntoElement {
+    fn render_header(&self, cx: &Context<WorldSettingsPanel>) -> impl IntoElement {
         h_flex()
             .w_full()
             .px_4()
@@ -94,7 +97,7 @@ impl WorldSettings {
             )
     }
 
-    fn render_world_header(cx: &App) -> impl IntoElement {
+    fn render_world_header(cx: &Context<WorldSettingsPanel>) -> impl IntoElement {
         v_flex()
             .w_full()
             .p_3()
@@ -144,9 +147,13 @@ impl WorldSettings {
     fn render_collapsible_section(
         title: &str,
         icon: IconName,
-        content: impl IntoElement,
-        cx: &App
+        is_collapsed: bool,
+        cx: &mut Context<WorldSettingsPanel>
     ) -> impl IntoElement {
+        let section_name = title.to_string();
+        let chevron_icon = if is_collapsed { IconName::ChevronRight } else { IconName::ChevronDown };
+        let section_id = SharedString::from(format!("section-{}", title));
+        
         v_flex()
             .w_full()
             .rounded(px(8.0))
@@ -154,20 +161,23 @@ impl WorldSettings {
             .border_color(cx.theme().border)
             .overflow_hidden()
             .child(
-                // Section header
+                // Section header - clickable to toggle
                 h_flex()
+                    .id(section_id)
                     .w_full()
                     .px_3()
                     .py_2()
                     .gap_2()
                     .items_center()
                     .bg(cx.theme().sidebar)
-                    .border_b_1()
-                    .border_color(cx.theme().border)
+                    .when(!is_collapsed, |this| this.border_b_1().border_color(cx.theme().border))
                     .cursor_pointer()
                     .hover(|s| s.bg(cx.theme().sidebar.opacity(0.8)))
+                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _event, _window, cx| {
+                        this.toggle_section(section_name.clone(), cx);
+                    }))
                     .child(
-                        ui::Icon::new(IconName::ChevronDown)
+                        ui::Icon::new(chevron_icon)
                             .size(px(14.0))
                             .text_color(cx.theme().muted_foreground)
                     )
@@ -184,97 +194,71 @@ impl WorldSettings {
                             .child(title.to_string())
                     )
             )
-            .child(
-                // Section content
-                div()
-                    .w_full()
-                    .p_3()
-                    .bg(cx.theme().background)
-                    .child(content)
-            )
+            .when(!is_collapsed, |this| {
+                this.child(
+                    // Section content - only shown when not collapsed
+                    div()
+                        .w_full()
+                        .p_3()
+                        .bg(cx.theme().background)
+                        .child(Self::render_section_content(title, cx))
+                )
+            })
     }
 
-    fn render_environment_section(cx: &App) -> impl IntoElement {
-        Self::render_collapsible_section(
-            "Environment",
-            IconName::Cloud,
-            v_flex()
+    /// Renders the content for a specific section
+    fn render_section_content(section_name: &str, cx: &Context<WorldSettingsPanel>) -> impl IntoElement {
+        match section_name {
+            "Environment" => v_flex()
                 .gap_3()
                 .child(Self::render_dropdown_row("Skybox", "Default Sky", cx))
                 .child(Self::render_color_row("Sky Color", Hsla { h: 210.0, s: 0.6, l: 0.7, a: 1.0 }, cx))
                 .child(Self::render_color_row("Horizon Color", Hsla { h: 30.0, s: 0.7, l: 0.8, a: 1.0 }, cx))
                 .child(Self::render_color_row("Ground Color", Hsla { h: 30.0, s: 0.3, l: 0.3, a: 1.0 }, cx))
                 .child(Self::render_property_row("Sky Intensity", "1.0", "", cx))
-                .child(Self::render_toggle_row("Enable Clouds", true, cx)),
-            cx
-        )
-    }
-
-    fn render_lighting_section(cx: &App) -> impl IntoElement {
-        Self::render_collapsible_section(
-            "Global Illumination",
-            IconName::Sun,
-            v_flex()
+                .child(Self::render_toggle_row("Enable Clouds", true, cx))
+                .into_any_element(),
+            "Global Illumination" => v_flex()
                 .gap_3()
                 .child(Self::render_color_row("Ambient Color", Hsla { h: 220.0, s: 0.2, l: 0.4, a: 1.0 }, cx))
                 .child(Self::render_property_row("Ambient Intensity", "0.3", "", cx))
                 .child(Self::render_dropdown_row("GI Mode", "Baked", cx))
                 .child(Self::render_property_row("Bounce Count", "2", "", cx))
                 .child(Self::render_toggle_row("Realtime GI", false, cx))
-                .child(Self::render_toggle_row("Ambient Occlusion", true, cx)),
-            cx
-        )
-    }
-
-    fn render_fog_section(cx: &App) -> impl IntoElement {
-        Self::render_collapsible_section(
-            "Fog & Atmosphere",
-            IconName::Fog,
-            v_flex()
+                .child(Self::render_toggle_row("Ambient Occlusion", true, cx))
+                .into_any_element(),
+            "Fog & Atmosphere" => v_flex()
                 .gap_3()
                 .child(Self::render_toggle_row("Enable Fog", true, cx))
                 .child(Self::render_dropdown_row("Fog Mode", "Exponential", cx))
                 .child(Self::render_color_row("Fog Color", Hsla { h: 210.0, s: 0.3, l: 0.7, a: 1.0 }, cx))
                 .child(Self::render_property_row("Fog Density", "0.02", "", cx))
                 .child(Self::render_property_row("Fog Start", "10", "m", cx))
-                .child(Self::render_property_row("Fog End", "500", "m", cx)),
-            cx
-        )
-    }
-
-    fn render_physics_section(cx: &App) -> impl IntoElement {
-        Self::render_collapsible_section(
-            "Physics",
-            IconName::Activity,
-            v_flex()
+                .child(Self::render_property_row("Fog End", "500", "m", cx))
+                .into_any_element(),
+            "Physics" => v_flex()
                 .gap_3()
                 .child(Self::render_vector3_display("Gravity", [0.0, -9.81, 0.0], cx))
                 .child(Self::render_property_row("Time Scale", "1.0", "x", cx))
                 .child(Self::render_property_row("Fixed Timestep", "0.02", "s", cx))
                 .child(Self::render_toggle_row("Enable Physics", true, cx))
-                .child(Self::render_toggle_row("Auto Simulation", true, cx)),
-            cx
-        )
-    }
-
-    fn render_audio_section(cx: &App) -> impl IntoElement {
-        Self::render_collapsible_section(
-            "Audio",
-            IconName::MusicNote,
-            v_flex()
+                .child(Self::render_toggle_row("Auto Simulation", true, cx))
+                .into_any_element(),
+            "Audio" => v_flex()
                 .gap_3()
                 .child(Self::render_property_row("Master Volume", "1.0", "", cx))
                 .child(Self::render_property_row("Speed of Sound", "343", "m/s", cx))
                 .child(Self::render_property_row("Doppler Factor", "1.0", "", cx))
                 .child(Self::render_dropdown_row("Reverb Preset", "None", cx))
-                .child(Self::render_toggle_row("Enable Spatial Audio", true, cx)),
-            cx
-        )
+                .child(Self::render_toggle_row("Enable Spatial Audio", true, cx))
+                .into_any_element(),
+            _ => div().into_any_element(),
+        }
     }
 
     // Helper rendering functions (matching Properties panel style)
     
-    fn render_property_row(label: &str, value: &str, unit: &str, cx: &App) -> impl IntoElement {
+    fn render_property_row(label: &str, value: &str, unit: &str, cx: &Context<WorldSettingsPanel>) -> impl IntoElement {
         h_flex()
             .w_full()
             .gap_2()
@@ -317,7 +301,7 @@ impl WorldSettings {
             )
     }
 
-    fn render_dropdown_row(label: &str, value: &str, cx: &App) -> impl IntoElement {
+    fn render_dropdown_row(label: &str, value: &str, cx: &Context<WorldSettingsPanel>) -> impl IntoElement {
         h_flex()
             .w_full()
             .gap_2()
@@ -357,7 +341,7 @@ impl WorldSettings {
             )
     }
 
-    fn render_color_row(label: &str, color: Hsla, cx: &App) -> impl IntoElement {
+    fn render_color_row(label: &str, color: Hsla, cx: &Context<WorldSettingsPanel>) -> impl IntoElement {
         // Convert HSLA to approximate RGB hex for display
         let rgb = hsla_to_rgb_approx(color);
         
@@ -403,7 +387,7 @@ impl WorldSettings {
             )
     }
 
-    fn render_toggle_row(label: &str, enabled: bool, cx: &App) -> impl IntoElement {
+    fn render_toggle_row(label: &str, enabled: bool, cx: &Context<WorldSettingsPanel>) -> impl IntoElement {
         h_flex()
             .w_full()
             .gap_2()
@@ -434,7 +418,7 @@ impl WorldSettings {
             )
     }
 
-    fn render_vector3_display(label: &str, values: [f32; 3], cx: &App) -> impl IntoElement {
+    fn render_vector3_display(label: &str, values: [f32; 3], cx: &Context<WorldSettingsPanel>) -> impl IntoElement {
         v_flex()
             .gap_2()
             .child(
@@ -453,7 +437,7 @@ impl WorldSettings {
             )
     }
 
-    fn render_axis_display(axis: &str, axis_color: Hsla, value: f32, cx: &App) -> impl IntoElement {
+    fn render_axis_display(axis: &str, axis_color: Hsla, value: f32, cx: &Context<WorldSettingsPanel>) -> impl IntoElement {
         h_flex()
             .flex_1()
             .h_7()

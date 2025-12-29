@@ -6,6 +6,7 @@ use ui::{
     IconName,
 };
 use std::sync::Arc;
+use std::collections::HashSet;
 
 use super::state::{LevelEditorState, Transform};
 use crate::tabs::level_editor::scene_database::ObjectType;
@@ -25,6 +26,7 @@ impl PropertiesPanel {
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         editing_property: &Option<String>,
         property_input: &Entity<InputState>,
+        collapsed_sections: &HashSet<String>,
         window: &mut Window,
         cx: &mut Context<PropertiesPanelWrapper>
     ) -> impl IntoElement {

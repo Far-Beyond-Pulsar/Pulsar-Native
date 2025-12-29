@@ -6,6 +6,7 @@ use super::ui::{WorldSettings, HierarchyPanel, PropertiesPanel, ViewportPanel, L
 use std::sync::Arc;
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::collections::HashSet;
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use engine_backend::GameThread;
 
@@ -14,6 +15,8 @@ pub struct WorldSettingsPanel {
     world_settings: WorldSettings,
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
     focus_handle: FocusHandle,
+    /// Tracks which sections are collapsed (by section name)
+    collapsed_sections: HashSet<String>,
 }
 
 impl WorldSettingsPanel {
@@ -22,7 +25,21 @@ impl WorldSettingsPanel {
             world_settings: WorldSettings::new(),
             state,
             focus_handle: cx.focus_handle(),
+            collapsed_sections: HashSet::new(),
         }
+    }
+
+    pub fn toggle_section(&mut self, section: String, cx: &mut Context<Self>) {
+        if self.collapsed_sections.contains(&section) {
+            self.collapsed_sections.remove(&section);
+        } else {
+            self.collapsed_sections.insert(section);
+        }
+        cx.notify();
+    }
+
+    pub fn is_section_collapsed(&self, section: &str) -> bool {
+        self.collapsed_sections.contains(section)
     }
 }
 
@@ -31,10 +48,11 @@ impl EventEmitter<PanelEvent> for WorldSettingsPanel {}
 impl Render for WorldSettingsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.state.read();
+        let collapsed_sections = self.collapsed_sections.clone();
         v_flex()
             .size_full()
             .bg(cx.theme().sidebar)
-            .child(self.world_settings.render(&*state, self.state.clone(), cx))
+            .child(self.world_settings.render(&*state, self.state.clone(), &collapsed_sections, cx))
     }
 }
 
@@ -108,6 +126,8 @@ pub struct PropertiesPanelWrapper {
     // Input state for property editing
     editing_property: Option<String>,
     property_input: Entity<InputState>,
+    /// Tracks which sections are collapsed (by section name)
+    collapsed_sections: HashSet<String>,
 }
 
 impl PropertiesPanelWrapper {
@@ -119,7 +139,21 @@ impl PropertiesPanelWrapper {
             focus_handle: cx.focus_handle(),
             editing_property: None,
             property_input,
+            collapsed_sections: HashSet::new(),
         }
+    }
+
+    pub fn toggle_section(&mut self, section: String, cx: &mut Context<Self>) {
+        if self.collapsed_sections.contains(&section) {
+            self.collapsed_sections.remove(&section);
+        } else {
+            self.collapsed_sections.insert(section);
+        }
+        cx.notify();
+    }
+
+    pub fn is_section_collapsed(&self, section: &str) -> bool {
+        self.collapsed_sections.contains(section)
     }
 
     pub fn start_editing(&mut self, property_path: String, current_value: String, window: &mut Window, cx: &mut Context<Self>) {
@@ -179,6 +213,7 @@ impl EventEmitter<PanelEvent> for PropertiesPanelWrapper {}
 impl Render for PropertiesPanelWrapper {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.state.read();
+        let collapsed_sections = self.collapsed_sections.clone();
 
         v_flex()
             .size_full()
@@ -188,6 +223,7 @@ impl Render for PropertiesPanelWrapper {
                 self.state.clone(),
                 &self.editing_property,
                 &self.property_input,
+                &collapsed_sections,
                 window,
                 cx
             ))
