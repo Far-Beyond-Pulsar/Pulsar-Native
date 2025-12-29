@@ -202,11 +202,11 @@ impl LevelEditorPanel {
             );
 
             // Compose right dock as a vertical split: top = hierarchy (25%), bottom = tabs (75%)
-            // Using split_with_sizes to set hierarchy to ~25% height (smaller fixed size)
+            // Hierarchy gets smaller fixed size, Properties/World gets larger
             let right = ui::dock::DockItem::split_with_sizes(
                 gpui::Axis::Vertical,
                 vec![top_hierarchy, bottom_tabs],
-                vec![Some(px(180.0)), None],  // Hierarchy gets fixed 180px, Properties/World gets rest
+                vec![Some(px(150.0)), Some(px(550.0))],  // 150px hierarchy, 550px for Properties/World
                 &dock_area,
                 window,
                 cx,
