@@ -108,6 +108,8 @@ If you’re interested in large‑scale multiplayer and server technology, you m
 
 ## Screenshots & Development Media
 
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/f624f779-7532-4e40-acff-3861aa6b4204" />
+
 <p align="center">
   <img src="https://github.com/user-attachments/assets/1d18a87e-050e-47ed-bbcb-05c4d4850c6d" width="48%" />
   <img src="https://github.com/user-attachments/assets/9097fae6-2ce9-40a2-9581-e692a7b38770" width="48%" />
