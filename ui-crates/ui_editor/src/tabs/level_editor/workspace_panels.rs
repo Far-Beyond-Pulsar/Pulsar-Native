@@ -21,11 +21,19 @@ pub struct WorldSettingsPanel {
 
 impl WorldSettingsPanel {
     pub fn new(state: Arc<parking_lot::RwLock<LevelEditorState>>, cx: &mut Context<Self>) -> Self {
+        // Default all sections to collapsed
+        let mut collapsed_sections = HashSet::new();
+        collapsed_sections.insert("Environment".to_string());
+        collapsed_sections.insert("Global Illumination".to_string());
+        collapsed_sections.insert("Fog & Atmosphere".to_string());
+        collapsed_sections.insert("Physics".to_string());
+        collapsed_sections.insert("Audio".to_string());
+        
         Self {
             world_settings: WorldSettings::new(),
             state,
             focus_handle: cx.focus_handle(),
-            collapsed_sections: HashSet::new(),
+            collapsed_sections,
         }
     }
 
@@ -133,13 +141,27 @@ pub struct PropertiesPanelWrapper {
 impl PropertiesPanelWrapper {
     pub fn new(state: Arc<parking_lot::RwLock<LevelEditorState>>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let property_input = cx.new(|cx| InputState::new(window, cx));
+        // Default all sections to collapsed except Transform (the top section)
+        let mut collapsed_sections = HashSet::new();
+        collapsed_sections.insert("Camera Settings".to_string());
+        collapsed_sections.insert("Light Settings".to_string());
+        collapsed_sections.insert("Mesh Settings".to_string());
+        collapsed_sections.insert("Folder Settings".to_string());
+        collapsed_sections.insert("Empty Object".to_string());
+        collapsed_sections.insert("Particle System".to_string());
+        collapsed_sections.insert("Audio Source".to_string());
+        collapsed_sections.insert("Tags & Layers".to_string());
+        collapsed_sections.insert("Components".to_string());
+        collapsed_sections.insert("Rendering".to_string());
+        collapsed_sections.insert("Physics".to_string());
+        
         Self {
             properties: PropertiesPanel::new(),
             state,
             focus_handle: cx.focus_handle(),
             editing_property: None,
             property_input,
-            collapsed_sections: HashSet::new(),
+            collapsed_sections,
         }
     }
 

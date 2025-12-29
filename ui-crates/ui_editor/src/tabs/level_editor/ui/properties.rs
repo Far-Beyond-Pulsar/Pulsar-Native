@@ -55,10 +55,15 @@ impl PropertiesPanel {
                                             &selected.transform,
                                             editing_property,
                                             property_input,
+                                            collapsed_sections.contains("Transform"),
                                             window,
                                             cx
                                         ))
-                                        .child(Self::render_object_type_section(&selected, cx))
+                                        .child(Self::render_object_type_section(&selected, collapsed_sections, cx))
+                                        .child(Self::render_tags_section(collapsed_sections, cx))
+                                        .child(Self::render_components_section(collapsed_sections, cx))
+                                        .child(Self::render_rendering_section(&selected, collapsed_sections, cx))
+                                        .child(Self::render_physics_section(&selected, collapsed_sections, cx))
                                         .into_any_element()
                                 } else {
                                     Self::render_empty_state(cx).into_any_element()
@@ -228,8 +233,10 @@ impl PropertiesPanel {
         } else {
             cx.theme().muted_foreground
         };
+        let chip_id = SharedString::from(format!("toggle-chip-{}", label));
         
         h_flex()
+            .id(chip_id)
             .px_2()
             .py_1()
             .gap_1()
@@ -256,12 +263,14 @@ impl PropertiesPanel {
         transform: &Transform,
         editing_property: &Option<String>,
         property_input: &Entity<InputState>,
+        is_collapsed: bool,
         window: &mut Window,
         cx: &mut Context<PropertiesPanelWrapper>
     ) -> impl IntoElement {
         Self::render_collapsible_section(
             "Transform",
-            IconName::ChevronDown,
+            IconName::Axes,
+            is_collapsed,
             v_flex()
                 .gap_3()
                 .child(Self::render_vector3_field("Position", "position", transform.position, editing_property, property_input, window, cx))
@@ -274,9 +283,14 @@ impl PropertiesPanel {
     fn render_collapsible_section(
         title: &str,
         icon: IconName,
+        is_collapsed: bool,
         content: impl IntoElement,
-        cx: &Context<PropertiesPanelWrapper>
+        cx: &mut Context<PropertiesPanelWrapper>
     ) -> impl IntoElement {
+        let section_name = title.to_string();
+        let chevron_icon = if is_collapsed { IconName::ChevronRight } else { IconName::ChevronDown };
+        let section_id = SharedString::from(format!("props-section-{}", title));
+        
         v_flex()
             .w_full()
             .rounded(px(8.0))
@@ -284,20 +298,23 @@ impl PropertiesPanel {
             .border_color(cx.theme().border)
             .overflow_hidden()
             .child(
-                // Section header
+                // Section header - clickable to toggle
                 h_flex()
+                    .id(section_id)
                     .w_full()
                     .px_3()
                     .py_2()
                     .gap_2()
                     .items_center()
                     .bg(cx.theme().sidebar)
-                    .border_b_1()
-                    .border_color(cx.theme().border)
+                    .when(!is_collapsed, |this| this.border_b_1().border_color(cx.theme().border))
                     .cursor_pointer()
                     .hover(|s| s.bg(cx.theme().sidebar.opacity(0.8)))
+                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _event, _window, cx| {
+                        this.toggle_section(section_name.clone(), cx);
+                    }))
                     .child(
-                        ui::Icon::new(IconName::ChevronDown)
+                        ui::Icon::new(chevron_icon)
                             .size(px(14.0))
                             .text_color(cx.theme().muted_foreground)
                     )
@@ -314,17 +331,19 @@ impl PropertiesPanel {
                             .child(title.to_string())
                     )
             )
-            .child(
-                // Section content
-                div()
-                    .w_full()
-                    .p_3()
-                    .bg(cx.theme().background)
-                    .child(content)
-            )
+            .when(!is_collapsed, |this| {
+                this.child(
+                    // Section content - only shown when not collapsed
+                    div()
+                        .w_full()
+                        .p_3()
+                        .bg(cx.theme().background)
+                        .child(content)
+                )
+            })
     }
 
-    fn render_object_type_section(object: &super::state::SceneObject, cx: &Context<PropertiesPanelWrapper>) -> impl IntoElement {
+    fn render_object_type_section(object: &super::state::SceneObject, collapsed_sections: &HashSet<String>, cx: &mut Context<PropertiesPanelWrapper>) -> impl IntoElement {
         let (title, icon) = match object.object_type {
             ObjectType::Camera => ("Camera Settings", IconName::Camera),
             ObjectType::Folder => ("Folder Settings", IconName::Folder),
@@ -334,6 +353,8 @@ impl PropertiesPanel {
             ObjectType::ParticleSystem => ("Particle System", IconName::Sparks),
             ObjectType::AudioSource => ("Audio Source", IconName::MusicNote),
         };
+        
+        let is_collapsed = collapsed_sections.contains(title);
         
         let content = match object.object_type {
             ObjectType::Camera => Self::render_camera_settings(cx).into_any_element(),
@@ -351,7 +372,7 @@ impl PropertiesPanel {
                 .into_any_element(),
         };
         
-        Self::render_collapsible_section(title, icon, content, cx)
+        Self::render_collapsible_section(title, icon, is_collapsed, content, cx)
     }
 
     fn render_camera_settings(cx: &Context<PropertiesPanelWrapper>) -> impl IntoElement {
@@ -716,6 +737,179 @@ impl PropertiesPanel {
                         }))
                         .into_any_element()
                 }
+            )
+    }
+
+    // ===== NEW SECTIONS =====
+
+    fn render_tags_section(collapsed_sections: &HashSet<String>, cx: &mut Context<PropertiesPanelWrapper>) -> impl IntoElement {
+        let is_collapsed = collapsed_sections.contains("Tags & Layers");
+        
+        Self::render_collapsible_section(
+            "Tags & Layers",
+            IconName::Label,
+            is_collapsed,
+            v_flex()
+                .gap_3()
+                .child(Self::render_dropdown_row("Tag", "Untagged", cx))
+                .child(Self::render_dropdown_row("Layer", "Default", cx))
+                .child(
+                    h_flex()
+                        .w_full()
+                        .gap_2()
+                        .child(Self::render_mini_toggle("Static", true, cx))
+                        .child(Self::render_mini_toggle("Navigation", false, cx))
+                ),
+            cx
+        )
+    }
+
+    fn render_components_section(collapsed_sections: &HashSet<String>, cx: &mut Context<PropertiesPanelWrapper>) -> impl IntoElement {
+        let is_collapsed = collapsed_sections.contains("Components");
+        
+        Self::render_collapsible_section(
+            "Components",
+            IconName::Puzzle,
+            is_collapsed,
+            v_flex()
+                .gap_2()
+                .child(Self::render_component_item("Transform", "Built-in", true, cx))
+                .child(Self::render_component_item("MeshRenderer", "Built-in", true, cx))
+                .child(
+                    h_flex()
+                        .w_full()
+                        .justify_center()
+                        .pt_2()
+                        .child(
+                            Button::new("add_component")
+                                .label("Add Component")
+                                .icon(IconName::Plus)
+                                .xsmall()
+                        )
+                ),
+            cx
+        )
+    }
+
+    fn render_rendering_section(object: &super::state::SceneObject, collapsed_sections: &HashSet<String>, cx: &mut Context<PropertiesPanelWrapper>) -> impl IntoElement {
+        let is_collapsed = collapsed_sections.contains("Rendering");
+        
+        Self::render_collapsible_section(
+            "Rendering",
+            IconName::Eye,
+            is_collapsed,
+            v_flex()
+                .gap_3()
+                .child(Self::render_dropdown_row("Render Queue", "Opaque (2000)", cx))
+                .child(Self::render_toggle_row("Cast Shadows", true, cx))
+                .child(Self::render_toggle_row("Receive Shadows", true, cx))
+                .child(Self::render_dropdown_row("Light Probes", "Blend Probes", cx))
+                .child(Self::render_dropdown_row("Reflection Probes", "Blend Probes", cx)),
+            cx
+        )
+    }
+
+    fn render_physics_section(object: &super::state::SceneObject, collapsed_sections: &HashSet<String>, cx: &mut Context<PropertiesPanelWrapper>) -> impl IntoElement {
+        let is_collapsed = collapsed_sections.contains("Physics");
+        
+        Self::render_collapsible_section(
+            "Physics",
+            IconName::Activity,
+            is_collapsed,
+            v_flex()
+                .gap_3()
+                .child(Self::render_toggle_row("Use Gravity", true, cx))
+                .child(Self::render_toggle_row("Is Kinematic", false, cx))
+                .child(Self::render_property_row("Mass", "1.0", "kg", cx))
+                .child(Self::render_property_row("Drag", "0.0", "", cx))
+                .child(Self::render_property_row("Angular Drag", "0.05", "", cx))
+                .child(Self::render_dropdown_row("Collision Detection", "Discrete", cx)),
+            cx
+        )
+    }
+
+    fn render_mini_toggle(label: &str, active: bool, cx: &Context<PropertiesPanelWrapper>) -> impl IntoElement {
+        let toggle_id = SharedString::from(format!("mini-toggle-{}", label));
+        let bg = if active { cx.theme().accent.opacity(0.2) } else { cx.theme().muted.opacity(0.3) };
+        let text_color = if active { cx.theme().accent } else { cx.theme().muted_foreground };
+        
+        h_flex()
+            .id(toggle_id)
+            .flex_1()
+            .px_2()
+            .py_1()
+            .gap_1()
+            .items_center()
+            .justify_center()
+            .bg(bg)
+            .rounded(px(4.0))
+            .cursor_pointer()
+            .hover(|s| s.opacity(0.8))
+            .child(
+                div()
+                    .size_2()
+                    .rounded_full()
+                    .bg(text_color)
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(text_color)
+                    .child(label.to_string())
+            )
+    }
+
+    fn render_component_item(name: &str, category: &str, enabled: bool, cx: &Context<PropertiesPanelWrapper>) -> impl IntoElement {
+        let item_id = SharedString::from(format!("component-{}", name));
+        
+        h_flex()
+            .id(item_id)
+            .w_full()
+            .px_2()
+            .py_1()
+            .gap_2()
+            .items_center()
+            .bg(cx.theme().input)
+            .rounded(px(4.0))
+            .border_1()
+            .border_color(cx.theme().border)
+            .cursor_pointer()
+            .hover(|s| s.bg(cx.theme().accent.opacity(0.1)))
+            .child(
+                div()
+                    .size_4()
+                    .rounded(px(2.0))
+                    .bg(if enabled { cx.theme().accent } else { cx.theme().muted })
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        ui::Icon::new(IconName::Check)
+                            .size(px(10.0))
+                            .text_color(white())
+                    )
+            )
+            .child(
+                v_flex()
+                    .flex_1()
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(cx.theme().foreground)
+                            .child(name.to_string())
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(category.to_string())
+                    )
+            )
+            .child(
+                ui::Icon::new(IconName::Ellipsis)
+                    .size(px(14.0))
+                    .text_color(cx.theme().muted_foreground)
             )
     }
 }
