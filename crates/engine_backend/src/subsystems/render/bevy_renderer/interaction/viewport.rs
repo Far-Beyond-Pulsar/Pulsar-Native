@@ -64,7 +64,7 @@ pub fn viewport_click_initiate_raycast_system(
         
     // Get camera
     let Ok((camera, camera_transform)) = camera_query.single() else {
-        tracing::info!("[RAYCAST] ⚠️ No camera found!");
+        tracing::debug!("[RAYCAST] ⚠️ No camera found!");
         return;
     };
     
@@ -143,7 +143,7 @@ pub fn viewport_poll_raycast_system(
                         _ => format!("object_{}", selected_id),
                     };
                     
-                    tracing::info!("[RAYCAST] 🎯 Selected '{}' at distance {:.3}", 
+                    tracing::debug!("[RAYCAST] 🎯 Selected '{}' at distance {:.3}", 
                         string_id, result.hit_distance.unwrap_or(0.0));
                     
                     // Update local Bevy ECS resource
@@ -163,7 +163,7 @@ pub fn viewport_poll_raycast_system(
                     }
                 } else {
                     // No hits - deselect
-                    tracing::info!("[RAYCAST] ⭕ No hits - deselected");
+                    tracing::debug!("[RAYCAST] ⭕ No hits - deselected");
                     gizmo_state.selected_object_id = None;
                     
                     if let Ok(mut shared) = shared_gizmo_state.0.try_lock() {

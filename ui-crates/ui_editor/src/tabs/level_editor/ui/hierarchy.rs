@@ -1,4 +1,4 @@
-use gpui::*;
+use gpui::{prelude::*, *};
 use ui::{
     button::{Button, ButtonVariants as _},
     context_menu::ContextMenuExt,
@@ -31,9 +31,11 @@ impl HierarchyPanel {
         let is_drag_in_progress = !matches!(&state.hierarchy_drag_state, HierarchyDragState::None);
 
         let state_arc_for_esc = state_arc.clone();
+        let object_count = state.scene_database.get_root_objects().len();
 
         v_flex()
             .size_full()
+            .bg(cx.theme().background)
             .on_key_down(cx.listener(move |view, event: &KeyDownEvent, window, cx| {
                 // ESC to cancel drag
                 if event.keystroke.key.as_str() == "escape" {
@@ -46,100 +48,115 @@ impl HierarchyPanel {
                 }
             }))
             .child(
-                // Header
-                div()
+                // Professional header
+                h_flex()
                     .w_full()
                     .px_4()
                     .py_3()
+                    .justify_between()
+                    .items_center()
+                    .bg(cx.theme().sidebar)
                     .border_b_1()
                     .border_color(cx.theme().border)
                     .child(
                         h_flex()
-                            .w_full()
-                            .justify_between()
+                            .gap_3()
                             .items_center()
                             .child(
                                 div()
-                                    .text_sm()
-                                    .font_semibold()
+                                    .text_base()
+                                    .font_weight(FontWeight::SEMIBOLD)
                                     .text_color(cx.theme().foreground)
                                     .child("Hierarchy")
                             )
                             .child(
-                                h_flex()
-                                    .gap_1()
-                                    .child({
-                                        let state_clone = state_arc.clone();
-                                        Button::new("add_object")
-                                            .icon(IconName::Plus)
-                                            .ghost()
-                                            .xsmall()
-                                            .tooltip("Add Object")
-                                            .on_click(move |_, _, _| {
-                                                use crate::tabs::level_editor::scene_database::{SceneObjectData, ObjectType, Transform};
-                                                let objects_count = state_clone.read().scene_objects().len();
-                                                let new_object = SceneObjectData {
-                                                    id: format!("object_{}", objects_count + 1),
-                                                    name: "New Object".to_string(),
-                                                    object_type: ObjectType::Empty,
-                                                    transform: Transform::default(),
-                                                    visible: true,
-                                                    locked: false,
-                                                    parent: None,
-                                                    children: vec![],
-                                                    components: vec![],
-                                                };
-                                                state_clone.read().scene_database.add_object(new_object, None);
-                                            })
-                                    })
-                                    .child({
-                                        let state_clone = state_arc.clone();
-                                        Button::new("add_folder")
-                                            .icon(IconName::FolderPlus)
-                                            .ghost()
-                                            .xsmall()
-                                            .tooltip("Add Folder")
-                                            .on_click(move |_, _, _| {
-                                                use crate::tabs::level_editor::scene_database::{SceneObjectData, ObjectType, Transform};
-                                                let objects_count = state_clone.read().scene_objects().len();
-                                                let new_folder = SceneObjectData {
-                                                    id: format!("folder_{}", objects_count + 1),
-                                                    name: "New Folder".to_string(),
-                                                    object_type: ObjectType::Folder,
-                                                    transform: Transform::default(),
-                                                    visible: true,
-                                                    locked: false,
-                                                    parent: None,
-                                                    children: vec![],
-                                                    components: vec![],
-                                                };
-                                                state_clone.read().scene_database.add_object(new_folder, None);
-                                            })
-                                    })
-                                    .child({
-                                        let state_clone = state_arc.clone();
-                                        Button::new("delete_object")
-                                            .icon(IconName::Trash)
-                                            .ghost()
-                                            .xsmall()
-                                            .tooltip("Delete Selected")
-                                            .on_click(move |_, _, _| {
-                                                if let Some(id) = state_clone.read().selected_object() {
-                                                    state_clone.read().scene_database.remove_object(&id);
-                                                }
-                                            })
-                                    })
+                                div()
+                                    .px_2()
+                                    .py(px(2.0))
+                                    .rounded(px(4.0))
+                                    .bg(cx.theme().muted.opacity(0.5))
+                                    .text_xs()
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(format!("{} objects", object_count))
                             )
+                    )
+                    .child(
+                        h_flex()
+                            .gap_1()
+                            .child({
+                                let state_clone = state_arc.clone();
+                                Button::new("add_object")
+                                    .icon(IconName::Plus)
+                                    .ghost()
+                                    .xsmall()
+                                    .tooltip("Add Object")
+                                    .on_click(move |_, _, _| {
+                                        use crate::tabs::level_editor::scene_database::{SceneObjectData, ObjectType, Transform};
+                                        let objects_count = state_clone.read().scene_objects().len();
+                                        let new_object = SceneObjectData {
+                                            id: format!("object_{}", objects_count + 1),
+                                            name: "New Object".to_string(),
+                                            object_type: ObjectType::Empty,
+                                            transform: Transform::default(),
+                                            visible: true,
+                                            locked: false,
+                                            parent: None,
+                                            children: vec![],
+                                            components: vec![],
+                                        };
+                                        state_clone.read().scene_database.add_object(new_object, None);
+                                    })
+                            })
+                            .child({
+                                let state_clone = state_arc.clone();
+                                Button::new("add_folder")
+                                    .icon(IconName::FolderPlus)
+                                    .ghost()
+                                    .xsmall()
+                                    .tooltip("Add Folder")
+                                    .on_click(move |_, _, _| {
+                                        use crate::tabs::level_editor::scene_database::{SceneObjectData, ObjectType, Transform};
+                                        let objects_count = state_clone.read().scene_objects().len();
+                                        let new_folder = SceneObjectData {
+                                            id: format!("folder_{}", objects_count + 1),
+                                            name: "New Folder".to_string(),
+                                            object_type: ObjectType::Folder,
+                                            transform: Transform::default(),
+                                            visible: true,
+                                            locked: false,
+                                            parent: None,
+                                            children: vec![],
+                                            components: vec![],
+                                        };
+                                        state_clone.read().scene_database.add_object(new_folder, None);
+                                    })
+                            })
+                            .child({
+                                let state_clone = state_arc.clone();
+                                Button::new("delete_object")
+                                    .icon(IconName::Trash)
+                                    .ghost()
+                                    .xsmall()
+                                    .tooltip("Delete Selected")
+                                    .on_click(move |_, _, _| {
+                                        if let Some(id) = state_clone.read().selected_object() {
+                                            state_clone.read().scene_database.remove_object(&id);
+                                        }
+                                    })
+                            })
                     )
             )
             .child(
-                // Object tree
+                // Object tree with proper scroll container
                 div()
                     .flex_1()
                     .overflow_hidden()
                     .child({
                         let mut tree_container = v_flex()
                             .size_full()
+                            .p_2()
+                            .gap_px()
                             .scrollable(ScrollbarAxis::Vertical)
                             .children(
                                 state.scene_objects().iter().map(|obj| {
@@ -158,7 +175,7 @@ impl HierarchyPanel {
                                     .flex()
                                     .items_center()
                                     .justify_center()
-                                    .rounded_md()
+                                    .rounded(px(6.0))
                                     .border_2()
                                     .border_dashed()
                                     .border_color(cx.theme().border)
@@ -177,8 +194,8 @@ impl HierarchyPanel {
                                         }
                                     })
                                     .hover(|style| {
-                                        style.bg(cx.theme().primary.opacity(0.1))
-                                            .border_color(cx.theme().primary)
+                                        style.bg(cx.theme().accent.opacity(0.1))
+                                            .border_color(cx.theme().accent)
                                     })
                             );
                         }
@@ -201,8 +218,10 @@ impl HierarchyPanel {
         let is_selected = state.selected_object().as_ref() == Some(&object.id);
         let has_children = !object.children.is_empty();
         let is_expanded = state.is_object_expanded(&object.id);
-        let indent = px(depth as f32 * 16.0);
+        let is_folder = matches!(object.object_type, ObjectType::Folder);
+        let indent = px(depth as f32 * 20.0 + 4.0);
         let icon = Self::get_icon_for_object_type(object.object_type);
+        let icon_color = Self::get_icon_color_for_type(object.object_type, cx);
         let object_id = object.id.clone();
         let object_id_for_expand = object.id.clone();
 
@@ -214,29 +233,32 @@ impl HierarchyPanel {
 
         // Build item div base
         let item_id = SharedString::from(format!("object-{}", object.id));
-        let mut item_div = div()
+        let mut item_div = h_flex()
             .id(item_id)
             .w_full()
-            .flex()
             .items_center()
-            .gap_2()
-            .h(px(24.0))
-            .pl(indent + px(8.0))
+            .gap_1()
+            .h_7()
+            .pl(indent)
             .pr_2()
-            .rounded_md()
+            .rounded(px(4.0))
             .cursor_pointer();
 
         // Apply conditional styling
         if is_being_dragged {
-            // Dragged item - semi-transparent
+            // Dragged item - semi-transparent with accent border
             item_div = item_div
-                .bg(cx.theme().accent.opacity(0.5))
-                .border_2()
+                .bg(cx.theme().accent.opacity(0.3))
+                .border_1()
                 .border_color(cx.theme().accent);
         } else if is_selected {
-            item_div = item_div.bg(cx.theme().accent);
+            // Selected item - accent background
+            item_div = item_div
+                .bg(cx.theme().accent)
+                .shadow_sm();
         } else {
-            item_div = item_div.hover(|style| style.bg(cx.theme().accent.opacity(0.1)));
+            // Normal item - subtle hover
+            item_div = item_div.hover(|style| style.bg(cx.theme().muted.opacity(0.3)));
         }
 
         let state_clone_for_click = state_arc.clone();
@@ -247,13 +269,11 @@ impl HierarchyPanel {
         let object_id_for_drop = object_id.clone();
 
         // Container for the entire item (for drop target)
-        let mut container = div()
-            .w_full()
-            .flex()
-            .flex_col();
+        let mut container = v_flex()
+            .w_full();
 
         // Add drop target highlighting if drag is in progress and this isn't the dragged item
-        if is_drag_in_progress && !is_being_dragged {
+        if is_drag_in_progress && !is_being_dragged && is_folder {
             container = container
                 .on_mouse_move(move |_, _, _| {
                     // Visual feedback handled by hover state
@@ -280,12 +300,24 @@ impl HierarchyPanel {
                     }
                 })
                 .hover(|style| {
-                    // Highlight drop target
-                    style.bg(cx.theme().primary.opacity(0.2))
-                        .border_2()
-                        .border_color(cx.theme().primary)
+                    // Highlight drop target for folders
+                    style.bg(cx.theme().accent.opacity(0.15))
+                        .rounded(px(4.0))
                 });
         }
+
+        // Text color based on selection state
+        let text_color = if is_selected {
+            cx.theme().accent_foreground
+        } else {
+            cx.theme().foreground
+        };
+
+        let muted_color = if is_selected {
+            cx.theme().accent_foreground.opacity(0.7)
+        } else {
+            cx.theme().muted_foreground
+        };
 
         container.child(
                 item_div
@@ -305,18 +337,23 @@ impl HierarchyPanel {
                             tracing::info!("[HIERARCHY] 🖱️ Started dragging '{}'", object_id_for_drag_start);
                         }
                     })
+                    // Expand/collapse arrow for items with children
                     .child(
-                        // Expand/collapse arrow for items with children
                         if has_children {
                             div()
                                 .w_4()
-                                .text_xs()
-                                .text_color(if is_selected {
-                                    cx.theme().accent_foreground
-                                } else {
-                                    cx.theme().muted_foreground
-                                })
-                                .child(if is_expanded { "▼" } else { "▶" })
+                                .h_4()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded(px(2.0))
+                                .cursor_pointer()
+                                .hover(|s| s.bg(cx.theme().muted.opacity(0.5)))
+                                .child(
+                                    Icon::new(if is_expanded { IconName::ChevronDown } else { IconName::ChevronRight })
+                                        .size(px(12.0))
+                                        .text_color(muted_color)
+                                )
                                 .on_mouse_down(MouseButton::Left, cx.listener(move |view, _, _, cx| {
                                     cx.stop_propagation();
                                     cx.dispatch_action(&ToggleObjectExpanded {
@@ -330,31 +367,48 @@ impl HierarchyPanel {
                                 .into_any_element()
                         }
                     )
-                    .child(Icon::new(icon).size_4())
-                    .child({
-                        let mut text_div = div().text_sm();
-                        if is_selected {
-                            text_div = text_div.text_color(cx.theme().accent_foreground);
-                        } else {
-                            text_div = text_div.text_color(cx.theme().foreground);
-                        }
-                        text_div.child(object.name.clone())
-                    })
+                    // Icon with type-specific coloring
                     .child(
-                        // Visibility toggle
                         div()
-                            .ml_auto()
-                            .text_xs()
-                            .text_color(if object.visible {
-                                if is_selected {
-                                    cx.theme().accent_foreground.opacity(0.7)
-                                } else {
-                                    cx.theme().muted_foreground
-                                }
-                            } else {
-                                cx.theme().danger
-                            })
-                            .child(if object.visible { "●" } else { "○" })
+                            .w_5()
+                            .h_5()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(3.0))
+                            .bg(icon_color.opacity(0.15))
+                            .child(
+                                Icon::new(icon)
+                                    .size(px(14.0))
+                                    .text_color(if is_selected { text_color } else { icon_color })
+                            )
+                    )
+                    // Object name
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_sm()
+                            .text_color(text_color)
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .child(object.name.clone())
+                    )
+                    // Visibility indicator
+                    .child(
+                        div()
+                            .w_5()
+                            .h_5()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(2.0))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(cx.theme().muted.opacity(0.3)))
+                            .child(
+                                Icon::new(if object.visible { IconName::Eye } else { IconName::EyeOff })
+                                    .size(px(12.0))
+                                    .text_color(if object.visible { muted_color } else { cx.theme().danger })
+                            )
                     )
             )
             // Render children recursively if expanded
@@ -385,8 +439,20 @@ impl HierarchyPanel {
             ObjectType::Light(_) => IconName::LightBulb,
             ObjectType::Mesh(_) => IconName::Box,
             ObjectType::Empty => IconName::Circle,
-            ObjectType::ParticleSystem => IconName::Play,
+            ObjectType::ParticleSystem => IconName::Sparks,
             ObjectType::AudioSource => IconName::MusicNote,
+        }
+    }
+
+    fn get_icon_color_for_type<V>(object_type: ObjectType, cx: &Context<V>) -> Hsla {
+        match object_type {
+            ObjectType::Camera => Hsla { h: 200.0, s: 0.8, l: 0.5, a: 1.0 },  // Blue
+            ObjectType::Folder => Hsla { h: 45.0, s: 0.8, l: 0.5, a: 1.0 },   // Yellow/Orange
+            ObjectType::Light(_) => Hsla { h: 50.0, s: 0.9, l: 0.55, a: 1.0 }, // Yellow
+            ObjectType::Mesh(_) => Hsla { h: 280.0, s: 0.6, l: 0.6, a: 1.0 }, // Purple
+            ObjectType::Empty => cx.theme().muted_foreground,
+            ObjectType::ParticleSystem => Hsla { h: 30.0, s: 0.9, l: 0.55, a: 1.0 }, // Orange
+            ObjectType::AudioSource => Hsla { h: 160.0, s: 0.7, l: 0.45, a: 1.0 },   // Teal/Green
         }
     }
 }

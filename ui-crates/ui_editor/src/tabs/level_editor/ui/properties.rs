@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use super::state::{LevelEditorState, Transform};
 use crate::tabs::level_editor::scene_database::ObjectType;
+use crate::tabs::level_editor::workspace_panels::PropertiesPanelWrapper;
 
 /// Properties Panel - Inspector showing properties of the selected object
 pub struct PropertiesPanel;
@@ -18,18 +19,15 @@ impl PropertiesPanel {
         Self
     }
 
-    pub fn render<F>(
+    pub fn render(
         &self,
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         editing_property: &Option<String>,
         property_input: &Entity<InputState>,
-        on_start_edit: F,
-        cx: &mut App
-    ) -> impl IntoElement
-    where
-        F: Fn(String, String) + 'static + Clone,
-    {
+        window: &mut Window,
+        cx: &mut Context<PropertiesPanelWrapper>
+    ) -> impl IntoElement {
         v_flex()
             .size_full()
             .bg(cx.theme().background)
@@ -55,7 +53,7 @@ impl PropertiesPanel {
                                             &selected.transform,
                                             editing_property,
                                             property_input,
-                                            on_start_edit.clone(),
+                                            window,
                                             cx
                                         ))
                                         .child(Self::render_object_type_section(&selected, cx))
@@ -68,7 +66,7 @@ impl PropertiesPanel {
             )
     }
 
-    fn render_header(&self, state: &LevelEditorState, cx: &App) -> impl IntoElement {
+    fn render_header(&self, state: &LevelEditorState, cx: &Context<PropertiesPanelWrapper>) -> impl IntoElement {
         let has_selection = state.get_selected_object().is_some();
         
         h_flex()
@@ -116,7 +114,7 @@ impl PropertiesPanel {
             )
     }
 
-    fn render_empty_state(cx: &App) -> impl IntoElement {
+    fn render_empty_state(cx: &Context<PropertiesPanelWrapper>) -> impl IntoElement {
         div()
             .size_full()
             .flex()
@@ -149,7 +147,7 @@ impl PropertiesPanel {
             )
     }
 
-    fn render_object_header(object: &super::state::SceneObject, cx: &App) -> impl IntoElement {
+    fn render_object_header(object: &super::state::SceneObject, cx: &Context<PropertiesPanelWrapper>) -> impl IntoElement {
         let icon = match object.object_type {
             ObjectType::Camera => IconName::Camera,
             ObjectType::Folder => IconName::Folder,
@@ -217,7 +215,7 @@ impl PropertiesPanel {
             )
     }
     
-    fn render_toggle_chip(label: &str, active: bool, icon: IconName, cx: &App) -> impl IntoElement {
+    fn render_toggle_chip(label: &str, active: bool, icon: IconName, cx: &Context<PropertiesPanelWrapper>) -> impl IntoElement {
         let bg_color = if active {
             cx.theme().accent.opacity(0.15)
         } else {
@@ -252,24 +250,21 @@ impl PropertiesPanel {
             )
     }
 
-    fn render_transform_section<F>(
+    fn render_transform_section(
         transform: &Transform,
         editing_property: &Option<String>,
         property_input: &Entity<InputState>,
-        on_start_edit: F,
-        cx: &App
-    ) -> impl IntoElement
-    where
-        F: Fn(String, String) + 'static + Clone,
-    {
+        window: &mut Window,
+        cx: &mut Context<PropertiesPanelWrapper>
+    ) -> impl IntoElement {
         Self::render_collapsible_section(
             "Transform",
             IconName::ChevronDown,
             v_flex()
                 .gap_3()
-                .child(Self::render_vector3_field("Position", "position", transform.position, editing_property, property_input, on_start_edit.clone(), cx))
-                .child(Self::render_vector3_field("Rotation", "rotation", transform.rotation, editing_property, property_input, on_start_edit.clone(), cx))
-                .child(Self::render_vector3_field("Scale", "scale", transform.scale, editing_property, property_input, on_start_edit, cx)),
+                .child(Self::render_vector3_field("Position", "position", transform.position, editing_property, property_input, window, cx))
+                .child(Self::render_vector3_field("Rotation", "rotation", transform.rotation, editing_property, property_input, window, cx))
+                .child(Self::render_vector3_field("Scale", "scale", transform.scale, editing_property, property_input, window, cx)),
             cx
         )
     }
@@ -278,7 +273,7 @@ impl PropertiesPanel {
         title: &str,
         icon: IconName,
         content: impl IntoElement,
-        cx: &App
+        cx: &Context<PropertiesPanelWrapper>
     ) -> impl IntoElement {
         v_flex()
             .w_full()
@@ -327,7 +322,7 @@ impl PropertiesPanel {
             )
     }
 
-    fn render_object_type_section(object: &super::state::SceneObject, cx: &App) -> impl IntoElement {
+    fn render_object_type_section(object: &super::state::SceneObject, cx: &Context<PropertiesPanelWrapper>) -> impl IntoElement {
         let (title, icon) = match object.object_type {
             ObjectType::Camera => ("Camera Settings", IconName::Camera),
             ObjectType::Folder => ("Folder Settings", IconName::Folder),
@@ -357,7 +352,7 @@ impl PropertiesPanel {
         Self::render_collapsible_section(title, icon, content, cx)
     }
 
-    fn render_camera_settings(cx: &App) -> impl IntoElement {
+    fn render_camera_settings(cx: &Context<PropertiesPanelWrapper>) -> impl IntoElement {
         v_flex()
             .gap_3()
             .child(Self::render_property_row("FOV", "60", "°", cx))
@@ -366,7 +361,7 @@ impl PropertiesPanel {
             .child(Self::render_dropdown_row("Projection", "Perspective", cx))
     }
 
-    fn render_light_settings(cx: &App) -> impl IntoElement {
+    fn render_light_settings(cx: &Context<PropertiesPanelWrapper>) -> impl IntoElement {
         v_flex()
             .gap_3()
             .child(Self::render_property_row("Intensity", "1.0", "", cx))
@@ -375,7 +370,7 @@ impl PropertiesPanel {
             .child(Self::render_property_row("Shadow Bias", "0.001", "", cx))
     }
 
-    fn render_mesh_settings(cx: &App) -> impl IntoElement {
+    fn render_mesh_settings(cx: &Context<PropertiesPanelWrapper>) -> impl IntoElement {
         v_flex()
             .gap_3()
             .child(Self::render_asset_row("Material", "Default Material", IconName::EditPencil, cx))
@@ -384,7 +379,7 @@ impl PropertiesPanel {
             .child(Self::render_toggle_row("Receive Shadows", true, cx))
     }
     
-    fn render_property_row(label: &str, value: &str, unit: &str, cx: &App) -> impl IntoElement {
+    fn render_property_row(label: &str, value: &str, unit: &str, cx: &Context<PropertiesPanelWrapper>) -> impl IntoElement {
         h_flex()
             .w_full()
             .gap_2()
@@ -427,7 +422,7 @@ impl PropertiesPanel {
             )
     }
     
-    fn render_dropdown_row(label: &str, value: &str, cx: &App) -> impl IntoElement {
+    fn render_dropdown_row(label: &str, value: &str, cx: &Context<PropertiesPanelWrapper>) -> impl IntoElement {
         h_flex()
             .w_full()
             .gap_2()
@@ -467,7 +462,7 @@ impl PropertiesPanel {
             )
     }
     
-    fn render_color_row(label: &str, color: Hsla, cx: &App) -> impl IntoElement {
+    fn render_color_row(label: &str, color: Hsla, cx: &Context<PropertiesPanelWrapper>) -> impl IntoElement {
         h_flex()
             .w_full()
             .gap_2()
@@ -514,7 +509,7 @@ impl PropertiesPanel {
             )
     }
     
-    fn render_toggle_row(label: &str, enabled: bool, cx: &App) -> impl IntoElement {
+    fn render_toggle_row(label: &str, enabled: bool, cx: &Context<PropertiesPanelWrapper>) -> impl IntoElement {
         h_flex()
             .w_full()
             .gap_2()
@@ -545,7 +540,7 @@ impl PropertiesPanel {
             )
     }
     
-    fn render_asset_row(label: &str, value: &str, icon: IconName, cx: &App) -> impl IntoElement {
+    fn render_asset_row(label: &str, value: &str, icon: IconName, cx: &Context<PropertiesPanelWrapper>) -> impl IntoElement {
         h_flex()
             .w_full()
             .gap_2()
@@ -592,18 +587,15 @@ impl PropertiesPanel {
             )
     }
 
-    fn render_vector3_field<F>(
+    fn render_vector3_field(
         label: &str,
         field_name: &str,  // "position", "rotation", "scale"
         values: [f32; 3],
         editing_property: &Option<String>,
         property_input: &Entity<InputState>,
-        on_start_edit: F,
-        cx: &App
-    ) -> impl IntoElement
-    where
-        F: Fn(String, String) + 'static + Clone,
-    {
+        window: &mut Window,
+        cx: &mut Context<PropertiesPanelWrapper>
+    ) -> impl IntoElement {
         v_flex()
             .gap_2()
             .child(
@@ -618,50 +610,47 @@ impl PropertiesPanel {
                     .gap_2()
                     .child(Self::render_axis_input(
                         "X",
-                        Hsla { h: 0.0, s: 0.7, l: 0.55, a: 1.0 }, // Red
+                        Hsla { h: 0.0, s: 0.8, l: 0.5, a: 1.0 }, // Red - East/West
                         &format!("{}.x", field_name),
                         values[0],
                         editing_property,
                         property_input,
-                        on_start_edit.clone(),
+                        window,
                         cx
                     ))
                     .child(Self::render_axis_input(
                         "Y",
-                        Hsla { h: 120.0, s: 0.7, l: 0.45, a: 1.0 }, // Green
+                        Hsla { h: 50.0, s: 0.9, l: 0.5, a: 1.0 }, // Yellow - Vertical
                         &format!("{}.y", field_name),
                         values[1],
                         editing_property,
                         property_input,
-                        on_start_edit.clone(),
+                        window,
                         cx
                     ))
                     .child(Self::render_axis_input(
                         "Z",
-                        Hsla { h: 220.0, s: 0.7, l: 0.55, a: 1.0 }, // Blue
+                        Hsla { h: 220.0, s: 0.8, l: 0.55, a: 1.0 }, // Blue - North/South
                         &format!("{}.z", field_name),
                         values[2],
                         editing_property,
                         property_input,
-                        on_start_edit,
+                        window,
                         cx
                     ))
             )
     }
 
-    fn render_axis_input<F>(
+    fn render_axis_input(
         axis: &str,
         axis_color: Hsla,
         property_path: &str,
         value: f32,
         editing_property: &Option<String>,
         property_input: &Entity<InputState>,
-        on_start_edit: F,
-        cx: &App
-    ) -> impl IntoElement
-    where
-        F: Fn(String, String) + 'static,
-    {
+        window: &mut Window,
+        cx: &mut Context<PropertiesPanelWrapper>
+    ) -> impl IntoElement {
         let value_str = format!("{:.2}", value);
         let is_editing = editing_property.as_ref() == Some(&property_path.to_string());
         let property_path_owned = property_path.to_string();
@@ -720,9 +709,9 @@ impl PropertiesPanel {
                         .cursor_pointer()
                         .hover(|style| style.bg(cx.theme().accent.opacity(0.1)))
                         .child(value_str.clone())
-                        .on_mouse_down(MouseButton::Left, move |_, _, _| {
-                            on_start_edit(property_path_owned.clone(), value_str_for_click.clone());
-                        })
+                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _event, window, cx| {
+                            this.start_editing(property_path_owned.clone(), value_str_for_click.clone(), window, cx);
+                        }))
                         .into_any_element()
                 }
             )

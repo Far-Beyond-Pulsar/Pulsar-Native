@@ -194,7 +194,20 @@ impl SceneDatabase {
             components: Vec::new(),
         }, None);
 
-        // Add red cube (matches Bevy renderer)
+        // === GEOMETRY FOLDER with nested objects ===
+        db.add_object(SceneObjectData {
+            id: "geometry_folder".to_string(),
+            name: "Geometry".to_string(),
+            object_type: ObjectType::Folder,
+            transform: Transform::default(),
+            parent: None,
+            children: Vec::new(),
+            visible: true,
+            locked: false,
+            components: Vec::new(),
+        }, None);
+
+        // Add red cube under Geometry folder
         db.add_object(SceneObjectData {
             id: "cube_red".to_string(),
             name: "Red Cube".to_string(),
@@ -214,9 +227,22 @@ impl SceneDatabase {
                 metallic: 0.8,
                 roughness: 0.3,
             }],
-        }, None);
+        }, Some("geometry_folder".to_string()));
 
-        // Add blue sphere (matches Bevy renderer)
+        // === SPHERES FOLDER (nested inside Geometry) ===
+        db.add_object(SceneObjectData {
+            id: "spheres_folder".to_string(),
+            name: "Spheres".to_string(),
+            object_type: ObjectType::Folder,
+            transform: Transform::default(),
+            parent: None,
+            children: Vec::new(),
+            visible: true,
+            locked: false,
+            components: Vec::new(),
+        }, Some("geometry_folder".to_string()));
+
+        // Add blue sphere under Spheres folder (2 levels deep)
         db.add_object(SceneObjectData {
             id: "sphere_blue".to_string(),
             name: "Blue Sphere".to_string(),
@@ -236,9 +262,9 @@ impl SceneDatabase {
                 metallic: 0.9,
                 roughness: 0.1,
             }],
-        }, None);
+        }, Some("spheres_folder".to_string()));
 
-        // Add gold sphere (matches Bevy renderer)
+        // Add gold sphere under Spheres folder (2 levels deep)
         db.add_object(SceneObjectData {
             id: "sphere_gold".to_string(),
             name: "Gold Sphere".to_string(),
@@ -258,9 +284,137 @@ impl SceneDatabase {
                 metallic: 0.95,
                 roughness: 0.2,
             }],
+        }, Some("spheres_folder".to_string()));
+
+        // Add green sphere under Spheres folder
+        db.add_object(SceneObjectData {
+            id: "sphere_green".to_string(),
+            name: "Green Sphere".to_string(),
+            object_type: ObjectType::Mesh(MeshType::Sphere),
+            transform: Transform {
+                position: [4.0, 1.5, 2.0],
+                rotation: [0.0, 0.0, 0.0],
+                scale: [0.8, 0.8, 0.8],
+            },
+            parent: None,
+            children: Vec::new(),
+            visible: true,
+            locked: false,
+            components: vec![Component::Material {
+                id: "green_metal".to_string(),
+                color: [0.2, 0.8, 0.3, 1.0],
+                metallic: 0.7,
+                roughness: 0.4,
+            }],
+        }, Some("spheres_folder".to_string()));
+
+        // === LIGHTS FOLDER ===
+        db.add_object(SceneObjectData {
+            id: "lights_folder".to_string(),
+            name: "Lights".to_string(),
+            object_type: ObjectType::Folder,
+            transform: Transform::default(),
+            parent: None,
+            children: Vec::new(),
+            visible: true,
+            locked: false,
+            components: Vec::new(),
         }, None);
 
-        // NO DEFAULT OBJECTS - start with empty scene
+        // Add point light under Lights folder
+        db.add_object(SceneObjectData {
+            id: "point_light_1".to_string(),
+            name: "Point Light".to_string(),
+            object_type: ObjectType::Light(LightType::Point),
+            transform: Transform {
+                position: [0.0, 5.0, 0.0],
+                rotation: [0.0, 0.0, 0.0],
+                scale: [1.0, 1.0, 1.0],
+            },
+            parent: None,
+            children: Vec::new(),
+            visible: true,
+            locked: false,
+            components: Vec::new(),
+        }, Some("lights_folder".to_string()));
+
+        // Add spot light under Lights folder
+        db.add_object(SceneObjectData {
+            id: "spot_light_1".to_string(),
+            name: "Spot Light".to_string(),
+            object_type: ObjectType::Light(LightType::Spot),
+            transform: Transform {
+                position: [-5.0, 6.0, 3.0],
+                rotation: [-30.0, 45.0, 0.0],
+                scale: [1.0, 1.0, 1.0],
+            },
+            parent: None,
+            children: Vec::new(),
+            visible: true,
+            locked: false,
+            components: Vec::new(),
+        }, Some("lights_folder".to_string()));
+
+        // === AUDIO FOLDER ===
+        db.add_object(SceneObjectData {
+            id: "audio_folder".to_string(),
+            name: "Audio".to_string(),
+            object_type: ObjectType::Folder,
+            transform: Transform::default(),
+            parent: None,
+            children: Vec::new(),
+            visible: true,
+            locked: false,
+            components: Vec::new(),
+        }, None);
+
+        // Add ambient sound under Audio folder
+        db.add_object(SceneObjectData {
+            id: "ambient_audio".to_string(),
+            name: "Ambient Sound".to_string(),
+            object_type: ObjectType::AudioSource,
+            transform: Transform {
+                position: [0.0, 2.0, 0.0],
+                rotation: [0.0, 0.0, 0.0],
+                scale: [1.0, 1.0, 1.0],
+            },
+            parent: None,
+            children: Vec::new(),
+            visible: true,
+            locked: false,
+            components: Vec::new(),
+        }, Some("audio_folder".to_string()));
+
+        // === EFFECTS FOLDER ===
+        db.add_object(SceneObjectData {
+            id: "effects_folder".to_string(),
+            name: "Effects".to_string(),
+            object_type: ObjectType::Folder,
+            transform: Transform::default(),
+            parent: None,
+            children: Vec::new(),
+            visible: true,
+            locked: false,
+            components: Vec::new(),
+        }, None);
+
+        // Add particle system under Effects folder
+        db.add_object(SceneObjectData {
+            id: "particles_fire".to_string(),
+            name: "Fire Particles".to_string(),
+            object_type: ObjectType::ParticleSystem,
+            transform: Transform {
+                position: [3.0, 0.5, -2.0],
+                rotation: [0.0, 0.0, 0.0],
+                scale: [1.0, 1.0, 1.0],
+            },
+            parent: None,
+            children: Vec::new(),
+            visible: true,
+            locked: false,
+            components: Vec::new(),
+        }, Some("effects_folder".to_string()));
+
         db
     }
 

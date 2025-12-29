@@ -119,12 +119,13 @@ impl PropertiesPanelWrapper {
         }
     }
 
-    fn start_editing_property(&mut self, property_path: String, current_value: String, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn start_editing(&mut self, property_path: String, current_value: String, window: &mut Window, cx: &mut Context<Self>) {
         self.editing_property = Some(property_path);
         self.property_input.update(cx, |input, cx| {
             input.set_value(&current_value, window, cx);
             input.focus(window, cx);
         });
+        cx.notify();
     }
 
     fn commit_property_edit(&mut self, cx: &mut Context<Self>) {
@@ -136,10 +137,12 @@ impl PropertiesPanelWrapper {
                 self.update_transform_property(&property_path, value);
             }
         }
+        cx.notify();
     }
 
-    fn cancel_property_edit(&mut self, _cx: &mut Context<Self>) {
+    fn cancel_property_edit(&mut self, cx: &mut Context<Self>) {
         self.editing_property = None;
+        cx.notify();
     }
 
     fn update_transform_property(&self, property_path: &str, value: f32) {
@@ -174,19 +177,6 @@ impl Render for PropertiesPanelWrapper {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.state.read();
 
-        // Store editing trigger in a channel-like pattern
-        let editing_trigger = std::rc::Rc::new(std::cell::RefCell::new(None::<(String, String)>));
-        let editing_trigger_clone = editing_trigger.clone();
-
-        // Check if editing was triggered and update state
-        if let Some((path, value)) = editing_trigger.borrow_mut().take() {
-            self.property_input.update(cx, |input, cx| {
-                input.set_value(&value, window, cx);
-                input.focus(window, cx);
-            });
-            self.editing_property = Some(path);
-        }
-
         v_flex()
             .size_full()
             .bg(cx.theme().sidebar)
@@ -195,9 +185,7 @@ impl Render for PropertiesPanelWrapper {
                 self.state.clone(),
                 &self.editing_property,
                 &self.property_input,
-                move |path: String, value: String| {
-                    *editing_trigger_clone.borrow_mut() = Some((path, value));
-                },
+                window,
                 cx
             ))
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
