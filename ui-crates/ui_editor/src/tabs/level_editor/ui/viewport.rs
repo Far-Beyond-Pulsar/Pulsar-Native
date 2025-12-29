@@ -1361,27 +1361,46 @@ impl ViewportPanel {
                     })
             )
             .child(
-                // Total frame time
+                // Column headers row
                 h_flex()
                     .w_full()
                     .items_center()
-                    .justify_between()
+                    .mt_1()
                     .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("Frame Time:")
+                        // Color indicator column
+                        div().w(px(16.0)).flex_none()
                     )
                     .child(
+                        // Pass name header
                         div()
+                            .w(px(200.0))
+                            .flex_none()
                             .text_xs()
                             .font_semibold()
-                            .text_color(foreground)
-                            .child(if let Some(ref data) = gpu_data {
-                                format!("{:.2}ms ({:.0} FPS)", data.total_frame_ms, data.fps)
-                            } else {
-                                "N/A".to_string()
-                            })
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Pass")
+                    )
+                    .child(
+                        // Time header
+                        div()
+                            .w(px(60.0))
+                            .flex_none()
+                            .text_right()
+                            .text_xs()
+                            .font_semibold()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Time")
+                    )
+                    .child(
+                        // Percentage header
+                        div()
+                            .w(px(50.0))
+                            .flex_none()
+                            .text_right()
+                            .text_xs()
+                            .font_semibold()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("%")
                     )
             )
             .child(
@@ -1397,7 +1416,7 @@ impl ViewportPanel {
             result = result.child(elem);
         }
         
-        // Add separator and total
+        // Add separator and totals
         if let Some(ref data) = gpu_data {
             result = result
                 .child(
@@ -1407,20 +1426,31 @@ impl ViewportPanel {
                         .bg(border)
                         .mt_1()
                 )
+                // Total GPU row - matching column layout
                 .child(
                     h_flex()
                         .w_full()
                         .items_center()
-                        .justify_between()
                         .child(
+                            // Empty color indicator column
+                            div().w(px(16.0)).flex_none()
+                        )
+                        .child(
+                            // Label column
                             div()
+                                .w(px(200.0))
+                                .flex_none()
                                 .text_xs()
                                 .font_semibold()
                                 .text_color(foreground)
-                                .child("Total GPU:")
+                                .child("Total GPU")
                         )
                         .child(
+                            // Time value - color coded by performance
                             div()
+                                .w(px(60.0))
+                                .flex_none()
+                                .text_right()
                                 .text_xs()
                                 .font_semibold()
                                 .text_color(if data.total_gpu_ms < 8.0 {
@@ -1432,6 +1462,58 @@ impl ViewportPanel {
                                 })
                                 .child(format!("{:.2}ms", data.total_gpu_ms))
                         )
+                        .child(
+                            // 100% for total
+                            div()
+                                .w(px(50.0))
+                                .flex_none()
+                                .text_right()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .child("100.0%")
+                        )
+                )
+                // Frame time row
+                .child(
+                    h_flex()
+                        .w_full()
+                        .items_center()
+                        .child(
+                            div().w(px(16.0)).flex_none()
+                        )
+                        .child(
+                            div()
+                                .w(px(200.0))
+                                .flex_none()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .child("Frame Time")
+                        )
+                        .child(
+                            div()
+                                .w(px(60.0))
+                                .flex_none()
+                                .text_right()
+                                .text_xs()
+                                .text_color(foreground)
+                                .child(format!("{:.2}ms", data.total_frame_ms))
+                        )
+                        .child(
+                            div()
+                                .w(px(50.0))
+                                .flex_none()
+                                .text_right()
+                                .text_xs()
+                                .font_semibold()
+                                .text_color(if data.fps > 60.0 {
+                                    success
+                                } else if data.fps > 30.0 {
+                                    warning
+                                } else {
+                                    cx.theme().danger
+                                })
+                                .child(format!("{:.0} FPS", data.fps))
+                        )
                 );
         }
         
@@ -1439,6 +1521,7 @@ impl ViewportPanel {
     }
 
     /// Render a single GPU pass stat line with timing and percentage
+    /// Uses fixed-width columns for proper alignment
     fn render_pass_stat_elem<V: 'static>(
         name: String,
         time_ms: f32,
@@ -1454,36 +1537,48 @@ impl ViewportPanel {
         h_flex()
             .w_full()
             .items_center()
-            .gap_2()
             .child(
-                // Color indicator
+                // Color indicator column - 16px total width
                 div()
-                    .w(px(8.0))
-                    .h(px(8.0))
-                    .rounded(px(2.0))
-                    .bg(color)
+                    .w(px(16.0))
+                    .flex_none()
+                    .child(
+                        div()
+                            .w(px(8.0))
+                            .h(px(8.0))
+                            .rounded(px(2.0))
+                            .bg(color)
+                    )
             )
             .child(
-                // Name
+                // Name column - fixed 180px
                 div()
-                    .flex_1()
+                    .w(px(180.0))
+                    .flex_none()
+                    .overflow_hidden()
                     .text_xs()
                     .text_color(theme.muted_foreground)
                     .child(name)
             )
             .child(
-                // Timing
+                // Timing column - fixed 60px, right-aligned
                 div()
+                    .w(px(60.0))
+                    .flex_none()
+                    .text_right()
                     .text_xs()
                     .text_color(theme.foreground)
                     .child(format!("{:.2}ms", time_ms))
             )
             .child(
-                // Percentage
+                // Percentage column - fixed 50px, right-aligned
                 div()
+                    .w(px(50.0))
+                    .flex_none()
+                    .text_right()
                     .text_xs()
                     .text_color(theme.muted_foreground)
-                    .child(format!("({:.1}%)", percent))
+                    .child(format!("{:.1}%", percent))
             )
     }
 
