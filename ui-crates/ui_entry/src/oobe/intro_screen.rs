@@ -403,14 +403,24 @@ impl Render for IntroScreen {
     }
 }
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Session flag to prevent OOBE loop when --OOBE is used
+static OOBE_SHOWN_THIS_SESSION: AtomicBool = AtomicBool::new(false);
+
 /// Check if the user has seen the intro before
-/// Returns false if --OOBE flag is passed (forces OOBE to show)
+/// Returns false if --OOBE flag is passed (forces OOBE to show once per session)
 pub fn has_seen_intro() -> bool {
-    // Check for --OOBE flag to force OOBE display
+    // Check for --OOBE flag to force OOBE display (but only once per session)
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|arg| arg == "--OOBE" || arg == "--oobe") {
-        tracing::info!("🎯 [OOBE] --OOBE flag detected, forcing OOBE display");
-        return false;
+        // Only show OOBE once per session even with the flag
+        if !OOBE_SHOWN_THIS_SESSION.swap(true, Ordering::SeqCst) {
+            tracing::info!("🎯 [OOBE] --OOBE flag detected, forcing OOBE display");
+            return false;
+        } else {
+            tracing::info!("🎯 [OOBE] --OOBE flag present but OOBE already shown this session");
+        }
     }
     
     let prefs_path = directories::ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
