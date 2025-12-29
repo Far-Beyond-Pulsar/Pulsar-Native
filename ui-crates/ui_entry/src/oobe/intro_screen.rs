@@ -4,8 +4,8 @@
 //! Features: Animated gradient background, smooth text transitions, continue button
 
 use gpui::*;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
-use std::sync::OnceLock;
+use parking_lot::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use ui::{h_flex, v_flex, ActiveTheme, IconName, StyledExt};
 
@@ -15,14 +15,19 @@ use super::audio::IntroAudio;
 /// Guard to prevent multiple animation loops
 static INTRO_SCREEN_CREATED: AtomicBool = AtomicBool::new(false);
 
-/// Shared animation start time - all instances use this for consistent timing
-static ANIMATION_START_TIME: OnceLock<Instant> = OnceLock::new();
+/// Counter to track how many IntroScreen instances have been created
+static INSTANCE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-/// Shared phase start time - updated atomically (stored as millis since animation start)
-static PHASE_START_MILLIS: AtomicU8 = AtomicU8::new(0);
+/// Shared animation state - all instances read from this
+static SHARED_ANIM_STATE: Mutex<Option<SharedAnimState>> = Mutex::new(None);
 
-/// Shared current phase
-static CURRENT_PHASE: AtomicU8 = AtomicU8::new(0);
+/// Shared animation state that persists across all IntroScreen instances
+struct SharedAnimState {
+    phase: IntroPhase,
+    start_time: Instant,
+    phase_start_time: Instant,
+    user_interacted: bool,
+}
 
 /// The current phase of the intro sequence
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -46,9 +51,6 @@ pub struct IntroComplete;
 
 /// The main OOBE intro screen component
 pub struct IntroScreen {
-    phase: IntroPhase,
-    start_time: Instant,
-    phase_start_time: Instant,
     gradient: AnimatedGradient,
     audio: IntroAudio,
     /// Main headline text
@@ -57,8 +59,6 @@ pub struct IntroScreen {
     subtitle: String,
     /// Button text
     button_text: String,
-    /// Whether the user has interacted
-    user_interacted: bool,
     /// Animation frame counter for smooth updates
     frame_count: u64,
 }
@@ -67,17 +67,33 @@ impl EventEmitter<IntroComplete> for IntroScreen {}
 
 impl IntroScreen {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
-        // Initialize shared animation start time (first call wins)
-        let start_time = *ANIMATION_START_TIME.get_or_init(Instant::now);
+        let instance_id = INSTANCE_COUNTER.fetch_add(1, Ordering::SeqCst);
+        tracing::info!("🎬 [IntroScreen] Instance #{} created", instance_id);
         
-        // Guard against multiple animation loops - only start once
+        // Initialize shared animation state (first call wins)
         let already_created = INTRO_SCREEN_CREATED.swap(true, Ordering::SeqCst);
+        
+        {
+            let mut state = SHARED_ANIM_STATE.lock();
+            if state.is_none() {
+                tracing::info!("🎬 [IntroScreen::new] Initializing shared animation state");
+                let now = Instant::now();
+                *state = Some(SharedAnimState {
+                    phase: IntroPhase::FadeIn,
+                    start_time: now,
+                    phase_start_time: now,
+                    user_interacted: false,
+                });
+            } else {
+                tracing::info!("🎬 [IntroScreen] Instance #{} reusing existing shared state at phase {:?}", 
+                    instance_id, state.as_ref().map(|s| s.phase));
+            }
+        }
+        
         if already_created {
-            tracing::warn!("🎬 [IntroScreen::new] IntroScreen already exists, using shared timing");
+            tracing::warn!("🎬 [IntroScreen::new] IntroScreen already exists, using shared state");
         } else {
             tracing::info!("🎬 [IntroScreen::new] Creating new IntroScreen instance (first time)");
-            // Reset phase tracking for new session
-            CURRENT_PHASE.store(0, Ordering::SeqCst);
         }
         
         let audio = IntroAudio::new();
@@ -85,17 +101,12 @@ impl IntroScreen {
             audio.play_ambient();
         }
 
-        // Use shared start time so all instances have consistent timing
         let screen = Self {
-            phase: IntroPhase::FadeIn,
-            start_time,
-            phase_start_time: start_time,
             gradient: AnimatedGradient::arc_style(),
             audio,
             headline: "Welcome to Pulsar".to_string(),
             subtitle: "Create worlds. Tell stories. Build dreams.".to_string(),
             button_text: "Get Started".to_string(),
-            user_interacted: false,
             frame_count: 0,
         };
 
@@ -109,14 +120,15 @@ impl IntroScreen {
                     let should_continue = cx.update(|cx| {
                         this.update(cx, |screen, cx| {
                             screen.tick(cx);
-                            screen.phase != IntroPhase::Complete
+                            let phase = SHARED_ANIM_STATE.lock().as_ref().map(|s| s.phase).unwrap_or(IntroPhase::Complete);
+                            phase != IntroPhase::Complete
                         }).unwrap_or(false)
                     }).unwrap_or(false);
 
                     if !should_continue {
                         tracing::info!("🎬 [IntroScreen] Animation loop complete");
-                        // Reset the guard when done so it can be created again if needed
-                        INTRO_SCREEN_CREATED.store(false, Ordering::SeqCst);
+                        // DON'T reset the flags - keep state at Complete so no new animations start
+                        // The state will be cleaned up when the process exits
                         break;
                     }
                 }
@@ -141,13 +153,31 @@ impl IntroScreen {
         screen
     }
 
+    /// Get current phase from shared state
+    fn get_phase(&self) -> IntroPhase {
+        SHARED_ANIM_STATE.lock().as_ref().map(|s| s.phase).unwrap_or(IntroPhase::Complete)
+    }
+    
+    /// Get phase elapsed time from shared state
+    fn get_phase_elapsed(&self) -> Duration {
+        SHARED_ANIM_STATE.lock().as_ref().map(|s| s.phase_start_time.elapsed()).unwrap_or(Duration::ZERO)
+    }
+
     /// Update animation state each frame
     fn tick(&mut self, cx: &mut Context<Self>) {
         self.frame_count += 1;
-        let phase_elapsed = self.phase_start_time.elapsed();
+        
+        let (current_phase, phase_elapsed) = {
+            let state = SHARED_ANIM_STATE.lock();
+            if let Some(s) = state.as_ref() {
+                (s.phase, s.phase_start_time.elapsed())
+            } else {
+                return;
+            }
+        };
 
         // Auto-advance phases based on timing
-        match self.phase {
+        match current_phase {
             IntroPhase::FadeIn => {
                 if phase_elapsed > Duration::from_millis(800) {
                     self.advance_phase(IntroPhase::TitleReveal, cx);
@@ -176,8 +206,18 @@ impl IntroScreen {
     }
 
     fn advance_phase(&mut self, new_phase: IntroPhase, _cx: &mut Context<Self>) {
-        self.phase = new_phase;
-        self.phase_start_time = Instant::now();
+        let mut state = SHARED_ANIM_STATE.lock();
+        if let Some(s) = state.as_mut() {
+            let old_phase = s.phase;
+            // Only advance if this is actually a new phase
+            if old_phase == new_phase {
+                tracing::warn!("🎬 [advance_phase] Ignoring duplicate phase transition to {:?}", new_phase);
+                return;
+            }
+            tracing::info!("🎬 [advance_phase] {:?} -> {:?}", old_phase, new_phase);
+            s.phase = new_phase;
+            s.phase_start_time = Instant::now();
+        }
         
         // Play transition sound
         if new_phase == IntroPhase::TitleReveal || new_phase == IntroPhase::Ready {
@@ -186,77 +226,79 @@ impl IntroScreen {
     }
 
     fn on_continue(&mut self, cx: &mut Context<Self>) {
-        if self.phase == IntroPhase::Ready && !self.user_interacted {
-            self.user_interacted = true;
+        let can_continue = {
+            let state = SHARED_ANIM_STATE.lock();
+            state.as_ref().map(|s| s.phase == IntroPhase::Ready && !s.user_interacted).unwrap_or(false)
+        };
+        
+        if can_continue {
+            {
+                let mut state = SHARED_ANIM_STATE.lock();
+                if let Some(s) = state.as_mut() {
+                    s.user_interacted = true;
+                }
+            }
             self.audio.play_click();
             self.audio.play_complete();
             self.advance_phase(IntroPhase::FadeOut, cx);
         }
     }
 
-    /// Calculate opacity for fade effects
-    fn calculate_opacity(&self, phase: IntroPhase) -> f32 {
-        let elapsed = self.phase_start_time.elapsed().as_secs_f32();
-        
-        match self.phase {
-            IntroPhase::FadeIn => {
-                // Everything fades in together
-                (elapsed / 0.8).min(1.0)
-            }
-            IntroPhase::FadeOut => {
-                // Everything fades out
-                1.0 - (elapsed / 0.5).min(1.0)
-            }
-            _ => {
-                // Element-specific reveal
-                match phase {
-                    IntroPhase::TitleReveal => {
-                        if self.phase >= IntroPhase::TitleReveal {
-                            let title_elapsed = if self.phase == IntroPhase::TitleReveal {
-                                elapsed
-                            } else {
-                                1.0
-                            };
-                            (title_elapsed / 0.6).min(1.0)
-                        } else {
-                            0.0
-                        }
-                    }
-                    IntroPhase::SubtitleReveal => {
-                        if self.phase >= IntroPhase::SubtitleReveal {
-                            let sub_elapsed = if self.phase == IntroPhase::SubtitleReveal {
-                                elapsed
-                            } else {
-                                1.0
-                            };
-                            (sub_elapsed / 0.5).min(1.0)
-                        } else {
-                            0.0
-                        }
-                    }
-                    IntroPhase::Ready => {
-                        if self.phase >= IntroPhase::Ready {
-                            let ready_elapsed = if self.phase == IntroPhase::Ready {
-                                elapsed
-                            } else {
-                                1.0
-                            };
-                            (ready_elapsed / 0.4).min(1.0)
-                        } else {
-                            0.0
-                        }
-                    }
-                    _ => 1.0,
-                }
-            }
-        }
+    /// Get total elapsed time since animation started
+    fn get_total_elapsed(&self) -> f32 {
+        SHARED_ANIM_STATE.lock()
+            .as_ref()
+            .map(|s| s.start_time.elapsed().as_secs_f32())
+            .unwrap_or(10.0) // Return large value if complete (everything at final state)
     }
 
-    /// Calculate Y offset for slide-up animation
-    fn calculate_slide_offset(&self, phase: IntroPhase) -> f32 {
-        let opacity = self.calculate_opacity(phase);
-        // Slide up from 30px to 0px as opacity goes from 0 to 1
-        30.0 * (1.0 - opacity)
+    /// Calculate opacity using simple timeline-based animation
+    /// Timeline: 0-0.5s fade in BG, 0.3-1.0s title, 0.8-1.5s subtitle, 1.3-2.0s button
+    fn calculate_element_opacity(&self, element: &str) -> f32 {
+        let elapsed = self.get_total_elapsed();
+        let current_phase = self.get_phase();
+        
+        // During fade out, everything fades together
+        if current_phase == IntroPhase::FadeOut {
+            let fade_elapsed = self.get_phase_elapsed().as_secs_f32();
+            return 1.0 - (fade_elapsed / 0.5).min(1.0);
+        }
+        
+        if current_phase == IntroPhase::Complete {
+            return 0.0;
+        }
+        
+        // Simple timeline: each element fades in at its own time
+        match element {
+            "background" => ease_in_out((elapsed / 0.5).min(1.0)),
+            "title" => {
+                if elapsed < 0.3 { 0.0 }
+                else { ease_in_out(((elapsed - 0.3) / 0.7).min(1.0)) }
+            }
+            "subtitle" => {
+                if elapsed < 0.8 { 0.0 }
+                else { ease_in_out(((elapsed - 0.8) / 0.7).min(1.0)) }
+            }
+            "button" => {
+                if elapsed < 1.3 { 0.0 }
+                else { ease_in_out(((elapsed - 1.3) / 0.7).min(1.0)) }
+            }
+            _ => 1.0,
+        }
+    }
+    
+    /// Calculate slide offset (30px to 0px as opacity goes 0 to 1)
+    fn calculate_element_offset(&self, element: &str) -> f32 {
+        30.0 * (1.0 - self.calculate_element_opacity(element))
+    }
+}
+
+/// Simple ease-in-out function for smoother animations
+fn ease_in_out(t: f32) -> f32 {
+    if t < 0.5 {
+        2.0 * t * t
+    } else {
+        1.0 - (-2.0 * t + 2.0).powi(2) / 2.0
     }
 }
 
@@ -264,24 +306,20 @@ impl Render for IntroScreen {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (color1, color2, color3) = self.gradient.gradient_colors();
         
-        let overall_opacity = match self.phase {
-            IntroPhase::FadeIn => (self.phase_start_time.elapsed().as_secs_f32() / 0.8).min(1.0),
-            IntroPhase::FadeOut => 1.0 - (self.phase_start_time.elapsed().as_secs_f32() / 0.5).min(1.0),
-            _ => 1.0,
-        };
+        // Simple timeline-based opacities
+        let bg_opacity = self.calculate_element_opacity("background");
+        let title_opacity = self.calculate_element_opacity("title");
+        let subtitle_opacity = self.calculate_element_opacity("subtitle");
+        let button_opacity = self.calculate_element_opacity("button");
 
-        let title_opacity = self.calculate_opacity(IntroPhase::TitleReveal) * overall_opacity;
-        let subtitle_opacity = self.calculate_opacity(IntroPhase::SubtitleReveal) * overall_opacity;
-        let button_opacity = self.calculate_opacity(IntroPhase::Ready) * overall_opacity;
-
-        let title_offset = self.calculate_slide_offset(IntroPhase::TitleReveal);
-        let subtitle_offset = self.calculate_slide_offset(IntroPhase::SubtitleReveal);
-        let button_offset = self.calculate_slide_offset(IntroPhase::Ready);
+        let title_offset = self.calculate_element_offset("title");
+        let subtitle_offset = self.calculate_element_offset("subtitle");
+        let button_offset = self.calculate_element_offset("button");
 
         // Animated background gradient
-        let bg_primary = hsla(color1.h, color1.s, color1.l, overall_opacity);
-        let bg_secondary = hsla(color2.h, color2.s, color2.l, overall_opacity * 0.8);
-        let bg_tertiary = hsla(color3.h, color3.s, color3.l, overall_opacity * 0.6);
+        let bg_primary = hsla(color1.h, color1.s, color1.l, bg_opacity);
+        let bg_secondary = hsla(color2.h, color2.s, color2.l, bg_opacity * 0.8);
+        let _bg_tertiary = hsla(color3.h, color3.s, color3.l, bg_opacity * 0.6);
 
         div()
             .id("oobe-intro")
@@ -308,7 +346,7 @@ impl Render for IntroScreen {
                     .w(px(600.0))
                     .h(px(600.0))
                     .rounded_full()
-                    .bg(hsla(color1.h, 0.9, 0.6, overall_opacity * 0.3))
+                    .bg(hsla(color1.h, 0.9, 0.6, bg_opacity * 0.3))
             )
             // Glow effect from bottom-left
             .child(
@@ -319,7 +357,7 @@ impl Render for IntroScreen {
                     .w(px(500.0))
                     .h(px(500.0))
                     .rounded_full()
-                    .bg(hsla(color3.h, 0.85, 0.5, overall_opacity * 0.25))
+                    .bg(hsla(color3.h, 0.85, 0.5, bg_opacity * 0.25))
             )
             // Content container
             .child(
