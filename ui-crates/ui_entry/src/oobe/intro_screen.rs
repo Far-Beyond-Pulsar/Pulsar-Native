@@ -53,6 +53,8 @@ impl EventEmitter<IntroComplete> for IntroScreen {}
 
 impl IntroScreen {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+        tracing::info!("🎬 [IntroScreen::new] Creating new IntroScreen instance");
+        
         let audio = IntroAudio::new();
         audio.play_ambient();
 
@@ -70,6 +72,7 @@ impl IntroScreen {
         };
 
         // Start the animation loop
+        tracing::info!("🎬 [IntroScreen] Starting animation loop");
         cx.spawn(async move |this, mut cx| {
             loop {
                 cx.background_executor().timer(Duration::from_millis(16)).await; // ~60fps
@@ -82,6 +85,7 @@ impl IntroScreen {
                 }).unwrap_or(false);
 
                 if !should_continue {
+                    tracing::info!("🎬 [IntroScreen] Animation loop complete");
                     break;
                 }
             }
@@ -400,7 +404,15 @@ impl Render for IntroScreen {
 }
 
 /// Check if the user has seen the intro before
+/// Returns false if --OOBE flag is passed (forces OOBE to show)
 pub fn has_seen_intro() -> bool {
+    // Check for --OOBE flag to force OOBE display
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|arg| arg == "--OOBE" || arg == "--oobe") {
+        tracing::info!("🎯 [OOBE] --OOBE flag detected, forcing OOBE display");
+        return false;
+    }
+    
     let prefs_path = directories::ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
         .map(|proj| proj.data_dir().join("oobe_complete"))
         .unwrap_or_else(|| std::path::PathBuf::from("oobe_complete"));
