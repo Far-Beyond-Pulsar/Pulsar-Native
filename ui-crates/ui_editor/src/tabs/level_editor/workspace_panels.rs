@@ -2,52 +2,55 @@
 
 use gpui::*;
 use ui::{ActiveTheme, StyledExt, dock::{Panel, PanelEvent}, v_flex, input::{TextInput, InputState}};
-use super::ui::{SceneBrowser, HierarchyPanel, PropertiesPanel, ViewportPanel, LevelEditorState};
+use super::ui::{WorldSettings, HierarchyPanel, PropertiesPanel, ViewportPanel, LevelEditorState};
 use std::sync::Arc;
 use std::rc::Rc;
 use std::cell::RefCell;
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use engine_backend::GameThread;
 
-/// Scene Browser Panel
-pub struct SceneBrowserPanel {
-    scene_browser: SceneBrowser,
+/// World Settings Panel (replaced Scene Browser)
+pub struct WorldSettingsPanel {
+    world_settings: WorldSettings,
+    state: Arc<parking_lot::RwLock<LevelEditorState>>,
     focus_handle: FocusHandle,
 }
 
-impl SceneBrowserPanel {
-    pub fn new(cx: &mut Context<Self>) -> Self {
+impl WorldSettingsPanel {
+    pub fn new(state: Arc<parking_lot::RwLock<LevelEditorState>>, cx: &mut Context<Self>) -> Self {
         Self {
-            scene_browser: SceneBrowser::new(),
+            world_settings: WorldSettings::new(),
+            state,
             focus_handle: cx.focus_handle(),
         }
     }
 }
 
-impl EventEmitter<PanelEvent> for SceneBrowserPanel {}
+impl EventEmitter<PanelEvent> for WorldSettingsPanel {}
 
-impl Render for SceneBrowserPanel {
+impl Render for WorldSettingsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let state = self.state.read();
         v_flex()
             .size_full()
             .bg(cx.theme().sidebar)
-            .child(self.scene_browser.render(cx))
+            .child(self.world_settings.render(&*state, self.state.clone(), cx))
     }
 }
 
-impl Focusable for SceneBrowserPanel {
+impl Focusable for WorldSettingsPanel {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
         self.focus_handle.clone()
     }
 }
 
-impl Panel for SceneBrowserPanel {
+impl Panel for WorldSettingsPanel {
     fn panel_name(&self) -> &'static str {
-        "scene_browser"
+        "world_settings"
     }
 
     fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
-        "Scenes".into_any_element()
+        "World".into_any_element()
     }
 }
 

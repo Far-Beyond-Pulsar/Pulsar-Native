@@ -175,16 +175,16 @@ impl LevelEditorPanel {
                 use crate::tabs::level_editor::PropertiesPanelWrapper;
                 PropertiesPanelWrapper::new(shared_state.clone(), window, cx)
             });
-            let scene_panel = cx.new(|cx| {
-                use crate::tabs::level_editor::SceneBrowserPanel;
-                SceneBrowserPanel::new(cx)
+            let world_settings_panel = cx.new(|cx| {
+                use crate::tabs::level_editor::WorldSettingsPanel;
+                WorldSettingsPanel::new(shared_state.clone(), cx)
             });
 
-            // Bottom right: tabs for Properties and Scenes
+            // Bottom right: tabs for Properties and World Settings
             let bottom_tabs = DockItem::tabs(
                 vec![
                     std::sync::Arc::new(properties_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
-                    std::sync::Arc::new(scene_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
+                    std::sync::Arc::new(world_settings_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
                 ],
                 Some(0),
                 &dock_area,
@@ -201,10 +201,12 @@ impl LevelEditorPanel {
                 cx,
             );
 
-            // Compose right dock as a vertical split: top = hierarchy, bottom = tabs (properties/scenes)
-            let right = ui::dock::DockItem::split(
+            // Compose right dock as a vertical split: top = hierarchy (25%), bottom = tabs (75%)
+            // Using split_with_sizes to set hierarchy to ~25% height (smaller fixed size)
+            let right = ui::dock::DockItem::split_with_sizes(
                 gpui::Axis::Vertical,
                 vec![top_hierarchy, bottom_tabs],
+                vec![Some(px(180.0)), None],  // Hierarchy gets fixed 180px, Properties/World gets rest
                 &dock_area,
                 window,
                 cx,
