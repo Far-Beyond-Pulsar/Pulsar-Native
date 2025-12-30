@@ -7,7 +7,7 @@ use gpui::{prelude::*, *};
 use parking_lot::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use ui::{h_flex, v_flex, IconName};
+use ui::{Icon, IconName, Sizable, h_flex, v_flex};
 
 use super::gradient::AnimatedGradient;
 use super::audio::IntroAudio;
@@ -69,6 +69,7 @@ pub struct IntroScreen {
     audio: IntroAudio,
     pages: Vec<OobePage>,
     frame_count: u64,
+    audio_muted: bool,
 }
 
 impl EventEmitter<IntroComplete> for IntroScreen {}
@@ -112,7 +113,6 @@ impl IntroScreen {
             audio.play_ambient();
         }
 
-        // TODO: Set this up to display full tutorials, w/ screenshots, text explanations, etc.
         let pages = vec![
             OobePage {
                 icon: IconName::BrightStar,
@@ -191,6 +191,7 @@ impl IntroScreen {
             audio,
             pages,
             frame_count: 0,
+            audio_muted: false,
         };
 
         // Start the animation loop only on first creation
@@ -688,6 +689,9 @@ impl Render for IntroScreen {
         let bg_primary = hsla(color1.h, color1.s, color1.l * 0.4, bg_opacity);
         let bg_secondary = hsla(color2.h, color2.s, color2.l * 0.3, bg_opacity * 0.8);
 
+        // Mute button state
+        let muted = self.audio_muted;
+
         div()
             .id("oobe-intro")
             .size_full()
@@ -767,16 +771,44 @@ impl Render for IntroScreen {
                             }))
                     )
             )
-            // Page counter
+            // Page counter and mute button
             .child(
-                div()
+                h_flex()
                     .absolute()
                     .bottom_4()
                     .right_4()
+                    .gap_4()
+                    .items_center()
                     .opacity(content_opacity * 0.4)
-                    .text_sm()
-                    .text_color(white().opacity(0.5))
-                    .child(format!("{} / {}", current_page + 1, total_pages))
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(white().opacity(0.5))
+                            .child(format!("{} / {}", current_page + 1, total_pages))
+                    )
+                    .child(
+                        div()
+                            .id("mute-btn")
+                            .px_2()
+                            .py_1()
+                            .rounded_lg()
+                            .bg(hsla(0.0, 0.0, 0.0, 0.15))
+                            .hover(|s| s.bg(hsla(0.0, 0.0, 0.0, 0.25)).cursor_pointer())
+                            .child(
+                                if muted {
+                                    Icon::new(IconName::Square).large().render(_window, cx)
+                                } else {
+                                    Icon::new(IconName::MusicNote).large().render(_window, cx)
+                                }
+                            )
+                            .on_click(cx.listener(|this, _, _, _| {
+                                this.audio_muted = !this.audio_muted;
+                                this.audio.set_enabled(!this.audio_muted);
+                                if !this.audio_muted {
+                                    this.audio.play_ambient();
+                                }
+                            }))
+                    )
             )
     }
 }

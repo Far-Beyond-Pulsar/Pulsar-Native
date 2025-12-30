@@ -132,7 +132,10 @@ impl BevyRenderer {
         app.add_plugins(
             DefaultPlugins
                 .set(bevy::window::WindowPlugin {
-                    primary_window: None,
+                    primary_window: Some(bevy::window::Window {
+                        present_mode: bevy::window::PresentMode::Immediate,
+                        ..default()
+                    }),
                     exit_condition: bevy::window::ExitCondition::DontExit,
                     ..default()
                 })
@@ -149,7 +152,7 @@ impl BevyRenderer {
         );
 
         app.add_plugins(bevy::app::ScheduleRunnerPlugin::run_loop(
-            Duration::from_secs_f64(1.0 / 3000.0),
+            Duration::ZERO //Duration::from_secs_f64(1.0 / 3000.0),
         ));
 
         tracing::info!("[BEVY] ✅ Plugins configured");
