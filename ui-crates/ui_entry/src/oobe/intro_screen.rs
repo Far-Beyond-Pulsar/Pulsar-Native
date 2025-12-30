@@ -801,10 +801,14 @@ impl Render for IntroScreen {
                                     Icon::new(IconName::MusicNote).large().render(_window, cx)
                                 }
                             )
+                            // TODO: Better muted icon (Music note w/ strikethrough?)
                             .on_click(cx.listener(|this, _, _, _| {
                                 this.audio_muted = !this.audio_muted;
-                                this.audio.set_enabled(!this.audio_muted);
-                                if !this.audio_muted {
+                                if this.audio_muted {
+                                    this.audio.set_enabled(false);
+                                    this.audio.stop_all();
+                                } else {
+                                    this.audio.set_enabled(true);
                                     this.audio.play_ambient();
                                 }
                             }))
