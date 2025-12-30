@@ -1551,9 +1551,9 @@ impl ViewportPanel {
                     )
             )
             .child(
-                // Name column - fixed 180px
+                // Name column - fixed 200px width
                 div()
-                    .w(px(180.0))
+                    .w(px(200.0))
                     .flex_none()
                     .overflow_hidden()
                     .text_xs()
