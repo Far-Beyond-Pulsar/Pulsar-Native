@@ -2,7 +2,9 @@
 
 use gpui::{AppContext, Context, DismissEvent, Entity, Focusable, Window};
 use ui::{ContextModal, dock::PanelEvent};
-use ui_editor::{FileManagerDrawer, FileSelected, DrawerFileType as FileType, PopoutFileManagerEvent, ProblemsDrawer, ScriptEditorPanel, TextEditorEvent};
+use ui_file_manager::{FileManagerDrawer, FileSelected, FileType, PopoutFileManagerEvent};
+use ui_problems::ProblemsDrawer;
+use ui_script_editor::{ScriptEditorPanel, TextEditorEvent};
 use ui_entry::{EntryScreen, ProjectSelected};
 use ui_alias_editor::ShowTypePickerRequest;
 use engine_backend::services::rust_analyzer_manager::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager};

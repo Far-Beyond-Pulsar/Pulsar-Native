@@ -3,7 +3,10 @@
 use std::{path::PathBuf, sync::Arc};
 use gpui::{AppContext, Context, Entity, Window};
 use ui::dock::DockItem;
-use ui_editor::{FileManagerDrawer, LevelEditorPanel, ProblemsDrawer, TerminalDrawer};
+use ui_file_manager::FileManagerDrawer;
+use ui_problems::ProblemsDrawer;
+use ui_terminal::TerminalDrawer;
+use ui_level_editor::LevelEditorPanel;
 use ui_type_debugger::TypeDebuggerDrawer;
 use ui_entry::EntryScreen;
 use plugin_manager::PluginManager;

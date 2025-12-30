@@ -16,7 +16,9 @@ members = [
     "ui-crates/ui_common",
     "ui-crates/ui_core",
     "ui-crates/ui_entry",
-    "ui-crates/ui_editor",
+    "ui-crates/ui_script_editor",
+    "ui-crates/ui_level_editor",
+    "ui-crates/ui_daw_editor",
     "ui-crates/ui_settings",
     "ui-crates/ui_multiplayer",
     "ui-crates/ui_terminal",
@@ -76,8 +78,10 @@ engine_fs = { path = "crates/engine_fs" }
 
 # UI component crates
 ui_core = { path = "ui-crates/ui_core" }
-ui_entry = { path = "ui-crates/ui_entry" }  
-ui_editor = { path = "ui-crates/ui_editor" }
+ui_entry = { path = "ui-crates/ui_entry" }
+ui_script_editor = { path = "ui-crates/ui_script_editor" }
+ui_level_editor = { path = "ui-crates/ui_level_editor" }
+ui_daw_editor = { path = "ui-crates/ui_daw_editor" }
 ui_settings = { path = "ui-crates/ui_settings" }
 ui_multiplayer = { path = "ui-crates/ui_multiplayer" }
 ui_terminal = { path = "ui-crates/ui_terminal" }

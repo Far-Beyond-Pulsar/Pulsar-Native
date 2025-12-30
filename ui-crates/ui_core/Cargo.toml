@@ -11,7 +11,9 @@ ui.workspace = true
 
 # UI crates (all of them!)
 ui_common.workspace = true
-ui_editor.workspace = true
+ui_script_editor.workspace = true
+ui_level_editor.workspace = true
+ui_daw_editor.workspace = true
 ui_entry.workspace = true
 ui_settings.workspace = true
 ui_multiplayer.workspace = true

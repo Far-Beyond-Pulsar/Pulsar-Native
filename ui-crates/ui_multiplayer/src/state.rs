@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use super::types::*;
-use ui_editor::tabs::script_editor::ScriptEditor;
+use ui_script_editor::ScriptEditorPanel as ScriptEditor;
 use engine_backend::subsystems::networking::simple_sync::SyncDiff;
 use engine_backend::subsystems::networking::multiuser::MultiuserClient;
 
@@ -99,7 +99,7 @@ impl MultiplayerWindow {
 
     /// Populate the file sync UI with entries from a diff
     pub(super) fn populate_file_sync_ui(&mut self, diff: &SyncDiff, window: &mut Window, cx: &mut Context<Self>) {
-        use ui_editor::tabs::script_editor::DiffFileEntry;
+        use ui_script_editor::DiffFileEntry;
         use std::fs;
 
         let mut diff_files = Vec::new();
@@ -213,7 +213,7 @@ impl MultiplayerWindow {
 
     /// Simulate a file diff for development/testing purposes
     pub(super) fn simulate_diff_for_dev(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        use ui_editor::tabs::script_editor::DiffFileEntry;
+        use ui_script_editor::DiffFileEntry;
         use std::fs;
 
         // Get project root from the stored path

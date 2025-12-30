@@ -3,10 +3,12 @@
 use std::path::PathBuf;
 use gpui::{Entity, FocusHandle};
 use ui::dock::{DockArea, TabPanel};
-use ui_editor::{
-    DawEditorPanel, FileManagerDrawer, LevelEditorPanel, ProblemsDrawer,
-    ScriptEditorPanel, TerminalDrawer,
-};
+use ui_file_manager::FileManagerDrawer;
+use ui_problems::ProblemsDrawer;
+use ui_terminal::TerminalDrawer;
+use ui_script_editor::ScriptEditorPanel;
+use ui_level_editor::LevelEditorPanel;
+use ui_daw_editor::DawEditorPanel;
 use ui_type_debugger::TypeDebuggerDrawer;
 use ui_entry::EntryScreen;
 use ui_common::command_palette::GenericPalette;

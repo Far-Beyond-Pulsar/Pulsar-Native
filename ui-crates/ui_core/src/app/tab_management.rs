@@ -2,7 +2,10 @@
 
 use std::{path::PathBuf, sync::Arc};
 use gpui::{AppContext, Context, Window};
-use ui_editor::{DawEditorPanel, FileSelected, DrawerFileType as FileType, LevelEditorPanel, ScriptEditorPanel};
+use ui_file_manager::{FileSelected, FileType};
+use ui_script_editor::ScriptEditorPanel;
+use ui_level_editor::LevelEditorPanel;
+use ui_daw_editor::DawEditorPanel;
 
 use super::{PulsarApp, event_handlers};
 

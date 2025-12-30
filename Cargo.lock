@@ -4124,6 +4124,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "device_query"
+version = "4.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7331225604b9b097b41872d550134933d4be83465d70a2c4a132b929f99aaca"
+dependencies = [
+ "macos-accessibility-client",
+ "pkg-config",
+ "readkey",
+ "readmouse",
+ "windows 0.48.0",
+ "x11",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10033,7 +10047,7 @@ dependencies = [
  "cpal",
  "crossbeam",
  "dashmap 6.1.0",
- "device_query",
+ "device_query 2.1.0",
  "directories",
  "engine_backend",
  "engine_state",
@@ -10079,13 +10093,15 @@ dependencies = [
  "ui_about",
  "ui_common",
  "ui_core",
+ "ui_daw_editor",
  "ui_documentation",
- "ui_editor",
  "ui_entry",
  "ui_file_manager",
+ "ui_level_editor",
  "ui_loading_screen",
  "ui_multiplayer",
  "ui_problems",
+ "ui_script_editor",
  "ui_settings",
  "ui_terminal",
  "url",
@@ -14284,15 +14300,17 @@ dependencies = [
  "ui",
  "ui_alias_editor",
  "ui_common",
- "ui_editor",
+ "ui_daw_editor",
  "ui_editor_table",
  "ui_entry",
  "ui_enum_editor",
  "ui_file_manager",
+ "ui_level_editor",
  "ui_loading_screen",
  "ui_multiplayer",
  "ui_problems",
  "ui_project_launcher",
+ "ui_script_editor",
  "ui_settings",
  "ui_struct_editor",
  "ui_terminal",
@@ -14302,27 +14320,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "ui_documentation"
-version = "0.1.0"
-dependencies = [
- "gpui",
- "pulsar_docs",
- "ui",
-]
-
-[[package]]
-name = "ui_editor"
+name = "ui_daw_editor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytemuck",
  "chrono",
  "claxon",
- "core-graphics 0.23.2",
  "cpal",
  "crossbeam",
  "dashmap 6.1.0",
- "device_query",
  "engine_backend",
  "engine_state",
  "flume",
@@ -14331,38 +14338,30 @@ dependencies = [
  "hound",
  "itertools 0.13.0",
  "lewton",
- "lsp-types",
- "notify 7.0.0",
- "objc2 0.5.2",
- "objc2-foundation 0.2.2",
  "parking_lot",
- "quote",
- "raw-window-handle",
- "regex",
  "rfd",
  "ron 0.8.1",
- "ropey",
  "schemars",
  "serde",
  "serde_json",
- "similar",
  "smol 1.3.0",
  "symphonia",
- "syn 2.0.110",
  "tempfile",
  "tokio",
  "tracing",
- "tree-sitter 0.20.10",
- "tree-sitter-rust 0.20.3",
  "ui",
  "ui_common",
- "ui_file_manager",
- "ui_problems",
- "ui_terminal",
  "uuid",
- "walkdir",
  "wgpu 0.20.1",
- "winapi",
+]
+
+[[package]]
+name = "ui_documentation"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+ "pulsar_docs",
+ "ui",
 ]
 
 [[package]]
@@ -14455,6 +14454,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "ui_level_editor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "device_query 4.0.1",
+ "engine_backend",
+ "engine_state",
+ "gpui",
+ "itertools 0.13.0",
+ "parking_lot",
+ "raw-window-handle",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tracing",
+ "ui",
+ "ui_common",
+ "uuid",
+ "winapi",
+]
+
+[[package]]
 name = "ui_loading_screen"
 version = "0.1.0"
 dependencies = [
@@ -14486,7 +14508,7 @@ dependencies = [
  "tracing",
  "ui",
  "ui_common",
- "ui_editor",
+ "ui_script_editor",
  "uuid",
 ]
 
@@ -14513,6 +14535,37 @@ dependencies = [
  "ui",
  "ui_common",
  "ui_entry",
+]
+
+[[package]]
+name = "ui_script_editor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "engine_backend",
+ "engine_state",
+ "gpui",
+ "itertools 0.13.0",
+ "lsp-types",
+ "notify 7.0.0",
+ "parking_lot",
+ "quote",
+ "regex",
+ "ropey",
+ "schemars",
+ "serde",
+ "serde_json",
+ "similar",
+ "syn 2.0.110",
+ "tempfile",
+ "tracing",
+ "tree-sitter 0.20.10",
+ "tree-sitter-rust 0.20.3",
+ "ui",
+ "ui_common",
+ "uuid",
+ "walkdir",
+ "winapi",
 ]
 
 [[package]]
