@@ -796,12 +796,11 @@ impl Render for IntroScreen {
                             .hover(|s| s.bg(hsla(0.0, 0.0, 0.0, 0.25)).cursor_pointer())
                             .child(
                                 if muted {
-                                    Icon::new(IconName::Square).large().render(_window, cx)
+                                    Icon::new(IconName::SoundOff).large().render(_window, cx)
                                 } else {
-                                    Icon::new(IconName::MusicNote).large().render(_window, cx)
+                                    Icon::new(IconName::SoundHigh).large().render(_window, cx)
                                 }
                             )
-                            // TODO: Better muted icon (Music note w/ strikethrough?)
                             .on_click(cx.listener(|this, _, _, _| {
                                 this.audio_muted = !this.audio_muted;
                                 if this.audio_muted {
