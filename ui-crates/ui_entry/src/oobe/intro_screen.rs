@@ -112,6 +112,7 @@ impl IntroScreen {
             audio.play_ambient();
         }
 
+        // TODO: Set this up to display full tutorials, w/ screenshots, text explanations, etc.
         let pages = vec![
             OobePage {
                 icon: IconName::BrightStar,
