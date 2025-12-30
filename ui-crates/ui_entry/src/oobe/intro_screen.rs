@@ -271,6 +271,7 @@ impl IntroScreen {
             IntroPhase::FadeOut => {
                 if phase_elapsed > Duration::from_millis(500) {
                     self.advance_phase(IntroPhase::Complete, cx);
+                    self.audio.stop_all(); // Stop audio when OOBE closes
                     cx.emit(IntroComplete);
                 }
             }
