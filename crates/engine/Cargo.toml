@@ -17,7 +17,7 @@ name = "pulsar_engine"
 path = "src/main.rs"
 
 [dependencies]
-horizon.workspace = true
+# horizon.workspace = true
 anyhow.workspace = true
 gpui.workspace = true
 ui = { workspace = true, features = ["tree-sitter-languages"] }
