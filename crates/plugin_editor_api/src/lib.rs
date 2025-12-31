@@ -636,13 +636,13 @@ macro_rules! export_plugin {
             // Validate theme pointer is not null
             if theme_ptr.is_null() {
                 eprintln!("[Plugin] ERROR: Received null theme pointer from host!");
-                return std::ptr::null_mut();
+                return std::ptr::null::<$plugin_type>() as *mut dyn $crate::EditorPlugin;
             }
 
             // Initialize globals immediately before creating plugin to prevent race conditions
             if SYNCED_THEME.set(theme_ptr as usize).is_err() {
                 eprintln!("[Plugin] ERROR: Theme pointer already initialized!");
-                return std::ptr::null_mut();
+                return std::ptr::null::<$plugin_type>() as *mut dyn $crate::EditorPlugin;
             }
 
             // Register the plugin theme accessor with the ui crate
