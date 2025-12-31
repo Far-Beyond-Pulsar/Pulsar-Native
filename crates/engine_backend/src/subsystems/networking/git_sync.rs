@@ -304,7 +304,7 @@ pub enum GitObjectType {
 
 /// Serialize a commit and all its objects for network transfer
 pub fn serialize_commit(repo: &Repository, commit_hash: &str) -> Result<Vec<GitObject>, git2::Error> {
-    tracing::info!("GIT_SYNC: Serializing commit {} for network transfer", commit_hash);
+    tracing::debug!("GIT_SYNC: Serializing commit {} for network transfer", commit_hash);
 
     let oid = Oid::from_str(commit_hash)?;
     let commit = repo.find_commit(oid)?;
@@ -326,7 +326,7 @@ pub fn serialize_commit(repo: &Repository, commit_hash: &str) -> Result<Vec<GitO
 
     let blob_count = objects.iter().filter(|o| o.object_type == GitObjectType::Blob).count();
     let tree_count = objects.iter().filter(|o| o.object_type == GitObjectType::Tree).count();
-    tracing::info!("GIT_SYNC: Serialized {} git objects total (1 commit, {} trees, {} blobs)",
+    tracing::debug!("GIT_SYNC: Serialized {} git objects total (1 commit, {} trees, {} blobs)",
         objects.len(), tree_count, blob_count);
 
     Ok(objects)
@@ -370,7 +370,7 @@ fn serialize_tree(repo: &Repository, tree: &git2::Tree, objects: &mut Vec<GitObj
 
 /// Reconstruct git objects in local repository from serialized data
 pub fn reconstruct_objects(repo: &Repository, objects: Vec<GitObject>) -> Result<String, git2::Error> {
-    tracing::info!("GIT_SYNC: Reconstructing {} git objects in repository", objects.len());
+    tracing::debug!("GIT_SYNC: Reconstructing {} git objects in repository", objects.len());
     let mut commit_oid = None;
     let odb = repo.odb()?;
 
@@ -396,7 +396,7 @@ pub fn reconstruct_objects(repo: &Repository, objects: Vec<GitObject>) -> Result
         }
     }
 
-    tracing::info!("GIT_SYNC: Successfully reconstructed all git objects");
+    tracing::debug!("GIT_SYNC: Successfully reconstructed all git objects");
     commit_oid.ok_or_else(|| git2::Error::from_str("No commit found in objects"))
 }
 
@@ -405,18 +405,18 @@ pub fn extract_files_from_commit(
     repo: &Repository,
     commit_hash: &str,
 ) -> Result<Vec<(PathBuf, Vec<u8>)>, git2::Error> {
-    tracing::info!("GIT_SYNC: Extracting files from commit {}", commit_hash);
+    tracing::debug!("GIT_SYNC: Extracting files from commit {}", commit_hash);
 
     let oid = Oid::from_str(commit_hash)?;
     let commit = repo.find_commit(oid)?;
     let tree = commit.tree()?;
 
-    tracing::info!("GIT_SYNC: Found commit tree, walking entries...");
+    tracing::debug!("GIT_SYNC: Found commit tree, walking entries...");
 
     let mut files = Vec::new();
     extract_files_from_tree(repo, &tree, PathBuf::new(), &mut files)?;
 
-    tracing::info!("GIT_SYNC: Extracted {} files from commit", files.len());
+    tracing::debug!("GIT_SYNC: Extracted {} files from commit", files.len());
     for (path, data) in &files {
         tracing::debug!("GIT_SYNC:   - {} ({} bytes)", path.display(), data.len());
     }

@@ -99,23 +99,23 @@ impl ScriptEditor {
 
     /// Set the global rust analyzer manager
     pub fn set_rust_analyzer(&mut self, analyzer: Entity<RustAnalyzerManager>, cx: &mut Context<Self>) {
-        tracing::info!("🔧 ScriptEditor::set_rust_analyzer called");
+        tracing::debug!("🔧 ScriptEditor::set_rust_analyzer called");
         self.rust_analyzer = Some(analyzer.clone());
         
         // Pass it to the text editor
         self.text_editor.update(cx, |editor, cx| {
-            tracing::info!("🔧 Passing rust-analyzer to TextEditor");
+            tracing::debug!("🔧 Passing rust-analyzer to TextEditor");
             editor.set_rust_analyzer(analyzer.clone(), cx);
         });
         
         // Subscribe to text editor events to forward to rust-analyzer
         let analyzer_for_sub = analyzer.clone();
         cx.subscribe(&self.text_editor, move |this: &mut Self, _editor, event: &TextEditorEvent, cx| {
-            tracing::info!("📨 ScriptEditor received TextEditorEvent: {:?}", std::mem::discriminant(event));
+            tracing::debug!("📨 ScriptEditor received TextEditorEvent: {:?}", std::mem::discriminant(event));
             if let Some(ref analyzer) = this.rust_analyzer {
                 match event {
                     TextEditorEvent::FileOpened { path, content } => {
-                        tracing::info!("📂 ScriptEditor handling FileOpened: {:?}", path);
+                        tracing::debug!("📂 ScriptEditor handling FileOpened: {:?}", path);
                         // Notify rust-analyzer that a file was opened
                         analyzer.update(cx, |analyzer, _cx| {
                             let language_id = if path.extension().and_then(|e| e.to_str()) == Some("rs") {
@@ -124,49 +124,49 @@ impl ScriptEditor {
                                 "text"
                             };
                             
-                            tracing::info!("🚀 Calling did_open_file for {:?} (language: {})", path.file_name(), language_id);
+                            tracing::debug!("🚀 Calling did_open_file for {:?} (language: {})", path.file_name(), language_id);
                             if let Err(e) = analyzer.did_open_file(path, content, language_id) {
                                 tracing::error!("⚠️  Failed to notify rust-analyzer of file open: {}", e);
                             } else {
-                                tracing::info!("✓ Notified rust-analyzer: file opened {:?}", path.file_name());
+                                tracing::debug!("✓ Notified rust-analyzer: file opened {:?}", path.file_name());
                             }
                         });
                     }
                     TextEditorEvent::FileSaved { path, content } => {
-                        tracing::info!("💾 ScriptEditor handling FileSaved: {:?}", path);
+                        tracing::debug!("💾 ScriptEditor handling FileSaved: {:?}", path);
                         // Notify rust-analyzer that a file was saved
                         analyzer.update(cx, |analyzer, _cx| {
                             if let Err(e) = analyzer.did_save_file(path, content) {
                                 tracing::error!("⚠️  Failed to notify rust-analyzer of file save: {}", e);
                             } else {
-                                tracing::info!("✓ Notified rust-analyzer: file saved {:?}", path.file_name());
+                                tracing::debug!("✓ Notified rust-analyzer: file saved {:?}", path.file_name());
                             }
                         });
                     }
                     TextEditorEvent::FileClosed { path } => {
-                        tracing::info!("❌ ScriptEditor handling FileClosed: {:?}", path);
+                        tracing::debug!("❌ ScriptEditor handling FileClosed: {:?}", path);
                         // Notify rust-analyzer that a file was closed
                         analyzer.update(cx, |analyzer, _cx| {
                             if let Err(e) = analyzer.did_close_file(path) {
                                 tracing::error!("⚠️  Failed to notify rust-analyzer of file close: {}", e);
                             } else {
-                                tracing::info!("✓ Notified rust-analyzer: file closed {:?}", path.file_name());
+                                tracing::debug!("✓ Notified rust-analyzer: file closed {:?}", path.file_name());
                             }
                         });
                     }
                     _ => {}
                 }
             } else {
-                tracing::info!("⚠️  ScriptEditor: rust_analyzer is None!");
+                tracing::debug!("⚠️  ScriptEditor: rust_analyzer is None!");
             }
         }).detach();
         
-        tracing::info!("✓ ScriptEditor rust-analyzer setup complete");
+        tracing::debug!("✓ ScriptEditor rust-analyzer setup complete");
     }
     
     /// Set the project path and load it in the file explorer
     pub fn set_project_path(&mut self, project_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        tracing::info!("📁 ScriptEditor::set_project_path called with: {:?}", project_path);
+        tracing::debug!("📁 ScriptEditor::set_project_path called with: {:?}", project_path);
         self.file_explorer.update(cx, |explorer, cx| {
             explorer.open_project(project_path, window, cx);
         });
@@ -256,7 +256,7 @@ impl ScriptEditor {
     /// Load a diff file by index
     fn load_diff_file(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(file) = self.diff_files.get(index) {
-            tracing::info!("load_diff_file: Loading file {} at index {}", file.path, index);
+            tracing::debug!("load_diff_file: Loading file {} at index {}", file.path, index);
 
             let before_content = file.before_content.clone();
             let after_content = file.after_content.clone();
@@ -286,7 +286,7 @@ impl ScriptEditor {
 
             self.selected_diff_index = Some(index);
             cx.notify();
-            tracing::info!("load_diff_file: Successfully loaded file at index {}", index);
+            tracing::debug!("load_diff_file: Successfully loaded file at index {}", index);
         } else {
             tracing::error!("load_diff_file: No file found at index {}", index);
         }
@@ -301,7 +301,7 @@ impl ScriptEditor {
 
     /// Select a diff file by path (called when clicking in file explorer)
     fn select_diff_file_by_path(&mut self, full_path: &std::path::Path, window: &mut Window, cx: &mut Context<Self>) {
-        tracing::info!("select_diff_file_by_path: full_path = {:?}", full_path);
+        tracing::debug!("select_diff_file_by_path: full_path = {:?}", full_path);
 
         // Get the project root from the file explorer
         let project_root = self.file_explorer.update(cx, |explorer, _cx| {
@@ -309,12 +309,12 @@ impl ScriptEditor {
         });
 
         if let Some(root) = project_root {
-            tracing::info!("Project root: {:?}", root);
+            tracing::debug!("Project root: {:?}", root);
 
             // Convert full path to relative path
             if let Ok(relative_path) = full_path.strip_prefix(&root) {
                 let relative_str = relative_path.to_string_lossy().replace("\\", "/");
-                tracing::info!("Relative path: {}", relative_str);
+                tracing::debug!("Relative path: {}", relative_str);
 
                 // Find the diff file with this relative path
                 if let Some(index) = self.diff_files.iter().position(|f| {
@@ -323,7 +323,7 @@ impl ScriptEditor {
                     tracing::debug!("Comparing '{}' with '{}'", f_normalized, relative_str);
                     f_normalized == relative_str
                 }) {
-                    tracing::info!("Found diff file at index {}", index);
+                    tracing::debug!("Found diff file at index {}", index);
                     self.selected_diff_index = Some(index);
                     self.load_diff_file(index, window, cx);
                 } else {
@@ -445,10 +445,10 @@ impl Render for ScriptEditor {
 
         // Handle file opening based on mode
         if let Some(path) = self.file_explorer.update(cx, |explorer, _| explorer.get_last_opened_file()) {
-            tracing::info!("Render: File clicked: {:?}, mode: {:?}", path, self.mode);
+            tracing::debug!("Render: File clicked: {:?}, mode: {:?}", path, self.mode);
             if self.mode == ScriptEditorMode::Diff {
                 // In diff mode, select the diff file
-                tracing::info!("Render: Calling select_diff_file_by_path for {:?}", path);
+                tracing::debug!("Render: Calling select_diff_file_by_path for {:?}", path);
                 self.select_diff_file_by_path(&path, window, cx);
             } else {
                 // In normal mode, open the file normally

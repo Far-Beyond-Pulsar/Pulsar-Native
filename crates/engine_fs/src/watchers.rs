@@ -37,7 +37,7 @@ pub fn start_watcher(
 }
 
 fn handle_fs_event(event: &Event, type_database: &TypeDatabase) {
-    tracing::info!("Filesystem event: {:?}", event);
+    tracing::debug!("Filesystem event: {:?}", event);
 
     match &event.kind {
         EventKind::Create(_) | EventKind::Modify(_) => {

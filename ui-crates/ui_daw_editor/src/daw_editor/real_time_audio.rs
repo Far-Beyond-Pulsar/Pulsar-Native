@@ -99,7 +99,7 @@ impl RealTimeAudio {
         let sample_rate = config.sample_rate().0;
         let channels = config.channels();
 
-        tracing::info!(
+        tracing::debug!(
             "Audio device: {} - {} Hz, {} channels",
             device.name().unwrap_or_else(|_| "Unknown".to_string()),
             sample_rate,

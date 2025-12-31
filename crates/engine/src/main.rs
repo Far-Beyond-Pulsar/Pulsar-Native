@@ -227,18 +227,18 @@ fn main() {
         .event_format(GorgeousFormatter)
         .init();
 
-    tracing::info!("{}", ENGINE_NAME);
-    tracing::info!("Version: {}", ENGINE_VERSION);
-    tracing::info!("Authors: {}", ENGINE_AUTHORS);
-    tracing::info!("Description: {}", ENGINE_DESCRIPTION);
-    tracing::info!("🚀 Starting Pulsar Engine with Winit + GPUI Zero-Copy Composition");
+    tracing::debug!("{}", ENGINE_NAME);
+    tracing::debug!("Version: {}", ENGINE_VERSION);
+    tracing::debug!("Authors: {}", ENGINE_AUTHORS);
+    tracing::debug!("Description: {}", ENGINE_DESCRIPTION);
+    tracing::debug!("🚀 Starting Pulsar Engine with Winit + GPUI Zero-Copy Composition");
 
     // Parse command-line arguments for URI launch
-    tracing::info!("Command-line arguments: {:?}", std::env::args().collect::<Vec<_>>());
+    tracing::debug!("Command-line arguments: {:?}", std::env::args().collect::<Vec<_>>());
     let uri_command = match uri::parse_launch_args() {
         Ok(cmd) => {
             if cmd.is_some() {
-                tracing::info!("✅ Successfully parsed URI command: {:?}", cmd);
+                tracing::debug!("✅ Successfully parsed URI command: {:?}", cmd);
             }
             cmd
         },
@@ -295,7 +295,7 @@ fn main() {
     }
 
     // Load settings
-    tracing::info!("Loading engine settings from {:?}", config_file);
+    tracing::debug!("Loading engine settings from {:?}", config_file);
     let _engine_settings = EngineSettings::load(&config_file);
 
     // Initialize Tokio runtime for engine backend
@@ -317,7 +317,7 @@ fn main() {
 
     // Store URI project path if present
     if let Some(uri::UriCommand::OpenProject { path }) = uri_command {
-        tracing::info!("Launching project from URI: {}", path.display());
+        tracing::debug!("Launching project from URI: {}", path.display());
         engine_state.set_metadata(
             "uri_project_path".to_string(),
             path.to_string_lossy().to_string()
@@ -333,11 +333,11 @@ fn main() {
     let discord_app_id = "1450965386014228491";
     if discord_app_id != "YOUR_DISCORD_APPLICATION_ID_HERE" {
         match engine_state.init_discord(discord_app_id) {
-            Ok(_) => tracing::info!("✅ Discord Rich Presence initialized"),
+            Ok(_) => tracing::debug!("✅ Discord Rich Presence initialized"),
             Err(e) => tracing::warn!("⚠️  Discord Rich Presence failed to initialize: {}", e),
         }
     } else {
-        tracing::info!("ℹ️  Discord Rich Presence not configured (set discord_app_id in main.rs)");
+        tracing::debug!("ℹ️  Discord Rich Presence not configured (set discord_app_id in main.rs)");
     }
 
     // Register URI scheme with OS (background task)

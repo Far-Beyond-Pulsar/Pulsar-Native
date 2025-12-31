@@ -127,7 +127,7 @@ impl Render for AlertStory {
                                 .with_size(self.size)
                                 .title("Info message")
                                 .on_close(cx.listener(|_, _, _, _| {
-                                    tracing::info!("Info alert closed");
+                                    tracing::debug!("Info alert closed");
                                 })),
                         )
                         .child(

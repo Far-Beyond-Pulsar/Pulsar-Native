@@ -23,8 +23,8 @@ async fn main() -> Result<()> {
     // Check if we should run the simple test server instead
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 && args[1] == "--test-server" {
-        tracing::info!("🧪 Running simple test server on 0.0.0.0:8080");
-        tracing::info!("This is a minimal stdlib TCP server for testing external connectivity");
+        tracing::debug!("🧪 Running simple test server on 0.0.0.0:8080");
+        tracing::debug!("This is a minimal stdlib TCP server for testing external connectivity");
         return simple_test_server::run();
     }
 
@@ -106,13 +106,13 @@ async fn main() -> Result<()> {
     });
     logging::log_status("🧹", "Garbage Collector", "RUNNING", true);
 
-    tracing::info!("\n{}", "✅ All services started successfully!".bright_green().bold());
-    tracing::info!("{}\n", "━".repeat(60).bright_black());
+    tracing::debug!("\n{}", "✅ All services started successfully!".bright_green().bold());
+    tracing::debug!("{}\n", "━".repeat(60).bright_black());
 
     // 12. Wait for shutdown signal
     tokio::select! {
         _ = signal::ctrl_c() => {
-            tracing::info!("\n{}", "⚠️  Received Ctrl+C, initiating graceful shutdown...".bright_yellow());
+            tracing::debug!("\n{}", "⚠️  Received Ctrl+C, initiating graceful shutdown...".bright_yellow());
         }
         _ = shutdown_rx.recv() => {
             info!("🛑 Received shutdown signal");
@@ -120,8 +120,8 @@ async fn main() -> Result<()> {
     }
 
     // 13. Initiate graceful shutdown
-    tracing::info!("{}", "🛑 Shutting down services...".bright_yellow().bold());
-    tracing::info!("{}", "━".repeat(60).bright_black());
+    tracing::debug!("{}", "🛑 Shutting down services...".bright_yellow().bold());
+    tracing::debug!("{}", "━".repeat(60).bright_black());
 
     // Signal all services to stop
     let _ = http_shutdown_tx.send(()).await;
@@ -154,8 +154,8 @@ async fn main() -> Result<()> {
         logging::log_status("📡", "Telemetry", "STOPPED", true);
     }
 
-    tracing::info!("\n{}", "👋 Pulsar MultiEdit service stopped cleanly".bright_green().bold());
-    tracing::info!("{}\n", "━".repeat(60).bright_black());
+    tracing::debug!("\n{}", "👋 Pulsar MultiEdit service stopped cleanly".bright_green().bold());
+    tracing::debug!("{}\n", "━".repeat(60).bright_black());
 
     Ok(())
 }

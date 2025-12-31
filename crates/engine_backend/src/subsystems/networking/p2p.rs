@@ -105,19 +105,19 @@ impl P2PManager {
     /// Attempt to establish P2P connection with fallback chain
     pub async fn connect(&self, peer_address: &str) -> Result<ConnectionMode, String> {
         // Try 1: Direct P2P with hole punching
-        tracing::info!("Attempting direct P2P connection to {}", peer_address);
+        tracing::debug!("Attempting direct P2P connection to {}", peer_address);
         if let Ok(stream) = self.try_direct_p2p(peer_address).await {
             *self.connection.write().await = Some(stream);
             *self.mode.write().await = ConnectionMode::DirectP2P;
-            tracing::info!("✓ Direct P2P connection established");
+            tracing::debug!("✓ Direct P2P connection established");
             return Ok(ConnectionMode::DirectP2P);
         }
 
         // Try 2: Binary proxy through server
-        tracing::info!("Direct P2P failed, trying binary proxy");
+        tracing::debug!("Direct P2P failed, trying binary proxy");
         if self.try_binary_proxy().await.is_ok() {
             *self.mode.write().await = ConnectionMode::BinaryProxy;
-            tracing::info!("✓ Binary proxy mode established");
+            tracing::debug!("✓ Binary proxy mode established");
             return Ok(ConnectionMode::BinaryProxy);
         }
 
@@ -211,7 +211,7 @@ pub async fn run_git_over_connection(
         ConnectionMode::DirectP2P | ConnectionMode::BinaryProxy => {
             // Use git's native protocol over our connection
             // This requires implementing a custom git transport
-            tracing::info!("Running git protocol over {:?}", p2p.get_mode().await);
+            tracing::debug!("Running git protocol over {:?}", p2p.get_mode().await);
 
             // TODO: Implement custom git transport that uses P2PManager
             // For now, use libgit2's callbacks to intercept network I/O

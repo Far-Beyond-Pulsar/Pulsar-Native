@@ -240,13 +240,13 @@ impl ToolbarPanel {
                             // Save the scene
                             match state_guard.scene_database.save_to_file(&save_path) {
                                 Ok(_) => {
-                                    tracing::info!("[LEVEL-EDITOR] 💾 Scene saved: {:?}", save_path);
+                                    tracing::debug!("[LEVEL-EDITOR] 💾 Scene saved: {:?}", save_path);
                                     drop(state_guard); // Release read lock before write
                                     state_clone.write().current_scene = Some(save_path);
                                     state_clone.write().has_unsaved_changes = false;
                                 }
                                 Err(e) => {
-                                    tracing::info!("[LEVEL-EDITOR] ❌ Failed to save scene: {}", e);
+                                    tracing::debug!("[LEVEL-EDITOR] ❌ Failed to save scene: {}", e);
                                 }
                             }
                         })
@@ -261,7 +261,7 @@ impl ToolbarPanel {
                                 state_clone.write().scene_database = crate::level_editor::SceneDatabase::with_default_scene();
                                 state_clone.write().current_scene = None;
                                 state_clone.write().has_unsaved_changes = false;
-                                tracing::info!("[LEVEL-EDITOR] 📄 New scene created");
+                                tracing::debug!("[LEVEL-EDITOR] 📄 New scene created");
                             })
                     })
             )

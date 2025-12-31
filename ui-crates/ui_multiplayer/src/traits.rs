@@ -23,7 +23,7 @@ impl Render for MultiplayerWindow {
         self.process_pending_updates(window, cx);
 
         if self.pending_file_sync.is_some() {
-            tracing::info!("RENDER: pending_file_sync present, FileSync tab should show it");
+            tracing::debug!("RENDER: pending_file_sync present, FileSync tab should show it");
         }
 
         v_flex()

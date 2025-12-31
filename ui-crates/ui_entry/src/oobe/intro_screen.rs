@@ -77,7 +77,7 @@ impl EventEmitter<IntroComplete> for IntroScreen {}
 impl IntroScreen {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let instance_id = INSTANCE_COUNTER.fetch_add(1, Ordering::SeqCst);
-        tracing::info!("🎬 [IntroScreen] Instance #{} created", instance_id);
+        tracing::debug!("🎬 [IntroScreen] Instance #{} created", instance_id);
         
         // Initialize shared animation state (first call wins)
         let already_created = INTRO_SCREEN_CREATED.swap(true, Ordering::SeqCst);
@@ -85,7 +85,7 @@ impl IntroScreen {
         {
             let mut state = SHARED_ANIM_STATE.lock();
             if state.is_none() {
-                tracing::info!("🎬 [IntroScreen::new] Initializing shared animation state");
+                tracing::debug!("🎬 [IntroScreen::new] Initializing shared animation state");
                 let now = Instant::now();
                 *state = Some(SharedAnimState {
                     phase: IntroPhase::FadeIn,
@@ -97,7 +97,7 @@ impl IntroScreen {
                     swipe_direction: 1,
                 });
             } else {
-                tracing::info!("🎬 [IntroScreen] Instance #{} reusing existing shared state at phase {:?}", 
+                tracing::debug!("🎬 [IntroScreen] Instance #{} reusing existing shared state at phase {:?}", 
                     instance_id, state.as_ref().map(|s| s.phase));
             }
         }
@@ -105,7 +105,7 @@ impl IntroScreen {
         if already_created {
             tracing::warn!("🎬 [IntroScreen::new] IntroScreen already exists, using shared state");
         } else {
-            tracing::info!("🎬 [IntroScreen::new] Creating new IntroScreen instance (first time)");
+            tracing::debug!("🎬 [IntroScreen::new] Creating new IntroScreen instance (first time)");
         }
         
         let audio = IntroAudio::new();
@@ -196,7 +196,7 @@ impl IntroScreen {
 
         // Start the animation loop only on first creation
         if !already_created {
-            tracing::info!("🎬 [IntroScreen] Starting animation loop");
+            tracing::debug!("🎬 [IntroScreen] Starting animation loop");
             cx.spawn(async move |this, mut cx| {
                 loop {
                     cx.background_executor().timer(Duration::from_millis(16)).await;
@@ -210,7 +210,7 @@ impl IntroScreen {
                     }).unwrap_or(false);
 
                     if !should_continue {
-                        tracing::info!("🎬 [IntroScreen] Animation loop complete");
+                        tracing::debug!("🎬 [IntroScreen] Animation loop complete");
                         break;
                     }
                 }
@@ -290,7 +290,7 @@ impl IntroScreen {
             if old_phase == new_phase {
                 return;
             }
-            tracing::info!("🎬 [advance_phase] {:?} -> {:?}", old_phase, new_phase);
+            tracing::debug!("🎬 [advance_phase] {:?} -> {:?}", old_phase, new_phase);
             s.phase = new_phase;
             s.phase_start_time = Instant::now();
         }
@@ -827,10 +827,10 @@ pub fn has_seen_intro() -> bool {
     if args.iter().any(|arg| arg == "--OOBE" || arg == "--oobe") {
         // Only show OOBE once per session even with the flag
         if !OOBE_SHOWN_THIS_SESSION.swap(true, Ordering::SeqCst) {
-            tracing::info!("🎯 [OOBE] --OOBE flag detected, forcing OOBE display");
+            tracing::debug!("🎯 [OOBE] --OOBE flag detected, forcing OOBE display");
             return false;
         } else {
-            tracing::info!("🎯 [OOBE] --OOBE flag present but OOBE already shown this session");
+            tracing::debug!("🎯 [OOBE] --OOBE flag present but OOBE already shown this session");
         }
     }
     

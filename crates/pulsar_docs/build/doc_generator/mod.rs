@@ -31,21 +31,21 @@ pub fn generate_workspace_docs(
     // Step 1: Discover all crates in the workspace
     let crates = workspace::discover_crates(workspace_root)?;
     
-    tracing::info!("cargo:warning=Found {} crates in workspace", crates.len());
+    tracing::debug!("cargo:warning=Found {} crates in workspace", crates.len());
     
     // Step 2: Parse and generate documentation for each crate
     let mut success_count = 0;
     
     for crate_info in crates {
-        tracing::info!("cargo:warning=Processing crate: {}", crate_info.name);
+        tracing::debug!("cargo:warning=Processing crate: {}", crate_info.name);
         
         match generate_crate_docs(&crate_info, output_dir) {
             Ok(()) => {
                 success_count += 1;
-                tracing::info!("cargo:warning=  ✓ Generated docs for {}", crate_info.name);
+                tracing::debug!("cargo:warning=  ✓ Generated docs for {}", crate_info.name);
             }
             Err(e) => {
-                tracing::info!("cargo:warning=  ✗ Failed to generate docs for {}: {}", crate_info.name, e);
+                tracing::debug!("cargo:warning=  ✗ Failed to generate docs for {}: {}", crate_info.name, e);
             }
         }
     }

@@ -63,13 +63,13 @@ impl IntroAudio {
         let audio_thread = thread::Builder::new()
             .name("oobe-audio".to_string())
             .spawn(move || {
-                tracing::info!("🔊 [OOBE] Audio thread starting...");
+                tracing::debug!("🔊 [OOBE] Audio thread starting...");
                 
                 // Try to create audio output with a timeout approach
                 // OutputStream::try_default() can hang on some systems
                 let audio_state = match OutputStream::try_default() {
                     Ok((stream, handle)) => {
-                        tracing::info!("🔊 [OOBE] Audio output initialized successfully");
+                        tracing::debug!("🔊 [OOBE] Audio output initialized successfully");
                         Some(AudioState {
                             _stream: stream,
                             stream_handle: handle,
@@ -96,7 +96,7 @@ impl IntroAudio {
                                             Ok(sink) => {
                                                 sink.set_volume(0.5);
                                                 sink.append(source);
-                                                tracing::info!("🔊 [OOBE] Playing intro audio (embedded MP3, {} bytes)", INTRO_AUDIO.len());
+                                                tracing::debug!("🔊 [OOBE] Playing intro audio (embedded MP3, {} bytes)", INTRO_AUDIO.len());
                                                 s.ambient_sink = Some(sink);
                                             }
                                             Err(e) => {
@@ -115,7 +115,7 @@ impl IntroAudio {
                                 if let Some(sink) = s.ambient_sink.take() {
                                     sink.stop();
                                 }
-                                tracing::info!("🔊 [OOBE] Stopped all sounds");
+                                tracing::debug!("🔊 [OOBE] Stopped all sounds");
                             }
                         }
                         AudioCommand::SetVolume(vol) => {
@@ -126,7 +126,7 @@ impl IntroAudio {
                             }
                         }
                         AudioCommand::Shutdown => {
-                            tracing::info!("🔊 [OOBE] Audio thread shutting down");
+                            tracing::debug!("🔊 [OOBE] Audio thread shutting down");
                             if let Some(ref mut s) = state {
                                 if let Some(sink) = s.ambient_sink.take() {
                                     sink.stop();
@@ -137,7 +137,7 @@ impl IntroAudio {
                     }
                 }
                 
-                tracing::info!("🔊 [OOBE] Audio thread exited");
+                tracing::debug!("🔊 [OOBE] Audio thread exited");
             });
         
         let audio_thread = match audio_thread {

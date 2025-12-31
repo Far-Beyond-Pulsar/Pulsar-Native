@@ -294,7 +294,7 @@ pub fn gizmo_drag_system(
 
     // End drag
     if !mouse_input.left_down && interaction_state.is_dragging {
-        tracing::info!("[BEVY-GIZMO] ✅ Gizmo drag ended - transform changes synced to GPUI");
+        tracing::debug!("[BEVY-GIZMO] ✅ Gizmo drag ended - transform changes synced to GPUI");
         interaction_state.is_dragging = false;
         interaction_state.drag_axis = None;
         interaction_state.drag_start_transform = None;

@@ -17,11 +17,11 @@ async fn main() -> Result<()> {
     let base_url = std::env::var("PULSAR_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
     let client = reqwest::Client::new();
 
-    tracing::info!("Pulsar MultiEdit - Example Client");
-    tracing::info!("=================================\n");
+    tracing::debug!("Pulsar MultiEdit - Example Client");
+    tracing::debug!("=================================\n");
 
     // Step 1: Create a session
-    tracing::info!("1. Creating session...");
+    tracing::debug!("1. Creating session...");
     let create_resp = client
         .post(format!("{}/v1/sessions", base_url))
         .json(&json!({
@@ -42,13 +42,13 @@ async fn main() -> Result<()> {
     let session_id = create_data["session_id"].as_str().unwrap();
     let join_token = create_data["join_token"].as_str().unwrap();
 
-    tracing::info!("   ✓ Session created:");
-    tracing::info!("     - ID: {}", session_id);
-    tracing::info!("     - Token: {}...", &join_token[..20]);
-    tracing::info!("");
+    tracing::debug!("   ✓ Session created:");
+    tracing::debug!("     - ID: {}", session_id);
+    tracing::debug!("     - Token: {}...", &join_token[..20]);
+    tracing::debug!("");
 
     // Step 2: Join the session
-    tracing::info!("2. Joining session as peer...");
+    tracing::debug!("2. Joining session as peer...");
     let join_resp = client
         .post(format!("{}/v1/sessions/{}/join", base_url, session_id))
         .json(&json!({
@@ -63,14 +63,14 @@ async fn main() -> Result<()> {
     }
 
     let join_data: serde_json::Value = join_resp.json().await?;
-    tracing::info!("   ✓ Joined session:");
-    tracing::info!("     - Peer ID: {}", join_data["peer_id"]);
-    tracing::info!("     - Role: {}", join_data["role"]);
-    tracing::info!("     - Participants: {}", join_data["participant_count"]);
-    tracing::info!("");
+    tracing::debug!("   ✓ Joined session:");
+    tracing::debug!("     - Peer ID: {}", join_data["peer_id"]);
+    tracing::debug!("     - Role: {}", join_data["role"]);
+    tracing::debug!("     - Participants: {}", join_data["participant_count"]);
+    tracing::debug!("");
 
     // Step 3: Get session info
-    tracing::info!("3. Fetching session details...");
+    tracing::debug!("3. Fetching session details...");
     let session_resp = client
         .get(format!("{}/v1/sessions/{}", base_url, session_id))
         .send()
@@ -78,15 +78,15 @@ async fn main() -> Result<()> {
 
     if session_resp.status().is_success() {
         let session_data: serde_json::Value = session_resp.json().await?;
-        tracing::info!("   ✓ Session details:");
-        tracing::info!("     - Host: {}", session_data["host_id"]);
-        tracing::info!("     - Created: {}", session_data["created_at"]);
-        tracing::info!("     - Expires: {}", session_data["expires_at"]);
-        tracing::info!("");
+        tracing::debug!("   ✓ Session details:");
+        tracing::debug!("     - Host: {}", session_data["host_id"]);
+        tracing::debug!("     - Created: {}", session_data["created_at"]);
+        tracing::debug!("     - Expires: {}", session_data["expires_at"]);
+        tracing::debug!("");
     }
 
     // Step 4: Check health
-    tracing::info!("4. Checking service health...");
+    tracing::debug!("4. Checking service health...");
     let health_resp = client
         .get(format!("{}/health", base_url))
         .send()
@@ -94,30 +94,30 @@ async fn main() -> Result<()> {
 
     if health_resp.status().is_success() {
         let health_data: serde_json::Value = health_resp.json().await?;
-        tracing::info!("   ✓ Service health: {}", health_data["status"]);
+        tracing::debug!("   ✓ Service health: {}", health_data["status"]);
         if let Some(checks) = health_data["checks"].as_array() {
             for check in checks {
-                tracing::info!("     - {}: {}", check["name"], check["status"]);
+                tracing::debug!("     - {}: {}", check["name"], check["status"]);
             }
         }
-        tracing::info!("");
+        tracing::debug!("");
     }
 
     // Step 5: Close session
-    tracing::info!("5. Closing session...");
+    tracing::debug!("5. Closing session...");
     let close_resp = client
         .post(format!("{}/v1/sessions/{}/close", base_url, session_id))
         .send()
         .await?;
 
     if close_resp.status().is_success() {
-        tracing::info!("   ✓ Session closed");
+        tracing::debug!("   ✓ Session closed");
     } else {
-        tracing::info!("   ✗ Failed to close session: {}", close_resp.status());
+        tracing::debug!("   ✗ Failed to close session: {}", close_resp.status());
     }
-    tracing::info!("");
+    tracing::debug!("");
 
-    tracing::info!("Example completed successfully!");
+    tracing::debug!("Example completed successfully!");
 
     Ok(())
 }

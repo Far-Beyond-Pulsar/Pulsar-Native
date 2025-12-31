@@ -120,9 +120,9 @@ impl World {
     /// # let vault_manager: VaultManager<CustomData> = VaultManager::new("path/to/database.db").unwrap();
     /// # let object_id = Uuid::new_v4();
     /// if let Ok(Some(object)) = vault_manager.get_object(object_id) {
-    ///     tracing::info!("Found object: {:?}", object);
+    ///     tracing::debug!("Found object: {:?}", object);
     /// } else {
-    ///     tracing::info!("Object not found");
+    ///     tracing::debug!("Object not found");
     /// }
     /// ```
     ///
@@ -255,7 +255,7 @@ impl World {
     /// // Query a 10x10x10 cubic area
     /// let objects = vault_manager.query_region(region_id, 0.0, 0.0, 0.0, 10.0, 10.0, 10.0).expect("Failed to query region");
     /// for object in objects {
-    ///     tracing::info!("Found object: {:?}", object.uuid);
+    ///     tracing::debug!("Found object: {:?}", object.uuid);
     /// }
     /// ```
     ///

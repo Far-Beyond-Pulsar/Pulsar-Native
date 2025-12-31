@@ -267,7 +267,7 @@ pub fn handle_mouse_input(
             if let Err(e) = window_state.winit_window.drag_resize_window(direction) {
                 tracing::error!("❌ Failed to start window resize: {:?}", e);
             } else {
-                tracing::info!("🔲 Starting window resize: {:?}", direction);
+                tracing::debug!("🔲 Starting window resize: {:?}", direction);
             }
             return;
         }
@@ -284,7 +284,7 @@ pub fn handle_mouse_input(
             if let Err(e) = window_state.winit_window.drag_window() {
                 tracing::error!("❌ Failed to start window drag: {:?}", e);
             } else {
-                tracing::info!("👆 Starting window drag from titlebar");
+                tracing::debug!("👆 Starting window drag from titlebar");
             }
         }
     }

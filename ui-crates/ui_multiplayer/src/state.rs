@@ -152,7 +152,7 @@ impl MultiplayerWindow {
             editor.enter_diff_mode(diff_files, project_root_for_editor, window, cx);
         });
 
-        tracing::info!("Populated file sync UI with {} entries",
+        tracing::debug!("Populated file sync UI with {} entries",
             diff.files_to_add.len() + diff.files_to_update.len() + diff.files_to_delete.len());
     }
 
@@ -225,7 +225,7 @@ impl MultiplayerWindow {
             }
         };
 
-        tracing::info!("Using project root for diff simulation: {:?}", project_root);
+        tracing::debug!("Using project root for diff simulation: {:?}", project_root);
 
         // Look for common project files - try multiple patterns
         let test_file_patterns = vec![
@@ -274,7 +274,7 @@ impl MultiplayerWindow {
             return;
         }
 
-        tracing::info!("Found {} files for diff simulation: {:?}", test_files.len(), test_files);
+        tracing::debug!("Found {} files for diff simulation: {:?}", test_files.len(), test_files);
 
         let mut diff_entries = Vec::new();
         let mut files_to_update = Vec::new();
@@ -320,7 +320,7 @@ impl MultiplayerWindow {
         self.pending_file_sync = Some((mock_diff, "dev-mock-peer".to_string()));
         self.current_tab = SessionTab::FileSync;
 
-        tracing::info!("DEV: Simulated diff for testing file sync UI with {} files", file_count);
+        tracing::debug!("DEV: Simulated diff for testing file sync UI with {} files", file_count);
         cx.notify();
     }
 

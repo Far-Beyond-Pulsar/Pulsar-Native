@@ -13,7 +13,7 @@ libloading = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 uuid = { version = "1.0", features = ["v4"] }
-log = "0.4"
+tracing = { workspace = true }
 
 # UI dependencies
 gpui = { workspace = true }

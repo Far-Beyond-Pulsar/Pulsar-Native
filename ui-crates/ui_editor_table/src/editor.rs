@@ -393,7 +393,7 @@ impl DataTableEditor {
                             if let Err(e) = delegate.duplicate_row(selected_row) {
                                 eprintln!("Failed to duplicate row: {}", e);
                             } else {
-                                tracing::info!("✓ Row duplicated successfully");
+                                tracing::debug!("✓ Row duplicated successfully");
                             }
                         }
                         cx.notify();
@@ -412,7 +412,7 @@ impl DataTableEditor {
                         let delegate = table.delegate();
                         if let Some(selected_row) = delegate.state.selected_row {
                             if let Some(sql) = delegate.copy_row_as_insert(selected_row) {
-                                tracing::info!("✓ Copied SQL: {}", sql);
+                                tracing::debug!("✓ Copied SQL: {}", sql);
                                 // TODO: Copy to clipboard when available
                             }
                         }

@@ -73,6 +73,25 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
+/// Logger object for plugin-side tracing/logging.
+#[derive(Debug, Clone, Copy)]
+pub struct EditorLogger;
+
+impl EditorLogger {
+    pub fn info(&self, msg: &str) {
+        // Placeholder for tracing::info! or similar
+        // tracing::info!("{}", msg);
+    }
+    pub fn warn(&self, msg: &str) {
+        // Placeholder for tracing::warn! or similar
+    }
+    pub fn error(&self, msg: &str) {
+        // Placeholder for tracing::error! or similar
+    }
+    pub fn debug(&self, msg: &str) {
+        // Placeholder for tracing::debug! or similar
+    }
+}
 use std::fmt;
 use std::path::PathBuf;
 
@@ -571,6 +590,7 @@ pub trait EditorPlugin: Send + Sync {
         file_path: PathBuf,
         window: &mut Window,
         cx: &mut App,
+        logger: &EditorLogger,
     ) -> Result<(std::sync::Arc<dyn ui::dock::PanelView>, Box<dyn EditorInstance>), PluginError>;
 
     /// Called when the plugin is loaded.
@@ -592,12 +612,14 @@ pub trait EditorPlugin: Send + Sync {
 ///
 /// Plugins must export a function with this signature named `_plugin_create`.
 /// The theme_ptr is passed immediately to ensure globals are available.
-pub type PluginCreate = unsafe extern "C" fn(theme_ptr: *const std::ffi::c_void) -> *mut dyn EditorPlugin;
-
+pub type PluginCreate = unsafe extern "C" fn(theme_ptr: *const std::ffi::c_void) -> Option<&'static mut dyn EditorPlugin>;
 /// Type alias for the plugin destructor function.
 ///
 /// Plugins must export a function with this signature named `_plugin_destroy`.
 pub type PluginDestroy = unsafe extern "C" fn(*mut dyn EditorPlugin);
+
+
+pub type SetupLogger = unsafe extern "C" fn(logger: &'static dyn tracing::Subscriber);
 
 /// Macro to export a plugin from a dynamic library.
 ///
@@ -618,31 +640,52 @@ pub type PluginDestroy = unsafe extern "C" fn(*mut dyn EditorPlugin);
 macro_rules! export_plugin {
     ($plugin_type:ty) => {
         // Static storage for synced Theme data from main app (stored as usize for thread safety)
+        // SAFETY CONTRACT: The main app MUST ensure the Theme pointer remains valid for the
+        // entire lifetime of the plugin. The Theme must NOT be moved or dropped while the
+        // plugin is loaded. This is guaranteed by the PluginManager keeping Theme in a
+        // stable location.
         static SYNCED_THEME: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
 
         #[no_mangle]
-        pub unsafe extern "C" fn _plugin_create(theme_ptr: *const std::ffi::c_void) -> *mut dyn $crate::EditorPlugin {
-            // Initialize globals immediately before creating plugin to prevent race conditions
-            SYNCED_THEME.set(theme_ptr as usize).ok();
-
-            // Register the plugin theme accessor with the ui crate
+        pub unsafe extern "C" fn _plugin_create(theme_ptr: *const std::ffi::c_void) -> Option<&'static mut dyn $crate::EditorPlugin>{
+            if theme_ptr.is_null() {
+                eprintln!("[Plugin] ERROR: Received null theme pointer from host!");
+                return None;
+            }
+            if SYNCED_THEME.set(theme_ptr as usize).is_err() {
+                eprintln!("[Plugin] ERROR: Theme pointer already initialized!");
+                return None;
+            }
             ui::theme::Theme::register_plugin_accessor(plugin_theme_unsafe);
-
             let plugin = <$plugin_type>::default();
             let boxed: Box<dyn $crate::EditorPlugin> = Box::new(plugin);
-            Box::into_raw(boxed)
+            Some(Box::leak(boxed))
         }
 
         /// Internal accessor for plugin theme (called by ui crate)
+        /// SAFETY: Returns None if theme pointer is null or not initialized.
+        /// The caller (ui crate) must handle None gracefully.
         unsafe fn plugin_theme_unsafe() -> Option<&'static ui::theme::Theme> {
-            get_synced_theme().map(|ptr| &*(ptr as *const ui::theme::Theme))
+            let ptr = get_synced_theme()?;
+
+            // Validate pointer is not null before dereferencing
+            if ptr.is_null() {
+                eprintln!("[Plugin] ERROR: Theme pointer is null!");
+                return None;
+            }
+
+            // SAFETY: Assuming the host maintains the Theme pointer validity.
+            // This is a cross-DLL contract that must be upheld by PluginManager.
+            Some(&*(ptr as *const ui::theme::Theme))
         }
 
         #[no_mangle]
         pub unsafe extern "C" fn _plugin_destroy(ptr: *mut dyn $crate::EditorPlugin) {
-            if !ptr.is_null() {
-                drop(Box::from_raw(ptr));
+            if ptr.is_null() {
+                eprintln!("[Plugin] WARNING: Attempted to destroy null plugin pointer!");
+                return;
             }
+            drop(Box::from_raw(ptr));
         }
 
         #[no_mangle]
@@ -651,9 +694,20 @@ macro_rules! export_plugin {
         }
 
         /// Initialize the plugin's synced copy of globals from the main app
+        /// This is called before each editor instance creation to ensure fresh state
         #[no_mangle]
         pub unsafe extern "C" fn _plugin_init_globals(theme_ptr: *const std::ffi::c_void) {
-            SYNCED_THEME.set(theme_ptr as usize).ok();
+            // Validate theme pointer
+            if theme_ptr.is_null() {
+                eprintln!("[Plugin] ERROR: Received null theme pointer in init_globals!");
+                return;
+            }
+
+            // Note: OnceLock.set() will fail if already set, which is fine.
+            // The theme pointer should remain stable across the plugin lifetime.
+            if SYNCED_THEME.get().is_none() {
+                SYNCED_THEME.set(theme_ptr as usize).ok();
+            }
         }
 
         /// Get the synced Theme pointer for use in the plugin
@@ -664,9 +718,20 @@ macro_rules! export_plugin {
 
         /// Plugin-safe theme accessor that uses the synced copy
         /// This bypasses GPUI's TypeId-based global system which doesn't work across DLLs
+        ///
+        /// SAFETY: Returns None if the theme pointer is not initialized or is null.
+        /// The host MUST ensure the Theme remains valid for the plugin's lifetime.
         #[allow(dead_code)]
         pub fn plugin_theme() -> Option<&'static ui::theme::Theme> {
-            get_synced_theme().map(|ptr| unsafe { &*(ptr as *const ui::theme::Theme) })
+            let ptr = get_synced_theme()?;
+
+            // Validate pointer before dereferencing
+            if ptr.is_null() {
+                return None;
+            }
+
+            // SAFETY: Relies on host maintaining Theme pointer validity
+            unsafe { Some(&*(ptr as *const ui::theme::Theme)) }
         }
     };
 }

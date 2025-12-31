@@ -19,16 +19,16 @@ impl EntryWindow {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         // Check if we should show the OOBE intro
         let seen_intro = has_seen_intro();
-        tracing::info!("🎯 [EntryWindow] has_seen_intro() = {}", seen_intro);
+        tracing::debug!("🎯 [EntryWindow] has_seen_intro() = {}", seen_intro);
         
         if !seen_intro {
-            tracing::info!("🎉 [OOBE] Showing intro screen for first-time user");
+            tracing::debug!("🎉 [OOBE] Showing intro screen for first-time user");
             // Show the OOBE intro screen first
             let intro_screen = cx.new(|cx| IntroScreen::new(window, cx));
             
             // Subscribe to intro completion
             cx.subscribe_in(&intro_screen, window, |this: &mut Self, _screen, _event: &IntroComplete, window, cx| {
-                tracing::info!("🎉 [OOBE] Intro complete, transitioning to entry screen");
+                tracing::debug!("🎉 [OOBE] Intro complete, transitioning to entry screen");
                 mark_intro_seen();
                 
                 // Transition to entry screen
@@ -41,7 +41,7 @@ impl EntryWindow {
                 screen_state: ScreenState::Intro(intro_screen),
             }
         } else {
-            tracing::info!("🎯 [OOBE] Intro already seen, showing entry screen directly");
+            tracing::debug!("🎯 [OOBE] Intro already seen, showing entry screen directly");
             // Skip intro, go directly to entry screen
             let entry_screen = cx.new(|cx| EntryScreen::new(window, cx));
             Self {
