@@ -633,17 +633,14 @@ macro_rules! export_plugin {
 
         #[no_mangle]
         pub unsafe extern "C" fn _plugin_create(theme_ptr: *const std::ffi::c_void) -> *mut dyn $crate::EditorPlugin {
-            // Validate theme pointer is not null
+            // Validate theme pointer is not null (panic if invalid - plugin cannot work without theme)
             if theme_ptr.is_null() {
-                eprintln!("[Plugin] ERROR: Received null theme pointer from host!");
-                return std::ptr::null::<$plugin_type>() as *mut dyn $crate::EditorPlugin;
+                panic!("[Plugin] FATAL: Received null theme pointer from host!");
             }
 
             // Initialize globals immediately before creating plugin to prevent race conditions
-            if SYNCED_THEME.set(theme_ptr as usize).is_err() {
-                eprintln!("[Plugin] ERROR: Theme pointer already initialized!");
-                return std::ptr::null::<$plugin_type>() as *mut dyn $crate::EditorPlugin;
-            }
+            // If this fails, it means _plugin_create was called twice, which should never happen
+            SYNCED_THEME.set(theme_ptr as usize).expect("[Plugin] FATAL: Theme pointer already initialized!");
 
             // Register the plugin theme accessor with the ui crate
             ui::theme::Theme::register_plugin_accessor(plugin_theme_unsafe);
