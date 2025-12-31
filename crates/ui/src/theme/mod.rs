@@ -83,13 +83,23 @@ impl DerefMut for Theme {
 impl Global for Theme {}
 
 // Global function pointer for plugin theme accessor (set by export_plugin! macro)
+// SAFETY: This stores a function pointer that's transmuted from/to *mut ().
+// The type signature MUST match exactly: unsafe fn() -> Option<&'static Theme>
+// The plugin MUST ensure this function remains valid for its entire lifetime.
 static PLUGIN_THEME_ACCESSOR: std::sync::atomic::AtomicPtr<()> =
     std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
 
 impl Theme {
     /// Register a plugin theme accessor function
     /// Called automatically by export_plugin! macro
+    ///
+    /// SAFETY: The accessor function MUST:
+    /// - Match the signature: unsafe fn() -> Option<&'static Theme>
+    /// - Remain valid for the entire plugin lifetime
+    /// - Return None if theme is unavailable
+    /// - Not panic
     pub fn register_plugin_accessor(accessor: unsafe fn() -> Option<&'static Theme>) {
+        // Store the function pointer (type-erased to *mut ())
         PLUGIN_THEME_ACCESSOR.store(accessor as *mut (), std::sync::atomic::Ordering::Release);
     }
 
@@ -103,9 +113,15 @@ impl Theme {
             None => {
                 // If we're in a plugin context, try the plugin accessor
                 let accessor_ptr = PLUGIN_THEME_ACCESSOR.load(std::sync::atomic::Ordering::Acquire);
+
+                // Validate pointer before transmuting
                 if !accessor_ptr.is_null() {
+                    // SAFETY: We trust that the plugin registered a valid function pointer
+                    // with the correct signature. This is a cross-DLL contract.
                     let accessor: unsafe fn() -> Option<&'static Theme> =
                         unsafe { std::mem::transmute(accessor_ptr) };
+
+                    // Call the accessor (it returns None if theme unavailable)
                     if let Some(theme) = unsafe { accessor() } {
                         return theme;
                     }
