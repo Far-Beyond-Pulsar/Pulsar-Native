@@ -4,13 +4,11 @@
 
 pub mod entry_screen;
 pub mod oobe;
-//pub mod loading_window;
 pub mod window;
 pub mod dependency_setup_window;
 
 // Re-export main types
 pub use window::EntryWindow;
-//pub use loading_window::{LoadingWindow, LoadingComplete};
 pub use entry_screen::{EntryScreen, project_selector::ProjectSelected};
 pub use dependency_setup_window::{DependencySetupWindow, SetupComplete};
 pub use oobe::{IntroScreen, IntroComplete, has_seen_intro, mark_intro_seen, reset_intro};

@@ -4,18 +4,13 @@
 
 // Modules
 pub mod app;
-pub mod flow;
 pub mod unified_palette;
-pub mod types;
 pub mod actions;
 pub mod root;
-pub mod editor_panel;
 
 // Re-export main types
 pub use app::PulsarApp;
 pub use root::PulsarRoot;
-pub use types::EditorType;
-pub use editor_panel::EditorPanel;
 
 // Re-export actions
 pub use actions::{
@@ -25,9 +20,6 @@ pub use actions::{
     ToggleTerminal,
     ToggleMultiplayer,
 };
-
-// Re-export flow
-pub use flow::AppState;
 
 // Re-export palette types
 pub use unified_palette::{AnyPaletteDelegate, AnyPaletteItem};

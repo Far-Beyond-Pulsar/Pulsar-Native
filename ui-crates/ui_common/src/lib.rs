@@ -4,7 +4,6 @@
 
 pub mod command_palette;
 pub mod file_utils;
-pub mod file_browser;
 pub mod helpers;
 pub mod menu;
 pub mod shared;

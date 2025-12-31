@@ -1,6 +1,10 @@
 /// Utility module for file operations, type detection, and opening
 /// Extracted from file_manager_drawer to be reusable across the application
 
+// TODO: When the plugin system is implemented,
+//       the registry system will make a central
+//       enum system irrelevant dramatically reducing
+//       code complexity.
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, PartialEq)]
