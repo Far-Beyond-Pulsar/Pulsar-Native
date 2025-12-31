@@ -1,78 +1,95 @@
+//! Main dependency setup window implementation.
+//!
+//! This module contains the primary window component that orchestrates
+//! the dependency checking and installation workflow, including UI rendering.
+
 use gpui::*;
 use ui::{
     button::{Button, ButtonVariants},
     h_flex, v_flex, ActiveTheme, Icon, IconName,
 };
-use std::process::Command;
 
-/// Embedded setup scripts (bundled at compile time)
-/// Note: These will only work if build.rs has run. For now, using inline scripts.
-const SETUP_SCRIPT_PS1: &str = r#"
-Write-Host "Pulsar Engine - Dependency Setup (PowerShell)"
-Write-Host "This is a placeholder. Run script/setup-dev-environment.ps1 manually."
-"#;
+use super::checks::{check_rust, check_build_tools, check_platform_sdk};
+use super::installer::run_setup_script;
+use super::task::{SetupTask, TaskStatus};
 
-const SETUP_SCRIPT_SH: &str = r#"#!/usr/bin/env bash
-echo "Pulsar Engine - Dependency Setup (Bash)"
-echo "This is a placeholder. Run script/setup-dev-environment.sh manually."
-"#;
-
+/// Main window for dependency setup process.
+///
+/// This component provides an interactive UI that guides users through
+/// checking and installing required development dependencies. It runs
+/// validation checks asynchronously and provides real-time progress feedback.
+///
+/// # Workflow
+///
+/// 1. User opens the dependency setup window
+/// 2. Click "Start Setup" to begin validation
+/// 3. System checks for Rust, build tools, and platform SDKs
+/// 4. If all checks pass, setup completes immediately
+/// 5. If checks fail, automated installer attempts to fix issues
+/// 6. User is notified of success or failure
+///
+/// # Events
+///
+/// - [`SetupComplete`] - Emitted when all dependencies are successfully installed
 pub struct DependencySetupWindow {
+    /// List of setup tasks to execute.
     setup_tasks: Vec<SetupTask>,
+    
+    /// Index of the currently executing task.
     current_step: usize,
+    
+    /// Overall progress (0.0 to 1.0).
     progress: f32,
+    
+    /// Whether setup is currently running.
     is_running: bool,
+    
+    /// Whether setup completed successfully.
     setup_complete: bool,
+    
+    /// Error message if setup failed.
     setup_error: Option<String>,
 }
 
-#[derive(Clone, Debug)]
-struct SetupTask {
-    name: String,
-    description: String,
-    status: TaskStatus,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-enum TaskStatus {
-    Pending,
-    InProgress,
-    Completed,
-    Failed(String),
-}
-
+/// Event emitted when dependency setup completes successfully.
 pub struct SetupComplete;
+
 impl EventEmitter<SetupComplete> for DependencySetupWindow {}
 
 impl DependencySetupWindow {
+    /// Creates a new dependency setup window.
+    ///
+    /// Initializes the window with a list of platform-specific setup tasks
+    /// that need to be validated and potentially installed.
+    ///
+    /// # Arguments
+    ///
+    /// * `_window` - The GPUI window context (unused in initialization)
+    /// * `_cx` - The GPUI context (unused in initialization)
     pub fn new(_window: &mut Window, _cx: &mut Context<Self>) -> Self {
         let tasks = vec![
-            SetupTask {
-                name: "Checking Rust Installation".to_string(),
-                description: "Verifying Rust toolchain is installed".to_string(),
-                status: TaskStatus::Pending,
-            },
-            SetupTask {
-                name: "Checking Build Tools".to_string(),
-                description: "Verifying C++ compiler and build tools".to_string(),
-                status: TaskStatus::Pending,
-            },
-            SetupTask {
-                name: "Checking Platform SDKs".to_string(),
-                description: if cfg!(windows) {
-                    "Verifying Windows SDK and Visual Studio".to_string()
+            SetupTask::new(
+                "Checking Rust Installation",
+                "Verifying Rust toolchain is installed",
+            ),
+            SetupTask::new(
+                "Checking Build Tools",
+                "Verifying C++ compiler and build tools",
+            ),
+            SetupTask::new(
+                "Checking Platform SDKs",
+                if cfg!(windows) {
+                    "Verifying Windows SDK and Visual Studio"
                 } else if cfg!(target_os = "macos") {
-                    "Verifying Xcode Command Line Tools".to_string()
+                    "Verifying Xcode Command Line Tools"
                 } else {
-                    "Verifying system development libraries".to_string()
+                    "Verifying system development libraries"
                 },
-                status: TaskStatus::Pending,
-            },
-            SetupTask {
-                name: "Installing Missing Dependencies".to_string(),
-                description: "Running automated dependency installer".to_string(),
-                status: TaskStatus::Pending,
-            },
+            ),
+            SetupTask::new(
+                "Installing Missing Dependencies",
+                "Running automated dependency installer",
+            ),
         ];
 
         Self {
@@ -85,6 +102,22 @@ impl DependencySetupWindow {
         }
     }
 
+    /// Starts the dependency setup workflow.
+    ///
+    /// Executes all validation and installation tasks asynchronously,
+    /// updating the UI with progress as each step completes.
+    ///
+    /// # Behavior
+    ///
+    /// - Does nothing if setup is already running
+    /// - Resets progress and state before starting
+    /// - Executes tasks sequentially with UI feedback
+    /// - Emits [`SetupComplete`] event on success
+    /// - Updates task statuses in real-time
+    ///
+    /// # Arguments
+    ///
+    /// * `cx` - The GPUI context for spawning background tasks
     pub fn start_setup(&mut self, cx: &mut Context<Self>) {
         if self.is_running {
             return;
@@ -109,7 +142,7 @@ impl DependencySetupWindow {
                 }
             });
 
-            let rust_ok = Self::check_rust();
+            let rust_ok = check_rust();
             
             cx.update(|cx| {
                 if let Some(view) = view.upgrade() {
@@ -140,7 +173,7 @@ impl DependencySetupWindow {
                 }
             });
 
-            let build_tools_ok = Self::check_build_tools();
+            let build_tools_ok = check_build_tools();
             
             cx.update(|cx| {
                 if let Some(view) = view.upgrade() {
@@ -170,7 +203,7 @@ impl DependencySetupWindow {
                 }
             });
 
-            let sdk_ok = Self::check_platform_sdk();
+            let sdk_ok = check_platform_sdk();
             
             cx.update(|cx| {
                 if let Some(view) = view.upgrade() {
@@ -215,7 +248,7 @@ impl DependencySetupWindow {
                 }
             });
 
-            let install_ok = Self::run_setup_script();
+            let install_ok = run_setup_script();
 
             cx.update(|cx| {
                 if let Some(view) = view.upgrade() {
@@ -240,125 +273,78 @@ impl DependencySetupWindow {
         }).detach();
     }
 
+    /// Updates the status of a specific task by index.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - The zero-based index of the task to update
+    /// * `status` - The new status to set
     fn update_task_status(&mut self, index: usize, status: TaskStatus) {
         if let Some(task) = self.setup_tasks.get_mut(index) {
             task.status = status;
         }
     }
 
-    // Dependency check functions
-    fn check_rust() -> bool {
-        Command::new("rustc")
-            .arg("--version")
-            .output()
-            .is_ok()
-    }
+    /// Renders a single setup task as a UI element.
+    ///
+    /// Creates a visual representation of the task showing its name,
+    /// description, current status icon, and any error messages.
+    ///
+    /// # Arguments
+    ///
+    /// * `task` - The task to render
+    /// * `theme` - The current UI theme for styling
+    ///
+    /// # Returns
+    ///
+    /// A GPUI element representing the task's current state.
+    fn render_task(&self, task: &SetupTask, theme: &ui::Theme) -> impl IntoElement {
+        let (icon_name, icon_color) = match &task.status {
+            TaskStatus::Pending => (IconName::Circle, theme.muted_foreground),
+            TaskStatus::InProgress => (IconName::Loader, theme.accent),
+            TaskStatus::Completed => (IconName::Check, theme.success_foreground),
+            TaskStatus::Failed(_) => (IconName::WarningTriangle, gpui::red()),
+        };
 
-    fn check_build_tools() -> bool {
-        #[cfg(target_os = "windows")]
-        {
-            Command::new("cl")
-                .arg("/?")
-                .output()
-                .is_ok()
-        }
-
-        #[cfg(target_os = "linux")]
-        {
-            Command::new("gcc")
-                .arg("--version")
-                .output()
-                .is_ok()
-        }
-
-        #[cfg(target_os = "macos")]
-        {
-            Command::new("clang")
-                .arg("--version")
-                .output()
-                .is_ok()
-        }
-    }
-
-    fn check_platform_sdk() -> bool {
-        #[cfg(target_os = "windows")]
-        {
-            Command::new("reg")
-                .args(&["query", "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Microsoft SDKs\\Windows\\v10.0"])
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
-        }
-
-        #[cfg(target_os = "macos")]
-        {
-            Command::new("xcode-select")
-                .arg("-p")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
-        }
-
-        #[cfg(target_os = "linux")]
-        {
-            Command::new("pkg-config")
-                .arg("--version")
-                .output()
-                .is_ok()
-        }
-    }
-
-    fn run_setup_script() -> bool {
-        #[cfg(target_os = "windows")]
-        {
-            use std::fs;
-            let temp_dir = std::env::temp_dir();
-            let script_path = temp_dir.join("pulsar-setup.ps1");
-            
-            if fs::write(&script_path, SETUP_SCRIPT_PS1).is_err() {
-                return false;
-            }
-            
-            let result = Command::new("powershell")
-                .arg("-ExecutionPolicy")
-                .arg("Bypass")
-                .arg("-File")
-                .arg(&script_path)
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false);
-            
-            let _ = fs::remove_file(&script_path);
-            result
-        }
-
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
-        {
-            use std::fs;
-            use std::os::unix::fs::PermissionsExt;
-            
-            let temp_dir = std::env::temp_dir();
-            let script_path = temp_dir.join("pulsar-setup.sh");
-            
-            if fs::write(&script_path, SETUP_SCRIPT_SH).is_err() {
-                return false;
-            }
-            
-            if let Ok(metadata) = fs::metadata(&script_path) {
-                let mut perms = metadata.permissions();
-                perms.set_mode(0o755);
-                let _ = fs::set_permissions(&script_path, perms);
-            }
-            
-            let result = Command::new("bash")
-                .arg(&script_path)
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false);
-            
-            let _ = fs::remove_file(&script_path);
-            result
-        }
+        h_flex()
+            .gap_3()
+            .items_start()
+            .p_3()
+            .bg(theme.secondary.opacity(0.3))
+            .rounded_md()
+            .child(
+                Icon::new(icon_name)
+                    .size_5()
+                    .text_color(icon_color)
+            )
+            .child(
+                v_flex()
+                    .gap_1()
+                    .flex_1()
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(theme.foreground)
+                            .child(task.name.clone())
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .child(task.description.clone())
+                    )
+                    .children(
+                        if let TaskStatus::Failed(ref err) = task.status {
+                            Some(div()
+                                .text_xs()
+                                .text_color(gpui::red())
+                                .child(format!("Error: {}", err)))
+                        } else {
+                            None
+                        }
+                    )
+            )
     }
 }
 
@@ -508,57 +494,6 @@ impl Render for DependencySetupWindow {
                                     .text_color(theme.success_foreground)
                                     .child("✅ Complete")
                             }))
-                    )
-            )
-    }
-}
-
-impl DependencySetupWindow {
-    fn render_task(&self, task: &SetupTask, theme: &ui::Theme) -> impl IntoElement {
-        let (icon_name, icon_color) = match &task.status {
-            TaskStatus::Pending => (IconName::Circle, theme.muted_foreground),
-            TaskStatus::InProgress => (IconName::Loader, theme.accent),
-            TaskStatus::Completed => (IconName::Check, theme.success_foreground),
-            TaskStatus::Failed(_) => (IconName::WarningTriangle, gpui::red()),
-        };
-
-        h_flex()
-            .gap_3()
-            .items_start()
-            .p_3()
-            .bg(theme.secondary.opacity(0.3))
-            .rounded_md()
-            .child(
-                Icon::new(icon_name)
-                    .size_5()
-                    .text_color(icon_color)
-            )
-            .child(
-                v_flex()
-                    .gap_1()
-                    .flex_1()
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(theme.foreground)
-                            .child(task.name.clone())
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(theme.muted_foreground)
-                            .child(task.description.clone())
-                    )
-                    .children(
-                        if let TaskStatus::Failed(ref err) = task.status {
-                            Some(div()
-                                .text_xs()
-                                .text_color(gpui::red())
-                                .child(format!("Error: {}", err)))
-                        } else {
-                            None
-                        }
                     )
             )
     }
