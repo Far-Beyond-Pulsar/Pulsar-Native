@@ -192,6 +192,10 @@ pub trait PanelView: 'static + Send + Sync {
     fn dump(&self, cx: &App) -> PanelState;
     fn inner_padding(&self, cx: &App) -> bool;
     fn discord_icon_key(&self, cx: &App) -> &'static str;
+
+    /// Clone the underlying panel entity
+    /// This is used to create multiple references to the same panel (for tab system)
+    fn clone_panel(&self) -> Arc<dyn PanelView>;
 }
 
 impl<T: Panel> PanelView for Entity<T> {
@@ -269,6 +273,11 @@ impl<T: Panel> PanelView for Entity<T> {
 
     fn discord_icon_key(&self, cx: &App) -> &'static str {
         self.read(cx).discord_icon_key(cx)
+    }
+
+    fn clone_panel(&self) -> Arc<dyn PanelView> {
+        // Entity is Clone - just clone the handle and wrap in Arc
+        Arc::new(self.clone())
     }
 }
 

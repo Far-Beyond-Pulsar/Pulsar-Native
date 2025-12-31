@@ -14,8 +14,16 @@ impl PulsarApp {
     pub fn open_path(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         // Try plugin system first for all file types
         match self.state.plugin_manager.create_editor_for_file(&path, window, cx) {
-            Ok((panel, _editor_instance)) => {
+            Ok((panel_ptr, _editor_instance)) => {
                 tracing::info!("Plugin system opened file: {:?}", path);
+
+                // SAFETY: panel_ptr is valid and owned by the plugin
+                // Clone the panel entity using the trait method
+                let panel = unsafe {
+                    let panel_ref: &dyn ui::dock::PanelView = &*panel_ptr;
+                    panel_ref.clone_panel()
+                };
+
                 self.state.center_tabs.update(cx, |tabs, cx| {
                     tabs.add_panel(panel, window, cx);
                 });

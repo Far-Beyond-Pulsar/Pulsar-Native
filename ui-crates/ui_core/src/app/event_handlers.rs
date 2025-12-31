@@ -616,8 +616,16 @@ pub fn on_file_selected(
 
     // Try to open via plugin system first
     match app.state.plugin_manager.create_editor_for_file(&event.path, window, cx) {
-        Ok((panel, _editor_instance)) => {
+        Ok((panel_ptr, _editor_instance)) => {
             tracing::info!("✅ Plugin system successfully created editor for: {:?}", event.path);
+
+            // SAFETY: panel_ptr is valid and owned by the plugin
+            // Clone the panel entity using the trait method
+            let panel = unsafe {
+                let panel_ref: &dyn ui::dock::PanelView = &*panel_ptr;
+                // clone_panel returns Box<dyn PanelView>, convert to Arc
+                std::sync::Arc::from(panel_ref.clone_panel())
+            };
 
             app.state.center_tabs.update(cx, |tabs, cx| {
                 tabs.add_panel(panel, window, cx);
