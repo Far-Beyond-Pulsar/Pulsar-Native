@@ -75,6 +75,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 pub use gpui::{App, Window};
 pub use ui::dock::Panel;
@@ -563,16 +564,17 @@ pub trait EditorPlugin: Send + Sync {
     ///
     /// # Returns
     ///
-    /// Returns raw pointers to PanelView and EditorInstance (BOTH owned by plugin!)
-    /// CRITICAL: The plugin OWNS both objects and MUST keep them alive. The main app
-    /// only holds raw pointers and MUST NOT drop them. Call destroy_editor to cleanup.
+    /// Returns Arc to PanelView and raw pointer to EditorInstance.
+    /// CRITICAL: Plugin stores the Arc internally and returns a clone to main app.
+    /// Main app clones the Arc (cheap, just ref count++) to share ownership.
+    /// EditorInstance remains plugin-owned (raw pointer). Call destroy_editor to cleanup.
     fn create_editor(
         &self,
         editor_id: EditorId,
         file_path: PathBuf,
         window: &mut Window,
         cx: &mut App,
-    ) -> Result<(*const dyn ui::dock::PanelView, *mut dyn EditorInstance), PluginError>;
+    ) -> Result<(Arc<dyn ui::dock::PanelView>, *mut dyn EditorInstance), PluginError>;
 
     /// Destroy an editor instance (free memory in plugin's heap)
     ///

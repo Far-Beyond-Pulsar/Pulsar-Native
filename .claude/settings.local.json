@@ -20,7 +20,8 @@
       "Bash(bash:*)",
       "Bash(tree:*)",
       "Bash(mkdir:*)",
-      "Bash(cargo clean:*)"
+      "Bash(cargo clean:*)",
+      "Bash(cargo update:*)"
     ]
   }
 }

@@ -403,7 +403,7 @@ impl PluginManager {
         file_path: &Path,
         window: &mut Window,
         cx: &mut App,
-    ) -> Result<(*const dyn ui::dock::PanelView, *mut dyn EditorInstance), PluginManagerError> {
+    ) -> Result<(Arc<dyn ui::dock::PanelView>, *mut dyn EditorInstance), PluginManagerError> {
         // Determine file type
         let file_type_id = self
             .file_type_registry
@@ -435,8 +435,8 @@ impl PluginManager {
 
     /// Create an editor instance with a specific editor ID.
     ///
-    /// Returns raw pointers that are OWNED by the plugin. The main app must NOT drop these.
-    /// Call destroy_editor when done to let the plugin free its own memory.
+    /// Returns Arc to PanelView (shared ownership) and raw pointer to EditorInstance (plugin-owned).
+    /// Main app can clone the Arc freely. Call destroy_editor when done to cleanup EditorInstance.
     pub fn create_editor(
         &mut self,
         plugin_id: &PluginId,
@@ -444,7 +444,7 @@ impl PluginManager {
         file_path: PathBuf,
         window: &mut Window,
         cx: &mut App,
-    ) -> Result<(*const dyn ui::dock::PanelView, *mut dyn EditorInstance), PluginManagerError> {
+    ) -> Result<(Arc<dyn ui::dock::PanelView>, *mut dyn EditorInstance), PluginManagerError> {
         let plugin = self
             .plugins
             .get_mut(plugin_id)
