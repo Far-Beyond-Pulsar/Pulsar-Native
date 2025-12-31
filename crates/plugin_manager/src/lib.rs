@@ -394,17 +394,16 @@ impl PluginManager {
     /// 1. Determine the file type from the path
     /// 2. Find an editor that supports that file type (if any)
     /// 3. Create an editor instance using the appropriate plugin
-    ///      else
-    ///    We will return an error in a notification if no suitable
-    ///    editor is found. TODO: Implement a suggested plugins system
-    ///    that can scan the plugins dir on request to identify plugin
-    ///    that may provide support for the file type.
+    ///
+    /// Returns raw pointers OWNED by the plugin. Call destroy_editor when done.
+    /// TODO: Implement a suggested plugins system that can scan the plugins dir
+    /// on request to identify plugin that may provide support for the file type.
     pub fn create_editor_for_file(
         &mut self,
         file_path: &Path,
         window: &mut Window,
         cx: &mut App,
-    ) -> Result<(std::sync::Arc<dyn ui::dock::PanelView>, Box<dyn EditorInstance>), PluginManagerError> {
+    ) -> Result<(*const dyn ui::dock::PanelView, *mut dyn EditorInstance), PluginManagerError> {
         // Determine file type
         let file_type_id = self
             .file_type_registry
@@ -435,6 +434,9 @@ impl PluginManager {
     }
 
     /// Create an editor instance with a specific editor ID.
+    ///
+    /// Returns raw pointers that are OWNED by the plugin. The main app must NOT drop these.
+    /// Call destroy_editor when done to let the plugin free its own memory.
     pub fn create_editor(
         &mut self,
         plugin_id: &PluginId,
@@ -442,7 +444,7 @@ impl PluginManager {
         file_path: PathBuf,
         window: &mut Window,
         cx: &mut App,
-    ) -> Result<(std::sync::Arc<dyn ui::dock::PanelView>, Box<dyn EditorInstance>), PluginManagerError> {
+    ) -> Result<(*const dyn ui::dock::PanelView, *mut dyn EditorInstance), PluginManagerError> {
         let plugin = self
             .plugins
             .get_mut(plugin_id)
@@ -487,6 +489,38 @@ impl PluginManager {
                     error: e,
                 })
         }
+    }
+
+    /// Destroy an editor instance (free memory in plugin's heap)
+    ///
+    /// CRITICAL: Call this when closing an editor tab to prevent memory leaks.
+    /// The plugin will free the PanelView and EditorInstance from its own heap.
+    pub fn destroy_editor(
+        &mut self,
+        plugin_id: &PluginId,
+        editor_instance: *mut dyn EditorInstance,
+    ) -> Result<(), PluginManagerError> {
+        let plugin = self
+            .plugins
+            .get_mut(plugin_id)
+            .ok_or_else(|| PluginManagerError::PluginNotFound {
+                plugin_id: plugin_id.clone(),
+            })?;
+
+        // Validate pointer
+        if editor_instance.is_null() {
+            log::warn!("Attempted to destroy null editor instance");
+            return Ok(());
+        }
+
+        // Call plugin's destroy_editor (frees in plugin's heap)
+        // SAFETY: Plugin owns this memory and will free it correctly
+        unsafe {
+            (*plugin.plugin_ptr).destroy_editor(editor_instance);
+        }
+
+        log::debug!("Destroyed editor instance for plugin: {}", plugin_id.as_str());
+        Ok(())
     }
 
     /// Get the default content for a file type.

@@ -563,15 +563,22 @@ pub trait EditorPlugin: Send + Sync {
     ///
     /// # Returns
     ///
-    /// Returns the editor wrapped for tab system integration, plus the EditorInstance for file operations.
-    /// The panel can be added directly to the tab system.
+    /// Returns raw pointers to PanelView and EditorInstance (BOTH owned by plugin!)
+    /// CRITICAL: The plugin OWNS both objects and MUST keep them alive. The main app
+    /// only holds raw pointers and MUST NOT drop them. Call destroy_editor to cleanup.
     fn create_editor(
         &self,
         editor_id: EditorId,
         file_path: PathBuf,
         window: &mut Window,
         cx: &mut App,
-    ) -> Result<(std::sync::Arc<dyn ui::dock::PanelView>, Box<dyn EditorInstance>), PluginError>;
+    ) -> Result<(*const dyn ui::dock::PanelView, *mut dyn EditorInstance), PluginError>;
+
+    /// Destroy an editor instance (free memory in plugin's heap)
+    ///
+    /// CRITICAL: The main app MUST call this when closing an editor tab.
+    /// The plugin will free the PanelView and EditorInstance from its own heap.
+    fn destroy_editor(&mut self, editor_instance: *mut dyn EditorInstance);
 
     /// Called when the plugin is loaded.
     ///
