@@ -71,6 +71,109 @@ mod registry;
 pub use registry::{EditorRegistry, FileTypeRegistry};
 
 // ============================================================================
+// Plugin Panel Wrapper - Fixes memory leak across DLL boundary
+// ============================================================================
+
+/// Lightweight wrapper around a raw plugin panel pointer.
+///
+/// CRITICAL FOR MEMORY SAFETY:
+/// - The wrapper is allocated in MAIN APP heap (tiny struct, just a pointer)
+/// - The actual panel is allocated in PLUGIN heap
+/// - When Arc<PluginPanelWrapper> is cloned, only the wrapper is cloned (cheap, safe)
+/// - The panel pointer is NEVER freed by main app - plugin owns it
+///
+/// This prevents the memory leak where Arc clones in the hot loop would try to
+/// free plugin memory from main app heap.
+struct PluginPanelWrapper {
+    /// Raw pointer to plugin's panel (plugin owns this!)
+    panel_ptr: *const dyn ui::dock::PanelView,
+}
+
+unsafe impl Send for PluginPanelWrapper {}
+unsafe impl Sync for PluginPanelWrapper {}
+
+impl ui::dock::PanelView for PluginPanelWrapper {
+    fn panel_name(&self, cx: &gpui::App) -> &'static str {
+        unsafe { (&*self.panel_ptr).panel_name(cx) }
+    }
+
+    fn panel_id(&self, cx: &gpui::App) -> gpui::EntityId {
+        unsafe { (&*self.panel_ptr).panel_id(cx) }
+    }
+
+    fn tab_name(&self, cx: &gpui::App) -> Option<gpui::SharedString> {
+        unsafe { (&*self.panel_ptr).tab_name(cx) }
+    }
+
+    fn title(&self, window: &gpui::Window, cx: &gpui::App) -> gpui::AnyElement {
+        unsafe { (&*self.panel_ptr).title(window, cx) }
+    }
+
+    fn visible(&self, cx: &gpui::App) -> bool {
+        unsafe { (&*self.panel_ptr).visible(cx) }
+    }
+
+    fn closable(&self, cx: &gpui::App) -> bool {
+        unsafe { (&*self.panel_ptr).closable(cx) }
+    }
+
+    fn popup_menu(&self, menu: ui::popup_menu::PopupMenu, window: &gpui::Window, cx: &gpui::App) -> ui::popup_menu::PopupMenu {
+        unsafe { (&*self.panel_ptr).popup_menu(menu, window, cx) }
+    }
+
+    fn title_suffix(&self, window: &mut gpui::Window, cx: &mut gpui::App) -> Option<gpui::AnyElement> {
+        unsafe { (&*self.panel_ptr).title_suffix(window, cx) }
+    }
+
+    fn title_style(&self, cx: &gpui::App) -> Option<ui::dock::TitleStyle> {
+        unsafe { (&*self.panel_ptr).title_style(cx) }
+    }
+
+    fn zoomable(&self, cx: &gpui::App) -> Option<ui::dock::PanelControl> {
+        unsafe { (&*self.panel_ptr).zoomable(cx) }
+    }
+
+    fn set_active(&self, active: bool, window: &mut gpui::Window, cx: &mut gpui::App) {
+        unsafe { (&*self.panel_ptr).set_active(active, window, cx) }
+    }
+
+    fn set_zoomed(&self, zoomed: bool, window: &mut gpui::Window, cx: &mut gpui::App) {
+        unsafe { (&*self.panel_ptr).set_zoomed(zoomed, window, cx) }
+    }
+
+    fn toolbar_buttons(&self, window: &mut gpui::Window, cx: &mut gpui::App) -> Option<Vec<ui::button::Button>> {
+        unsafe { (&*self.panel_ptr).toolbar_buttons(window, cx) }
+    }
+
+    fn view(&self) -> gpui::AnyView {
+        unsafe { (&*self.panel_ptr).view() }
+    }
+
+    fn focus_handle(&self, cx: &gpui::App) -> gpui::FocusHandle {
+        unsafe { (&*self.panel_ptr).focus_handle(cx) }
+    }
+
+    fn dump(&self, cx: &gpui::App) -> ui::dock::PanelState {
+        unsafe { (&*self.panel_ptr).dump(cx) }
+    }
+
+    fn inner_padding(&self, cx: &gpui::App) -> bool {
+        unsafe { (&*self.panel_ptr).inner_padding(cx) }
+    }
+
+    fn discord_icon_key(&self, cx: &gpui::App) -> &'static str {
+        unsafe { (&*self.panel_ptr).discord_icon_key(cx) }
+    }
+
+    fn clone_panel(&self) -> Arc<dyn ui::dock::PanelView> {
+        // Create new wrapper with same pointer - wrapper allocated in main heap, safe!
+        Arc::new(PluginPanelWrapper {
+            panel_ptr: self.panel_ptr,
+        })
+    }
+}
+
+// ============================================================================
 // Plugin Container
 // ============================================================================
 
@@ -403,7 +506,7 @@ impl PluginManager {
         file_path: &Path,
         window: &mut Window,
         cx: &mut App,
-    ) -> Result<(*const dyn ui::dock::PanelView, *mut dyn EditorInstance), PluginManagerError> {
+    ) -> Result<(Arc<dyn ui::dock::PanelView>, *mut dyn EditorInstance), PluginManagerError> {
         // Determine file type
         let file_type_id = self
             .file_type_registry
@@ -444,7 +547,7 @@ impl PluginManager {
         file_path: PathBuf,
         window: &mut Window,
         cx: &mut App,
-    ) -> Result<(*const dyn ui::dock::PanelView, *mut dyn EditorInstance), PluginManagerError> {
+    ) -> Result<(Arc<dyn ui::dock::PanelView>, *mut dyn EditorInstance), PluginManagerError> {
         let plugin = self
             .plugins
             .get_mut(plugin_id)
@@ -481,14 +584,19 @@ impl PluginManager {
 
         // Call create_editor via raw pointer
         // SAFETY: Plugin is loaded, pointer validated as non-null above
-        unsafe {
+        let (panel_ptr, editor_instance) = unsafe {
             (*plugin.plugin_ptr)
                 .create_editor(editor_id.clone(), file_path, window, cx)
                 .map_err(|e| PluginManagerError::PluginError {
                     plugin_id: plugin_id.clone(),
                     error: e,
-                })
-        }
+                })?
+        };
+
+        // Wrap the raw pointer in our safe wrapper (allocated in main app heap!)
+        let wrapped_panel = Arc::new(PluginPanelWrapper { panel_ptr });
+
+        Ok((wrapped_panel, editor_instance))
     }
 
     /// Destroy an editor instance (free memory in plugin's heap)
