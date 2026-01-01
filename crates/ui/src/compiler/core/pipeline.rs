@@ -135,31 +135,31 @@ impl CompilationStats {
 
     /// Pretty-print statistics
     pub fn print_summary(&self) {
-        println!("\n=== Compilation Statistics ===");
-        println!("Input Graph:");
-        println!("  Nodes:       {}", self.input_nodes);
-        println!("  Connections: {}", self.input_connections);
+        tracing::info!("\n=== Compilation Statistics ===");
+        tracing::info!("Input Graph:");
+        tracing::info!("  Nodes:       {}", self.input_nodes);
+        tracing::info!("  Connections: {}", self.input_connections);
         
         if self.subgraphs_expanded > 0 {
-            println!("\nExpansion:");
-            println!("  Sub-graphs expanded: {}", self.subgraphs_expanded);
-            println!("  Nodes after expansion: {}", self.expanded_nodes);
+            tracing::info!("\nExpansion:");
+            tracing::info!("  Sub-graphs expanded: {}", self.subgraphs_expanded);
+            tracing::info!("  Nodes after expansion: {}", self.expanded_nodes);
         }
         
-        println!("\nNode Types:");
-        println!("  Pure nodes:         {}", self.pure_nodes);
-        println!("  Function nodes:     {}", self.function_nodes);
-        println!("  Control flow nodes: {}", self.control_flow_nodes);
-        println!("  Event nodes:        {}", self.event_nodes);
+        tracing::info!("\nNode Types:");
+        tracing::info!("  Pure nodes:         {}", self.pure_nodes);
+        tracing::info!("  Function nodes:     {}", self.function_nodes);
+        tracing::info!("  Control flow nodes: {}", self.control_flow_nodes);
+        tracing::info!("  Event nodes:        {}", self.event_nodes);
         
-        println!("\nOutput:");
-        println!("  Generated code size: {} bytes", self.generated_code_size);
+        tracing::info!("\nOutput:");
+        tracing::info!("  Generated code size: {} bytes", self.generated_code_size);
         
         if self.compilation_time_ms > 0 {
-            println!("  Compilation time: {} ms", self.compilation_time_ms);
+            tracing::info!("  Compilation time: {} ms", self.compilation_time_ms);
         }
         
-        println!("==============================\n");
+        tracing::info!("==============================\n");
     }
 }
 
@@ -180,7 +180,7 @@ impl CompilationContext {
     /// Advance to next phase
     pub fn advance_phase(&mut self, phase: CompilationPhase) {
         self.phase = phase;
-        println!("[COMPILER] Phase {}: {} ({}%)",
+        tracing::info!("[COMPILER] Phase {}: {} ({}%)",
                  phase.name(),
                  phase.description(),
                  phase.progress_percent());
@@ -188,7 +188,7 @@ impl CompilationContext {
 
     /// Add a warning message
     pub fn add_warning(&mut self, warning: String) {
-        println!("[COMPILER] Warning: {}", warning);
+        tracing::warn!("[COMPILER] Warning: {}", warning);
         self.warnings.push(warning);
     }
 

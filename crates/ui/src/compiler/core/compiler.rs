@@ -32,11 +32,11 @@ pub fn get_node_metadata() -> &'static HashMap<String, NodeMetadata> {
     NODE_METADATA.get_or_init(|| {
         match extract_node_metadata() {
             Ok(metadata) => {
-                println!("[COMPILER] Loaded {} node definitions from pulsar_std", metadata.len());
+                tracing::info!("[COMPILER] Loaded {} node definitions from pulsar_std", metadata.len());
                 metadata
             }
             Err(e) => {
-                eprintln!("[COMPILER] Failed to extract node metadata: {}", e);
+                tracing::error!("[COMPILER] Failed to extract node metadata: {}", e);
                 HashMap::new()
             }
         }
@@ -132,8 +132,8 @@ pub fn compile_graph_with_library_manager(
     graph: &GraphDescription,
     library_manager: Option<crate::graph::LibraryManager>,
 ) -> Result<String, String> {
-    println!("[COMPILER] Starting Blueprint compilation");
-    println!("[COMPILER] Graph: {} ({} nodes, {} connections)",
+    tracing::info!("[COMPILER] Starting Blueprint compilation");
+    tracing::info!("[COMPILER] Graph: {} ({} nodes, {} connections)",
              graph.metadata.name,
              graph.nodes.len(),
              graph.connections.len());
@@ -143,36 +143,36 @@ pub fn compile_graph_with_library_manager(
 
     // Phase 0: Expand sub-graphs if library manager is provided
     if let Some(lib_manager) = library_manager {
-        println!("[COMPILER] Phase 0: Expanding sub-graphs...");
+        tracing::info!("[COMPILER] Phase 0: Expanding sub-graphs...");
         let expander = SubGraphExpander::new(lib_manager);
         expander.expand_all(&mut expanded_graph)?;
-        println!("[COMPILER] Sub-graph expansion complete ({} nodes after expansion)",
+        tracing::info!("[COMPILER] Sub-graph expansion complete ({} nodes after expansion)",
                  expanded_graph.nodes.len());
     }
 
     // Phase 1: Get node metadata
-    println!("[COMPILER] Phase 1: Loading node metadata...");
+    tracing::info!("[COMPILER] Phase 1: Loading node metadata...");
     let metadata = get_node_metadata();
     if metadata.is_empty() {
         return Err("No node metadata available - ensure pulsar_std is accessible".to_string());
     }
-    println!("[COMPILER] Loaded {} node types", metadata.len());
+    tracing::info!("[COMPILER] Loaded {} node types", metadata.len());
 
     // Phase 2: Build data flow resolver (no variables for generic compile)
-    println!("[COMPILER] Phase 2: Analyzing data flow...");
+    tracing::info!("[COMPILER] Phase 2: Analyzing data flow...");
     let variables = HashMap::new();
     let data_resolver = DataResolver::build_with_variables(&expanded_graph, metadata, variables.clone())?;
-    println!("[COMPILER] Data flow analysis complete");
-    println!("[COMPILER]   - {} pure nodes in evaluation order", 
+    tracing::info!("[COMPILER] Data flow analysis complete");
+    tracing::info!("[COMPILER]   - {} pure nodes in evaluation order", 
              data_resolver.get_pure_evaluation_order().len());
 
     // Phase 3: Build execution routing
-    println!("[COMPILER] Phase 3: Analyzing execution flow...");
+    tracing::info!("[COMPILER] Phase 3: Analyzing execution flow...");
     let exec_routing = ExecutionRouting::build_from_graph(&expanded_graph);
-    println!("[COMPILER] Execution flow analysis complete");
+    tracing::info!("[COMPILER] Execution flow analysis complete");
 
     // Phase 4: Generate code
-    println!("[COMPILER] Phase 4: Generating Rust code...");
+    tracing::info!("[COMPILER] Phase 4: Generating Rust code...");
     let code = generation::code_generator::generate_program(
         &expanded_graph,
         metadata,
@@ -181,8 +181,8 @@ pub fn compile_graph_with_library_manager(
         variables,
     )?;
 
-    println!("[COMPILER] Code generation complete ({} bytes)", code.len());
-    println!("[COMPILER] Compilation successful!");
+    tracing::info!("[COMPILER] Code generation complete ({} bytes)", code.len());
+    tracing::info!("[COMPILER] Compilation successful!");
 
     Ok(code)
 }
@@ -214,7 +214,7 @@ pub fn compile_graph_with_variables(
     graph: &GraphDescription,
     variables: HashMap<String, String>,
 ) -> Result<String, String> {
-    println!("[COMPILER] Compiling with {} class variables", variables.len());
+    tracing::info!("[COMPILER] Compiling with {} class variables", variables.len());
 
     let mut expanded_graph = graph.clone();
     let metadata = get_node_metadata();
@@ -251,7 +251,7 @@ pub fn compile_graph_with_variables(
 /// old template-based approach.
 #[deprecated(note = "Use compile_graph instead - this uses the obsolete .tron template system")]
 pub fn compile_graph_legacy(graph: &GraphDescription) -> Result<String, String> {
-    eprintln!("[COMPILER] Warning: Legacy .tron template compiler is no longer supported");
+    tracing::warn!("[COMPILER] Warning: Legacy .tron template compiler is no longer supported");
     Err("Legacy compiler has been removed - use new macro-based compiler via compile_graph()".to_string())
 }
 

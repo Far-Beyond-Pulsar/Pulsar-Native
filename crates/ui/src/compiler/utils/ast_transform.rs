@@ -271,8 +271,8 @@ mod tests {
         let func: ItemFn = syn::parse_str(code).unwrap();
 
         let mut replacements = HashMap::new();
-        replacements.insert("True".to_string(), "println!(\"true branch\");".to_string());
-        replacements.insert("False".to_string(), "println!(\"false branch\");".to_string());
+        replacements.insert("True".to_string(), "tracing::info!(\"true branch\");".to_string());
+        replacements.insert("False".to_string(), "tracing::info!(\"false branch\");".to_string());
 
         let replacer = ExecOutputReplacer::new(replacements);
         let result = replacer.replace_in_function(func).unwrap();
@@ -306,7 +306,7 @@ mod tests {
 
     #[test]
     fn test_indent_code() {
-        let code = "let x = 5;\nprintln!(\"{}\", x);";
+        let code = "let x = 5;\ntracing::info!(\"{}\", x);";
         let indented = indent_code(code, 2);
 
         assert!(indented.starts_with("        ")); // 8 spaces (2 levels * 4 spaces)

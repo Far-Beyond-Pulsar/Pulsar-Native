@@ -199,7 +199,7 @@ mod tests {
 
         match result {
             Ok(code) => {
-                println!("Generated code:\n{}", code);
+                tracing::info!("Generated code:\n{}", code);
                 assert!(code.contains("pub fn main"), "Should generate main function");
                 assert!(code.contains("print_string"), "Should call print_string");
                 assert!(code.contains("Hello World"), "Should include the message");
@@ -237,7 +237,7 @@ mod tests {
         assert!(result.is_ok(), "Failed to inline function: {:?}", result.err());
         let inlined = result.unwrap();
 
-        println!("Inlined code:\n{}", inlined);
+        tracing::info!("Inlined code:\n{}", inlined);
         assert!(inlined.contains("true path"));
         assert!(inlined.contains("false path"));
         assert!(!inlined.contains("exec_output!"));

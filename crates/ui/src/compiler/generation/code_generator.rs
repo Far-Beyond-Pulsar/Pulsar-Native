@@ -232,11 +232,11 @@ impl<'a> CodeGenerator<'a> {
 
         // Build exec_output replacements
         let mut exec_replacements = HashMap::new();
-        eprintln!(
+        tracing::error!(
             "[CODEGEN] Building exec replacements for control flow node '{}'",
             node.node_type
         );
-        eprintln!(
+        tracing::error!(
             "[CODEGEN] Node has {} exec outputs: {:?}",
             node_meta.exec_outputs.len(),
             node_meta.exec_outputs
@@ -244,7 +244,7 @@ impl<'a> CodeGenerator<'a> {
 
         for exec_pin in node_meta.exec_outputs.iter() {
             let connected = self.exec_routing.get_connected_nodes(&node.id, exec_pin);
-            eprintln!(
+            tracing::error!(
                 "[CODEGEN] Exec pin '{}' has {} connected nodes: {:?}",
                 exec_pin,
                 connected.len(),
@@ -256,7 +256,7 @@ impl<'a> CodeGenerator<'a> {
 
             for next_node_id in connected {
                 if let Some(next_node) = self.graph.nodes.get(next_node_id) {
-                    eprintln!(
+                    tracing::error!(
                         "[CODEGEN] Generating code for connected node '{}'",
                         next_node.node_type
                     );
@@ -275,7 +275,7 @@ impl<'a> CodeGenerator<'a> {
                 }
             }
 
-            eprintln!(
+            tracing::error!(
                 "[CODEGEN] Exec pin '{}' replacement code: '{}'",
                 exec_pin,
                 exec_code.trim()
@@ -283,7 +283,7 @@ impl<'a> CodeGenerator<'a> {
             exec_replacements.insert(exec_pin.to_string(), exec_code.trim().to_string());
         }
 
-        eprintln!(
+        tracing::error!(
             "[CODEGEN] Final exec_replacements map: {:?}",
             exec_replacements
         );

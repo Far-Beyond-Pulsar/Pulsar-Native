@@ -64,7 +64,7 @@ impl SubGraphExpander {
             return Ok(());
         }
 
-        println!(
+        tracing::info!(
             "[COMPILER] Expanding {} sub-graph instances at depth {}",
             subgraph_instances.len(),
             depth
@@ -100,7 +100,7 @@ impl SubGraphExpander {
             .ok_or_else(|| format!("Instance node '{}' not found", instance_id))?
             .clone();
 
-        println!(
+        tracing::info!(
             "[COMPILER] Expanding sub-graph '{}' instance '{}'",
             subgraph_id, instance_id
         );
@@ -233,7 +233,7 @@ impl SubGraphExpander {
         // Step 5: Remove the instance node itself
         parent_graph.remove_node(instance_id);
 
-        println!(
+        tracing::info!(
             "[COMPILER] Expanded sub-graph '{}' with {} nodes",
             definition.name,
             definition.graph.nodes.len()
