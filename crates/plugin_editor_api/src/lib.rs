@@ -630,7 +630,7 @@ macro_rules! export_plugin {
             let _ = log::set_logger(logger);
         }
         #[no_mangle]
-        pub unsafe extern "C" fn _plugin_create(theme_ptr: *const std::ffi::c_void) -> Option<&'static mut dyn $crate::EditorPlugin>>{
+        pub unsafe extern "C" fn _plugin_create(theme_ptr: *const std::ffi::c_void) -> Option<&'static mut dyn $crate::EditorPlugin>{
             if theme_ptr.is_null() {
                 eprintln!("[Plugin] ERROR: Received null theme pointer from host!");
                 return None;
