@@ -27,6 +27,9 @@ impl PropertiesPanel {
         editing_property: &Option<String>,
         property_input: &Entity<InputState>,
         collapsed_sections: &HashSet<String>,
+        object_header_section: &Option<Entity<super::ObjectHeaderSection>>,
+        transform_section: &Option<Entity<super::TransformSection>>,
+        material_section: &Option<Entity<super::MaterialSection>>,
         window: &mut Window,
         cx: &mut Context<PropertiesPanelWrapper>
     ) -> impl IntoElement {
@@ -45,26 +48,36 @@ impl PropertiesPanel {
                             .size_full()
                             .scrollable(ScrollbarAxis::Vertical)
                             .child(
-                                if let Some(selected) = state.get_selected_object() {
-                                    v_flex()
+                                if let Some(_selected) = state.get_selected_object() {
+                                    let mut flex = v_flex()
                                         .w_full()
                                         .p_3()
-                                        .gap_4()
-                                        .child(Self::render_object_header(&selected, cx))
-                                        .child(Self::render_transform_section(
-                                            &selected.transform,
-                                            editing_property,
-                                            property_input,
-                                            collapsed_sections.contains("Transform"),
-                                            window,
-                                            cx
-                                        ))
-                                        .child(Self::render_object_type_section(&selected, collapsed_sections, cx))
-                                        .child(Self::render_tags_section(collapsed_sections, cx))
-                                        .child(Self::render_components_section(collapsed_sections, cx))
-                                        .child(Self::render_rendering_section(&selected, collapsed_sections, cx))
-                                        .child(Self::render_physics_section(&selected, collapsed_sections, cx))
-                                        .into_any_element()
+                                        .gap_4();
+
+                                    // Render new ObjectHeaderSection if available (new binding system)
+                                    if let Some(ref section) = object_header_section {
+                                        flex = flex.child(section.clone());
+                                    }
+
+                                    // Render new TransformSection if available (new binding system)
+                                    if let Some(ref section) = transform_section {
+                                        flex = flex.child(section.clone());
+                                    }
+
+                                    // Render new MaterialSection if available (new binding system)
+                                    if let Some(ref section) = material_section {
+                                        flex = flex.child(section.clone());
+                                    }
+
+                                    // Keep old sections for now (TODO: convert to binding system)
+                                    // flex = flex
+                                    //     .child(Self::render_object_type_section(&selected, collapsed_sections, cx))
+                                    //     .child(Self::render_tags_section(collapsed_sections, cx))
+                                    //     .child(Self::render_components_section(collapsed_sections, cx))
+                                    //     .child(Self::render_rendering_section(&selected, collapsed_sections, cx))
+                                    //     .child(Self::render_physics_section(&selected, collapsed_sections, cx));
+
+                                    flex.into_any_element()
                                 } else {
                                     Self::render_empty_state(cx).into_any_element()
                                 }

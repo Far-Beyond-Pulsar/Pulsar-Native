@@ -2,7 +2,7 @@
 
 use gpui::*;
 use ui::{ActiveTheme, StyledExt, dock::{Panel, PanelEvent}, v_flex, input::{TextInput, InputState}};
-use super::ui::{WorldSettings, HierarchyPanel, PropertiesPanel, ViewportPanel, LevelEditorState};
+use super::ui::{WorldSettings, HierarchyPanel, PropertiesPanel, ViewportPanel, LevelEditorState, TransformSection, ObjectHeaderSection, MaterialSection};
 use std::sync::Arc;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -131,7 +131,12 @@ pub struct PropertiesPanelWrapper {
     properties: PropertiesPanel,
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
     focus_handle: FocusHandle,
-    // Input state for property editing
+    // New field binding system
+    object_header_section: Option<Entity<ObjectHeaderSection>>,
+    transform_section: Option<Entity<TransformSection>>,
+    material_section: Option<Entity<MaterialSection>>,
+    current_object_id: Option<String>,
+    // DEPRECATED: Old manual property editing (will be removed)
     editing_property: Option<String>,
     property_input: Entity<InputState>,
     /// Tracks which sections are collapsed (by section name)
@@ -159,6 +164,10 @@ impl PropertiesPanelWrapper {
             properties: PropertiesPanel::new(),
             state,
             focus_handle: cx.focus_handle(),
+            object_header_section: None,
+            transform_section: None,
+            material_section: None,
+            current_object_id: None,
             editing_property: None,
             property_input,
             collapsed_sections,
@@ -236,16 +245,65 @@ impl Render for PropertiesPanelWrapper {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.state.read();
         let collapsed_sections = self.collapsed_sections.clone();
+        let selected_object_id = state.selected_object();
+
+        // Update sections when selection changes
+        if selected_object_id != self.current_object_id {
+            if let Some(ref object_id) = selected_object_id {
+                // Create new sections for the selected object
+                let scene_db = state.scene_database.clone();
+                let object_id_clone = object_id.clone();
+
+                // Object header section
+                self.object_header_section = Some(cx.new(|cx| {
+                    ObjectHeaderSection::new(object_id_clone.clone(), scene_db.clone(), window, cx)
+                }));
+
+                // Transform section
+                self.transform_section = Some(cx.new(|cx| {
+                    TransformSection::new(object_id_clone.clone(), scene_db.clone(), window, cx)
+                }));
+
+                // Material section (only if object has material component)
+                self.material_section = Some(cx.new(|cx| {
+                    MaterialSection::new(object_id_clone, scene_db, window, cx)
+                }));
+
+                self.current_object_id = Some(object_id.clone());
+            } else {
+                // No selection - clear all sections
+                self.object_header_section = None;
+                self.transform_section = None;
+                self.material_section = None;
+                self.current_object_id = None;
+            }
+        } else {
+            // Same object selected - refresh all sections in case data changed (undo/redo, gizmo, etc.)
+            if let Some(ref section) = self.object_header_section {
+                section.update(cx, |sec, cx| sec.refresh(window, cx));
+            }
+            if let Some(ref section) = self.transform_section {
+                section.update(cx, |sec, cx| sec.refresh(window, cx));
+            }
+            if let Some(ref section) = self.material_section {
+                section.update(cx, |sec, cx| sec.refresh(window, cx));
+            }
+        }
+
+        drop(state);
 
         v_flex()
             .size_full()
             .bg(cx.theme().sidebar)
             .child(self.properties.render(
-                &*state,
+                &*self.state.read(),
                 self.state.clone(),
                 &self.editing_property,
                 &self.property_input,
                 &collapsed_sections,
+                &self.object_header_section,
+                &self.transform_section,
+                &self.material_section,
                 window,
                 cx
             ))
