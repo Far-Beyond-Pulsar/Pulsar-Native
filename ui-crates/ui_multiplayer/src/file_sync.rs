@@ -11,7 +11,7 @@ use engine_backend::subsystems::networking::multiuser::{ClientMessage, Multiuser
 impl MultiplayerWindow {
     pub(super) fn approve_file_sync(&mut self, cx: &mut Context<Self>) {
         if let Some((diff, host_peer_id)) = self.pending_file_sync.take() {
-            tracing::info!(
+            tracing::debug!(
                 "File sync approved - requesting {} files from {}",
                 diff.change_count(),
                 host_peer_id
@@ -35,7 +35,7 @@ impl MultiplayerWindow {
                 let peer_id = peer_id.clone();
 
                 cx.spawn(async move |this, mut cx| {
-                    tracing::info!("Sending RequestFiles for {} files", files_needed.len());
+                    tracing::debug!("Sending RequestFiles for {} files", files_needed.len());
 
                     let client_guard = client.read().await;
                     let _ = client_guard.send(ClientMessage::RequestFiles {
@@ -44,7 +44,7 @@ impl MultiplayerWindow {
                         file_paths: files_needed,
                     }).await;
 
-                    tracing::info!("File request sent, waiting for response...");
+                    tracing::debug!("File request sent, waiting for response...");
                 }).detach();
             }
 
@@ -54,7 +54,7 @@ impl MultiplayerWindow {
     }
 
     pub(super) fn cancel_file_sync(&mut self, cx: &mut Context<Self>) {
-        tracing::info!("Git sync cancelled");
+        tracing::debug!("Git sync cancelled");
         self.pending_file_sync = None;
         cx.notify();
     }

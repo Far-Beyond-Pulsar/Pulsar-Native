@@ -628,7 +628,7 @@ macro_rules! export_plugin {
         #[no_mangle]
         pub unsafe extern "C" fn _setup_plugin_logger(logger: &'static dyn log::Log) {
             let _ = log::set_logger(logger);
-            log::info!("teeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeest")
+            log::debug!("teeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeest")
         }
         #[no_mangle]
         pub unsafe extern "C" fn _plugin_create(theme_ptr: *const std::ffi::c_void) -> Option<&'static mut dyn $crate::EditorPlugin>{

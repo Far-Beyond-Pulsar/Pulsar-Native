@@ -62,7 +62,7 @@ fn lock_cursor_to_window(window: &Window) {
 
                             // Confine cursor to window bounds
                             ClipCursor(&screen_rect);
-                            tracing::info!("[VIEWPORT] 🔒 Cursor locked to window bounds");
+                            tracing::debug!("[VIEWPORT] 🔒 Cursor locked to window bounds");
                         }
                     }
                 }
@@ -89,7 +89,7 @@ fn lock_cursor_to_point(screen_x: i32, screen_y: i32, radius: i32) {
             bottom: screen_y + radius,
         };
         ClipCursor(&screen_rect);
-        tracing::info!("[VIEWPORT] 🔒 Cursor confined to {}px radius around ({}, {})", radius, screen_x, screen_y);
+        tracing::debug!("[VIEWPORT] 🔒 Cursor confined to {}px radius around ({}, {})", radius, screen_x, screen_y);
     }
 }
 
@@ -103,7 +103,7 @@ fn unlock_cursor() {
     unsafe {
         // Pass NULL to release cursor confinement
         ClipCursor(std::ptr::null());
-        tracing::info!("[VIEWPORT] 🔓 Cursor unlocked");
+        tracing::debug!("[VIEWPORT] 🔓 Cursor unlocked");
     }
 }
 
@@ -114,7 +114,7 @@ fn hide_cursor() {
         // ShowCursor is counter-based - call until cursor is hidden
         // The cursor is hidden when the counter < 0
         while ShowCursor(FALSE) >= 0 {}
-        tracing::info!("[VIEWPORT] 👻 Cursor hidden (Win32 ShowCursor)");
+        tracing::debug!("[VIEWPORT] 👻 Cursor hidden (Win32 ShowCursor)");
     }
 }
 
@@ -125,7 +125,7 @@ fn show_cursor() {
         // ShowCursor is counter-based - call until cursor is shown
         // The cursor is shown when the counter >= 0
         while ShowCursor(1) < 0 {}
-        tracing::info!("[VIEWPORT] 👁️ Cursor shown (Win32 ShowCursor)");
+        tracing::debug!("[VIEWPORT] 👁️ Cursor shown (Win32 ShowCursor)");
     }
 }
 
@@ -238,7 +238,7 @@ fn show_cursor() {
 fn lock_cursor_to_window(_window: &Window) {
     // macOS and Linux don't need window confinement for our use case
     // They use cursor repositioning instead
-    tracing::info!("[VIEWPORT] Cursor locking via repositioning");
+    tracing::debug!("[VIEWPORT] Cursor locking via repositioning");
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -503,8 +503,8 @@ impl ViewportPanel {
             let locked_cursor_y = self.locked_cursor_y.clone();
             
             std::thread::spawn(move || {
-                tracing::info!("[INPUT-THREAD] 🚀 Dedicated RAW INPUT processing thread started");
-                tracing::info!("[INPUT-THREAD] 🎯 Activated by GPUI right-click, deactivated by GPUI release");
+                tracing::debug!("[INPUT-THREAD] 🚀 Dedicated RAW INPUT processing thread started");
+                tracing::debug!("[INPUT-THREAD] 🎯 Activated by GPUI right-click, deactivated by GPUI release");
                 let device_state = DeviceState::new();
                 let mut last_mouse_pos: Option<(i32, i32)> = None;
                 
@@ -781,7 +781,7 @@ impl ViewportPanel {
                 let locked_cursor_screen_y = self.locked_cursor_screen_y.clone();
                 let input_state_clone = self.input_state.clone();
                 move |event, window, _cx| {
-                    tracing::info!("[VIEWPORT] 🖱️ Right-click DOWN on viewport - ACTIVATING camera controls");
+                    tracing::debug!("[VIEWPORT] 🖱️ Right-click DOWN on viewport - ACTIVATING camera controls");
 
                     // Check if Shift is held for pan mode
                     let shift_pressed = event.modifiers.shift;
@@ -797,12 +797,12 @@ impl ViewportPanel {
                         locked_cursor_y.store(screen_y, Ordering::Relaxed);
                         locked_cursor_screen_x.store(screen_x, Ordering::Relaxed);
                         locked_cursor_screen_y.store(screen_y, Ordering::Relaxed);
-                        tracing::info!("[VIEWPORT] 📍 Locked cursor at screen position ({}, {})", screen_x, screen_y);
+                        tracing::debug!("[VIEWPORT] 📍 Locked cursor at screen position ({}, {})", screen_x, screen_y);
 
                         // Confine cursor to window bounds (less aggressive than point lock)
                         lock_cursor_to_window(window);
                     } else {
-                        tracing::info!("[VIEWPORT] ⚠️ Failed to convert window position to screen position");
+                        tracing::debug!("[VIEWPORT] ⚠️ Failed to convert window position to screen position");
                         // Fallback: lock to window bounds
                         lock_cursor_to_window(window);
                     }
@@ -816,11 +816,11 @@ impl ViewportPanel {
                     if shift_pressed {
                         // Shift + Right = Pan mode
                         mouse_middle_captured.store(true, Ordering::Release);
-                        tracing::info!("[VIEWPORT] 🎥 Pan mode activated (Shift + Right)");
+                        tracing::debug!("[VIEWPORT] 🎥 Pan mode activated (Shift + Right)");
                     } else {
                         // Right alone = Rotate mode
                         mouse_right_captured.store(true, Ordering::Release);
-                        tracing::info!("[VIEWPORT] 🎥 Rotate mode activated (Right)");
+                        tracing::debug!("[VIEWPORT] 🎥 Rotate mode activated (Right)");
                     }
 
                     // Hide cursor using proper Windows API
@@ -835,7 +835,7 @@ impl ViewportPanel {
                 let locked_cursor_screen_x = self.locked_cursor_screen_x.clone();
                 let locked_cursor_screen_y = self.locked_cursor_screen_y.clone();
                 move |_event, window, _cx| {
-                    tracing::info!("[VIEWPORT] 🖱️ Right-click UP - DEACTIVATING camera controls");
+                    tracing::debug!("[VIEWPORT] 🖱️ Right-click UP - DEACTIVATING camera controls");
 
                     // Deactivate both modes
                     mouse_right_captured.store(false, Ordering::Release);
@@ -850,7 +850,7 @@ impl ViewportPanel {
                     window.set_window_cursor_style(CursorStyle::Arrow); // Also set GPUI style
                     unlock_cursor();
 
-                    tracing::info!("[VIEWPORT] ✅ Camera controls deactivated, cursor restored");
+                    tracing::debug!("[VIEWPORT] ✅ Camera controls deactivated, cursor restored");
                 }
             })
             // Left-click for object selection in edit mode
@@ -858,7 +858,7 @@ impl ViewportPanel {
                 let gpu_engine_click = gpu_engine_for_click.clone();
                 let element_bounds = element_bounds_for_click.clone();
                 move |event: &gpui::MouseDownEvent, window: &mut gpui::Window, _cx: &mut gpui::App| {
-                    tracing::info!("[VIEWPORT] 🖱️ Left-click detected at window position: {:?}", event.position);
+                    tracing::debug!("[VIEWPORT] 🖱️ Left-click detected at window position: {:?}", event.position);
                     
                     // Convert window coordinates to element-relative coordinates
                     let bounds_opt = element_bounds.borrow();
@@ -875,13 +875,13 @@ impl ViewportPanel {
                         let elem_x = pos_x - origin_x;
                         let elem_y = pos_y - origin_y;
                         
-                        tracing::info!("[VIEWPORT] 📐 Element-relative position: ({:.1}, {:.1}) in viewport ({:.1}x{:.1})", 
+                        tracing::debug!("[VIEWPORT] 📐 Element-relative position: ({:.1}, {:.1}) in viewport ({:.1}x{:.1})", 
                             elem_x, elem_y, width, height);
                         
                         (elem_x, elem_y, width, height)
                     } else {
                         // Fallback: use window coordinates (first frame before bounds captured)
-                        tracing::info!("[VIEWPORT] ⚠️ Element bounds not yet captured, using window coords");
+                        tracing::debug!("[VIEWPORT] ⚠️ Element bounds not yet captured, using window coords");
                         let window_size = window.viewport_size();
                         let pos_x: f32 = event.position.x.into();
                         let pos_y: f32 = event.position.y.into();
@@ -894,7 +894,7 @@ impl ViewportPanel {
                     let normalized_x = (element_x / viewport_width).clamp(0.0, 1.0);
                     let normalized_y = (element_y / viewport_height).clamp(0.0, 1.0);
                     
-                    tracing::info!("[VIEWPORT] 🎯 Normalized position: ({:.3}, {:.3})", normalized_x, normalized_y);
+                    tracing::debug!("[VIEWPORT] 🎯 Normalized position: ({:.3}, {:.3})", normalized_x, normalized_y);
                     
                     // Send to Bevy's ViewportMouseInput via shared resource
                     if let Ok(engine) = gpu_engine_click.try_lock() {
@@ -907,12 +907,12 @@ impl ViewportPanel {
                             mouse_input.left_clicked = true;
                             mouse_input.left_down = true;
                             
-                            tracing::info!("[VIEWPORT] ✅ Sent click to Bevy (will be processed by raycast system)");
+                            tracing::debug!("[VIEWPORT] ✅ Sent click to Bevy (will be processed by raycast system)");
                         } else {
-                            tracing::info!("[VIEWPORT] ⚠️ Bevy renderer not available");
+                            tracing::debug!("[VIEWPORT] ⚠️ Bevy renderer not available");
                         }
                     } else {
-                        tracing::info!("[VIEWPORT] ⚠️ Could not lock GPU engine for click event");
+                        tracing::debug!("[VIEWPORT] ⚠️ Could not lock GPU engine for click event");
                     }
                 }
             })

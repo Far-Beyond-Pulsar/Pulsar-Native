@@ -349,16 +349,16 @@ impl FileManagerDrawer {
     }
 
     pub fn set_project_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        tracing::info!("[FILE_MANAGER] set_project_path called with: {:?}", path);
-        tracing::info!("[FILE_MANAGER] Path exists: {}", path.exists());
-        tracing::info!("[FILE_MANAGER] Path is_dir: {}", path.is_dir());
+        tracing::debug!("[FILE_MANAGER] set_project_path called with: {:?}", path);
+        tracing::debug!("[FILE_MANAGER] Path exists: {}", path.exists());
+        tracing::debug!("[FILE_MANAGER] Path is_dir: {}", path.is_dir());
 
         self.project_path = Some(path.clone());
         self.folder_tree = FolderNode::from_path(&path);
         self.selected_folder = Some(path.clone());
 
-        tracing::info!("[FILE_MANAGER] folder_tree is_some: {}", self.folder_tree.is_some());
-        tracing::info!("[FILE_MANAGER] selected_folder: {:?}", self.selected_folder);
+        tracing::debug!("[FILE_MANAGER] folder_tree is_some: {}", self.folder_tree.is_some());
+        tracing::debug!("[FILE_MANAGER] selected_folder: {:?}", self.selected_folder);
         
         cx.notify();
     }

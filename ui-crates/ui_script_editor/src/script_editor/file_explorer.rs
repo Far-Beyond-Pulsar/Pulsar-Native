@@ -311,17 +311,17 @@ impl FileExplorer {
     }
 
     fn open_file_in_editor(&mut self, path: PathBuf, _window: &mut Window, cx: &mut Context<Self>) {
-        tracing::info!("FileExplorer: open_file_in_editor called with path: {:?}", path);
+        tracing::debug!("FileExplorer: open_file_in_editor called with path: {:?}", path);
         self.selected_file = Some(path.clone());
         self.last_opened_file = Some(path.clone());
         cx.notify();
-        tracing::info!("FileExplorer: Set last_opened_file to {:?}", path);
+        tracing::debug!("FileExplorer: Set last_opened_file to {:?}", path);
     }
 
     pub fn get_last_opened_file(&mut self) -> Option<PathBuf> {
         let file = self.last_opened_file.take();
         if file.is_some() {
-            tracing::info!("FileExplorer: get_last_opened_file returning {:?}", file);
+            tracing::debug!("FileExplorer: get_last_opened_file returning {:?}", file);
         }
         file
     }
@@ -402,14 +402,14 @@ impl FileExplorer {
     fn cut_file(&mut self, path: PathBuf, _window: &mut Window, cx: &mut Context<Self>) {
         self.clipboard_path = Some(path);
         self.clipboard_operation = Some(ClipboardOperation::Cut);
-        tracing::info!("📋 Cut: {:?}", self.clipboard_path);
+        tracing::debug!("📋 Cut: {:?}", self.clipboard_path);
         cx.notify();
     }
 
     fn copy_file(&mut self, path: PathBuf, _window: &mut Window, cx: &mut Context<Self>) {
         self.clipboard_path = Some(path);
         self.clipboard_operation = Some(ClipboardOperation::Copy);
-        tracing::info!("📋 Copy: {:?}", self.clipboard_path);
+        tracing::debug!("📋 Copy: {:?}", self.clipboard_path);
         cx.notify();
     }
 
@@ -423,7 +423,7 @@ impl FileExplorer {
                     if let Err(e) = fs::rename(source_path, &dest_path) {
                         tracing::error!("Failed to move file: {}", e);
                     } else {
-                        tracing::info!("✓ Moved: {:?} -> {:?}", source_path, dest_path);
+                        tracing::debug!("✓ Moved: {:?} -> {:?}", source_path, dest_path);
                         self.clipboard_path = None;
                         self.clipboard_operation = None;
                         self.refresh_file_tree(cx);
@@ -435,14 +435,14 @@ impl FileExplorer {
                         if let Err(e) = self.copy_dir_recursive(source_path, &dest_path) {
                             tracing::error!("Failed to copy directory: {}", e);
                         } else {
-                            tracing::info!("✓ Copied directory: {:?} -> {:?}", source_path, dest_path);
+                            tracing::debug!("✓ Copied directory: {:?} -> {:?}", source_path, dest_path);
                             self.refresh_file_tree(cx);
                         }
                     } else {
                         if let Err(e) = fs::copy(source_path, &dest_path) {
                             tracing::error!("Failed to copy file: {}", e);
                         } else {
-                            tracing::info!("✓ Copied: {:?} -> {:?}", source_path, dest_path);
+                            tracing::debug!("✓ Copied: {:?} -> {:?}", source_path, dest_path);
                             self.refresh_file_tree(cx);
                         }
                     }
@@ -479,7 +479,7 @@ impl FileExplorer {
 
         match result {
             Ok(_) => {
-                tracing::info!("✓ Deleted: {:?}", path);
+                tracing::debug!("✓ Deleted: {:?}", path);
                 self.refresh_file_tree(cx);
             }
             Err(e) => {
@@ -497,7 +497,7 @@ impl FileExplorer {
     fn copy_path_to_clipboard(&self, path: &Path, cx: &mut App) {
         let path_str = path.to_string_lossy().to_string();
         cx.write_to_clipboard(ClipboardItem::new_string(path_str.clone()));
-        tracing::info!("📋 Copied path to clipboard: {}", path_str);
+        tracing::debug!("📋 Copied path to clipboard: {}", path_str);
     }
 
     fn copy_relative_path_to_clipboard(&self, path: &Path, cx: &mut App) {
@@ -505,7 +505,7 @@ impl FileExplorer {
             if let Ok(relative) = path.strip_prefix(root) {
                 let path_str = relative.to_string_lossy().to_string();
                 cx.write_to_clipboard(ClipboardItem::new_string(path_str.clone()));
-                tracing::info!("📋 Copied relative path to clipboard: {}", path_str);
+                tracing::debug!("📋 Copied relative path to clipboard: {}", path_str);
                 return;
             }
         }
@@ -536,7 +536,7 @@ impl FileExplorer {
                     .spawn();
             }
         }
-        tracing::info!("📂 Revealed in file manager: {:?}", path);
+        tracing::debug!("📂 Revealed in file manager: {:?}", path);
     }
 
     fn create_file_in_directory(&mut self, dir_path: PathBuf, _window: &mut Window, cx: &mut Context<Self>) {
@@ -585,7 +585,7 @@ impl FileExplorer {
         
         // Debug: print when using fallback
         if self.last_viewport_bounds.is_none() {
-            tracing::info!("⚠️  Using fallback viewport height: 600px");
+            tracing::debug!("⚠️  Using fallback viewport height: 600px");
         }
         
         height
@@ -772,11 +772,11 @@ impl FileExplorer {
                     let path = path.clone();
                     let is_dir = is_directory;
                     cx.listener(move |this, _, window, cx| {
-                        tracing::info!("FileExplorer: Click on {:?}, is_directory: {}", path, is_dir);
+                        tracing::debug!("FileExplorer: Click on {:?}, is_directory: {}", path, is_dir);
                         if is_dir {
                             this.toggle_folder(&path, window, cx);
                         } else {
-                            tracing::info!("FileExplorer: Calling select_file and open_file_in_editor for {:?}", path);
+                            tracing::debug!("FileExplorer: Calling select_file and open_file_in_editor for {:?}", path);
                             this.select_file(path.clone(), window, cx);
                             this.open_file_in_editor(path.clone(), window, cx);
                         }

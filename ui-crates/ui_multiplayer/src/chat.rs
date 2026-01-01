@@ -16,7 +16,7 @@ impl MultiplayerWindow {
             return;
         }
 
-        tracing::info!("Preparing to send chat message: {}", message);
+        tracing::debug!("Preparing to send chat message: {}", message);
 
         if let (Some(client), Some(session), Some(peer_id)) = (&self.client, &self.active_session, &self.current_peer_id) {
             let client = client.clone();
@@ -24,7 +24,7 @@ impl MultiplayerWindow {
             let peer_id = peer_id.clone();
             let message_to_send = message.clone();
 
-            tracing::info!("Sending chat message from peer {} in session {}", peer_id, session_id);
+            tracing::debug!("Sending chat message from peer {} in session {}", peer_id, session_id);
 
             // Clear input immediately
             self.chat_input.update(cx, |state, cx| {
@@ -39,7 +39,7 @@ impl MultiplayerWindow {
                     message: message_to_send.clone(),
                 }).await {
                     Ok(_) => {
-                        tracing::info!("Successfully sent chat message to server");
+                        tracing::debug!("Successfully sent chat message to server");
                     }
                     Err(e) => {
                         tracing::error!("Failed to send chat message: {}", e);

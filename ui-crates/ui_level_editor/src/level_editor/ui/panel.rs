@@ -101,15 +101,15 @@ impl LevelEditorPanel {
                 engine_state.set_metadata("has_pending_viewport_renderer".to_string(), "true".to_string());
             }
         } else {
-            tracing::info!("[LEVEL-EDITOR] ❌ ERROR: No global EngineState found!");
+            tracing::debug!("[LEVEL-EDITOR] ❌ ERROR: No global EngineState found!");
         }
 
         // Viewport stays transparent - Bevy renders directly to winit back buffer BEHIND GPUI
         // No texture initialization needed in GPUI - all handled in main.rs rendering loop
-        tracing::info!("[LEVEL-EDITOR] 📺 Viewport configured as transparent (Bevy renders to back buffer)");
+        tracing::debug!("[LEVEL-EDITOR] 📺 Viewport configured as transparent (Bevy renders to back buffer)");
 
         
-        tracing::info!("[LEVEL-EDITOR] Modular level editor initialized");
+        tracing::debug!("[LEVEL-EDITOR] Modular level editor initialized");
 
         let state = LevelEditorState::new();
         
@@ -524,12 +524,12 @@ impl LevelEditorPanel {
         if let Some(ref path) = self.state.current_scene {
             match self.state.scene_database.save_to_file(path) {
                 Ok(_) => {
-                    tracing::info!("[LEVEL-EDITOR] 💾 Scene saved: {:?}", path);
+                    tracing::debug!("[LEVEL-EDITOR] 💾 Scene saved: {:?}", path);
                     self.state.has_unsaved_changes = false;
                     cx.notify();
                 }
                 Err(e) => {
-                    tracing::info!("[LEVEL-EDITOR] ❌ Failed to save scene: {}", e);
+                    tracing::debug!("[LEVEL-EDITOR] ❌ Failed to save scene: {}", e);
                 }
             }
         }
@@ -537,16 +537,16 @@ impl LevelEditorPanel {
     
     fn on_save_scene_as(&mut self, _: &SaveSceneAs, _window: &mut Window, cx: &mut Context<Self>) {
         // TODO: Implement async file dialog
-        tracing::info!("[LEVEL-EDITOR] 💾 Save Scene As - TODO");
+        tracing::debug!("[LEVEL-EDITOR] 💾 Save Scene As - TODO");
         if let Some(ref path) = self.state.current_scene {
             match self.state.scene_database.save_to_file(path) {
                 Ok(_) => {
-                    tracing::info!("[LEVEL-EDITOR] 💾 Scene saved: {:?}", path);
+                    tracing::debug!("[LEVEL-EDITOR] 💾 Scene saved: {:?}", path);
                     self.state.has_unsaved_changes = false;
                     cx.notify();
                 }
                 Err(e) => {
-                    tracing::info!("[LEVEL-EDITOR] ❌ Failed to save scene: {}", e);
+                    tracing::debug!("[LEVEL-EDITOR] ❌ Failed to save scene: {}", e);
                 }
             }
         }
@@ -554,7 +554,7 @@ impl LevelEditorPanel {
     
     fn on_open_scene(&mut self, _: &OpenScene, _window: &mut Window, cx: &mut Context<Self>) {
         // TODO: Implement async file dialog
-        tracing::info!("[LEVEL-EDITOR] 📂 Open Scene - TODO");
+        tracing::debug!("[LEVEL-EDITOR] 📂 Open Scene - TODO");
         cx.notify();
     }
     
@@ -572,7 +572,7 @@ impl LevelEditorPanel {
         // Re-add default objects
         self.state.scene_database = crate::level_editor::SceneDatabase::with_default_scene();
         
-        tracing::info!("[LEVEL-EDITOR] 📄 New scene created");
+        tracing::debug!("[LEVEL-EDITOR] 📄 New scene created");
         cx.notify();
     }
 
@@ -689,12 +689,12 @@ impl Render for LevelEditorPanel {
                     if bevy_selected_id != gpui_selected_id {
                         // Bevy has a different selection - sync to GPUI!
                         if let Some(ref new_id) = bevy_selected_id {
-                            tracing::info!("[LEVEL-EDITOR] 🔄 Syncing selection from Bevy: {}", new_id);
+                            tracing::debug!("[LEVEL-EDITOR] 🔄 Syncing selection from Bevy: {}", new_id);
                             self.shared_state.write().select_object(Some(new_id.clone()));
                             cx.notify(); // Trigger UI update
                         } else {
                             // Bevy deselected
-                            tracing::info!("[LEVEL-EDITOR] 🔄 Syncing deselection from Bevy");
+                            tracing::debug!("[LEVEL-EDITOR] 🔄 Syncing deselection from Bevy");
                             self.shared_state.write().select_object(None);
                             cx.notify();
                         }

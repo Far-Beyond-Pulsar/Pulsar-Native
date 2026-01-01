@@ -15,7 +15,7 @@ impl PulsarApp {
         // Try plugin system first for all file types
         match self.state.plugin_manager.create_editor_for_file(&path, window, cx) {
             Ok((panel, _editor_instance)) => {
-                tracing::info!("Plugin system opened file: {:?}", path);
+                tracing::debug!("Plugin system opened file: {:?}", path);
                 self.state.center_tabs.update(cx, |tabs, cx| {
                     tabs.add_panel(panel, window, cx);
                 });

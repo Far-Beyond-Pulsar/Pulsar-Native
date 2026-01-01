@@ -22,7 +22,7 @@ pub fn on_analyzer_event(
     window: &mut Window,
     cx: &mut Context<PulsarApp>,
 ) {
-    tracing::info!("🎯 on_analyzer_event CALLED with event type: {}", match event {
+    tracing::debug!("🎯 on_analyzer_event CALLED with event type: {}", match event {
         AnalyzerEvent::StatusChanged(_) => "StatusChanged",
         AnalyzerEvent::Ready => "Ready",
         AnalyzerEvent::Error(_) => "Error",
@@ -107,7 +107,7 @@ pub fn on_analyzer_event(
             // Convert and forward diagnostics to the problems drawer
             // Then asynchronously request code actions for each diagnostic
             
-            tracing::info!("🔔 DIAGNOSTICS EVENT RECEIVED: {} diagnostics", diagnostics.len());
+            tracing::debug!("🔔 DIAGNOSTICS EVENT RECEIVED: {} diagnostics", diagnostics.len());
             
             // First, separate hints from errors/warnings
             let mut errors_warnings: Vec<_> = Vec::new();
@@ -132,10 +132,10 @@ pub fn on_analyzer_event(
                     let first_edit = &action.edits[0];
                     let edit_file = &first_edit.file_path;
                     
-                    tracing::info!("🔧 Converting embedded code action '{}' to hint for {}", action.title, edit_file);
+                    tracing::debug!("🔧 Converting embedded code action '{}' to hint for {}", action.title, edit_file);
                     let (before_content, after_content) = compute_before_after(edit_file, &action.edits);
                     
-                    tracing::info!("✓ Embedded hint - before: {} chars, after: {} chars",
+                    tracing::debug!("✓ Embedded hint - before: {} chars, after: {} chars",
                         before_content.as_ref().map(|s| s.len()).unwrap_or(0),
                         after_content.as_ref().map(|s| s.len()).unwrap_or(0));
                     
@@ -153,7 +153,7 @@ pub fn on_analyzer_event(
                 let loading_actions = embedded_hints.is_empty();
                 
                 if !embedded_hints.is_empty() {
-                    tracing::info!("📋 Diagnostic has {} embedded code action hints", embedded_hints.len());
+                    tracing::debug!("📋 Diagnostic has {} embedded code action hints", embedded_hints.len());
                 }
                 
                 ui_problems::Diagnostic {
@@ -256,14 +256,14 @@ pub fn on_analyzer_event(
                 .cloned()
                 .collect();
             
-            tracing::info!("🚀 Spawning code action fetch task for {} diagnostics (skipping {} with embedded actions)", 
+            tracing::debug!("🚀 Spawning code action fetch task for {} diagnostics (skipping {} with embedded actions)", 
                 diagnostics_needing_fetch.len(),
                 diagnostic_infos.len() - diagnostics_needing_fetch.len());
             
             cx.spawn(async move |_this, cx| {
-                tracing::info!("🎯 Code action task started, processing {} diagnostics", diagnostics_needing_fetch.len());
+                tracing::debug!("🎯 Code action task started, processing {} diagnostics", diagnostics_needing_fetch.len());
                 for (idx, file_path, line, column, end_line, end_column, message, raw_diagnostic, _) in diagnostics_needing_fetch {
-                    tracing::info!("🔍 Requesting code actions for {}:{}:{} - {} (has raw: {})", 
+                    tracing::debug!("🔍 Requesting code actions for {}:{}:{} - {} (has raw: {})", 
                         file_path, line, column, message, raw_diagnostic.is_some());
                     
                     // Try to request code actions - prefer using raw diagnostic if available
@@ -301,22 +301,22 @@ pub fn on_analyzer_event(
                             
                             match response_result {
                                 Some(Ok(response)) => {
-                                    tracing::info!("📦 Got code action response: {} items in array", 
+                                    tracing::debug!("📦 Got code action response: {} items in array", 
                                         response.as_array().map(|a| a.len()).unwrap_or(0));
                                     
                                     // First, get already resolved actions
                                     let mut all_actions = RustAnalyzerManager::parse_code_actions(&response);
-                                    tracing::info!("✓ Parsed {} already-resolved actions", all_actions.len());
+                                    tracing::debug!("✓ Parsed {} already-resolved actions", all_actions.len());
                                     
                                     // Then resolve any unresolved actions
                                     let unresolved = RustAnalyzerManager::get_unresolved_actions(&response);
-                                    tracing::info!("🔄 Found {} unresolved actions to resolve", unresolved.len());
+                                    tracing::debug!("🔄 Found {} unresolved actions to resolve", unresolved.len());
                                     
                                     for unresolved_action in unresolved {
                                         let title = unresolved_action.get("title")
                                             .and_then(|t| t.as_str())
                                             .unwrap_or("unknown");
-                                        tracing::info!("🔄 Resolving action: {}", title);
+                                        tracing::debug!("🔄 Resolving action: {}", title);
                                         
                                         // Try to resolve
                                         let resolve_rx = cx.update(|cx| {
@@ -336,7 +336,7 @@ pub fn on_analyzer_event(
                                             if let Some(Ok(resolved)) = resolve_result {
                                                 // Parse the resolved action
                                                 if let Some(action) = RustAnalyzerManager::parse_single_code_action(&resolved) {
-                                                    tracing::info!("✓ Resolved action '{}' with {} edits", action.title, action.edits.len());
+                                                    tracing::debug!("✓ Resolved action '{}' with {} edits", action.title, action.edits.len());
                                                     all_actions.push(action);
                                                 } else {
                                                     tracing::warn!("⚠️ Failed to parse resolved action: {:?}", resolved);
@@ -349,22 +349,22 @@ pub fn on_analyzer_event(
                                         }
                                     }
                                     
-                                    tracing::info!("📋 Total actions after resolving: {}", all_actions.len());
+                                    tracing::debug!("📋 Total actions after resolving: {}", all_actions.len());
                                     
                                     // Convert to hints with before/after content
                                     all_actions.into_iter().filter_map(|action| {
                                         if action.edits.is_empty() {
-                                            tracing::info!("⚠️ Skipping action '{}' with no edits", action.title);
+                                            tracing::debug!("⚠️ Skipping action '{}' with no edits", action.title);
                                             return None;
                                         }
                                         
                                         let first_edit = &action.edits[0];
                                         let edit_file = &first_edit.file_path;
                                         
-                                        tracing::info!("🔧 Computing diff for '{}' on {}", action.title, edit_file);
+                                        tracing::debug!("🔧 Computing diff for '{}' on {}", action.title, edit_file);
                                         let (before_content, after_content) = compute_before_after(edit_file, &action.edits);
                                         
-                                        tracing::info!("✓ Diff computed - before: {} chars, after: {} chars",
+                                        tracing::debug!("✓ Diff computed - before: {} chars, after: {} chars",
                                             before_content.as_ref().map(|s| s.len()).unwrap_or(0),
                                             after_content.as_ref().map(|s| s.len()).unwrap_or(0));
                                         
@@ -398,7 +398,7 @@ pub fn on_analyzer_event(
                         }
                     };
                     
-                    tracing::info!("📋 Updating diagnostic {} with {} hints", idx, hints.len());
+                    tracing::debug!("📋 Updating diagnostic {} with {} hints", idx, hints.len());
                     
                     // Update the drawer with the loaded hints
                     let _ = cx.update(|cx| {
@@ -550,7 +550,7 @@ pub fn on_project_selected(
     window: &mut Window,
     cx: &mut Context<PulsarApp>,
 ) {
-    tracing::info!("[PROJECT_SELECTED] Received path: {:?}", event.path);
+    tracing::debug!("[PROJECT_SELECTED] Received path: {:?}", event.path);
     
     app.state.project_path = Some(event.path.clone());
     app.state.entry_screen = None;
@@ -568,7 +568,7 @@ pub fn on_project_selected(
     // Update Discord presence with new project
     app.update_discord_presence(cx);
 
-    tracing::info!("Project selected: {:?}", event.path);
+    tracing::debug!("Project selected: {:?}", event.path);
     cx.notify();
 }
 
@@ -617,7 +617,7 @@ pub fn on_file_selected(
     // Try to open via plugin system first
     match app.state.plugin_manager.create_editor_for_file(&event.path, window, cx) {
         Ok((panel, _editor_instance)) => {
-            tracing::info!("✅ Plugin system successfully created editor for: {:?}", event.path);
+            tracing::debug!("✅ Plugin system successfully created editor for: {:?}", event.path);
 
             app.state.center_tabs.update(cx, |tabs, cx| {
                 tabs.add_panel(panel, window, cx);
@@ -647,7 +647,7 @@ pub fn on_file_selected(
             app.open_daw_tab(event.path.clone(), window, cx);
         }
         FileType::LevelScene => {
-            tracing::info!("Opening level editor for scene: {:?}", event.path);
+            tracing::debug!("Opening level editor for scene: {:?}", event.path);
             app.open_level_editor_tab(event.path.clone(), window, cx);
         }
         FileType::Database => {
@@ -732,7 +732,7 @@ pub fn on_navigate_to_diagnostic(
     window: &mut Window,
     cx: &mut Context<PulsarApp>,
 ) {
-    tracing::info!(
+    tracing::debug!(
         "📂 Navigating to diagnostic: {:?} at line {}, column {}",
         event.file_path, event.line, event.column
     );

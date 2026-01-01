@@ -193,7 +193,7 @@ impl PulsarApp {
                 })
                 .unwrap_or((None, None, None));
 
-            tracing::info!("🎮 Updating Discord presence: project={:?}, tab={:?}, file={:?}, icon={:?}",
+            tracing::debug!("🎮 Updating Discord presence: project={:?}, tab={:?}, file={:?}, icon={:?}",
                 project_name, tab_name, file_path, discord_icon_key);
 
             if let Some(discord) = engine_state.discord() {

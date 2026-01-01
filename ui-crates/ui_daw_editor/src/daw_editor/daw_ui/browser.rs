@@ -508,7 +508,7 @@ fn handle_import_audio(_state: &mut DawUiState, _window: &mut Window, cx: &mut C
                 let _ = cx.update(|cx| {
                     let _ = this.update(cx, |this, cx| {
                         if let Ok(_) = this.state.import_audio_file(source) {
-                            tracing::info!("✅ Audio file imported successfully");
+                            tracing::debug!("✅ Audio file imported successfully");
                         }
                         cx.notify();
                     });

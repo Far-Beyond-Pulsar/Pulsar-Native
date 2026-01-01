@@ -63,7 +63,6 @@
 
 use libloading::{Library, Symbol};
 use plugin_editor_api::*;
-use plugin_editor_api::SetupLogger;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -144,7 +143,7 @@ impl PluginManager {
             return Ok(());
         }
 
-        log::info!("Loading plugins from: {:?}", dir);
+        log::debug!("Loading plugins from: {:?}", dir);
 
         // Get the appropriate file extension for this platform
         #[cfg(target_os = "windows")]
@@ -170,7 +169,7 @@ impl PluginManager {
             // Attempt to load the plugin
             match self.load_plugin(path, cx) {
                 Ok(plugin_id) => {
-                    log::info!("Successfully loaded plugin: {}", plugin_id);
+                    log::debug!("Successfully loaded plugin: {}", plugin_id);
                 }
                 Err(e) => {
                     log::error!("Failed to load plugin from {:?}: {}", path, e);
@@ -254,6 +253,7 @@ impl PluginManager {
         unsafe {
             log_setup_fn(&*log::logger());
         }
+        tracing::debug!("doooooooooooooooooooooooooooooooooooooooooooooog");
         // Get the plugin constructor
         let create_fn: Symbol<PluginCreate> = unsafe {
             library
@@ -301,7 +301,7 @@ impl PluginManager {
         let metadata = unsafe { (plugin_ptr).metadata() };
         let plugin_id = metadata.id.clone();
 
-        log::info!(
+        log::debug!(
             "Loaded plugin: {} v{} by {}",
             metadata.name,
             metadata.version,
@@ -365,7 +365,7 @@ impl PluginManager {
             // Remove editors
             self.editor_registry.unregister_by_plugin(plugin_id);
 
-            log::info!("Unloading plugin: {}", loaded_plugin.metadata.name);
+            log::debug!("Unloading plugin: {}", loaded_plugin.metadata.name);
 
             // CRITICAL: Call the plugin's destroy function to free memory in plugin's heap
             // This is the ONLY safe way to free the plugin instance.
@@ -374,7 +374,7 @@ impl PluginManager {
                 (loaded_plugin.destroy_fn)(loaded_plugin.plugin_ptr);
             }
 
-            log::info!("Plugin destroyed: {}", loaded_plugin.metadata.name);
+            log::debug!("Plugin destroyed: {}", loaded_plugin.metadata.name);
 
             // Library will be unloaded when Arc drops (if no other references)
 

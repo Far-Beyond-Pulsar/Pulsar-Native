@@ -172,11 +172,11 @@ impl PulsarApp {
         }
 
         // Initialize plugin manager
-        tracing::info!("🔌 Initializing plugin system");
+        tracing::debug!("🔌 Initializing plugin system");
         let mut plugin_manager = PluginManager::new();
 
         let plugins_dir = std::path::Path::new("plugins/editor");
-        tracing::info!("📂 Loading plugins from: {:?}", plugins_dir);
+        tracing::debug!("📂 Loading plugins from: {:?}", plugins_dir);
 
         match plugin_manager.load_plugins_from_dir(plugins_dir, &*cx) {
             Err(e) => {
@@ -184,9 +184,9 @@ impl PulsarApp {
             }
             Ok(_) => {
                 let loaded_plugins = plugin_manager.get_plugins();
-                tracing::info!("✅ Loaded {} editor plugin(s)", loaded_plugins.len());
+                tracing::debug!("✅ Loaded {} editor plugin(s)", loaded_plugins.len());
                 for plugin in loaded_plugins {
-                    tracing::info!("   📦 {} v{} by {}", plugin.name, plugin.version, plugin.author);
+                    tracing::debug!("   📦 {} v{} by {}", plugin.name, plugin.version, plugin.author);
                 }
             }
         }

@@ -505,7 +505,7 @@ impl TableDelegate for DataTableView {
         _: &mut Window,
         _: &mut Context<Table<Self>>,
     ) {
-        tracing::info!("Sort column {} {:?}", col_ix, sort);
+        tracing::debug!("Sort column {} {:?}", col_ix, sort);
     }
 
     fn loading(&self, _: &App) -> bool {

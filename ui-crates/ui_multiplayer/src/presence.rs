@@ -30,7 +30,7 @@ impl MultiplayerWindow {
             let session_id = session.session_id.clone();
             let our_peer_id = self.current_peer_id.clone().unwrap_or_default();
 
-            tracing::info!("Kicking user {} from session {}", peer_id, session_id);
+            tracing::debug!("Kicking user {} from session {}", peer_id, session_id);
 
             // Send kick message to server
             cx.spawn(async move |this, cx| {
@@ -64,7 +64,7 @@ impl MultiplayerWindow {
         if let Some(presence) = self.user_presences.iter().find(|p| p.peer_id == peer_id) {
             // Switch to their current tab if known
             if let Some(tab_name) = &presence.current_tab {
-                tracing::info!("Jumping to {}'s view: tab={}", peer_id, tab_name);
+                tracing::debug!("Jumping to {}'s view: tab={}", peer_id, tab_name);
 
                 // Map tab name to SessionTab
                 let target_tab = match tab_name.as_str() {
@@ -83,13 +83,13 @@ impl MultiplayerWindow {
 
             // If they're editing a file, we could open that file in the editor
             if let Some(file_path) = &presence.editing_file {
-                tracing::info!("{} is editing: {}", peer_id, file_path);
+                tracing::debug!("{} is editing: {}", peer_id, file_path);
                 // TODO: Open this file in the main editor
             }
 
             // If they have a cursor position, we could navigate there
             if let Some(pos) = presence.cursor_position {
-                tracing::info!("{}'s cursor at: {:?}", peer_id, pos);
+                tracing::debug!("{}'s cursor at: {:?}", peer_id, pos);
                 // TODO: Move camera/view to this position
             }
         } else {

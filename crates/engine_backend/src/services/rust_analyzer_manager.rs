@@ -76,8 +76,8 @@ impl RustAnalyzerManager {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let analyzer_path = Self::find_or_use_bundled_analyzer();
 
-        tracing::info!("🔧 Rust Analyzer Manager initialized");
-        tracing::info!("   Using: {:?}", analyzer_path);
+        tracing::debug!("🔧 Rust Analyzer Manager initialized");
+        tracing::debug!("   Using: {:?}", analyzer_path);
 
         Self {
             analyzer_path,
@@ -115,11 +115,11 @@ impl RustAnalyzerManager {
                     let version_output = String::from_utf8_lossy(&output.stdout);
                     // Check if this is a rustup proxy by looking for the error message
                     if version_output.contains("Unknown binary") || version_output.contains("official toolchain") {
-                        tracing::info!("⚠️  Found rustup proxy, but rust-analyzer component not installed");
+                        tracing::debug!("⚠️  Found rustup proxy, but rust-analyzer component not installed");
                         continue;
                     }
-                    tracing::info!("✓ Found system rust-analyzer: {}", candidate);
-                    tracing::info!("   Version: {}", version_output.trim());
+                    tracing::debug!("✓ Found system rust-analyzer: {}", candidate);
+                    tracing::debug!("   Version: {}", version_output.trim());
                     return PathBuf::from(candidate);
                 }
             }
@@ -129,7 +129,7 @@ impl RustAnalyzerManager {
         if let Ok(home) = std::env::var("CARGO_HOME") {
             let cargo_bin = PathBuf::from(home).join("bin").join("rust-analyzer.exe");
             if cargo_bin.exists() {
-                tracing::info!("✓ Found rust-analyzer in cargo bin: {:?}", cargo_bin);
+                tracing::debug!("✓ Found rust-analyzer in cargo bin: {:?}", cargo_bin);
                 return cargo_bin;
             }
         }
@@ -137,7 +137,7 @@ impl RustAnalyzerManager {
         if let Ok(home) = std::env::var("USERPROFILE") {
             let cargo_bin = PathBuf::from(home).join(".cargo").join("bin").join("rust-analyzer.exe");
             if cargo_bin.exists() {
-                tracing::info!("✓ Found rust-analyzer in user cargo bin: {:?}", cargo_bin);
+                tracing::debug!("✓ Found rust-analyzer in user cargo bin: {:?}", cargo_bin);
                 return cargo_bin;
             }
         }
@@ -145,13 +145,13 @@ impl RustAnalyzerManager {
         // Check engine deps directory
         let deps_path = Self::get_engine_deps_analyzer_path();
         if deps_path.exists() {
-            tracing::info!("✓ Found rust-analyzer in engine deps: {:?}", deps_path);
+            tracing::debug!("✓ Found rust-analyzer in engine deps: {:?}", deps_path);
             return deps_path;
         }
 
         // Fallback to rust-analyzer command (may not exist)
-        tracing::info!("⚠️  rust-analyzer not found in standard locations");
-        tracing::info!("   Will attempt to use 'rust-analyzer' from PATH");
+        tracing::debug!("⚠️  rust-analyzer not found in standard locations");
+        tracing::debug!("   Will attempt to use 'rust-analyzer' from PATH");
         PathBuf::from("rust-analyzer")
     }
 
@@ -177,14 +177,14 @@ impl RustAnalyzerManager {
                             let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
                             let path = PathBuf::from(path_str);
                             if path.exists() {
-                                tracing::info!("✓ Found rust-analyzer via rustup: {:?}", path);
+                                tracing::debug!("✓ Found rust-analyzer via rustup: {:?}", path);
                                 return Some(path);
                             }
                         }
                     }
                 } else {
-                    tracing::info!("ℹ️  rust-analyzer component not installed via rustup");
-                    tracing::info!("   You can install it with: rustup component add rust-analyzer");
+                    tracing::debug!("ℹ️  rust-analyzer component not installed via rustup");
+                    tracing::debug!("   You can install it with: rustup component add rust-analyzer");
                 }
             }
         }
@@ -213,7 +213,7 @@ impl RustAnalyzerManager {
 
     /// Download and install rust-analyzer to the engine deps directory
     fn install_rust_analyzer_to_deps() -> Result<PathBuf> {
-        tracing::info!("📦 Attempting to install rust-analyzer...");
+        tracing::debug!("📦 Attempting to install rust-analyzer...");
 
         // First, try to install via rustup (easiest and most reliable)
         if let Ok(installed_path) = Self::install_rust_analyzer_via_rustup() {
@@ -221,7 +221,7 @@ impl RustAnalyzerManager {
         }
 
         // If rustup installation fails, fall back to manual download
-        tracing::info!("   Rustup installation not available, trying manual download...");
+        tracing::debug!("   Rustup installation not available, trying manual download...");
         Self::download_rust_analyzer_binary()
     }
 
@@ -229,7 +229,7 @@ impl RustAnalyzerManager {
     fn install_rust_analyzer_via_rustup() -> Result<PathBuf> {
         let rustup_cmd = if cfg!(windows) { "rustup.exe" } else { "rustup" };
         
-        tracing::info!("   Trying to install via rustup...");
+        tracing::debug!("   Trying to install via rustup...");
         
         // Try to install the rust-analyzer component
         let output = Command::new(rustup_cmd)
@@ -242,7 +242,7 @@ impl RustAnalyzerManager {
             return Err(anyhow!("Rustup component add failed: {}", stderr));
         }
 
-        tracing::info!("✓ Installed rust-analyzer component via rustup");
+        tracing::debug!("✓ Installed rust-analyzer component via rustup");
 
         // Now get the path to the installed binary
         let output = Command::new(rustup_cmd)
@@ -265,8 +265,8 @@ impl RustAnalyzerManager {
         if let Ok(output) = Command::new(&path).arg("--version").output() {
             if output.status.success() {
                 let version = String::from_utf8_lossy(&output.stdout);
-                tracing::info!("✓ rust-analyzer installed and verified via rustup!");
-                tracing::info!("   Version: {}", version.trim());
+                tracing::debug!("✓ rust-analyzer installed and verified via rustup!");
+                tracing::debug!("   Version: {}", version.trim());
                 return Ok(path);
             }
         }
@@ -276,14 +276,14 @@ impl RustAnalyzerManager {
 
     /// Download rust-analyzer binary directly from GitHub
     fn download_rust_analyzer_binary() -> Result<PathBuf> {
-        tracing::info!("   Downloading rust-analyzer to engine deps directory...");
+        tracing::debug!("   Downloading rust-analyzer to engine deps directory...");
 
         let deps_path = Self::get_engine_deps_analyzer_path();
         let deps_dir = deps_path.parent().ok_or_else(|| anyhow!("Invalid deps path"))?;
 
         // Create deps directory if it doesn't exist
         fs::create_dir_all(deps_dir)?;
-        tracing::info!("   Created deps directory: {:?}", deps_dir);
+        tracing::debug!("   Created deps directory: {:?}", deps_dir);
 
         // Determine platform and download URL
         let (platform, extension) = if cfg!(target_os = "windows") {
@@ -301,8 +301,8 @@ impl RustAnalyzerManager {
             platform, extension
         );
 
-        tracing::info!("   Downloading from: {}", url);
-        tracing::info!("   This may take a moment...");
+        tracing::debug!("   Downloading from: {}", url);
+        tracing::debug!("   This may take a moment...");
 
         // Download using curl or wget (cross-platform)
         let download_result = if cfg!(windows) {
@@ -323,7 +323,7 @@ impl RustAnalyzerManager {
 
         match download_result {
             Ok(output) if output.status.success() => {
-                tracing::info!("✓ Downloaded rust-analyzer successfully");
+                tracing::debug!("✓ Downloaded rust-analyzer successfully");
 
                 // Make executable on Unix-like systems
                 #[cfg(unix)]
@@ -332,15 +332,15 @@ impl RustAnalyzerManager {
                     let mut perms = fs::metadata(&deps_path)?.permissions();
                     perms.set_mode(0o755);
                     fs::set_permissions(&deps_path, perms)?;
-                    tracing::info!("✓ Made rust-analyzer executable");
+                    tracing::debug!("✓ Made rust-analyzer executable");
                 }
 
                 // Verify the downloaded file works
                 if let Ok(output) = Command::new(&deps_path).arg("--version").output() {
                     if output.status.success() {
                         let version = String::from_utf8_lossy(&output.stdout);
-                        tracing::info!("✓ rust-analyzer installed successfully!");
-                        tracing::info!("   Version: {}", version.trim());
+                        tracing::debug!("✓ rust-analyzer installed successfully!");
+                        tracing::debug!("   Version: {}", version.trim());
                         return Ok(deps_path);
                     }
                 }
@@ -357,7 +357,7 @@ impl RustAnalyzerManager {
 
     /// Start rust-analyzer for the given workspace
     pub fn start(&mut self, workspace_root: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        tracing::info!("🚀 Starting rust-analyzer for: {:?}", workspace_root);
+        tracing::debug!("🚀 Starting rust-analyzer for: {:?}", workspace_root);
 
         self.workspace_root = Some(workspace_root.clone());
         self.status = AnalyzerStatus::Starting;
@@ -401,7 +401,7 @@ impl RustAnalyzerManager {
 
             match spawn_result {
                 Ok(Ok(())) => {
-                    tracing::info!("✓ rust-analyzer process spawned successfully");
+                    tracing::debug!("✓ rust-analyzer process spawned successfully");
 
                     // Send initialize request in a background thread
                     let workspace_root_for_init = workspace_root.clone();
@@ -466,9 +466,9 @@ impl RustAnalyzerManager {
         progress_tx: Sender<ProgressUpdate>,
         pending_requests: Arc<Mutex<HashMap<i64, flume::Sender<serde_json::Value>>>>,
     ) -> Result<()> {
-        tracing::info!("Spawning rust-analyzer process...");
-        tracing::info!("  Binary: {:?}", analyzer_path);
-        tracing::info!("  Workspace: {:?}", workspace_root);
+        tracing::debug!("Spawning rust-analyzer process...");
+        tracing::debug!("  Binary: {:?}", analyzer_path);
+        tracing::debug!("  Workspace: {:?}", workspace_root);
 
         let spawn_result = Command::new(analyzer_path)
             .current_dir(workspace_root)
@@ -486,7 +486,7 @@ impl RustAnalyzerManager {
                 // Try to install rust-analyzer
                 match Self::install_rust_analyzer_to_deps() {
                     Ok(installed_path) => {
-                        tracing::info!("✓ Successfully installed rust-analyzer, retrying spawn...");
+                        tracing::debug!("✓ Successfully installed rust-analyzer, retrying spawn...");
 
                         // Retry spawning with the newly installed analyzer
                         Command::new(&installed_path)
@@ -506,7 +506,7 @@ impl RustAnalyzerManager {
         };
 
         let pid = child.id();
-        tracing::info!("✓ rust-analyzer process spawned (PID: {})", pid);
+        tracing::debug!("✓ rust-analyzer process spawned (PID: {})", pid);
 
         // Take stdin for our use
         let stdin = child.stdin.take().ok_or_else(|| anyhow!("Failed to take stdin"))?;
@@ -594,7 +594,7 @@ impl RustAnalyzerManager {
         thread::spawn(move || {
             match child.wait() {
                 Ok(status) => {
-                    tracing::info!("❌ rust-analyzer exited with status: {:?}", status);
+                    tracing::debug!("❌ rust-analyzer exited with status: {:?}", status);
                     let _ = progress_tx_exit.send(ProgressUpdate::ProcessExited(status));
                 }
                 Err(e) => {
@@ -626,7 +626,7 @@ impl RustAnalyzerManager {
             format!("file://{}", workspace_str)
         };
 
-        tracing::info!("  Using workspace URI: {}", uri);
+        tracing::debug!("  Using workspace URI: {}", uri);
 
         let mut req_id = request_id_arc.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
         *req_id += 1;
@@ -687,7 +687,7 @@ impl RustAnalyzerManager {
             stdin.write_all(message.as_bytes())?;
             stdin.flush()?;
 
-            tracing::info!("✓ Sent initialize request to rust-analyzer");
+            tracing::debug!("✓ Sent initialize request to rust-analyzer");
 
             // Send initialized notification
             let initialized_notification = json!({
@@ -702,7 +702,7 @@ impl RustAnalyzerManager {
             stdin.write_all(message.as_bytes())?;
             stdin.flush()?;
 
-            tracing::info!("✓ Sent initialized notification");
+            tracing::debug!("✓ Sent initialized notification");
         } else {
             return Err(anyhow!("stdin not available"));
         }
@@ -791,7 +791,7 @@ impl RustAnalyzerManager {
                                     
                                     // Log first few raw diagnostics to understand their structure
                                     if !diagnostics_array.is_empty() {
-                                        tracing::info!("📋 Raw diagnostic from rust-analyzer: {}", 
+                                        tracing::debug!("📋 Raw diagnostic from rust-analyzer: {}", 
                                             serde_json::to_string_pretty(&diagnostics_array[0]).unwrap_or_default());
                                     }
                                     
@@ -844,10 +844,10 @@ impl RustAnalyzerManager {
                                                     tracing::debug!("📋 Diagnostic data: {:?}", data);
                                                     // rust-analyzer may include fix suggestions in data
                                                     if let Some(fixes) = data.get("fixes").and_then(|f| f.as_array()) {
-                                                        tracing::info!("🔧 Found {} fixes in diagnostic data", fixes.len());
+                                                        tracing::debug!("🔧 Found {} fixes in diagnostic data", fixes.len());
                                                         for fix in fixes {
                                                             if let Some(title) = fix.get("title").and_then(|t| t.as_str()) {
-                                                                tracing::info!("  📝 Fix: {}", title);
+                                                                tracing::debug!("  📝 Fix: {}", title);
                                                                 let mut edits = Vec::new();
                                                                 
                                                                 // Extract text edits from the fix
@@ -954,7 +954,7 @@ impl RustAnalyzerManager {
                                                                             let end_line = info_end.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as usize + 1;
                                                                             let end_col = info_end.get("character").and_then(|c| c.as_u64()).unwrap_or(0) as usize + 1;
                                                                             
-                                                                            tracing::info!("🔧 Found removal suggestion in relatedInformation: '{}' at {}:{}-{}:{}", 
+                                                                            tracing::debug!("🔧 Found removal suggestion in relatedInformation: '{}' at {}:{}-{}:{}", 
                                                                                 info_message, start_line, start_col, end_line, end_col);
                                                                             
                                                                             // Create a code action for removal (delete the range)
@@ -1007,19 +1007,19 @@ impl RustAnalyzerManager {
                         }
                     }
                     "window/workDoneProgress/create" => {
-                        tracing::info!("📊 Work done progress created");
+                        tracing::debug!("📊 Work done progress created");
                     }
                     "rust-analyzer/serverStatus" => {
                         // rust-analyzer sends this when its status changes
                         // params: { health: "ok" | "warning" | "error", quiescent: bool, message?: string }
                         // quiescent = true means the server is idle (all background work done)
                         if let Some(params) = msg.get("params") {
-                            tracing::info!("🔔 rust-analyzer/serverStatus: {:?}", params);
+                            tracing::debug!("🔔 rust-analyzer/serverStatus: {:?}", params);
                             
                             // Check if the server is quiescent (idle, all indexing done)
                             if let Some(quiescent) = params.get("quiescent").and_then(|q| q.as_bool()) {
                                 if quiescent {
-                                    tracing::info!("✅ rust-analyzer is quiescent (all indexing complete)");
+                                    tracing::debug!("✅ rust-analyzer is quiescent (all indexing complete)");
                                     let _ = progress_tx.send(ProgressUpdate::Ready);
                                 }
                             }
@@ -1027,7 +1027,7 @@ impl RustAnalyzerManager {
                     }
                     _ => {
                         // Log unhandled notifications to help with debugging
-                        tracing::info!("📨 Unhandled LSP notification: {}", method);
+                        tracing::debug!("📨 Unhandled LSP notification: {}", method);
                     }
                 }
             }
@@ -1036,7 +1036,7 @@ impl RustAnalyzerManager {
 
     /// Stop rust-analyzer
     pub fn stop(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        tracing::info!("🛑 Stopping rust-analyzer");
+        tracing::debug!("🛑 Stopping rust-analyzer");
         self.stop_internal();
         self.status = AnalyzerStatus::Stopped;
         cx.emit(AnalyzerEvent::StatusChanged(AnalyzerStatus::Stopped));
@@ -1061,7 +1061,7 @@ impl RustAnalyzerManager {
         if let Some(mut child) = process_lock.take() {
             let _ = child.kill();
             let _ = child.wait();
-            tracing::info!("✓ rust-analyzer process terminated");
+            tracing::debug!("✓ rust-analyzer process terminated");
         }
         self.initialized = false;
         self.progress_rx = None;
@@ -1069,7 +1069,7 @@ impl RustAnalyzerManager {
 
     /// Restart rust-analyzer
     pub fn restart(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        tracing::info!("🔄 Restarting rust-analyzer");
+        tracing::debug!("🔄 Restarting rust-analyzer");
         if let Some(workspace) = self.workspace_root.clone() {
             self.stop(window, cx);
             // Give it a moment to clean up
@@ -1158,7 +1158,7 @@ impl RustAnalyzerManager {
             }
         });
 
-        tracing::info!("💾 Notifying rust-analyzer of file save: {:?}", file_path);
+        tracing::debug!("💾 Notifying rust-analyzer of file save: {:?}", file_path);
         self.send_notification(notification)
     }
 
@@ -1295,7 +1295,7 @@ impl RustAnalyzerManager {
                 if last_update.elapsed() > Duration::from_secs(3) && matches!(self.status, AnalyzerStatus::Indexing { .. }) {
                     self.initial_analysis_complete = true;
                     self.status = AnalyzerStatus::Ready;
-                    tracing::info!("✅ Initial analysis complete (timeout - no updates for 3s)");
+                    tracing::debug!("✅ Initial analysis complete (timeout - no updates for 3s)");
                     cx.emit(AnalyzerEvent::Ready);
                     cx.notify();
                 }
@@ -1319,7 +1319,7 @@ impl RustAnalyzerManager {
                 if !self.initial_analysis_complete {
                     self.initial_analysis_complete = true;
                     self.status = AnalyzerStatus::Ready;
-                    tracing::info!("✅ Initial analysis marked as complete");
+                    tracing::debug!("✅ Initial analysis marked as complete");
                     cx.emit(AnalyzerEvent::Ready);
                     cx.notify();
                 }
@@ -1335,7 +1335,7 @@ impl RustAnalyzerManager {
                 } else {
                     format!("rust-analyzer exited with error (status: {:?})", status)
                 };
-                tracing::info!("❌ {}", error_msg);
+                tracing::debug!("❌ {}", error_msg);
                 self.status = AnalyzerStatus::Error(error_msg.clone());
                 self.initialized = false;
                 cx.emit(AnalyzerEvent::Error(error_msg));
@@ -1345,7 +1345,7 @@ impl RustAnalyzerManager {
                 // Track when we first receive diagnostics - this indicates the analyzer is working
                 if self.first_diagnostics_time.is_none() {
                     self.first_diagnostics_time = Some(Instant::now());
-                    tracing::info!("📊 First diagnostics received - analyzer is working");
+                    tracing::debug!("📊 First diagnostics received - analyzer is working");
                 }
                 
                 // If we've been receiving diagnostics for more than 2 seconds and haven't marked as ready,
@@ -1355,13 +1355,13 @@ impl RustAnalyzerManager {
                         && first_time.elapsed() > Duration::from_secs(2) {
                         self.initial_analysis_complete = true;
                         self.status = AnalyzerStatus::Ready;
-                        tracing::info!("✅ Initial analysis complete based on diagnostics (received for 2s)");
+                        tracing::debug!("✅ Initial analysis complete based on diagnostics (received for 2s)");
                         cx.emit(AnalyzerEvent::Ready);
                         cx.notify();
                     }
                 }
                 
-                tracing::info!("📤 EMITTING AnalyzerEvent::Diagnostics with {} diagnostics", diagnostics.len());
+                tracing::debug!("📤 EMITTING AnalyzerEvent::Diagnostics with {} diagnostics", diagnostics.len());
                 cx.emit(AnalyzerEvent::Diagnostics(diagnostics));
                 // Don't notify here, let the app handle it
             }
@@ -1434,7 +1434,7 @@ impl RustAnalyzerManager {
             return Err(anyhow!("rust-analyzer is not running"));
         }
         
-        tracing::info!("📤 request_code_actions_async: file={:?}, range={}:{}-{}:{}, msg={:?}",
+        tracing::debug!("📤 request_code_actions_async: file={:?}, range={}:{}-{}:{}, msg={:?}",
             file_path, start_line, start_column, end_line, end_column, diagnostic_message);
 
         let uri = self.path_to_uri(file_path);
@@ -1480,7 +1480,7 @@ impl RustAnalyzerManager {
             }
         });
         
-        tracing::info!("📤 Sending codeAction request: {}", serde_json::to_string_pretty(&params).unwrap_or_default());
+        tracing::debug!("📤 Sending codeAction request: {}", serde_json::to_string_pretty(&params).unwrap_or_default());
 
         self.send_request_async("textDocument/codeAction", params)
     }
@@ -1505,7 +1505,7 @@ impl RustAnalyzerManager {
             "end": {"line": 0, "character": 0}
         }));
         
-        tracing::info!("📤 request_code_actions_with_diagnostic: file={:?}, raw_diag={}", 
+        tracing::debug!("📤 request_code_actions_with_diagnostic: file={:?}, raw_diag={}", 
             file_path, serde_json::to_string_pretty(raw_diagnostic).unwrap_or_default());
         
         let params = json!({
@@ -1520,7 +1520,7 @@ impl RustAnalyzerManager {
             }
         });
         
-        tracing::info!("📤 Sending codeAction request with raw diagnostic: {}", 
+        tracing::debug!("📤 Sending codeAction request with raw diagnostic: {}", 
             serde_json::to_string_pretty(&params).unwrap_or_default());
 
         self.send_request_async("textDocument/codeAction", params)
@@ -1531,11 +1531,11 @@ impl RustAnalyzerManager {
     pub fn parse_code_actions(response: &Value) -> Vec<ui::diagnostics::CodeAction> {
         let mut actions = Vec::new();
         
-        tracing::info!("📥 parse_code_actions received: {}", serde_json::to_string_pretty(response).unwrap_or_default());
+        tracing::debug!("📥 parse_code_actions received: {}", serde_json::to_string_pretty(response).unwrap_or_default());
         
         if let Some(arr) = response.as_array() {
             for action in arr {
-                tracing::info!("📋 Parsing action: {}", action.get("title").and_then(|t| t.as_str()).unwrap_or("no title"));
+                tracing::debug!("📋 Parsing action: {}", action.get("title").and_then(|t| t.as_str()).unwrap_or("no title"));
                 if let Some(parsed) = Self::parse_single_code_action(action) {
                     actions.push(parsed);
                 }

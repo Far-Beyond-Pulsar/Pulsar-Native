@@ -73,7 +73,7 @@ impl MultiplayerWindow {
                                             // Store our peer_id first
                                             this.current_peer_id = Some(peer_id.clone());
 
-                                            tracing::info!(
+                                            tracing::debug!(
                                                 "CREATE_SESSION: Received Joined - our peer_id: {}, participants: {:?}",
                                                 peer_id,
                                                 participants
@@ -89,7 +89,7 @@ impl MultiplayerWindow {
 
                                             // Log project root for host
                                             if let Some(project_root) = &this.project_root {
-                                                tracing::info!("CREATE_SESSION: Project root at {:?}", project_root);
+                                                tracing::debug!("CREATE_SESSION: Project root at {:?}", project_root);
                                             }
 
                                             cx.notify();
@@ -106,7 +106,7 @@ impl MultiplayerWindow {
                                         }).unwrap_or(false);
 
                                         if !still_connected {
-                                            tracing::info!("CREATE_SESSION: Session disconnected, stopping event loop");
+                                            tracing::debug!("CREATE_SESSION: Session disconnected, stopping event loop");
                                             break;
                                         }
 
@@ -114,7 +114,7 @@ impl MultiplayerWindow {
                                             ServerMessage::PeerJoined { peer_id: joined_peer_id, .. } => {
                                                 cx.update(|cx| {
                                                     this.update(cx, |this, cx| {
-                                                        tracing::info!(
+                                                        tracing::debug!(
                                                             "CREATE_SESSION: Received PeerJoined - joined_peer_id: {}, our peer_id: {:?}",
                                                             joined_peer_id,
                                                             this.current_peer_id
@@ -122,14 +122,14 @@ impl MultiplayerWindow {
 
                                                         // Ignore PeerJoined about ourselves
                                                         if this.current_peer_id.as_ref() == Some(&joined_peer_id) {
-                                                            tracing::info!("CREATE_SESSION: Ignoring PeerJoined about ourselves");
+                                                            tracing::debug!("CREATE_SESSION: Ignoring PeerJoined about ourselves");
                                                             return;
                                                         }
 
                                                         if let Some(session) = &mut this.active_session {
                                                             // Add raw peer_id if not already present
                                                             if !session.connected_users.contains(&joined_peer_id) {
-                                                                tracing::info!(
+                                                                tracing::debug!(
                                                                     "CREATE_SESSION: Adding peer {} to list. List before: {:?}",
                                                                     joined_peer_id,
                                                                     session.connected_users
@@ -139,7 +139,7 @@ impl MultiplayerWindow {
                                                                 this.update_presence_from_participants(cx);
                                                                 cx.notify();
                                                             } else {
-                                                                tracing::info!("CREATE_SESSION: Peer {} already in list", joined_peer_id);
+                                                                tracing::debug!("CREATE_SESSION: Peer {} already in list", joined_peer_id);
                                                             }
                                                         }
                                                     }).ok();
@@ -173,14 +173,14 @@ impl MultiplayerWindow {
                                                 break; // Exit the message loop
                                             }
                                             ServerMessage::ChatMessage { peer_id: sender_peer_id, message, timestamp, .. } => {
-                                                tracing::info!(
+                                                tracing::debug!(
                                                     "CREATE_SESSION: Received ChatMessage from {} at {}: {}",
                                                     sender_peer_id, timestamp, message
                                                 );
                                                 cx.update(|cx| {
                                                     this.update(cx, |this, cx| {
                                                         let is_self = this.current_peer_id.as_ref() == Some(&sender_peer_id);
-                                                        tracing::info!(
+                                                        tracing::debug!(
                                                             "CREATE_SESSION: Adding chat message. is_self: {}, current chat count: {}",
                                                             is_self, this.chat_messages.len()
                                                         );
@@ -190,7 +190,7 @@ impl MultiplayerWindow {
                                                             timestamp,
                                                             is_self,
                                                         });
-                                                        tracing::info!("CREATE_SESSION: Chat messages now: {}", this.chat_messages.len());
+                                                        tracing::debug!("CREATE_SESSION: Chat messages now: {}", this.chat_messages.len());
                                                         cx.notify();
                                                     }).ok();
                                                 }).ok();
@@ -204,7 +204,7 @@ impl MultiplayerWindow {
                                                 }).ok();
                                             }
                                             ServerMessage::RequestFileManifest { from_peer_id, session_id: req_session_id, .. } => {
-                                                tracing::info!("CREATE_SESSION: Received RequestFileManifest from {}", from_peer_id);
+                                                tracing::debug!("CREATE_SESSION: Received RequestFileManifest from {}", from_peer_id);
 
                                                 // Create and send file manifest
                                                 let project_root_result = cx.update(|cx| {
@@ -214,7 +214,7 @@ impl MultiplayerWindow {
                                                 }).ok().flatten().flatten();
 
                                                 if let Some(project_root) = project_root_result {
-                                                    tracing::info!("CREATE_SESSION: Project root is {:?}", project_root);
+                                                    tracing::debug!("CREATE_SESSION: Project root is {:?}", project_root);
                                                     
                                                     let our_peer_id_result = cx.update(|cx| {
                                                         this.update(cx, |this, _cx| {
@@ -227,13 +227,13 @@ impl MultiplayerWindow {
                                                         let client_clone = client.clone();
                                                         let session_id_clone = req_session_id.clone();
                                                         std::thread::spawn(move || {
-                                                            tracing::info!("HOST: Creating file manifest for {:?}", project_root);
+                                                            tracing::debug!("HOST: Creating file manifest for {:?}", project_root);
                                                             match simple_sync::create_manifest(&project_root) {
                                                                 Ok(manifest) => {
-                                                                    tracing::info!("HOST: Created manifest with {} files", manifest.files.len());
+                                                                    tracing::debug!("HOST: Created manifest with {} files", manifest.files.len());
                                                                     match serde_json::to_string(&manifest) {
                                                                         Ok(manifest_json) => {
-                                                                            tracing::info!("HOST: Serialized manifest to {} bytes", manifest_json.len());
+                                                                            tracing::debug!("HOST: Serialized manifest to {} bytes", manifest_json.len());
                                                                             tokio::runtime::Runtime::new().unwrap().block_on(async {
                                                                                 let client_guard = client_clone.read().await;
                                                                                 let _ = client_guard.send(ClientMessage::FileManifest {
@@ -241,7 +241,7 @@ impl MultiplayerWindow {
                                                                                     peer_id: our_peer_id,
                                                                                     manifest_json,
                                                                                 }).await;
-                                                                                tracing::info!("HOST: Sent file manifest");
+                                                                                tracing::debug!("HOST: Sent file manifest");
                                                                             });
                                                                         }
                                                                         Err(e) => tracing::error!("HOST: Failed to serialize manifest: {}", e),
@@ -258,7 +258,7 @@ impl MultiplayerWindow {
                                                 }
                                             }
                                             ServerMessage::RequestFiles { from_peer_id, file_paths, session_id: req_session_id, .. } => {
-                                                tracing::info!("CREATE_SESSION: Received RequestFiles for {} files from {}", file_paths.len(), from_peer_id);
+                                                tracing::debug!("CREATE_SESSION: Received RequestFiles for {} files from {}", file_paths.len(), from_peer_id);
 
                                                 // Read and send requested files
                                                 let project_root_result = cx.update(|cx| {
@@ -279,7 +279,7 @@ impl MultiplayerWindow {
                                                         let client_clone = client.clone();
                                                         let session_id_clone = req_session_id.clone();
                                                         std::thread::spawn(move || {
-                                                            tracing::info!("HOST: Reading {} files", file_paths.len());
+                                                            tracing::debug!("HOST: Reading {} files", file_paths.len());
                                                             match simple_sync::read_files(&project_root, file_paths.clone()) {
                                                                 Ok(files_data) => {
                                                                     // Serialize files data
@@ -294,7 +294,7 @@ impl MultiplayerWindow {
                                                                                     chunk_index: 0,
                                                                                     total_chunks: 1,
                                                                                 }).await;
-                                                                                tracing::info!("HOST: Sent {} files", file_paths.len());
+                                                                                tracing::debug!("HOST: Sent {} files", file_paths.len());
                                                                             });
                                                                         }
                                                                         Err(e) => tracing::error!("HOST: Failed to serialize files: {}", e),
@@ -307,7 +307,7 @@ impl MultiplayerWindow {
                                                 }
                                             }
                                             ServerMessage::RequestFile { from_peer_id, file_path, session_id: req_session_id, .. } => {
-                                                tracing::info!("CREATE_SESSION: Received RequestFile for {} from {}", file_path, from_peer_id);
+                                                tracing::debug!("CREATE_SESSION: Received RequestFile for {} from {}", file_path, from_peer_id);
 
                                                 // Read and send file in chunks
                                                 let project_root_result = cx.update(|cx| {
@@ -343,7 +343,7 @@ impl MultiplayerWindow {
                                                                     is_last,
                                                                 }).await;
                                                             }
-                                                            tracing::info!("CREATE_SESSION: Sent file {}", file_path);
+                                                            tracing::debug!("CREATE_SESSION: Sent file {}", file_path);
                                                         }
                                                     }
                                                 }
@@ -447,7 +447,7 @@ impl MultiplayerWindow {
                                     // Store our peer_id first
                                     this.current_peer_id = Some(peer_id.clone());
 
-                                    tracing::info!(
+                                    tracing::debug!(
                                         "JOIN_SESSION: Received Joined - our peer_id: {}, participants: {:?}",
                                         peer_id,
                                         participants
@@ -466,7 +466,7 @@ impl MultiplayerWindow {
 
                                     // Log project root
                                     if let Some(project_root) = &this.project_root {
-                                        tracing::info!("JOIN_SESSION: Project root at {:?}", project_root);
+                                        tracing::debug!("JOIN_SESSION: Project root at {:?}", project_root);
                                     }
 
                                     cx.notify();
@@ -475,7 +475,7 @@ impl MultiplayerWindow {
 
                             // Request file manifest from host (first participant)
                             if let Some(host_peer_id) = participants.first() {
-                                tracing::info!("JOIN_SESSION: Requesting file manifest from host {}", host_peer_id);
+                                tracing::debug!("JOIN_SESSION: Requesting file manifest from host {}", host_peer_id);
 
                                 let our_peer_id_result = cx.update(|cx| {
                                     this.update(cx, |this, _cx| {
@@ -489,7 +489,7 @@ impl MultiplayerWindow {
                                         session_id: session_id.clone(),
                                         peer_id: our_peer_id,
                                     }).await;
-                                    tracing::info!("JOIN_SESSION: Sent RequestFileManifest");
+                                    tracing::debug!("JOIN_SESSION: Sent RequestFileManifest");
                                 }
                             }
 
@@ -503,7 +503,7 @@ impl MultiplayerWindow {
                                 }).unwrap_or(false);
 
                                 if !still_connected {
-                                    tracing::info!("JOIN_SESSION: Session disconnected, stopping event loop");
+                                    tracing::debug!("JOIN_SESSION: Session disconnected, stopping event loop");
                                     break;
                                 }
 
@@ -511,7 +511,7 @@ impl MultiplayerWindow {
                                     ServerMessage::PeerJoined { peer_id: joined_peer_id, .. } => {
                                         cx.update(|cx| {
                                             this.update(cx, |this, cx| {
-                                                tracing::info!(
+                                                tracing::debug!(
                                                     "JOIN_SESSION: Received PeerJoined - joined_peer_id: {}, our peer_id: {:?}",
                                                     joined_peer_id,
                                                     this.current_peer_id
@@ -519,14 +519,14 @@ impl MultiplayerWindow {
 
                                                 // Ignore PeerJoined about ourselves
                                                 if this.current_peer_id.as_ref() == Some(&joined_peer_id) {
-                                                    tracing::info!("JOIN_SESSION: Ignoring PeerJoined about ourselves");
+                                                    tracing::debug!("JOIN_SESSION: Ignoring PeerJoined about ourselves");
                                                     return;
                                                 }
 
                                                 if let Some(session) = &mut this.active_session {
                                                     // Add raw peer_id if not already present
                                                     if !session.connected_users.contains(&joined_peer_id) {
-                                                        tracing::info!(
+                                                        tracing::debug!(
                                                             "JOIN_SESSION: Adding peer {} to list. List before: {:?}",
                                                             joined_peer_id,
                                                             session.connected_users
@@ -534,7 +534,7 @@ impl MultiplayerWindow {
                                                         session.connected_users.push(joined_peer_id);
                                                         cx.notify();
                                                     } else {
-                                                        tracing::info!("JOIN_SESSION: Peer {} already in list", joined_peer_id);
+                                                        tracing::debug!("JOIN_SESSION: Peer {} already in list", joined_peer_id);
                                                     }
                                                 }
                                             }).ok();
@@ -568,14 +568,14 @@ impl MultiplayerWindow {
                                         break; // Exit the message loop
                                     }
                                     ServerMessage::ChatMessage { peer_id: sender_peer_id, message, timestamp, .. } => {
-                                        tracing::info!(
+                                        tracing::debug!(
                                             "JOIN_SESSION: Received ChatMessage from {} at {}: {}",
                                             sender_peer_id, timestamp, message
                                         );
                                         cx.update(|cx| {
                                             this.update(cx, |this, cx| {
                                                 let is_self = this.current_peer_id.as_ref() == Some(&sender_peer_id);
-                                                tracing::info!(
+                                                tracing::debug!(
                                                     "JOIN_SESSION: Adding chat message. is_self: {}, current chat count: {}",
                                                     is_self, this.chat_messages.len()
                                                 );
@@ -585,7 +585,7 @@ impl MultiplayerWindow {
                                                     timestamp,
                                                     is_self,
                                                 });
-                                                tracing::info!("JOIN_SESSION: Chat messages now: {}", this.chat_messages.len());
+                                                tracing::debug!("JOIN_SESSION: Chat messages now: {}", this.chat_messages.len());
                                                 cx.notify();
                                             }).ok();
                                         }).ok();
@@ -599,7 +599,7 @@ impl MultiplayerWindow {
                                         }).ok();
                                     }
                                     ServerMessage::FileManifest { from_peer_id, manifest_json, .. } => {
-                                        tracing::info!("JOIN_SESSION: Received file manifest from {} ({} bytes)", 
+                                        tracing::debug!("JOIN_SESSION: Received file manifest from {} ({} bytes)", 
                                             from_peer_id, manifest_json.len());
 
                                         // Parse manifest and compute diff
@@ -610,20 +610,20 @@ impl MultiplayerWindow {
                                         }).ok().flatten().flatten();
 
                                         if let Some(project_root) = project_root_result {
-                                            tracing::info!("JOIN_SESSION: Project root is {:?}", project_root);
+                                            tracing::debug!("JOIN_SESSION: Project root is {:?}", project_root);
                                             
                                             // Deserialize manifest
                                             match serde_json::from_str::<simple_sync::FileManifest>(&manifest_json) {
                                                 Ok(remote_manifest) => {
-                                                    tracing::info!("JOIN_SESSION: Parsed manifest with {} files", remote_manifest.files.len());
+                                                    tracing::debug!("JOIN_SESSION: Parsed manifest with {} files", remote_manifest.files.len());
 
                                                     // Compute diff synchronously (fast enough for most cases)
                                                     match simple_sync::compute_diff(&project_root, &remote_manifest) {
                                                         Ok(diff) => {
-                                                            tracing::info!("JOIN_SESSION: Computed diff - {}", diff.summary());
+                                                            tracing::debug!("JOIN_SESSION: Computed diff - {}", diff.summary());
 
                                                             if diff.has_changes() {
-                                                                tracing::info!("JOIN_SESSION: Changes detected, showing sync UI");
+                                                                tracing::debug!("JOIN_SESSION: Changes detected, showing sync UI");
 
                                                                 // Collect files to request for preview
                                                                 let mut files_to_preview = Vec::new();
@@ -639,14 +639,14 @@ impl MultiplayerWindow {
 
                                                                         this.pending_file_sync = Some((diff_clone, from_peer_id.clone()));
                                                                         this.current_tab = SessionTab::FileSync;
-                                                                        tracing::info!("JOIN_SESSION: Set pending_file_sync and switched to FileSync tab");
+                                                                        tracing::debug!("JOIN_SESSION: Set pending_file_sync and switched to FileSync tab");
                                                                         cx.notify();
                                                                     }).ok()
                                                                 }).ok();
 
                                                                 // Request file contents for preview (don't write to disk yet)
                                                                 if !files_to_preview.is_empty() {
-                                                                    tracing::info!("JOIN_SESSION: Requesting {} files for preview", files_to_preview.len());
+                                                                    tracing::debug!("JOIN_SESSION: Requesting {} files for preview", files_to_preview.len());
 
                                                                     let client_guard = client.read().await;
                                                                     let session_id_result = cx.update(|cx| {
@@ -670,7 +670,7 @@ impl MultiplayerWindow {
                                                                     }
                                                                 }
                                                             } else {
-                                                                tracing::info!("JOIN_SESSION: No changes needed, already in sync");
+                                                                tracing::debug!("JOIN_SESSION: No changes needed, already in sync");
                                                             }
                                                         }
                                                         Err(e) => {
@@ -687,7 +687,7 @@ impl MultiplayerWindow {
                                         }
                                     }
                                     ServerMessage::FileChunk { from_peer_id, file_path, offset, data, is_last, .. } => {
-                                        tracing::info!("JOIN_SESSION: Received FileChunk for {} from {} (offset: {}, is_last: {})",
+                                        tracing::debug!("JOIN_SESSION: Received FileChunk for {} from {} (offset: {}, is_last: {})",
                                             file_path, from_peer_id, offset, is_last);
 
                                         // Write chunk to file
@@ -717,12 +717,12 @@ impl MultiplayerWindow {
                                             }
 
                                             if is_last {
-                                                tracing::info!("JOIN_SESSION: Completed download of {}", file_path);
+                                                tracing::debug!("JOIN_SESSION: Completed download of {}", file_path);
                                             }
                                         }
                                     }
                                     ServerMessage::FilesChunk { from_peer_id, files_json, chunk_index, total_chunks, .. } => {
-                                        tracing::info!("JOIN_SESSION: Received FilesChunk from {} (chunk {}/{})",
+                                        tracing::debug!("JOIN_SESSION: Received FilesChunk from {} (chunk {}/{})",
                                             from_peer_id, chunk_index + 1, total_chunks);
 
                                         // Set progress indicator - receiving data
@@ -754,10 +754,10 @@ impl MultiplayerWindow {
                                                 }).ok();
 
                                                 // Deserialize and apply files synchronously (fast enough for most cases)
-                                                tracing::info!("SYNC_TASK: Deserializing files from JSON ({} bytes)", files_json.len());
+                                                tracing::debug!("SYNC_TASK: Deserializing files from JSON ({} bytes)", files_json.len());
                                                 match serde_json::from_str::<Vec<(String, Vec<u8>)>>(&files_json) {
                                                     Ok(files_data) => {
-                                                        tracing::info!("SYNC_TASK: Successfully deserialized {} files", files_data.len());
+                                                        tracing::debug!("SYNC_TASK: Successfully deserialized {} files", files_data.len());
 
                                                         // Update FileSyncUI with file contents for preview
                                                         for (file_path, data) in &files_data {
@@ -775,24 +775,24 @@ impl MultiplayerWindow {
                                                         // Apply files using simple_sync
                                                         match simple_sync::apply_files(&project_root, files_data) {
                                                             Ok(written_count) => {
-                                                                tracing::info!("SYNC_SUCCESS: Applied {} files successfully", written_count);
+                                                                tracing::debug!("SYNC_SUCCESS: Applied {} files successfully", written_count);
 
                                                                 // Update UI
                                                                 cx.update(|cx| {
                                                                     this.update(cx, |this, cx| {
-                                                                        tracing::info!("SYNC_SUCCESS: Updating UI state - clearing progress and pending sync");
+                                                                        tracing::debug!("SYNC_SUCCESS: Updating UI state - clearing progress and pending sync");
                                                                         this.file_sync_in_progress = false;
                                                                         this.pending_file_sync = None;
                                                                         this.sync_progress_message = Some(format!("Synced {} files successfully", written_count));
                                                                         this.sync_progress_percent = Some(1.0);
 
-                                                                        tracing::info!("SYNC_SUCCESS: State updated - file_sync_in_progress={}, pending_file_sync={:?}",
+                                                                        tracing::debug!("SYNC_SUCCESS: State updated - file_sync_in_progress={}, pending_file_sync={:?}",
                                                                             this.file_sync_in_progress, this.pending_file_sync.is_some());
                                                                         cx.notify();
                                                                     }).ok()
                                                                 }).ok();
 
-                                                                tracing::info!("SYNC_SUCCESS: File synchronization complete!");
+                                                                tracing::debug!("SYNC_SUCCESS: File synchronization complete!");
                                                             }
                                                             Err(e) => {
                                                                 tracing::error!("SYNC_ERROR: Failed to apply files: {}", e);
@@ -825,7 +825,7 @@ impl MultiplayerWindow {
                                         }
                                     }
                                     ServerMessage::RequestFileManifest { from_peer_id, session_id: req_session_id, .. } => {
-                                        tracing::info!("JOIN_SESSION: Received RequestFileManifest from {}", from_peer_id);
+                                        tracing::debug!("JOIN_SESSION: Received RequestFileManifest from {}", from_peer_id);
 
                                         // Create and send file manifest (same logic as in CREATE_SESSION)
                                         let project_root_result = cx.update(|cx| {
@@ -846,7 +846,7 @@ impl MultiplayerWindow {
                                                 let client_clone = client.clone();
                                                 let session_id_clone = req_session_id.clone();
                                                 std::thread::spawn(move || {
-                                                    tracing::info!("PEER: Creating file manifest");
+                                                    tracing::debug!("PEER: Creating file manifest");
                                                     match simple_sync::create_manifest(&project_root) {
                                                         Ok(manifest) => {
                                                             match serde_json::to_string(&manifest) {
@@ -858,7 +858,7 @@ impl MultiplayerWindow {
                                                                             peer_id: our_peer_id,
                                                                             manifest_json,
                                                                         }).await;
-                                                                        tracing::info!("PEER: Sent file manifest");
+                                                                        tracing::debug!("PEER: Sent file manifest");
                                                                     });
                                                                 }
                                                                 Err(e) => tracing::error!("PEER: Failed to serialize manifest: {}", e),
@@ -871,7 +871,7 @@ impl MultiplayerWindow {
                                         }
                                     }
                                     ServerMessage::RequestFiles { from_peer_id, file_paths, session_id: req_session_id, .. } => {
-                                        tracing::info!("JOIN_SESSION: Received RequestFiles for {} files from {}", file_paths.len(), from_peer_id);
+                                        tracing::debug!("JOIN_SESSION: Received RequestFiles for {} files from {}", file_paths.len(), from_peer_id);
 
                                         // Read and send requested files (same logic as in CREATE_SESSION)
                                         let project_root_result = cx.update(|cx| {
@@ -892,7 +892,7 @@ impl MultiplayerWindow {
                                                 let client_clone = client.clone();
                                                 let session_id_clone = req_session_id.clone();
                                                 std::thread::spawn(move || {
-                                                    tracing::info!("PEER: Reading {} files", file_paths.len());
+                                                    tracing::debug!("PEER: Reading {} files", file_paths.len());
                                                     match simple_sync::read_files(&project_root, file_paths.clone()) {
                                                         Ok(files_data) => {
                                                             // Serialize files data
@@ -907,7 +907,7 @@ impl MultiplayerWindow {
                                                                             chunk_index: 0,
                                                                             total_chunks: 1,
                                                                         }).await;
-                                                                        tracing::info!("PEER: Sent {} files", file_paths.len());
+                                                                        tracing::debug!("PEER: Sent {} files", file_paths.len());
                                                                     });
                                                                 }
                                                                 Err(e) => tracing::error!("PEER: Failed to serialize files: {}", e),
@@ -920,7 +920,7 @@ impl MultiplayerWindow {
                                         }
                                     }
                                     ServerMessage::RequestFile { from_peer_id, file_path, session_id: req_session_id, .. } => {
-                                        tracing::info!("JOIN_SESSION: Received RequestFile for {} from {}", file_path, from_peer_id);
+                                        tracing::debug!("JOIN_SESSION: Received RequestFile for {} from {}", file_path, from_peer_id);
 
                                         // Read and send file in chunks
                                         let project_root_result = cx.update(|cx| {
