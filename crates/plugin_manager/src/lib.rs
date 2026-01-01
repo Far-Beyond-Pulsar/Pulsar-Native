@@ -491,7 +491,7 @@ impl PluginManager {
         // SAFETY: Plugin is loaded, pointer validated as non-null above
         unsafe {
             (*plugin.plugin_ptr)
-                .create_editor(editor_id.clone(), file_path, window, cx)
+                .create_editor(editor_id.clone(), file_path, window, cx, &EditorLogger)
                 .map_err(|e| PluginManagerError::PluginError {
                     plugin_id: plugin_id.clone(),
                     error: e,
