@@ -599,6 +599,9 @@ pub type PluginCreate = unsafe extern "C" fn(theme_ptr: *const std::ffi::c_void)
 /// Plugins must export a function with this signature named `_plugin_destroy`.
 pub type PluginDestroy = unsafe extern "C" fn(*mut dyn EditorPlugin);
 
+
+pub type SetupLogger = unsafe extern "C" fn(logger: &'static dyn log::Log);
+
 /// Macro to export a plugin from a dynamic library.
 ///
 /// This generates the necessary FFI functions for the plugin to be loaded
@@ -623,7 +626,10 @@ macro_rules! export_plugin {
         // plugin is loaded. This is guaranteed by the PluginManager keeping Theme in a
         // stable location.
         static SYNCED_THEME: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
-
+        #[no_mangle]
+        pub unsafe extern "C" fn _setup_plugin_logger(logger: &'static dyn log::Log) {
+            let _ = log::set_logger(logger);
+        }
         #[no_mangle]
         pub unsafe extern "C" fn _plugin_create(theme_ptr: *const std::ffi::c_void) -> *mut dyn $crate::EditorPlugin {
             // Validate theme pointer is not null

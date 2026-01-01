@@ -9133,6 +9133,7 @@ name = "plugin_editor_api"
 version = "0.1.0"
 dependencies = [
  "gpui",
+ "log",
  "serde",
  "serde_json",
  "tracing",

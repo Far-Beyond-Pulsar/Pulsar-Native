@@ -63,6 +63,7 @@
 
 use libloading::{Library, Symbol};
 use plugin_editor_api::*;
+use plugin_editor_api::SetupLogger;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -241,7 +242,18 @@ impl PluginManager {
         }
 
         log::debug!("Version check passed for plugin at {:?}", path);
-
+        let log_setup_fn: Symbol<SetupLogger> = unsafe {
+            library
+                .get(b"_setup_plugin_logger")
+                .map_err(|e| PluginManagerError::MissingSymbol {
+                    symbol: "_setup_plugin_logger".to_string(),
+                    message: e.to_string(),
+                })?
+        };
+        // Setup the plugin logger
+        unsafe {
+            log_setup_fn(&*log::logger());
+        }
         // Get the plugin constructor
         let create_fn: Symbol<PluginCreate> = unsafe {
             library
