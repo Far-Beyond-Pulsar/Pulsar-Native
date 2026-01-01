@@ -139,11 +139,11 @@ impl PluginManager {
         let dir = dir.as_ref();
 
         if !dir.exists() {
-            log::warn!("Plugin directory does not exist: {:?}", dir);
+            tracing::warn!("Plugin directory does not exist: {:?}", dir);
             return Ok(());
         }
 
-        log::debug!("Loading plugins from: {:?}", dir);
+        tracing::debug!("Loading plugins from: {:?}", dir);
 
         // Get the appropriate file extension for this platform
         #[cfg(target_os = "windows")]
@@ -169,10 +169,10 @@ impl PluginManager {
             // Attempt to load the plugin
             match self.load_plugin(path, cx) {
                 Ok(plugin_id) => {
-                    log::debug!("Successfully loaded plugin: {}", plugin_id);
+                    tracing::debug!("Successfully loaded plugin: {}", plugin_id);
                 }
                 Err(e) => {
-                    log::error!("Failed to load plugin from {:?}: {}", path, e);
+                    tracing::error!("Failed to load plugin from {:?}: {}", path, e);
                 }
             }
         }
@@ -190,7 +190,7 @@ impl PluginManager {
     pub fn load_plugin(&mut self, path: impl AsRef<Path>, cx: &gpui::App) -> Result<PluginId, PluginManagerError> {
         let path = path.as_ref();
 
-        log::debug!("Loading plugin from: {:?}", path);
+        tracing::debug!("Loading plugin from: {:?}", path);
 
         // Load the library
         let library = unsafe {
@@ -215,14 +215,14 @@ impl PluginManager {
         // Check version compatibility
         let plugin_version = version_fn();
 
-        log::debug!(
+        tracing::debug!(
             "Version check - Engine: {:?}, Plugin: {:?}",
             self.engine_version,
             plugin_version
         );
 
         if !self.engine_version.is_compatible(&plugin_version) {
-            log::error!(
+            tracing::error!(
                 "Plugin version mismatch! Expected engine v{}.{}.{} (ABI v{}), got v{}.{}.{} (ABI v{})",
                 self.engine_version.engine_version.0,
                 self.engine_version.engine_version.1,
@@ -240,7 +240,7 @@ impl PluginManager {
             });
         }
 
-        log::debug!("Version check passed for plugin at {:?}", path);
+        tracing::debug!("Version check passed for plugin at {:?}", path);
         let log_setup_fn: Symbol<SetupLogger> = unsafe {
             library
                 .get(b"_setup_plugin_logger")
@@ -251,7 +251,7 @@ impl PluginManager {
         };
         // Setup the plugin logger
         unsafe {
-            log_setup_fn(&*log::logger());
+            log_setup_fn(&*tracing::logger());
         }
         tracing::debug!("doooooooooooooooooooooooooooooooooooooooooooooog");
         // Get the plugin constructor
@@ -301,7 +301,7 @@ impl PluginManager {
         let metadata = unsafe { (plugin_ptr).metadata() };
         let plugin_id = metadata.id.clone();
 
-        log::debug!(
+        tracing::debug!(
             "Loaded plugin: {} v{} by {}",
             metadata.name,
             metadata.version,
@@ -318,7 +318,7 @@ impl PluginManager {
         // SAFETY: Plugin just created, pointer is valid
         let file_types = unsafe { (plugin_ptr).file_types() };
         for file_type in file_types {
-            log::debug!(
+            tracing::debug!(
                 "  Registering file type: {} (.{})",
                 file_type.display_name,
                 file_type.extension
@@ -330,7 +330,7 @@ impl PluginManager {
         // SAFETY: Plugin just created, pointer is valid
         let editors = unsafe { (plugin_ptr).editors() };
         for editor in editors {
-            log::debug!("  Registering editor: {}", editor.display_name);
+            tracing::debug!("  Registering editor: {}", editor.display_name);
             self.editor_registry.register(editor, plugin_id.clone());
         }
 
@@ -365,7 +365,7 @@ impl PluginManager {
             // Remove editors
             self.editor_registry.unregister_by_plugin(plugin_id);
 
-            log::debug!("Unloading plugin: {}", loaded_plugin.metadata.name);
+            tracing::debug!("Unloading plugin: {}", loaded_plugin.metadata.name);
 
             // CRITICAL: Call the plugin's destroy function to free memory in plugin's heap
             // This is the ONLY safe way to free the plugin instance.
@@ -374,7 +374,7 @@ impl PluginManager {
                 (loaded_plugin.destroy_fn)(loaded_plugin.plugin_ptr);
             }
 
-            log::debug!("Plugin destroyed: {}", loaded_plugin.metadata.name);
+            tracing::debug!("Plugin destroyed: {}", loaded_plugin.metadata.name);
 
             // Library will be unloaded when Arc drops (if no other references)
 
@@ -483,9 +483,9 @@ impl PluginManager {
                 // Validate theme pointer before passing to plugin
                 if !theme_ptr.is_null() {
                     init_fn(theme_ptr);
-                    log::debug!("Initialized plugin globals for: {}", plugin_id.as_str());
+                    tracing::debug!("Initialized plugin globals for: {}", plugin_id.as_str());
                 } else {
-                    log::warn!("Theme pointer is null, plugin may not have theme access");
+                    tracing::warn!("Theme pointer is null, plugin may not have theme access");
                 }
             }
         }
@@ -617,7 +617,7 @@ impl Drop for PluginManager {
                 (loaded_plugin.destroy_fn)(loaded_plugin.plugin_ptr);
             }
 
-            log::debug!("Destroyed plugin on drop: {}", plugin_id);
+            tracing::debug!("Destroyed plugin on drop: {}", plugin_id);
         }
     }
 }
