@@ -631,26 +631,19 @@ macro_rules! export_plugin {
             let _ = log::set_logger(logger);
         }
         #[no_mangle]
-        pub unsafe extern "C" fn _plugin_create(theme_ptr: *const std::ffi::c_void) -> *mut dyn $crate::EditorPlugin {
-            // Validate theme pointer is not null
+        pub unsafe extern "C" fn _plugin_create(theme_ptr: *const std::ffi::c_void) -> *mut std::ffi::c_void {
             if theme_ptr.is_null() {
                 eprintln!("[Plugin] ERROR: Received null theme pointer from host!");
                 return std::ptr::null_mut();
             }
-
-            // Initialize globals immediately before creating plugin to prevent race conditions
             if SYNCED_THEME.set(theme_ptr as usize).is_err() {
                 eprintln!("[Plugin] ERROR: Theme pointer already initialized!");
                 return std::ptr::null_mut();
             }
-
-            // Register the plugin theme accessor with the ui crate
             ui::theme::Theme::register_plugin_accessor(plugin_theme_unsafe);
-
-            // Create plugin instance (allocated in plugin's heap)
             let plugin = <$plugin_type>::default();
             let boxed: Box<dyn $crate::EditorPlugin> = Box::new(plugin);
-            Box::into_raw(boxed)
+            Box::into_raw(boxed) as *mut std::ffi::c_void
         }
 
         /// Internal accessor for plugin theme (called by ui crate)
@@ -671,19 +664,12 @@ macro_rules! export_plugin {
         }
 
         #[no_mangle]
-        pub unsafe extern "C" fn _plugin_destroy(ptr: *mut dyn $crate::EditorPlugin) {
-            // Validate pointer before attempting to free
+        pub unsafe extern "C" fn _plugin_destroy(ptr: *mut std::ffi::c_void) {
             if ptr.is_null() {
                 eprintln!("[Plugin] WARNING: Attempted to destroy null plugin pointer!");
                 return;
             }
-
-            // CRITICAL: This frees memory in the plugin's heap.
-            // The main app must NEVER call Rust's Drop on this Box.
-            drop(Box::from_raw(ptr));
-
-            // Clear the theme pointer to prevent use-after-free
-            // Note: OnceLock doesn't support clearing, but plugin is being destroyed anyway
+            drop(Box::from_raw(ptr as *mut dyn $crate::EditorPlugin));
         }
 
         #[no_mangle]
