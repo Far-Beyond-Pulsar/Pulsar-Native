@@ -631,7 +631,7 @@ macro_rules! export_plugin {
             let _ = log::set_logger(logger);
         }
         #[no_mangle]
-        pub unsafe extern "C" fn _plugin_create(theme_ptr: *const std::ffi::c_void) -> *mut std::ffi::c_void {
+        pub unsafe extern "C" fn _plugin_create(theme_ptr: *const std::ffi::c_void) -> *mut dyn $crate::EditorPlugin {
             if theme_ptr.is_null() {
                 eprintln!("[Plugin] ERROR: Received null theme pointer from host!");
                 return std::ptr::null_mut();
@@ -643,7 +643,7 @@ macro_rules! export_plugin {
             ui::theme::Theme::register_plugin_accessor(plugin_theme_unsafe);
             let plugin = <$plugin_type>::default();
             let boxed: Box<dyn $crate::EditorPlugin> = Box::new(plugin);
-            Box::into_raw(boxed) as *mut std::ffi::c_void
+            Box::into_raw(boxed)
         }
 
         /// Internal accessor for plugin theme (called by ui crate)
@@ -664,12 +664,12 @@ macro_rules! export_plugin {
         }
 
         #[no_mangle]
-        pub unsafe extern "C" fn _plugin_destroy(ptr: *mut std::ffi::c_void) {
+        pub unsafe extern "C" fn _plugin_destroy(ptr: *mut dyn $crate::EditorPlugin) {
             if ptr.is_null() {
                 eprintln!("[Plugin] WARNING: Attempted to destroy null plugin pointer!");
                 return;
             }
-            drop(Box::from_raw(ptr as *mut dyn $crate::EditorPlugin));
+            drop(Box::from_raw(ptr));
         }
 
         #[no_mangle]
