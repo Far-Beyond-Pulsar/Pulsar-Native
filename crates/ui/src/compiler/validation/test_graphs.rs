@@ -4,7 +4,7 @@ use crate::graph::*;
 use crate::compiler::compile_graph;
 
 pub fn test_default_ui_graph_compilation() -> Result<String, String> {
-    println!("\n=== Testing Default UI Graph Compilation ===\n");
+    tracing::info!("\n=== Testing Default UI Graph Compilation ===\n");
 
     // Create the exact same graph as in panel.rs:68-324
     let mut graph = GraphDescription::new("Default UI Graph");
@@ -101,18 +101,18 @@ pub fn test_default_ui_graph_compilation() -> Result<String, String> {
         ConnectionType::Execution,
     ));
 
-    println!("Graph structure:");
-    println!("  - {} nodes", graph.nodes.len());
-    println!("  - {} connections", graph.connections.len());
+    tracing::info!("Graph structure:");
+    tracing::info!("  - {} nodes", graph.nodes.len());
+    tracing::info!("  - {} connections", graph.connections.len());
 
     // Compile it
-    println!("\nCompiling...\n");
+    tracing::info!("\nCompiling...\n");
     let code = compile_graph(&graph)?;
 
-    println!("Generated code:");
-    println!("{}", "=".repeat(80));
-    println!("{}", code);
-    println!("{}", "=".repeat(80));
+    tracing::info!("Generated code:");
+    tracing::info!("{}", "=".repeat(80));
+    tracing::info!("{}", code);
+    tracing::info!("{}", "=".repeat(80));
 
     // Validate structure
     validate_code(&code)?;
@@ -121,7 +121,7 @@ pub fn test_default_ui_graph_compilation() -> Result<String, String> {
 }
 
 fn validate_code(code: &str) -> Result<(), String> {
-    println!("\nValidation:");
+    tracing::info!("\nValidation:");
 
     let checks = vec![
         ("pub fn main()", code.contains("pub fn main()")),
@@ -134,14 +134,14 @@ fn validate_code(code: &str) -> Result<(), String> {
 
     for (name, passed) in checks {
         if passed {
-            println!("  ✓ {}", name);
+            tracing::info!("  ✓ {}", name);
         } else {
-            println!("  ✗ {}", name);
+            tracing::warn!("  ✗ {}", name);
             return Err(format!("Missing: {}", name));
         }
     }
 
-    println!("\n✓ All checks passed!");
+    tracing::info!("\n✓ All checks passed!");
     Ok(())
 }
 

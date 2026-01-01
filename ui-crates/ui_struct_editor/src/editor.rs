@@ -166,7 +166,7 @@ impl StructEditor {
                     } else {
                         self.error_message = None;
                         self.modified = false;
-                        eprintln!("✅ Saved struct to {:?}", file_path);
+                        tracing::info!("✅ Saved struct to {:?}", file_path);
                         cx.emit(StructEditorEvent::Saved);
                     }
                 }

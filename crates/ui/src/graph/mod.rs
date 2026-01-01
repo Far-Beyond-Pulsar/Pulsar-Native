@@ -1234,7 +1234,7 @@ impl LibraryManager {
                         self.register_library(library);
                     }
                     Err(e) => {
-                        eprintln!("Failed to load library from {:?}: {}", path, e);
+                        tracing::error!("Failed to load library from {:?}: {}", path, e);
                     }
                 }
             }

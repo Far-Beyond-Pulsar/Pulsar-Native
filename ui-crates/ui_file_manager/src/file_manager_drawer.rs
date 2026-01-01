@@ -159,7 +159,7 @@ impl FileManagerDrawer {
 
             // Create the file with default content (empty for now, can be enhanced with plugin default_content)
             if let Err(e) = std::fs::write(&final_path, "") {
-                eprintln!("Failed to create file {:?}: {}", final_path, e);
+                tracing::error!("Failed to create file {:?}: {}", final_path, e);
             } else {
                 // Refresh the folder tree
                 if let Some(ref path) = self.project_path {
@@ -185,7 +185,7 @@ impl FileManagerDrawer {
 
             // Create the folder
             if let Err(e) = std::fs::create_dir(&folder_path) {
-                eprintln!("Failed to create folder {:?}: {}", folder_path, e);
+                tracing::error!("Failed to create folder {:?}: {}", folder_path, e);
             } else {
                 // Refresh the folder tree
                 if let Some(ref path) = self.project_path {
@@ -202,11 +202,11 @@ impl FileManagerDrawer {
         for item in items_to_delete {
             if item.is_dir() {
                 if let Err(e) = std::fs::remove_dir_all(&item) {
-                    eprintln!("Failed to delete folder {:?}: {}", item, e);
+                    tracing::error!("Failed to delete folder {:?}: {}", item, e);
                 }
             } else {
                 if let Err(e) = std::fs::remove_file(&item) {
-                    eprintln!("Failed to delete file {:?}: {}", item, e);
+                    tracing::error!("Failed to delete file {:?}: {}", item, e);
                 }
             }
         }
@@ -259,11 +259,11 @@ impl FileManagerDrawer {
                     // Copy the item
                     if item.is_dir() {
                         if let Err(e) = Self::copy_dir_recursive(&item, &new_path) {
-                            eprintln!("Failed to duplicate folder {:?}: {}", item, e);
+                            tracing::error!("Failed to duplicate folder {:?}: {}", item, e);
                         }
                     } else {
                         if let Err(e) = std::fs::copy(&item, &new_path) {
-                            eprintln!("Failed to duplicate file {:?}: {}", item, e);
+                            tracing::error!("Failed to duplicate file {:?}: {}", item, e);
                         }
                     }
                 }
@@ -298,17 +298,17 @@ impl FileManagerDrawer {
                         if *is_cut {
                             // Move operation
                             if let Err(e) = std::fs::rename(item, &target_path) {
-                                eprintln!("Failed to move {:?} to {:?}: {}", item, target_path, e);
+                                tracing::error!("Failed to move {:?} to {:?}: {}", item, target_path, e);
                             }
                         } else {
                             // Copy operation
                             if item.is_dir() {
                                 if let Err(e) = Self::copy_dir_recursive(item, &target_path) {
-                                    eprintln!("Failed to copy folder {:?}: {}", item, e);
+                                    tracing::error!("Failed to copy folder {:?}: {}", item, e);
                                 }
                             } else {
                                 if let Err(e) = std::fs::copy(item, &target_path) {
-                                    eprintln!("Failed to copy file {:?}: {}", item, e);
+                                    tracing::error!("Failed to copy file {:?}: {}", item, e);
                                 }
                             }
                         }
@@ -995,7 +995,7 @@ impl FileManagerDrawer {
         if let Some(ref folder) = self.selected_folder {
             let new_path = folder.join("untitled.txt");
             if let Err(e) = std::fs::write(&new_path, "") {
-                eprintln!("Failed to create file: {}", e);
+                tracing::error!("Failed to create file: {}", e);
                 return;
             }
             self.renaming_item = Some(new_path);
@@ -1007,7 +1007,7 @@ impl FileManagerDrawer {
         if let Some(ref folder) = self.selected_folder {
             let new_path = folder.join("New Folder");
             if let Err(e) = std::fs::create_dir(&new_path) {
-                eprintln!("Failed to create folder: {}", e);
+                tracing::error!("Failed to create folder: {}", e);
                 return;
             }
             self.renaming_item = Some(new_path);

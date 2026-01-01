@@ -649,11 +649,11 @@ macro_rules! export_plugin {
         #[no_mangle]
         pub unsafe extern "C" fn _plugin_create(theme_ptr: *const std::ffi::c_void) -> Option<&'static mut dyn $crate::EditorPlugin>{
             if theme_ptr.is_null() {
-                eprintln!("[Plugin] ERROR: Received null theme pointer from host!");
+                tracing::error!("[Plugin] ERROR: Received null theme pointer from host!");
                 return None;
             }
             if SYNCED_THEME.set(theme_ptr as usize).is_err() {
-                eprintln!("[Plugin] ERROR: Theme pointer already initialized!");
+                tracing::error!("[Plugin] ERROR: Theme pointer already initialized!");
                 return None;
             }
             ui::theme::Theme::register_plugin_accessor(plugin_theme_unsafe);
@@ -670,7 +670,7 @@ macro_rules! export_plugin {
 
             // Validate pointer is not null before dereferencing
             if ptr.is_null() {
-                eprintln!("[Plugin] ERROR: Theme pointer is null!");
+                tracing::error!("[Plugin] ERROR: Theme pointer is null!");
                 return None;
             }
 
@@ -682,7 +682,7 @@ macro_rules! export_plugin {
         #[no_mangle]
         pub unsafe extern "C" fn _plugin_destroy(ptr: *mut dyn $crate::EditorPlugin) {
             if ptr.is_null() {
-                eprintln!("[Plugin] WARNING: Attempted to destroy null plugin pointer!");
+                tracing::warn!("[Plugin] WARNING: Attempted to destroy null plugin pointer!");
                 return;
             }
             drop(Box::from_raw(ptr));
@@ -699,7 +699,7 @@ macro_rules! export_plugin {
         pub unsafe extern "C" fn _plugin_init_globals(theme_ptr: *const std::ffi::c_void) {
             // Validate theme pointer
             if theme_ptr.is_null() {
-                eprintln!("[Plugin] ERROR: Received null theme pointer in init_globals!");
+                tracing::error!("[Plugin] ERROR: Received null theme pointer in init_globals!");
                 return;
             }
 

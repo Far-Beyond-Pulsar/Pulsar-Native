@@ -38,9 +38,9 @@ impl ExecutionRouting {
             }
         }
 
-        println!("[ROUTING] Built execution routing table with {} routes", routes.len());
+        tracing::info!("[ROUTING] Built execution routing table with {} routes", routes.len());
         for ((node_id, pin_name), targets) in &routes {
-            println!("[ROUTING]   ({}, {}) -> {:?}", node_id, pin_name, targets);
+            tracing::info!("[ROUTING]   ({}, {}) -> {:?}", node_id, pin_name, targets);
         }
 
         ExecutionRouting { routes }

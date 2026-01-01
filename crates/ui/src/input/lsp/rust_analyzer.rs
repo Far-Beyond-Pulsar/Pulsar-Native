@@ -188,7 +188,7 @@ impl RustAnalyzerCompletionProvider {
                     }
                 }
                 Err(e) => {
-                    eprintln!("rust-analyzer completion error: {}", e);
+                    tracing::error!("rust-analyzer completion error: {}", e);
                 }
             }
         }
@@ -565,8 +565,8 @@ mod tests {
     fn test_find_rust_analyzer() {
         // This test may fail if rust-analyzer is not installed
         match RustAnalyzerClient::find_rust_analyzer() {
-            Ok(path) => println!("Found rust-analyzer at: {:?}", path),
-            Err(e) => println!("rust-analyzer not found: {}", e),
+            Ok(path) => tracing::info!("Found rust-analyzer at: {:?}", path),
+            Err(e) => tracing::warn!("rust-analyzer not found: {}", e),
         }
     }
 }

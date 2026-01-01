@@ -245,10 +245,10 @@ impl VariantsPanel {
                         this.remove_variant(*index, cx);
                     }
                     VariantEditorEvent::TypePickerRequested(index) => {
-                        eprintln!("Type picker requested for variant {}", index);
+                        tracing::info!("Type picker requested for variant {}", index);
                     }
                     VariantEditorEvent::AddFieldRequested(index) => {
-                        eprintln!("Add field requested for variant {}", index);
+                        tracing::info!("Add field requested for variant {}", index);
                     }
                 }
             }).detach();
@@ -305,10 +305,10 @@ impl VariantsPanel {
                     this.remove_variant(*index, cx);
                 }
                 VariantEditorEvent::TypePickerRequested(index) => {
-                    eprintln!("Type picker requested for variant {}", index);
+                    tracing::info!("Type picker requested for variant {}", index);
                 }
                 VariantEditorEvent::AddFieldRequested(index) => {
-                    eprintln!("Add field requested for variant {}", index);
+                    tracing::info!("Add field requested for variant {}", index);
                 }
             }
         }).detach();

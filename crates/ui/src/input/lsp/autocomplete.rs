@@ -232,13 +232,13 @@ impl DictionaryProvider {
                         words.insert(word);
                     }
                 }
-                println!("✓ Loaded {} words from system dictionary: {}", words.len(), path);
+                tracing::info!("✓ Loaded {} words from system dictionary: {}", words.len(), path);
                 break; // Use first available dictionary
             }
         }
         
         if words.is_empty() {
-            println!("⚠ No system dictionary found, using built-in word list only");
+            tracing::warn!("⚠ No system dictionary found, using built-in word list only");
         }
         
         words

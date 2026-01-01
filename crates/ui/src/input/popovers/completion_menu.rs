@@ -49,7 +49,7 @@ impl ContextMenuDelegate {
         self.filtered_indices = (0..self.items.len()).collect();
         self.selected_ix = 0;
         
-        println!("📋 Showing {} completions (sorted by relevance)", self.items.len());
+        tracing::info!("📋 Showing {} completions (sorted by relevance)", self.items.len());
     }
 
     fn selected_item(&self) -> Option<&Rc<CompletionItem>> {

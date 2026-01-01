@@ -816,7 +816,7 @@ fn print_points_as_svg_path(
     points: &Vec<Point<Pixels>>,
 ) {
     for corners in line_corners {
-        println!(
+        tracing::info!(
             "tl: ({}, {}), tr: ({}, {}), bl: ({}, {}), br: ({}, {})",
             corners.top_left.x.as_f32() as i32,
             corners.top_left.y.as_f32() as i32,
@@ -830,13 +830,13 @@ fn print_points_as_svg_path(
     }
 
     if points.len() > 0 {
-        println!(
+        tracing::info!(
             "M{},{}",
             points[0].x.as_f32() as i32,
             points[0].y.as_f32() as i32
         );
         for p in points.iter().skip(1) {
-            println!("L{},{}", p.x.as_f32() as i32, p.y.as_f32() as i32);
+            tracing::info!("L{},{}", p.x.as_f32() as i32, p.y.as_f32() as i32);
         }
     }
 }

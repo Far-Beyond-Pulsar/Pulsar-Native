@@ -85,20 +85,20 @@ pub fn init(cx: &mut App) {
 
     // Extract embedded themes if not already done
     if !themes_dir.exists() || !themes_dir.join("default.json").exists() {
-        println!("Extracting embedded themes to {}", themes_dir.display());
+        tracing::info!("Extracting embedded themes to {}", themes_dir.display());
         std::fs::create_dir_all(&themes_dir).expect("Failed to create themes directory");
         for file in EmbeddedThemes::iter() {
             let file_path = themes_dir.join(file.as_ref());
-            println!("Extracting theme file: {}", file.as_ref());
+            tracing::info!("Extracting theme file: {}", file.as_ref());
             let data = EmbeddedThemes::get(&file).unwrap();
             std::fs::write(&file_path, data.data).expect("Failed to write theme file");
         }
-        println!("Embedded themes extracted");
+        tracing::info!("Embedded themes extracted");
     } else {
-        println!("Embedded themes already extracted");
+        tracing::info!("Embedded themes already extracted");
     }
 
-    println!("Themes dir: {}", themes_dir.display());
+    tracing::info!("Themes dir: {}", themes_dir.display());
     if let Err(err) = ThemeRegistry::watch_dir(themes_dir, cx, move |cx| {
         if let Some(theme) = ThemeRegistry::global(cx)
             .themes()
@@ -108,9 +108,9 @@ pub fn init(cx: &mut App) {
             Theme::global_mut(cx).apply_config(&theme);
         }
     }) {
-        println!("Failed to watch themes directory: {}", err);
+        tracing::error!("Failed to watch themes directory: {}", err);
     } else {
-        println!("Watching themes directory successfully");
+        tracing::info!("Watching themes directory successfully");
     }
 
     if let Some(scrollbar_show) = state.scrollbar_show {

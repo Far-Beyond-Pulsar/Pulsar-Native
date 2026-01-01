@@ -334,7 +334,7 @@ impl DataTableEditor {
                 if let TabType::Table { view, name, .. } = &tab.tab_type {
                     view.update(cx, |table, cx| {
                         if let Err(e) = table.delegate_mut().add_new_row() {
-                            eprintln!("Failed to add row: {}", e);
+                            tracing::error!("Failed to add row: {}", e);
                         } else {
                             cx.notify();
                         }
@@ -353,7 +353,7 @@ impl DataTableEditor {
                         let delegate = table.delegate_mut();
                         if let Some(selected_row) = delegate.state.selected_row {
                             if let Err(e) = delegate.delete_row(selected_row) {
-                                eprintln!("Failed to delete row: {}", e);
+                                tracing::error!("Failed to delete row: {}", e);
                             } else {
                                 delegate.state.selected_row = None;
                                 cx.notify();
@@ -373,7 +373,7 @@ impl DataTableEditor {
                     view.update(cx, |table, cx| {
                         let delegate = table.delegate_mut();
                         if let Err(e) = delegate.refresh_rows(0, 1000) {
-                            eprintln!("Failed to refresh rows: {}", e);
+                            tracing::error!("Failed to refresh rows: {}", e);
                         }
                         cx.notify();
                     });
@@ -391,7 +391,7 @@ impl DataTableEditor {
                         let delegate = table.delegate_mut();
                         if let Some(selected_row) = delegate.state.selected_row {
                             if let Err(e) = delegate.duplicate_row(selected_row) {
-                                eprintln!("Failed to duplicate row: {}", e);
+                                tracing::error!("Failed to duplicate row: {}", e);
                             } else {
                                 tracing::debug!("✓ Row duplicated successfully");
                             }
@@ -461,7 +461,7 @@ impl DataTableEditor {
                             .disabled(!is_table_tab)
                             .on_click(cx.listener(|editor, _, _, cx| {
                                 if let Err(e) = editor.add_new_row(cx) {
-                                    eprintln!("Failed to add row: {}", e);
+                                    tracing::error!("Failed to add row: {}", e);
                                 }
                                 cx.notify();
                             }))
@@ -476,7 +476,7 @@ impl DataTableEditor {
                             .disabled(!is_table_tab)
                             .on_click(cx.listener(|editor, _, _, cx| {
                                 if let Err(e) = editor.duplicate_selected_row(cx) {
-                                    eprintln!("Failed to duplicate row: {}", e);
+                                    tracing::error!("Failed to duplicate row: {}", e);
                                 }
                                 cx.notify();
                             }))
@@ -490,7 +490,7 @@ impl DataTableEditor {
                             .disabled(!is_table_tab)
                             .on_click(cx.listener(|editor, _, _, cx| {
                                 if let Err(e) = editor.delete_selected_row(cx) {
-                                    eprintln!("Failed to delete row: {}", e);
+                                    tracing::error!("Failed to delete row: {}", e);
                                 }
                                 cx.notify();
                             }))
@@ -519,7 +519,7 @@ impl DataTableEditor {
                             .disabled(!is_table_tab)
                             .on_click(cx.listener(|editor, _, _, cx| {
                                 if let Err(e) = editor.refresh_data(cx) {
-                                    eprintln!("Failed to refresh: {}", e);
+                                    tracing::error!("Failed to refresh: {}", e);
                                 }
                                 cx.notify();
                             }))
@@ -650,7 +650,7 @@ impl DataTableEditor {
                                 )
                                 .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |editor, _, window, cx| {
                                     if let Err(e) = editor.select_table(table_name.clone(), window, cx) {
-                                        eprintln!("Failed to select table: {}", e);
+                                        tracing::error!("Failed to select table: {}", e);
                                     }
                                 }))
                         }))

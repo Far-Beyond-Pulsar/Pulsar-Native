@@ -76,15 +76,15 @@ impl VisitMut for ExecOutputReplacer {
         // Check if this is an exec_output!() call FIRST, before recursing
         if let Expr::Macro(ExprMacro { mac, .. }) = expr {
             if mac.path.is_ident("exec_output") {
-                eprintln!("[AST_UTILS] Found exec_output!() macro");
+                tracing::info!("[AST_UTILS] Found exec_output!() macro");
                 // Extract the label from the macro call
                 if let Ok(label) = syn::parse2::<syn::LitStr>(mac.tokens.clone()) {
                     let label_value = label.value();
-                    eprintln!("[AST_UTILS] Exec output label: '{}'", label_value);
+                    tracing::info!("[AST_UTILS] Exec output label: '{}'", label_value);
 
                     // Get replacement code for this label
                     if let Some(replacement_code) = self.replacements.get(&label_value) {
-                        eprintln!("[AST_UTILS] Found replacement for '{}': '{}'", label_value, replacement_code);
+                        tracing::info!("[AST_UTILS] Found replacement for '{}': '{}'", label_value, replacement_code);
                         // Parse replacement code as a block
                         match syn::parse_str::<Expr>(replacement_code) {
                             Ok(replacement_expr) => {
@@ -111,8 +111,8 @@ impl VisitMut for ExecOutputReplacer {
                         }
                     } else {
                         // No replacement provided - use empty block
-                        eprintln!("[AST_UTILS] NO replacement found for label '{}'", label_value);
-                        eprintln!("[AST_UTILS] Available replacements: {:?}", self.replacements.keys().collect::<Vec<_>>());
+                        tracing::warn!("[AST_UTILS] NO replacement found for label '{}'", label_value);
+                        tracing::info!("[AST_UTILS] Available replacements: {:?}", self.replacements.keys().collect::<Vec<_>>());
                         *expr = Expr::Block(syn::ExprBlock {
                             attrs: vec![],
                             label: None,
@@ -243,14 +243,14 @@ mod tests {
         let code = r#"
             fn test() {
                 let x = 5;
-                println!("{}", x);
+                tracing::info!("{}", x);
             }
         "#;
 
         let func: ItemFn = syn::parse_str(code).unwrap();
         let body = extract_function_body(&func);
 
-        println!("Extracted body: {}", body);
+        tracing::info!("Extracted body: {}", body);
         assert!(body.contains("let x = 5"));
         assert!(body.contains("println"), "Body should contain println macro");
         assert!(!body.starts_with("fn"));

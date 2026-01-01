@@ -138,13 +138,13 @@ impl NumberInputStory {
                         self.number_input3_value = value;
                     }
                 }
-                println!("Change: {}", text);
+                tracing::info!("Change: {}", text);
             }
             InputEvent::PressEnter { secondary } => {
-                println!("PressEnter secondary: {}", secondary)
+                tracing::info!("PressEnter secondary: {}", secondary)
             }
-            InputEvent::Focus => println!("Focus"),
-            InputEvent::Blur => println!("Blur"),
+            InputEvent::Focus => tracing::info!("Focus"),
+            InputEvent::Blur => tracing::info!("Blur"),
         }
     }
 

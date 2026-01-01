@@ -165,7 +165,7 @@ impl TraitEditor {
                     } else {
                         self.error_message = None;
                         self.modified = false;
-                        eprintln!("✅ Saved trait to {:?}", file_path);
+                        tracing::info!("✅ Saved trait to {:?}", file_path);
                         cx.emit(TraitEditorEvent::Saved);
                     }
                 }

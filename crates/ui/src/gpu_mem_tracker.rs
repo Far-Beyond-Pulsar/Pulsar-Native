@@ -75,7 +75,7 @@ impl GpuMemTracker {
             let current = self.current_allocations.fetch_sub(1, Ordering::Relaxed) - 1;
 
         } else {
-            println!("[GPU-MEM] WARNING: Attempted to free unknown allocation #{}", id);
+            tracing::warn!("[GPU-MEM] WARNING: Attempted to free unknown allocation #{}", id);
         }
     }
 
@@ -86,18 +86,18 @@ impl GpuMemTracker {
         let current = self.current_allocations.load(Ordering::Relaxed);
         let peak = self.peak_allocations.load(Ordering::Relaxed);
 
-        println!("\n========== GPU MEMORY STATS ==========");
-        println!("Total Allocated: {:.2} MB", total_alloc as f64 / 1_000_000.0);
-        println!("Total Freed: {:.2} MB", total_free as f64 / 1_000_000.0);
-        println!("Leaked: {:.2} MB", leaked as f64 / 1_000_000.0);
-        println!("Current Allocations: {}", current);
-        println!("Peak Allocations: {}", peak);
+        tracing::info!("\n========== GPU MEMORY STATS ==========");
+        tracing::info!("Total Allocated: {:.2} MB", total_alloc as f64 / 1_000_000.0);
+        tracing::info!("Total Freed: {:.2} MB", total_free as f64 / 1_000_000.0);
+        tracing::info!("Leaked: {:.2} MB", leaked as f64 / 1_000_000.0);
+        tracing::info!("Current Allocations: {}", current);
+        tracing::info!("Peak Allocations: {}", peak);
 
         if current > 0 {
-            println!("\nLEAKED ALLOCATIONS:");
+            tracing::warn!("\nLEAKED ALLOCATIONS:");
             let allocs = self.allocations.lock();
             for (id, info) in allocs.iter() {
-                println!(
+                tracing::warn!(
                     "  #{}: {}x{} = {} bytes (age: {:.2}s)",
                     id,
                     info.width,
@@ -107,7 +107,7 @@ impl GpuMemTracker {
                 );
             }
         }
-        println!("======================================\n");
+        tracing::info!("======================================\n");
     }
 
     pub fn get_leaked_bytes(&self) -> u64 {

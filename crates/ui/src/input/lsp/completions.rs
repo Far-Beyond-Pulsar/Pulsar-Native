@@ -145,11 +145,11 @@ impl InputState {
                 Ok(provider_responses) => {
                     match provider_responses {
                         CompletionResponse::Array(items) => {
-                            println!("📦 Received {} completions (Array)", items.len());
+                            tracing::info!("📦 Received {} completions (Array)", items.len());
                             completions.extend(items);
                         },
                         CompletionResponse::List(list) => {
-                            println!("📦 Received {} completions (isIncomplete: {})", 
+                            tracing::info!("📦 Received {} completions (isIncomplete: {})", 
                                 list.items.len(), 
                                 list.is_incomplete
                             );
@@ -158,7 +158,7 @@ impl InputState {
                     }
                 },
                 Err(e) => {
-                    eprintln!("❌ Error getting completions: {:?}", e);
+                    tracing::error!("❌ Error getting completions: {:?}", e);
                     _ = menu.update(cx, |menu, cx| {
                         menu.hide(cx);
                     });
@@ -167,7 +167,7 @@ impl InputState {
             }
 
             if completions.is_empty() {
-                println!("❌ No completions - hiding menu");
+                tracing::warn!("❌ No completions - hiding menu");
                 _ = menu.update(cx, |menu, cx| {
                     menu.hide(cx);
                     cx.notify();
@@ -175,7 +175,7 @@ impl InputState {
                 return Ok(());
             }
 
-            println!("✅ Showing {} completions from server", completions.len());
+            tracing::info!("✅ Showing {} completions from server", completions.len());
 
             editor
                 .update_in(cx, |editor, window, cx| {

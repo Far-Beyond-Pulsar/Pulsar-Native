@@ -237,7 +237,7 @@ impl DataResolver {
                 use crate::compiler::get_node_metadata;
                 let metadata = get_node_metadata();
 
-                eprintln!("[DATA_RESOLVER] Checking node '{}' (type: {})", source_node_id, source_node.node_type);
+                tracing::info!("[DATA_RESOLVER] Checking node '{}' (type: {})", source_node_id, source_node.node_type);
 
                 // Special case: variable getter nodes
                 if source_node.node_type.starts_with("get_") {
@@ -258,28 +258,28 @@ impl DataResolver {
 
                 // Special case: reroute nodes are transparent passthroughs
                 if source_node.node_type == "reroute" {
-                    eprintln!("[DATA_RESOLVER] Reroute node detected - passing through to its input");
+                    tracing::info!("[DATA_RESOLVER] Reroute node detected - passing through to its input");
                     // Reroutes can have different pin names, find the actual input pin
                     let input_pin = source_node.inputs.get(0)
                         .map(|p| &p.id)
                         .ok_or_else(|| format!("Reroute node {} has no input pins", source_node_id))?;
-                    eprintln!("[DATA_RESOLVER] Reroute node input pin name: '{}'", input_pin);
+                    tracing::info!("[DATA_RESOLVER] Reroute node input pin name: '{}'", input_pin);
                     // Recursively resolve what's connected to the reroute's input
                     return self.generate_input_expression(source_node_id, input_pin, graph);
                 }
 
                 let is_pure = if let Some(node_meta) = metadata.get(&source_node.node_type) {
-                    eprintln!("[DATA_RESOLVER] Found metadata for '{}': type={:?}", source_node.node_type, node_meta.node_type);
+                    tracing::info!("[DATA_RESOLVER] Found metadata for '{}': type={:?}", source_node.node_type, node_meta.node_type);
                     node_meta.node_type == NodeTypes::pure
                 } else {
-                    eprintln!("[DATA_RESOLVER] NO METADATA FOUND for node type '{}'", source_node.node_type);
+                    tracing::warn!("[DATA_RESOLVER] NO METADATA FOUND for node type '{}'", source_node.node_type);
                     false
                 };
 
-                eprintln!("[DATA_RESOLVER] is_pure = {}", is_pure);
+                tracing::info!("[DATA_RESOLVER] is_pure = {}", is_pure);
 
                 if is_pure {
-                    eprintln!("[DATA_RESOLVER] Inlining pure node '{}'", source_node.node_type);
+                    tracing::info!("[DATA_RESOLVER] Inlining pure node '{}'", source_node.node_type);
                     self.generate_pure_node_expression(source_node, graph)
                 } else {
                     // Non-pure nodes (function nodes with return values) use variables

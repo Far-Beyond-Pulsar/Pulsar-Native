@@ -19,7 +19,7 @@ impl TerminalDrawer {
         // Create terminal - handle error gracefully
         let terminal = cx.new(|cx| {
             Terminal::new(window, cx).unwrap_or_else(|e| {
-                eprintln!("Failed to create terminal: {}", e);
+                tracing::error!("Failed to create terminal: {}", e);
                 // Create a fallback empty terminal
                 Terminal::new(window, cx).unwrap()
             })

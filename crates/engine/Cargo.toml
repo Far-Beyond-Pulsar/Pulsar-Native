@@ -102,6 +102,7 @@ sysinfo = "0.30"  # System information
 reqwest = { version = "0.12", features = ["json"] }  # HTTP client (existing, used for GitHub API)
 async-tungstenite = { version = "0.23", features = ["tokio-runtime"] }  # WebSocket client
 url = "2.5"  # URL parsing
+tracing-appender = "0.2.4"
 
 [build-dependencies]
 winresource = "0.1"

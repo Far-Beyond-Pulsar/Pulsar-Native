@@ -67,8 +67,8 @@ pub mod windows_impl {
                     dev
                 }
                 Err(e) => {
-                    eprintln!("[DX11-OPENER] ❌ Failed to cast to ID3D11Device1: {:?}", e);
-                    eprintln!("[DX11-OPENER] Device doesn't support D3D11.1!");
+                    tracing::error!("[DX11-OPENER] ❌ Failed to cast to ID3D11Device1: {:?}", e);
+                    tracing::error!("[DX11-OPENER] Device doesn't support D3D11.1!");
                     return Err(anyhow::anyhow!("Device doesn't support ID3D11Device1"));
                 }
             };
@@ -77,17 +77,17 @@ pub mod windows_impl {
             // API: pub unsafe fn OpenSharedResource1<P0, T>(&self, hresource: P0) -> windows_core::Result<T>
             let texture: ID3D11Texture2D = match device1.OpenSharedResource1(handle) {
                 Ok(tex) => {
-                    println!("[DX11-OPENER] ✅ OpenSharedResource1 succeeded!");
+                    tracing::info!("[DX11-OPENER] ✅ OpenSharedResource1 succeeded!");
                     tex
                 }
                 Err(e) => {
-                    eprintln!("[DX11-OPENER] ❌ OpenSharedResource1 FAILED!");
-                    eprintln!("[DX11-OPENER] 🔍 HRESULT: 0x{:08X}", e.code().0);
-                    eprintln!("[DX11-OPENER] 📋 Error: {:?}", e);
-                    eprintln!("[DX11-OPENER] 💡 Common causes:");
-                    eprintln!("[DX11-OPENER]    - Different GPU adapters (DX12 vs DX11)");
-                    eprintln!("[DX11-OPENER]    - Handle already closed/invalid");
-                    eprintln!("[DX11-OPENER]    - Missing D3D11_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS");
+                    tracing::error!("[DX11-OPENER] ❌ OpenSharedResource1 FAILED!");
+                    tracing::error!("[DX11-OPENER] 🔍 HRESULT: 0x{:08X}", e.code().0);
+                    tracing::error!("[DX11-OPENER] 📋 Error: {:?}", e);
+                    tracing::info!("[DX11-OPENER] 💡 Common causes:");
+                    tracing::info!("[DX11-OPENER]    - Different GPU adapters (DX12 vs DX11)");
+                    tracing::info!("[DX11-OPENER]    - Handle already closed/invalid");
+                    tracing::info!("[DX11-OPENER]    - Missing D3D11_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS");
                     return Err(e).context("Failed to open shared resource with OpenSharedResource1");
                 }
             };
@@ -234,10 +234,10 @@ pub unsafe fn init_from_gpui_window() -> anyhow::Result<()> {
     )?;
     
     let device = device.context("Failed to create D3D11 device")?;
-    println!("[DX11-OPENER] ✅ Created D3D11 device for shared resource opening");
+    tracing::info!("[DX11-OPENER] ✅ Created D3D11 device for shared resource opening");
     
     init_manager(device);
-    println!("[DX11-OPENER] ✅ Manager initialized successfully");
+    tracing::info!("[DX11-OPENER] ✅ Manager initialized successfully");
     
     Ok(())
 }

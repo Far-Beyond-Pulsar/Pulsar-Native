@@ -245,7 +245,7 @@ impl FieldsPanel {
                         this.remove_field(*index, cx);
                     }
                     crate::field_editor::FieldEditorEvent::TypePickerRequested(index) => {
-                        eprintln!("Type picker requested for field {}", index);
+                        tracing::info!("Type picker requested for field {}", index);
                     }
                 }
             }).detach();
@@ -305,7 +305,7 @@ impl FieldsPanel {
                     this.remove_field(*index, cx);
                 }
                 crate::field_editor::FieldEditorEvent::TypePickerRequested(index) => {
-                    eprintln!("Type picker requested for field {}", index);
+                    tracing::info!("Type picker requested for field {}", index);
                 }
             }
         }).detach();

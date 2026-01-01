@@ -1282,7 +1282,7 @@ where
                 .iter()
                 .fold(Duration::default(), |acc, d| acc + *d);
             let avg = total / self._measure.len() as u32;
-            eprintln!(
+            tracing::error!(
                 "last render {} cells total: {:?}, avg: {:?}",
                 self._measure.len(),
                 total,

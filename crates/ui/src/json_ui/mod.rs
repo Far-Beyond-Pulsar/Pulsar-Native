@@ -97,10 +97,10 @@ pub fn create_json_canvas_view(root_path: impl AsRef<Path>, cx: &mut Context<imp
     cx.new(|_cx| {
         let mut canvas = JsonCanvas::new(root_path);
         if let Err(e) = canvas.load() {
-            eprintln!("Error loading JSON UI: {}", e);
+            tracing::error!("Error loading JSON UI: {}", e);
         }
         if let Err(e) = canvas.start_hot_reload() {
-            eprintln!("Error starting hot reload: {}", e);
+            tracing::error!("Error starting hot reload: {}", e);
         }
         canvas
     })

@@ -219,7 +219,7 @@ impl InputState {
         // Check if we need to navigate to a different file
         // For now, we'll always emit the event and let the editor handle same-file vs different-file
         if let Some(path) = target_path {
-            println!("🎯 Go to definition: {:?} at {}:{}", 
+            tracing::info!("🎯 Go to definition: {:?} at {}:{}", 
                      path, target_range.start.line, target_range.start.character);
             cx.emit(InputEvent::GoToDefinition { 
                 path, 
@@ -227,7 +227,7 @@ impl InputState {
                 character: target_range.start.character 
             });
         } else {
-            eprintln!("⚠️  Failed to parse file path from URI: {}", location.target_uri.as_str());
+            tracing::error!("⚠️  Failed to parse file path from URI: {}", location.target_uri.as_str());
         }
     }
 }

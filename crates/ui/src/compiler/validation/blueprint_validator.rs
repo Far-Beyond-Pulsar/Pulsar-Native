@@ -37,7 +37,7 @@ pub fn validate_blueprint(graph: &GraphDescription) -> Result<(), ValidationErro
 
 /// Test loading and compiling the default blueprint.json
 pub fn validate_default_blueprint() -> Result<String, String> {
-    println!("\n=== Validating Default Blueprint ===");
+    tracing::info!("\n=== Validating Default Blueprint ===");
 
     // Load blueprint.json
     let blueprint_path = "../../blueprint.json";
@@ -48,46 +48,46 @@ pub fn validate_default_blueprint() -> Result<String, String> {
     let graph: GraphDescription = serde_json::from_str(&blueprint_content)
         .map_err(|e| format!("Failed to parse blueprint JSON: {}", e))?;
 
-    println!("✓ Loaded graph: {}", graph.metadata.name);
-    println!("  - {} nodes", graph.nodes.len());
-    println!("  - {} connections", graph.connections.len());
+    tracing::info!("✓ Loaded graph: {}", graph.metadata.name);
+    tracing::info!("  - {} nodes", graph.nodes.len());
+    tracing::info!("  - {} connections", graph.connections.len());
 
     // List nodes
-    println!("\nNodes:");
+    tracing::info!("\nNodes:");
     for (id, node) in &graph.nodes {
-        println!("  - {} (type: {})", id, node.node_type);
+        tracing::info!("  - {} (type: {})", id, node.node_type);
     }
 
     // List connections
-    println!("\nConnections:");
+    tracing::info!("\nConnections:");
     for conn in &graph.connections {
-        println!("  - {} -> {} ({} -> {})",
+        tracing::info!("  - {} -> {} ({} -> {})",
             conn.source_node, conn.target_node,
             conn.source_pin, conn.target_pin
         );
     }
 
     // Compile the graph
-    println!("\nCompiling graph...");
+    tracing::info!("\nCompiling graph...");
     let compiled_code = compile_graph(&graph)?;
 
-    println!("✓ Compilation successful!\n");
-    println!("Generated code:");
-    println!("{}", "=".repeat(80));
-    println!("{}", compiled_code);
-    println!("{}", "=".repeat(80));
+    tracing::info!("✓ Compilation successful!\n");
+    tracing::info!("Generated code:");
+    tracing::info!("{}", "=".repeat(80));
+    tracing::info!("{}", compiled_code);
+    tracing::info!("{}", "=".repeat(80));
 
     // Validate the generated code
     validate_generated_code(&compiled_code)?;
 
-    println!("\n✓ All validation checks passed!");
+    tracing::info!("\n✓ All validation checks passed!");
 
     Ok(compiled_code)
 }
 
 /// Validate that the generated code has the expected structure
 fn validate_generated_code(code: &str) -> Result<(), String> {
-    println!("\nValidating generated code structure...");
+    tracing::info!("\nValidating generated code structure...");
 
     // Check for required elements
     let checks = vec![
@@ -104,9 +104,9 @@ fn validate_generated_code(code: &str) -> Result<(), String> {
 
     for (name, passed) in checks {
         if passed {
-            println!("  ✓ {}", name);
+            tracing::info!("  ✓ {}", name);
         } else {
-            println!("  ✗ {}", name);
+            tracing::warn!("  ✗ {}", name);
             return Err(format!("Validation failed: missing {}", name));
         }
     }
@@ -116,13 +116,13 @@ fn validate_generated_code(code: &str) -> Result<(), String> {
     if main_count != 1 {
         return Err(format!("Expected 1 main function, found {}", main_count));
     }
-    println!("  ✓ Exactly 1 main function");
+    tracing::info!("  ✓ Exactly 1 main function");
 
     // Check for control flow structure
     if !code.contains("if ") || !code.contains("else") {
         return Err("Missing if/else control flow structure".to_string());
     }
-    println!("  ✓ Control flow structure (if/else)");
+    tracing::info!("  ✓ Control flow structure (if/else)");
 
     Ok(())
 }

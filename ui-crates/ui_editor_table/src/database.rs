@@ -110,7 +110,7 @@ impl DatabaseManager {
             }
         }
         
-        eprintln!("No schema found for table '{}'. Available schemas: {:?}", 
+        tracing::error!("No schema found for table '{}'. Available schemas: {:?}", 
                   table_name, schemas.keys().collect::<Vec<_>>());
         None
     }

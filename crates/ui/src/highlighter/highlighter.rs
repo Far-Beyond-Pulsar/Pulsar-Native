@@ -762,11 +762,11 @@ mod tests {
 
         let left = unique_styles(&range, left);
         if left.len() != right.len() {
-            println!("\n---------------------------------------------");
+            tracing::info!("\n---------------------------------------------");
             for (range, style) in left.iter() {
-                println!("({:?}, {})", range, color_name(style.color));
+                tracing::info!("({:?}, {})", range, color_name(style.color));
             }
-            println!("---------------------------------------------");
+            tracing::info!("---------------------------------------------");
             panic!("left {} styles, right {} styles", left.len(), right.len());
         }
         for (left, right) in left.into_iter().zip(right) {

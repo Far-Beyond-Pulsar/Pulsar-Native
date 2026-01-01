@@ -221,10 +221,10 @@ impl MethodsPanel {
                         this.remove_method(*index, cx);
                     }
                     MethodEditorEvent::TypePickerRequested(index) => {
-                        eprintln!("Type picker requested for method {}", index);
+                        tracing::info!("Type picker requested for method {}", index);
                     }
                     MethodEditorEvent::AddParameterRequested(index) => {
-                        eprintln!("Add parameter requested for method {}", index);
+                        tracing::info!("Add parameter requested for method {}", index);
                     }
                 }
             }).detach();
@@ -278,10 +278,10 @@ impl MethodsPanel {
                     this.remove_method(*index, cx);
                 }
                 MethodEditorEvent::TypePickerRequested(index) => {
-                    eprintln!("Type picker requested for method {}", index);
+                    tracing::info!("Type picker requested for method {}", index);
                 }
                 MethodEditorEvent::AddParameterRequested(index) => {
-                    eprintln!("Add parameter requested for method {}", index);
+                    tracing::info!("Add parameter requested for method {}", index);
                 }
             }
         }).detach();

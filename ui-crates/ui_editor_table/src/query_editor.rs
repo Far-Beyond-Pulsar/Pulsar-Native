@@ -367,7 +367,7 @@ impl QueryEditor {
                     .small()
                     .on_click(cx.listener(|editor, _, window, cx| {
                         if let Err(e) = editor.execute_query(window, cx) {
-                            eprintln!("Failed to execute query: {}", e);
+                            tracing::error!("Failed to execute query: {}", e);
                         }
                         cx.notify();
                     }))
@@ -409,7 +409,7 @@ impl QueryEditor {
                     .on_click(cx.listener(|editor, _, _, cx| {
                         if let Some(ref results) = editor.results {
                             if let Err(e) = editor.export_to_csv(results) {
-                                eprintln!("Failed to export CSV: {}", e);
+                                tracing::error!("Failed to export CSV: {}", e);
                             }
                         }
                         cx.notify();
@@ -426,7 +426,7 @@ impl QueryEditor {
                     .on_click(cx.listener(|editor, _, _, cx| {
                         if let Some(ref results) = editor.results {
                             if let Err(e) = editor.export_to_json(results) {
-                                eprintln!("Failed to export JSON: {}", e);
+                                tracing::error!("Failed to export JSON: {}", e);
                             }
                         }
                         cx.notify();
@@ -505,7 +505,7 @@ impl QueryEditor {
         let mut file = File::create(&filename)?;
         file.write_all(json.as_bytes())?;
 
-        println!("✓ Exported {} rows to {}", results.row_count, filename);
+        tracing::info!("✓ Exported {} rows to {}", results.row_count, filename);
         Ok(())
     }
 

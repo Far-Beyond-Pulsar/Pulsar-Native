@@ -110,13 +110,13 @@ impl EngineSettings {
     pub fn save(&self, path: &Path) {
         if let Some(parent) = path.parent() {
             if let Err(e) = fs::create_dir_all(parent) {
-                eprintln!("Failed to create config directory: {e}");
+                tracing::error!("Failed to create config directory: {e}");
                 return;
             }
         }
         let toml = toml::to_string_pretty(self).expect("Failed to serialize settings");
         if let Err(e) = fs::write(path, toml) {
-            eprintln!("Failed to write settings: {e}");
+            tracing::error!("Failed to write settings: {e}");
         }
     }
 
