@@ -241,14 +241,7 @@ impl PluginManager {
         }
 
         tracing::debug!("Version check passed for plugin at {:?}", path);
-        let log_setup_fn: Symbol<SetupLogger> = unsafe {
-            library
-                .get(b"_setup_plugin_logger")
-                .map_err(|e| PluginManagerError::MissingSymbol {
-                    symbol: "_setup_plugin_logger".to_string(),
-                    message: e.to_string(),
-                })?
-        };
+
         // Setup the plugin logger
         tracing::info!("doooooooooooooooooooooooooooooooooooooooooooooog");
         // Get the plugin constructor
