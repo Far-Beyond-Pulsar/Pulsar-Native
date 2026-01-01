@@ -621,7 +621,7 @@ pub fn on_file_selected(
 
             // panel is Arc<PluginPanelWrapper> allocated in main app heap - safe to use!
             app.state.center_tabs.update(cx, |tabs, cx| {
-                tabs.add_panel(panel, window, cx);
+                tabs.add_panel(panel_arc, window, cx);
             });
 
             app.state.drawer_open = false;

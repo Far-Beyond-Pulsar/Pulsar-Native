@@ -19,7 +19,7 @@ impl PulsarApp {
 
                 // panel is Arc<PluginPanelWrapper> allocated in main app heap - safe to use!
                 self.state.center_tabs.update(cx, |tabs, cx| {
-                    tabs.add_panel(panel, window, cx);
+                    tabs.add_panel(panel_arc, window, cx);
                 });
                 return;
             }

@@ -538,8 +538,8 @@ impl PluginManager {
 
     /// Create an editor instance with a specific editor ID.
     ///
-    /// Returns raw pointers that are OWNED by the plugin. The main app must NOT drop these.
-    /// Call destroy_editor when done to let the plugin free its own memory.
+    /// Returns Arc to PanelView (shared ownership) and raw pointer to EditorInstance (plugin-owned).
+    /// Main app can clone the Arc freely. Call destroy_editor when done to cleanup EditorInstance.
     pub fn create_editor(
         &mut self,
         plugin_id: &PluginId,
