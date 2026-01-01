@@ -592,8 +592,7 @@ pub trait EditorPlugin: Send + Sync {
 ///
 /// Plugins must export a function with this signature named `_plugin_create`.
 /// The theme_ptr is passed immediately to ensure globals are available.
-pub type PluginCreate = unsafe extern "C" fn(theme_ptr: *const std::ffi::c_void) -> *mut dyn EditorPlugin;
-
+pub type PluginCreate = unsafe extern "C" fn(theme_ptr: *const std::ffi::c_void) -> Option<&'static mut dyn EditorPlugin>;
 /// Type alias for the plugin destructor function.
 ///
 /// Plugins must export a function with this signature named `_plugin_destroy`.
@@ -631,19 +630,19 @@ macro_rules! export_plugin {
             let _ = log::set_logger(logger);
         }
         #[no_mangle]
-        pub unsafe extern "C" fn _plugin_create(theme_ptr: *const std::ffi::c_void) -> *mut dyn $crate::EditorPlugin {
+        pub unsafe extern "C" fn _plugin_create(theme_ptr: *const std::ffi::c_void) -> Option<&'static mut dyn $crate::EditorPlugin>>{
             if theme_ptr.is_null() {
                 eprintln!("[Plugin] ERROR: Received null theme pointer from host!");
-                return std::ptr::null_mut();
+                return None;
             }
             if SYNCED_THEME.set(theme_ptr as usize).is_err() {
                 eprintln!("[Plugin] ERROR: Theme pointer already initialized!");
-                return std::ptr::null_mut();
+                return None;
             }
             ui::theme::Theme::register_plugin_accessor(plugin_theme_unsafe);
             let plugin = <$plugin_type>::default();
             let boxed: Box<dyn $crate::EditorPlugin> = Box::new(plugin);
-            Box::into_raw(boxed)
+            Some(Box::leak(boxed))
         }
 
         /// Internal accessor for plugin theme (called by ui crate)

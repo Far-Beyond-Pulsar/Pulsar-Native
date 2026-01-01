@@ -281,7 +281,7 @@ impl PluginManager {
             // Get Theme from main app's global state and pass to plugin
             let theme_ptr = ui::theme::Theme::global(cx) as *const _ as *const std::ffi::c_void;
             let raw_plugin = create_fn(theme_ptr);
-            if raw_plugin.is_null() {
+            if raw_plugin.is_none() {
                 return Err(PluginManagerError::PluginCreationFailed {
                     message: "Plugin constructor returned null".to_string(),
                 });
@@ -289,9 +289,16 @@ impl PluginManager {
             raw_plugin
         };
 
+        let Some(plugin_ptr) = plugin_ptr else {
+            return Err(PluginManagerError::PluginCreationFailed {
+                message: "Plugin constructor returned null".to_string(),
+            })
+        };
+        
+
         // Get plugin metadata by temporarily accessing through raw pointer
         // SAFETY: Plugin just created, pointer is valid. We validated it's not null above.
-        let metadata = unsafe { (*plugin_ptr).metadata() };
+        let metadata = unsafe { (plugin_ptr).metadata() };
         let plugin_id = metadata.id.clone();
 
         log::info!(
@@ -303,19 +310,13 @@ impl PluginManager {
 
         // Call on_load hook via raw pointer
         // SAFETY: Plugin just created, pointer is valid, not null
-        unsafe { (*plugin_ptr).on_load() };
+        unsafe { plugin_ptr.on_load() };
 
         // Validate plugin is still functioning after on_load
         // Some plugins may fail during initialization
-        if plugin_ptr.is_null() {
-            return Err(PluginManagerError::PluginCreationFailed {
-                message: "Plugin became null after on_load".to_string(),
-            });
-        }
-
         // Register file types via raw pointer
         // SAFETY: Plugin just created, pointer is valid
-        let file_types = unsafe { (*plugin_ptr).file_types() };
+        let file_types = unsafe { (plugin_ptr).file_types() };
         for file_type in file_types {
             log::debug!(
                 "  Registering file type: {} (.{})",
@@ -327,7 +328,7 @@ impl PluginManager {
 
         // Register editors via raw pointer
         // SAFETY: Plugin just created, pointer is valid
-        let editors = unsafe { (*plugin_ptr).editors() };
+        let editors = unsafe { (plugin_ptr).editors() };
         for editor in editors {
             log::debug!("  Registering editor: {}", editor.display_name);
             self.editor_registry.register(editor, plugin_id.clone());
