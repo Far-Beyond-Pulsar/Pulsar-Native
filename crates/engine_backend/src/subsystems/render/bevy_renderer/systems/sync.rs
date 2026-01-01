@@ -171,7 +171,7 @@ pub fn update_camera_viewport_system(
                     let last = LAST_LOG.load(Ordering::Relaxed);
                     if now - last > 1 { // Log at most once per second
                         // TODO: Better logo levels later
-                        // tracing::info!("[BEVY-VIEWPORT] 🔄 Resizing render target: {}x{} -> {}x{}", 
+                        // tracing::debug!("[BEVY-VIEWPORT] 🔄 Resizing render target: {}x{} -> {}x{}", 
                         //         current_width, current_height, width, height);
                         // LAST_LOG.store(now, Ordering::Relaxed);
                     }

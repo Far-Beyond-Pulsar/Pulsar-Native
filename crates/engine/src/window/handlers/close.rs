@@ -21,7 +21,7 @@ pub fn handle_close_requested(
     event_loop: &ActiveEventLoop,
     window_id: WindowId,
 ) {
-    tracing::info!("\n🚪 Closing window...");
+    tracing::debug!("\n🚪 Closing window...");
 
     // Clean up window-specific GPU renderer
     let window_id_u64 = unsafe { std::mem::transmute::<_, u64>(window_id) };
@@ -32,7 +32,7 @@ pub fn handle_close_requested(
 
     // Exit application if no windows remain
     if app.windows.is_empty() {
-        tracing::info!("🚪 No windows remain, exiting application...");
+        tracing::debug!("🚪 No windows remain, exiting application...");
         event_loop.exit();
     }
 }

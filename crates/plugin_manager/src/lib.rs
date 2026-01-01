@@ -250,10 +250,7 @@ impl PluginManager {
                 })?
         };
         // Setup the plugin logger
-        unsafe {
-            log_setup_fn(&*tracing::logger());
-        }
-        tracing::debug!("doooooooooooooooooooooooooooooooooooooooooooooog");
+        tracing::info!("doooooooooooooooooooooooooooooooooooooooooooooog");
         // Get the plugin constructor
         let create_fn: Symbol<PluginCreate> = unsafe {
             library

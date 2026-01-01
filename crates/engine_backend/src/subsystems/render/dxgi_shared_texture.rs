@@ -74,7 +74,7 @@ pub mod windows_impl {
 
             let resource = resource.context("Resource was None after creation")?;
 
-            tracing::info!("[DXGI-SHARED] 📝 D3D12 resource created successfully, now creating shared handle...");
+            tracing::debug!("[DXGI-SHARED] 📝 D3D12 resource created successfully, now creating shared handle...");
 
             // Create a shared NT handle for this resource
             // Windows ACCESS_MASK constants:
@@ -88,18 +88,18 @@ pub mod windows_impl {
                 PCWSTR::null(), // Unnamed handle
             ) {
                 Ok(handle) => {
-                    tracing::info!("[DXGI-SHARED] ✅ CreateSharedHandle succeeded: 0x{:X}", handle.0 as usize);
+                    tracing::debug!("[DXGI-SHARED] ✅ CreateSharedHandle succeeded: 0x{:X}", handle.0 as usize);
                     handle
                 }
                 Err(e) => {
-                    tracing::info!("[DXGI-SHARED] ❌ CreateSharedHandle failed!");
-                    tracing::info!("[DXGI-SHARED] 🔍 HRESULT code: 0x{:08X}", e.code().0);
-                    tracing::info!("[DXGI-SHARED] 📋 Error details: {:?}", e);
+                    tracing::debug!("[DXGI-SHARED] ❌ CreateSharedHandle failed!");
+                    tracing::debug!("[DXGI-SHARED] 🔍 HRESULT code: 0x{:08X}", e.code().0);
+                    tracing::debug!("[DXGI-SHARED] 📋 Error details: {:?}", e);
                     return Err(e).context("Failed to create shared handle");
                 }
             };
 
-            tracing::info!("[DXGI-SHARED] ✅ Created shared texture {}x{} with handle: 0x{:X}", 
+            tracing::debug!("[DXGI-SHARED] ✅ Created shared texture {}x{} with handle: 0x{:X}", 
                 width, height, shared_handle.0 as usize);
 
             Ok(Self {

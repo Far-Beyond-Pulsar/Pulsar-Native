@@ -92,7 +92,7 @@ impl ListDelegate for ListItemDeletegate {
                             cx.stop_propagation();
                             window.prevent_default();
 
-                            tracing::info!("You have clicked like.");
+                            tracing::debug!("You have clicked like.");
                         })
                 });
             Some(list_item)

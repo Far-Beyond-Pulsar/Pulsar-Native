@@ -194,7 +194,7 @@ Or completely remove the initialization code:
 ```rust
 // // Initialize Discord Rich Presence
 // match engine_state.init_discord(discord_app_id) {
-//     Ok(_) => tracing::info!("✅ Discord Rich Presence initialized"),
+//     Ok(_) => tracing::debug!("✅ Discord Rich Presence initialized"),
 //     Err(e) => tracing::warn!("⚠️  Discord Rich Presence failed to initialize: {}", e),
 // }
 ```

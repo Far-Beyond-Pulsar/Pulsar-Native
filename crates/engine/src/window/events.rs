@@ -73,7 +73,7 @@ pub fn convert_modifiers(winit_mods: &winit::keyboard::ModifiersState) -> Modifi
 /// let mut click_state = SimpleClickState::new();
 /// let click_count = click_state.update(MouseButton::Left, position);
 /// if click_count == 2 {
-///     tracing::info!("Double click!");
+///     tracing::debug!("Double click!");
 /// }
 /// ```
 #[derive(Debug, Clone)]

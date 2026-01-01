@@ -74,7 +74,7 @@ pub fn init(cx: &mut App) {
     // Load last theme state
     let state_file_path = get_state_file_path();
     let json = std::fs::read_to_string(&state_file_path).unwrap_or(String::default());
-    tracing::info!("Load themes...");
+    tracing::debug!("Load themes...");
     let state = serde_json::from_str::<State>(&json).unwrap_or_default();
 
     // Get app data directory

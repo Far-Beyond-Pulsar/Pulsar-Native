@@ -220,7 +220,7 @@ mod windows_impl {
     pub unsafe fn create_shaders(
         device: &ID3D11Device
     ) -> Option<(ID3D11VertexShader, ID3D11PixelShader, Vec<u8>)> {
-        tracing::info!("🔨 Compiling shaders at runtime...");
+        tracing::debug!("🔨 Compiling shaders at runtime...");
 
         // Compile both shaders
         let vs_bytecode = compile_shader(VERTEX_SHADER_SOURCE, "vs_5_0")?;
@@ -233,7 +233,7 @@ mod windows_impl {
         device.CreateVertexShader(&vs_bytecode, None, Some(&mut vertex_shader as *mut _)).ok()?;
         device.CreatePixelShader(&ps_bytecode, None, Some(&mut pixel_shader as *mut _)).ok()?;
 
-        tracing::info!("✅ Shaders compiled successfully");
+        tracing::debug!("✅ Shaders compiled successfully");
 
         Some((vertex_shader?, pixel_shader?, vs_bytecode))
     }

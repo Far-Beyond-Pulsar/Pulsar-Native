@@ -146,7 +146,7 @@ impl WinitGpuiApp {
             WindowRequest::CloseWindow { .. } => return, // Handled elsewhere
         };
 
-        tracing::info!("≡ƒ¬ƒ [CREATE-WINDOW] Creating new window: {} (type: {:?})", title, request);
+        tracing::debug!("≡ƒ¬ƒ [CREATE-WINDOW] Creating new window: {} (type: {:?})", title, request);
 
         let mut window_attributes = WinitWindow::default_attributes()
             .with_title(title)
@@ -171,7 +171,7 @@ impl WinitGpuiApp {
         self.windows.insert(window_id, window_state);
         self.engine_state.increment_window_count();
 
-        tracing::info!("Γ£à Window created: {} (total windows: {})", title, self.engine_state.window_count());
+        tracing::debug!("Γ£à Window created: {} (total windows: {})", title, self.engine_state.window_count());
     }
 }
 

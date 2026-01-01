@@ -140,7 +140,7 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
             if let Some(result) = response.get("result") {
                 // Check if result is null
                 if result.is_null() {
-                    tracing::info!("📦 Received 0 completions (null result)");
+                    tracing::debug!("📦 Received 0 completions (null result)");
                     return Ok(lsp_types::CompletionResponse::Array(vec![]));
                 }
                 
@@ -157,7 +157,7 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
                         }
                     });
                     
-                    tracing::info!("📦 Received {} completions (Array)", items.len());
+                    tracing::debug!("📦 Received {} completions (Array)", items.len());
                     return Ok(lsp_types::CompletionResponse::Array(items));
                 }
                 
@@ -173,7 +173,7 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
                         }
                     });
                     
-                    tracing::info!("📦 Received {} completions (List)", list.items.len());
+                    tracing::debug!("📦 Received {} completions (List)", list.items.len());
                     return Ok(lsp_types::CompletionResponse::List(list));
                 }
                 
@@ -184,7 +184,7 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
             }
 
             // Return empty on error or no response
-            tracing::info!("❌ No completions - hiding menu");
+            tracing::debug!("❌ No completions - hiding menu");
             Ok(lsp_types::CompletionResponse::Array(vec![]))
         })
     }
@@ -245,7 +245,7 @@ impl DefinitionProvider for GlobalRustAnalyzerCompletionProvider {
         // Check if analyzer is ready (fast check)
         let is_ready = self.analyzer.read(cx).is_running();
         if !is_ready {
-            tracing::info!("⚠️  rust-analyzer is not running, cannot get definitions");
+            tracing::debug!("⚠️  rust-analyzer is not running, cannot get definitions");
             return Task::ready(Ok(vec![]));
         }
 
@@ -294,13 +294,13 @@ impl DefinitionProvider for GlobalRustAnalyzerCompletionProvider {
             // Parse the result
             if let Some(result) = response.get("result") {
                 if result.is_null() {
-                    tracing::info!("📍 No definition found for '{}'", word);
+                    tracing::debug!("📍 No definition found for '{}'", word);
                     return Ok(vec![]);
                 }
                 
                 // Try to parse as LocationLink array
                 if let Ok(links) = serde_json::from_value::<Vec<lsp_types::LocationLink>>(result.clone()) {
-                    tracing::info!("✅ Found {} definition(s) for '{}'", links.len(), word);
+                    tracing::debug!("✅ Found {} definition(s) for '{}'", links.len(), word);
                     return Ok(links);
                 }
                 
@@ -315,7 +315,7 @@ impl DefinitionProvider for GlobalRustAnalyzerCompletionProvider {
                             target_selection_range: loc.range,
                         })
                         .collect();
-                    tracing::info!("✅ Found {} definition(s) for '{}'", links.len(), word);
+                    tracing::debug!("✅ Found {} definition(s) for '{}'", links.len(), word);
                     return Ok(links);
                 }
                 
@@ -327,7 +327,7 @@ impl DefinitionProvider for GlobalRustAnalyzerCompletionProvider {
                         target_range: location.range,
                         target_selection_range: location.range,
                     };
-                    tracing::info!("✅ Found definition for '{}'", word);
+                    tracing::debug!("✅ Found definition for '{}'", word);
                     return Ok(vec![link]);
                 }
                 
@@ -350,7 +350,7 @@ impl ui::input::HoverProvider for GlobalRustAnalyzerCompletionProvider {
         // Check if analyzer is ready (fast check)
         let is_ready = self.analyzer.read(cx).is_running();
         if !is_ready {
-            tracing::info!("⚠️  rust-analyzer is not running, cannot get hover info");
+            tracing::debug!("⚠️  rust-analyzer is not running, cannot get hover info");
             return Task::ready(Ok(None));
         }
 

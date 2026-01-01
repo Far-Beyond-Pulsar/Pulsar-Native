@@ -66,7 +66,7 @@ pub(super) fn init(cx: &mut App) {
             light_theme
         };
 
-        tracing::info!("Reload active theme: {:?}...", theme_name);
+        tracing::debug!("Reload active theme: {:?}...", theme_name);
         Theme::change(mode, None, cx);
         cx.refresh_windows();
     })
@@ -199,7 +199,7 @@ impl ThemeRegistry {
             }
 
             while (rx.recv().await).is_ok() {
-                tracing::info!("Reloading themes...");
+                tracing::debug!("Reloading themes...");
                 _ = cx.update(Self::reload_themes);
             }
         })
@@ -212,7 +212,7 @@ impl ThemeRegistry {
         let registry = Self::global_mut(cx);
         match registry.reload() {
             Ok(_) => {
-                tracing::info!("Themes reloaded successfully.");
+                tracing::debug!("Themes reloaded successfully.");
             }
             Err(e) => tracing::error!("Failed to reload themes: {:?}", e),
         }

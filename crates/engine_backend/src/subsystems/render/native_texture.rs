@@ -24,9 +24,9 @@ static SHARED_TEXTURE_HANDLES: OnceLock<Vec<usize>> = OnceLock::new();
 /// Store the shared texture handles for later extraction
 #[cfg(target_os = "windows")]
 pub fn store_shared_handles(handles: Vec<usize>) {
-    tracing::info!("[NATIVE-TEXTURE] 💾 Storing {} shared handles globally", handles.len());
+    tracing::debug!("[NATIVE-TEXTURE] 💾 Storing {} shared handles globally", handles.len());
     for (i, h) in handles.iter().enumerate() {
-        tracing::info!("[NATIVE-TEXTURE] 📍 Handle {}: 0x{:X}", i, h);
+        tracing::debug!("[NATIVE-TEXTURE] 📍 Handle {}: 0x{:X}", i, h);
     }
     SHARED_TEXTURE_HANDLES.set(handles).ok();
 }
@@ -73,7 +73,7 @@ impl NativeTextureHandle {
                     let index = TEXTURE_INDEX.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % handles.len();
                     
                     let handle = handles[index];
-                    tracing::info!("[NATIVE-TEXTURE] ✅ Using pre-created DXGI shared handle[{}]: 0x{:X}", index, handle);
+                    tracing::debug!("[NATIVE-TEXTURE] ✅ Using pre-created DXGI shared handle[{}]: 0x{:X}", index, handle);
                     return Some(NativeTextureHandle::D3D11(handle));
                 }
             }
@@ -99,7 +99,7 @@ impl NativeTextureHandle {
                         ) {
                             Ok(shared_handle) => {
                                 let handle_value = shared_handle.0 as usize;
-                                tracing::info!("[NATIVE-TEXTURE] ✅ Created DX12 shared handle: 0x{:X}", handle_value);
+                                tracing::debug!("[NATIVE-TEXTURE] ✅ Created DX12 shared handle: 0x{:X}", handle_value);
                                 return Some(NativeTextureHandle::D3D11(handle_value));
                             }
                             Err(_e) => {
@@ -109,10 +109,10 @@ impl NativeTextureHandle {
                         }
                     }
                 } else {
-                    tracing::info!("[NATIVE-TEXTURE] ❌ Failed to get D3D12 device");
+                    tracing::debug!("[NATIVE-TEXTURE] ❌ Failed to get D3D12 device");
                 }
             } else {
-                tracing::info!("[NATIVE-TEXTURE] ❌ Not a DX12 texture");
+                tracing::debug!("[NATIVE-TEXTURE] ❌ Not a DX12 texture");
             }
             
             None
@@ -130,10 +130,10 @@ impl NativeTextureHandle {
                 let texture_ref = metal_texture.raw_texture();
                 let texture_ptr = texture_ref.as_ptr() as usize;
                 
-                tracing::info!("[NATIVE-TEXTURE] ✅ Extracted Metal texture: 0x{:X}", texture_ptr);
+                tracing::debug!("[NATIVE-TEXTURE] ✅ Extracted Metal texture: 0x{:X}", texture_ptr);
                 Some(NativeTextureHandle::Metal(texture_ptr))
             } else {
-                tracing::info!("[NATIVE-TEXTURE] ❌ Failed to get HAL texture for Metal");
+                tracing::debug!("[NATIVE-TEXTURE] ❌ Failed to get HAL texture for Metal");
                 None
             }
         }
@@ -153,17 +153,17 @@ impl NativeTextureHandle {
                 let image_handle = vk_texture.raw_handle();
                 let image_handle_u64 = image_handle.as_raw();
 
-                tracing::info!("[NATIVE-TEXTURE] ✅ Extracted Vulkan image: 0x{:X}", image_handle_u64);
+                tracing::debug!("[NATIVE-TEXTURE] ✅ Extracted Vulkan image: 0x{:X}", image_handle_u64);
                 Some(NativeTextureHandle::Vulkan(image_handle_u64))
             } else {
-                tracing::info!("[NATIVE-TEXTURE] ❌ Failed to get HAL texture for Vulkan");
+                tracing::debug!("[NATIVE-TEXTURE] ❌ Failed to get HAL texture for Vulkan");
                 None
             }
         }
 
         #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
         {
-            tracing::info!("[NATIVE-TEXTURE] ❌ Unsupported platform");
+            tracing::debug!("[NATIVE-TEXTURE] ❌ Unsupported platform");
             None
         }
     }

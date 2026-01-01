@@ -9,7 +9,7 @@ use crate::config::Config;
 /// Initialize OpenTelemetry tracing with OTLP exporter
 pub fn init_telemetry(config: &Config) -> Result<()> {
     if let Some(otlp_endpoint) = &config.otlp_endpoint {
-        tracing::info!(
+        tracing::debug!(
             endpoint = %otlp_endpoint,
             "Initializing OpenTelemetry OTLP exporter"
         );
@@ -32,9 +32,9 @@ pub fn init_telemetry(config: &Config) -> Result<()> {
 
         global::set_tracer_provider(provider);
 
-        tracing::info!("OpenTelemetry initialized successfully");
+        tracing::debug!("OpenTelemetry initialized successfully");
     } else {
-        tracing::info!("OpenTelemetry disabled (no OTLP endpoint configured)");
+        tracing::debug!("OpenTelemetry disabled (no OTLP endpoint configured)");
     }
 
     Ok(())
@@ -42,7 +42,7 @@ pub fn init_telemetry(config: &Config) -> Result<()> {
 
 /// Shutdown telemetry gracefully
 pub async fn shutdown() {
-    tracing::info!("Shutting down telemetry");
+    tracing::debug!("Shutting down telemetry");
     global::shutdown_tracer_provider();
 }
 

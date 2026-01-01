@@ -105,7 +105,7 @@ unsafe fn initialize_shared_texture(window_state: &mut crate::window::WindowStat
 
     if let Ok(opt_handle_ptr) = handle_result {
         if let Ok(Some(handle_ptr)) = opt_handle_ptr {
-            tracing::info!("✨ Got shared texture handle from GPUI: {:?}", handle_ptr);
+            tracing::debug!("✨ Got shared texture handle from GPUI: {:?}", handle_ptr);
 
             let handle_value: isize = *(&handle_ptr as *const _ as *const isize);
             let mut texture: Option<ID3D11Texture2D> = None;
@@ -135,29 +135,29 @@ unsafe fn initialize_shared_texture(window_state: &mut crate::window::WindowStat
 
                             if srv_result.is_ok() && srv.is_some() {
                                 window_state.persistent_gpui_srv = srv;
-                                tracing::info!("✨ Created cached SRV for persistent texture");
+                                tracing::debug!("✨ Created cached SRV for persistent texture");
                             } else {
                                 tracing::error!("❌ Failed to create SRV: {:?}", srv_result);
                             }
 
                             window_state.persistent_gpui_texture = persistent_texture;
-                            tracing::info!("✨ Created persistent GPUI texture buffer!");
+                            tracing::debug!("✨ Created persistent GPUI texture buffer!");
                         } else {
                             tracing::error!("❌ Failed to create persistent texture: {:?}", create_result);
                         }
 
                         window_state.shared_texture = Some(shared_texture_val);
                         window_state.shared_texture_initialized = true;
-                        tracing::info!("✨ Opened shared texture in winit D3D11 device!");
+                        tracing::debug!("✨ Opened shared texture in winit D3D11 device!");
                     }
                 }
                 Err(e) => {
-                    tracing::info!("❌ Failed to open shared texture: {:?}", e);
+                    tracing::debug!("❌ Failed to open shared texture: {:?}", e);
                     window_state.shared_texture_initialized = true;
                 }
             }
         } else {
-            tracing::info!("⏳ GPUI hasn't created shared texture yet, will retry next frame");
+            tracing::debug!("⏳ GPUI hasn't created shared texture yet, will retry next frame");
         }
     }
 }

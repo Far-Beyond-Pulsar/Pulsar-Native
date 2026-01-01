@@ -24,16 +24,16 @@ const SCHEME_DESCRIPTION: &str = "Pulsar Engine Project Protocol";
 /// - macOS: Creates .app bundle in ~/Applications
 /// - Linux: Creates .desktop file in ~/.local/share/applications/
 pub fn ensure_uri_scheme_registered() -> Result<()> {
-    tracing::info!("Checking URI scheme registration...");
+    tracing::debug!("Checking URI scheme registration...");
 
     // Check if already registered
     match is_registered(SCHEME_NAME) {
         Ok(true) => {
-            tracing::info!("✅ pulsar:// URI scheme already registered");
+            tracing::debug!("✅ pulsar:// URI scheme already registered");
             return Ok(());
         }
         Ok(false) => {
-            tracing::info!("ℹ️  URI scheme not registered, registering now...");
+            tracing::debug!("ℹ️  URI scheme not registered, registering now...");
         }
         Err(e) => {
             tracing::warn!("⚠️  Failed to check registration status: {}, attempting registration", e);
@@ -57,7 +57,7 @@ pub fn ensure_uri_scheme_registered() -> Result<()> {
     register(&scheme)
         .context("Failed to register URI scheme")?;
 
-    tracing::info!("✓ Successfully registered pulsar:// URI scheme");
+    tracing::debug!("✓ Successfully registered pulsar:// URI scheme");
 
     Ok(())
 }

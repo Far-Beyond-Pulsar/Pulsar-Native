@@ -136,7 +136,7 @@ pub struct GameThread {
 
 impl GameThread {
     pub fn new(target_tps: f32) -> Self {
-        tracing::info!("[GAME-THREAD] ===== Creating Game Thread =====");
+        tracing::debug!("[GAME-THREAD] ===== Creating Game Thread =====");
         let mut initial_state = GameState::new();
         
         // Add some demo objects with different velocities and starting rotations
@@ -162,8 +162,8 @@ impl GameThread {
             obj
         });
         
-        tracing::info!("[GAME-THREAD] Added {} demo objects (with rotation)", initial_state.objects.len());
-        tracing::info!("[GAME-THREAD] Target TPS: {}", target_tps);
+        tracing::debug!("[GAME-THREAD] Added {} demo objects (with rotation)", initial_state.objects.len());
+        tracing::debug!("[GAME-THREAD] Target TPS: {}", target_tps);
 
         Self {
             state: Arc::new(Mutex::new(initial_state)),
@@ -207,10 +207,10 @@ impl GameThread {
         let tps = self.tps.clone();
         let frame_count = self.frame_count.clone();
 
-        tracing::info!("[GAME-THREAD] ⚡ start() method called - about to spawn thread...");
+        tracing::debug!("[GAME-THREAD] ⚡ start() method called - about to spawn thread...");
         
         thread::spawn(move || {
-            tracing::info!("[GAME-THREAD] 🚀 Thread spawned successfully!");
+            tracing::debug!("[GAME-THREAD] 🚀 Thread spawned successfully!");
             
             // Set thread priority for game logic
             #[cfg(target_os = "windows")]
@@ -219,12 +219,12 @@ impl GameThread {
                     let handle = GetCurrentThread();
                     let _ = SetThreadPriority(handle, THREAD_PRIORITY_ABOVE_NORMAL);
                 }
-                tracing::info!("[GAME-THREAD] Started with high priority on Windows");
+                tracing::debug!("[GAME-THREAD] Started with high priority on Windows");
             }
 
             #[cfg(not(target_os = "windows"))]
             {
-                tracing::info!("[GAME-THREAD] Started (priority control not available on this platform)");
+                tracing::debug!("[GAME-THREAD] Started (priority control not available on this platform)");
             }
 
             let target_frame_time = Duration::from_secs_f32(1.0 / target_tps);
@@ -233,8 +233,8 @@ impl GameThread {
             let mut tick_count = 0u32;
             let mut accumulated_time = Duration::ZERO;
 
-            tracing::info!("[GAME-THREAD] Starting game loop at target {} TPS", target_tps);
-            tracing::info!("[GAME-THREAD] Target frame time: {:?}", target_frame_time);
+            tracing::debug!("[GAME-THREAD] Starting game loop at target {} TPS", target_tps);
+            tracing::debug!("[GAME-THREAD] Target frame time: {:?}", target_frame_time);
 
             loop {
                 // Check if thread is disabled - if so, sleep and skip this iteration
@@ -289,10 +289,10 @@ impl GameThread {
                 }
             }
 
-            tracing::info!("[GAME-THREAD] Stopped");
+            tracing::debug!("[GAME-THREAD] Stopped");
         });
         
-        tracing::info!("[GAME-THREAD] ✅ Thread spawn completed, returning from start()");
+        tracing::debug!("[GAME-THREAD] ✅ Thread spawn completed, returning from start()");
     }
 }
 

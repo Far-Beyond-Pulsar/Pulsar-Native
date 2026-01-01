@@ -44,7 +44,7 @@ impl ButtonStory {
     }
 
     fn on_click(ev: &ClickEvent, _window: &mut Window, _cx: &mut App) {
-        tracing::info!("Button clicked! {:?}", ev);
+        tracing::debug!("Button clicked! {:?}", ev);
     }
 }
 

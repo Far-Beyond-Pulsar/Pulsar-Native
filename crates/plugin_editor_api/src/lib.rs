@@ -73,6 +73,25 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
+/// Logger object for plugin-side tracing/logging.
+#[derive(Debug, Clone, Copy)]
+pub struct EditorLogger;
+
+impl EditorLogger {
+    pub fn info(&self, msg: &str) {
+        // Placeholder for tracing::info! or similar
+        // tracing::info!("{}", msg);
+    }
+    pub fn warn(&self, msg: &str) {
+        // Placeholder for tracing::warn! or similar
+    }
+    pub fn error(&self, msg: &str) {
+        // Placeholder for tracing::error! or similar
+    }
+    pub fn debug(&self, msg: &str) {
+        // Placeholder for tracing::debug! or similar
+    }
+}
 use std::fmt;
 use std::path::PathBuf;
 
@@ -571,6 +590,7 @@ pub trait EditorPlugin: Send + Sync {
         file_path: PathBuf,
         window: &mut Window,
         cx: &mut App,
+        logger: &EditorLogger,
     ) -> Result<(std::sync::Arc<dyn ui::dock::PanelView>, Box<dyn EditorInstance>), PluginError>;
 
     /// Called when the plugin is loaded.
@@ -599,7 +619,7 @@ pub type PluginCreate = unsafe extern "C" fn(theme_ptr: *const std::ffi::c_void)
 pub type PluginDestroy = unsafe extern "C" fn(*mut dyn EditorPlugin);
 
 
-pub type SetupLogger = unsafe extern "C" fn(logger: &'static dyn log::Log);
+pub type SetupLogger = unsafe extern "C" fn(logger: &'static dyn tracing::Subscriber);
 
 /// Macro to export a plugin from a dynamic library.
 ///
@@ -626,9 +646,9 @@ macro_rules! export_plugin {
         // stable location.
         static SYNCED_THEME: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
         #[no_mangle]
-        pub unsafe extern "C" fn _setup_plugin_logger(logger: &'static dyn log::Log) {
-            let _ = log::set_logger(logger);
-            log::debug!("teeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeest")
+        pub unsafe extern "C" fn _setup_plugin_logger(logger: &'static dyn tracing::Subscriber) {
+            let _ = tracing::subscriber::set_global_default(logger);
+            tracing::debug!("teeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeest")
         }
         #[no_mangle]
         pub unsafe extern "C" fn _plugin_create(theme_ptr: *const std::ffi::c_void) -> Option<&'static mut dyn $crate::EditorPlugin>{

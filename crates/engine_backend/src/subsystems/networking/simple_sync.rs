@@ -110,7 +110,7 @@ fn hash_file(path: &Path) -> Result<String, std::io::Error> {
 
 /// Create file manifest for a project directory
 pub fn create_manifest(project_root: &Path) -> Result<FileManifest, std::io::Error> {
-    tracing::info!("SIMPLE_SYNC: Creating manifest for {:?}", project_root);
+    tracing::debug!("SIMPLE_SYNC: Creating manifest for {:?}", project_root);
     let mut files = Vec::new();
 
     for entry in WalkDir::new(project_root)
@@ -151,9 +151,9 @@ pub fn create_manifest(project_root: &Path) -> Result<FileManifest, std::io::Err
         }
     }
 
-    tracing::info!("SIMPLE_SYNC: Created manifest with {} files", files.len());
+    tracing::debug!("SIMPLE_SYNC: Created manifest with {} files", files.len());
     if files.len() > 0 {
-        tracing::info!("SIMPLE_SYNC: Sample files: {:?}", 
+        tracing::debug!("SIMPLE_SYNC: Sample files: {:?}", 
             files.iter().take(3).map(|f| &f.path).collect::<Vec<_>>());
     }
     Ok(FileManifest { files })
@@ -164,16 +164,16 @@ pub fn compute_diff(
     project_root: &Path,
     remote_manifest: &FileManifest,
 ) -> Result<SyncDiff, std::io::Error> {
-    tracing::info!("SIMPLE_SYNC: Computing diff against remote manifest ({} files)", remote_manifest.files.len());
+    tracing::debug!("SIMPLE_SYNC: Computing diff against remote manifest ({} files)", remote_manifest.files.len());
     
     if remote_manifest.files.len() > 0 {
-        tracing::info!("SIMPLE_SYNC: Remote sample files: {:?}", 
+        tracing::debug!("SIMPLE_SYNC: Remote sample files: {:?}", 
             remote_manifest.files.iter().take(3).map(|f| &f.path).collect::<Vec<_>>());
     }
 
     // Build local manifest
     let local_manifest = create_manifest(project_root)?;
-    tracing::info!("SIMPLE_SYNC: Local manifest has {} files", local_manifest.files.len());
+    tracing::debug!("SIMPLE_SYNC: Local manifest has {} files", local_manifest.files.len());
 
     // Build lookup maps
     let mut local_map: HashMap<String, String> = local_manifest
@@ -225,7 +225,7 @@ pub fn compute_diff(
         files_to_delete,
     };
 
-    tracing::info!("SIMPLE_SYNC: Diff computed: {}", diff.summary());
+    tracing::debug!("SIMPLE_SYNC: Diff computed: {}", diff.summary());
     Ok(diff)
 }
 
@@ -234,7 +234,7 @@ pub fn apply_files(
     project_root: &Path,
     files: Vec<(String, Vec<u8>)>,
 ) -> Result<usize, std::io::Error> {
-    tracing::info!("SIMPLE_SYNC: Applying {} files to {:?}", files.len(), project_root);
+    tracing::debug!("SIMPLE_SYNC: Applying {} files to {:?}", files.len(), project_root);
     let mut written_count = 0;
 
     for (relative_path, data) in files {
@@ -251,7 +251,7 @@ pub fn apply_files(
         written_count += 1;
     }
 
-    tracing::info!("SIMPLE_SYNC: Successfully wrote {} files", written_count);
+    tracing::debug!("SIMPLE_SYNC: Successfully wrote {} files", written_count);
     Ok(written_count)
 }
 
@@ -260,7 +260,7 @@ pub fn delete_files(
     project_root: &Path,
     file_paths: Vec<String>,
 ) -> Result<usize, std::io::Error> {
-    tracing::info!("SIMPLE_SYNC: Deleting {} files from {:?}", file_paths.len(), project_root);
+    tracing::debug!("SIMPLE_SYNC: Deleting {} files from {:?}", file_paths.len(), project_root);
     let mut deleted_count = 0;
 
     for relative_path in file_paths {
@@ -273,7 +273,7 @@ pub fn delete_files(
         }
     }
 
-    tracing::info!("SIMPLE_SYNC: Successfully deleted {} files", deleted_count);
+    tracing::debug!("SIMPLE_SYNC: Successfully deleted {} files", deleted_count);
     Ok(deleted_count)
 }
 
@@ -282,7 +282,7 @@ pub fn read_files(
     project_root: &Path,
     file_paths: Vec<String>,
 ) -> Result<Vec<(String, Vec<u8>)>, std::io::Error> {
-    tracing::info!("SIMPLE_SYNC: Reading {} files from {:?}", file_paths.len(), project_root);
+    tracing::debug!("SIMPLE_SYNC: Reading {} files from {:?}", file_paths.len(), project_root);
     let mut files = Vec::new();
 
     for relative_path in file_paths {
@@ -293,6 +293,6 @@ pub fn read_files(
         tracing::debug!("SIMPLE_SYNC: Read {:?} ({} bytes)", full_path, data_len);
     }
 
-    tracing::info!("SIMPLE_SYNC: Successfully read {} files", files.len());
+    tracing::debug!("SIMPLE_SYNC: Successfully read {} files", files.len());
     Ok(files)
 }

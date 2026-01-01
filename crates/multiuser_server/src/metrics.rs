@@ -239,7 +239,7 @@ impl Metrics {
 
 /// Initialize metrics system
 pub fn init(_config: &Config) -> Result<Arc<Metrics>> {
-    tracing::info!("Metrics system initialized");
+    tracing::debug!("Metrics system initialized");
     Ok(METRICS.clone())
 }
 
