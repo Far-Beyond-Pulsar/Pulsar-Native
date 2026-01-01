@@ -645,11 +645,7 @@ macro_rules! export_plugin {
         // plugin is loaded. This is guaranteed by the PluginManager keeping Theme in a
         // stable location.
         static SYNCED_THEME: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
-        #[no_mangle]
-        pub unsafe extern "C" fn _setup_plugin_logger(logger: &'static dyn tracing::Subscriber) {
-            let _ = tracing::subscriber::set_global_default(logger);
-            tracing::debug!("teeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeest")
-        }
+
         #[no_mangle]
         pub unsafe extern "C" fn _plugin_create(theme_ptr: *const std::ffi::c_void) -> Option<&'static mut dyn $crate::EditorPlugin>{
             if theme_ptr.is_null() {
