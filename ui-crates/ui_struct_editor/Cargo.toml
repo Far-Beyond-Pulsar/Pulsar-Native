@@ -13,6 +13,10 @@ ui_common.workspace = true
 # Type system
 ui_types_common.workspace = true
 
+# Plugin system
+plugin_editor_api.workspace = true
+plugin_manager.workspace = true
+
 # Engine state
 engine_state.workspace = true
 

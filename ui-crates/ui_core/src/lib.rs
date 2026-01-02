@@ -7,6 +7,7 @@ pub mod app;
 pub mod unified_palette;
 pub mod actions;
 pub mod root;
+pub mod builtin_editors;
 
 // Re-export main types
 pub use app::PulsarApp;
@@ -29,3 +30,6 @@ pub use ui_common::file_utils;
 
 // Re-export actions from ui crate
 pub use ui::OpenSettings;
+
+// Re-export builtin editor registration
+pub use builtin_editors::register_all_builtin_editors;

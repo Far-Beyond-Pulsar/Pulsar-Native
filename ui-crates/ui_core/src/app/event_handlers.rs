@@ -609,73 +609,13 @@ pub fn on_file_selected(
     window: &mut Window,
     cx: &mut Context<PulsarApp>,
 ) {
-    tracing::debug!(
-        "FileSelected event received - path: {:?}, type: {:?}",
-        event.path, event.file_type
-    );
+    tracing::debug!("Opening file: {:?}", event.path);
 
-    // Try to open via plugin system first
-    match app.state.plugin_manager.create_editor_for_file(&event.path, window, cx) {
-        Ok((panel, _editor_instance)) => {
-            tracing::debug!("✅ Plugin system successfully created editor for: {:?}", event.path);
-
-            app.state.center_tabs.update(cx, |tabs, cx| {
-                tabs.add_panel(panel, window, cx);
-            });
-
-            app.state.drawer_open = false;
-            app.update_discord_presence(cx);
-            cx.notify();
-            return;
-        }
-        Err(e) => {
-            tracing::debug!("Plugin manager couldn't open file: {} - falling through to legacy code", e);
-        }
-    }
-
-    // Legacy hardcoded file opening
-    match event.file_type {
-        FileType::Class => {
-            tracing::error!("Blueprint editor tried to load via legacy code, but it's now plugin-only!");
-        }
-        FileType::Script | FileType::Config | FileType::Document => {
-            tracing::warn!("Opening script tab using legacy code (should use plugin system)");
-            app.open_script_tab(event.path.clone(), window, cx);
-        }
-        FileType::DawProject => {
-            tracing::warn!("Opening DAW tab using legacy code: {:?}", event.path);
-            app.open_daw_tab(event.path.clone(), window, cx);
-        }
-        FileType::LevelScene => {
-            tracing::debug!("Opening level editor for scene: {:?}", event.path);
-            app.open_level_editor_tab(event.path.clone(), window, cx);
-        }
-        FileType::Database => {
-            tracing::warn!("Opening database tab using legacy code: {:?}", event.path);
-            app.open_database_tab(event.path.clone(), window, cx);
-        }
-        FileType::StructType => {
-            tracing::warn!("Opening struct editor using legacy code: {:?}", event.path);
-            app.open_struct_tab(event.path.clone(), window, cx);
-        }
-        FileType::EnumType => {
-            tracing::warn!("Opening enum editor using legacy code: {:?}", event.path);
-            app.open_enum_tab(event.path.clone(), window, cx);
-        }
-        FileType::TraitType => {
-            tracing::warn!("Opening trait editor using legacy code: {:?}", event.path);
-            app.open_trait_tab(event.path.clone(), window, cx);
-        }
-        FileType::AliasType => {
-            tracing::warn!("Opening alias editor using legacy code: {:?}", event.path);
-            app.open_alias_tab(event.path.clone(), window, cx);
-        }
-        _ => {
-            tracing::debug!("Unknown file type, ignoring");
-        }
-    }
-
+    // Open via plugin system
+    app.open_path(event.path.clone(), window, cx);
+    
     app.state.drawer_open = false;
+    app.update_discord_presence(cx);
     cx.notify();
 }
 
@@ -737,7 +677,7 @@ pub fn on_navigate_to_diagnostic(
         event.file_path, event.line, event.column
     );
 
-    app.open_script_tab(event.file_path.clone(), window, cx);
+    app.open_path(event.file_path.clone(), window, cx);
 
     if let Some(script_editor) = &app.state.script_editor {
         script_editor.update(cx, |editor, cx| {

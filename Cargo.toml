@@ -101,6 +101,10 @@ ui_alias_editor = { path = "ui-crates/ui_alias_editor" }
 ui_type_debugger = { path = "ui-crates/ui_type_debugger" }
 type_db = { path = "crates/type_db" }
 
+# Plugin system
+plugin_editor_api = { path = "crates/plugin_editor_api" }
+plugin_manager = { path = "crates/plugin_manager" }
+
 anyhow = "1"
 log = "0.4"
 serde = { version = "1.0.219", features = ["derive"] }

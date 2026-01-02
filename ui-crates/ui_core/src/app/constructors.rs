@@ -174,6 +174,14 @@ impl PulsarApp {
         // Initialize plugin manager
         tracing::debug!("🔌 Initializing plugin system");
         let mut plugin_manager = PluginManager::new();
+        
+        // Register built-in editors
+        tracing::debug!("📝 Registering built-in editors");
+        crate::register_all_builtin_editors(plugin_manager.builtin_registry_mut());
+        
+        // Register them with the file type and editor registries
+        plugin_manager.register_builtin_editors();
+        tracing::debug!("✅ Built-in editors registered");
 
         let plugins_dir = std::path::Path::new("plugins/editor");
         tracing::debug!("📂 Loading plugins from: {:?}", plugins_dir);

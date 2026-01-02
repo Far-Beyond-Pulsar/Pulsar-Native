@@ -68,7 +68,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 mod registry;
+pub mod builtin;
+
 pub use registry::{EditorRegistry, FileTypeRegistry};
+pub use builtin::{BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext};
 
 // ============================================================================
 // Plugin Container
@@ -103,6 +106,7 @@ struct LoadedPlugin {
 /// - Verifying version compatibility
 /// - Maintaining registries of file types and editors
 /// - Creating editor instances on demand
+/// - Managing built-in editors (same trait interface, no DLL loading)
 pub struct PluginManager {
     /// All loaded plugins, indexed by plugin ID
     plugins: HashMap<PluginId, LoadedPlugin>,
@@ -112,9 +116,15 @@ pub struct PluginManager {
 
     /// Registry of all editors
     editor_registry: EditorRegistry,
+    
+    /// Built-in editor registry (no DLL loading)
+    builtin_registry: BuiltinEditorRegistry,
 
     /// The version info for this engine build
     engine_version: VersionInfo,
+    
+    /// Project root path for editor context
+    project_root: Option<PathBuf>,
 }
 
 impl PluginManager {
@@ -124,8 +134,33 @@ impl PluginManager {
             plugins: HashMap::new(),
             file_type_registry: FileTypeRegistry::new(),
             editor_registry: EditorRegistry::new(),
+            builtin_registry: BuiltinEditorRegistry::new(),
             engine_version: VersionInfo::current(),
+            project_root: None,
         }
+    }
+    
+    /// Set the project root path for editor context.
+    pub fn set_project_root(&mut self, project_root: Option<PathBuf>) {
+        self.project_root = project_root;
+    }
+    
+    /// Get a mutable reference to the built-in editor registry.
+    ///
+    /// This allows external code to register built-in editors during initialization.
+    pub fn builtin_registry_mut(&mut self) -> &mut BuiltinEditorRegistry {
+        &mut self.builtin_registry
+    }
+    
+    /// Register all built-in editors with the file type and editor registries.
+    ///
+    /// This should be called after all built-in editors have been registered
+    /// with the builtin registry.
+    pub fn register_builtin_editors(&mut self) {
+        self.builtin_registry.register_all(
+            &mut self.file_type_registry,
+            &mut self.editor_registry,
+        );
     }
 
     /// Load all plugins from a directory.
@@ -402,6 +437,12 @@ impl PluginManager {
     ///    editor is found. TODO: Implement a suggested plugins system
     ///    that can scan the plugins dir on request to identify plugin
     ///    that may provide support for the file type.
+    /// Create an editor for a file by detecting its type and finding an appropriate editor.
+    ///
+    /// This method:
+    /// 1. Tries built-in editors first (no DLL loading)
+    /// 2. Falls back to DLL-based plugins if no built-in editor is found
+    /// 3. Returns error if no editor can be found
     pub fn create_editor_for_file(
         &mut self,
         file_path: &Path,
@@ -433,7 +474,53 @@ impl PluginManager {
             })?
             .clone(); // Clone to avoid borrow checker issues
 
-        // Create the editor instance
+        // Check if this is a built-in editor (plugin_id == "builtin")
+        if plugin_id.as_str() == "builtin" {
+            // Create editor context with project root
+            let editor_context = crate::builtin::EditorContext::new(self.project_root.clone());
+            
+            // Create the editor directly using the provider
+            match self.builtin_registry.create_editor(
+                &editor_id,
+                file_path.to_path_buf(),
+                &editor_context,
+                window,
+                cx,
+            ) {
+                Ok(panel) => {
+                    // Return dummy EditorInstance for built-in editors
+                    struct BuiltinEditorInstance;
+                    impl EditorInstance for BuiltinEditorInstance {
+                        fn file_path(&self) -> &PathBuf {
+                            unimplemented!("Built-in editors handle their own file paths")
+                        }
+                        fn save(&mut self, _window: &mut Window, _cx: &mut App) -> Result<(), PluginError> {
+                            Ok(())
+                        }
+                        fn reload(&mut self, _window: &mut Window, _cx: &mut App) -> Result<(), PluginError> {
+                            Ok(())
+                        }
+                        fn is_dirty(&self) -> bool {
+                            false
+                        }
+                        fn as_any(&self) -> &dyn std::any::Any {
+                            self
+                        }
+                    }
+                    
+                    return Ok((panel, Box::new(BuiltinEditorInstance)));
+                }
+                Err(e) => {
+                    tracing::error!("Built-in editor creation failed: {}", e);
+                    return Err(PluginManagerError::PluginError {
+                        plugin_id: plugin_id.clone(),
+                        error: e,
+                    });
+                }
+            }
+        }
+
+        // Fall back to DLL-based plugin
         self.create_editor(&plugin_id, &editor_id, file_path.to_path_buf(), window, cx)
     }
 

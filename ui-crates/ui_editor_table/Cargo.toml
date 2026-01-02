@@ -16,6 +16,10 @@ ui_common.workspace = true
 engine_state.workspace = true
 pulsar_std.workspace = true
 
+# Plugin system
+plugin_editor_api.workspace = true
+plugin_manager.workspace = true
+
 # Database
 rusqlite = { version = "0.32", features = ["bundled", "column_decltype"] }
 

@@ -13,7 +13,9 @@
 mod editor;
 mod field_editor;
 mod workspace_panels;
+pub mod builtin_provider;
 
 pub use editor::StructEditor;
 pub use field_editor::{FieldEditorView, FieldEditorEvent};
 pub use workspace_panels::{PropertiesPanel, FieldsPanel, CodePreviewPanel};
+pub use builtin_provider::StructEditorProvider;
