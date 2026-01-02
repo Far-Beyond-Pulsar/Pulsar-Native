@@ -17,7 +17,8 @@ impl BuiltinEditorProvider for TraitEditorProvider {
                 id: FileTypeId::new("trait"),
                 extension: "trait".to_string(),
                 display_name: "Trait Definition".to_string(),
-                icon: FileIcon::Trait,
+                icon: ui::IconName::Code,
+                color: gpui::rgb(0x3F51B5).into(),
                 structure: FileStructure::FolderBased {
                     marker_file: "trait.json".to_string(),
                     template_structure: vec![],

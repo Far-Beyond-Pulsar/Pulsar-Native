@@ -17,7 +17,8 @@ impl BuiltinEditorProvider for EnumEditorProvider {
                 id: FileTypeId::new("enum"),
                 extension: "enum".to_string(),
                 display_name: "Enum Definition".to_string(),
-                icon: FileIcon::Enum,
+                icon: ui::IconName::List,
+                color: gpui::rgb(0x673AB7).into(),
                 structure: FileStructure::FolderBased {
                     marker_file: "enum.json".to_string(),
                     template_structure: vec![],

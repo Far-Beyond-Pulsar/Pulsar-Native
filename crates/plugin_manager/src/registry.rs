@@ -307,7 +307,8 @@ mod tests {
             "test-file",
             "test",
             "Test File",
-            FileIcon::File,
+            ui::IconName::Code,
+            gpui::rgb(0x00BCD4).into(),
             serde_json::json!({}),
         );
 

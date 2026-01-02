@@ -17,7 +17,8 @@ impl BuiltinEditorProvider for StructEditorProvider {
                 id: FileTypeId::new("struct"),
                 extension: "struct".to_string(),
                 display_name: "Struct Definition".to_string(),
-                icon: FileIcon::Struct,
+                icon: ui::IconName::Box,
+                color: gpui::rgb(0x00BCD4).into(),
                 structure: FileStructure::FolderBased {
                     marker_file: "struct.json".to_string(),
                     template_structure: vec![],

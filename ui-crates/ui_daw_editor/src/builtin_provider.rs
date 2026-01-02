@@ -17,7 +17,8 @@ impl BuiltinEditorProvider for DawEditorProvider {
                 id: FileTypeId::new("daw_project"),
                 extension: "pdaw".to_string(),
                 display_name: "DAW Project".to_string(),
-                icon: FileIcon::Audio,
+                icon: ui::IconName::MusicNote,
+                color: gpui::rgb(0x9C27B0).into(),
                 structure: FileStructure::Standalone,
                 default_content: serde_json::json!({
                     "tracks": [],

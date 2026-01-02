@@ -43,7 +43,8 @@
 //!             id: FileTypeId::new("my-file"),
 //!             extension: "myfile".into(),
 //!             display_name: "My File".into(),
-//!             icon: FileIcon::Code,
+//!             icon: ui::IconName::Code,
+//!             color: gpui::rgb(0x2196F3),
 //!             structure: FileStructure::Standalone,
 //!             default_content: serde_json::json!({"version": 1}),
 //!         }]
@@ -341,52 +342,8 @@ pub enum PathTemplate {
     },
 }
 
-/// Icon to display for a file type in the file drawer.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum FileIcon {
-    // Common icons
-    File,
-    Code,
-    Component,
-    Database,
-    Music,
-    Image,
-    Video,
-    Audio,
-    Archive,
-    Document,
-
-    // Programming language icons
-    Rust,
-    Python,
-    JavaScript,
-    TypeScript,
-    Cpp,
-    CSharp,
-    Go,
-
-    // Asset types
-    Model3D,
-    Texture,
-    Material,
-    Animation,
-    Particle,
-    Level,
-    Prefab,
-
-    // Type system
-    Struct,
-    Enum,
-    Trait,
-    Interface,
-    Class,
-
-    // Custom icon (base64 encoded PNG/SVG)
-    Custom(String),
-}
-
 /// Complete definition of a file type that a plugin supports.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct FileTypeDefinition {
     /// Unique identifier for this file type
     pub id: FileTypeId,
@@ -399,7 +356,10 @@ pub struct FileTypeDefinition {
     pub display_name: String,
 
     /// Icon to show in the file drawer
-    pub icon: FileIcon,
+    pub icon: ui::IconName,
+
+    /// Color for the icon
+    pub color: gpui::Hsla,
 
     /// Whether this is a standalone file or folder-based
     pub structure: FileStructure,
@@ -745,7 +705,8 @@ pub fn standalone_file_type(
     id: impl Into<String>,
     extension: impl Into<String>,
     display_name: impl Into<String>,
-    icon: FileIcon,
+    icon: ui::IconName,
+    color: gpui::Hsla,
     default_content: serde_json::Value,
 ) -> FileTypeDefinition {
     FileTypeDefinition {
@@ -753,6 +714,7 @@ pub fn standalone_file_type(
         extension: extension.into(),
         display_name: display_name.into(),
         icon,
+        color,
         structure: FileStructure::Standalone,
         default_content,
     }
@@ -763,7 +725,8 @@ pub fn folder_file_type(
     id: impl Into<String>,
     extension: impl Into<String>,
     display_name: impl Into<String>,
-    icon: FileIcon,
+    icon: ui::IconName,
+    color: gpui::Hsla,
     marker_file: impl Into<String>,
     template_structure: Vec<PathTemplate>,
     default_content: serde_json::Value,
@@ -773,6 +736,7 @@ pub fn folder_file_type(
         extension: extension.into(),
         display_name: display_name.into(),
         icon,
+        color,
         structure: FileStructure::FolderBased {
             marker_file: marker_file.into(),
             template_structure,

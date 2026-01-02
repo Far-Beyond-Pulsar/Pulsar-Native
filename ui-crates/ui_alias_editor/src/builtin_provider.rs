@@ -17,7 +17,8 @@ impl BuiltinEditorProvider for AliasEditorProvider {
                 id: FileTypeId::new("alias"),
                 extension: "alias".to_string(),
                 display_name: "Type Alias".to_string(),
-                icon: FileIcon::Interface,
+                icon: ui::IconName::Code,
+                color: gpui::rgb(0x3F51B5).into(),
                 structure: FileStructure::FolderBased {
                     marker_file: "alias.json".to_string(),
                     template_structure: vec![],
