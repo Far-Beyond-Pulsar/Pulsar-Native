@@ -16,7 +16,7 @@ impl BuiltinEditorProvider for TableEditorProvider {
             FileTypeDefinition {
                 id: FileTypeId::new("database"),
                 extension: "db".to_string(),
-                display_name: "SQLite Database".to_string(),
+                display_name: "SQLite Database (.db)".to_string(),
                 icon: FileIcon::Database,
                 structure: FileStructure::Standalone,
                 default_content: serde_json::Value::Null,
@@ -24,7 +24,7 @@ impl BuiltinEditorProvider for TableEditorProvider {
             FileTypeDefinition {
                 id: FileTypeId::new("sqlite"),
                 extension: "sqlite".to_string(),
-                display_name: "SQLite Database".to_string(),
+                display_name: "SQLite Database (.sqlite)".to_string(),
                 icon: FileIcon::Database,
                 structure: FileStructure::Standalone,
                 default_content: serde_json::Value::Null,
@@ -32,7 +32,7 @@ impl BuiltinEditorProvider for TableEditorProvider {
             FileTypeDefinition {
                 id: FileTypeId::new("sqlite3"),
                 extension: "sqlite3".to_string(),
-                display_name: "SQLite Database".to_string(),
+                display_name: "SQLite Database (.sqlite3)".to_string(),
                 icon: FileIcon::Database,
                 structure: FileStructure::Standalone,
                 default_content: serde_json::Value::Null,

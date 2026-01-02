@@ -1,16 +1,18 @@
-/// Utility module for file operations, type detection, and opening
-/// Extracted from file_manager_drawer to be reusable across the application
+/// Utility module for file scanning and categorization
+///
+/// This module provides functionality for discovering and categorizing files
+/// in a project directory for display in file browsers and command palettes.
+///
+/// IMPORTANT: File type detection here is ONLY for display purposes (icons, labels).
+/// The plugin system's registry determines what files can actually be opened.
 
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum FileType {
     Folder,
-    Class,      // A folder containing graph_save.json
-    Script,     // .rs files
-    DawProject, // .pdaw files
-    Config,     // .toml files
-    Other,
+    Class,  // A folder containing graph_save.json  
+    File,   // Any other file - plugin system will determine if openable
 }
 
 impl FileType {
@@ -19,10 +21,7 @@ impl FileType {
         match self {
             FileType::Folder => "Folder",
             FileType::Class => "Blueprint Class",
-            FileType::Script => "Script",
-            FileType::DawProject => "DAW Project",
-            FileType::Config => "Config",
-            FileType::Other => "File",
+            FileType::File => "File",
         }
     }
 }
@@ -40,7 +39,7 @@ impl FileInfo {
         path.is_dir() && path.join("graph_save.json").exists()
     }
 
-    /// Detect file type from path
+    /// Detect file type from path (for display purposes only)
     pub fn detect_file_type(path: &Path) -> FileType {
         if path.is_dir() {
             if Self::is_class_folder(path) {
@@ -49,12 +48,7 @@ impl FileInfo {
                 FileType::Folder
             }
         } else {
-            match path.extension().and_then(|s| s.to_str()) {
-                Some("rs") => FileType::Script,
-                Some("pdaw") => FileType::DawProject,
-                Some("toml") => FileType::Config,
-                _ => FileType::Other,
-            }
+            FileType::File
         }
     }
 
@@ -70,21 +64,13 @@ impl FileInfo {
         })
     }
 
-    /// Check if this file can be opened in an editor
-    pub fn is_openable(&self) -> bool {
-        matches!(
-            self.file_type,
-            FileType::Class | FileType::Script | FileType::DawProject
-        )
-    }
-
     /// Get a display string for this file (includes type and path)
     pub fn display_string(&self) -> String {
         format!("{} - {}", self.name, self.file_type.display_name())
     }
 }
 
-/// Recursively find all openable files in a directory
+/// Recursively find all files in a directory (plugin system determines if openable)
 pub fn find_openable_files(root: &Path, max_depth: Option<usize>) -> Vec<FileInfo> {
     let mut results = Vec::new();
     find_files_recursive(root, root, &mut results, 0, max_depth.unwrap_or(10));
@@ -118,9 +104,10 @@ fn find_files_recursive(
 
         if let Some(file_info) = FileInfo::from_path(&path) {
             let is_class = file_info.file_type == FileType::Class;
+            let is_file = file_info.file_type == FileType::File;
 
-            // Add openable files
-            if file_info.is_openable() {
+            // Add all non-folder items (classes and files)
+            if is_class || is_file {
                 results.push(file_info);
             }
 
@@ -176,16 +163,15 @@ mod tests {
 
     #[test]
     fn test_file_type_detection() {
-        // Note: These tests would need actual file system setup
-        // Just testing the extension-based detection
+        // File type detection is simplified - just File, Folder, or Class
         let script = PathBuf::from("test.rs");
-        assert_eq!(FileInfo::detect_file_type(&script), FileType::Script);
+        assert_eq!(FileInfo::detect_file_type(&script), FileType::File);
 
         let daw = PathBuf::from("project.pdaw");
-        assert_eq!(FileInfo::detect_file_type(&daw), FileType::DawProject);
+        assert_eq!(FileInfo::detect_file_type(&daw), FileType::File);
 
         let config = PathBuf::from("config.toml");
-        assert_eq!(FileInfo::detect_file_type(&config), FileType::Config);
+        assert_eq!(FileInfo::detect_file_type(&config), FileType::File);
     }
 
     #[test]
@@ -194,17 +180,17 @@ mod tests {
             FileInfo {
                 path: PathBuf::from("/project/src/main.rs"),
                 name: "main.rs".to_string(),
-                file_type: FileType::Script,
+                file_type: FileType::File,
             },
             FileInfo {
                 path: PathBuf::from("/project/src/utils.rs"),
                 name: "utils.rs".to_string(),
-                file_type: FileType::Script,
+                file_type: FileType::File,
             },
             FileInfo {
                 path: PathBuf::from("/project/audio/song.pdaw"),
                 name: "song.pdaw".to_string(),
-                file_type: FileType::DawProject,
+                file_type: FileType::File,
             },
         ];
 

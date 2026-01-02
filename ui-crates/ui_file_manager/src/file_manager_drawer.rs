@@ -157,8 +157,23 @@ impl FileManagerDrawer {
                 counter += 1;
             }
 
-            // Create the file with default content (empty for now, can be enhanced with plugin default_content)
-            if let Err(e) = std::fs::write(&final_path, "") {
+            // Create the file with default content from the file type definition
+            let content = if action.default_content.is_null() {
+                // For SQLite databases, create an empty database file
+                if action.extension == "db" || action.extension == "sqlite" || action.extension == "sqlite3" {
+                    // SQLite databases need proper initialization, which will be handled by the editor
+                    // For now, create an empty file that the editor will initialize
+                    vec![]
+                } else {
+                    // For other files, use empty content
+                    vec![]
+                }
+            } else {
+                // Use the default content from the file type definition
+                action.default_content.to_string().into_bytes()
+            };
+
+            if let Err(e) = std::fs::write(&final_path, content) {
                 tracing::error!("Failed to create file {:?}: {}", final_path, e);
             } else {
                 // Refresh the folder tree

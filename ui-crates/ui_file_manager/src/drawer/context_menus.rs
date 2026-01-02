@@ -15,13 +15,16 @@ pub fn folder_context_menu(
     file_types: Vec<plugin_editor_api::FileTypeDefinition>,
 ) -> impl Fn(ui::popup_menu::PopupMenu, &mut Window, &mut Context<ui::popup_menu::PopupMenu>) -> ui::popup_menu::PopupMenu + 'static {
     move |menu, window, cx| {
-        let file_types_clone = file_types.clone();
+        let mut file_types_clone = file_types.clone();
+        // Sort file types alphabetically by display name
+        file_types_clone.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+        
         let mut menu = menu
             .submenu("Create", window, cx, move |submenu, _window, _cx| {
                 let mut submenu = submenu
                     .menu("Folder", Box::new(NewFolder::default()));
 
-                // Add all registered file types from plugins
+                // Add all registered file types from plugins (sorted alphabetically)
                 for file_type in file_types_clone.iter() {
                     submenu = submenu.menu(
                         file_type.display_name.clone(),
@@ -29,6 +32,7 @@ pub fn folder_context_menu(
                             file_type_id: file_type.id.as_str().to_string(),
                             display_name: file_type.display_name.clone(),
                             extension: file_type.extension.clone(),
+                            default_content: file_type.default_content.clone(),
                         })
                     );
                 }

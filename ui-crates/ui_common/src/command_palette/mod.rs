@@ -455,10 +455,9 @@ impl Render for CommandPalette {
                             let is_selected = i == selected_index;
                             let file_info = file.clone();
                             let icon = match file_info.file_type {
-                                FileType::Script => IconName::Code,
                                 FileType::Class => IconName::Box,
-                                FileType::DawProject => IconName::MusicNote,
-                                _ => IconName::FileNotFound,
+                                FileType::Folder => IconName::Folder,
+                                FileType::File => IconName::FileNotFound,
                             };
 
                             h_flex()

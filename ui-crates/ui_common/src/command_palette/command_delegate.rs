@@ -31,10 +31,7 @@ impl PaletteItem for CommandOrFile {
             CommandOrFile::File(file) => match file.file_type {
                 FileType::Folder => ui::IconName::Folder,
                 FileType::Class => ui::IconName::FolderOpen,
-                FileType::Script => ui::IconName::BookOpen,
-                FileType::DawProject => ui::IconName::BookOpen,
-                FileType::Config => ui::IconName::Settings,
-                FileType::Other => ui::IconName::BookOpen,
+                FileType::File => ui::IconName::BookOpen,
             },
         }
     }
