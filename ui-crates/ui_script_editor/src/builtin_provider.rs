@@ -16,7 +16,7 @@ impl BuiltinEditorProvider for ScriptEditorProvider {
             FileTypeDefinition {
                 id: FileTypeId::new("rust_script"),
                 extension: "rs".to_string(),
-                display_name: "Rust Script".to_string(),
+                display_name: "Rust".to_string(),
                 icon: ui::IconName::RustLang,
                 color: gpui::rgb(0xFF5722).into(),
                 structure: FileStructure::Standalone,
@@ -31,7 +31,7 @@ impl BuiltinEditorProvider for ScriptEditorProvider {
                 color: gpui::rgb(0xF7DF1E).into(),
                 structure: FileStructure::Standalone,
                 default_content: serde_json::json!("// New JavaScript file\n"),
-                categories: vec!["Scripts".to_string(), "Web".to_string()],
+                categories: vec!["Scripts".to_string()],
             },
             FileTypeDefinition {
                 id: FileTypeId::new("typescript"),
@@ -41,7 +41,7 @@ impl BuiltinEditorProvider for ScriptEditorProvider {
                 color: gpui::rgb(0x3178C6).into(),
                 structure: FileStructure::Standalone,
                 default_content: serde_json::json!("// New TypeScript file\n"),
-                categories: vec!["Scripts".to_string(), "Web".to_string()],
+                categories: vec!["Scripts".to_string()],
             },
             FileTypeDefinition {
                 id: FileTypeId::new("python"),
