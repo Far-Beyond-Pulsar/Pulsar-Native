@@ -566,13 +566,13 @@ impl FileManagerDrawer {
 
     fn render_list_item(&mut self, item: &FileItem, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_selected = self.selected_items.contains(&item.path);
-        let icon = get_icon_for_file_type(&item.file_type);
-        let icon_color = get_icon_color_for_file_type(&item.file_type, cx.theme());
+        let icon = get_icon_for_file_type(&item);
+        let icon_color = get_icon_color_for_file_type(&item, cx.theme());
         let item_clone = item.clone();
         let item_clone2 = item.clone();
         let item_path = item.path.clone();
         let has_clipboard = self.clipboard.is_some();
-        let is_class = item.file_type == FileType::Class;
+        let is_class = item.is_class();
         let is_folder = item.is_folder;
 
         h_flex()
@@ -881,13 +881,13 @@ impl FileManagerDrawer {
         let is_selected = self.selected_items.contains(&item.path);
         let is_renaming = self.renaming_item.as_ref() == Some(&item.path);
         let path = item.path.clone();
-        let icon = get_icon_for_file_type(&item.file_type);
-        let icon_color = get_icon_color_for_file_type(&item.file_type, cx.theme());
+        let icon = get_icon_for_file_type(&item);
+        let icon_color = get_icon_color_for_file_type(&item, cx.theme());
         let item_clone = item.clone();
         let item_clone2 = item.clone();
         let item_path = item.path.clone();
         let has_clipboard = self.clipboard.is_some();
-        let is_class = item.file_type == FileType::Class;
+        let is_class = item.is_class();
         let is_folder = item.is_folder;
 
         div()
@@ -994,7 +994,7 @@ impl FileManagerDrawer {
             } else {
                 cx.emit(FileSelected {
                     path: item.path.clone(),
-                    file_type: item.file_type.clone(),
+                    file_type_def: item.file_type_def.clone(),
                 });
             }
         }
@@ -1053,7 +1053,7 @@ impl FileManagerDrawer {
                     }
                 }
 
-                FileItem::from_path(&path)
+                FileItem::from_path(&path, &self.registered_file_types)
             })
             .filter(|item| {
                 // Apply search filter
@@ -1073,7 +1073,7 @@ impl FileManagerDrawer {
                 SortBy::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
                 SortBy::Modified => a.modified.cmp(&b.modified),
                 SortBy::Size => a.size.cmp(&b.size),
-                SortBy::Type => a.file_type.display_name().cmp(b.file_type.display_name()),
+                SortBy::Type => a.display_name().cmp(b.display_name()),
             };
 
             match self.sort_order {

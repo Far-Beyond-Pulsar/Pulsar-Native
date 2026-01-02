@@ -20,7 +20,7 @@ pub mod context_menus;
 // Re-export commonly used types
 pub use actions::*;
 pub use types::{
-    FileType, ViewMode, SortBy, SortOrder, DragState,
+    ViewMode, SortBy, SortOrder, DragState,
     FileItem, FileSelected, PopoutFileManagerEvent,
 };
 pub use tree::FolderNode;

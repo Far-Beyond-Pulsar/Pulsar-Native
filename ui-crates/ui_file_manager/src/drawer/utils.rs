@@ -1,5 +1,5 @@
 use ui::IconName;
-use super::types::FileType;
+use super::types::FileItem;
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -31,48 +31,16 @@ pub fn format_modified_time(time: Option<std::time::SystemTime>) -> String {
     .unwrap_or_else(|| "Unknown".to_string())
 }
 
-pub fn get_icon_color_for_file_type(file_type: &FileType, theme: &ui::Theme) -> gpui::Hsla {
-    match file_type {
-        FileType::Folder => theme.muted_foreground,
-        FileType::Class => gpui::rgb(0x9C27B0).into(), // Purple
-        FileType::Script => gpui::rgb(0x2196F3).into(), // Blue
-        FileType::DawProject => gpui::rgb(0xFF9800).into(), // Orange
-        FileType::LevelScene => gpui::rgb(0xF44336).into(), // Red
-        FileType::Database => gpui::rgb(0x4CAF50).into(), // Green
-        FileType::Config => gpui::rgb(0x9E9E9E).into(), // Gray
-        FileType::StructType => gpui::rgb(0x00BCD4).into(), // Cyan
-        FileType::EnumType => gpui::rgb(0x673AB7).into(), // Deep Purple
-        FileType::TraitType => gpui::rgb(0x3F51B5).into(), // Indigo
-        FileType::AliasType => gpui::rgb(0x607D8B).into(), // Blue Gray
-        FileType::Image => gpui::rgb(0xE91E63).into(), // Pink
-        FileType::Audio => gpui::rgb(0x9C27B0).into(), // Purple
-        FileType::Video => gpui::rgb(0xF44336).into(), // Red
-        FileType::Document => gpui::rgb(0xFF5722).into(), // Deep Orange
-        FileType::Archive => gpui::rgb(0x795548).into(), // Brown
-        FileType::Other => theme.muted_foreground,
-    }
+pub fn get_icon_color_for_file_type(item: &FileItem, theme: &ui::Theme) -> gpui::Hsla {
+    item.file_type_def.as_ref()
+        .map(|def| def.color)
+        .unwrap_or(theme.muted_foreground)
 }
 
-pub fn get_icon_for_file_type(file_type: &FileType) -> IconName {
-    match file_type {
-        FileType::Folder => IconName::Folder,
-        FileType::Class => IconName::Component,
-        FileType::Script => IconName::Code,
-        FileType::DawProject => IconName::MusicNote,
-        FileType::LevelScene => IconName::Map,
-        FileType::Database => IconName::Database,
-        FileType::Config => IconName::Settings,
-        FileType::StructType => IconName::Box,
-        FileType::EnumType => IconName::List,
-        FileType::TraitType => IconName::Code,
-        FileType::AliasType => IconName::Link,
-        FileType::Image => IconName::Image,
-        FileType::Audio => IconName::MusicNote,
-        FileType::Video => IconName::Movie,
-        FileType::Document => IconName::Page,
-        FileType::Archive => IconName::ARchive,
-        FileType::Other => IconName::Page,
-    }
+pub fn get_icon_for_file_type(item: &FileItem) -> IconName {
+    item.file_type_def.as_ref()
+        .map(|def| def.icon.clone())
+        .unwrap_or(if item.is_folder { IconName::Folder } else { IconName::Page })
 }
 
 pub fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {

@@ -21,8 +21,13 @@ impl FolderNode {
 
         let name = path.file_name()?.to_str()?.to_string();
 
-        // Class folders should NOT appear in the tree
-        if FileItem::is_class_folder(path) {
+        // Check if this is a special file type folder (class, struct, etc.) - don't show in tree
+        // We need to check for marker files like graph_save.json
+        let has_marker_file = ["graph_save.json", "struct.json", "enum.json", "trait.json", "alias.json"]
+            .iter()
+            .any(|marker| path.join(marker).exists());
+        
+        if has_marker_file {
             return None;
         }
 

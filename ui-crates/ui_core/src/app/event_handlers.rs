@@ -2,7 +2,7 @@
 
 use gpui::{AppContext, Context, DismissEvent, Entity, Focusable, Window};
 use ui::{ContextModal, dock::PanelEvent};
-use ui_file_manager::{FileManagerDrawer, FileSelected, FileType, PopoutFileManagerEvent};
+use ui_file_manager::{FileManagerDrawer, FileSelected, PopoutFileManagerEvent};
 use ui_problems::ProblemsDrawer;
 use ui_script_editor::{ScriptEditorPanel, TextEditorEvent};
 use ui_entry::{EntryScreen, ProjectSelected};

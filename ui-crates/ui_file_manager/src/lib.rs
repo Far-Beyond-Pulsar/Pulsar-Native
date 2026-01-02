@@ -8,5 +8,5 @@ pub mod window;
 
 // Re-export main types
 pub use file_manager_drawer::FileManagerDrawer;
-pub use drawer::{FileSelected, FileType, PopoutFileManagerEvent};
+pub use drawer::{FileSelected, PopoutFileManagerEvent};
 pub use window::FileManagerWindow;
