@@ -21,6 +21,7 @@ impl BuiltinEditorProvider for TableEditorProvider {
                 color: gpui::rgb(0x4CAF50).into(),
                 structure: FileStructure::Standalone,
                 default_content: serde_json::Value::Null,
+                categories: vec!["Data".to_string(), "SQLite".to_string()],
             },
             FileTypeDefinition {
                 id: FileTypeId::new("sqlite"),
@@ -30,6 +31,7 @@ impl BuiltinEditorProvider for TableEditorProvider {
                 color: gpui::rgb(0x4CAF50).into(),
                 structure: FileStructure::Standalone,
                 default_content: serde_json::Value::Null,
+                categories: vec!["Data".to_string(), "SQLite".to_string()],
             },
             FileTypeDefinition {
                 id: FileTypeId::new("sqlite3"),
@@ -39,6 +41,7 @@ impl BuiltinEditorProvider for TableEditorProvider {
                 color: gpui::rgb(0x4CAF50).into(),
                 structure: FileStructure::Standalone,
                 default_content: serde_json::Value::Null,
+                categories: vec!["Data".to_string(), "SQLite".to_string()],
             },
         ]
     }

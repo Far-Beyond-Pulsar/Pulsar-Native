@@ -27,6 +27,7 @@ impl BuiltinEditorProvider for EnumEditorProvider {
                     "name": "NewEnum",
                     "variants": []
                 }),
+                categories: vec!["Types".to_string()],
             }
         ]
     }

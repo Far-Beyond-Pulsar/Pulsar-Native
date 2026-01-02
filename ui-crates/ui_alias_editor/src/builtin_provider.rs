@@ -27,6 +27,7 @@ impl BuiltinEditorProvider for AliasEditorProvider {
                     "name": "NewAlias",
                     "target": "i32"
                 }),
+                categories: vec!["Types".to_string()],
             }
         ]
     }

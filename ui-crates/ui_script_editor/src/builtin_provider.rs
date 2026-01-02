@@ -21,6 +21,7 @@ impl BuiltinEditorProvider for ScriptEditorProvider {
                 color: gpui::rgb(0xFF5722).into(),
                 structure: FileStructure::Standalone,
                 default_content: serde_json::json!("// New Rust script\n"),
+                categories: vec!["Scripts".to_string()],
             },
             FileTypeDefinition {
                 id: FileTypeId::new("javascript"),
@@ -30,6 +31,7 @@ impl BuiltinEditorProvider for ScriptEditorProvider {
                 color: gpui::rgb(0xF7DF1E).into(),
                 structure: FileStructure::Standalone,
                 default_content: serde_json::json!("// New JavaScript file\n"),
+                categories: vec!["Scripts".to_string(), "Web".to_string()],
             },
             FileTypeDefinition {
                 id: FileTypeId::new("typescript"),
@@ -39,6 +41,7 @@ impl BuiltinEditorProvider for ScriptEditorProvider {
                 color: gpui::rgb(0x3178C6).into(),
                 structure: FileStructure::Standalone,
                 default_content: serde_json::json!("// New TypeScript file\n"),
+                categories: vec!["Scripts".to_string(), "Web".to_string()],
             },
             FileTypeDefinition {
                 id: FileTypeId::new("python"),
@@ -48,6 +51,7 @@ impl BuiltinEditorProvider for ScriptEditorProvider {
                 color: gpui::rgb(0x3776AB).into(),
                 structure: FileStructure::Standalone,
                 default_content: serde_json::json!("# New Python script\n"),
+                categories: vec!["Scripts".to_string()],
             },
             FileTypeDefinition {
                 id: FileTypeId::new("lua"),
@@ -57,6 +61,7 @@ impl BuiltinEditorProvider for ScriptEditorProvider {
                 color: gpui::rgb(0x2196F3).into(),
                 structure: FileStructure::Standalone,
                 default_content: serde_json::json!("-- New Lua script\n"),
+                categories: vec!["Scripts".to_string()],
             },
             FileTypeDefinition {
                 id: FileTypeId::new("toml"),
@@ -66,6 +71,7 @@ impl BuiltinEditorProvider for ScriptEditorProvider {
                 color: gpui::rgb(0x9E9E9E).into(),
                 structure: FileStructure::Standalone,
                 default_content: serde_json::json!("# TOML configuration file\n"),
+                categories: vec!["Data".to_string()],
             },
             FileTypeDefinition {
                 id: FileTypeId::new("markdown"),
@@ -75,6 +81,7 @@ impl BuiltinEditorProvider for ScriptEditorProvider {
                 color: gpui::rgb(0xFF5722).into(),
                 structure: FileStructure::Standalone,
                 default_content: serde_json::json!("# New Document\n"),
+                categories: vec!["Documents".to_string()],
             },
         ]
     }

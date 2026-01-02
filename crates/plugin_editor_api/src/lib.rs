@@ -367,6 +367,11 @@ pub struct FileTypeDefinition {
     /// Default content for new files (as JSON)
     /// For folder-based files, this is the content of the marker file
     pub default_content: serde_json::Value,
+
+    /// Optional category path for organizing in the create menu
+    /// Examples: vec!["Data"], vec!["Data", "SQLite"], vec!["Scripts", "Web"]
+    /// Leave empty for top-level menu items
+    pub categories: Vec<String>,
 }
 
 // ============================================================================
@@ -717,6 +722,7 @@ pub fn standalone_file_type(
         color,
         structure: FileStructure::Standalone,
         default_content,
+        categories: vec![],
     }
 }
 
@@ -742,5 +748,6 @@ pub fn folder_file_type(
             template_structure,
         },
         default_content,
+        categories: vec![],
     }
 }

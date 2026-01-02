@@ -25,6 +25,7 @@ impl BuiltinEditorProvider for DawEditorProvider {
                     "tempo": 120.0,
                     "time_signature": [4, 4]
                 }),
+                categories: vec!["Audio".to_string()],
             }
         ]
     }

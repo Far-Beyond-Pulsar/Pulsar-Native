@@ -27,6 +27,7 @@ impl BuiltinEditorProvider for StructEditorProvider {
                     "name": "NewStruct",
                     "fields": []
                 }),
+                categories: vec!["Types".to_string()],
             }
         ]
     }

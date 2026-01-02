@@ -27,6 +27,7 @@ impl BuiltinEditorProvider for TraitEditorProvider {
                     "name": "NewTrait",
                     "methods": []
                 }),
+                categories: vec!["Types".to_string()],
             }
         ]
     }
