@@ -17,7 +17,7 @@ impl BuiltinEditorProvider for ScriptEditorProvider {
                 id: FileTypeId::new("rust_script"),
                 extension: "rs".to_string(),
                 display_name: "Rust Script".to_string(),
-                icon: ui::IconName::Code,
+                icon: ui::IconName::RustLang,
                 color: gpui::rgb(0xFF5722).into(),
                 structure: FileStructure::Standalone,
                 default_content: serde_json::json!("// New Rust script\n"),
