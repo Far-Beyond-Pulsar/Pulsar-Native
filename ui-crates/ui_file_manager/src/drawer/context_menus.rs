@@ -1,7 +1,6 @@
-use gpui::Hsla;
+use gpui::{Context, Styled, Window};
 use std::path::PathBuf;
-use ui::popup_menu::PopupMenuExt;
-use ui::{Icon, IconName};
+use ui::Icon;
 
 use super::actions::*;
 
