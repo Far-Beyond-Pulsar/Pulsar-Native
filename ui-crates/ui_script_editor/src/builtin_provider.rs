@@ -132,8 +132,3 @@ impl BuiltinEditorProvider for ScriptEditorProvider {
         Ok(Arc::new(editor))
     }
 }
-
-
-
-
-

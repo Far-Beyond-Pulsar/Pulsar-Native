@@ -338,6 +338,7 @@ pub enum PathTemplate {
     },
     /// Create a folder
     Folder {
+        //TODO: Consider adding nested templates for subfolders
         path: String,
     },
 }
