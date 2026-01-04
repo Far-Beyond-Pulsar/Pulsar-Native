@@ -1,7 +1,6 @@
 //! Rendering implementation for PulsarApp
 
 use std::time::Duration;
-use std::path::PathBuf;
 use gpui::{prelude::*, div, px, relative, rgb, Animation, AnimationExt as _, AnyElement, App, Context, Focusable, FocusHandle, Hsla, IntoElement, MouseButton, MouseMoveEvent, Render, Window};
 use ui::{
     h_flex, v_flex, ActiveTheme as _, ContextModal as _, StyledExt as _, button::{Button, ButtonVariants as _}, Icon, IconName,
@@ -192,22 +191,6 @@ impl PulsarApp {
                                     .tooltip(format!("{} Types", type_count))
                                     .on_click(cx.listener(|app, _, window, cx| {
                                         app.toggle_type_debugger(window, cx);
-                                    })),
-                            )
-                            .child(
-                                Button::new("toggle-terminal")
-                                    .ghost()
-                                    .icon(
-                                        Icon::new(IconName::Terminal)
-                                            .size(px(16.))
-                                            .text_color(cx.theme().muted_foreground)
-                                    )
-                                    .px_2()
-                                    .py_1()
-                                    .rounded(px(4.))
-                                    .tooltip("Terminal")
-                                    .on_click(cx.listener(|app, _, window, cx| {
-                                        app.toggle_terminal(window, cx);
                                     })),
                             )
                             .child(
@@ -427,7 +410,7 @@ impl PulsarApp {
                             let path = file_path.clone().unwrap_or_else(|| PathBuf::new());
                             
                             // Find which plugin owns this editor
-                            let plugin_id = app.state.plugin_manager.find_plugin_for_editor(&editor_id);
+                            let plugin_id: Option<plugin_editor_api::PluginId> = app.state.plugin_manager.find_plugin_for_editor(&editor_id);
                             
                             if let Some(plugin_id) = plugin_id {
                                 match app.state.plugin_manager.create_editor(
