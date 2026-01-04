@@ -292,7 +292,11 @@ See [UI Development](UI_DEVELOPMENT.md) for GPUI details.
 
 ## Statusbar Buttons
 
-Add quick access buttons to the statusbar:
+Plugins can add buttons to the editor's statusbar for quick access to features.
+
+### Basic Usage
+
+Implement the `statusbar_buttons()` method:
 
 ```rust
 fn statusbar_buttons(&self) -> Vec<StatusbarButtonDefinition> {
@@ -306,18 +310,39 @@ fn statusbar_buttons(&self) -> Vec<StatusbarButtonDefinition> {
                 drawer_id: "my-panel".into(),
             },
         )
-        .with_priority(100)
-        .with_badge(self.notification_count())
-        .with_badge_color(gpui::rgb(0xF44336)),
     ]
 }
 ```
 
-### Button Actions
+### Button Definition
+
+Required parameters for `StatusbarButtonDefinition::new()`:
+
+- `id` - Unique identifier (e.g., "my-plugin.action")
+- `icon` - Icon from `ui::IconName`
+- `tooltip` - Text shown on hover
+- `position` - `StatusbarPosition::Left` or `::Right`
+- `action` - What happens on click
+
+### Positioning
+
+Choose where buttons appear:
+
+- `StatusbarPosition::Left` - With drawer toggles (Files, Problems, etc.)
+- `StatusbarPosition::Right` - With status indicators (before project name)
+
+### Actions
 
 Three action types available:
 
-**1. Open Editor**
+**Toggle a Drawer**
+```rust
+StatusbarAction::ToggleDrawer {
+    drawer_id: "my-drawer".into(),
+}
+```
+
+**Open an Editor**
 ```rust
 StatusbarAction::OpenEditor {
     editor_id: EditorId::new("my-editor"),
@@ -325,24 +350,163 @@ StatusbarAction::OpenEditor {
 }
 ```
 
-**2. Toggle Drawer**
-```rust
-StatusbarAction::ToggleDrawer {
-    drawer_id: "my-drawer".into(),
-}
-```
-
-**3. Custom Callback**
+**Run Custom Code**
 ```rust
 StatusbarAction::Custom
-// Set with: .with_callback(my_callback_fn)
+// Must also call: .with_callback(my_function)
 
-fn my_callback_fn(_window: &mut Window, _cx: &mut App) {
-    // Custom logic here
+fn my_function(_window: &mut Window, _cx: &mut App) {
+    // Your code here
 }
 ```
 
-See [Statusbar Buttons](PLUGIN_STATUSBAR_BUTTONS.md) for full API.
+### Optional Features
+
+**Badge Count** - Display notification count:
+```rust
+.with_badge(5)  // Shows "5" in circle
+```
+
+**Badge Color** - Customize badge:
+```rust
+.with_badge_color(gpui::rgb(0xF44336))  // Red
+```
+
+**Priority** - Control order (higher = first):
+```rust
+.with_priority(200)  // High priority
+.with_priority(100)  // Normal priority
+```
+
+**Active State** - Highlight button:
+```rust
+.with_active(true)  // Blue background tint
+```
+
+**Icon Color** - Override default:
+```rust
+.with_icon_color(gpui::rgb(0x3B82F6))  // Blue
+```
+
+### Complete Example
+
+```rust
+fn statusbar_buttons(&self) -> Vec<StatusbarButtonDefinition> {
+    let error_count = self.get_error_count();
+    let panel_open = self.is_panel_open();
+    
+    vec![
+        StatusbarButtonDefinition::new(
+            "my-plugin.errors",
+            ui::IconName::TriangleAlert,
+            format!("{} Errors", error_count),
+            StatusbarPosition::Left,
+            StatusbarAction::ToggleDrawer {
+                drawer_id: "my-errors".into(),
+            },
+        )
+        .with_priority(150)
+        .with_badge(error_count)
+        .with_badge_color(gpui::rgb(0xF44336))
+        .with_active(panel_open),
+    ]
+}
+```
+
+### Multiple Buttons
+
+Return multiple buttons in the vector:
+
+```rust
+fn statusbar_buttons(&self) -> Vec<StatusbarButtonDefinition> {
+    vec![
+        // Main action
+        StatusbarButtonDefinition::new(
+            "my-plugin.main",
+            ui::IconName::Play,
+            "Run",
+            StatusbarPosition::Right,
+            StatusbarAction::Custom,
+        )
+        .with_priority(200)
+        .with_callback(run_action),
+        
+        // Settings
+        StatusbarButtonDefinition::new(
+            "my-plugin.settings",
+            ui::IconName::Settings,
+            "Settings",
+            StatusbarPosition::Right,
+            StatusbarAction::Custom,
+        )
+        .with_priority(100)
+        .with_callback(open_settings),
+    ]
+}
+```
+
+### Custom Callbacks
+
+For `StatusbarAction::Custom`, provide a function pointer:
+
+```rust
+fn my_callback(_window: &mut Window, cx: &mut App) {
+    tracing::info!("Button clicked!");
+    // Can show notifications, open windows, modify state, etc.
+}
+
+// Register with:
+.with_callback(my_callback)
+```
+
+Note: Must be a function pointer, not a closure.
+
+### Styling Guide
+
+**Icon Choices:**
+- File operations: `Folder`, `FileText`, `FilePlus`
+- Actions: `Play`, `Pause`, `Stop`, `Refresh`
+- Indicators: `CheckCircle`, `AlertTriangle`, `Info`
+- Tools: `Settings`, `Search`, `Terminal`
+
+**Badge Colors:**
+```rust
+// Errors
+.with_badge_color(gpui::rgb(0xF44336))  // Red
+
+// Warnings
+.with_badge_color(gpui::rgb(0xFF9800))  // Orange
+
+// Info
+.with_badge_color(gpui::rgb(0x2196F3))  // Blue
+
+// Success
+.with_badge_color(gpui::rgb(0x4CAF50))  // Green
+```
+
+**Icon Colors:**
+
+Use theme colors when possible:
+```rust
+.with_icon_color(cx.theme().muted_foreground)  // Gray
+.with_icon_color(cx.theme().accent)            // Blue
+.with_icon_color(cx.theme().danger)            // Red
+```
+
+**Tooltips:**
+
+Write clear, concise tooltips:
+- Good: "Toggle Error Panel", "Run Tests", "Open Settings"
+- Avoid: "Click this button...", "Button", ""
+
+### Priority Guidelines
+
+Suggested ranges:
+- **200-300**: Critical actions, main features
+- **100-199**: Standard actions
+- **0-99**: Secondary actions, settings
+
+Higher priority appears first (leftmost) within its position group.
 
 ## Building and Testing
 

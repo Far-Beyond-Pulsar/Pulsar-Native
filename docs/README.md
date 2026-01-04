@@ -15,8 +15,7 @@ Welcome to the Pulsar Engine documentation. This guide will help you understand,
 ## Development
 
 - [Contributing Guide](../CONTRIBUTING.md) - How to contribute
-- [Plugin Development](PLUGIN_DEVELOPMENT.md) - Creating editor plugins
-- [Statusbar Buttons](PLUGIN_STATUSBAR_BUTTONS.md) - Adding UI buttons
+- [Plugin Development](PLUGIN_DEVELOPMENT.md) - Creating editor plugins (includes statusbar buttons)
 
 ## Subsystems
 
