@@ -283,7 +283,6 @@ impl PluginManager {
         tracing::debug!("Version check passed for plugin at {:?}", path);
 
         // Setup the plugin logger
-        tracing::info!("doooooooooooooooooooooooooooooooooooooooooooooog");
         // Get the plugin constructor
         let create_fn: Symbol<PluginCreate> = unsafe {
             library
