@@ -1,12 +1,13 @@
 //! Rendering implementation for PulsarApp
 
 use std::time::Duration;
-use gpui::{prelude::*, div, px, relative, rgb, Animation, AnimationExt as _, App, Context, Focusable, FocusHandle, Hsla, IntoElement, MouseButton, MouseMoveEvent, Render, Window};
+use gpui::{prelude::*, div, px, relative, rgb, Animation, AnimationExt as _, AnyElement, App, Context, Focusable, FocusHandle, Hsla, IntoElement, MouseButton, MouseMoveEvent, Render, Window};
 use ui::{
     h_flex, v_flex, ActiveTheme as _, ContextModal as _, StyledExt as _, button::{Button, ButtonVariants as _}, Icon, IconName,
 };
 use ui::notification::Notification;
 use engine_backend::services::rust_analyzer_manager::AnalyzerStatus;
+use plugin_editor_api::{StatusbarPosition, StatusbarAction};
 
 use super::PulsarApp;
 use crate::actions::*;
@@ -224,6 +225,8 @@ impl PulsarApp {
                                         app.toggle_multiplayer(window, cx);
                                     })),
                             )
+                            // Render plugin statusbar buttons for left position
+                            .children(self.render_plugin_statusbar_buttons(StatusbarPosition::Left, cx))
                             .child(
                                 div()
                                     .w(px(1.))
@@ -323,6 +326,12 @@ impl PulsarApp {
                             .h(px(18.))
                             .bg(cx.theme().border),
                     )
+                    // Render plugin statusbar buttons for right position
+                    .children(
+                        self.render_plugin_statusbar_buttons(StatusbarPosition::Right, cx)
+                            .into_iter()
+                            .map(|btn| btn.into_any_element())
+                    )
                     .child(
                         h_flex()
                             .items_center()
@@ -347,6 +356,95 @@ impl PulsarApp {
                             ),
                     ),
             )
+    }
+    
+    /// Render statusbar buttons registered by plugins
+    fn render_plugin_statusbar_buttons(&self, position: StatusbarPosition, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let buttons = self.state.plugin_manager.get_statusbar_buttons_for_position(position);
+        
+        buttons
+            .into_iter()
+            .enumerate()
+            .map(|(idx, btn_def)| {
+                let mut button = Button::new(("plugin-statusbar", idx))
+                    .ghost()
+                    .icon(
+                        Icon::new(btn_def.icon.clone())
+                            .size(px(16.))
+                            .text_color(btn_def.icon_color.unwrap_or_else(|| cx.theme().muted_foreground))
+                    )
+                    .relative()
+                    .px_2()
+                    .py_1()
+                    .rounded(px(4.));
+                
+                // Add active styling if specified
+                if btn_def.active {
+                    button = button.bg(cx.theme().primary.opacity(0.15));
+                }
+                
+                // Add badge if specified
+                if let Some(count) = btn_def.badge_count {
+                    if count > 0 {
+                        button = button.child(
+                            div()
+                                .absolute()
+                                .top(px(-4.))
+                                .right(px(-4.))
+                                .min_w(px(16.))
+                                .h(px(16.))
+                                .px_1()
+                                .rounded(px(8.))
+                                .bg(btn_def.badge_color.unwrap_or_else(|| cx.theme().accent))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .font_bold()
+                                        .text_color(rgb(0xFFFFFF))
+                                        .child(count.to_string()),
+                                ),
+                        );
+                    }
+                }
+                
+                // Add tooltip
+                button = button.tooltip(btn_def.tooltip.clone());
+                
+                // Clone what we need for the closure
+                let action = btn_def.action.clone();
+                let callback = btn_def.custom_callback;
+                
+                // Add click handler based on action type
+                button = match action {
+                    StatusbarAction::OpenEditor { editor_id, file_path } => {
+                        button.on_click(cx.listener(move |_app, _, _window, _cx| {
+                            // TODO: Implement opening editor by ID
+                            tracing::info!("Plugin statusbar button clicked: open editor {:?} for {:?}", editor_id, file_path);
+                        }))
+                    }
+                    StatusbarAction::ToggleDrawer { drawer_id } => {
+                        button.on_click(cx.listener(move |_app, _, _window, _cx| {
+                            // TODO: Implement drawer toggling system
+                            tracing::info!("Plugin statusbar button clicked: toggle drawer {}", drawer_id);
+                        }))
+                    }
+                    StatusbarAction::Custom => {
+                        if let Some(cb) = callback {
+                            button.on_click(move |_, window, cx| {
+                                cb(window, cx);
+                            })
+                        } else {
+                            button
+                        }
+                    }
+                };
+                
+                button.into_any_element()
+            })
+            .collect()
     }
 }
 

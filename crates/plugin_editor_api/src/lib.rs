@@ -103,6 +103,160 @@ pub use ui::dock::Panel;
 pub use serde_json::Value as JsonValue;
 
 // ============================================================================
+// Statusbar Button System
+// ============================================================================
+
+/// Represents the position where a statusbar button should be placed
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum StatusbarPosition {
+    /// Left side of the statusbar (with drawer buttons)
+    Left,
+    /// Right side of the statusbar (with analyzer status)
+    Right,
+}
+
+/// Action to perform when a statusbar button is clicked
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum StatusbarAction {
+    /// Open an editor by its EditorId in the tab system
+    OpenEditor {
+        editor_id: EditorId,
+        /// Optional file path to open. If None, creates a new empty editor.
+        file_path: Option<PathBuf>,
+    },
+    
+    /// Toggle visibility of a drawer/panel
+    ToggleDrawer {
+        /// Unique identifier for the drawer
+        drawer_id: String,
+    },
+    
+    /// Execute a custom callback (function pointer provided by plugin)
+    /// The callback receives (Window, App) and can perform any action
+    Custom,
+}
+
+/// Unique identifier for a statusbar button
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct StatusbarButtonId(String);
+
+impl StatusbarButtonId {
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for StatusbarButtonId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Definition of a statusbar button that a plugin can register
+#[derive(Clone)]
+pub struct StatusbarButtonDefinition {
+    /// Unique identifier for this button
+    pub id: StatusbarButtonId,
+    
+    /// Icon to display
+    pub icon: ui::IconName,
+    
+    /// Tooltip text shown on hover
+    pub tooltip: String,
+    
+    /// Position in the statusbar
+    pub position: StatusbarPosition,
+    
+    /// Optional badge count to display (e.g., error count)
+    pub badge_count: Option<u32>,
+    
+    /// Optional badge color (if None, uses default theme color)
+    pub badge_color: Option<gpui::Hsla>,
+    
+    /// Action to perform when clicked
+    pub action: StatusbarAction,
+    
+    /// Optional custom callback for Custom action type
+    /// This is a function pointer that will be called when the button is clicked
+    /// SAFETY: The plugin must ensure this function pointer remains valid
+    pub custom_callback: Option<fn(&mut Window, &mut App)>,
+    
+    /// Priority for ordering (higher = further right/left, depending on position)
+    pub priority: i32,
+    
+    /// Whether the button is currently active/selected
+    pub active: bool,
+    
+    /// Optional custom color for the icon
+    pub icon_color: Option<gpui::Hsla>,
+}
+
+impl StatusbarButtonDefinition {
+    /// Create a new statusbar button definition
+    pub fn new(
+        id: impl Into<String>,
+        icon: ui::IconName,
+        tooltip: impl Into<String>,
+        position: StatusbarPosition,
+        action: StatusbarAction,
+    ) -> Self {
+        Self {
+            id: StatusbarButtonId::new(id),
+            icon,
+            tooltip: tooltip.into(),
+            position,
+            badge_count: None,
+            badge_color: None,
+            action,
+            custom_callback: None,
+            priority: 0,
+            active: false,
+            icon_color: None,
+        }
+    }
+    
+    /// Set the badge count
+    pub fn with_badge(mut self, count: u32) -> Self {
+        self.badge_count = Some(count);
+        self
+    }
+    
+    /// Set the badge color
+    pub fn with_badge_color(mut self, color: gpui::Hsla) -> Self {
+        self.badge_color = Some(color);
+        self
+    }
+    
+    /// Set the custom callback (for Custom action type)
+    pub fn with_callback(mut self, callback: fn(&mut Window, &mut App)) -> Self {
+        self.custom_callback = Some(callback);
+        self
+    }
+    
+    /// Set the priority
+    pub fn with_priority(mut self, priority: i32) -> Self {
+        self.priority = priority;
+        self
+    }
+    
+    /// Set whether the button is active
+    pub fn with_active(mut self, active: bool) -> Self {
+        self.active = active;
+        self
+    }
+    
+    /// Set a custom icon color
+    pub fn with_icon_color(mut self, color: gpui::Hsla) -> Self {
+        self.icon_color = Some(color);
+        self
+    }
+}
+
+// ============================================================================
 // Version Information
 // ============================================================================
 
@@ -568,6 +722,36 @@ pub trait EditorPlugin: Send + Sync {
     ///
     /// Use this for cleanup.
     fn on_unload(&mut self) {}
+    
+    /// Get statusbar buttons this plugin wants to register.
+    ///
+    /// This is optional - plugins that don't need statusbar buttons can use the default implementation.
+    /// Buttons are registered when the plugin loads and can be updated by returning different values.
+    ///
+    /// # Returns
+    ///
+    /// A vector of statusbar button definitions. Return an empty vector if no buttons are needed.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// fn statusbar_buttons(&self) -> Vec<StatusbarButtonDefinition> {
+    ///     vec![
+    ///         StatusbarButtonDefinition::new(
+    ///             "my-plugin.toggle-panel",
+    ///             ui::IconName::Code,
+    ///             "Toggle My Panel",
+    ///             StatusbarPosition::Left,
+    ///             StatusbarAction::ToggleDrawer { drawer_id: "my-panel".into() },
+    ///         )
+    ///         .with_priority(100)
+    ///         .with_badge(error_count),
+    ///     ]
+    /// }
+    /// ```
+    fn statusbar_buttons(&self) -> Vec<StatusbarButtonDefinition> {
+        Vec::new()
+    }
 }
 
 // ============================================================================

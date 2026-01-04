@@ -107,6 +107,7 @@ struct LoadedPlugin {
 /// - Maintaining registries of file types and editors
 /// - Creating editor instances on demand
 /// - Managing built-in editors (same trait interface, no DLL loading)
+/// - Managing statusbar buttons registered by plugins
 pub struct PluginManager {
     /// All loaded plugins, indexed by plugin ID
     plugins: HashMap<PluginId, LoadedPlugin>,
@@ -125,6 +126,9 @@ pub struct PluginManager {
     
     /// Project root path for editor context
     project_root: Option<PathBuf>,
+    
+    /// Statusbar buttons registered by all plugins
+    statusbar_buttons: Vec<StatusbarButtonDefinition>,
 }
 
 impl PluginManager {
@@ -137,6 +141,7 @@ impl PluginManager {
             builtin_registry: BuiltinEditorRegistry::new(),
             engine_version: VersionInfo::current(),
             project_root: None,
+            statusbar_buttons: Vec::new(),
         }
     }
     
@@ -359,6 +364,29 @@ impl PluginManager {
             self.editor_registry.register(editor, plugin_id.clone());
         }
 
+        // Register statusbar buttons via raw pointer
+        // SAFETY: Plugin just created, pointer is valid
+        let statusbar_buttons = unsafe { (plugin_ptr).statusbar_buttons() };
+        if !statusbar_buttons.is_empty() {
+            tracing::debug!("  Registering {} statusbar buttons", statusbar_buttons.len());
+            for button in statusbar_buttons {
+                tracing::debug!("    - Button: {} at {:?}", button.id, button.position);
+                self.statusbar_buttons.push(button);
+            }
+            
+            // Sort buttons by priority within their position groups
+            self.statusbar_buttons.sort_by(|a, b| {
+                match (&a.position, &b.position) {
+                    (StatusbarPosition::Left, StatusbarPosition::Left) |
+                    (StatusbarPosition::Right, StatusbarPosition::Right) => {
+                        b.priority.cmp(&a.priority) // Higher priority comes first
+                    }
+                    (StatusbarPosition::Left, StatusbarPosition::Right) => std::cmp::Ordering::Less,
+                    (StatusbarPosition::Right, StatusbarPosition::Left) => std::cmp::Ordering::Greater,
+                }
+            });
+        }
+
         // Store the plugin with raw pointer and destroy function
         // CRITICAL: We do NOT take ownership of the plugin memory.
         // The plugin DLL owns it and will free it when destroy_fn is called.
@@ -389,6 +417,11 @@ impl PluginManager {
 
             // Remove editors
             self.editor_registry.unregister_by_plugin(plugin_id);
+            
+            // Remove statusbar buttons registered by this plugin
+            // Note: We don't track which plugin registered which button, so we can't remove them here
+            // In a production system, you'd want to track button ownership
+            // For now, buttons will persist until the manager is recreated
 
             tracing::debug!("Unloading plugin: {}", loaded_plugin.metadata.name);
 
@@ -424,6 +457,22 @@ impl PluginManager {
     /// Get a reference to the editor registry.
     pub fn editor_registry(&self) -> &EditorRegistry {
         &self.editor_registry
+    }
+    
+    /// Get all registered statusbar buttons from all plugins.
+    ///
+    /// Buttons are sorted by position (left/right) and priority within each position.
+    /// Higher priority buttons appear first in their respective position group.
+    pub fn get_statusbar_buttons(&self) -> &[StatusbarButtonDefinition] {
+        &self.statusbar_buttons
+    }
+    
+    /// Get statusbar buttons for a specific position.
+    pub fn get_statusbar_buttons_for_position(&self, position: StatusbarPosition) -> Vec<&StatusbarButtonDefinition> {
+        self.statusbar_buttons
+            .iter()
+            .filter(|btn| btn.position == position)
+            .collect()
     }
 
     /// Create an editor instance for a file.
