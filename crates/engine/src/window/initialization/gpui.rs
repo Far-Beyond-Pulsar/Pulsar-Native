@@ -87,7 +87,6 @@ pub fn initialize_gpui_window(
         // Initialize GPUI components
         ui::init(gpui_app);
         crate::themes::init(gpui_app);
-        ui_terminal::init(gpui_app);
 
         // Setup keybindings
         gpui_app.bind_keys([

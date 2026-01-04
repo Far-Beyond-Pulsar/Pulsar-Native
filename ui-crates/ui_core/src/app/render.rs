@@ -8,6 +8,7 @@ use ui::{
 use ui::notification::Notification;
 use engine_backend::services::rust_analyzer_manager::AnalyzerStatus;
 use plugin_editor_api::{StatusbarPosition, StatusbarAction};
+use std::path::PathBuf;
 
 use super::PulsarApp;
 use crate::actions::*;
