@@ -1,10 +1,59 @@
 //! Diff viewer component for file synchronization
-//! Uses the same editor approach as the problems drawer
+//! Uses proper line-by-line diffing like the problems drawer
 
 use gpui::{*, prelude::*};
-use ui::{v_flex, h_flex, input::{InputState, TextInput}, scroll::ScrollbarAxis, StyledExt, IconName, ActiveTheme};
+use ui::{v_flex, h_flex, scroll::ScrollbarAxis, StyledExt, IconName, ActiveTheme};
 use std::path::PathBuf;
-use std::collections::HashMap;
+use similar::{ChangeTag, TextDiff};
+
+/// Represents the type of a diff line for rendering
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum DiffLineType {
+    Unchanged,
+    Added,
+    Deleted,
+    Spacer, // Empty line to align both sides
+}
+
+/// Compute aligned diff lines for side-by-side display
+/// Returns (left_lines, right_lines) where each line is (line_number, type, content)
+fn compute_aligned_diff(before: &str, after: &str) -> (Vec<(Option<usize>, DiffLineType, String)>, Vec<(Option<usize>, DiffLineType, String)>) {
+    let diff = TextDiff::from_lines(before, after);
+    
+    let mut left_lines: Vec<(Option<usize>, DiffLineType, String)> = Vec::new();
+    let mut right_lines: Vec<(Option<usize>, DiffLineType, String)> = Vec::new();
+    
+    let mut left_line_num = 1usize;
+    let mut right_line_num = 1usize;
+    
+    for change in diff.iter_all_changes() {
+        let content = change.value().trim_end_matches('\n').to_string();
+        
+        match change.tag() {
+            ChangeTag::Equal => {
+                // Unchanged line appears on both sides
+                left_lines.push((Some(left_line_num), DiffLineType::Unchanged, content.clone()));
+                right_lines.push((Some(right_line_num), DiffLineType::Unchanged, content));
+                left_line_num += 1;
+                right_line_num += 1;
+            }
+            ChangeTag::Delete => {
+                // Deleted line only appears on left side, add spacer on right
+                left_lines.push((Some(left_line_num), DiffLineType::Deleted, content));
+                right_lines.push((None, DiffLineType::Spacer, "".to_string()));
+                left_line_num += 1;
+            }
+            ChangeTag::Insert => {
+                // Added line only appears on right side, add spacer on left
+                left_lines.push((None, DiffLineType::Spacer, "".to_string()));
+                right_lines.push((Some(right_line_num), DiffLineType::Added, content));
+                right_line_num += 1;
+            }
+        }
+    }
+    
+    (left_lines, right_lines)
+}
 
 /// Represents a file with before/after content for diff viewing
 #[derive(Clone, Debug)]
@@ -23,8 +72,6 @@ pub struct DiffViewer {
     project_root: Option<PathBuf>,
     /// Currently selected file index
     selected_file_index: Option<usize>,
-    /// Cache of InputState entities for before/after content, keyed by file index
-    editor_cache: HashMap<usize, (Entity<InputState>, Entity<InputState>)>,
 }
 
 impl DiffViewer {
@@ -34,87 +81,23 @@ impl DiffViewer {
             diff_files: Vec::new(),
             project_root: None,
             selected_file_index: None,
-            editor_cache: HashMap::new(),
         }
     }
 
     /// Enter diff mode with a list of files
-    pub fn enter_diff_mode(&mut self, diff_files: Vec<DiffFileEntry>, project_root: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn enter_diff_mode(&mut self, diff_files: Vec<DiffFileEntry>, project_root: PathBuf, _window: &mut Window, cx: &mut Context<Self>) {
         self.diff_files = diff_files;
         self.project_root = Some(project_root);
         self.selected_file_index = if !self.diff_files.is_empty() { Some(0) } else { None };
-        self.editor_cache.clear();
-        
-        // Pre-create editors for all files (collect indices first to avoid borrow issues)
-        let indices_and_files: Vec<(usize, DiffFileEntry)> = self.diff_files.iter()
-            .enumerate()
-            .map(|(i, f)| (i, f.clone()))
-            .collect();
-            
-        for (index, file) in indices_and_files {
-            self.get_or_create_editors(index, &file, window, cx);
-        }
-        
         cx.notify();
     }
 
     /// Update the after content for a specific file
-    pub fn update_diff_file_after_content(&mut self, file_path: &str, content: String, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn update_diff_file_after_content(&mut self, file_path: &str, content: String, _window: &mut Window, cx: &mut Context<Self>) {
         if let Some(index) = self.diff_files.iter().position(|f| f.path == file_path) {
-            self.diff_files[index].after_content = content.clone();
-            
-            // Update the after editor if it exists in cache
-            if let Some((_, after_editor)) = self.editor_cache.get(&index) {
-                after_editor.update(cx, |editor, cx| {
-                    editor.set_value(&content, window, cx);
-                });
-            }
-            
+            self.diff_files[index].after_content = content;
             cx.notify();
         }
-    }
-
-    fn get_or_create_editors(&mut self, index: usize, file: &DiffFileEntry, window: &mut Window, cx: &mut Context<Self>) -> (Entity<InputState>, Entity<InputState>) {
-        if let Some(editors) = self.editor_cache.get(&index) {
-            return editors.clone();
-        }
-
-        // Determine language from file extension
-        let language = std::path::Path::new(&file.path)
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .map(|ext| match ext {
-                "rs" => "rust",
-                "js" => "javascript",
-                "ts" => "typescript",
-                "py" => "python",
-                "toml" => "toml",
-                "json" => "json",
-                "md" => "markdown",
-                "html" => "html",
-                "css" => "css",
-                _ => "text",
-            })
-            .unwrap_or("text");
-
-        let before_editor = cx.new(|cx| {
-            let mut state = InputState::new(window, cx)
-                .code_editor(language)
-                .soft_wrap(false);
-            state.set_value(&file.before_content, window, cx);
-            state
-        });
-
-        let after_editor = cx.new(|cx| {
-            let mut state = InputState::new(window, cx)
-                .code_editor(language)
-                .soft_wrap(false);
-            state.set_value(&file.after_content, window, cx);
-            state
-        });
-
-        self.editor_cache.insert(index, (before_editor.clone(), after_editor.clone()));
-        (before_editor, after_editor)
     }
 
     fn render_file_list(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -176,10 +159,117 @@ impl DiffViewer {
             )
     }
 
-    fn render_diff_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_diff_view(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if let Some(index) = self.selected_file_index {
-            if let Some(file) = self.diff_files.get(index).cloned() {
-                let (before_editor, after_editor) = self.get_or_create_editors(index, &file, window, cx);
+            if let Some(file) = self.diff_files.get(index) {
+                // Compute the aligned diff lines
+                let (left_lines, right_lines) = compute_aligned_diff(&file.before_content, &file.after_content);
+                
+                // Colors for diff highlighting
+                let deleted_bg = Hsla { h: 0.0, s: 0.4, l: 0.15, a: 1.0 };
+                let deleted_text = Hsla { h: 0.0, s: 0.7, l: 0.7, a: 1.0 };
+                let added_bg = Hsla { h: 120.0, s: 0.4, l: 0.15, a: 1.0 };
+                let added_text = Hsla { h: 120.0, s: 0.7, l: 0.7, a: 1.0 };
+                let spacer_bg = Hsla { h: 0.0, s: 0.0, l: 0.12, a: 1.0 };
+                let unchanged_bg = cx.theme().sidebar;
+                let unchanged_text = cx.theme().foreground;
+                let line_num_color = cx.theme().muted_foreground;
+                
+                // Build left side (before) lines
+                let mut left_container = v_flex().w_full();
+                for (line_num, line_type, content) in &left_lines {
+                    let (bg, text_color) = match line_type {
+                        DiffLineType::Deleted => (deleted_bg, deleted_text),
+                        DiffLineType::Spacer => (spacer_bg, line_num_color),
+                        DiffLineType::Unchanged => (unchanged_bg, unchanged_text),
+                        _ => (unchanged_bg, unchanged_text),
+                    };
+                    
+                    left_container = left_container.child(
+                        h_flex()
+                            .w_full()
+                            .h(px(20.0))
+                            .bg(bg)
+                            .child(
+                                div()
+                                    .w(px(50.0))
+                                    .h_full()
+                                    .flex()
+                                    .items_center()
+                                    .justify_end()
+                                    .pr_2()
+                                    .text_xs()
+                                    .font_family("JetBrains Mono")
+                                    .text_color(line_num_color)
+                                    .child(if *line_type == DiffLineType::Spacer { 
+                                        "".to_string() 
+                                    } else { 
+                                        line_num.map(|n| n.to_string()).unwrap_or_default()
+                                    })
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .h_full()
+                                    .flex()
+                                    .items_center()
+                                    .pl_2()
+                                    .text_xs()
+                                    .font_family("JetBrains Mono")
+                                    .text_color(text_color)
+                                    .overflow_x_hidden()
+                                    .child(content.clone())
+                            )
+                    );
+                }
+                
+                // Build right side (after) lines
+                let mut right_container = v_flex().w_full();
+                for (line_num, line_type, content) in &right_lines {
+                    let (bg, text_color) = match line_type {
+                        DiffLineType::Added => (added_bg, added_text),
+                        DiffLineType::Spacer => (spacer_bg, line_num_color),
+                        DiffLineType::Unchanged => (unchanged_bg, unchanged_text),
+                        _ => (unchanged_bg, unchanged_text),
+                    };
+                    
+                    right_container = right_container.child(
+                        h_flex()
+                            .w_full()
+                            .h(px(20.0))
+                            .bg(bg)
+                            .child(
+                                div()
+                                    .w(px(50.0))
+                                    .h_full()
+                                    .flex()
+                                    .items_center()
+                                    .justify_end()
+                                    .pr_2()
+                                    .text_xs()
+                                    .font_family("JetBrains Mono")
+                                    .text_color(line_num_color)
+                                    .child(if *line_type == DiffLineType::Spacer { 
+                                        "".to_string() 
+                                    } else { 
+                                        line_num.map(|n| n.to_string()).unwrap_or_default()
+                                    })
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .h_full()
+                                    .flex()
+                                    .items_center()
+                                    .pl_2()
+                                    .text_xs()
+                                    .font_family("JetBrains Mono")
+                                    .text_color(text_color)
+                                    .overflow_x_hidden()
+                                    .child(content.clone())
+                            )
+                    );
+                }
                 
                 return v_flex()
                     .size_full()
@@ -246,8 +336,12 @@ impl DiffViewer {
                                             )
                                     )
                                     .child(
-                                        TextInput::new(&before_editor)
+                                        div()
+                                            .id("left-diff-scroll")
                                             .flex_1()
+                                            .overflow_y_scroll()
+                                            .overflow_x_hidden()
+                                            .child(left_container)
                                     )
                             )
                             .child(
@@ -281,8 +375,12 @@ impl DiffViewer {
                                             )
                                     )
                                     .child(
-                                        TextInput::new(&after_editor)
-                                            .h_full()
+                                        div()
+                                            .id("right-diff-scroll")
+                                            .flex_1()
+                                            .overflow_y_scroll()
+                                            .overflow_x_hidden()
+                                            .child(right_container)
                                     )
                             )
                     )

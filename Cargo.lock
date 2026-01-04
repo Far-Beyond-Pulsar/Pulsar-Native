@@ -14027,6 +14027,7 @@ dependencies = [
  "gpui",
  "serde",
  "serde_json",
+ "similar",
  "tokio",
  "tracing",
  "ui",
