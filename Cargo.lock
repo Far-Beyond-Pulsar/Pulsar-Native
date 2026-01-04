@@ -4281,6 +4281,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "editor_terminal"
+version = "0.1.0"
+dependencies = [
+ "alacritty_terminal",
+ "anyhow",
+ "futures",
+ "gpui",
+ "itertools 0.13.0",
+ "libc",
+ "parking_lot",
+ "plugin_editor_api",
+ "portable-pty",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "smol 1.3.0",
+ "tracing",
+ "ui",
+ "uuid",
+ "which 6.0.3",
+]
+
+[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13914,7 +13937,6 @@ dependencies = [
  "ui_problems",
  "ui_project_launcher",
  "ui_settings",
- "ui_terminal",
  "ui_type_debugger",
  "walkdir",
 ]

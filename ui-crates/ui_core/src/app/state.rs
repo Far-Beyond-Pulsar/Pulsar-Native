@@ -5,7 +5,6 @@ use gpui::{Entity, FocusHandle};
 use ui::dock::{DockArea, TabPanel};
 use ui_file_manager::FileManagerDrawer;
 use ui_problems::ProblemsDrawer;
-use ui_terminal::TerminalDrawer;
 // use ui_level_editor::LevelEditorPanel;
 // use ui_daw_editor::DawEditorPanel;
 use ui_type_debugger::TypeDebuggerDrawer;
@@ -32,7 +31,6 @@ pub struct AppState {
     pub drawer_resizing: bool,
     pub problems_drawer: Entity<ProblemsDrawer>,
     pub type_debugger_drawer: Entity<TypeDebuggerDrawer>,
-    pub terminal_drawer: Entity<TerminalDrawer>,
 
     // Editor tracking - commented out as these editors have been migrated to plugins
     // pub daw_editors: Vec<Entity<DawEditorPanel>>,

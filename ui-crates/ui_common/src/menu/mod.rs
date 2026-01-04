@@ -542,7 +542,6 @@ pub fn init_app_menus(title: impl Into<SharedString>, cx: &mut App) {
                             MenuItem::action("Asset Browser", ToggleAssetBrowser),
                             MenuItem::separator(),
                             MenuItem::action("Console", ToggleConsole),
-                            MenuItem::action("Terminal", ToggleTerminal),
                             MenuItem::action("Output", ToggleOutput),
                             MenuItem::action("Problems", ToggleProblems),
                             MenuItem::action("Debug", ToggleDebug),

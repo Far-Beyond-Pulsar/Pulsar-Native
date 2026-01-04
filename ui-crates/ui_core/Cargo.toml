@@ -15,7 +15,6 @@ ui_level_editor.workspace = true
 ui_entry.workspace = true
 ui_settings.workspace = true
 ui_multiplayer.workspace = true
-ui_terminal.workspace = true
 ui_problems.workspace = true
 ui_type_debugger.workspace = true
 ui_file_manager.workspace = true

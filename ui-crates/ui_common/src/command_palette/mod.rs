@@ -204,13 +204,6 @@ impl CommandPalette {
             )
             .with_keywords(vec!["files", "explorer", "sidebar", "ctrl+b"]),
             Command::new(
-                "Toggle Terminal",
-                "Show or hide the terminal",
-                IconName::Terminal,
-                CommandType::ToggleTerminal,
-            )
-            .with_keywords(vec!["console", "shell", "cmd"]),
-            Command::new(
                 "Toggle Multiplayer",
                 "Open multiplayer collaboration panel",
                 IconName::User,

@@ -18,7 +18,6 @@ pub use actions::{
     ToggleCommandPalette,
     ToggleFileManager,
     ToggleProblems,
-    ToggleTerminal,
     ToggleMultiplayer,
 };
 

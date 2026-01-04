@@ -79,13 +79,6 @@ impl CommandDelegate {
                 CommandType::OpenSettings,
             ),
             Command::new(
-                "Toggle Terminal",
-                "Show/hide terminal panel",
-                IconName::Terminal,
-                CommandType::ToggleTerminal,
-            )
-            .with_keywords(vec!["term", "console", "shell"]),
-            Command::new(
                 "Toggle Multiplayer",
                 "Show/hide multiplayer panel",
                 IconName::Globe,

@@ -38,15 +38,6 @@ impl PulsarApp {
         self.toggle_problems(window, cx);
     }
 
-    fn on_toggle_terminal(
-        &mut self,
-        _: &ToggleTerminal,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.toggle_terminal(window, cx);
-    }
-
     fn on_toggle_type_debugger(
         &mut self,
         _: &ToggleTypeDebugger,
@@ -131,9 +122,10 @@ impl PulsarApp {
                     CommandType::ToggleFileManager => {
                         self.toggle_drawer(window, cx);
                     }
-                    CommandType::ToggleTerminal => {
-                        self.toggle_terminal(window, cx);
-                    }
+                    // TODO: Add the ability for plugins to register command palette commands
+                    // CommandType::ToggleTerminal => {
+                    //     self.toggle_terminal(window, cx);
+                    // }
                     CommandType::ToggleMultiplayer => {
                         self.toggle_multiplayer(window, cx);
                     }

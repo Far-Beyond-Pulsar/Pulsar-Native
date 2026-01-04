@@ -5,7 +5,6 @@ use gpui::{AppContext, Context, Entity, Window};
 use ui::dock::DockItem;
 use ui_file_manager::FileManagerDrawer;
 use ui_problems::ProblemsDrawer;
-use ui_terminal::TerminalDrawer;
 use ui_level_editor::LevelEditorPanel;
 use ui_type_debugger::TypeDebuggerDrawer;
 use ui_entry::EntryScreen;
@@ -137,7 +136,6 @@ impl PulsarApp {
         let file_manager_drawer = cx.new(|cx| FileManagerDrawer::new(project_path.clone(), window, cx));
         let problems_drawer = cx.new(|cx| ProblemsDrawer::new(window, cx));
         let type_debugger_drawer = cx.new(|cx| TypeDebuggerDrawer::new(window, cx));
-        let terminal_drawer = cx.new(|cx| TerminalDrawer::new(window, cx));
 
         // Subscribe to drawer events
         cx.subscribe_in(&file_manager_drawer, window, event_handlers::on_file_selected).detach();
@@ -210,7 +208,6 @@ impl PulsarApp {
                 drawer_resizing: false,
                 problems_drawer,
                 type_debugger_drawer,
-                terminal_drawer,
                 center_tabs,
                 // script_editor: None, // Migrated to plugins
                 // daw_editors: Vec::new(),

@@ -473,6 +473,22 @@ impl PluginManager {
             .filter(|btn| btn.position == position)
             .collect()
     }
+    
+    // TODO: We should really be keeping track of which plugin owns what editors rather than finding on-the-fly
+    /// Find which plugin owns a given editor ID
+    pub fn find_plugin_for_editor(&self, editor_id: &EditorId) -> Option<PluginId> {
+        for (_id, plugin) in &self.plugins {
+            let editors = unsafe {
+                let plugin_ref = &*plugin.plugin_ptr;
+                plugin_ref.editors()
+            };
+            
+            if editors.iter().any(|e| &e.id == editor_id) {
+                return Some(plugin.metadata.id.clone());
+            }
+        }
+        None
+    }
 
     /// Create an editor instance for a file.
     ///

@@ -1,6 +1,7 @@
 //! Rendering implementation for PulsarApp
 
 use std::time::Duration;
+use std::path::PathBuf;
 use gpui::{prelude::*, div, px, relative, rgb, Animation, AnimationExt as _, AnyElement, App, Context, Focusable, FocusHandle, Hsla, IntoElement, MouseButton, MouseMoveEvent, Render, Window};
 use ui::{
     h_flex, v_flex, ActiveTheme as _, ContextModal as _, StyledExt as _, button::{Button, ButtonVariants as _}, Icon, IconName,
@@ -420,14 +421,39 @@ impl PulsarApp {
                 // Add click handler based on action type
                 button = match action {
                     StatusbarAction::OpenEditor { editor_id, file_path } => {
-                        button.on_click(cx.listener(move |_app, _, _window, _cx| {
-                            // TODO: Implement opening editor by ID
-                            tracing::info!("Plugin statusbar button clicked: open editor {:?} for {:?}", editor_id, file_path);
+                        button.on_click(cx.listener(move |app, _, window, cx| {
+                            tracing::info!("Opening editor {:?}", editor_id);
+                            
+                            let path = file_path.clone().unwrap_or_else(|| PathBuf::new());
+                            
+                            // Find which plugin owns this editor
+                            let plugin_id = app.state.plugin_manager.find_plugin_for_editor(&editor_id);
+                            
+                            if let Some(plugin_id) = plugin_id {
+                                match app.state.plugin_manager.create_editor(
+                                    &plugin_id,
+                                    &editor_id,
+                                    path,
+                                    window,
+                                    cx
+                                ) {
+                                    Ok((panel, _editor_instance)) => {
+                                        app.state.center_tabs.update(cx, |tabs, cx| {
+                                            tabs.add_panel(panel, window, cx);
+                                        });
+                                        tracing::info!("Successfully opened editor {:?}", editor_id);
+                                    }
+                                    Err(e) => {
+                                        tracing::error!("Failed to open editor {:?}: {:?}", editor_id, e);
+                                    }
+                                }
+                            } else {
+                                tracing::error!("No plugin found for editor {:?}", editor_id);
+                            }
                         }))
                     }
                     StatusbarAction::ToggleDrawer { drawer_id } => {
                         button.on_click(cx.listener(move |_app, _, _window, _cx| {
-                            // TODO: Implement drawer toggling system
                             tracing::info!("Plugin statusbar button clicked: toggle drawer {}", drawer_id);
                         }))
                     }
@@ -496,7 +522,6 @@ impl Render for PulsarApp {
             .on_action(cx.listener(Self::on_toggle_file_manager))
             .on_action(cx.listener(Self::on_toggle_problems))
             .on_action(cx.listener(Self::on_toggle_type_debugger))
-            .on_action(cx.listener(Self::on_toggle_terminal))
             .on_action(cx.listener(Self::on_toggle_command_palette))
             .child(
                 div()

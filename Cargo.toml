@@ -12,6 +12,8 @@ members = [
     # Plugin system
     "crates/plugin_editor_api",
     "crates/plugin_manager",
+    # Editor plugins
+    "crates/editor_terminal",
     # UI component crates
     "ui-crates/ui_common",
     "ui-crates/ui_core",
@@ -20,7 +22,6 @@ members = [
     # "ui-crates/ui_daw_editor",
     "ui-crates/ui_settings",
     "ui-crates/ui_multiplayer",
-    "ui-crates/ui_terminal",
     "ui-crates/ui_problems",
     "ui-crates/ui_file_manager",
     "ui-crates/ui_loading_screen",
