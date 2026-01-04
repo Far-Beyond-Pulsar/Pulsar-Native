@@ -100,8 +100,7 @@ impl DiffViewer {
         let before_editor = cx.new(|cx| {
             let mut state = InputState::new(window, cx)
                 .code_editor(language)
-                .soft_wrap(false)
-                .rows(20);
+                .soft_wrap(false);
             state.set_value(&file.before_content, window, cx);
             state
         });
@@ -109,8 +108,7 @@ impl DiffViewer {
         let after_editor = cx.new(|cx| {
             let mut state = InputState::new(window, cx)
                 .code_editor(language)
-                .soft_wrap(false)
-                .rows(20);
+                .soft_wrap(false);
             state.set_value(&file.after_content, window, cx);
             state
         });
@@ -212,12 +210,14 @@ impl DiffViewer {
                     )
                     .child(
                         h_flex()
-                            .flex_1()
+                            .h_full()
+                            .min_h_0()
                             .overflow_hidden()
                             .child(
                                 v_flex()
-                                    .w_1_2()
+                                    .flex_1()
                                     .h_full()
+                                    .w_1_2()
                                     .border_r_1()
                                     .border_color(cx.theme().border)
                                     .child(
@@ -246,20 +246,15 @@ impl DiffViewer {
                                             )
                                     )
                                     .child(
-                                        div()
+                                        TextInput::new(&before_editor)
                                             .flex_1()
-                                            .overflow_hidden()
-                                            .child(
-                                                TextInput::new(&before_editor)
-                                                    .w_full()
-                                                    .h_full()
-                                            )
                                     )
                             )
                             .child(
                                 v_flex()
-                                    .w_1_2()
+                                    .flex_1()
                                     .h_full()
+                                    .w_1_2()
                                     .child(
                                         div()
                                             .px_3()
@@ -286,14 +281,8 @@ impl DiffViewer {
                                             )
                                     )
                                     .child(
-                                        div()
-                                            .flex_1()
-                                            .overflow_hidden()
-                                            .child(
-                                                TextInput::new(&after_editor)
-                                                    .w_full()
-                                                    .h_full()
-                                            )
+                                        TextInput::new(&after_editor)
+                                            .h_full()
                                     )
                             )
                     )
@@ -330,7 +319,7 @@ impl Render for DiffViewer {
             .child(self.render_file_list(cx))
             .child(
                 div()
-                    .flex_1()
+                    .h_full()
                     .overflow_hidden()
                     .child(self.render_diff_view(window, cx))
             )
