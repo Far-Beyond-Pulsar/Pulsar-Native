@@ -19,7 +19,6 @@ use crate::file_utils::{FileInfo, FileType, find_openable_files};
 pub enum CommandType {
     Files,
     OpenSettings,
-    ToggleTerminal,
     ToggleMultiplayer,
     ToggleProblems,
     ToggleFileManager,

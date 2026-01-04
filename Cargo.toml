@@ -12,8 +12,6 @@ members = [
     # Plugin system
     "crates/plugin_editor_api",
     "crates/plugin_manager",
-    # Editor plugins
-    "crates/editor_terminal",
     # UI component crates
     "ui-crates/ui_common",
     "ui-crates/ui_core",
@@ -78,7 +76,6 @@ ui_level_editor = { path = "ui-crates/ui_level_editor" }
 # ui_daw_editor = { path = "ui-crates/ui_daw_editor" }
 ui_settings = { path = "ui-crates/ui_settings" }
 ui_multiplayer = { path = "ui-crates/ui_multiplayer" }
-ui_terminal = { path = "ui-crates/ui_terminal" }
 ui_problems = { path = "ui-crates/ui_problems" }
 ui_file_manager = { path = "ui-crates/ui_file_manager" }
 ui_common = { path = "ui-crates/ui_common" }

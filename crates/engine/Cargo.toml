@@ -38,7 +38,6 @@ ui_level_editor.workspace = true
 # ui_daw_editor.workspace = true
 ui_settings.workspace = true
 ui_multiplayer.workspace = true
-ui_terminal.workspace = true
 ui_problems.workspace = true
 ui_file_manager.workspace = true
 ui_loading_screen.workspace = true
