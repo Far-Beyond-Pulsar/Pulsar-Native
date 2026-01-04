@@ -563,6 +563,11 @@ pub fn on_project_selected(
         drawer.set_project_path(event.path.clone(), cx);
     });
 
+    // Update problems drawer with project root for relative paths
+    app.state.problems_drawer.update(cx, |drawer, cx| {
+        drawer.set_project_root(Some(event.path.clone()), cx);
+    });
+
     // Start rust analyzer for the project
     app.state.rust_analyzer.update(cx, |analyzer, cx| {
         analyzer.start(event.path.clone(), window, cx);

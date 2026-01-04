@@ -162,6 +162,8 @@ pub struct ProblemsDrawer {
     diff_editors: HashMap<(usize, usize), (Entity<InputState>, Entity<InputState>)>,
     /// InputState for the search bar
     search_input: Entity<InputState>,
+    /// Project root path for computing relative paths
+    project_root: Option<PathBuf>,
 }
 
 impl ProblemsDrawer {
@@ -185,6 +187,7 @@ impl ProblemsDrawer {
             preview_inputs: HashMap::new(),
             diff_editors: HashMap::new(),
             search_input,
+            project_root: None,
         }
     }
 
@@ -262,6 +265,34 @@ impl ProblemsDrawer {
                 d.end_column.unwrap_or(d.column),
             )
         })
+    }
+
+    /// Set the project root path for computing relative paths
+    pub fn set_project_root(&mut self, project_root: Option<PathBuf>, cx: &mut Context<Self>) {
+        self.project_root = project_root;
+        cx.notify();
+    }
+
+    /// Compute relative path from absolute path using project root
+    fn get_display_path(&self, absolute_path: &str) -> String {
+        if let Some(project_root) = &self.project_root {
+            // Normalize both paths to use forward slashes for comparison
+            let abs_path = PathBuf::from(absolute_path);
+            
+            // Try to strip the project root prefix
+            if let Ok(relative) = abs_path.strip_prefix(project_root) {
+                // Get the project folder name
+                if let Some(project_name) = project_root.file_name() {
+                    // Return project_name/relative_path
+                    let mut display_path = PathBuf::from(project_name);
+                    display_path.push(relative);
+                    return display_path.to_string_lossy().replace('\\', "/");
+                }
+            }
+        }
+        
+        // Fallback to absolute path if project root not set or path doesn't match
+        absolute_path.replace('\\', "/")
     }
 
     fn get_filtered_diagnostics(&self) -> Vec<Diagnostic> {
@@ -703,6 +734,9 @@ impl ProblemsDrawer {
             let file_error_count = diagnostics.iter().filter(|d| matches!(d.severity, DiagnosticSeverity::Error)).count();
             let file_warning_count = diagnostics.iter().filter(|d| matches!(d.severity, DiagnosticSeverity::Warning)).count();
 
+            // Compute display path for this file
+            let display_path = self.get_display_path(&file_path);
+
             // Pre-render diagnostic items for this file
             let items: Vec<Div> = diagnostics.iter().map(|diagnostic| {
                 let is_selected = selected_index == Some(global_index);
@@ -749,7 +783,7 @@ impl ProblemsDrawer {
                                         .text_sm()
                                         .font_weight(gpui::FontWeight::SEMIBOLD)
                                         .text_color(cx.theme().foreground)
-                                        .child(file_path.clone())
+                                        .child(display_path.clone())
                                 )
                                 .child(
                                     h_flex()

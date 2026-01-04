@@ -258,6 +258,11 @@ impl PulsarApp {
                     });
                 }
             }
+            
+            // Set project root for problems drawer to display relative paths
+            app.state.problems_drawer.update(cx, |drawer, cx| {
+                drawer.set_project_root(app.state.project_path.clone(), cx);
+            });
         }
 
         // Update Discord presence with initial tab if project is loaded
