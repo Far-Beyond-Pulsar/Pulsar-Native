@@ -319,7 +319,7 @@ impl Render for DiffViewer {
             .child(self.render_file_list(cx))
             .child(
                 div()
-                    .h_full()
+                    .size_full()
                     .overflow_hidden()
                     .child(self.render_diff_view(window, cx))
             )
