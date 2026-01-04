@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use super::types::*;
-use ui_script_editor::ScriptEditorPanel as ScriptEditor;
+use super::diff_viewer::{DiffViewer, DiffFileEntry};
 use engine_backend::subsystems::networking::simple_sync::SyncDiff;
 use engine_backend::subsystems::networking::multiuser::MultiuserClient;
 
@@ -32,7 +32,7 @@ pub struct MultiplayerWindow {
     pub(super) file_sync_in_progress: bool,
     pub(super) sync_progress_message: Option<String>,
     pub(super) sync_progress_percent: Option<f32>,
-    pub(super) script_editor: Entity<ScriptEditor>,
+    pub(super) diff_viewer: Entity<DiffViewer>,
     /// Pending diff to populate on next render (when we have window access)
     pub(super) pending_diff_populate: Option<SyncDiff>,
     /// Pending file content updates (path, content)
@@ -69,8 +69,8 @@ impl MultiplayerWindow {
         // Use provided project path
         let project_root = project_path;
 
-        // Create script editor for file sync
-        let script_editor = cx.new(|cx| ScriptEditor::new(window, cx));
+        // Create diff viewer for file sync
+        let diff_viewer = cx.new(|cx| DiffViewer::new(cx));
 
         Self {
             server_address_input,
@@ -91,7 +91,7 @@ impl MultiplayerWindow {
             file_sync_in_progress: false,
             sync_progress_message: None,
             sync_progress_percent: None,
-            script_editor,
+            diff_viewer,
             pending_diff_populate: None,
             pending_file_updates: Vec::new(),
         }
@@ -99,7 +99,6 @@ impl MultiplayerWindow {
 
     /// Populate the file sync UI with entries from a diff
     pub(super) fn populate_file_sync_ui(&mut self, diff: &SyncDiff, window: &mut Window, cx: &mut Context<Self>) {
-        use ui_script_editor::DiffFileEntry;
         use std::fs;
 
         let mut diff_files = Vec::new();
@@ -148,8 +147,8 @@ impl MultiplayerWindow {
 
         // Enter diff mode with the file list and project root
         let project_root_for_editor = project_root.clone();
-        self.script_editor.update(cx, |editor, cx| {
-            editor.enter_diff_mode(diff_files, project_root_for_editor, window, cx);
+        self.diff_viewer.update(cx, |viewer, cx| {
+            viewer.enter_diff_mode(diff_files, project_root_for_editor, window, cx);
         });
 
         tracing::debug!("Populated file sync UI with {} entries",
@@ -158,8 +157,8 @@ impl MultiplayerWindow {
 
     /// Update a file entry with remote content when received
     pub(super) fn update_file_remote_content(&mut self, file_path: &str, content: String, window: &mut Window, cx: &mut Context<Self>) {
-        self.script_editor.update(cx, |editor, cx| {
-            editor.update_diff_file_after_content(file_path, content.clone(), window, cx);
+        self.diff_viewer.update(cx, |viewer, cx| {
+            viewer.update_diff_file_after_content(file_path, content.clone(), window, cx);
             tracing::debug!("Updated remote content for {}", file_path);
         });
     }
@@ -213,7 +212,6 @@ impl MultiplayerWindow {
 
     /// Simulate a file diff for development/testing purposes
     pub(super) fn simulate_diff_for_dev(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        use ui_script_editor::DiffFileEntry;
         use std::fs;
 
         // Get project root from the stored path
@@ -303,8 +301,8 @@ impl MultiplayerWindow {
         }
 
         // Enter diff mode with real file data
-        self.script_editor.update(cx, |editor, cx| {
-            editor.enter_diff_mode(diff_entries, project_root, window, cx);
+        self.diff_viewer.update(cx, |viewer, cx| {
+            viewer.enter_diff_mode(diff_entries, project_root, window, cx);
         });
 
         // Create a mock diff

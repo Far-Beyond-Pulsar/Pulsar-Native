@@ -5,6 +5,7 @@
 mod chat;
 mod connection;
 mod diff;
+mod diff_viewer;
 mod file_sync;
 mod file_sync_ui;
 mod presence;
@@ -17,5 +18,6 @@ mod utils;
 
 // Re-export main types
 pub use diff::*;
+pub use diff_viewer::{DiffViewer, DiffFileEntry};
 pub use state::MultiplayerWindow;
 pub use types::*;

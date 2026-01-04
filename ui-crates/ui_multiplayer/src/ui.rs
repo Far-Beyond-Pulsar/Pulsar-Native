@@ -722,10 +722,10 @@ impl MultiplayerWindow {
                         )
                 )
                 .child(
-                    // Script Editor in diff mode
+                    // Diff Viewer for file sync
                     div()
                         .flex_1()
-                        .child(self.script_editor.clone())
+                        .child(self.diff_viewer.clone())
                 )
                 .into_any_element()
         } else {

@@ -11,9 +11,7 @@ ui.workspace = true
 
 # UI crates (all of them!)
 ui_common.workspace = true
-ui_script_editor.workspace = true
 ui_level_editor.workspace = true
-ui_daw_editor.workspace = true
 ui_entry.workspace = true
 ui_settings.workspace = true
 ui_multiplayer.workspace = true
@@ -23,11 +21,7 @@ ui_type_debugger.workspace = true
 ui_file_manager.workspace = true
 ui_loading_screen.workspace = true
 ui_project_launcher.workspace = true
-ui_editor_table.workspace = true
-ui_struct_editor.workspace = true
-ui_enum_editor.workspace = true
-ui_trait_editor.workspace = true
-ui_alias_editor.workspace = true
+
 
 # Engine
 engine_state.workspace = true

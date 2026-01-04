@@ -9766,7 +9766,6 @@ dependencies = [
  "ui_about",
  "ui_common",
  "ui_core",
- "ui_daw_editor",
  "ui_documentation",
  "ui_entry",
  "ui_file_manager",
@@ -9774,7 +9773,6 @@ dependencies = [
  "ui_loading_screen",
  "ui_multiplayer",
  "ui_problems",
- "ui_script_editor",
  "ui_settings",
  "ui_terminal",
  "url",
@@ -13868,24 +13866,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ui_alias_editor"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "engine_state",
- "gpui",
- "plugin_editor_api",
- "plugin_manager",
- "pulsar_std",
- "serde",
- "serde_json",
- "ui",
- "ui_common",
- "ui_types_common",
- "uuid",
-]
-
-[[package]]
 name = "ui_common"
 version = "0.1.0"
 dependencies = [
@@ -13925,63 +13905,18 @@ dependencies = [
  "smol 2.0.2",
  "tracing",
  "ui",
- "ui_alias_editor",
  "ui_common",
- "ui_daw_editor",
- "ui_editor_table",
  "ui_entry",
- "ui_enum_editor",
  "ui_file_manager",
  "ui_level_editor",
  "ui_loading_screen",
  "ui_multiplayer",
  "ui_problems",
  "ui_project_launcher",
- "ui_script_editor",
  "ui_settings",
- "ui_struct_editor",
  "ui_terminal",
- "ui_trait_editor",
  "ui_type_debugger",
  "walkdir",
-]
-
-[[package]]
-name = "ui_daw_editor"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytemuck",
- "chrono",
- "claxon",
- "cpal",
- "crossbeam",
- "dashmap 6.1.0",
- "engine_backend",
- "engine_state",
- "flume",
- "futures",
- "gpui",
- "hound",
- "itertools 0.13.0",
- "lewton",
- "parking_lot",
- "plugin_editor_api",
- "plugin_manager",
- "rfd",
- "ron 0.8.1",
- "schemars",
- "serde",
- "serde_json",
- "smol 1.3.0",
- "symphonia",
- "tempfile",
- "tokio",
- "tracing",
- "ui",
- "ui_common",
- "uuid",
- "wgpu 0.20.1",
 ]
 
 [[package]]
@@ -13991,33 +13926,6 @@ dependencies = [
  "gpui",
  "pulsar_docs",
  "ui",
-]
-
-[[package]]
-name = "ui_editor_table"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "dashmap 6.1.0",
- "engine_state",
- "gpui",
- "parking_lot",
- "plugin_editor_api",
- "plugin_manager",
- "proc-macro2",
- "pulsar_std",
- "quote",
- "rusqlite",
- "schemars",
- "serde",
- "serde_json",
- "smol 1.3.0",
- "syn 2.0.110",
- "tracing",
- "ui",
- "ui_common",
- "uuid",
 ]
 
 [[package]]
@@ -14046,25 +13954,6 @@ dependencies = [
  "ui",
  "ui_common",
  "walkdir",
-]
-
-[[package]]
-name = "ui_enum_editor"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "engine_state",
- "gpui",
- "parking_lot",
- "plugin_editor_api",
- "plugin_manager",
- "serde",
- "serde_json",
- "tracing",
- "ui",
- "ui_common",
- "ui_types_common",
- "uuid",
 ]
 
 [[package]]
@@ -14142,7 +14031,6 @@ dependencies = [
  "tracing",
  "ui",
  "ui_common",
- "ui_script_editor",
  "uuid",
 ]
 
@@ -14172,39 +14060,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ui_script_editor"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "engine_backend",
- "engine_state",
- "gpui",
- "itertools 0.13.0",
- "lsp-types",
- "notify 7.0.0",
- "parking_lot",
- "plugin_editor_api",
- "plugin_manager",
- "quote",
- "regex",
- "ropey",
- "schemars",
- "serde",
- "serde_json",
- "similar",
- "syn 2.0.110",
- "tempfile",
- "tracing",
- "tree-sitter 0.20.10",
- "tree-sitter-rust 0.20.3",
- "ui",
- "ui_common",
- "uuid",
- "walkdir",
- "winapi",
-]
-
-[[package]]
 name = "ui_settings"
 version = "0.1.0"
 dependencies = [
@@ -14219,25 +14074,6 @@ dependencies = [
  "toml 0.8.23",
  "ui",
  "ui_common",
-]
-
-[[package]]
-name = "ui_struct_editor"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "engine_state",
- "gpui",
- "parking_lot",
- "plugin_editor_api",
- "plugin_manager",
- "serde",
- "serde_json",
- "tracing",
- "ui",
- "ui_common",
- "ui_types_common",
- "uuid",
 ]
 
 [[package]]
@@ -14261,25 +14097,6 @@ dependencies = [
  "ui_common",
  "uuid",
  "which 6.0.3",
-]
-
-[[package]]
-name = "ui_trait_editor"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "engine_state",
- "gpui",
- "parking_lot",
- "plugin_editor_api",
- "plugin_manager",
- "serde",
- "serde_json",
- "tracing",
- "ui",
- "ui_common",
- "ui_types_common",
- "uuid",
 ]
 
 [[package]]

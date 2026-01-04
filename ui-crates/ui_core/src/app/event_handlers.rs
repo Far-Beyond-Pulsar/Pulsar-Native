@@ -4,9 +4,12 @@ use gpui::{AppContext, Context, DismissEvent, Entity, Focusable, Window};
 use ui::{ContextModal, dock::PanelEvent};
 use ui_file_manager::{FileManagerDrawer, FileSelected, PopoutFileManagerEvent};
 use ui_problems::ProblemsDrawer;
-use ui_script_editor::{ScriptEditorPanel, TextEditorEvent};
 use ui_entry::{EntryScreen, ProjectSelected};
-use ui_alias_editor::ShowTypePickerRequest;
+
+// TODO:!!! We must find a way to migrate these to their plugins and decouple from core UI!
+
+// use ui_script_editor::{ScriptEditorPanel, TextEditorEvent};
+// use ui_alias_editor::ShowTypePickerRequest;
 use engine_backend::services::rust_analyzer_manager::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager};
 use std::path::PathBuf;
 use futures::FutureExt;
@@ -584,12 +587,13 @@ pub fn on_tab_panel_event(
             app.create_detached_window(panel.clone(), *position, window, cx);
         }
         PanelEvent::TabClosed(entity_id) => {
-            app.state.daw_editors.retain(|e| e.entity_id() != *entity_id);
-            app.state.database_editors.retain(|e| e.entity_id() != *entity_id);
-            app.state.struct_editors.retain(|e| e.entity_id() != *entity_id);
-            app.state.enum_editors.retain(|e| e.entity_id() != *entity_id);
-            app.state.trait_editors.retain(|e| e.entity_id() != *entity_id);
-            app.state.alias_editors.retain(|e| e.entity_id() != *entity_id);
+            // Editor tracking has been migrated to plugins
+            // app.state.daw_editors.retain(|e| e.entity_id() != *entity_id);
+            // app.state.database_editors.retain(|e| e.entity_id() != *entity_id);
+            // app.state.struct_editors.retain(|e| e.entity_id() != *entity_id);
+            // app.state.enum_editors.retain(|e| e.entity_id() != *entity_id);
+            // app.state.trait_editors.retain(|e| e.entity_id() != *entity_id);
+            // app.state.alias_editors.retain(|e| e.entity_id() != *entity_id);
 
             // Update Discord presence when tab is closed
             app.update_discord_presence(cx);
@@ -679,80 +683,72 @@ pub fn on_navigate_to_diagnostic(
 
     app.open_path(event.file_path.clone(), window, cx);
 
-    if let Some(script_editor) = &app.state.script_editor {
-        script_editor.update(cx, |editor, cx| {
-            editor.go_to_line(event.line, event.column, window, cx);
-        });
-    }
+    // Script editor has been migrated to plugins
+    // if let Some(script_editor) = &app.state.script_editor {
+    //     script_editor.update(cx, |editor, cx| {
+    //         editor.go_to_line(event.line, event.column, window, cx);
+    //     });
+    // }
 }
 
-pub fn on_text_editor_event(
-    _app: &mut PulsarApp,
-    _editor: &Entity<ScriptEditorPanel>,
-    _event: &TextEditorEvent,
-    _window: &mut Window,
-    _cx: &mut Context<PulsarApp>,
-) {
-    // LSP notifications are now handled by ScriptEditor internally
-}
-
-pub fn on_show_type_picker_request(
-    app: &mut PulsarApp,
-    editor: &Entity<ui_alias_editor::AliasEditor>,
-    event: &ShowTypePickerRequest,
-    window: &mut Window,
-    cx: &mut Context<PulsarApp>,
-) {
-    use crate::unified_palette::AnyPaletteDelegate;
-    use ui_common::command_palette::GenericPalette;
-
-    app.state.active_type_picker_editor = Some(editor.clone());
-
-    if let Some(palette) = &app.state.command_palette {
-        palette.update(cx, |palette, cx| {
-            let delegate = AnyPaletteDelegate::type_library(event.target_slot.clone());
-            palette.swap_delegate(delegate, window, cx);
-        });
-
-        let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
-        input_handle.focus(window);
-    } else {
-        let delegate = AnyPaletteDelegate::type_library(event.target_slot.clone());
-        let palette = cx.new(|cx| GenericPalette::new(delegate, window, cx));
-
-        cx.subscribe_in(&palette, window, |app: &mut PulsarApp, palette, _event: &DismissEvent, window, cx| {
-            let selected_item = palette.update(cx, |palette, _cx| {
-                palette.delegate_mut().take_selected_command()
-            });
-
-            let selected_type = palette.update(cx, |palette, _cx| {
-                palette.delegate_mut().take_selected_type()
-            });
-
-            if let Some(item) = selected_item {
-                app.handle_command_or_file_selected(item, window, cx);
-            }
-
-            if let Some((type_item, target_slot)) = selected_type {
-                if let Some(editor) = &app.state.active_type_picker_editor {
-                    editor.update(cx, |ed, cx| {
-                        ed.add_type_from_picker(&type_item, target_slot, cx);
-                    });
-                }
-                app.state.active_type_picker_editor = None;
-            }
-
-            app.state.command_palette_open = false;
-            app.state.focus_handle.focus(window);
-            cx.notify();
-        }).detach();
-
-        let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
-        input_handle.focus(window);
-
-        app.state.command_palette = Some(palette);
-    }
-
-    app.state.command_palette_open = true;
-    cx.notify();
-}
+// Type picker functionality has been migrated to plugins
+// pub fn on_show_type_picker_request(
+//     app: &mut PulsarApp,
+//     editor: &Entity<ui_alias_editor::AliasEditor>,
+//     event: &ShowTypePickerRequest,
+//     window: &mut Window,
+//     cx: &mut Context<PulsarApp>,
+// ) {
+//     use crate::unified_palette::AnyPaletteDelegate;
+//     use ui_common::command_palette::GenericPalette;
+//
+//     app.state.active_type_picker_editor = Some(editor.clone());
+//
+//     if let Some(palette) = &app.state.command_palette {
+//         palette.update(cx, |palette, cx| {
+//             let delegate = AnyPaletteDelegate::type_library(event.target_slot.clone());
+//             palette.swap_delegate(delegate, window, cx);
+//         });
+//
+//         let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
+//         input_handle.focus(window);
+//     } else {
+//         let delegate = AnyPaletteDelegate::type_library(event.target_slot.clone());
+//         let palette = cx.new(|cx| GenericPalette::new(delegate, window, cx));
+// 
+//         cx.subscribe_in(&palette, window, |app: &mut PulsarApp, palette, _event: &DismissEvent, window, cx| {
+//             let selected_item = palette.update(cx, |palette, _cx| {
+//                 palette.delegate_mut().take_selected_command()
+//             });
+// 
+//             let selected_type = palette.update(cx, |palette, _cx| {
+//                 palette.delegate_mut().take_selected_type()
+//             });
+// 
+//             if let Some(item) = selected_item {
+//                 app.handle_command_or_file_selected(item, window, cx);
+//             }
+// 
+//             if let Some((type_item, target_slot)) = selected_type {
+//                 if let Some(editor) = &app.state.active_type_picker_editor {
+//                     editor.update(cx, |ed, cx| {
+//                         ed.add_type_from_picker(&type_item, target_slot, cx);
+//                     });
+//                 }
+//                 app.state.active_type_picker_editor = None;
+//             }
+// 
+//             app.state.command_palette_open = false;
+//             app.state.focus_handle.focus(window);
+//             cx.notify();
+//         }).detach();
+// 
+//         let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
+//         input_handle.focus(window);
+// 
+//         app.state.command_palette = Some(palette);
+//     }
+// 
+//     app.state.command_palette_open = true;
+//     cx.notify();
+// }

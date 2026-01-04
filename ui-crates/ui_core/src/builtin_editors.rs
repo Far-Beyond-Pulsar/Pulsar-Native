@@ -10,7 +10,7 @@ use std::sync::Arc;
 ///
 /// This should be called during application initialization,
 /// before any files are opened.
-pub fn register_all_builtin_editors(registry: &mut BuiltinEditorRegistry) {
+pub fn register_all_builtin_editors(_registry: &mut BuiltinEditorRegistry) {
     tracing::info!("Registering all built-in editors...");
     
     // Note: Actual editor providers have been migrated to plugins in their own repos!
