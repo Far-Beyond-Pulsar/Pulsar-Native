@@ -36,7 +36,7 @@ Pulsar is structured as a modular game engine with clear separation between engi
                             │
 ┌─────────────────────────────────────────────────────────┐
 │                  Core Engine                            │
-│  Rendering │ ECS │ Physics │ Asset Management          │
+│  Rendering │ ECS │ Physics │ Asset Management           │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -320,3 +320,4 @@ Dependencies are managed through Cargo and compiled together. The entire editor 
 5. **Script Hot-Reload**: Live code updates
 
 These changes will maintain the plugin architecture while improving core systems.
+
