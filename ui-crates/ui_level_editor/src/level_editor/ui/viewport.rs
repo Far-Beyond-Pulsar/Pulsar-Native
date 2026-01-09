@@ -1373,21 +1373,17 @@ impl ViewportPanel {
                                     .child("GPU Pipeline Stats")
                             )
                     )
-                    .child(
-                        h_flex()
-                            .items_center()
-                            .child({
-                                let state_clone = state_arc.clone();
-                                Button::new("collapse_gpu_pipeline")
-                                    .icon(IconName::Close)
-                                    .ghost()
-                                    .xsmall()
-                                    .tooltip("Close")
-                                    .on_click(move |_, _, _| {
-                                        state_clone.write().set_gpu_pipeline_overlay_collapsed(true);
-                                    })
+                    .child({
+                        let state_clone = state_arc.clone();
+                        Button::new("collapse_gpu_pipeline")
+                            .icon(IconName::Close)
+                            .ghost()
+                            .xsmall()
+                            .tooltip("Close")
+                            .on_click(move |_, _, _| {
+                                state_clone.write().set_gpu_pipeline_overlay_collapsed(true);
                             })
-                    )
+                    })
             )
             .child(
                 // Table header with modern styling

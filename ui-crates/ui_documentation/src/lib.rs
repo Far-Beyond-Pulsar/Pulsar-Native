@@ -301,32 +301,43 @@ impl DocumentationWindow {
                     .child(
                         v_flex()
                             .size_full()
-                            .bg(theme.sidebar)
+                            .bg(theme.sidebar.opacity(0.5))
                             .border_r_1()
-                            .border_color(theme.border)
+                            .border_color(theme.border.opacity(0.5))
                             .child(
                                 // Professional sidebar header
                                 div()
                                     .w_full()
                                     .px_4()
                                     .py_3()
+                                    .bg(theme.background.opacity(0.3))
                                     .border_b_1()
-                                    .border_color(theme.border)
+                                    .border_color(theme.border.opacity(0.5))
                                     .child(
-                                        div()
-                                            .text_sm()
-                                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                                            .text_color(theme.muted_foreground)
-                                            .child("API REFERENCE")
+                                        h_flex()
+                                            .gap_2()
+                                            .items_center()
+                                            .child(
+                                                Icon::new(IconName::Code)
+                                                    .size_4()
+                                                    .text_color(theme.accent)
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_sm()
+                                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                    .text_color(theme.foreground)
+                                                    .child("API Reference")
+                                            )
                                     )
                             )
                             .child(
-                                // Search bar
+                                // Search bar with modern styling
                                 div()
                                     .w_full()
                                     .p_3()
                                     .border_b_1()
-                                    .border_color(theme.border)
+                                    .border_color(theme.border.opacity(0.5))
                                     .child(
                                         TextInput::new(&self.engine_docs.search_input_state)
                                             .w_full()
@@ -349,7 +360,7 @@ impl DocumentationWindow {
                                         v_flex()
                                             .w_full()
                                             .p_2()
-                                            .gap_1()
+                                            .gap_0p5()
                                             .font_family("monospace")
                                             .children(tree_nodes)
                                     )

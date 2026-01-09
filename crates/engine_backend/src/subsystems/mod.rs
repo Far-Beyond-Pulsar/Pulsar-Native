@@ -10,6 +10,7 @@ pub mod physics;
 pub mod game;
 pub mod input;
 pub mod networking;
+pub mod game_network;
 pub mod ui;
 pub mod scripting;
 pub mod themes;
