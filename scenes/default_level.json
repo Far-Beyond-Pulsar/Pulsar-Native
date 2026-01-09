@@ -1,0 +1,346 @@
+{
+  "version": "1.0",
+  "metadata": {
+    "created": "2026-01-09T18:07:59Z",
+    "modified": "2026-01-09T18:07:59Z",
+    "editor_version": "0.1.0",
+    "description": "Default starter level - Unreal-style first-person template"
+  },
+  "scene_settings": {
+    "ambient_light": {
+      "color": [0.2, 0.2, 0.25],
+      "intensity": 0.3
+    },
+    "fog": {
+      "enabled": false,
+      "color": [0.5, 0.6, 0.7],
+      "density": 0.01
+    },
+    "skybox": {
+      "type": "gradient",
+      "top_color": [0.4, 0.6, 0.9],
+      "bottom_color": [0.8, 0.85, 0.9]
+    }
+  },
+  "objects": [
+    {
+      "id": "main_camera",
+      "name": "Main Camera",
+      "object_type": "Camera",
+      "transform": {
+        "position": [0.0, 2.0, 10.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "components": [
+        {
+          "type": "Camera",
+          "fov": 75.0,
+          "near_clip": 0.1,
+          "far_clip": 1000.0
+        }
+      ]
+    },
+    {
+      "id": "directional_light",
+      "name": "Sun",
+      "object_type": "Light",
+      "transform": {
+        "position": [0.0, 10.0, 0.0],
+        "rotation": [-45.0, 30.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "components": [
+        {
+          "type": "DirectionalLight",
+          "color": [1.0, 0.95, 0.9],
+          "intensity": 1.5,
+          "cast_shadows": true
+        }
+      ]
+    },
+    {
+      "id": "floor_plane",
+      "name": "Floor",
+      "object_type": "Mesh",
+      "transform": {
+        "position": [0.0, 0.0, 0.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [20.0, 0.1, 20.0]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "components": [
+        {
+          "type": "MeshRenderer",
+          "mesh": "Cube",
+          "material": {
+            "albedo": [0.3, 0.3, 0.3],
+            "metallic": 0.0,
+            "roughness": 0.8
+          }
+        }
+      ]
+    },
+    {
+      "id": "center_cube",
+      "name": "Center Cube",
+      "object_type": "Mesh",
+      "transform": {
+        "position": [0.0, 1.0, 0.0],
+        "rotation": [0.0, 45.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "components": [
+        {
+          "type": "MeshRenderer",
+          "mesh": "Cube",
+          "material": {
+            "albedo": [0.8, 0.3, 0.3],
+            "metallic": 0.2,
+            "roughness": 0.5
+          }
+        }
+      ]
+    },
+    {
+      "id": "left_sphere",
+      "name": "Sphere Left",
+      "object_type": "Mesh",
+      "transform": {
+        "position": [-3.0, 1.5, 0.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "components": [
+        {
+          "type": "MeshRenderer",
+          "mesh": "Sphere",
+          "material": {
+            "albedo": [0.3, 0.5, 0.8],
+            "metallic": 0.8,
+            "roughness": 0.2
+          }
+        }
+      ]
+    },
+    {
+      "id": "right_cylinder",
+      "name": "Cylinder Right",
+      "object_type": "Mesh",
+      "transform": {
+        "position": [3.0, 1.5, 0.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 2.0, 1.0]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "components": [
+        {
+          "type": "MeshRenderer",
+          "mesh": "Cylinder",
+          "material": {
+            "albedo": [0.3, 0.8, 0.4],
+            "metallic": 0.1,
+            "roughness": 0.6
+          }
+        }
+      ]
+    },
+    {
+      "id": "back_wall",
+      "name": "Back Wall",
+      "object_type": "Mesh",
+      "transform": {
+        "position": [0.0, 2.5, -5.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [8.0, 4.0, 0.5]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "components": [
+        {
+          "type": "MeshRenderer",
+          "mesh": "Cube",
+          "material": {
+            "albedo": [0.5, 0.5, 0.5],
+            "metallic": 0.0,
+            "roughness": 0.9
+          }
+        }
+      ]
+    },
+    {
+      "id": "decor_cube_1",
+      "name": "Decoration 1",
+      "object_type": "Mesh",
+      "transform": {
+        "position": [-5.0, 0.4, 2.0],
+        "rotation": [0.0, 30.0, 0.0],
+        "scale": [0.6, 0.6, 0.6]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "components": [
+        {
+          "type": "MeshRenderer",
+          "mesh": "Cube",
+          "material": {
+            "albedo": [0.7, 0.4, 0.6],
+            "metallic": 0.5,
+            "roughness": 0.4
+          }
+        }
+      ]
+    },
+    {
+      "id": "decor_cube_2",
+      "name": "Decoration 2",
+      "object_type": "Mesh",
+      "transform": {
+        "position": [-4.0, 0.4, 3.0],
+        "rotation": [0.0, -15.0, 0.0],
+        "scale": [0.6, 0.6, 0.6]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "components": [
+        {
+          "type": "MeshRenderer",
+          "mesh": "Cube",
+          "material": {
+            "albedo": [0.9, 0.7, 0.3],
+            "metallic": 0.6,
+            "roughness": 0.3
+          }
+        }
+      ]
+    },
+    {
+      "id": "decor_cube_3",
+      "name": "Decoration 3",
+      "object_type": "Mesh",
+      "transform": {
+        "position": [5.0, 0.4, 2.0],
+        "rotation": [0.0, -30.0, 0.0],
+        "scale": [0.6, 0.6, 0.6]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "components": [
+        {
+          "type": "MeshRenderer",
+          "mesh": "Cube",
+          "material": {
+            "albedo": [0.4, 0.7, 0.8],
+            "metallic": 0.7,
+            "roughness": 0.25
+          }
+        }
+      ]
+    },
+    {
+      "id": "decor_cube_4",
+      "name": "Decoration 4",
+      "object_type": "Mesh",
+      "transform": {
+        "position": [4.0, 0.4, 3.0],
+        "rotation": [0.0, 15.0, 0.0],
+        "scale": [0.6, 0.6, 0.6]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "components": [
+        {
+          "type": "MeshRenderer",
+          "mesh": "Cube",
+          "material": {
+            "albedo": [0.5, 0.8, 0.5],
+            "metallic": 0.4,
+            "roughness": 0.5
+          }
+        }
+      ]
+    },
+    {
+      "id": "platform_left",
+      "name": "Platform Left",
+      "object_type": "Mesh",
+      "transform": {
+        "position": [-2.0, 0.35, 4.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.5, 0.3, 1.5]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "components": [
+        {
+          "type": "MeshRenderer",
+          "mesh": "Cube",
+          "material": {
+            "albedo": [0.35, 0.35, 0.4],
+            "metallic": 0.1,
+            "roughness": 0.7
+          }
+        }
+      ]
+    },
+    {
+      "id": "platform_right",
+      "name": "Platform Right",
+      "object_type": "Mesh",
+      "transform": {
+        "position": [2.0, 0.35, 4.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.5, 0.3, 1.5]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "components": [
+        {
+          "type": "MeshRenderer",
+          "mesh": "Cube",
+          "material": {
+            "albedo": [0.35, 0.35, 0.4],
+            "metallic": 0.1,
+            "roughness": 0.7
+          }
+        }
+      ]
+    }
+  ]
+}

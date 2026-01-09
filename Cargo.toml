@@ -9,6 +9,7 @@ members = [
     "crates/pulsar_macros",
     "crates/pulsar_std",
     "crates/multiuser_server",
+    "crates/net",
     # Plugin system
     "crates/plugin_editor_api",
     "crates/plugin_manager",

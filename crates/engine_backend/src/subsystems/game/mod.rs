@@ -54,34 +54,9 @@ impl GameObject {
     }
 
     /// Update object position based on velocity and delta time
-    pub fn update(&mut self, delta_time: f32) {
-        if !self.active {
-            return;
-        }
-
-        self.position[0] += self.velocity[0] * delta_time;
-        self.position[1] += self.velocity[1] * delta_time;
-        self.position[2] += self.velocity[2] * delta_time;
-
-        // Update rotation - FAST and OBVIOUS rotation for great visual feedback
-        self.rotation[0] += 120.0 * delta_time; // X-axis rotation (120 degrees/sec)
-        self.rotation[1] += 80.0 * delta_time;  // Y-axis rotation (80 degrees/sec)
-        self.rotation[2] += 60.0 * delta_time;  // Z-axis rotation (60 degrees/sec)
-
-        // Keep rotation values in 0-360 range
-        for i in 0..3 {
-            if self.rotation[i] >= 360.0 {
-                self.rotation[i] -= 360.0;
-            }
-        }
-
-        // Simple bounce logic for demo (bounce off boundaries)
-        for i in 0..3 {
-            if self.position[i] < -10.0 || self.position[i] > 10.0 {
-                self.velocity[i] = -self.velocity[i];
-                self.position[i] = self.position[i].clamp(-10.0, 10.0);
-            }
-        }
+    pub fn update(&mut self, _delta_time: f32) {
+        // Static objects - no movement or rotation
+        // Objects maintain their initial transform
     }
 }
 
@@ -139,30 +114,93 @@ impl GameThread {
         tracing::debug!("[GAME-THREAD] ===== Creating Game Thread =====");
         let mut initial_state = GameState::new();
         
-        // Add some demo objects with different velocities and starting rotations
-        // FAST, OBVIOUS MOVEMENT for easy visibility
+        // Create a beautiful default level similar to Unreal's starter content
+        // Floor plane - large ground surface
         initial_state.add_object({
-            let mut obj = GameObject::new(1, 0.0, 0.0, 0.0).with_velocity(2.0, 0.0, 1.5);
+            let mut obj = GameObject::new(1, 0.0, -0.5, 0.0);
+            obj.scale = [20.0, 0.1, 20.0]; // Large flat plane
             obj.rotation = [0.0, 0.0, 0.0];
             obj
         });
+        
+        // Center cube - focal point
         initial_state.add_object({
-            let mut obj = GameObject::new(2, -2.0, 0.0, 0.0).with_velocity(1.5, 0.0, -1.0);
-            obj.rotation = [45.0, 90.0, 0.0];
-            obj
-        });
-        initial_state.add_object({
-            let mut obj = GameObject::new(3, 2.0, 0.0, 0.0).with_velocity(-1.0, 0.0, 1.5);
-            obj.rotation = [90.0, 0.0, 45.0];
-            obj
-        });
-        initial_state.add_object({
-            let mut obj = GameObject::new(4, 0.0, 0.0, -2.0).with_velocity(-1.5, 0.0, 2.0);
-            obj.rotation = [180.0, 45.0, 90.0];
+            let mut obj = GameObject::new(2, 0.0, 0.5, 0.0);
+            obj.scale = [1.0, 1.0, 1.0];
+            obj.rotation = [0.0, 45.0, 0.0]; // Slight rotation for visual interest
             obj
         });
         
-        tracing::debug!("[GAME-THREAD] Added {} demo objects (with rotation)", initial_state.objects.len());
+        // Sphere on the left
+        initial_state.add_object({
+            let mut obj = GameObject::new(3, -3.0, 1.0, 0.0);
+            obj.scale = [1.0, 1.0, 1.0];
+            obj.rotation = [0.0, 0.0, 0.0];
+            obj
+        });
+        
+        // Cylinder on the right
+        initial_state.add_object({
+            let mut obj = GameObject::new(4, 3.0, 1.0, 0.0);
+            obj.scale = [1.0, 2.0, 1.0];
+            obj.rotation = [0.0, 0.0, 0.0];
+            obj
+        });
+        
+        // Back wall/cube
+        initial_state.add_object({
+            let mut obj = GameObject::new(5, 0.0, 2.0, -5.0);
+            obj.scale = [8.0, 4.0, 0.5]; // Tall wall
+            obj.rotation = [0.0, 0.0, 0.0];
+            obj
+        });
+        
+        // Small decorative cubes - left side
+        initial_state.add_object({
+            let mut obj = GameObject::new(6, -5.0, 0.3, 2.0);
+            obj.scale = [0.6, 0.6, 0.6];
+            obj.rotation = [0.0, 30.0, 0.0];
+            obj
+        });
+        
+        initial_state.add_object({
+            let mut obj = GameObject::new(7, -4.0, 0.3, 3.0);
+            obj.scale = [0.6, 0.6, 0.6];
+            obj.rotation = [0.0, -15.0, 0.0];
+            obj
+        });
+        
+        // Small decorative cubes - right side
+        initial_state.add_object({
+            let mut obj = GameObject::new(8, 5.0, 0.3, 2.0);
+            obj.scale = [0.6, 0.6, 0.6];
+            obj.rotation = [0.0, -30.0, 0.0];
+            obj
+        });
+        
+        initial_state.add_object({
+            let mut obj = GameObject::new(9, 4.0, 0.3, 3.0);
+            obj.scale = [0.6, 0.6, 0.6];
+            obj.rotation = [0.0, 15.0, 0.0];
+            obj
+        });
+        
+        // Foreground elements
+        initial_state.add_object({
+            let mut obj = GameObject::new(10, -2.0, 0.5, 4.0);
+            obj.scale = [1.2, 0.5, 1.2];
+            obj.rotation = [0.0, 0.0, 0.0];
+            obj
+        });
+        
+        initial_state.add_object({
+            let mut obj = GameObject::new(11, 2.0, 0.5, 4.0);
+            obj.scale = [1.2, 0.5, 1.2];
+            obj.rotation = [0.0, 0.0, 0.0];
+            obj
+        });
+        
+        tracing::debug!("[GAME-THREAD] Created default level with {} static objects", initial_state.objects.len());
         tracing::debug!("[GAME-THREAD] Target TPS: {}", target_tps);
 
         Self {
