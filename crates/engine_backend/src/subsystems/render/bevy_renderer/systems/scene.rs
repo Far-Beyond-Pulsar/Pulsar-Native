@@ -67,7 +67,7 @@ pub fn setup_scene(
     let mut id = 1;
     
     if level_path.exists() {
-        println!("[BEVY DEBUG] Level file EXISTS! Attempting to read...");
+        println!("[PULSAR_SCENE DEBUG] Level file EXISTS! Attempting to read...");
         tracing::debug!("[BEVY] 📂 Loading level from: {:?}", level_path);
         match std::fs::read_to_string(&level_path) {
             Ok(content) => {
@@ -75,7 +75,7 @@ pub fn setup_scene(
                 println!("[BEVY DEBUG] File content preview (first 200 chars): {:?}", &content.chars().take(200).collect::<String>());
                 match serde_json::from_str::<LevelData>(&content) {
                     Ok(level) => {
-                        println!("[BEVY DEBUG] ✅ JSON parsing successful! Found {} objects", level.objects.len());
+                        println!("[BEVY DEBUG] ✅ JSON parsing successful! Found {} objects", level.game_objects.len());
                         tracing::debug!("[BEVY] ✅ Level file parsed successfully");
                         spawn_level_objects(&mut commands, &mut meshes, &mut materials, &level, &mut id);
                         tracing::debug!("[BEVY] ✅ Level loaded with {} objects", id - 1);
@@ -163,18 +163,32 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct LevelData {
-    objects: Vec<GameObject>,
+    #[serde(default)]
+    name: Option<String>,
+    game_objects: Vec<GameObject>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct GameObject {
+    #[serde(default)]
+    id: Option<u32>,
+    #[serde(default)]
+    name: Option<String>,
     mesh_type: MeshType,
+    transform: GameObjectTransform,
+    #[serde(default)]
+    color: Option<[f32; 3]>,
+    #[serde(default)]
+    metallic: Option<f32>,
+    #[serde(default)]
+    roughness: Option<f32>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct GameObjectTransform {
     position: [f32; 3],
     rotation: [f32; 3],
     scale: [f32; 3],
-    color: [f32; 3],
-    metallic: f32,
-    roughness: f32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -192,30 +206,39 @@ fn spawn_level_objects(
     level: &LevelData,
     id: &mut u32,
 ) {
-    for obj in &level.objects {
+    for obj in &level.game_objects {
+        let scale = &obj.transform.scale;
         let mesh = match obj.mesh_type {
-            MeshType::Cube => meshes.add(Cuboid::new(obj.scale[0], obj.scale[1], obj.scale[2])),
-            MeshType::Sphere => meshes.add(Sphere::new(obj.scale[0]).mesh().ico(5).unwrap()),
-            MeshType::Cylinder => meshes.add(Cylinder::new(obj.scale[0], obj.scale[1])),
-            MeshType::Plane => meshes.add(Cuboid::new(obj.scale[0], 0.1, obj.scale[2])),
+            MeshType::Cube => meshes.add(Cuboid::new(scale[0], scale[1], scale[2])),
+            MeshType::Sphere => meshes.add(Sphere::new(scale[0]).mesh().ico(5).unwrap()),
+            MeshType::Cylinder => meshes.add(Cylinder::new(scale[0], scale[1])),
+            MeshType::Plane => meshes.add(Cuboid::new(scale[0], 0.1, scale[2])),
         };
 
         let rotation = Quat::from_euler(
             EulerRot::XYZ,
-            obj.rotation[0].to_radians(),
-            obj.rotation[1].to_radians(),
-            obj.rotation[2].to_radians(),
+            obj.transform.rotation[0].to_radians(),
+            obj.transform.rotation[1].to_radians(),
+            obj.transform.rotation[2].to_radians(),
         );
+
+        let color = obj.color.unwrap_or([0.8, 0.8, 0.8]);
+        let metallic = obj.metallic.unwrap_or(0.0);
+        let roughness = obj.roughness.unwrap_or(0.5);
 
         commands.spawn((
             Mesh3d(mesh),
             MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: Color::srgb(obj.color[0], obj.color[1], obj.color[2]),
-                metallic: obj.metallic,
-                perceptual_roughness: obj.roughness,
+                base_color: Color::srgb(color[0], color[1], color[2]),
+                metallic,
+                perceptual_roughness: roughness,
                 ..default()
             })),
-            Transform::from_translation(Vec3::new(obj.position[0], obj.position[1], obj.position[2]))
+            bevy::prelude::Transform::from_translation(Vec3::new(
+                obj.transform.position[0], 
+                obj.transform.position[1], 
+                obj.transform.position[2]
+            ))
                 .with_rotation(rotation)
                 .with_scale(Vec3::ONE),
             GameObjectId((*id).into()),
