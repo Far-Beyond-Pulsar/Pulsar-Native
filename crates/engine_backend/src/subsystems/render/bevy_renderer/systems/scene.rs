@@ -177,11 +177,7 @@ struct GameObject {
     mesh_type: MeshType,
     transform: GameObjectTransform,
     #[serde(default)]
-    color: Option<[f32; 3]>,
-    #[serde(default)]
-    metallic: Option<f32>,
-    #[serde(default)]
-    roughness: Option<f32>,
+    material: Option<MaterialData>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -189,6 +185,20 @@ struct GameObjectTransform {
     position: [f32; 3],
     rotation: [f32; 3],
     scale: [f32; 3],
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct MaterialData {
+    #[serde(default)]
+    color: Option<Vec<f32>>,  // Support both RGB [r,g,b] and RGBA [r,g,b,a]
+    #[serde(default)]
+    metallic: Option<f32>,
+    #[serde(default)]
+    roughness: Option<f32>,
+    #[serde(default)]
+    emissive: Option<[f32; 3]>,
+    #[serde(default)]
+    alpha_mode: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -222,18 +232,51 @@ fn spawn_level_objects(
             obj.transform.rotation[2].to_radians(),
         );
 
-        let color = obj.color.unwrap_or([0.8, 0.8, 0.8]);
-        let metallic = obj.metallic.unwrap_or(0.0);
-        let roughness = obj.roughness.unwrap_or(0.5);
+        // Extract material data with defaults
+        let material_data = obj.material.as_ref();
+        
+        // Handle color (support both RGB and RGBA)
+        let color = if let Some(color_vec) = material_data.and_then(|m| m.color.as_ref()) {
+            if color_vec.len() >= 3 {
+                [color_vec[0], color_vec[1], color_vec[2]]
+            } else {
+                [0.8, 0.8, 0.8]
+            }
+        } else {
+            [0.8, 0.8, 0.8]
+        };
+        
+        let metallic = material_data
+            .and_then(|m| m.metallic)
+            .unwrap_or(0.0);
+        let roughness = material_data
+            .and_then(|m| m.roughness)
+            .unwrap_or(0.5);
+        let emissive = material_data
+            .and_then(|m| m.emissive)
+            .unwrap_or([0.0, 0.0, 0.0]);
+
+        let mut material = StandardMaterial {
+            base_color: Color::srgb(color[0], color[1], color[2]),
+            metallic,
+            perceptual_roughness: roughness,
+            emissive: Color::srgb(emissive[0], emissive[1], emissive[2]).into(),
+            ..default()
+        };
+
+        // Handle alpha mode if specified
+        if let Some(alpha_mode_str) = material_data.and_then(|m| m.alpha_mode.as_ref()) {
+            material.alpha_mode = match alpha_mode_str.as_str() {
+                "Opaque" => bevy::prelude::AlphaMode::Opaque,
+                "Mask" => bevy::prelude::AlphaMode::Mask(0.5),
+                "Blend" => bevy::prelude::AlphaMode::Blend,
+                _ => bevy::prelude::AlphaMode::Opaque,
+            };
+        }
 
         commands.spawn((
             Mesh3d(mesh),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: Color::srgb(color[0], color[1], color[2]),
-                metallic,
-                perceptual_roughness: roughness,
-                ..default()
-            })),
+            MeshMaterial3d(materials.add(material)),
             bevy::prelude::Transform::from_translation(Vec3::new(
                 obj.transform.position[0], 
                 obj.transform.position[1], 
