@@ -131,6 +131,12 @@ impl PulsarApp {
 
         // Store project_path before moving it
         let has_project = project_path.is_some();
+        
+        // Set environment variable for scene loading
+        if let Some(ref path) = project_path {
+            std::env::set_var("PULSAR_PROJECT_PATH", path.as_os_str());
+            tracing::info!("Set PULSAR_PROJECT_PATH to {:?}", path);
+        }
 
         // Create drawers
         let file_manager_drawer = cx.new(|cx| FileManagerDrawer::new(project_path.clone(), window, cx));

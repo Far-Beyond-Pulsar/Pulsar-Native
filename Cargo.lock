@@ -4565,6 +4565,7 @@ dependencies = [
  "nalgebra 0.32.6",
  "parking_lot",
  "rapier3d",
+ "ron 0.8.1",
  "ropey",
  "serde",
  "serde_json",

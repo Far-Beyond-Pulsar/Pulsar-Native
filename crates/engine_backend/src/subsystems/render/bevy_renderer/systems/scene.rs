@@ -3,6 +3,8 @@
 use bevy::prelude::*;
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use crate::subsystems::render::bevy_renderer::core::{MainCamera, GameObjectId, SharedTexturesResource};
+use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 /// Setup 3D scene - runs AFTER DXGI textures are created
 pub fn setup_scene(
@@ -10,6 +12,7 @@ pub fn setup_scene(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     shared_textures: Res<SharedTexturesResource>,
+    engine_state: Res<Arc<Mutex<crate::EngineState>>>,
 ) {
     tracing::debug!("[BEVY] 🎬 Setting up scene...");
 
@@ -49,373 +52,163 @@ pub fn setup_scene(
     tracing::debug!("[BEVY] ✅ Camera spawned with tonemapping DISABLED - double-buffering enabled!");
     tracing::debug!("[BEVY] 🔄 Camera renders to write buffer, GPUI reads from read buffer");
 
-    // Arena level with platforms, ramps, hallways, and varied geometry
-    tracing::debug!("[BEVY] 🎨 Spawning arena level...");
+    // Try to load default level file from the project directory
+    // Use environment variable or fallback to default project location
+    let project_dir = std::env::var("PULSAR_PROJECT_PATH")
+        .unwrap_or_else(|_| "C:\\Users\\redst\\OneDrive\\Documents\\Pulsar_Projects\\blank_project".to_string());
+    let level_path = Path::new(&project_dir).join("scenes").join("default.json");
+    tracing::debug!("[BEVY] 🔍 Checking for level file at {:?}", level_path);
     let mut id = 1;
     
-    // === GROUND FLOOR ===
-    // Main floor
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(40.0, 0.2, 40.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.25, 0.25, 0.28),
-            metallic: 0.1,
-            perceptual_roughness: 0.85,
-            reflectance: 0.15,
-            ..default()
-        })),
-        Transform::from_xyz(0.0, -0.1, 0.0),
-        GameObjectId(id),
-    ));
-    id += 1;
-
-    // === CENTRAL STRUCTURE ===
-    // Central tower base
-    commands.spawn((
-        Mesh3d(meshes.add(Cylinder::new(2.0, 1.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.4, 0.35, 0.45),
-            metallic: 0.3,
-            perceptual_roughness: 0.6,
-            reflectance: 0.3,
-            ..default()
-        })),
-        Transform::from_xyz(0.0, 0.5, 0.0),
-        GameObjectId(id),
-    ));
-    id += 1;
-
-    // Central tower mid
-    commands.spawn((
-        Mesh3d(meshes.add(Cylinder::new(1.5, 2.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.5, 0.4, 0.5),
-            metallic: 0.4,
-            perceptual_roughness: 0.5,
-            reflectance: 0.4,
-            ..default()
-        })),
-        Transform::from_xyz(0.0, 2.0, 0.0),
-        GameObjectId(id),
-    ));
-    id += 1;
-
-    // Central tower top platform
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(4.0, 0.3, 4.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.6, 0.45, 0.55),
-            metallic: 0.5,
-            perceptual_roughness: 0.4,
-            reflectance: 0.5,
-            ..default()
-        })),
-        Transform::from_xyz(0.0, 3.15, 0.0),
-        GameObjectId(id),
-    ));
-    id += 1;
-
-    // === CORNER PLATFORMS (4 corners) ===
-    let platform_positions = [
-        (-10.0, -10.0), (10.0, -10.0), (-10.0, 10.0), (10.0, 10.0)
-    ];
-    let platform_colors = [
-        Color::srgb(0.7, 0.3, 0.3),  // Red
-        Color::srgb(0.3, 0.5, 0.8),  // Blue
-        Color::srgb(0.3, 0.7, 0.4),  // Green
-        Color::srgb(0.8, 0.7, 0.3),  // Yellow
-    ];
-
-    for (i, &(x, z)) in platform_positions.iter().enumerate() {
-        // Platform base
-        commands.spawn((
-            Mesh3d(meshes.add(Cuboid::new(5.0, 0.4, 5.0))),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: platform_colors[i],
-                metallic: 0.3,
-                perceptual_roughness: 0.6,
-                reflectance: 0.3,
-                ..default()
-            })),
-            Transform::from_xyz(x, 1.5, z),
-            GameObjectId(id),
-        ));
-        id += 1;
-
-        // Support pillar
-        commands.spawn((
-            Mesh3d(meshes.add(Cylinder::new(0.8, 3.0))),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: Color::srgb(0.35, 0.35, 0.4),
-                metallic: 0.2,
-                perceptual_roughness: 0.7,
-                reflectance: 0.2,
-                ..default()
-            })),
-            Transform::from_xyz(x, 0.0, z),
-            GameObjectId(id),
-        ));
-        id += 1;
+    if level_path.exists() {
+        tracing::debug!("[BEVY] 📂 Loading level from: {:?}", level_path);
+        match std::fs::read_to_string(level_path) {
+            Ok(content) => {
+                match ron::from_str::<LevelData>(&content) {
+                    Ok(level) => {
+                        tracing::debug!("[BEVY] ✅ Level file parsed successfully");
+                        spawn_level_objects(&mut commands, &mut meshes, &mut materials, &level, &mut id);
+                        tracing::debug!("[BEVY] ✅ Level loaded with {} objects", id - 1);
+                    }
+                    Err(e) => {
+                        tracing::warn!("[BEVY] ⚠️ Failed to parse level file: {}", e);
+                        spawn_fallback_scene(&mut commands, &mut meshes, &mut materials, &mut id);
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!("[BEVY] ⚠️ Failed to read level file: {}", e);
+                spawn_fallback_scene(&mut commands, &mut meshes, &mut materials, &mut id);
+            }
+        }
+    } else {
+        tracing::debug!("[BEVY] 📂 No level file found at {:?}, using fallback scene", level_path);
+        spawn_fallback_scene(&mut commands, &mut meshes, &mut materials, &mut id);
     }
-
-    // === RAMPS (connecting center to corners) ===
-    let ramp_configs = [
-        (-5.0, 0.75, -5.0, 0.785),   // NW
-        (5.0, 0.75, -5.0, -0.785),   // NE
-        (-5.0, 0.75, 5.0, 2.356),    // SW
-        (5.0, 0.75, 5.0, -2.356),    // SE
-    ];
-
-    for (i, &(x, y, z, rot_y)) in ramp_configs.iter().enumerate() {
-        commands.spawn((
-            Mesh3d(meshes.add(Cuboid::new(6.0, 0.2, 2.0))),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: Color::srgb(0.4, 0.4, 0.45),
-                metallic: 0.2,
-                perceptual_roughness: 0.75,
-                reflectance: 0.25,
-                ..default()
-            })),
-            Transform::from_xyz(x, y, z)
-                .with_rotation(Quat::from_rotation_y(rot_y) * Quat::from_rotation_z(0.3)),
-            GameObjectId(id),
-        ));
-        id += 1;
-    }
-
-    // === HALLWAYS (N, S, E, W) ===
-    // North hallway
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(3.0, 2.5, 8.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.35, 0.35, 0.4),
-            metallic: 0.15,
-            perceptual_roughness: 0.8,
-            reflectance: 0.2,
-            ..default()
-        })),
-        Transform::from_xyz(0.0, 1.25, -15.0),
-        GameObjectId(id),
-    ));
-    id += 1;
-
-    // South hallway
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(3.0, 2.5, 8.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.35, 0.35, 0.4),
-            metallic: 0.15,
-            perceptual_roughness: 0.8,
-            reflectance: 0.2,
-            ..default()
-        })),
-        Transform::from_xyz(0.0, 1.25, 15.0),
-        GameObjectId(id),
-    ));
-    id += 1;
-
-    // East hallway
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(8.0, 2.5, 3.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.35, 0.35, 0.4),
-            metallic: 0.15,
-            perceptual_roughness: 0.8,
-            reflectance: 0.2,
-            ..default()
-        })),
-        Transform::from_xyz(15.0, 1.25, 0.0),
-        GameObjectId(id),
-    ));
-    id += 1;
-
-    // West hallway
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(8.0, 2.5, 3.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.35, 0.35, 0.4),
-            metallic: 0.15,
-            perceptual_roughness: 0.8,
-            reflectance: 0.2,
-            ..default()
-        })),
-        Transform::from_xyz(-15.0, 1.25, 0.0),
-        GameObjectId(id),
-    ));
-    id += 1;
-
-    // === CYLINDER PILLARS (decorative around arena) ===
-    let pillar_positions = [
-        (-15.0, -15.0), (0.0, -15.0), (15.0, -15.0),
-        (-15.0, 0.0), (15.0, 0.0),
-        (-15.0, 15.0), (0.0, 15.0), (15.0, 15.0),
-    ];
-
-    for &(x, z) in pillar_positions.iter() {
-        commands.spawn((
-            Mesh3d(meshes.add(Cylinder::new(0.6, 4.0))),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: Color::srgb(0.5, 0.45, 0.5),
-                metallic: 0.6,
-                perceptual_roughness: 0.3,
-                reflectance: 0.6,
-                ..default()
-            })),
-            Transform::from_xyz(x, 2.0, z),
-            GameObjectId(id),
-        ));
-        id += 1;
-    }
-
-    // === SMALL ELEVATED PLATFORMS ===
-    let small_platform_configs = [
-        (-5.0, 3.0, 0.0, 0.0),
-        (5.0, 3.0, 0.0, 0.0),
-        (0.0, 3.0, -5.0, 0.0),
-        (0.0, 3.0, 5.0, 0.0),
-    ];
-
-    for &(x, y, z, _) in small_platform_configs.iter() {
-        commands.spawn((
-            Mesh3d(meshes.add(Cuboid::new(2.0, 0.2, 2.0))),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: Color::srgb(0.6, 0.5, 0.6),
-                metallic: 0.4,
-                perceptual_roughness: 0.5,
-                reflectance: 0.4,
-                ..default()
-            })),
-            Transform::from_xyz(x, y, z),
-            GameObjectId(id),
-        ));
-        id += 1;
-
-        // Support beam
-        commands.spawn((
-            Mesh3d(meshes.add(Cuboid::new(0.3, 6.0, 0.3))),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: Color::srgb(0.4, 0.4, 0.45),
-                metallic: 0.3,
-                perceptual_roughness: 0.6,
-                reflectance: 0.3,
-                ..default()
-            })),
-            Transform::from_xyz(x, 0.0, z),
-            GameObjectId(id),
-        ));
-        id += 1;
-    }
-
-    // === DECORATIVE GEOMETRY ===
-    // Floating cubes (various sizes and rotations)
-    let cube_configs = [
-        (-7.0, 4.0, -7.0, 0.5, 0.8),
-        (7.0, 4.5, -7.0, 0.7, 0.7),
-        (-7.0, 4.2, 7.0, 0.6, 0.9),
-        (7.0, 4.8, 7.0, 0.8, 0.6),
-    ];
-
-    for &(x, y, z, size, rot) in cube_configs.iter() {
-        commands.spawn((
-            Mesh3d(meshes.add(Cuboid::new(size, size, size))),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: Color::srgb(0.7, 0.5, 0.7),
-                metallic: 0.7,
-                perceptual_roughness: 0.3,
-                reflectance: 0.7,
-                ..default()
-            })),
-            Transform::from_xyz(x, y, z).with_rotation(Quat::from_rotation_y(rot)),
-            GameObjectId(id),
-        ));
-        id += 1;
-    }
-
-    // Spheres (various positions)
-    let sphere_configs = [
-        (-12.0, 5.0, 0.0, 0.5),
-        (12.0, 5.0, 0.0, 0.5),
-        (0.0, 5.5, -12.0, 0.6),
-        (0.0, 5.5, 12.0, 0.6),
-    ];
-
-    for &(x, y, z, radius) in sphere_configs.iter() {
-        commands.spawn((
-            Mesh3d(meshes.add(Sphere::new(radius))),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: Color::srgb(0.8, 0.6, 0.3),
-                metallic: 0.9,
-                perceptual_roughness: 0.1,
-                reflectance: 0.9,
-                ..default()
-            })),
-            Transform::from_xyz(x, y, z),
-            GameObjectId(id),
-        ));
-        id += 1;
-    }
-
-    // === PERIMETER WALLS ===
-    let wall_positions = [
-        (0.0, 2.0, -19.5, 40.0, 4.0, 0.5),   // North
-        (0.0, 2.0, 19.5, 40.0, 4.0, 0.5),    // South
-        (-19.5, 2.0, 0.0, 0.5, 4.0, 40.0),   // West
-        (19.5, 2.0, 0.0, 0.5, 4.0, 40.0),    // East
-    ];
-
-    for &(x, y, z, w, h, d) in wall_positions.iter() {
-        commands.spawn((
-            Mesh3d(meshes.add(Cuboid::new(w, h, d))),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: Color::srgb(0.3, 0.3, 0.35),
-                metallic: 0.1,
-                perceptual_roughness: 0.9,
-                reflectance: 0.1,
-                ..default()
-            })),
-            Transform::from_xyz(x, y, z),
-            GameObjectId(id),
-        ));
-        id += 1;
-    }
-
-    tracing::debug!("[BEVY] ✅ Arena level created with {} objects", id - 1);
-
-    // Primary directional light (sun)
+    
+    // Directional light
     commands.spawn((
         DirectionalLight {
             color: Color::WHITE,
-            illuminance: 25000.0, // Bright sunlight
+            illuminance: 20000.0,
             shadows_enabled: false,
             ..default()
         },
         Transform::from_xyz(4.0, 8.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
     
-    // Fill light (softer, from opposite side)
-    commands.spawn((
-        DirectionalLight {
-            color: Color::srgb(0.9, 0.95, 1.0), // Slightly blue fill
-            illuminance: 8000.0,
-            shadows_enabled: false,
-            ..default()
-        },
-        Transform::from_xyz(-4.0, 6.0, -4.0).looking_at(Vec3::ZERO, Vec3::Y),
-    ));
-    
-    // Ambient light for overall scene brightness
+    // Ambient light
     commands.insert_resource(AmbientLight {
         color: Color::WHITE,
-        brightness: 500.0, // Subtle ambient
+        brightness: 300.0,
         affects_lightmapped_meshes: true,
     });
     
-    tracing::debug!("[BEVY] ✅ PBR lighting enabled with 2 directional lights + ambient");
-
     tracing::debug!("[BEVY] ✅ Scene ready!");
-    tracing::debug!("[BEVY] 🏟️  Complex arena level loaded");
-    tracing::debug!("[BEVY] 🏗️  Multiple platforms, ramps, hallways, and decorative geometry");
-    tracing::debug!("[BEVY] 💡 PBR lighting with 2-point lighting + ambient");
+}
+
+fn spawn_fallback_scene(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    id: &mut u32,
+) {
+    tracing::debug!("[BEVY] 🎨 Spawning fallback scene (basic cube)...");
+    
+    // Ground plane
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(10.0, 0.1, 10.0))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.3, 0.3, 0.3),
+            metallic: 0.0,
+            perceptual_roughness: 0.8,
+            ..default()
+        })),
+        Transform::from_xyz(0.0, 0.0, 0.0),
+        GameObjectId((*id).into()),
+    ));
+    *id += 1;
+    
+    // Center cube
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.8, 0.3, 0.3),
+            metallic: 0.2,
+            perceptual_roughness: 0.5,
+            ..default()
+        })),
+        Transform::from_xyz(0.0, 0.6, 0.0).with_rotation(Quat::from_rotation_y(0.785)),
+        GameObjectId((*id).into()),
+    ));
+    *id += 1;
+
+    tracing::debug!("[BEVY] ✅ Fallback scene created with {} objects", *id - 1);
+}
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+struct LevelData {
+    objects: Vec<GameObject>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct GameObject {
+    mesh_type: MeshType,
+    position: [f32; 3],
+    rotation: [f32; 3],
+    scale: [f32; 3],
+    color: [f32; 3],
+    metallic: f32,
+    roughness: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+enum MeshType {
+    Cube,
+    Sphere,
+    Cylinder,
+    Plane,
+}
+
+fn spawn_level_objects(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    level: &LevelData,
+    id: &mut u32,
+) {
+    for obj in &level.objects {
+        let mesh = match obj.mesh_type {
+            MeshType::Cube => meshes.add(Cuboid::new(obj.scale[0], obj.scale[1], obj.scale[2])),
+            MeshType::Sphere => meshes.add(Sphere::new(obj.scale[0]).mesh().ico(5).unwrap()),
+            MeshType::Cylinder => meshes.add(Cylinder::new(obj.scale[0], obj.scale[1])),
+            MeshType::Plane => meshes.add(Cuboid::new(obj.scale[0], 0.1, obj.scale[2])),
+        };
+
+        let rotation = Quat::from_euler(
+            EulerRot::XYZ,
+            obj.rotation[0].to_radians(),
+            obj.rotation[1].to_radians(),
+            obj.rotation[2].to_radians(),
+        );
+
+        commands.spawn((
+            Mesh3d(mesh),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::srgb(obj.color[0], obj.color[1], obj.color[2]),
+                metallic: obj.metallic,
+                perceptual_roughness: obj.roughness,
+                ..default()
+            })),
+            Transform::from_translation(Vec3::new(obj.position[0], obj.position[1], obj.position[2]))
+                .with_rotation(rotation)
+                .with_scale(Vec3::ONE),
+            GameObjectId((*id).into()),
+        ));
+        *id += 1;
+    }
 }
 
 /// System to swap render target buffers for double buffering
