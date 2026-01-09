@@ -49,82 +49,168 @@ pub fn setup_scene(
     tracing::debug!("[BEVY] ✅ Camera spawned with tonemapping DISABLED - double-buffering enabled!");
     tracing::debug!("[BEVY] 🔄 Camera renders to write buffer, GPUI reads from read buffer");
 
-    // Scene objects - SUPER BRIGHT AND OBVIOUS
-    tracing::debug!("[BEVY] 🎨 Spawning HIGH-VISIBILITY scene objects...");
+    // Scene objects - Unreal-style first person template level
+    tracing::debug!("[BEVY] 🎨 Spawning default level objects...");
     
-    // Bright grey ground plane (concrete-like)
+    // Floor plane - large ground surface
     commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(20.0, 20.0))),
+        Mesh3d(meshes.add(Cuboid::new(20.0, 0.1, 20.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.7, 0.7, 0.7),
+            base_color: Color::srgb(0.3, 0.3, 0.3),
             metallic: 0.0,
             perceptual_roughness: 0.8,
             reflectance: 0.1,
             ..default()
         })),
-        Transform::from_xyz(0.0, 0.0, 0.0),
+        Transform::from_xyz(0.0, -0.5, 0.0),
+        GameObjectId(1),
     ));
-    tracing::debug!("[BEVY] ✅ Ground plane spawned");
+    tracing::debug!("[BEVY] ✅ Floor plane spawned");
 
-    // Red metallic cube (left) - GAME OBJECT 1
+    // Center cube - focal point (red)
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(2.0, 2.0, 2.0))),
+        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.9, 0.2, 0.2),
+            base_color: Color::srgb(0.8, 0.3, 0.3),
+            metallic: 0.2,
+            perceptual_roughness: 0.5,
+            reflectance: 0.3,
+            ..default()
+        })),
+        Transform::from_xyz(0.0, 0.5, 0.0).with_rotation(Quat::from_rotation_y(0.785)), // 45 degrees
+        GameObjectId(2),
+    ));
+    tracing::debug!("[BEVY] ✅ Center cube spawned");
+
+    // Left sphere - metallic blue
+    commands.spawn((
+        Mesh3d(meshes.add(Sphere::new(0.5))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.3, 0.5, 0.8),
             metallic: 0.8,
+            perceptual_roughness: 0.2,
+            reflectance: 0.6,
+            ..default()
+        })),
+        Transform::from_xyz(-3.0, 1.0, 0.0),
+        GameObjectId(3),
+    ));
+    tracing::debug!("[BEVY] ✅ Left sphere spawned");
+
+    // Right cylinder - green
+    commands.spawn((
+        Mesh3d(meshes.add(Cylinder::new(0.5, 2.0))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.3, 0.8, 0.4),
+            metallic: 0.1,
+            perceptual_roughness: 0.6,
+            reflectance: 0.2,
+            ..default()
+        })),
+        Transform::from_xyz(3.0, 1.0, 0.0),
+        GameObjectId(4),
+    ));
+    tracing::debug!("[BEVY] ✅ Right cylinder spawned");
+
+    // Back wall
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(8.0, 4.0, 0.5))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.5, 0.5, 0.5),
+            metallic: 0.0,
+            perceptual_roughness: 0.9,
+            reflectance: 0.1,
+            ..default()
+        })),
+        Transform::from_xyz(0.0, 2.0, -5.0),
+        GameObjectId(5),
+    ));
+    tracing::debug!("[BEVY] ✅ Back wall spawned");
+
+    // Decorative cube 1 (left front)
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(0.6, 0.6, 0.6))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.7, 0.4, 0.6),
+            metallic: 0.5,
+            perceptual_roughness: 0.4,
+            reflectance: 0.4,
+            ..default()
+        })),
+        Transform::from_xyz(-5.0, 0.3, 2.0).with_rotation(Quat::from_rotation_y(0.524)), // 30 degrees
+        GameObjectId(6),
+    ));
+
+    // Decorative cube 2 (left back)
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(0.6, 0.6, 0.6))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.9, 0.7, 0.3),
+            metallic: 0.6,
             perceptual_roughness: 0.3,
             reflectance: 0.5,
             ..default()
         })),
-        Transform::from_xyz(-2.0, 1.0, 0.0),
-        GameObjectId(1), // Link to game thread object ID 1
+        Transform::from_xyz(-4.0, 0.3, 3.0).with_rotation(Quat::from_rotation_y(-0.262)), // -15 degrees
+        GameObjectId(7),
     ));
-    tracing::debug!("[BEVY] ✅ Red metallic cube spawned (Game Object #1)");
 
-    // Blue metallic sphere (right) - GAME OBJECT 2
+    // Decorative cube 3 (right front)
     commands.spawn((
-        Mesh3d(meshes.add(Sphere::new(1.0))),
+        Mesh3d(meshes.add(Cuboid::new(0.6, 0.6, 0.6))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.2, 0.5, 0.9),
-            metallic: 0.9,
-            perceptual_roughness: 0.1,
-            reflectance: 0.9,
+            base_color: Color::srgb(0.4, 0.7, 0.8),
+            metallic: 0.7,
+            perceptual_roughness: 0.25,
+            reflectance: 0.6,
             ..default()
         })),
-        Transform::from_xyz(2.0, 1.0, 0.0),
-        GameObjectId(2), // Link to game thread object ID 2
+        Transform::from_xyz(5.0, 0.3, 2.0).with_rotation(Quat::from_rotation_y(-0.524)), // -30 degrees
+        GameObjectId(8),
     ));
-    tracing::debug!("[BEVY] ✅ Blue metallic sphere spawned (Game Object #2)");
 
-    // Gold metallic sphere (top) - GAME OBJECT 3
+    // Decorative cube 4 (right back)
     commands.spawn((
-        Mesh3d(meshes.add(Sphere::new(1.0))),
+        Mesh3d(meshes.add(Cuboid::new(0.6, 0.6, 0.6))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(1.0, 0.843, 0.0),
-            metallic: 0.95,
-            perceptual_roughness: 0.2,
-            reflectance: 0.8,
+            base_color: Color::srgb(0.5, 0.8, 0.5),
+            metallic: 0.4,
+            perceptual_roughness: 0.5,
+            reflectance: 0.3,
             ..default()
         })),
-        Transform::from_xyz(0.0, 3.0, 0.0),
-        GameObjectId(3), // Link to game thread object ID 3
+        Transform::from_xyz(4.0, 0.3, 3.0).with_rotation(Quat::from_rotation_y(0.262)), // 15 degrees
+        GameObjectId(9),
     ));
-    tracing::debug!("[BEVY] ✅ Gold metallic sphere spawned (Game Object #3)");
 
-    // Green metallic sphere (front) - GAME OBJECT 4
+    // Platform left
     commands.spawn((
-        Mesh3d(meshes.add(Sphere::new(1.0))),
+        Mesh3d(meshes.add(Cuboid::new(1.2, 0.5, 1.2))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.2, 0.9, 0.3),
-            metallic: 0.6,
-            perceptual_roughness: 0.4,
-            reflectance: 0.5,
+            base_color: Color::srgb(0.35, 0.35, 0.4),
+            metallic: 0.1,
+            perceptual_roughness: 0.7,
+            reflectance: 0.2,
             ..default()
         })),
-        Transform::from_xyz(0.0, 1.0, 2.0),
-        GameObjectId(4), // Link to game thread object ID 4
+        Transform::from_xyz(-2.0, 0.5, 4.0),
+        GameObjectId(10),
     ));
-    tracing::debug!("[BEVY] ✅ Green metallic sphere spawned (Game Object #4)");
+
+    // Platform right
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(1.2, 0.5, 1.2))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.35, 0.35, 0.4),
+            metallic: 0.1,
+            perceptual_roughness: 0.7,
+            reflectance: 0.2,
+            ..default()
+        })),
+        Transform::from_xyz(2.0, 0.5, 4.0),
+        GameObjectId(11),
+    ));
+    tracing::debug!("[BEVY] ✅ All decorative objects spawned");
 
     // Primary directional light (sun)
     commands.spawn((
@@ -158,38 +244,9 @@ pub fn setup_scene(
     tracing::debug!("[BEVY] ✅ PBR lighting enabled with 2 directional lights + ambient");
 
     tracing::debug!("[BEVY] ✅ Scene ready!");
-    tracing::debug!("[BEVY] 🎨 You should see:");
-    tracing::debug!("[BEVY] 🔵 Dark grey-blue background");
-    tracing::debug!("[BEVY] ⬜ Light grey ground plane");
-    tracing::debug!("[BEVY] 🔴 Red metallic cube (left)");
-    tracing::debug!("[BEVY] 🔵 Blue metallic sphere (right)");
-    tracing::debug!("[BEVY] 🟡 Gold metallic sphere (top)");
-    tracing::debug!("[BEVY] 🟢 Green metallic sphere (front)");
+    tracing::debug!("[BEVY] 🎨 Default level loaded - Unreal-style first person template");
+    tracing::debug!("[BEVY] 🏗️  11 static objects spawned");
     tracing::debug!("[BEVY] 💡 PBR lighting with 2-point lighting + ambient");
-    tracing::debug!("[BEVY] 🔄 Animation enabled - objects will rotate smoothly");
-}
-
-/// Smooth rotation animation system - rotates all GameObjects
-/// This runs every frame to show real-time rendering performance
-pub fn animate_objects_system(
-    time: Res<Time>,
-    mut query: Query<(&mut Transform, &GameObjectId)>,
-) {
-    let delta = time.delta_secs();
-
-    for (mut transform, game_obj) in query.iter_mut() {
-        // Rotate each object at different speeds based on ID
-        let rotation_speed = match game_obj.0 {
-            1 => 0.5,  // Red cube - slow rotation
-            2 => 1.0,  // Blue sphere - medium rotation
-            3 => 1.5,  // Gold sphere - fast rotation
-            4 => 0.75, // Green sphere - medium-slow rotation
-            _ => 0.0,
-        };
-
-        // Rotate around Y axis (vertical)
-        transform.rotate_y(rotation_speed * delta);
-    }
 }
 
 /// System to swap render target buffers for double buffering

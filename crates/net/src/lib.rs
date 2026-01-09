@@ -24,4 +24,8 @@ impl PulsarIntNetConnection {
     pub fn local_address(&self) -> Option<std::net::SocketAddr> {
         self.connection.local_address().ok()
     }
+
+    pub fn is_connected(&self) -> bool {
+        !self.connection.close_reason().is_some()
+    }
 }

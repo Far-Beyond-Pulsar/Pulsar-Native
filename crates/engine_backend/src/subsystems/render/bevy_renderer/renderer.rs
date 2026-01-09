@@ -16,7 +16,7 @@ use super::systems::{
     sync_game_objects_system, update_gizmo_target_system,
     update_camera_viewport_system,
     update_metrics_system, update_gpu_profiler_system,
-    setup_scene, animate_objects_system, swap_render_buffers_system, debug_rendering_system,
+    setup_scene, swap_render_buffers_system, debug_rendering_system,
 };
 use super::textures::*;
 use super::gizmos::rendering::{
@@ -188,7 +188,6 @@ impl BevyRenderer {
             .add_systems(Update, sync_game_objects_system)         // Sync game thread to Bevy
             // Game systems - run after sync
             .add_systems(Update, camera_movement_system)           // Unreal-style camera controls
-            .add_systems(Update, animate_objects_system)           // ANIMATION: Smooth object rotation
             .add_systems(Update, update_gizmo_target_system)       // Keep gizmo centered on selected object
             .add_systems(Update, viewport_click_initiate_raycast_system) // FULLY ASYNC: Spawn Bevy worker task
             .add_systems(Update, viewport_poll_raycast_system)     // FULLY ASYNC: Poll result from worker
