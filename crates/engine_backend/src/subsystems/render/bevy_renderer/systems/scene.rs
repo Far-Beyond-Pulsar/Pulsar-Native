@@ -49,168 +49,337 @@ pub fn setup_scene(
     tracing::debug!("[BEVY] ✅ Camera spawned with tonemapping DISABLED - double-buffering enabled!");
     tracing::debug!("[BEVY] 🔄 Camera renders to write buffer, GPUI reads from read buffer");
 
-    // Scene objects - Unreal-style first person template level
-    tracing::debug!("[BEVY] 🎨 Spawning default level objects...");
+    // Arena level with platforms, ramps, hallways, and varied geometry
+    tracing::debug!("[BEVY] 🎨 Spawning arena level...");
+    let mut id = 1;
     
-    // Floor plane - large ground surface
+    // === GROUND FLOOR ===
+    // Main floor
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(20.0, 0.1, 20.0))),
+        Mesh3d(meshes.add(Cuboid::new(40.0, 0.2, 40.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.3, 0.3, 0.3),
-            metallic: 0.0,
-            perceptual_roughness: 0.8,
-            reflectance: 0.1,
+            base_color: Color::srgb(0.25, 0.25, 0.28),
+            metallic: 0.1,
+            perceptual_roughness: 0.85,
+            reflectance: 0.15,
             ..default()
         })),
-        Transform::from_xyz(0.0, -0.5, 0.0),
-        GameObjectId(1),
+        Transform::from_xyz(0.0, -0.1, 0.0),
+        GameObjectId(id),
     ));
-    tracing::debug!("[BEVY] ✅ Floor plane spawned");
+    id += 1;
 
-    // Center cube - focal point (red)
+    // === CENTRAL STRUCTURE ===
+    // Central tower base
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+        Mesh3d(meshes.add(Cylinder::new(2.0, 1.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.8, 0.3, 0.3),
-            metallic: 0.2,
-            perceptual_roughness: 0.5,
+            base_color: Color::srgb(0.4, 0.35, 0.45),
+            metallic: 0.3,
+            perceptual_roughness: 0.6,
             reflectance: 0.3,
             ..default()
         })),
-        Transform::from_xyz(0.0, 0.5, 0.0).with_rotation(Quat::from_rotation_y(0.785)), // 45 degrees
-        GameObjectId(2),
+        Transform::from_xyz(0.0, 0.5, 0.0),
+        GameObjectId(id),
     ));
-    tracing::debug!("[BEVY] ✅ Center cube spawned");
+    id += 1;
 
-    // Left sphere - metallic blue
+    // Central tower mid
     commands.spawn((
-        Mesh3d(meshes.add(Sphere::new(0.5))),
+        Mesh3d(meshes.add(Cylinder::new(1.5, 2.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.3, 0.5, 0.8),
-            metallic: 0.8,
-            perceptual_roughness: 0.2,
-            reflectance: 0.6,
-            ..default()
-        })),
-        Transform::from_xyz(-3.0, 1.0, 0.0),
-        GameObjectId(3),
-    ));
-    tracing::debug!("[BEVY] ✅ Left sphere spawned");
-
-    // Right cylinder - green
-    commands.spawn((
-        Mesh3d(meshes.add(Cylinder::new(0.5, 2.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.3, 0.8, 0.4),
-            metallic: 0.1,
-            perceptual_roughness: 0.6,
-            reflectance: 0.2,
-            ..default()
-        })),
-        Transform::from_xyz(3.0, 1.0, 0.0),
-        GameObjectId(4),
-    ));
-    tracing::debug!("[BEVY] ✅ Right cylinder spawned");
-
-    // Back wall
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(8.0, 4.0, 0.5))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.5, 0.5, 0.5),
-            metallic: 0.0,
-            perceptual_roughness: 0.9,
-            reflectance: 0.1,
-            ..default()
-        })),
-        Transform::from_xyz(0.0, 2.0, -5.0),
-        GameObjectId(5),
-    ));
-    tracing::debug!("[BEVY] ✅ Back wall spawned");
-
-    // Decorative cube 1 (left front)
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(0.6, 0.6, 0.6))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.7, 0.4, 0.6),
-            metallic: 0.5,
-            perceptual_roughness: 0.4,
+            base_color: Color::srgb(0.5, 0.4, 0.5),
+            metallic: 0.4,
+            perceptual_roughness: 0.5,
             reflectance: 0.4,
             ..default()
         })),
-        Transform::from_xyz(-5.0, 0.3, 2.0).with_rotation(Quat::from_rotation_y(0.524)), // 30 degrees
-        GameObjectId(6),
+        Transform::from_xyz(0.0, 2.0, 0.0),
+        GameObjectId(id),
     ));
+    id += 1;
 
-    // Decorative cube 2 (left back)
+    // Central tower top platform
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(0.6, 0.6, 0.6))),
+        Mesh3d(meshes.add(Cuboid::new(4.0, 0.3, 4.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.9, 0.7, 0.3),
-            metallic: 0.6,
-            perceptual_roughness: 0.3,
+            base_color: Color::srgb(0.6, 0.45, 0.55),
+            metallic: 0.5,
+            perceptual_roughness: 0.4,
             reflectance: 0.5,
             ..default()
         })),
-        Transform::from_xyz(-4.0, 0.3, 3.0).with_rotation(Quat::from_rotation_y(-0.262)), // -15 degrees
-        GameObjectId(7),
+        Transform::from_xyz(0.0, 3.15, 0.0),
+        GameObjectId(id),
     ));
+    id += 1;
 
-    // Decorative cube 3 (right front)
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(0.6, 0.6, 0.6))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.4, 0.7, 0.8),
-            metallic: 0.7,
-            perceptual_roughness: 0.25,
-            reflectance: 0.6,
-            ..default()
-        })),
-        Transform::from_xyz(5.0, 0.3, 2.0).with_rotation(Quat::from_rotation_y(-0.524)), // -30 degrees
-        GameObjectId(8),
-    ));
+    // === CORNER PLATFORMS (4 corners) ===
+    let platform_positions = [
+        (-10.0, -10.0), (10.0, -10.0), (-10.0, 10.0), (10.0, 10.0)
+    ];
+    let platform_colors = [
+        Color::srgb(0.7, 0.3, 0.3),  // Red
+        Color::srgb(0.3, 0.5, 0.8),  // Blue
+        Color::srgb(0.3, 0.7, 0.4),  // Green
+        Color::srgb(0.8, 0.7, 0.3),  // Yellow
+    ];
 
-    // Decorative cube 4 (right back)
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(0.6, 0.6, 0.6))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.5, 0.8, 0.5),
-            metallic: 0.4,
-            perceptual_roughness: 0.5,
-            reflectance: 0.3,
-            ..default()
-        })),
-        Transform::from_xyz(4.0, 0.3, 3.0).with_rotation(Quat::from_rotation_y(0.262)), // 15 degrees
-        GameObjectId(9),
-    ));
+    for (i, &(x, z)) in platform_positions.iter().enumerate() {
+        // Platform base
+        commands.spawn((
+            Mesh3d(meshes.add(Cuboid::new(5.0, 0.4, 5.0))),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: platform_colors[i],
+                metallic: 0.3,
+                perceptual_roughness: 0.6,
+                reflectance: 0.3,
+                ..default()
+            })),
+            Transform::from_xyz(x, 1.5, z),
+            GameObjectId(id),
+        ));
+        id += 1;
 
-    // Platform left
+        // Support pillar
+        commands.spawn((
+            Mesh3d(meshes.add(Cylinder::new(0.8, 3.0))),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::srgb(0.35, 0.35, 0.4),
+                metallic: 0.2,
+                perceptual_roughness: 0.7,
+                reflectance: 0.2,
+                ..default()
+            })),
+            Transform::from_xyz(x, 0.0, z),
+            GameObjectId(id),
+        ));
+        id += 1;
+    }
+
+    // === RAMPS (connecting center to corners) ===
+    let ramp_configs = [
+        (-5.0, 0.75, -5.0, 0.785),   // NW
+        (5.0, 0.75, -5.0, -0.785),   // NE
+        (-5.0, 0.75, 5.0, 2.356),    // SW
+        (5.0, 0.75, 5.0, -2.356),    // SE
+    ];
+
+    for (i, &(x, y, z, rot_y)) in ramp_configs.iter().enumerate() {
+        commands.spawn((
+            Mesh3d(meshes.add(Cuboid::new(6.0, 0.2, 2.0))),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::srgb(0.4, 0.4, 0.45),
+                metallic: 0.2,
+                perceptual_roughness: 0.75,
+                reflectance: 0.25,
+                ..default()
+            })),
+            Transform::from_xyz(x, y, z)
+                .with_rotation(Quat::from_rotation_y(rot_y) * Quat::from_rotation_z(0.3)),
+            GameObjectId(id),
+        ));
+        id += 1;
+    }
+
+    // === HALLWAYS (N, S, E, W) ===
+    // North hallway
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(1.2, 0.5, 1.2))),
+        Mesh3d(meshes.add(Cuboid::new(3.0, 2.5, 8.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: Color::srgb(0.35, 0.35, 0.4),
-            metallic: 0.1,
-            perceptual_roughness: 0.7,
+            metallic: 0.15,
+            perceptual_roughness: 0.8,
             reflectance: 0.2,
             ..default()
         })),
-        Transform::from_xyz(-2.0, 0.5, 4.0),
-        GameObjectId(10),
+        Transform::from_xyz(0.0, 1.25, -15.0),
+        GameObjectId(id),
     ));
+    id += 1;
 
-    // Platform right
+    // South hallway
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(1.2, 0.5, 1.2))),
+        Mesh3d(meshes.add(Cuboid::new(3.0, 2.5, 8.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: Color::srgb(0.35, 0.35, 0.4),
-            metallic: 0.1,
-            perceptual_roughness: 0.7,
+            metallic: 0.15,
+            perceptual_roughness: 0.8,
             reflectance: 0.2,
             ..default()
         })),
-        Transform::from_xyz(2.0, 0.5, 4.0),
-        GameObjectId(11),
+        Transform::from_xyz(0.0, 1.25, 15.0),
+        GameObjectId(id),
     ));
-    tracing::debug!("[BEVY] ✅ All decorative objects spawned");
+    id += 1;
+
+    // East hallway
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(8.0, 2.5, 3.0))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.35, 0.35, 0.4),
+            metallic: 0.15,
+            perceptual_roughness: 0.8,
+            reflectance: 0.2,
+            ..default()
+        })),
+        Transform::from_xyz(15.0, 1.25, 0.0),
+        GameObjectId(id),
+    ));
+    id += 1;
+
+    // West hallway
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(8.0, 2.5, 3.0))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.35, 0.35, 0.4),
+            metallic: 0.15,
+            perceptual_roughness: 0.8,
+            reflectance: 0.2,
+            ..default()
+        })),
+        Transform::from_xyz(-15.0, 1.25, 0.0),
+        GameObjectId(id),
+    ));
+    id += 1;
+
+    // === CYLINDER PILLARS (decorative around arena) ===
+    let pillar_positions = [
+        (-15.0, -15.0), (0.0, -15.0), (15.0, -15.0),
+        (-15.0, 0.0), (15.0, 0.0),
+        (-15.0, 15.0), (0.0, 15.0), (15.0, 15.0),
+    ];
+
+    for &(x, z) in pillar_positions.iter() {
+        commands.spawn((
+            Mesh3d(meshes.add(Cylinder::new(0.6, 4.0))),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::srgb(0.5, 0.45, 0.5),
+                metallic: 0.6,
+                perceptual_roughness: 0.3,
+                reflectance: 0.6,
+                ..default()
+            })),
+            Transform::from_xyz(x, 2.0, z),
+            GameObjectId(id),
+        ));
+        id += 1;
+    }
+
+    // === SMALL ELEVATED PLATFORMS ===
+    let small_platform_configs = [
+        (-5.0, 3.0, 0.0, 0.0),
+        (5.0, 3.0, 0.0, 0.0),
+        (0.0, 3.0, -5.0, 0.0),
+        (0.0, 3.0, 5.0, 0.0),
+    ];
+
+    for &(x, y, z, _) in small_platform_configs.iter() {
+        commands.spawn((
+            Mesh3d(meshes.add(Cuboid::new(2.0, 0.2, 2.0))),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::srgb(0.6, 0.5, 0.6),
+                metallic: 0.4,
+                perceptual_roughness: 0.5,
+                reflectance: 0.4,
+                ..default()
+            })),
+            Transform::from_xyz(x, y, z),
+            GameObjectId(id),
+        ));
+        id += 1;
+
+        // Support beam
+        commands.spawn((
+            Mesh3d(meshes.add(Cuboid::new(0.3, 6.0, 0.3))),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::srgb(0.4, 0.4, 0.45),
+                metallic: 0.3,
+                perceptual_roughness: 0.6,
+                reflectance: 0.3,
+                ..default()
+            })),
+            Transform::from_xyz(x, 0.0, z),
+            GameObjectId(id),
+        ));
+        id += 1;
+    }
+
+    // === DECORATIVE GEOMETRY ===
+    // Floating cubes (various sizes and rotations)
+    let cube_configs = [
+        (-7.0, 4.0, -7.0, 0.5, 0.8),
+        (7.0, 4.5, -7.0, 0.7, 0.7),
+        (-7.0, 4.2, 7.0, 0.6, 0.9),
+        (7.0, 4.8, 7.0, 0.8, 0.6),
+    ];
+
+    for &(x, y, z, size, rot) in cube_configs.iter() {
+        commands.spawn((
+            Mesh3d(meshes.add(Cuboid::new(size, size, size))),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::srgb(0.7, 0.5, 0.7),
+                metallic: 0.7,
+                perceptual_roughness: 0.3,
+                reflectance: 0.7,
+                ..default()
+            })),
+            Transform::from_xyz(x, y, z).with_rotation(Quat::from_rotation_y(rot)),
+            GameObjectId(id),
+        ));
+        id += 1;
+    }
+
+    // Spheres (various positions)
+    let sphere_configs = [
+        (-12.0, 5.0, 0.0, 0.5),
+        (12.0, 5.0, 0.0, 0.5),
+        (0.0, 5.5, -12.0, 0.6),
+        (0.0, 5.5, 12.0, 0.6),
+    ];
+
+    for &(x, y, z, radius) in sphere_configs.iter() {
+        commands.spawn((
+            Mesh3d(meshes.add(Sphere::new(radius))),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::srgb(0.8, 0.6, 0.3),
+                metallic: 0.9,
+                perceptual_roughness: 0.1,
+                reflectance: 0.9,
+                ..default()
+            })),
+            Transform::from_xyz(x, y, z),
+            GameObjectId(id),
+        ));
+        id += 1;
+    }
+
+    // === PERIMETER WALLS ===
+    let wall_positions = [
+        (0.0, 2.0, -19.5, 40.0, 4.0, 0.5),   // North
+        (0.0, 2.0, 19.5, 40.0, 4.0, 0.5),    // South
+        (-19.5, 2.0, 0.0, 0.5, 4.0, 40.0),   // West
+        (19.5, 2.0, 0.0, 0.5, 4.0, 40.0),    // East
+    ];
+
+    for &(x, y, z, w, h, d) in wall_positions.iter() {
+        commands.spawn((
+            Mesh3d(meshes.add(Cuboid::new(w, h, d))),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::srgb(0.3, 0.3, 0.35),
+                metallic: 0.1,
+                perceptual_roughness: 0.9,
+                reflectance: 0.1,
+                ..default()
+            })),
+            Transform::from_xyz(x, y, z),
+            GameObjectId(id),
+        ));
+        id += 1;
+    }
+
+    tracing::debug!("[BEVY] ✅ Arena level created with {} objects", id - 1);
 
     // Primary directional light (sun)
     commands.spawn((
@@ -244,8 +413,8 @@ pub fn setup_scene(
     tracing::debug!("[BEVY] ✅ PBR lighting enabled with 2 directional lights + ambient");
 
     tracing::debug!("[BEVY] ✅ Scene ready!");
-    tracing::debug!("[BEVY] 🎨 Default level loaded - Unreal-style first person template");
-    tracing::debug!("[BEVY] 🏗️  11 static objects spawned");
+    tracing::debug!("[BEVY] 🏟️  Complex arena level loaded");
+    tracing::debug!("[BEVY] 🏗️  Multiple platforms, ramps, hallways, and decorative geometry");
     tracing::debug!("[BEVY] 💡 PBR lighting with 2-point lighting + ambient");
 }
 
