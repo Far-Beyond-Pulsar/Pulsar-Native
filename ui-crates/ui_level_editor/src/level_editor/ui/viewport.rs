@@ -1373,17 +1373,21 @@ impl ViewportPanel {
                                     .child("GPU Pipeline Stats")
                             )
                     )
-                    .child({
-                        let state_clone = state_arc.clone();
-                        Button::new("collapse_gpu_pipeline")
-                            .icon(IconName::Close)
-                            .ghost()
-                            .xsmall()
-                            .tooltip("Close")
-                            .on_click(move |_, _, _| {
-                                state_clone.write().set_gpu_pipeline_overlay_collapsed(true);
+                    .child(
+                        h_flex()
+                            .items_center()
+                            .child({
+                                let state_clone = state_arc.clone();
+                                Button::new("collapse_gpu_pipeline")
+                                    .icon(IconName::Close)
+                                    .ghost()
+                                    .xsmall()
+                                    .tooltip("Close")
+                                    .on_click(move |_, _, _| {
+                                        state_clone.write().set_gpu_pipeline_overlay_collapsed(true);
+                                    })
                             })
-                    })
+                    )
             )
             .child(
                 // Table header with modern styling
@@ -1579,6 +1583,17 @@ impl ViewportPanel {
     {
         let theme = cx.theme();
         
+        // Color based on percentage - Blue for under 3%, then gradient to red
+        let percentage_color = if percent < 3.0 {
+            theme.chart_4 // Blue
+        } else if percent < 10.0 {
+            theme.chart_1 // Lower usage
+        } else if percent < 20.0 {
+            theme.warning // Medium usage
+        } else {
+            theme.danger // High usage
+        };
+        
         div()
             .w_full()
             .px_2()
@@ -1599,7 +1614,7 @@ impl ViewportPanel {
                                     .w(px(8.0))
                                     .h(px(8.0))
                                     .rounded_full()
-                                    .bg(color)
+                                    .bg(percentage_color)
                             )
                     )
                     .child(
@@ -1635,12 +1650,12 @@ impl ViewportPanel {
                                     .px_1p5()
                                     .py_0p5()
                                     .rounded_md()
-                                    .bg(color.opacity(0.15))
+                                    .bg(percentage_color.opacity(0.15))
                                     .child(
                                         div()
                                             .text_xs()
                                             .font_weight(gpui::FontWeight::MEDIUM)
-                                            .text_color(color)
+                                            .text_color(percentage_color)
                                             .child(format!("{:.1}%", percent))
                                     )
                             )
@@ -2039,31 +2054,6 @@ impl ViewportPanel {
                                             .child(format!("{:.2}ms", pipeline_us as f64 / 1000.0))
                                     )
                             )
-                            // Render Toggle Button
-                            .child({
-                                let enabled = self.render_enabled.clone();
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .child(
-                                        Button::new("toggle_render")
-                                            .icon(if self.render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
-                                                IconName::Pause
-                                            } else {
-                                                IconName::Play
-                                            })
-                                            .ghost()
-                                            .tooltip(if self.render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
-                                                "Pause Rendering"
-                                            } else {
-                                                "Resume Rendering"
-                                            })
-                                            .on_click(move |_event, _window, _cx| {
-                                                let current = enabled.load(std::sync::atomic::Ordering::Relaxed);
-                                                enabled.store(!current, std::sync::atomic::Ordering::Relaxed);
-                                            })
-                                    )
-                            })
                     )
             )
             // Metrics selector toolbar with modern styling
