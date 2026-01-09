@@ -54,40 +54,47 @@ pub fn setup_scene(
     let project_dir = engine_state::get_project_path()
         .unwrap_or("C:\\Users\\redst\\OneDrive\\Documents\\Pulsar_Projects\\blank_project");
     
-    println!("[BEVY DEBUG] ========================================");
-    println!("[BEVY DEBUG] Project dir from engine_state::get_project_path(): {:?}", engine_state::get_project_path());
-    println!("[BEVY DEBUG] Using project_dir: {:?}", project_dir);
+    println!("[PULSAR_SCENE DEBUG] ========================================");
+    println!("[PULSAR_SCENE DEBUG] Project dir from engine_state::get_project_path(): {:?}", engine_state::get_project_path());
+    println!("[PULSAR_SCENE DEBUG] Using project_dir: {:?}", project_dir);
     
     let level_path = Path::new(&project_dir).join("scenes").join("default.level");
-    println!("[BEVY DEBUG] Level path: {:?}", level_path);
-    println!("[BEVY DEBUG] Level path exists: {}", level_path.exists());
-    println!("[BEVY DEBUG] ========================================");
+    println!("[PULSAR_SCENE DEBUG] Level path: {:?}", level_path);
+    println!("[PULSAR_SCENE DEBUG] Level path exists: {}", level_path.exists());
+    println!("[PULSAR_SCENE DEBUG] ========================================");
     
     tracing::debug!("[BEVY] 🔍 Checking for level file at {:?}", level_path);
     let mut id = 1;
     
     if level_path.exists() {
+        println!("[BEVY DEBUG] Level file EXISTS! Attempting to read...");
         tracing::debug!("[BEVY] 📂 Loading level from: {:?}", level_path);
-        match std::fs::read_to_string(level_path) {
+        match std::fs::read_to_string(&level_path) {
             Ok(content) => {
-                match ron::from_str::<LevelData>(&content) {
+                println!("[BEVY DEBUG] Successfully read file, {} bytes", content.len());
+                println!("[BEVY DEBUG] File content preview (first 200 chars): {:?}", &content.chars().take(200).collect::<String>());
+                match serde_json::from_str::<LevelData>(&content) {
                     Ok(level) => {
+                        println!("[BEVY DEBUG] ✅ JSON parsing successful! Found {} objects", level.objects.len());
                         tracing::debug!("[BEVY] ✅ Level file parsed successfully");
                         spawn_level_objects(&mut commands, &mut meshes, &mut materials, &level, &mut id);
                         tracing::debug!("[BEVY] ✅ Level loaded with {} objects", id - 1);
                     }
                     Err(e) => {
+                        println!("[BEVY DEBUG] ❌ JSON parsing FAILED: {}", e);
                         tracing::warn!("[BEVY] ⚠️ Failed to parse level file: {}", e);
                         spawn_fallback_scene(&mut commands, &mut meshes, &mut materials, &mut id);
                     }
                 }
             }
             Err(e) => {
+                println!("[BEVY DEBUG] ❌ Failed to read file: {}", e);
                 tracing::warn!("[BEVY] ⚠️ Failed to read level file: {}", e);
                 spawn_fallback_scene(&mut commands, &mut meshes, &mut materials, &mut id);
             }
         }
     } else {
+        println!("[BEVY DEBUG] Level file DOES NOT EXIST - using fallback");
         tracing::debug!("[BEVY] 📂 No level file found at {:?}, using fallback scene", level_path);
         spawn_fallback_scene(&mut commands, &mut meshes, &mut materials, &mut id);
     }
