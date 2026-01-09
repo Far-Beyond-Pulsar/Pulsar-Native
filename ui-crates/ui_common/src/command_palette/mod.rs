@@ -329,32 +329,31 @@ impl CommandPalette {
 }
 
 impl Render for CommandPalette {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let selected_index = self.selected_index;
+        let theme = cx.theme();
         
         v_flex()
-            .w(px(600.))
-            .max_h(px(500.))
-            .bg(cx.theme().background)
+            .w(px(650.))
+            .max_h(px(550.))
+            .bg(theme.background)
             .border_1()
-            .border_color(cx.theme().border)
-            .rounded(px(8.))
-            .shadow_lg()
+            .border_color(theme.border)
+            .rounded_xl()
+            .shadow_2xl()
             .overflow_hidden()
             .on_mouse_down(MouseButton::Left, |_, _, cx| {
-                // Stop propagation to prevent closing the palette when clicking inside
                 cx.stop_propagation();
             })
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _window, cx| {
-                // Handle navigation keys that should not be processed by the input
                 match event.keystroke.key.as_str() {
                     "down" | "arrowdown" => {
                         this.move_selection(1, cx);
-                        cx.stop_propagation(); // Prevent input from handling this
+                        cx.stop_propagation();
                     }
                     "up" | "arrowup" => {
                         this.move_selection(-1, cx);
-                        cx.stop_propagation(); // Prevent input from handling this
+                        cx.stop_propagation();
                     }
                     "escape" => {
                         cx.emit(DismissEvent);
@@ -363,177 +362,325 @@ impl Render for CommandPalette {
                     _ => {}
                 }
             }))
+            // Professional header
             .child(
-                // Search input
-                h_flex()
-                    .p_3()
+                v_flex()
+                    .w_full()
+                    .gap_3()
+                    .px_4()
+                    .py_3()
                     .border_b_1()
-                    .border_color(cx.theme().border)
+                    .border_color(theme.border)
+                    .bg(theme.sidebar.opacity(0.5))
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .items_center()
+                            .gap_3()
+                            .child(
+                                div()
+                                    .w(px(36.0))
+                                    .h(px(36.0))
+                                    .rounded_lg()
+                                    .bg(theme.accent.opacity(0.15))
+                                    .border_1()
+                                    .border_color(theme.accent.opacity(0.3))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .child(
+                                        Icon::new(IconName::Search)
+                                            .size(px(18.0))
+                                            .text_color(theme.accent)
+                                    )
+                            )
+                            .child(
+                                v_flex()
+                                    .flex_1()
+                                    .gap_0p5()
+                                    .child(
+                                        div()
+                                            .text_base()
+                                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                                            .text_color(theme.foreground)
+                                            .child(match self.mode {
+                                                PaletteMode::Commands => "Command Palette",
+                                                PaletteMode::Files => "Search Files",
+                                            })
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(theme.muted_foreground)
+                                            .child(match self.mode {
+                                                PaletteMode::Commands => "Type to search commands",
+                                                PaletteMode::Files => "Type to filter files",
+                                            })
+                                    )
+                            )
+                            .child(
+                                div()
+                                    .px_2()
+                                    .py_1()
+                                    .rounded_md()
+                                    .bg(theme.muted.opacity(0.2))
+                                    .border_1()
+                                    .border_color(theme.border.opacity(0.5))
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_weight(gpui::FontWeight::MEDIUM)
+                                            .text_color(theme.muted_foreground)
+                                            .child("ESC to close")
+                                    )
+                            )
+                    )
+            )
+            // Search input
+            .child(
+                div()
+                    .w_full()
+                    .px_4()
+                    .py_3()
+                    .border_b_1()
+                    .border_color(theme.border.opacity(0.5))
                     .child(
                         TextInput::new(&self.search_input)
-                            .appearance(false)
-                            .bordered(false)
+                            .appearance(true)
+                            .bordered(true)
                             .prefix(
                                 Icon::new(IconName::Search)
-                                    .size(px(18.))
-                                    .text_color(cx.theme().muted_foreground),
+                                    .size_4()
+                                    .text_color(theme.muted_foreground),
                             )
                             .w_full(),
                     ),
             )
+            // Results list
             .child(
-                // Results list (commands or files based on mode)
-                v_flex()
+                div()
+                    .id("palette-results-scroll")
                     .flex_1()
-                    .overflow_hidden()
-                    .gap_0p5()
-                    .p_2()
-                    .when(self.mode == PaletteMode::Commands, |this| {
-                        this.children(self.filtered_commands.iter().enumerate().map(|(i, cmd)| {
-                            let is_selected = i == selected_index;
-                            let command = cmd.clone();
+                    .overflow_y_scroll()
+                    .child(
+                        v_flex()
+                            .w_full()
+                            .p_2()
+                            .gap_1()
+                            .when(self.mode == PaletteMode::Commands, |this| {
+                                this.children(self.filtered_commands.iter().enumerate().map(|(i, cmd)| {
+                                    let is_selected = i == selected_index;
+                                    let command = cmd.clone();
 
-                            h_flex()
-                                .w_full()
-                                .px_3()
-                                .py_2()
-                                .rounded(px(6.))
-                                .gap_3()
-                                .items_center()
-                                .cursor_pointer()
-                                .when(is_selected, |this| {
-                                    this.bg(cx.theme().primary.opacity(0.15))
-                                })
-                                .hover(|s| s.bg(cx.theme().muted.opacity(0.2)))
-                                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                                    this.selected_index = i;
-                                    this.select_item(cx);
-                                }))
-                                .child(
-                                    Icon::new(command.icon)
-                                        .size(px(20.))
-                                        .text_color(if is_selected {
-                                            cx.theme().primary
-                                        } else {
-                                            cx.theme().muted_foreground
-                                        }),
-                                )
-                                .child(
-                                    v_flex()
-                                        .flex_1()
-                                        .gap_0p5()
+                                    h_flex()
+                                        .w_full()
+                                        .px_3()
+                                        .py_2p5()
+                                        .rounded_lg()
+                                        .gap_3()
+                                        .items_center()
+                                        .cursor_pointer()
+                                        .when(is_selected, |this| {
+                                            this.bg(theme.accent.opacity(0.15))
+                                                .border_l_2()
+                                                .border_color(theme.accent)
+                                        })
+                                        .when(!is_selected, |this| {
+                                            this.hover(|s| s.bg(theme.muted.opacity(0.15)))
+                                        })
+                                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                                            this.selected_index = i;
+                                            this.select_item(cx);
+                                        }))
                                         .child(
                                             div()
-                                                .text_sm()
-                                                .font_semibold()
-                                                .text_color(if is_selected {
-                                                    cx.theme().foreground
+                                                .w(px(32.0))
+                                                .h(px(32.0))
+                                                .rounded_md()
+                                                .bg(if is_selected {
+                                                    theme.accent.opacity(0.15)
                                                 } else {
-                                                    cx.theme().foreground.opacity(0.9)
+                                                    theme.muted.opacity(0.1)
                                                 })
-                                                .child(command.name.clone()),
+                                                .flex()
+                                                .items_center()
+                                                .justify_center()
+                                                .child(
+                                                    Icon::new(command.icon)
+                                                        .size_4()
+                                                        .text_color(if is_selected {
+                                                            theme.accent
+                                                        } else {
+                                                            theme.muted_foreground
+                                                        }),
+                                                )
                                         )
                                         .child(
-                                            div()
-                                                .text_xs()
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child(command.description.clone()),
-                                        ),
-                                )
-                        }))
-                    })
-                    .when(self.mode == PaletteMode::Files, |this| {
-                        this.children(self.filtered_files.iter().enumerate().map(|(i, file)| {
-                            let is_selected = i == selected_index;
-                            let file_info = file.clone();
-                            let icon = match file_info.file_type {
-                                FileType::Class => IconName::Box,
-                                FileType::Folder => IconName::Folder,
-                                FileType::File => IconName::FileNotFound,
-                            };
-
-                            h_flex()
-                                .w_full()
-                                .px_3()
-                                .py_2()
-                                .rounded(px(6.))
-                                .gap_3()
-                                .items_center()
-                                .cursor_pointer()
-                                .when(is_selected, |this| {
-                                    this.bg(cx.theme().primary.opacity(0.15))
-                                })
-                                .hover(|s| s.bg(cx.theme().muted.opacity(0.2)))
-                                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                                    this.selected_index = i;
-                                    this.select_item(cx);
+                                            v_flex()
+                                                .flex_1()
+                                                .gap_0p5()
+                                                .child(
+                                                    div()
+                                                        .text_sm()
+                                                        .font_weight(gpui::FontWeight::MEDIUM)
+                                                        .text_color(if is_selected {
+                                                            theme.foreground
+                                                        } else {
+                                                            theme.foreground.opacity(0.9)
+                                                        })
+                                                        .child(command.name.clone()),
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_xs()
+                                                        .text_color(theme.muted_foreground)
+                                                        .child(command.description.clone()),
+                                                ),
+                                        )
+                                        .when(is_selected, |this| {
+                                            this.child(
+                                                Icon::new(IconName::ArrowRight)
+                                                    .size_4()
+                                                    .text_color(theme.accent)
+                                            )
+                                        })
                                 }))
-                                .child(
-                                    Icon::new(icon)
-                                        .size(px(20.))
-                                        .text_color(if is_selected {
-                                            cx.theme().primary
-                                        } else {
-                                            cx.theme().muted_foreground
-                                        }),
-                                )
-                                .child(
-                                    v_flex()
-                                        .flex_1()
-                                        .gap_0p5()
+                            })
+                            .when(self.mode == PaletteMode::Files, |this| {
+                                this.children(self.filtered_files.iter().enumerate().map(|(i, file)| {
+                                    let is_selected = i == selected_index;
+                                    let file_info = file.clone();
+                                    let icon = match file_info.file_type {
+                                        FileType::Class => IconName::Box,
+                                        FileType::Folder => IconName::Folder,
+                                        FileType::File => IconName::FileNotFound,
+                                    };
+
+                                    h_flex()
+                                        .w_full()
+                                        .px_3()
+                                        .py_2p5()
+                                        .rounded_lg()
+                                        .gap_3()
+                                        .items_center()
+                                        .cursor_pointer()
+                                        .when(is_selected, |this| {
+                                            this.bg(theme.accent.opacity(0.15))
+                                                .border_l_2()
+                                                .border_color(theme.accent)
+                                        })
+                                        .when(!is_selected, |this| {
+                                            this.hover(|s| s.bg(theme.muted.opacity(0.15)))
+                                        })
+                                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                                            this.selected_index = i;
+                                            this.select_item(cx);
+                                        }))
                                         .child(
                                             div()
-                                                .text_sm()
-                                                .font_semibold()
-                                                .text_color(if is_selected {
-                                                    cx.theme().foreground
+                                                .w(px(32.0))
+                                                .h(px(32.0))
+                                                .rounded_md()
+                                                .bg(if is_selected {
+                                                    theme.accent.opacity(0.15)
                                                 } else {
-                                                    cx.theme().foreground.opacity(0.9)
+                                                    theme.muted.opacity(0.1)
                                                 })
-                                                .child(file_info.name.clone()),
+                                                .flex()
+                                                .items_center()
+                                                .justify_center()
+                                                .child(
+                                                    Icon::new(icon)
+                                                        .size_4()
+                                                        .text_color(if is_selected {
+                                                            theme.accent
+                                                        } else {
+                                                            theme.muted_foreground
+                                                        }),
+                                                )
                                         )
                                         .child(
-                                            div()
-                                                .text_xs()
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child(file_info.path.to_string_lossy().to_string()),
-                                        ),
-                                )
-                        }))
-                    }),
-            )
-            .when(
-                (self.mode == PaletteMode::Commands && self.filtered_commands.is_empty()) ||
-                (self.mode == PaletteMode::Files && self.filtered_files.is_empty()),
-                |this| {
-                this.child(
-                    div()
-                        .flex_1()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .p_8()
-                        .child(
-                            v_flex()
-                                .items_center()
-                                .gap_2()
-                                .child(
-                                    Icon::new(IconName::Search)
-                                        .size(px(48.))
-                                        .text_color(cx.theme().muted_foreground.opacity(0.3)),
-                                )
-                                .child(
+                                            v_flex()
+                                                .flex_1()
+                                                .gap_0p5()
+                                                .child(
+                                                    div()
+                                                        .text_sm()
+                                                        .font_weight(gpui::FontWeight::MEDIUM)
+                                                        .text_color(if is_selected {
+                                                            theme.foreground
+                                                        } else {
+                                                            theme.foreground.opacity(0.9)
+                                                        })
+                                                        .child(file_info.name.clone()),
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_xs()
+                                                        .text_color(theme.muted_foreground)
+                                                        .child(file_info.path.to_string_lossy().to_string()),
+                                                ),
+                                        )
+                                        .when(is_selected, |this| {
+                                            this.child(
+                                                Icon::new(IconName::ArrowRight)
+                                                    .size_4()
+                                                    .text_color(theme.accent)
+                                            )
+                                        })
+                                }))
+                            })
+                            .when(
+                                (self.mode == PaletteMode::Commands && self.filtered_commands.is_empty()) ||
+                                (self.mode == PaletteMode::Files && self.filtered_files.is_empty()),
+                                |this| {
+                                this.child(
                                     div()
-                                        .text_sm()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child(if self.mode == PaletteMode::Files {
-                                            "No files found"
-                                        } else {
-                                            "No commands found"
-                                        }),
-                                ),
-                        ),
-                )
-            })
+                                        .w_full()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .py_12()
+                                        .child(
+                                            v_flex()
+                                                .items_center()
+                                                .gap_3()
+                                                .child(
+                                                    div()
+                                                        .w(px(64.0))
+                                                        .h(px(64.0))
+                                                        .rounded_full()
+                                                        .bg(theme.muted.opacity(0.1))
+                                                        .flex()
+                                                        .items_center()
+                                                        .justify_center()
+                                                        .child(
+                                                            Icon::new(IconName::Search)
+                                                                .size(px(32.0))
+                                                                .text_color(theme.muted_foreground.opacity(0.3)),
+                                                        )
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_sm()
+                                                        .font_weight(gpui::FontWeight::MEDIUM)
+                                                        .text_color(theme.muted_foreground)
+                                                        .child(if self.mode == PaletteMode::Files {
+                                                            "No files found"
+                                                        } else {
+                                                            "No commands found"
+                                                        }),
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_xs()
+                                                        .text_color(theme.muted_foreground.opacity(0.7))
+                                                        .child("Try a different search term"),
+                                                ),
+                                        ),
+                                )
+                            })
+                    )
+            )
     }
 }
