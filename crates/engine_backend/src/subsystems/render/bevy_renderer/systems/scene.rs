@@ -4,7 +4,6 @@ use bevy::prelude::*;
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use crate::subsystems::render::bevy_renderer::core::{MainCamera, GameObjectId, SharedTexturesResource};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
 
 /// Setup 3D scene - runs AFTER DXGI textures are created
 pub fn setup_scene(
@@ -12,7 +11,6 @@ pub fn setup_scene(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     shared_textures: Res<SharedTexturesResource>,
-    engine_state: Res<Arc<Mutex<crate::EngineState>>>,
 ) {
     tracing::debug!("[BEVY] 🎬 Setting up scene...");
 
@@ -53,10 +51,18 @@ pub fn setup_scene(
     tracing::debug!("[BEVY] 🔄 Camera renders to write buffer, GPUI reads from read buffer");
 
     // Try to load default level file from the project directory
-    // Use environment variable or fallback to default project location
-    let project_dir = std::env::var("PULSAR_PROJECT_PATH")
-        .unwrap_or_else(|_| "C:\\Users\\redst\\OneDrive\\Documents\\Pulsar_Projects\\blank_project".to_string());
-    let level_path = Path::new(&project_dir).join("scenes").join("default.json");
+    let project_dir = engine_state::get_project_path()
+        .unwrap_or("C:\\Users\\redst\\OneDrive\\Documents\\Pulsar_Projects\\blank_project");
+    
+    println!("[BEVY DEBUG] ========================================");
+    println!("[BEVY DEBUG] Project dir from engine_state::get_project_path(): {:?}", engine_state::get_project_path());
+    println!("[BEVY DEBUG] Using project_dir: {:?}", project_dir);
+    
+    let level_path = Path::new(&project_dir).join("scenes").join("default.level");
+    println!("[BEVY DEBUG] Level path: {:?}", level_path);
+    println!("[BEVY DEBUG] Level path exists: {}", level_path.exists());
+    println!("[BEVY DEBUG] ========================================");
+    
     tracing::debug!("[BEVY] 🔍 Checking for level file at {:?}", level_path);
     let mut id = 1;
     

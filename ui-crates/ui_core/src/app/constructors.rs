@@ -132,10 +132,20 @@ impl PulsarApp {
         // Store project_path before moving it
         let has_project = project_path.is_some();
         
-        // Set environment variable for scene loading
+        // Set project path in engine_state for access from other crates
         if let Some(ref path) = project_path {
-            std::env::set_var("PULSAR_PROJECT_PATH", path.as_os_str());
-            tracing::info!("Set PULSAR_PROJECT_PATH to {:?}", path);
+            let path_str = path.to_string_lossy().to_string();
+            println!("[ENGINE_STATE DEBUG] ========================================");
+            println!("[ENGINE_STATE DEBUG] Setting project path to: {:?}", path);
+            println!("[ENGINE_STATE DEBUG] As string: {:?}", path_str);
+            engine_state::set_project_path(path_str.clone());
+            println!("[ENGINE_STATE DEBUG] Verification - get_project_path(): {:?}", engine_state::get_project_path());
+            println!("[ENGINE_STATE DEBUG] ========================================");
+            tracing::info!("Set engine project path to {:?}", path);
+        } else {
+            println!("[ENGINE_STATE DEBUG] ========================================");
+            println!("[ENGINE_STATE DEBUG] NO PROJECT PATH - project_path is None");
+            println!("[ENGINE_STATE DEBUG] ========================================");
         }
 
         // Create drawers

@@ -4555,6 +4555,7 @@ dependencies = [
  "bevy",
  "bytemuck",
  "crossbeam-channel",
+ "engine_state",
  "flume",
  "futures",
  "git2",

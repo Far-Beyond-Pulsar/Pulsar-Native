@@ -25,6 +25,9 @@ nalgebra = { version = "0.32", features = ["serde-serialize"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# Engine state for global project path
+engine_state = { path = "../engine_state" }
+
 # UI dependencies needed for services
 gpui.workspace = true
 ui.workspace = true

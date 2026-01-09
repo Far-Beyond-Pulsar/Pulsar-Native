@@ -37,3 +37,6 @@ pub const ENGINE_HOMEPAGE: &str = env!("CARGO_PKG_HOMEPAGE");
 pub const ENGINE_REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 pub const ENGINE_DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
 pub const ENGINE_LICENSE_FILE: &str = env!("CARGO_PKG_LICENSE_FILE");
+
+// Re-export project path functions from engine_state
+pub use engine_state::{set_project_path, get_project_path};

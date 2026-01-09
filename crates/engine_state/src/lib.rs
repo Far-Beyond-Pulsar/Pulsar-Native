@@ -175,3 +175,16 @@ impl Default for EngineState {
 
 use std::sync::OnceLock;
 static GLOBAL_STATE: OnceLock<EngineState> = OnceLock::new();
+
+// Project path storage
+static PROJECT_PATH: OnceLock<String> = OnceLock::new();
+
+/// Set the current project path (should be called when a project is opened)
+pub fn set_project_path(path: String) {
+    let _ = PROJECT_PATH.set(path);
+}
+
+/// Get the current project path
+pub fn get_project_path() -> Option<&'static str> {
+    PROJECT_PATH.get().map(|s| s.as_str())
+}
