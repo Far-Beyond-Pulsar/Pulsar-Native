@@ -20,6 +20,7 @@ impl SettingsWindow {
             SettingsScreenProps {
                 config_path: config_file,
             },
+            window,
             cx
         ));
 

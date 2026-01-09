@@ -8,7 +8,7 @@ use ui::{
     input::{InputState, TextInput},
     resizable::{h_resizable, resizable_panel, ResizableState},
     menu::context_menu::ContextMenuExt,
-    ActiveTheme as _, Icon, IconName, StyledExt,
+    ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt,
 };
 
 // Import from our modular structure
@@ -398,54 +398,146 @@ impl FileManagerDrawer {
     fn render_folder_tree(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .size_full()
-            .bg(cx.theme().background)
+            .bg(cx.theme().sidebar)
             .border_r_1()
             .border_color(cx.theme().border)
             .child(
-                // Folder tree header
-                h_flex()
-                    .h(px(40.))
+                // Folder tree header with improved styling
+                v_flex()
+                    .w_full()
+                    .gap_3()
                     .px_4()
-                    .items_center()
+                    .py_3()
                     .border_b_1()
                     .border_color(cx.theme().border)
+                    .bg(cx.theme().sidebar)
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .items_center()
+                            .justify_between()
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        Icon::new(IconName::Folder)
+                                            .size_4()
+                                            .text_color(cx.theme().accent)
+                                    )
+                                    .child(
+                                        div()
+                                            .text_base()
+                                            .font_weight(gpui::FontWeight::BOLD)
+                                            .text_color(cx.theme().foreground)
+                                            .child("Project Files")
+                                    )
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_1()
+                                    .child(
+                                        Button::new("expand-all")
+                                            .icon(IconName::ChevronDown)
+                                            .ghost()
+                                            .xsmall()
+                                            .tooltip("Expand All")
+                                            .on_click(cx.listener(|drawer, _event, _window, cx| {
+                                                if let Some(ref mut tree) = drawer.folder_tree {
+                                                    tree.expand_all();
+                                                    cx.notify();
+                                                }
+                                            }))
+                                    )
+                                    .child(
+                                        Button::new("collapse-all")
+                                            .icon(IconName::ChevronUp)
+                                            .ghost()
+                                            .xsmall()
+                                            .tooltip("Collapse All")
+                                            .on_click(cx.listener(|drawer, _event, _window, cx| {
+                                                if let Some(ref mut tree) = drawer.folder_tree {
+                                                    tree.collapse_all();
+                                                    cx.notify();
+                                                }
+                                            }))
+                                    )
+                            )
+                    )
+                    // Search box for folder tree
                     .child(
                         div()
-                            .text_sm()
-                            .font_semibold()
-                            .text_color(cx.theme().foreground)
-                            .child("Folders")
-                    )
-                    .child(div().flex_1())
-                    .child(
-                        Button::new("collapse-all")
-                            .icon(IconName::ChevronsUpDown)
-                            .ghost()
-                            .tooltip("Collapse All")
-                            .on_click(cx.listener(|drawer, _event, _window, cx| {
-                                if let Some(ref mut tree) = drawer.folder_tree {
-                                    tree.collapse_all();
-                                    cx.notify();
-                                }
-                            }))
+                            .w_full()
+                            .child(
+                                TextInput::new(&self.folder_search_state)
+                                    .w_full()
+                                    .prefix(
+                                        Icon::new(IconName::Search)
+                                            .size_3()
+                                            .text_color(cx.theme().muted_foreground)
+                                    )
+                            )
                     )
             )
             .child(
-                // Folder tree content - SCROLLABLE
+                // Folder tree content - SCROLLABLE with enhanced empty state
                 div()
                     .id("folder-tree-scroll")
                     .flex_1()
-                    .p_2()
                     .overflow_y_scroll()
                     .when_some(self.folder_tree.clone(), |this, tree| {
-                        this.child(self.render_folder_node(&tree, 0, window, cx))
+                        this.p_2().child(self.render_folder_node(&tree, 0, window, cx))
                     })
                     .when(self.folder_tree.is_none(), |this| {
                         this.child(
                             div()
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground)
-                                .child("No project folder selected")
+                                .size_full()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .p_4()
+                                .child(
+                                    v_flex()
+                                        .gap_3()
+                                        .items_center()
+                                        .max_w(px(200.0))
+                                        .px_4()
+                                        .py_6()
+                                        .rounded_lg()
+                                        .bg(cx.theme().secondary.opacity(0.2))
+                                        .border_1()
+                                        .border_color(cx.theme().border.opacity(0.3))
+                                        .child(
+                                            div()
+                                                .w(px(48.0))
+                                                .h(px(48.0))
+                                                .rounded_full()
+                                                .bg(cx.theme().muted.opacity(0.3))
+                                                .flex()
+                                                .items_center()
+                                                .justify_center()
+                                                .child(
+                                                    Icon::new(IconName::FolderOpen)
+                                                        .size(px(24.0))
+                                                        .text_color(cx.theme().muted_foreground)
+                                                )
+                                        )
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                .text_color(cx.theme().foreground)
+                                                .child("No Project")
+                                        )
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_center()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .line_height(rems(1.4))
+                                                .child("Open a project folder to see files")
+                                        )
+                                )
                         )
                     })
             )
@@ -462,15 +554,17 @@ impl FileManagerDrawer {
                 h_flex()
                     .pl(px((depth * 16) as f32))
                     .pr_2()
-                    .py_1()
-                    .gap_1()
+                    .py_1p5()
+                    .gap_1p5()
                     .items_center()
-                    .rounded(px(4.0))
+                    .rounded_md()
                     .when(is_selected, |this| {
-                        this.bg(cx.theme().accent.opacity(0.1))
+                        this.bg(cx.theme().accent.opacity(0.15))
+                            .border_l_2()
+                            .border_color(cx.theme().accent)
                     })
                     .hover(|this| {
-                        this.bg(cx.theme().muted.opacity(0.2))
+                        this.bg(cx.theme().secondary.opacity(0.5))
                     })
                     .cursor_pointer()
                     .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, _event, _window, cx| {
@@ -480,9 +574,12 @@ impl FileManagerDrawer {
                         if has_children {
                             div()
                                 .w(px(16.0))
+                                .h(px(16.0))
                                 .flex()
                                 .items_center()
                                 .justify_center()
+                                .rounded_sm()
+                                .hover(|this| this.bg(cx.theme().muted.opacity(0.3)))
                                 .child(
                                     Icon::new(if expanded { IconName::ChevronDown } else { IconName::ChevronRight })
                                         .size_3()
@@ -496,14 +593,38 @@ impl FileManagerDrawer {
                         }
                     )
                     .child(
-                        Icon::new(if expanded { IconName::FolderOpen } else { IconName::Folder })
-                            .size_4()
-                            .text_color(cx.theme().accent)
+                        div()
+                            .w(px(20.0))
+                            .h(px(20.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_sm()
+                            .bg(if is_selected {
+                                cx.theme().accent.opacity(0.15)
+                            } else {
+                                cx.theme().accent.opacity(0.1)
+                            })
+                            .child(
+                                Icon::new(if expanded { IconName::FolderOpen } else { IconName::Folder })
+                                    .size_4()
+                                    .text_color(cx.theme().accent)
+                            )
                     )
                     .child(
                         div()
+                            .flex_1()
                             .text_sm()
-                            .text_color(cx.theme().foreground)
+                            .font_weight(if is_selected {
+                                gpui::FontWeight::SEMIBOLD
+                            } else {
+                                gpui::FontWeight::NORMAL
+                            })
+                            .text_color(if is_selected {
+                                cx.theme().foreground
+                            } else {
+                                cx.theme().foreground.opacity(0.9)
+                            })
                             .child(node.name.clone())
                     )
             )
@@ -558,13 +679,13 @@ impl FileManagerDrawer {
     fn render_list_view(&mut self, items: &[FileItem], window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .w_full()
-            .gap_px()
+            .gap_1()
             .children(items.iter().map(|item| {
                 self.render_list_item(item, window, cx)
             }))
     }
 
-    fn render_list_item(&mut self, item: &FileItem, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_list_item(&mut self, item: &FileItem, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_selected = self.selected_items.contains(&item.path);
         let icon = get_icon_for_file_type(&item);
         let icon_color = get_icon_color_for_file_type(&item, cx.theme());
@@ -573,46 +694,72 @@ impl FileManagerDrawer {
         let item_path = item.path.clone();
         let has_clipboard = self.clipboard.is_some();
         let is_class = item.is_class();
-        let is_folder = item.is_folder;
+        let _is_folder = item.is_folder;
 
         h_flex()
             .id(SharedString::from(format!("list-item-{}", item.name)))
             .w_full()
-            .h(px(32.))
+            .h(px(36.))
             .px_3()
-            .py_1()
-            .gap_2()
+            .py_1p5()
+            .gap_3()
             .items_center()
-            .rounded(px(4.))
+            .rounded_md()
+            .border_1()
+            .border_color(gpui::transparent_black())
             .when(is_selected, |this| {
-                this.bg(cx.theme().accent.opacity(0.15))
+                this.bg(cx.theme().accent.opacity(0.1))
+                    .border_color(cx.theme().accent.opacity(0.3))
+                    .border_l_2()
+                    .border_color(cx.theme().accent)
             })
             .hover(|this| {
-                this.bg(cx.theme().muted.opacity(0.2))
+                this.bg(cx.theme().secondary.opacity(0.5))
+                    .border_color(cx.theme().accent.opacity(0.2))
             })
             .cursor_pointer()
             .child(
-                Icon::new(icon)
-                    .size_4()
-                    .text_color(icon_color)
+                div()
+                    .w(px(24.0))
+                    .h(px(24.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded_sm()
+                    .bg(icon_color.opacity(0.15))
+                    .child(
+                        Icon::new(icon)
+                            .size_4()
+                            .text_color(icon_color)
+                    )
             )
             .child(
                 div()
                     .flex_1()
                     .text_sm()
+                    .font_weight(if is_selected {
+                        gpui::FontWeight::SEMIBOLD
+                    } else {
+                        gpui::FontWeight::NORMAL
+                    })
                     .text_color(cx.theme().foreground)
                     .child(item.name.clone())
             )
             .when(!item.is_folder, |this| {
                 this.child(
                     div()
+                        .px_2()
+                        .py_0p5()
+                        .rounded_sm()
+                        .bg(cx.theme().muted.opacity(0.2))
                         .text_xs()
+                        .font_family("monospace")
                         .text_color(cx.theme().muted_foreground)
                         .child(format_file_size(item.size))
                 )
             })
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
-                drawer.handle_item_click(&item_clone, &event.modifiers, cx);
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, _event: &MouseDownEvent, _window: &mut Window, cx| {
+                drawer.handle_item_click(&item_clone, &_event.modifiers, cx);
             }))
             .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
                 // Select item on right-click if not already selected (without changing folder view)
@@ -788,7 +935,7 @@ impl FileManagerDrawer {
             )
     }
 
-    fn render_clickable_breadcrumb(&mut self, items: &[FileItem], window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_clickable_breadcrumb(&mut self, _items: &[FileItem], _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mut path_parts = Vec::new();
         
         // Get path components
@@ -893,22 +1040,23 @@ impl FileManagerDrawer {
         div()
             .w(px(100.0))
             .h(px(110.0))
-            .rounded(px(8.0))
+            .rounded_lg()
             .border_1()
             .when(is_selected, |this| {
-                this.border_color(cx.theme().accent.opacity(0.5))
+                this.border_color(cx.theme().accent)
                     .bg(cx.theme().accent.opacity(0.1))
+                    .shadow_md()
             })
             .when(!is_selected, |this| {
                 this.border_color(cx.theme().border.opacity(0.3))
-                    .bg(cx.theme().background)
+                    .bg(cx.theme().sidebar.opacity(0.5))
             })
             .cursor_pointer()
             .hover(|style| {
                 style
-                    .bg(cx.theme().muted.opacity(0.2))
-                    .border_color(cx.theme().accent.opacity(0.5))
-                    .shadow_md()
+                    .bg(cx.theme().secondary.opacity(0.7))
+                    .border_color(cx.theme().accent.opacity(0.7))
+                    .shadow_lg()
             })
             .child(
                 v_flex()
@@ -922,13 +1070,14 @@ impl FileManagerDrawer {
                     .child(
                         div()
                             .size(px(48.0))
-                            .rounded(px(8.0))
+                            .rounded_lg()
                             .bg(icon_color.opacity(0.15))
                             .border_1()
                             .border_color(icon_color.opacity(0.3))
                             .flex()
                             .items_center()
                             .justify_center()
+                            .shadow_sm()
                             .child(
                                 Icon::new(icon)
                                     .size(px(24.0))
@@ -948,10 +1097,11 @@ impl FileManagerDrawer {
                                 .w_full()
                                 .text_xs()
                                 .text_center()
-                                .font_medium()
+                                .font_weight(gpui::FontWeight::MEDIUM)
                                 .text_color(cx.theme().foreground)
                                 .overflow_hidden()
                                 .text_ellipsis()
+                                .line_height(rems(1.3))
                                 .child(item.name.clone())
                                 .into_any_element()
                         }
