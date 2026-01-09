@@ -1300,9 +1300,9 @@ impl ViewportPanel {
         };
 
         // Get theme data and clone colors to avoid borrowing issues
-        let (background, radius, border, foreground, chart_1, chart_2, chart_3, chart_4, chart_5, warning, success) = {
+        let (background, border, foreground, chart_1, chart_2, chart_3, chart_4, chart_5, warning, success) = {
             let theme = cx.theme();
-            (theme.background, theme.radius, theme.border, theme.foreground, theme.chart_1, theme.chart_2, theme.chart_3, theme.chart_4, theme.chart_5, theme.warning, theme.success)
+            (theme.background, theme.border, theme.foreground, theme.chart_1, theme.chart_2, theme.chart_3, theme.chart_4, theme.chart_5, theme.warning, theme.success)
         };
 
         // Collect pass data from dynamic render metrics
@@ -1330,84 +1330,112 @@ impl ViewportPanel {
         };
         
         let mut result = v_flex()
-            .gap_1()
+            .gap_1p5()
             .p_2()
             .w_full()
-            .bg(background.opacity(0.95))
-            .rounded(radius)
+            .bg(background.opacity(0.7))
+            .rounded_xl()
             .border_1()
-            .border_color(border)
+            .border_color(border.opacity(0.5))
+            .shadow_lg()
             .child(
-                // Header
+                // Professional Header
                 h_flex()
                     .w_full()
                     .items_center()
                     .justify_between()
                     .child(
-                        div()
-                            .text_xs()
-                            .font_semibold()
-                            .text_color(foreground)
-                            .child("🔥 GPU Pipeline Stats")
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                div()
+                                    .w(px(28.0))
+                                    .h(px(28.0))
+                                    .rounded_lg()
+                                    .bg(cx.theme().accent.opacity(0.15))
+                                    .border_1()
+                                    .border_color(cx.theme().accent.opacity(0.3))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .child(
+                                        ui::Icon::new(IconName::Activity)
+                                            .size_3()
+                                            .text_color(cx.theme().accent)
+                                    )
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(foreground)
+                                    .child("GPU Pipeline Stats")
+                            )
                     )
                     .child({
                         let state_clone = state_arc.clone();
                         Button::new("collapse_gpu_pipeline")
-                            .icon(IconName::X)
+                            .icon(IconName::Close)
                             .ghost()
+                            .xsmall()
+                            .tooltip("Close")
                             .on_click(move |_, _, _| {
                                 state_clone.write().set_gpu_pipeline_overlay_collapsed(true);
                             })
                     })
             )
             .child(
-                // Column headers row
-                h_flex()
-                    .w_full()
-                    .items_center()
-                    .mt_1()
-                    .child(
-                        // Color indicator column
-                        div().w(px(16.0)).flex_none()
-                    )
-                    .child(
-                        // Pass name header
-                        div()
-                            .w(px(200.0))
-                            .flex_none()
-                            .text_xs()
-                            .font_semibold()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("Pass")
-                    )
-                    .child(
-                        // Time header
-                        div()
-                            .w(px(60.0))
-                            .flex_none()
-                            .text_right()
-                            .text_xs()
-                            .font_semibold()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("Time")
-                    )
-                    .child(
-                        // Percentage header
-                        div()
-                            .w(px(50.0))
-                            .flex_none()
-                            .text_right()
-                            .text_xs()
-                            .font_semibold()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("%")
-                    )
-            )
-            .child(
+                // Table header with modern styling
                 div()
                     .w_full()
-                    .h(px(1.0))
-                    .bg(border)
+                    .px_2()
+                    .py_1()
+                    .rounded_lg()
+                    .bg(cx.theme().sidebar.opacity(0.15))
+                    .border_1()
+                    .border_color(border.opacity(0.3))
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .items_center()
+                            .child(
+                                // Color indicator column
+                                div().w(px(18.0)).flex_none()
+                            )
+                            .child(
+                                // Pass name header
+                                div()
+                                    .w(px(220.0))
+                                    .flex_none()
+                                    .text_xs()
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Pass Name")
+                            )
+                            .child(
+                                // Time header
+                                div()
+                                    .w(px(70.0))
+                                    .flex_none()
+                                    .text_right()
+                                    .text_xs()
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Time")
+                            )
+                            .child(
+                                // Percentage header
+                                div()
+                                    .w(px(60.0))
+                                    .flex_none()
+                                    .text_right()
+                                    .text_xs()
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("%")
+                            )
+                    )
             );
         
         // Add individual pass timings - create elements one by one to avoid borrow checker issues
@@ -1422,55 +1450,70 @@ impl ViewportPanel {
                 .child(
                     div()
                         .w_full()
-                        .h(px(1.0))
-                        .bg(border)
-                        .mt_1()
+                        .h_px()
+                        .bg(border.opacity(0.5))
+                        .my_2()
                 )
-                // Total GPU row - matching column layout
+                // Total GPU row with card styling
                 .child(
-                    h_flex()
+                    div()
                         .w_full()
-                        .items_center()
+                        .p_2()
+                        .rounded_lg()
+                        .bg(cx.theme().sidebar.opacity(0.2))
+                        .border_1()
+                        .border_color(if data.total_gpu_ms < 8.0 {
+                            success.opacity(0.3)
+                        } else if data.total_gpu_ms < 16.0 {
+                            warning.opacity(0.3)
+                        } else {
+                            cx.theme().danger.opacity(0.3)
+                        })
                         .child(
-                            // Empty color indicator column
-                            div().w(px(16.0)).flex_none()
-                        )
-                        .child(
-                            // Label column
-                            div()
-                                .w(px(200.0))
-                                .flex_none()
-                                .text_xs()
-                                .font_semibold()
-                                .text_color(foreground)
-                                .child("Total GPU")
-                        )
-                        .child(
-                            // Time value - color coded by performance
-                            div()
-                                .w(px(60.0))
-                                .flex_none()
-                                .text_right()
-                                .text_xs()
-                                .font_semibold()
-                                .text_color(if data.total_gpu_ms < 8.0 {
-                                    success
-                                } else if data.total_gpu_ms < 16.0 {
-                                    warning
-                                } else {
-                                    cx.theme().danger
-                                })
-                                .child(format!("{:.2}ms", data.total_gpu_ms))
-                        )
-                        .child(
-                            // 100% for total
-                            div()
-                                .w(px(50.0))
-                                .flex_none()
-                                .text_right()
-                                .text_xs()
-                                .text_color(cx.theme().muted_foreground)
-                                .child("100.0%")
+                            h_flex()
+                                .w_full()
+                                .items_center()
+                                .child(
+                                    // Empty color indicator column
+                                    div().w(px(18.0)).flex_none()
+                                )
+                                .child(
+                                    // Label column
+                                    div()
+                                        .w(px(220.0))
+                                        .flex_none()
+                                        .text_sm()
+                                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                                        .text_color(foreground)
+                                        .child("Total GPU Time")
+                                )
+                                .child(
+                                    // Time value - color coded by performance
+                                    div()
+                                        .w(px(70.0))
+                                        .flex_none()
+                                        .text_right()
+                                        .text_sm()
+                                        .font_weight(gpui::FontWeight::BOLD)
+                                        .text_color(if data.total_gpu_ms < 8.0 {
+                                            success
+                                        } else if data.total_gpu_ms < 16.0 {
+                                            warning
+                                        } else {
+                                            cx.theme().danger
+                                        })
+                                        .child(format!("{:.2}ms", data.total_gpu_ms))
+                                )
+                                .child(
+                                    // 100% for total
+                                    div()
+                                        .w(px(60.0))
+                                        .flex_none()
+                                        .text_right()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("100%")
+                                )
                         )
                 )
                 // Frame time row
@@ -1478,20 +1521,22 @@ impl ViewportPanel {
                     h_flex()
                         .w_full()
                         .items_center()
+                        .px_2()
+                        .py_0p5()
                         .child(
-                            div().w(px(16.0)).flex_none()
+                            div().w(px(18.0)).flex_none()
                         )
                         .child(
                             div()
-                                .w(px(200.0))
+                                .w(px(220.0))
                                 .flex_none()
                                 .text_xs()
                                 .text_color(cx.theme().muted_foreground)
-                                .child("Frame Time")
+                                .child("Total Frame Time")
                         )
                         .child(
                             div()
-                                .w(px(60.0))
+                                .w(px(70.0))
                                 .flex_none()
                                 .text_right()
                                 .text_xs()
@@ -1534,51 +1579,72 @@ impl ViewportPanel {
     {
         let theme = cx.theme();
         
-        h_flex()
+        div()
             .w_full()
-            .items_center()
+            .px_2()
+            .py_0p5()
+            .rounded_md()
+            .hover(|s| s.bg(theme.sidebar.opacity(0.15)))
             .child(
-                // Color indicator column - 16px total width
-                div()
-                    .w(px(16.0))
-                    .flex_none()
+                h_flex()
+                    .w_full()
+                    .items_center()
                     .child(
+                        // Color indicator with badge styling
                         div()
-                            .w(px(8.0))
-                            .h(px(8.0))
-                            .rounded(px(2.0))
-                            .bg(color)
+                            .w(px(18.0))
+                            .flex_none()
+                            .child(
+                                div()
+                                    .w(px(8.0))
+                                    .h(px(8.0))
+                                    .rounded_full()
+                                    .bg(color)
+                            )
                     )
-            )
-            .child(
-                // Name column - fixed 200px width
-                div()
-                    .w(px(200.0))
-                    .flex_none()
-                    .overflow_hidden()
-                    .text_xs()
-                    .text_color(theme.muted_foreground)
-                    .child(name)
-            )
-            .child(
-                // Timing column - fixed 60px, right-aligned
-                div()
-                    .w(px(60.0))
-                    .flex_none()
-                    .text_right()
-                    .text_xs()
-                    .text_color(theme.foreground)
-                    .child(format!("{:.2}ms", time_ms))
-            )
-            .child(
-                // Percentage column - fixed 50px, right-aligned
-                div()
-                    .w(px(50.0))
-                    .flex_none()
-                    .text_right()
-                    .text_xs()
-                    .text_color(theme.muted_foreground)
-                    .child(format!("{:.1}%", percent))
+                    .child(
+                        // Name column - better width
+                        div()
+                            .w(px(220.0))
+                            .flex_none()
+                            .overflow_hidden()
+                            .text_xs()
+                            .text_color(theme.foreground.opacity(0.9))
+                            .child(name)
+                    )
+                    .child(
+                        // Timing column - better styling
+                        div()
+                            .w(px(70.0))
+                            .flex_none()
+                            .text_right()
+                            .text_xs()
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .text_color(theme.foreground)
+                            .child(format!("{:.2}ms", time_ms))
+                    )
+                    .child(
+                        // Percentage badge
+                        div()
+                            .w(px(60.0))
+                            .flex_none()
+                            .flex()
+                            .justify_end()
+                            .child(
+                                div()
+                                    .px_1p5()
+                                    .py_0p5()
+                                    .rounded_md()
+                                    .bg(color.opacity(0.15))
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_weight(gpui::FontWeight::MEDIUM)
+                                            .text_color(color)
+                                            .child(format!("{:.1}%", percent))
+                                    )
+                            )
+                    )
             )
     }
 
@@ -1814,96 +1880,210 @@ impl ViewportPanel {
 
         v_flex()
             .gap_2()
-            .p_2()
+            .p_3()
             .w_full()
-            .bg(cx.theme().background.opacity(0.95))
-            .rounded(cx.theme().radius)
+            .bg(cx.theme().background.opacity(0.7))
+            .rounded_xl()
             .border_1()
-            .border_color(cx.theme().border)
-            // HEADER ROW - FPS indicators
+            .border_color(cx.theme().border.opacity(0.5))
+            .shadow_lg()
+            // PROFESSIONAL HEADER - FPS & Performance indicators
             .child(
-                h_flex()
-                    .gap_3()
+                v_flex()
                     .w_full()
-                    .items_center()
-                    .justify_between()
+                    .gap_3()
                     .child(
                         h_flex()
-                            .gap_3()
+                            .w_full()
                             .items_center()
-                            // UI FPS
+                            .justify_between()
                             .child(
-                                div()
-                                    .text_xs()
-                                    .font_semibold()
-                                    .text_color(if ui_fps > 300.0 {
-                                        cx.theme().success
-                                    } else if ui_fps > 144.0 {
-                                        cx.theme().warning
-                                    } else {
-                                        cx.theme().danger
-                                    })
-                                    .child(format!("UI: {:.0} FPS", ui_fps))
-                            )
-                            // Bevy/Renderer FPS
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .font_semibold()
-                                    .text_color(if bevy_fps > 200.0 {
-                                        cx.theme().success
-                                    } else if bevy_fps > 60.0 {
-                                        cx.theme().warning
-                                    } else {
-                                        cx.theme().danger
-                                    })
-                                    .child(format!("Render: {:.0} FPS", bevy_fps))
-                            )
-                            // Pipeline time
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(format!("Pipeline: {:.2}ms", pipeline_us as f64 / 1000.0))
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .w(px(32.0))
+                                            .h(px(32.0))
+                                            .rounded_lg()
+                                            .bg(cx.theme().accent.opacity(0.15))
+                                            .border_1()
+                                            .border_color(cx.theme().accent.opacity(0.3))
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .child(
+                                                ui::Icon::new(IconName::Activity)
+                                                    .size_4()
+                                                    .text_color(cx.theme().accent)
+                                            )
+                                    )
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                                            .text_color(cx.theme().foreground)
+                                            .child("Performance Stats")
+                                    )
                             )
                             .child({
-                                let enabled = self.render_enabled.clone();
-                                Button::new("toggle_render")
-                                    .child(if self.render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
-                                        "⏸"
-                                    } else {
-                                        "▶"
-                                    })
-                                    
-                                    .on_click(move |_event, _window, _cx| {
-                                        let current = enabled.load(std::sync::atomic::Ordering::Relaxed);
-                                        enabled.store(!current, std::sync::atomic::Ordering::Relaxed);
+                                let state_clone = state_arc.clone();
+                                Button::new("collapse_performance")
+                                    .icon(IconName::Close)
+                                    .ghost()
+                                    .xsmall()
+                                    .tooltip("Close")
+                                    .on_click(move |_, _, _| {
+                                        state_clone.write().set_performance_overlay_collapsed(true);
                                     })
                             })
                     )
-                    .child({
-                        let state_clone = state_arc.clone();
-                        Button::new("collapse_performance")
-                            .icon(IconName::X)
-                            .ghost()
-                            .on_click(move |_, _, _| {
-                                state_clone.write().set_performance_overlay_collapsed(true);
+                    // FPS Cards Row
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .gap_2()
+                            // UI FPS Card
+                            .child(
+                                v_flex()
+                                    .flex_1()
+                                    .gap_1()
+                                    .p_3()
+                                    .rounded_lg()
+                                    .bg(cx.theme().sidebar.opacity(0.3))
+                                    .border_1()
+                                    .border_color(if ui_fps > 300.0 {
+                                        cx.theme().success.opacity(0.3)
+                                    } else if ui_fps > 144.0 {
+                                        cx.theme().warning.opacity(0.3)
+                                    } else {
+                                        cx.theme().danger.opacity(0.3)
+                                    })
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child("UI FPS")
+                                    )
+                                    .child(
+                                        div()
+                                            .text_2xl()
+                                            .font_weight(gpui::FontWeight::BOLD)
+                                            .text_color(if ui_fps > 300.0 {
+                                                cx.theme().success
+                                            } else if ui_fps > 144.0 {
+                                                cx.theme().warning
+                                            } else {
+                                                cx.theme().danger
+                                            })
+                                            .child(format!("{:.0}", ui_fps))
+                                    )
+                            )
+                            // Render FPS Card
+                            .child(
+                                v_flex()
+                                    .flex_1()
+                                    .gap_1()
+                                    .p_3()
+                                    .rounded_lg()
+                                    .bg(cx.theme().sidebar.opacity(0.3))
+                                    .border_1()
+                                    .border_color(if bevy_fps > 200.0 {
+                                        cx.theme().success.opacity(0.3)
+                                    } else if bevy_fps > 60.0 {
+                                        cx.theme().warning.opacity(0.3)
+                                    } else {
+                                        cx.theme().danger.opacity(0.3)
+                                    })
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child("Render FPS")
+                                    )
+                                    .child(
+                                        div()
+                                            .text_2xl()
+                                            .font_weight(gpui::FontWeight::BOLD)
+                                            .text_color(if bevy_fps > 200.0 {
+                                                cx.theme().success
+                                            } else if bevy_fps > 60.0 {
+                                                cx.theme().warning
+                                            } else {
+                                                cx.theme().danger
+                                            })
+                                            .child(format!("{:.0}", bevy_fps))
+                                    )
+                            )
+                            // Frame Time Card
+                            .child(
+                                v_flex()
+                                    .flex_1()
+                                    .gap_1()
+                                    .p_3()
+                                    .rounded_lg()
+                                    .bg(cx.theme().sidebar.opacity(0.3))
+                                    .border_1()
+                                    .border_color(cx.theme().border.opacity(0.5))
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child("Frame Time")
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xl()
+                                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                                            .text_color(cx.theme().foreground)
+                                            .child(format!("{:.2}ms", pipeline_us as f64 / 1000.0))
+                                    )
+                            )
+                            // Render Toggle Button
+                            .child({
+                                let enabled = self.render_enabled.clone();
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .child(
+                                        Button::new("toggle_render")
+                                            .icon(if self.render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
+                                                IconName::Pause
+                                            } else {
+                                                IconName::Play
+                                            })
+                                            .ghost()
+                                            .tooltip(if self.render_enabled.load(std::sync::atomic::Ordering::Relaxed) {
+                                                "Pause Rendering"
+                                            } else {
+                                                "Resume Rendering"
+                                            })
+                                            .on_click(move |_event, _window, _cx| {
+                                                let current = enabled.load(std::sync::atomic::Ordering::Relaxed);
+                                                enabled.store(!current, std::sync::atomic::Ordering::Relaxed);
+                                            })
+                                    )
                             })
-                    })
+                    )
             )
-            // Metrics selector toolbar
+            // Metrics selector toolbar with modern styling
             .child(
-                h_flex()
+                div()
                     .w_full()
-                    .gap_1()
-                    .p_1()
-                    .flex_wrap()
-                    .border_t_1()
-                    .border_color(cx.theme().border)
-                    .child({
-                        let state_clone = state_arc.clone();
-                        Button::new("toggle_fps")
-                            .icon(IconName::Activity)
+                    .p_2()
+                    .rounded_lg()
+                    .bg(cx.theme().sidebar.opacity(0.2))
+                    .border_1()
+                    .border_color(cx.theme().border.opacity(0.5))
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .gap_1()
+                            .flex_wrap()
+                            .child({
+                                let state_clone = state_arc.clone();
+                                Button::new("toggle_fps")
+                                    .icon(IconName::Activity)
                             .tooltip("FPS Graph")
                             
                             .selected(state.show_fps_graph)
@@ -1988,34 +2168,47 @@ impl ViewportPanel {
                                 state_clone.write().toggle_ui_consistency_graph();
                             })
                     })
+                    )
             )
             .when(state.show_fps_graph && !fps_data.is_empty(), |this| {
                 this.child(
                     v_flex()
                         .w_full()
-                        .border_t_1()
-                        .border_color(cx.theme().border)
-                        .pt_2()
+                        .p_3()
+                        .rounded_lg()
+                        .bg(cx.theme().sidebar.opacity(0.2))
+                        .border_1()
+                        .border_color(cx.theme().border.opacity(0.5))
+                        .gap_2()
                         .child(
                             h_flex()
                                 .w_full()
                                 .items_center()
                                 .justify_between()
-                                .mb_1()
                                 .child(
-                                    div()
-                                        .text_xs()
-                                        .font_semibold()
-                                        .text_color(cx.theme().foreground)
-                                        .child("FPS Graph")
+                                    h_flex()
+                                        .gap_2()
+                                        .items_center()
+                                        .child(
+                                            ui::Icon::new(IconName::Activity)
+                                                .size_4()
+                                                .text_color(cx.theme().accent)
+                                        )
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                .text_color(cx.theme().foreground)
+                                                .child("FPS Graph")
+                                        )
                                 )
                                 .child({
                                     let fps_graph_clone = fps_graph_state.clone();
                                     
                                     ui::switch::Switch::new("fps_graph_type")
                                         .checked(*fps_graph_state.borrow())
-                                        .label("Line")
-                                        
+                                        .label("Line Chart")
+                                        .xsmall()
                                         .on_click(move |checked, _, _| {
                                             *fps_graph_clone.borrow_mut() = *checked;
                                         })
@@ -2023,7 +2216,7 @@ impl ViewportPanel {
                         )
                         .child(
                             div()
-                                .h(px(100.))
+                                .h(px(120.))
                                 .w_full()
                                 .child(if *fps_graph_state.borrow() {
                                     // Area chart with semi-transparent fill (line mode)
@@ -2068,22 +2261,43 @@ impl ViewportPanel {
                         )
                 )
             })
-            // UI REFRESH CONSISTENCY GRAPH - Shows FPS variance over time (lower is better/more consistent)
+            // UI REFRESH CONSISTENCY GRAPH
             .when(state.show_ui_consistency_graph && !ui_consistency_data.is_empty(), |this| {
                 this.child(
                     v_flex()
                         .w_full()
-                        .mt_2()
+                        .p_3()
+                        .rounded_lg()
+                        .bg(cx.theme().sidebar.opacity(0.2))
+                        .border_1()
+                        .border_color(cx.theme().border.opacity(0.5))
+                        .gap_2()
                         .child(
-                            div()
-                                .text_xs()
-                                .font_semibold()
-                                .text_color(cx.theme().foreground)
-                                .child("📊 UI Refresh Consistency (StdDev) - Lower is smoother")
+                            h_flex()
+                                .gap_2()
+                                .items_center()
+                                .child(
+                                    ui::Icon::new(IconName::GraphUp)
+                                        .size_4()
+                                        .text_color(cx.theme().accent)
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                                        .text_color(cx.theme().foreground)
+                                        .child("UI Consistency")
+                                )
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("(Lower = Smoother)")
+                                )
                         )
                         .child(
                             div()
-                                .h(px(80.))
+                                .h(px(100.))
                                 .w_full()
                                 .child(if *fps_graph_state.borrow() {
                                     // Line mode - Area chart
