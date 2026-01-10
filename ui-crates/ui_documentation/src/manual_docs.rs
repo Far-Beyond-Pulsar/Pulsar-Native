@@ -1,9 +1,6 @@
 use gpui::{prelude::*, *};
 use ui::{
-    h_flex, v_flex, IconName, Icon, StyledExt, ActiveTheme,
-    button::{Button, ButtonVariants as _},
-    input::{InputState, InputEvent, TextInput},
-    text::TextView,
+    input::{InputState, InputEvent, TextInput, TabSize},
 };
 use std::path::{Path, PathBuf};
 use std::fs;
@@ -40,7 +37,16 @@ pub struct ManualDocsState {
 impl ManualDocsState {
     pub fn new(window: &mut Window, cx: &mut App, project_root: Option<PathBuf>) -> Self {
         let editor_input_state = cx.new(|cx| {
+            // Create code editor for markdown editing
             InputState::new(window, cx)
+                .code_editor("markdown")
+                .line_number(true)
+                .minimap(true)
+                .tab_size(TabSize {
+                    tab_size: 4,
+                    hard_tabs: false,
+                })
+                .soft_wrap(true)
         });
 
         let mut state = Self {
@@ -144,30 +150,44 @@ impl ManualDocsState {
         self.load_file_tree();
     }
 
-    pub fn select_file(&mut self, path: PathBuf) {
+    pub fn select_file(&mut self, path: PathBuf, window: &mut Window, cx: &mut App) {
         self.selected_file = Some(path.clone());
 
+        // Load file into editor
         if let Ok(content) = fs::read_to_string(&path) {
+            self.editor_input_state.update(cx, |editor, cx| {
+                editor.set_value(content.clone(), window, cx);
+            });
             self.current_markdown = content.clone();
             self.markdown_preview = content;
         }
     }
 
-    pub fn update_preview(&mut self, content: String) {
+    pub fn update_preview(&mut self, cx: &App) {
+        // Get content from editor and update preview
+        let content = self.editor_input_state.read(cx).value().to_string();
         self.current_markdown = content.clone();
         self.markdown_preview = content;
     }
 
-    pub fn save_current_file(&mut self) -> Result<(), std::io::Error> {
+    pub fn save_current_file(&mut self, _window: &mut Window, cx: &App) -> Result<(), std::io::Error> {
         let Some(path) = &self.selected_file else {
             return Ok(());
         };
 
+        // Get content from editor and save
+        let content = self.editor_input_state.read(cx).value().to_string();
+        self.current_markdown = content.clone();
+
         fs::write(path, &self.current_markdown)?;
+
+        // Update preview after save
+        self.markdown_preview = self.current_markdown.clone();
+
         Ok(())
     }
 
-    pub fn create_new_file(&mut self, name: String) -> Result<(), std::io::Error> {
+    pub fn create_new_file(&mut self, name: String, window: &mut Window, cx: &mut App) -> Result<(), std::io::Error> {
         let Some(docs_folder) = &self.docs_folder else {
             return Ok(());
         };
@@ -189,7 +209,7 @@ impl ManualDocsState {
 
         fs::write(&file_path, format!("# {}\n\n", name.trim_end_matches(".md")))?;
         self.load_file_tree();
-        self.select_file(file_path);
+        self.select_file(file_path, window, cx);
 
         Ok(())
     }
