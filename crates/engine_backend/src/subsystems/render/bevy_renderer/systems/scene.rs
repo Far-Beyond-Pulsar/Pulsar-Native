@@ -43,6 +43,16 @@ pub fn setup_scene(
             clear_color: bevy::prelude::ClearColorConfig::Custom(Color::srgb(0.2, 0.2, 0.3)), // Dark blue-grey background
             ..default()
         },
+        Projection::Perspective(PerspectiveProjection {
+            //TODO: We should design a function to remap the range
+            //      of reasonabe values to a 75-120 range for in-editor use
+            //      (Reasonable values seem to start att 88.5 degrees)
+            fov: 89.0,
+            near: 0.1,
+            far: 1000.0,
+            // Whereeeeevvvveeeer_you_are:
+            ..Default::default()
+        }),
         Transform::from_xyz(-3.0, 3.0, 6.0).looking_at(Vec3::new(0.0, 0.5, 0.0), Vec3::Y),
         Tonemapping::None, // CRITICAL: Disable tonemapping for proper color reproduction
         MainCamera,
