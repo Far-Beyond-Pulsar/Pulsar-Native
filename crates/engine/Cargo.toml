@@ -5,9 +5,6 @@ description = "A modern high-performance game engine written in Rust"
 publish = false
 version = "0.1.88"
 
-[profile.dev.package."*"]
-opt-level = 3
-
 [lib]
 name = "pulsar_engine"
 path = "src/lib.rs"
