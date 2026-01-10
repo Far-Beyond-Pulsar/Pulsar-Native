@@ -86,6 +86,7 @@ pub struct TextView {
     init_state: Option<InitState>,
     state: Entity<TextViewState>,
     selectable: bool,
+    debounce_ms: u64,
 }
 
 #[derive(PartialEq)]
@@ -368,6 +369,10 @@ impl TextView {
     }
 
     /// Create a new markdown text view.
+    ///
+    /// # Parameters
+    /// - `debounce_ms`: Debounce delay in milliseconds for markdown parsing. Default is 200ms.
+    ///   Use smaller values (e.g., 30-50ms) for more responsive preview, but may impact performance.
     pub fn markdown(
         id: impl Into<ElementId>,
         markdown: impl Into<SharedString>,
@@ -396,7 +401,15 @@ impl TextView {
             init_state: Some(init_state),
             state,
             selectable: false,
+            debounce_ms: 200,
         }
+    }
+
+    /// Set the debounce delay in milliseconds for text parsing.
+    /// Default is 200ms. Use smaller values (e.g., 30-50ms) for more responsive preview.
+    pub fn debounce_ms(mut self, ms: u64) -> Self {
+        self.debounce_ms = ms;
+        self
     }
 
     /// Create a new html text view.
@@ -423,6 +436,7 @@ impl TextView {
             init_state: Some(init_state),
             state,
             selectable: false,
+            debounce_ms: 200,
         }
     }
 
@@ -546,7 +560,7 @@ impl Element for TextView {
                 highlight_theme,
                 rx,
                 tx_result,
-                Duration::from_millis(200),
+                Duration::from_millis(self.debounce_ms),
             ))
             .detach();
 

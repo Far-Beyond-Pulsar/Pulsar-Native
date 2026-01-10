@@ -875,6 +875,7 @@ impl DocumentationWindow {
                                     window,
                                     cx,
                                 )
+                                .debounce_ms(30)
                                 .selectable()
                             )
                     )
@@ -932,6 +933,7 @@ impl DocumentationWindow {
                                             window,
                                             cx,
                                         )
+                                        .debounce_ms(30)
                                         .selectable()
                                     )
                             )
