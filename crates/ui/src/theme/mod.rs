@@ -40,8 +40,9 @@ impl ActiveTheme for App {
 pub struct Theme {
     pub colors: ThemeColor,
     pub highlight_theme: Arc<HighlightTheme>,
+    // TODO: these ARE NOT SEND+SYNC because of Rc - fix later
     pub light_theme: Rc<ThemeConfig>,
-    pub dark_theme: Rc<ThemeConfig>,
+    pub dark_theme:  Rc<ThemeConfig>,
 
     pub mode: ThemeMode,
     pub font_family: SharedString,

@@ -63,6 +63,7 @@
 
 use libloading::{Library, Symbol};
 use plugin_editor_api::*;
+use ui::dock::PanelView;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -634,6 +635,41 @@ impl PluginManager {
         // Call create_editor via raw pointer
         // SAFETY: Plugin is loaded, pointer validated as non-null above
         unsafe {
+            if *plugin.plugin_ptr.is_null() {
+                //
+            }
+
+            let (tx_one, mut rx_one) = _;
+            let (tx_two, mut rx_two) = _;
+            
+           let pan_and_editor: (Arc<dyn PanelView>, Box<dyn EditorInstance>) = (*plugin.plugin_ptr)
+                .create_editor(editor_id.clone(), file_path.clone(), window, cx, &EditorLogger)
+                .unwrap();
+
+            let arc_pan = pan_and_editor.0;
+            let box_editor_instance = pan_and_editor.1;
+            
+            let arc_test = Arc::downgrade();
+            let as_Weak = std::sync::Weak::new();
+            //
+            // let t = Arc::new(__);
+            //
+            // let t_c = Arc::clone(&t);
+            // 
+            // let tc_shouldnt: Arc::is_actually(&'a t_c);
+            // 
+            // // let other_ac = external_thing_go_brr(&'a t_c);
+            // let other_ac = external_thing_go_brr(&t_c);
+            // 
+            // 
+            // 
+
+
+            let arc_pan_count = Arc::strong_count(&arc_pan);
+            tracing::info!("Value of arc_pan_count: {}", arc_pan_count);
+            println!("Arc pan count: {}", arc_pan_count);
+
+
             (*plugin.plugin_ptr)
                 .create_editor(editor_id.clone(), file_path, window, cx, &EditorLogger)
                 .map_err(|e| PluginManagerError::PluginError {
