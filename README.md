@@ -17,6 +17,14 @@
   A next‑generation, experimental game engine focused on scalability, modularity, and modern systems design.
 </p>
 
+# ⭐ Support the Project
+
+If Pulsar Engine aligns with how you think game engines should be built, consider supporting the project on GitHub:
+- ⭐ Star the repo to help others discover Pulsar
+- 👀 Watch for updates to follow major architectural changes and milestones
+- 🍴 Fork if you want to experiment or contribute
+Stars and watches directly influence visibility and help justify continued deep-systems work on the engine.
+
 <p align="center">
   <a href="https://discord.gg/5eAKDC53SX">
     <img src="https://github.com/user-attachments/assets/a13941d3-409f-45e3-a7b4-254d465ea135" alt="Join our Discord" width="260" />
