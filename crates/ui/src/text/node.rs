@@ -569,11 +569,12 @@ impl Paragraph {
                     );
                 }
                 child_nodes.push(
-                    img(image.url.clone())
+                    img(image.url.as_ref())
                         .id(ix)
                         .object_fit(ObjectFit::Contain)
-                        .max_w(relative(1.))
+                        .w_full()
                         .when_some(image.width, |this, width| this.w(width))
+                        .when_some(image.height, |this, height| this.h(height))
                         .when_some(image.link.clone(), |this, link| {
                             let title = image.title();
                             this.cursor_pointer()

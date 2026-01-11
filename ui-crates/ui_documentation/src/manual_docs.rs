@@ -5,6 +5,7 @@ use ui::{
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::collections::HashSet;
+use regex::Regex;
 
 #[derive(Clone, Debug)]
 pub struct FileEntry {
@@ -159,7 +160,7 @@ impl ManualDocsState {
                 editor.set_value(content.clone(), window, cx);
             });
             self.current_markdown = content.clone();
-            self.markdown_preview = content;
+            self.markdown_preview = self.resolve_image_urls(&content);
         }
     }
 
@@ -167,7 +168,46 @@ impl ManualDocsState {
         // Get content from editor and update preview
         let content = self.editor_input_state.read(cx).value().to_string();
         self.current_markdown = content.clone();
-        self.markdown_preview = content;
+        self.markdown_preview = self.resolve_image_urls(&content);
+    }
+
+    fn resolve_image_urls(&self, markdown: &str) -> String {
+        // Resolve relative image URLs to absolute file:// URLs
+        let Some(selected_file) = &self.selected_file else {
+            return markdown.to_string();
+        };
+
+        let Some(base_dir) = selected_file.parent() else {
+            return markdown.to_string();
+        };
+
+        // Regex to match markdown images: ![alt](url)
+        let re = Regex::new(r"!\[([^\]]*)\]\(([^)]+)\)").unwrap();
+
+        re.replace_all(markdown, |caps: &regex::Captures| {
+            let alt = &caps[1];
+            let url = &caps[2];
+
+            // Skip if already absolute URL (http://, https://, file://)
+            if url.starts_with("http://") || url.starts_with("https://") || url.starts_with("file://") {
+                return caps[0].to_string();
+            }
+
+            // Resolve relative path
+            let image_path = base_dir.join(url);
+            if let Ok(absolute_path) = image_path.canonicalize() {
+                // Convert to file:// URL with proper path format
+                #[cfg(target_os = "windows")]
+                let file_url = format!("file:///{}", absolute_path.display().to_string().replace("\\", "/"));
+                #[cfg(not(target_os = "windows"))]
+                let file_url = format!("file://{}", absolute_path.display());
+
+                format!("![{}]({})", alt, file_url)
+            } else {
+                // If file doesn't exist, keep original
+                caps[0].to_string()
+            }
+        }).to_string()
     }
 
     pub fn save_current_file(&mut self, _window: &mut Window, cx: &App) -> Result<(), std::io::Error> {

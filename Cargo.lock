@@ -14522,6 +14522,7 @@ dependencies = [
  "engine_state",
  "gpui",
  "pulsar_docs",
+ "regex",
  "ui",
 ]
 

@@ -892,12 +892,10 @@ impl DocumentationWindow {
                 // Editor (left)
                 div()
                     .flex_1()
-                    .h_full()
+                    .size_full()
                     .bg(theme.background)
                     .border_r_1()
                     .border_color(theme.border)
-                    .overflow_hidden()
-                    .p_4()
                     .child(
                         TextInput::new(&self.manual_docs.editor_input_state)
                             .w_full()
@@ -909,33 +907,28 @@ impl DocumentationWindow {
             .child(
                 // Preview (right)
                 div()
+                    .id("manual-preview-split-scroll")
                     .flex_1()
-                    .h_full()
+                    .size_full()
                     .bg(theme.background)
-                    .overflow_hidden()
+                    .overflow_y_scroll()
                     .child(
                         div()
-                            .id("manual-preview-split-scroll")
-                            .size_full()
-                            .overflow_y_scroll()
+                            .w_full()
+                            .max_w(px(1200.0))
+                            .mx_auto()
+                            .px_8()
+                            .pt_6()
+                            .pb_8()
                             .child(
-                                div()
-                                    .w_full()
-                                    .max_w(px(1200.0))
-                                    .mx_auto()
-                                    .px_8()
-                                    .pt_6()
-                                    .pb_8()
-                                    .child(
-                                        TextView::markdown(
-                                            "manual-docs-preview-split",
-                                            markdown,
-                                            window,
-                                            cx,
-                                        )
-                                        .debounce_ms(30)
-                                        .selectable()
-                                    )
+                                TextView::markdown(
+                                    "manual-docs-preview-split",
+                                    markdown,
+                                    window,
+                                    cx,
+                                )
+                                .debounce_ms(30)
+                                .selectable()
                             )
                     )
             )

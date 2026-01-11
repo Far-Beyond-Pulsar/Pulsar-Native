@@ -19,7 +19,11 @@
       "Bash(cmd.exe /c start \"\" \"pulsar://open_project/C%3A%5CUsers%5Credst%5COneDrive%5CDocuments%5CPulsar_Projects%5Cblank_project\")",
       "Bash(bash:*)",
       "Bash(tree:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(dir:*)",
+      "Bash(powershell -Command \"Get-ChildItem ''C:\\Users\\redst\\.cargo\\git\\checkouts'' | Select-Object Name\")",
+      "Bash(powershell -Command \"Get-ChildItem ''C:\\Users\\redst\\.cargo\\git\\checkouts\\zed-08308dd575ff016e'' | Select-Object Name\")",
+      "Bash(powershell -Command \"Get-ChildItem ''C:\\Users\\redst\\.cargo\\git\\checkouts\\zed-08308dd575ff016e\\2047043\\crates'' -Directory | Select-Object Name\")"
     ]
   }
 }
