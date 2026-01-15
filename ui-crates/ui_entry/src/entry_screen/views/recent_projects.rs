@@ -301,10 +301,10 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
                                         .py_1p5()
                                         .rounded_md()
                                         .bg(hsla(
-                                            theme.accent.h,
-                                            theme.accent.s,
-                                            theme.accent.l,
-                                            0.15
+                                            theme.accent_foreground.h,
+                                            theme.accent_foreground.s,
+                                            theme.accent_foreground.l,
+                                            0.3
                                         ))
                                         .child(
                                             h_flex()
