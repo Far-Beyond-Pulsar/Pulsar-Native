@@ -348,17 +348,19 @@ impl SettingsScreen {
         div()
             .flex_1()
             .min_w_0()
-            .h_full()
+            .overflow_hidden()
             .child(
                 div()
                     .id("settings-content-scroll")
-                    .size_full()
+                    .w_full()
+                    .h_full()
                     .overflow_y_scroll()
                     .child(
                         v_flex()
                             .w_full()
-                            .p_6()
-                            .gap_6()
+                            .p_8()
+                            .pb(px(100.))
+                            .gap_8()
                             .child(match self.active_category {
                                 SettingsCategory::Appearance => self.render_appearance_category(window, cx),
                                 SettingsCategory::Editor => self.render_editor_category(cx),
