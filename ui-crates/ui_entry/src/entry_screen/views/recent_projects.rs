@@ -212,6 +212,8 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
                 h_flex()
                     .items_start()
                     .gap_3()
+                    .w_full()
+                    .overflow_hidden()
                     .child(
                         div()
                             .flex_shrink_0()
@@ -237,6 +239,7 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
                         v_flex()
                             .flex_1()
                             .gap_1()
+                            .min_w_0()
                             .child(
                                 div()
                                     .text_lg()
@@ -244,6 +247,7 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
                                     .text_color(theme.foreground)
                                     .overflow_hidden()
                                     .text_ellipsis()
+                                    .whitespace_nowrap()
                                     .child(proj_name)
                             )
                             .child(
@@ -252,36 +256,32 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
                                     .text_color(theme.muted_foreground)
                                     .overflow_hidden()
                                     .text_ellipsis()
+                                    .whitespace_nowrap()
                                     .child(proj_path.clone())
                             )
                     )
                     .when(is_git, |this| {
                         this.child(
-                            h_flex()
-                                .gap_1()
-                                .items_center()
-                                .child(
-                                    match &git_status {
-                                        GitFetchStatus::Fetching => {
-                                            Icon::new(IconName::ArrowUp)
-                                                .size(px(14.))
-                                                .text_color(theme.muted_foreground)
-                                                .into_any_element()
-                                        }
-                                        GitFetchStatus::UpdatesAvailable(_) => {
-                                            Icon::new(IconName::ArrowUp)
-                                                .size(px(14.))
-                                                .text_color(theme.accent)
-                                                .into_any_element()
-                                        }
-                                        _ => {
-                                            Icon::new(IconName::GitHub)
-                                                .size(px(14.))
-                                                .text_color(theme.muted_foreground)
-                                                .into_any_element()
-                                        }
-                                    }
-                                )
+                            match &git_status {
+                                GitFetchStatus::Fetching => {
+                                    Icon::new(IconName::ArrowUp)
+                                        .size(px(14.))
+                                        .text_color(theme.muted_foreground)
+                                        .into_any_element()
+                                }
+                                GitFetchStatus::UpdatesAvailable(_) => {
+                                    Icon::new(IconName::ArrowUp)
+                                        .size(px(14.))
+                                        .text_color(theme.accent)
+                                        .into_any_element()
+                                }
+                                _ => {
+                                    Icon::new(IconName::GitHub)
+                                        .size(px(14.))
+                                        .text_color(theme.muted_foreground)
+                                        .into_any_element()
+                                }
+                            }
                         )
                     })
             )
