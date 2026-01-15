@@ -8,85 +8,136 @@ use crate::entry_screen::{EntryScreen, GitFetchStatus, recent_projects::RecentPr
 
 pub fn render_recent_projects(screen: &mut EntryScreen, cols: usize, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();
-    
+
     v_flex()
         .size_full()
         .scrollable(ScrollbarAxis::Vertical)
         .p_12()
-        .gap_6()
+        .gap_8()
         .child(
-            h_flex()
-                .justify_between()
-                .items_center()
+            v_flex()
+                .gap_2()
                 .child(
                     h_flex()
-                        .gap_3()
+                        .justify_between()
                         .items_center()
                         .child(
-                            div()
-                                .text_2xl()
-                                .font_weight(gpui::FontWeight::BOLD)
-                                .text_color(theme.foreground)
-                                .child("Recent Projects")
+                            h_flex()
+                                .gap_3()
+                                .items_center()
+                                .child(
+                                    div()
+                                        .text_3xl()
+                                        .font_weight(gpui::FontWeight::BOLD)
+                                        .text_color(theme.foreground)
+                                        .child("Recent Projects")
+                                )
+                                .when(screen.is_fetching_updates, |this| {
+                                    this.child(
+                                        Icon::new(IconName::ArrowUp)
+                                            .size(px(18.))
+                                            .text_color(theme.accent)
+                                    )
+                                })
                         )
-                        .when(screen.is_fetching_updates, |this| {
-                            this.child(
-                                Icon::new(IconName::ArrowUp)
-                                    .size(px(16.))
-                                    .text_color(theme.muted_foreground)
-                            )
-                        })
-                )
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    Button::new("refresh-btn")
+                                        .label("Refresh")
+                                        .icon(IconName::ArrowUp)
+                                        .with_variant(ui::button::ButtonVariant::Secondary)
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            let path = this.recent_projects_path.clone();
+                                            this.recent_projects = RecentProjectsList::load(&path);
+                                            this.start_git_fetch_all(cx);
+                                            cx.notify();
+                                        }))
+                                )
+                                .child(
+                                    Button::new("open-folder-btn")
+                                        .label("Open Folder")
+                                        .icon(IconName::FolderOpen)
+                                        .with_variant(ui::button::ButtonVariant::Primary)
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.open_folder_dialog(window, cx);
+                                        }))
+                                )
+                        )
+                        )
                 .child(
-                    h_flex()
-                        .gap_2()
-                        .child(
-                            Button::new("refresh-btn")
-                                .label("Refresh")
-                                .icon(IconName::ArrowUp)
-                                .with_variant(ui::button::ButtonVariant::Secondary)
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    let path = this.recent_projects_path.clone();
-                                    this.recent_projects = RecentProjectsList::load(&path);
-                                    this.start_git_fetch_all(cx);
-                                    cx.notify();
-                                }))
-                        )
-                        .child(
-                            Button::new("open-folder-btn")
-                                .label("Open Folder")
-                                .icon(IconName::FolderOpen)
-                                .with_variant(ui::button::ButtonVariant::Primary)
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.open_folder_dialog(window, cx);
-                                }))
-                        )
+                    div()
+                        .text_sm()
+                        .text_color(theme.muted_foreground)
+                        .child("Browse and launch your Pulsar Engine projects")
                 )
         )
-        .child(Divider::horizontal())
         .child({
             if screen.recent_projects.projects.is_empty() {
                 v_flex()
                     .flex_1()
                     .items_center()
                     .justify_center()
-                    .gap_4()
-                    .child(
-                        Icon::new(IconName::FolderOpen)
-                            .size(px(64.))
-                            .text_color(theme.muted_foreground)
-                    )
+                    .gap_6()
+                    .p_12()
                     .child(
                         div()
-                            .text_lg()
-                            .text_color(theme.muted_foreground)
-                            .child("No recent projects")
+                            .w(px(120.))
+                            .h(px(120.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_full()
+                            .bg(theme.sidebar)
+                            .border_2()
+                            .border_color(theme.border)
+                            .child(
+                                Icon::new(IconName::FolderOpen)
+                                    .size(px(56.))
+                                    .text_color(theme.muted_foreground)
+                            )
                     )
                     .child(
-                        div()
-                            .text_sm()
-                            .text_color(theme.muted_foreground)
-                            .child("Create a new project or open an existing one to get started")
+                        v_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_2xl()
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(theme.foreground)
+                                    .child("No Projects Yet")
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(theme.muted_foreground)
+                                    .child("Get started by creating a new project or opening an existing one")
+                            )
+                    )
+                    .child(
+                        h_flex()
+                            .gap_3()
+                            .child(
+                                Button::new("empty-new-project")
+                                    .label("Create Project")
+                                    .icon(IconName::Plus)
+                                    .with_variant(ui::button::ButtonVariant::Primary)
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.view = crate::entry_screen::types::EntryScreenView::NewProject;
+                                        cx.notify();
+                                    }))
+                            )
+                            .child(
+                                Button::new("empty-open-folder")
+                                    .label("Open Folder")
+                                    .icon(IconName::FolderOpen)
+                                    .with_variant(ui::button::ButtonVariant::Secondary)
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.open_folder_dialog(window, cx);
+                                    }))
+                            )
                     )
                     .into_any_element()
             } else {
@@ -97,8 +148,8 @@ pub fn render_recent_projects(screen: &mut EntryScreen, cols: usize, cx: &mut Co
 
 fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();
-    let mut container = v_flex().gap_6();
-    let mut row = h_flex().gap_6();
+    let mut container = v_flex().gap_8();
+    let mut row = h_flex().gap_8();
     let mut count = 0;
     
     for project in screen.recent_projects.projects.clone() {
@@ -117,15 +168,25 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
         
         let card = v_flex()
             .id(SharedString::from(format!("project-{}", proj_path)))
-            .w(px(320.))
-            .h(px(180.))
-            .gap_3()
-            .p_4()
+            .w(px(340.))
+            .h(px(200.))
+            .gap_4()
+            .p_5()
             .border_1()
             .border_color(theme.border)
-            .rounded_lg()
+            .rounded_xl()
             .bg(theme.sidebar)
-            .hover(|this| this.border_color(theme.primary).shadow_md())
+            .shadow_sm()
+            .hover(|this| {
+                this.border_color(theme.primary)
+                    .shadow_lg()
+                    .bg(hsla(
+                        theme.sidebar.h,
+                        theme.sidebar.s,
+                        theme.sidebar.l * 1.05,
+                        theme.sidebar.a
+                    ))
+            })
             .cursor_pointer()
             .on_click(cx.listener({
                 let path = proj_path.clone();
@@ -149,20 +210,50 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
             }))
             .child(
                 h_flex()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        Icon::new(IconName::Folder)
-                            .size(px(32.))
-                            .text_color(theme.primary)
-                    )
+                    .items_start()
+                    .gap_3()
                     .child(
                         div()
+                            .flex_shrink_0()
+                            .w(px(48.))
+                            .h(px(48.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_lg()
+                            .bg(hsla(
+                                theme.primary.h,
+                                theme.primary.s,
+                                theme.primary.l,
+                                0.15
+                            ))
+                            .child(
+                                Icon::new(IconName::Folder)
+                                    .size(px(28.))
+                                    .text_color(theme.primary)
+                            )
+                    )
+                    .child(
+                        v_flex()
                             .flex_1()
-                            .text_lg()
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(theme.foreground)
-                            .child(proj_name)
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(theme.foreground)
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .child(proj_name)
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme.muted_foreground)
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .child(proj_path.clone())
+                            )
                     )
                     .when(is_git, |this| {
                         this.child(
@@ -195,25 +286,76 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
                     })
             )
             .child(
-                div()
+                v_flex()
                     .flex_1()
-                    .text_sm()
-                    .text_color(theme.muted_foreground)
-                    .child(proj_path.clone())
+                    .justify_end()
+                    .gap_2()
+                    .when(is_git, |this| {
+                        match &git_status {
+                            GitFetchStatus::UpdatesAvailable(count) => {
+                                this.child(
+                                    div()
+                                        .px_3()
+                                        .py_1p5()
+                                        .rounded_md()
+                                        .bg(hsla(
+                                            theme.accent.h,
+                                            theme.accent.s,
+                                            theme.accent.l,
+                                            0.15
+                                        ))
+                                        .child(
+                                            h_flex()
+                                                .gap_1p5()
+                                                .items_center()
+                                                .child(
+                                                    Icon::new(IconName::ArrowUp)
+                                                        .size(px(12.))
+                                                        .text_color(theme.accent)
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_xs()
+                                                        .font_weight(gpui::FontWeight::MEDIUM)
+                                                        .text_color(theme.accent)
+                                                        .child(format!("{} update{} available", count, if *count == 1 { "" } else { "s" }))
+                                                )
+                                        )
+                                )
+                            }
+                            _ => this
+                        }
+                    })
+            )
+            .child(
+                div()
+                    .w_full()
+                    .h(px(1.))
+                    .bg(theme.border)
             )
             .child(
                 h_flex()
                     .justify_between()
                     .items_center()
                     .child(
-                        div()
-                            .text_xs()
-                            .text_color(theme.muted_foreground)
-                            .child(last_opened)
+                        h_flex()
+                            .gap_1p5()
+                            .items_center()
+                            .child(
+                                Icon::new(IconName::Clock)
+                                    .size(px(12.))
+                                    .text_color(theme.muted_foreground)
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme.muted_foreground)
+                                    .child(last_opened)
+                            )
                     )
                     .child(
                         h_flex()
-                            .gap_1()
+                            .gap_1p5()
                             // Add integration buttons if defaults are set
                             .when_some(preferred_editor.clone(), |this, editor: String| {
                                 this.child(
@@ -311,18 +453,19 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
         
         row = row.child(card);
         count += 1;
-        
+
+
         if count >= cols {
             container = container.child(row);
-            row = h_flex().gap_6();
+            row = h_flex().gap_8();
             count = 0;
         }
     }
-    
+
     if count > 0 {
         container = container.child(row);
     }
-    
+
     container
 }
 
