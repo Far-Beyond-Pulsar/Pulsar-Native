@@ -127,9 +127,10 @@ pub struct PluginManager {
     
     /// Project root path for editor context
     project_root: Option<PathBuf>,
-    
+
     /// Statusbar buttons registered by all plugins
-    statusbar_buttons: Vec<StatusbarButtonDefinition>,
+    /// Stored with plugin ownership tracking for proper cleanup
+    statusbar_buttons: Vec<(PluginId, StatusbarButtonDefinition)>,
 }
 
 impl PluginManager {
@@ -371,11 +372,20 @@ impl PluginManager {
             tracing::debug!("  Registering {} statusbar buttons", statusbar_buttons.len());
             for button in statusbar_buttons {
                 tracing::debug!("    - Button: {} at {:?}", button.id, button.position);
-                self.statusbar_buttons.push(button);
+
+                // CRITICAL: Deep clone the button to allocate all data in main app's heap
+                // The button data from the plugin is allocated in the plugin's heap, which
+                // will become invalid when the plugin is unloaded. By cloning here (in the
+                // main app's context), we ensure all String data is allocated in the main
+                // app's heap.
+                let cloned_button = button.clone();
+
+                // Store with plugin ID for tracking and cleanup
+                self.statusbar_buttons.push((plugin_id.clone(), cloned_button));
             }
-            
+
             // Sort buttons by priority within their position groups
-            self.statusbar_buttons.sort_by(|a, b| {
+            self.statusbar_buttons.sort_by(|(_, a), (_, b)| {
                 match (&a.position, &b.position) {
                     (StatusbarPosition::Left, StatusbarPosition::Left) |
                     (StatusbarPosition::Right, StatusbarPosition::Right) => {
@@ -417,11 +427,16 @@ impl PluginManager {
 
             // Remove editors
             self.editor_registry.unregister_by_plugin(plugin_id);
-            
+
             // Remove statusbar buttons registered by this plugin
-            // Note: We don't track which plugin registered which button, so we can't remove them here
-            // In a production system, you'd want to track button ownership
-            // For now, buttons will persist until the manager is recreated
+            // This is critical because button data (especially function pointers in
+            // custom_callback) becomes invalid when the plugin DLL is unloaded
+            let buttons_before = self.statusbar_buttons.len();
+            self.statusbar_buttons.retain(|(owner_id, _)| owner_id != plugin_id);
+            let buttons_removed = buttons_before - self.statusbar_buttons.len();
+            if buttons_removed > 0 {
+                tracing::debug!("Removed {} statusbar buttons from plugin", buttons_removed);
+            }
 
             tracing::debug!("Unloading plugin: {}", loaded_plugin.metadata.name);
 
@@ -463,15 +478,18 @@ impl PluginManager {
     ///
     /// Buttons are sorted by position (left/right) and priority within each position.
     /// Higher priority buttons appear first in their respective position group.
-    pub fn get_statusbar_buttons(&self) -> &[StatusbarButtonDefinition] {
-        &self.statusbar_buttons
+    ///
+    /// Returns only the button definitions, not the plugin IDs.
+    pub fn get_statusbar_buttons(&self) -> Vec<&StatusbarButtonDefinition> {
+        self.statusbar_buttons.iter().map(|(_, btn)| btn).collect()
     }
-    
+
     /// Get statusbar buttons for a specific position.
     pub fn get_statusbar_buttons_for_position(&self, position: StatusbarPosition) -> Vec<&StatusbarButtonDefinition> {
         self.statusbar_buttons
             .iter()
-            .filter(|btn| btn.position == position)
+            .filter(|(_, btn)| btn.position == position)
+            .map(|(_, btn)| btn)
             .collect()
     }
     
@@ -634,43 +652,35 @@ impl PluginManager {
 
         // Call create_editor via raw pointer
         // SAFETY: Plugin is loaded, pointer validated as non-null above
+        //
+        // The plugin returns a Weak reference to prevent Arc leaks across DLL boundaries.
+        // The plugin maintains the strong Arc internally, and we upgrade the Weak here.
         unsafe {
-            if *plugin.plugin_ptr.is_null() {
-                //
-            }
-
-            let (tx_one, mut rx_one) = _;
-            let (tx_two, mut rx_two) = _;
-            
-           let pan_and_editor: (Arc<dyn PanelView>, Box<dyn EditorInstance>) = (*plugin.plugin_ptr)
-                .create_editor(editor_id.clone(), file_path.clone(), window, cx, &EditorLogger)
-                .unwrap();
-
-            let arc_pan = pan_and_editor.0;
-            let box_editor_instance = pan_and_editor.1;
-            
-\            let as_Weak = std::sync::Weak::new();
-
-            // let t = Arc::new(__);
-            //
-            // let t_c = Arc::clone(&t);
-            // 
-            // let tc_shouldnt: Arc::is_actually(&'a t_c);
-            // 
-            // // let other_ac = external_thing_go_brr(&'a t_c);
-            // let other_ac = external_thing_go_brr(&t_c);
-
-            let arc_pan_count = Arc::strong_count(&arc_pan);
-            tracing::info!("Value of arc_pan_count: {}", arc_pan_count);
-            println!("Arc pan count: {}", arc_pan_count);
-
-
-            (*plugin.plugin_ptr)
+            let (weak_panel, editor_instance) = (*plugin.plugin_ptr)
                 .create_editor(editor_id.clone(), file_path, window, cx, &EditorLogger)
                 .map_err(|e| PluginManagerError::PluginError {
                     plugin_id: plugin_id.clone(),
                     error: e,
-                })
+                })?;
+
+            // Upgrade the Weak to an Arc for the main app to use
+            // This is safe because the plugin still holds the strong Arc
+            let arc_panel = weak_panel.upgrade().ok_or_else(|| {
+                PluginManagerError::PluginError {
+                    plugin_id: plugin_id.clone(),
+                    error: PluginError::Other {
+                        message: "Plugin panel was dropped before use".to_string(),
+                    },
+                }
+            })?;
+
+            tracing::debug!(
+                "Created editor (strong: {}, weak: {})",
+                std::sync::Arc::strong_count(&arc_panel),
+                std::sync::Arc::weak_count(&arc_panel)
+            );
+
+            Ok((arc_panel, editor_instance))
         }
     }
 

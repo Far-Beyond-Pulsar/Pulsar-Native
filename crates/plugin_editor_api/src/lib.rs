@@ -702,8 +702,15 @@ pub trait EditorPlugin: Send + Sync {
     ///
     /// # Returns
     ///
-    /// Returns the editor wrapped for tab system integration, plus the EditorInstance for file operations.
-    /// The panel can be added directly to the tab system.
+    /// Returns a Weak reference to the editor panel (plugin holds the strong Arc to prevent
+    /// memory leaks across DLL boundaries), plus the EditorInstance for file operations.
+    /// The caller should upgrade the Weak reference when accessing the panel.
+    ///
+    /// # Memory Management
+    ///
+    /// The plugin maintains strong Arc references internally. When the plugin is unloaded,
+    /// all strong references are dropped, invalidating the Weak references held by the main app.
+    /// This prevents Arc reference count leaks across DLL boundaries.
     fn create_editor(
         &self,
         editor_id: EditorId,
@@ -711,7 +718,7 @@ pub trait EditorPlugin: Send + Sync {
         window: &mut Window,
         cx: &mut App,
         logger: &EditorLogger,
-    ) -> Result<(std::sync::Arc<dyn ui::dock::PanelView>, Box<dyn EditorInstance>), PluginError>;
+    ) -> Result<(std::sync::Weak<dyn ui::dock::PanelView>, Box<dyn EditorInstance>), PluginError>;
 
     /// Called when the plugin is loaded.
     ///
