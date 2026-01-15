@@ -649,9 +649,8 @@ impl PluginManager {
             let arc_pan = pan_and_editor.0;
             let box_editor_instance = pan_and_editor.1;
             
-            let arc_test = Arc::downgrade();
-            let as_Weak = std::sync::Weak::new();
-            //
+\            let as_Weak = std::sync::Weak::new();
+
             // let t = Arc::new(__);
             //
             // let t_c = Arc::clone(&t);
@@ -660,10 +659,6 @@ impl PluginManager {
             // 
             // // let other_ac = external_thing_go_brr(&'a t_c);
             // let other_ac = external_thing_go_brr(&t_c);
-            // 
-            // 
-            // 
-
 
             let arc_pan_count = Arc::strong_count(&arc_pan);
             tracing::info!("Value of arc_pan_count: {}", arc_pan_count);
