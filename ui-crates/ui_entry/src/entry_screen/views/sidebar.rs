@@ -8,17 +8,17 @@ use crate::entry_screen::{EntryScreen, EntryScreenView};
 
 pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();
-    
+
     v_flex()
-        .w(px(72.))
+        .w(px(80.))
         .h_full()
         .bg(theme.sidebar)
         .border_r_1()
         .border_color(theme.border)
-        .gap_2()
+        .gap_3()
         .items_center()
         .pt_8()
-        .pb_4()
+        .pb_6()
         .child(
             Button::new("recent-projects")
                 .icon(IconName::FolderClosed)
