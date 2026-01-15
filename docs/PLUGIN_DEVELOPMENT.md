@@ -91,11 +91,21 @@ impl EditorPlugin for MyEditorPlugin {
         window: &mut Window,
         cx: &mut App,
         _logger: &EditorLogger,
-    ) -> Result<(Arc<dyn ui::dock::PanelView>, Box<dyn EditorInstance>), PluginError> {
+    ) -> Result<(std::sync::Weak<dyn ui::dock::PanelView>, Box<dyn EditorInstance>), PluginError> {
         let editor = MyEditor::new(file_path, window, cx)?;
+
+        // Create Arc and store it in plugin-owned storage to prevent memory leaks
         let panel = Arc::new(editor.panel_wrapper());
+
+        // IMPORTANT: Store the strong Arc in your plugin's state
+        // (Implementation depends on your plugin's architecture)
+        // self.panels.push(Arc::clone(&panel));
+
+        // Return Weak reference to prevent Arc leaks across DLL boundary
+        let weak_panel = Arc::downgrade(&panel);
         let instance = Box::new(editor);
-        Ok((panel, instance))
+
+        Ok((weak_panel, instance))
     }
 }
 
@@ -293,6 +303,8 @@ See [UI Development](UI_DEVELOPMENT.md) for GPUI details.
 ## Statusbar Buttons
 
 Plugins can add buttons to the editor's statusbar for quick access to features.
+
+**Important Memory Safety Note:** Button data (including strings and function pointers) is automatically deep-cloned into the main app's heap when registered. This prevents memory corruption when your plugin is unloaded. All buttons are automatically removed when your plugin unloads.
 
 ### Basic Usage
 
@@ -568,8 +580,35 @@ error!("Failed to parse: {}", err);
 
 ### Memory Management
 
-- **Clean up** in `on_unload()`
-- **Use Arc** for shared data
+**Critical: DLL Boundary Memory Safety**
+
+When returning `Arc` across DLL boundaries, reference counts can leak. The plugin API uses `Weak` references to prevent this:
+
+```rust
+// Plugin must store strong Arcs internally
+struct MyPlugin {
+    panels: Vec<Arc<dyn PanelView>>,  // Plugin owns these
+}
+
+fn create_editor(...) -> Result<(Weak<dyn PanelView>, ...), ...> {
+    let panel = Arc::new(my_panel);
+
+    // Store strong reference in plugin
+    self.panels.push(Arc::clone(&panel));
+
+    // Return weak reference to main app
+    Ok((Arc::downgrade(&panel), editor_instance))
+}
+```
+
+The main app upgrades the `Weak` when needed. When your plugin unloads, all strong `Arc`s are dropped, invalidating the weak references and preventing leaks.
+
+**Best Practices:**
+
+- **Clean up** in `on_unload()` - clear your panel storage
+- **Use Arc** for shared data within your plugin
+- **Return Weak** from `create_editor()` (required by API)
+- **Store strong Arcs** in your plugin struct
 - **Avoid cycles** in reference counting
 - **Test for leaks** with long sessions
 

@@ -482,17 +482,16 @@ impl Terminal {
             use futures::StreamExt;
             use futures::FutureExt;
             let mut events_rx = events_rx;
-            
+
             // Wait for events from alacritty and notify GPUI to repaint (EXACT pattern from our codebase)
             while let Some(event) = events_rx.next().await {
                 // Process the first event immediately for lowered latency
-                cx.update(|cx| {
-                    terminal.update(cx, |terminal, cx| {
-                        if let Some(session) = terminal.active_session_mut() {
-                            Self::process_terminal_event(session, &event, cx);
-                        }
-                    }).ok();
-                }).ok();
+                // Use update_deferred to avoid reentrancy issues during render
+                _ = terminal.update(&mut cx.to_async(), |terminal, cx| {
+                    if let Some(session) = terminal.active_session_mut() {
+                        Self::process_terminal_event(session, &event, cx);
+                    }
+                });
 
                 // Batch additional events for efficiency (from Zed)
                 'outer: loop {
@@ -529,19 +528,18 @@ impl Terminal {
                         break 'outer;
                     }
 
-                    cx.update(|cx| {
-                        terminal.update(cx, |terminal, cx| {
-                            if let Some(session) = terminal.active_session_mut() {
-                                if wakeup {
-                                    Self::process_terminal_event(session, &AlacTermEvent::Wakeup, cx);
-                                }
-
-                                for event in events {
-                                    Self::process_terminal_event(session, &event, cx);
-                                }
+                    // Process batched events - avoid reentrancy by using async context
+                    _ = terminal.update(&mut cx.to_async(), |terminal, cx| {
+                        if let Some(session) = terminal.active_session_mut() {
+                            if wakeup {
+                                Self::process_terminal_event(session, &AlacTermEvent::Wakeup, cx);
                             }
-                        }).ok();
-                    }).ok();
+
+                            for event in events {
+                                Self::process_terminal_event(session, &event, cx);
+                            }
+                        }
+                    });
                     smol::future::yield_now().await;
                 }
             }
