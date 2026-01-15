@@ -12,6 +12,8 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
     v_flex()
         .w(px(80.))
         .h_full()
+        .flex_shrink_0()
+        .overflow_y_hidden()
         .bg(theme.sidebar)
         .border_r_1()
         .border_color(theme.border)

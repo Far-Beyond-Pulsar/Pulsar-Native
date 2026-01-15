@@ -779,12 +779,15 @@ impl Render for EntryScreen {
             .child(TitleBar::new())
             .child(
                 h_flex()
-                    .size_full()
+                    .flex_1()
+                    .w_full()
+                    .overflow_hidden()
                     .child(views::render_sidebar(self, cx))
                     .child(
                         v_flex()
                             .flex_1()
                             .h_full()
+                            .overflow_hidden()
                             .bg(cx.theme().background)
                             .child(
                                 match view {
