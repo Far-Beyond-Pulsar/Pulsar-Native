@@ -497,14 +497,22 @@ impl Element for TerminalElement {
                 let dimensions = TerminalBounds::new(line_height, cell_width, bounds);
 
                 // Update terminal size and sync content (release borrow immediately)
+                // IMPORTANT: Check if size actually changed before updating to avoid reentrancy
                 {
-                    self.terminal.update(cx, |terminal, cx| {
-                        if let Some(session) = terminal.active_session_mut() {
-                            session.set_size(dimensions);
-                            // Sync to process any new events and update content
-                            session.sync(window, cx);
-                        }
-                    });
+                    let needs_resize = self.terminal.read(cx).active_session()
+                        .map(|s| s.last_content.terminal_bounds != dimensions)
+                        .unwrap_or(false);
+
+                    if needs_resize {
+                        // Only update if size actually changed
+                        self.terminal.update(cx, |terminal, cx| {
+                            if let Some(session) = terminal.active_session_mut() {
+                                session.set_size(dimensions);
+                                // Sync to process any new events and update content
+                                session.sync(window, cx);
+                            }
+                        });
+                    }
                 }
 
                 // Get terminal content - read only in prepaint (Zed approach)
