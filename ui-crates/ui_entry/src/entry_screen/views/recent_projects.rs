@@ -157,7 +157,9 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
         let is_git = project.is_git;
         let proj_name = project.name.clone();
         let proj_name_for_settings = proj_name.clone();
-        let last_opened = project.last_opened.clone().unwrap_or_else(|| "Unknown".to_string());
+        let last_opened = project.last_opened.clone()
+            .map(|ts| format_timestamp(&ts))
+            .unwrap_or_else(|| "Never opened".to_string());
         
         // Get git fetch status
         let git_status = screen.git_fetch_statuses.lock().get(&proj_path).cloned()
@@ -487,5 +489,47 @@ fn get_tool_display_name(command: &str) -> String {
         "git-cola" => "Git Cola".to_string(),
         "lazygit" => "Lazygit".to_string(),
         _ => command.to_string(),
+    }
+}
+
+fn format_timestamp(timestamp: &str) -> String {
+    use chrono::{DateTime, Utc};
+
+    // Try to parse the timestamp
+    let parsed = DateTime::parse_from_rfc3339(timestamp)
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc));
+
+    if let Some(dt) = parsed {
+        let now = Utc::now();
+        let duration = now.signed_duration_since(dt);
+
+        let seconds = duration.num_seconds();
+        let minutes = duration.num_minutes();
+        let hours = duration.num_hours();
+        let days = duration.num_days();
+
+        if seconds < 60 {
+            "Just now".to_string()
+        } else if minutes < 60 {
+            format!("{} min ago", minutes)
+        } else if hours < 24 {
+            format!("{} hr ago", hours)
+        } else if days == 1 {
+            "Yesterday".to_string()
+        } else if days < 7 {
+            format!("{} days ago", days)
+        } else if days < 30 {
+            let weeks = days / 7;
+            format!("{} week{} ago", weeks, if weeks == 1 { "" } else { "s" })
+        } else if days < 365 {
+            let months = days / 30;
+            format!("{} month{} ago", months, if months == 1 { "" } else { "s" })
+        } else {
+            let years = days / 365;
+            format!("{} year{} ago", years, if years == 1 { "" } else { "s" })
+        }
+    } else {
+        "Unknown".to_string()
     }
 }
