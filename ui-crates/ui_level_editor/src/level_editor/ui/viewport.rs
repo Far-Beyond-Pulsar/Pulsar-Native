@@ -3,6 +3,7 @@ use gpui::prelude::FluentBuilder;
 use ui::{
     button::{Button, ButtonVariants as _}, h_flex, v_flex, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
     chart::{BarChart, AreaChart},
+    indicator::Indicator,
     PixelsExt,
 };
 // Zero-copy Bevy viewport for 3D rendering
@@ -1013,11 +1014,56 @@ impl ViewportPanel {
                 )
             });
 
+        // Check if renderer is ready by checking if Bevy FPS is stable (> 10 FPS)
+        // This matches how the performance overlay gets its data
+        let renderer_ready = if let Ok(engine) = gpu_engine.try_lock() {
+            let bevy_fps = engine.get_bevy_fps();
+            bevy_fps > 10.0  // Wait for stable FPS before hiding loading overlay
+        } else {
+            false
+        };
+
+        // Show loading overlay when renderer is not ready (added last so it renders on top)
+        if !renderer_ready {
+            viewport_div = viewport_div.child(
+                div()
+                    .absolute()
+                    .inset_0() // Cover entire parent viewport
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .bg(cx.theme().background.opacity(0.95))
+                    .child(
+                        v_flex()
+                            .gap_4()
+                            .items_center()
+                            .child(
+                                Indicator::new()
+                                    .large()
+                                    .color(gpui::white())
+                            )
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(cx.theme().foreground)
+                                    .child("Initializing Renderer...")
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Please wait while the 3D viewport starts up")
+                            )
+                    )
+            );
+        }
+
         // Performance overlays in bottom-right corner
         if state.show_performance_overlay {
             let state_arc_clone = state_arc.clone();
             let state_arc_clone_gpu = state_arc.clone();
-            
+
             // GPU Pipeline Stats - positioned to the left of performance overlay
             viewport_div = viewport_div.child(
                 div()
@@ -1026,14 +1072,14 @@ impl ViewportPanel {
                     .right(px(380.0)) // Position to the left of performance overlay (360px width + 20px gap)
                     .child(self.render_gpu_pipeline_overlay(state, state_arc_clone_gpu, gpu_engine, cx))
             );
-            
+
             // Performance overlay - bottom-right corner
             let mut perf_container = div()
                 .id("performance-overlay-container")
                 .absolute()
                 .bottom_4()
                 .right_4();
-            
+
             // Only add width/height constraints when expanded
             if !state.performance_overlay_collapsed {
                 perf_container = perf_container
@@ -1041,7 +1087,7 @@ impl ViewportPanel {
                     .max_h(px(700.0)) // Max height before scrolling
                     .overflow_y_scroll(); // Enable vertical scrolling
             }
-            
+
             viewport_div = viewport_div.child(
                 perf_container.child(self.render_performance_overlay(state, state_arc_clone, fps_graph_state, gpu_engine, game_thread, cx))
             );
