@@ -258,7 +258,7 @@ impl SettingsScreen {
                     .flex_1()
                     .p_3()
                     .gap_2()
-                    .scrollable()
+                    .scrollable(Axis::Vertical)
                     .children(categories.iter().map(|category| {
                         self.render_category_button(*category, cx)
                     }))
