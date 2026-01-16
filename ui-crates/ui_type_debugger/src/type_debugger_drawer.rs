@@ -36,6 +36,8 @@ pub struct TypeDebuggerDrawer {
     group_by_kind: bool,
     /// InputState for the search bar
     search_input: Entity<InputState>,
+    /// Project root path for computing relative paths
+    project_root: Option<PathBuf>,
 }
 
 impl TypeDebuggerDrawer {
@@ -56,6 +58,7 @@ impl TypeDebuggerDrawer {
             search_query: String::new(),
             group_by_kind: true,
             search_input,
+            project_root: None,
         }
     }
 
@@ -70,6 +73,31 @@ impl TypeDebuggerDrawer {
         self.types.clear();
         self.selected_index = None;
         cx.notify();
+    }
+
+    /// Set the project root path for computing relative paths
+    pub fn set_project_root(&mut self, project_root: Option<PathBuf>, cx: &mut Context<Self>) {
+        self.project_root = project_root;
+        cx.notify();
+    }
+
+    /// Compute relative path from absolute path using project root
+    fn get_display_path(&self, absolute_path: &PathBuf) -> String {
+        if let Some(project_root) = &self.project_root {
+            // Try to strip the project root prefix
+            if let Ok(relative) = absolute_path.strip_prefix(project_root) {
+                // Get the project folder name
+                if let Some(project_name) = project_root.file_name() {
+                    // Return project_name/relative_path
+                    let mut display_path = PathBuf::from(project_name);
+                    display_path.push(relative);
+                    return display_path.to_string_lossy().replace('\\', "/");
+                }
+            }
+        }
+        
+        // Fallback to absolute path if project root not set or path doesn't match
+        absolute_path.to_string_lossy().replace('\\', "/")
     }
 
     fn get_filtered_types(&self) -> Vec<TypeInfo> {
@@ -502,6 +530,7 @@ impl TypeDebuggerDrawer {
                             })
                             // File path
                             .when(type_info.file_path.is_some(), |container| {
+                                let display_path = self.get_display_path(type_info.file_path.as_ref().unwrap());
                                 container.child(
                                     div()
                                         .w_full()
@@ -526,14 +555,7 @@ impl TypeDebuggerDrawer {
                                                         .text_xs()
                                                         .font_family("monospace")
                                                         .text_color(cx.theme().muted_foreground)
-                                                        .child(
-                                                            type_info
-                                                                .file_path
-                                                                .as_ref()
-                                                                .unwrap()
-                                                                .to_string_lossy()
-                                                                .to_string()
-                                                        )
+                                                        .child(display_path)
                                                 )
                                         )
                                 )

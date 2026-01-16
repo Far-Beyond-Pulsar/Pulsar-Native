@@ -108,3 +108,60 @@ pub struct SelectAll;
 #[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 #[action(namespace = file_manager, no_json)]
 pub struct Delete;
+
+// New context menu actions
+#[derive(Action, Clone, Debug, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager)]
+pub struct OpenInFileManager {
+    #[serde(default)]
+    pub item_path: String,
+}
+
+#[derive(Action, Clone, Debug, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager)]
+pub struct OpenTerminalHere {
+    #[serde(default)]
+    pub folder_path: String,
+}
+
+#[derive(Action, Clone, Debug, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager)]
+pub struct ValidateAsset {
+    #[serde(default)]
+    pub item_path: String,
+}
+
+#[derive(Action, Clone, Debug, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager)]
+pub struct ToggleFavorite {
+    #[serde(default)]
+    pub item_path: String,
+}
+
+#[derive(Action, Clone, Debug, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager)]
+pub struct ToggleGitignore {
+    #[serde(default)]
+    pub item_path: String,
+}
+
+#[derive(Action, Clone, Debug, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager)]
+pub struct ToggleHidden {
+    #[serde(default)]
+    pub item_path: String,
+}
+
+#[derive(Action, Clone, Debug, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager)]
+pub struct ShowHistory {
+    #[serde(default)]
+    pub item_path: String,
+}
+
+#[derive(Action, Clone, Debug, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager)]
+pub struct CheckMultiuserSync {
+    #[serde(default)]
+    pub item_path: String,
+}

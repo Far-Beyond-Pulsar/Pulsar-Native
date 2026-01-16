@@ -150,7 +150,82 @@ impl AssetOperations {
         Ok(())
     }
     
+    /// Create a new asset of any kind
+    pub fn create_asset(&self, kind: super::asset_templates::AssetKind, name: &str, custom_dir: Option<&str>) -> Result<PathBuf> {
+        use super::asset_templates::AssetKind;
+        
+        // Generate template content
+        let content = kind.generate_template(name);
+        
+        // Determine file path
+        let dir = custom_dir.unwrap_or(kind.default_directory());
+        let extension = kind.extension();
+        let file_name = if extension.contains('.') {
+            format!("{}.{}", name, extension)
+        } else {
+            format!("{}.{}", name, extension)
+        };
+        
+        let file_path = self.project_root
+            .join(dir)
+            .join(&file_name);
+        
+        // Create parent directories
+        if let Some(parent) = file_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        
+        // Special handling for data tables
+        if kind == AssetKind::DataTable {
+            // Create empty SQLite database
+            use std::process::Command;
+            Command::new("sqlite3")
+                .arg(&file_path)
+                .arg("VACUUM;")
+                .output()
+                .context("Failed to create SQLite database")?;
+        } else {
+            // Write template content
+            std::fs::write(&file_path, content)
+                .context("Failed to write asset file")?;
+        }
+        
+        // Register in appropriate index
+        self.register_asset(&file_path, kind)?;
+        
+        Ok(file_path)
+    }
+    
+    /// Register an asset in the type database
+    fn register_asset(&self, file_path: &PathBuf, kind: super::asset_templates::AssetKind) -> Result<()> {
+        use super::asset_templates::AssetKind;
 
+        // Get the file name to use as the type name
+        let name = file_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        let type_kind = match kind {
+            AssetKind::TypeAlias => TypeKind::Alias,
+            AssetKind::Struct => TypeKind::Struct,
+            AssetKind::Enum => TypeKind::Enum,
+            AssetKind::Trait => TypeKind::Trait,
+            _ => return Ok(()), // Other asset types don't need indexing yet
+        };
+
+        self.type_database.register_with_path(
+            name.clone(),
+            file_path.clone(),
+            type_kind,
+            None,
+            Some(format!("{:?}: {}", type_kind, name)),
+            None,
+        );
+
+        Ok(())
+    }
     
     /// Delete any asset file
     pub fn delete_asset(&self, file_path: &PathBuf) -> Result<()> {

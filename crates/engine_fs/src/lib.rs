@@ -5,8 +5,10 @@
 
 pub mod watchers;
 pub mod operations;
+pub mod asset_templates;
 
 pub use operations::AssetOperations;
+pub use asset_templates::{AssetKind, AssetCategory};
 
 use anyhow::Result;
 use std::path::PathBuf;
@@ -135,10 +137,14 @@ impl EngineFs {
 
     /// Start file system watching for automatic updates
     pub fn start_watching(&self) -> Result<()> {
-        watchers::start_watcher(
+        let fs_watcher = watchers::start_watcher(
             self.project_root.clone(),
             self.type_database.clone(),
-        )
+        )?;
+
+        println!("Started filesystem watcher for project at {:?}", self.project_root);
+
+        Ok(fs_watcher)
     }
 }
 

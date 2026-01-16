@@ -363,6 +363,150 @@ impl FileManagerDrawer {
         Ok(())
     }
 
+    // ========================================================================
+    // NEW CONTEXT MENU ACTION HANDLERS
+    // ========================================================================
+
+    fn handle_open_in_file_manager(&mut self, _action: &OpenInFileManager, _cx: &mut Context<Self>) {
+        // Get the path to open - either the selected folder or first selected item
+        let path_to_open = if let Some(folder) = &self.selected_folder {
+            Some(folder.clone())
+        } else {
+            self.selected_items.iter().next().cloned()
+        };
+
+        if let Some(path) = path_to_open {
+            #[cfg(target_os = "windows")]
+            {
+                let _ = std::process::Command::new("explorer")
+                    .arg(path.to_string_lossy().to_string())
+                    .spawn();
+            }
+            #[cfg(target_os = "macos")]
+            {
+                let _ = std::process::Command::new("open")
+                    .arg(path.to_string_lossy().to_string())
+                    .spawn();
+            }
+            #[cfg(target_os = "linux")]
+            {
+                let _ = std::process::Command::new("xdg-open")
+                    .arg(path.to_string_lossy().to_string())
+                    .spawn();
+            }
+        }
+    }
+
+    fn handle_open_terminal_here(&mut self, _action: &OpenTerminalHere, _cx: &mut Context<Self>) {
+        let folder = self.selected_folder.clone().or_else(|| {
+            self.selected_items.iter().next().and_then(|p| {
+                if p.is_dir() {
+                    Some(p.clone())
+                } else {
+                    p.parent().map(|p| p.to_path_buf())
+                }
+            })
+        });
+
+        if let Some(folder) = folder {
+            #[cfg(target_os = "windows")]
+            {
+                let _ = std::process::Command::new("cmd")
+                    .args(&["/c", "start", "cmd"])
+                    .current_dir(folder)
+                    .spawn();
+            }
+            #[cfg(target_os = "macos")]
+            {
+                let _ = std::process::Command::new("open")
+                    .args(&["-a", "Terminal"])
+                    .arg(folder.to_string_lossy().to_string())
+                    .spawn();
+            }
+            #[cfg(target_os = "linux")]
+            {
+                // Try common terminal emulators
+                for term in &["gnome-terminal", "konsole", "xterm"] {
+                    if std::process::Command::new(term)
+                        .current_dir(&folder)
+                        .spawn()
+                        .is_ok()
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    fn handle_validate_asset(&mut self, _action: &ValidateAsset, _cx: &mut Context<Self>) {
+        // TODO: Implement asset validation
+        // This would check if the asset file is valid according to its type
+        tracing::info!("Validate asset action triggered - not yet implemented");
+    }
+
+    fn handle_toggle_favorite(&mut self, _action: &ToggleFavorite, _cx: &mut Context<Self>) {
+        // TODO: Implement favorite toggling
+        // This would mark/unmark files as favorites (stored in project settings)
+        tracing::info!("Toggle favorite action triggered - not yet implemented");
+    }
+
+    fn handle_toggle_gitignore(&mut self, _action: &ToggleGitignore, cx: &mut Context<Self>) {
+        if let Some(item) = self.selected_items.iter().next() {
+            if let Some(project_path) = &self.project_path {
+                let gitignore_path = project_path.join(".gitignore");
+                
+                // Read existing .gitignore or create empty string
+                let content = std::fs::read_to_string(&gitignore_path).unwrap_or_default();
+                
+                // Get relative path from project root
+                if let Ok(relative_path) = item.strip_prefix(project_path) {
+                    let pattern = relative_path.to_string_lossy().replace('\\', "/");
+                    
+                    if content.lines().any(|line| line.trim() == pattern) {
+                        // Remove from .gitignore
+                        let new_content: String = content
+                            .lines()
+                            .filter(|line| line.trim() != pattern)
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        let _ = std::fs::write(&gitignore_path, new_content);
+                        tracing::info!("Removed {} from .gitignore", pattern);
+                    } else {
+                        // Add to .gitignore
+                        let new_content = if content.is_empty() {
+                            pattern
+                        } else {
+                            format!("{}\n{}", content.trim_end(), pattern)
+                        };
+                        let _ = std::fs::write(&gitignore_path, new_content);
+                        tracing::info!("Added pattern to .gitignore");
+                    }
+                    
+                    cx.notify();
+                }
+            }
+        }
+    }
+
+    fn handle_toggle_hidden(&mut self, _action: &ToggleHidden, _cx: &mut Context<Self>) {
+        // TODO: Implement hidden file toggling
+        // This would mark files as hidden (on Windows, set hidden attribute; on Unix, rename with dot prefix)
+        tracing::info!("Toggle hidden action triggered - not yet implemented");
+    }
+
+    fn handle_show_history(&mut self, _action: &ShowHistory, _cx: &mut Context<Self>) {
+        // TODO: Implement file history viewer
+        // This would show git history or file modification history
+        tracing::info!("Show history action triggered - not yet implemented");
+    }
+
+    fn handle_check_multiuser_sync(&mut self, _action: &CheckMultiuserSync, _cx: &mut Context<Self>) {
+        // TODO: Implement multiuser sync check
+        // This would check if all connected peers have this file synced
+        tracing::info!("Check multiuser sync action triggered - not yet implemented");
+    }
+
     pub fn set_project_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         tracing::debug!("[FILE_MANAGER] set_project_path called with: {:?}", path);
         tracing::debug!("[FILE_MANAGER] Path exists: {}", path.exists());
@@ -1336,6 +1480,30 @@ impl Render for FileManagerDrawer {
             }))
             .on_action(cx.listener(|this, _action: &Paste, _window, cx| {
                 this.handle_paste(cx);
+            }))
+            .on_action(cx.listener(|this, action: &OpenInFileManager, _window, cx| {
+                this.handle_open_in_file_manager(action, cx);
+            }))
+            .on_action(cx.listener(|this, action: &OpenTerminalHere, _window, cx| {
+                this.handle_open_terminal_here(action, cx);
+            }))
+            .on_action(cx.listener(|this, action: &ValidateAsset, _window, cx| {
+                this.handle_validate_asset(action, cx);
+            }))
+            .on_action(cx.listener(|this, action: &ToggleFavorite, _window, cx| {
+                this.handle_toggle_favorite(action, cx);
+            }))
+            .on_action(cx.listener(|this, action: &ToggleGitignore, _window, cx| {
+                this.handle_toggle_gitignore(action, cx);
+            }))
+            .on_action(cx.listener(|this, action: &ToggleHidden, _window, cx| {
+                this.handle_toggle_hidden(action, cx);
+            }))
+            .on_action(cx.listener(|this, action: &ShowHistory, _window, cx| {
+                this.handle_show_history(action, cx);
+            }))
+            .on_action(cx.listener(|this, action: &CheckMultiuserSync, _window, cx| {
+                this.handle_check_multiuser_sync(action, cx);
             }))
             .child(self.render_content(window, cx))
     }

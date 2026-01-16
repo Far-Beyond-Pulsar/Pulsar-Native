@@ -143,6 +143,9 @@ pub fn folder_context_menu(
             .separator()
             .menu("Duplicate", Box::new(DuplicateItem::default()))
             .separator()
+            .menu_with_icon("Open in File Manager", ui::Icon::new(ui::IconName::ExternalLink), Box::new(OpenInFileManager::default()))
+            .menu_with_icon("Open Terminal Here", ui::Icon::new(ui::IconName::Terminal), Box::new(OpenTerminalHere::default()))
+            .separator()
             .menu("Refresh", Box::new(RefreshFileManager));
 
         menu
@@ -196,7 +199,16 @@ pub fn item_context_menu(
             .menu("Rename", Box::new(RenameItem::default()))
             .menu("Delete", Box::new(DeleteItem::default()))
             .separator()
-            .menu("Duplicate", Box::new(DuplicateItem::default()));
+            .menu("Duplicate", Box::new(DuplicateItem::default()))
+            .separator()
+            .menu_with_icon("Validate Asset", ui::Icon::new(ui::IconName::CircleCheck), Box::new(ValidateAsset::default()))
+            .menu_with_icon("Toggle Favorite", ui::Icon::new(ui::IconName::Star), Box::new(ToggleFavorite::default()))
+            .separator()
+            .menu_with_icon("Add/Remove from .gitignore", ui::Icon::new(ui::IconName::Gitignore), Box::new(ToggleGitignore::default()))
+            .menu_with_icon("Toggle Hidden", ui::Icon::new(ui::IconName::EyeOff), Box::new(ToggleHidden::default()))
+            .separator()
+            .menu_with_icon("Check Multiuser Sync", ui::Icon::new(ui::IconName::Globe), Box::new(CheckMultiuserSync::default()))
+            .menu_with_icon("Show History", ui::Icon::new(ui::IconName::Calendar), Box::new(ShowHistory::default()));
 
         menu
     }

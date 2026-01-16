@@ -22,17 +22,7 @@ pub use ui::OpenSettings;
 use crate::settings::EngineSettings;
 use std::sync::mpsc::channel;
 
-// Winit imports
-use raw_window_handle::{ HasWindowHandle, RawWindowHandle };
-use std::collections::HashSet;
-use std::sync::{ Arc, Mutex };
-use std::sync::mpsc::{ channel, Sender, Receiver };
-use std::time::{ Duration, Instant };
-use winit::application::ApplicationHandler;
-use winit::event::{ ElementState, MouseButton as WinitMouseButton, WindowEvent };
-use winit::event_loop::{ ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy };
-use winit::window::WindowId;
-use winit::keyboard::{ PhysicalKey, KeyCode };
+// --- Internal modules ---
 
 // Re-export core modules that UI needs
 pub mod assets;     // Asset embedding and management
