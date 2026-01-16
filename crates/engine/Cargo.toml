@@ -67,6 +67,7 @@ urlencoding.workspace = true
 open = "5"
 lsp-types.workspace = true
 ropey.workspace = true
+dotenv = "0.15"
 
 # New compiler dependencies
 syn = { version = "2.0", features = ["full", "parsing", "extra-traits", "visit", "visit-mut"] }

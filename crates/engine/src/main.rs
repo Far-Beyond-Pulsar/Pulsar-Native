@@ -21,7 +21,7 @@ use std::time::{ Duration, Instant };
 use winit::application::ApplicationHandler;
 use winit::event::{ ElementState, MouseButton as WinitMouseButton, WindowEvent };
 use winit::event_loop::{ ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy };
-use winit::window::{ Window as WinitWindow, WindowId };
+use winit::window::WindowId;
 use winit::keyboard::{ PhysicalKey, KeyCode };
 
 #[cfg(target_os = "windows")]
@@ -93,8 +93,8 @@ use window::{
 
 fn main() {
     // Initialize logging backend with env filter support
-    // Set RUST_LOG=debug to see debug logs, RUST_LOG=trace for all logs
-    // Filter out wgpu shader compilation spam by setting wgpu crates to warn level
+    // Loads .env if present, then checks RUST_LOG from env or .env, or falls back to default
+    dotenv::dotenv().ok();
     use tracing_subscriber::fmt::{
         format::FormatEvent,
         format::FormatFields,
@@ -258,7 +258,8 @@ fn main() {
         .append(true)
         .open(&engine_log_path)
         .expect("Failed to open engine.log for writing");
-    let (non_blocking, _guard) = tracing_appender::non_blocking(engine_log_file);
+    let (non_blocking, _engine_log_guard) = tracing_appender::non_blocking(engine_log_file);
+    // IMPORTANT: Keep _engine_log_guard alive for the entire program duration!
 
     // Optionally, set up game_log_file similarly if needed
     // let game_log_file = std::fs::OpenOptions::new()
@@ -270,8 +271,11 @@ fn main() {
 
     // Set up tracing subscriber with file output (engine.log) and console
     use tracing_subscriber::prelude::*;
-    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,wgpu_hal=warn,wgpu_core=warn,naga=warn"));
+    let rust_log = std::env::var("RUST_LOG").ok();
+    let env_filter = match rust_log {
+        Some(val) => tracing_subscriber::EnvFilter::new(val),
+        None => tracing_subscriber::EnvFilter::new("info,wgpu_hal=warn,wgpu_core=warn,naga=warn"),
+    };
     // File log: plain formatting, no ANSI/color codes
     let file_layer = tracing_subscriber::fmt::layer()
         .with_writer(non_blocking)
@@ -428,4 +432,7 @@ fn main() {
 
     let mut app = WinitGpuiApp::new(engine_state, window_rx);
     event_loop.run_app(&mut app).expect("Failed to run event loop");
+
+    // Keep the log guard alive until the very end
+    drop(_engine_log_guard);
 }
