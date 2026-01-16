@@ -20,9 +20,12 @@ impl SettingsScreen {
     }
 
     fn render_performance_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
+        let border_color = cx.theme().border;
+        let accent = cx.theme().accent;
+        let foreground = cx.theme().foreground;
         let fps_options = vec![30u32, 60, 120, 144, 240, 0];
         let current_fps = self.settings.advanced.max_viewport_fps;
+        let performance_level = self.settings.advanced.performance_level;
 
         SettingCard::new("Performance Settings")
             .icon(IconName::Rocket)
@@ -33,13 +36,13 @@ impl SettingsScreen {
                     .gap_4()
                     .pt_4()
                     .border_t_1()
-                    .border_color(theme.border)
+                    .border_color(border_color)
                     .child(
                         SettingRow::new("Performance Level")
                             .description("Higher levels use more resources but may improve performance")
                             .control(
                                 render_value_display(
-                                    format!("Level {}", self.settings.advanced.performance_level),
+                                    format!("Level {}", performance_level),
                                     cx
                                 )
                             )
@@ -49,7 +52,7 @@ impl SettingsScreen {
                         div()
                             .w_full()
                             .h(px(1.0))
-                            .bg(theme.border)
+                            .bg(border_color)
                     )
                     .child(
                         v_flex()
@@ -62,13 +65,13 @@ impl SettingsScreen {
                                         div()
                                             .text_base()
                                             .font_weight(FontWeight::MEDIUM)
-                                            .text_color(theme.foreground)
+                                            .text_color(foreground)
                                             .child("Viewport Max FPS (Frame Pacing)")
                                     )
                                     .child(
                                         div()
                                             .text_sm()
-                                            .text_color(theme.muted_foreground)
+                                            .text_color(foreground.opacity(0.7))
                                             .child("Controls viewport refresh rate for consistent frame pacing")
                                     )
                             )
@@ -101,9 +104,9 @@ impl SettingsScreen {
                                 div()
                                     .p_4()
                                     .rounded_lg()
-                                    .bg(hsla(theme.accent.h, theme.accent.s, theme.accent.l, 0.1))
+                                    .bg(hsla(accent.h, accent.s, accent.l, 0.1))
                                     .border_1()
-                                    .border_color(hsla(theme.accent.h, theme.accent.s, theme.accent.l, 0.2))
+                                    .border_color(hsla(accent.h, accent.s, accent.l, 0.2))
                                     .child(
                                         h_flex()
                                             .gap_3()
@@ -111,7 +114,7 @@ impl SettingsScreen {
                                             .child(
                                                 Icon::new(IconName::Info)
                                                     .size(px(20.0))
-                                                    .text_color(theme.accent)
+                                                    .text_color(accent)
                                             )
                                             .child(
                                                 v_flex()
@@ -120,25 +123,25 @@ impl SettingsScreen {
                                                         div()
                                                             .text_sm()
                                                             .font_weight(FontWeight::MEDIUM)
-                                                            .text_color(theme.foreground)
+                                                            .text_color(foreground)
                                                             .child("Frame Pacing Tips")
                                                     )
                                                     .child(
                                                         div()
                                                             .text_sm()
-                                                            .text_color(theme.foreground.opacity(0.9))
+                                                            .text_color(foreground.opacity(0.9))
                                                             .child("• 60 FPS: Best for most users, balances smoothness and performance")
                                                     )
                                                     .child(
                                                         div()
                                                             .text_sm()
-                                                            .text_color(theme.foreground.opacity(0.9))
+                                                            .text_color(foreground.opacity(0.9))
                                                             .child("• 120/144 FPS: For high refresh rate monitors")
                                                     )
                                                     .child(
                                                         div()
                                                             .text_sm()
-                                                            .text_color(theme.foreground.opacity(0.9))
+                                                            .text_color(foreground.opacity(0.9))
                                                             .child("• Unlimited: Maximum frame rate, may increase GPU usage")
                                                     )
                                             )
@@ -150,7 +153,12 @@ impl SettingsScreen {
     }
 
     fn render_debugging_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
+        let border_color = cx.theme().border;
+        let primary_color = cx.theme().primary;
+        let muted_foreground = cx.theme().muted_foreground;
+        let foreground = cx.theme().foreground;
+        let debug_logging = self.settings.advanced.debug_logging;
+        let experimental_features = self.settings.advanced.experimental_features;
 
         SettingCard::new("Debugging & Development")
             .icon(IconName::Bug)
@@ -161,7 +169,7 @@ impl SettingsScreen {
                     .gap_4()
                     .pt_4()
                     .border_t_1()
-                    .border_color(theme.border)
+                    .border_color(border_color)
                     .child(
                         SettingRow::new("Debug Logging")
                             .description("Enable detailed logging for troubleshooting")
@@ -171,7 +179,7 @@ impl SettingsScreen {
                                     .items_center()
                                     .child(
                                         Switch::new("debug-logging-switch")
-                                            .checked(self.settings.advanced.debug_logging)
+                                            .checked(debug_logging)
                                             .on_click(cx.listener(|screen, _, _window, cx| {
                                                 screen.settings.advanced.debug_logging = !screen.settings.advanced.debug_logging;
                                                 cx.notify();
@@ -181,12 +189,12 @@ impl SettingsScreen {
                                         div()
                                             .text_sm()
                                             .font_weight(FontWeight::MEDIUM)
-                                            .text_color(if self.settings.advanced.debug_logging {
-                                                theme.primary
+                                            .text_color(if debug_logging {
+                                                primary_color
                                             } else {
-                                                theme.muted_foreground
+                                                muted_foreground
                                             })
-                                            .child(if self.settings.advanced.debug_logging { "Enabled" } else { "Disabled" })
+                                            .child(if debug_logging { "Enabled" } else { "Disabled" })
                                     )
                                     .child(
                                         Button::new("save-debug-logging")
@@ -204,7 +212,7 @@ impl SettingsScreen {
                         div()
                             .w_full()
                             .h(px(1.0))
-                            .bg(theme.border)
+                            .bg(border_color)
                     )
                     .child(
                         SettingRow::new("Experimental Features")
@@ -215,7 +223,7 @@ impl SettingsScreen {
                                     .items_center()
                                     .child(
                                         Switch::new("experimental-features-switch")
-                                            .checked(self.settings.advanced.experimental_features)
+                                            .checked(experimental_features)
                                             .on_click(cx.listener(|screen, _, _window, cx| {
                                                 screen.settings.advanced.experimental_features = !screen.settings.advanced.experimental_features;
                                                 cx.notify();
@@ -225,12 +233,12 @@ impl SettingsScreen {
                                         div()
                                             .text_sm()
                                             .font_weight(FontWeight::MEDIUM)
-                                            .text_color(if self.settings.advanced.experimental_features {
-                                                theme.primary
+                                            .text_color(if experimental_features {
+                                                primary_color
                                             } else {
-                                                theme.muted_foreground
+                                                muted_foreground
                                             })
-                                            .child(if self.settings.advanced.experimental_features { "Enabled" } else { "Disabled" })
+                                            .child(if experimental_features { "Enabled" } else { "Disabled" })
                                     )
                                     .child(
                                         Button::new("save-experimental-features")
@@ -244,7 +252,7 @@ impl SettingsScreen {
                             )
                             .render(cx)
                     )
-                    .when(self.settings.advanced.experimental_features, |this| {
+                    .when(experimental_features, |this| {
                         let warning_color = hsla(0.05, 0.8, 0.5, 1.0); // Orange warning color
                         this.child(
                             div()
@@ -265,7 +273,7 @@ impl SettingsScreen {
                                         .child(
                                             div()
                                                 .text_sm()
-                                                .text_color(theme.foreground)
+                                                .text_color(foreground)
                                                 .child("Warning: Experimental features may cause instability or data loss. Use at your own risk.")
                                         )
                                 )

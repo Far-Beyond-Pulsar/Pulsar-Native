@@ -75,7 +75,13 @@ impl SettingsScreen {
     }
 
     fn render_auto_save_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
+        let border_color = cx.theme().border;
+        let primary_color = cx.theme().primary;
+        let muted_foreground = cx.theme().muted_foreground;
+        let accent = cx.theme().accent;
+        let foreground = cx.theme().foreground;
+        let auto_save_enabled = self.settings.project.auto_save_interval > 0;
+        let auto_save_interval = self.settings.project.auto_save_interval;
 
         SettingCard::new("Auto Save")
             .icon(IconName::Clock)
@@ -86,7 +92,7 @@ impl SettingsScreen {
                     .gap_4()
                     .pt_4()
                     .border_t_1()
-                    .border_color(theme.border)
+                    .border_color(border_color)
                     .child(
                         SettingRow::new("Enable Auto Save")
                             .description("Automatically save changes to files")
@@ -96,7 +102,7 @@ impl SettingsScreen {
                                     .items_center()
                                     .child(
                                         Switch::new("auto-save-switch")
-                                            .checked(self.settings.project.auto_save_interval > 0)
+                                            .checked(auto_save_enabled)
                                             .on_click(cx.listener(|screen, _, _window, cx| {
                                                 if screen.settings.project.auto_save_interval > 0 {
                                                     screen.settings.project.auto_save_interval = 0;
@@ -110,12 +116,12 @@ impl SettingsScreen {
                                         div()
                                             .text_sm()
                                             .font_weight(FontWeight::MEDIUM)
-                                            .text_color(if self.settings.project.auto_save_interval > 0 {
-                                                theme.primary
+                                            .text_color(if auto_save_enabled {
+                                                primary_color
                                             } else {
-                                                theme.muted_foreground
+                                                muted_foreground
                                             })
-                                            .child(if self.settings.project.auto_save_interval > 0 { "Enabled" } else { "Disabled" })
+                                            .child(if auto_save_enabled { "Enabled" } else { "Disabled" })
                                     )
                                     .child(
                                         Button::new("save-auto-save")
@@ -129,19 +135,19 @@ impl SettingsScreen {
                             )
                             .render(cx)
                     )
-                    .when(self.settings.project.auto_save_interval > 0, |this| {
+                    .when(auto_save_enabled, |this| {
                         this.child(
                             div()
                                 .w_full()
                                 .h(px(1.0))
-                                .bg(theme.border)
+                                .bg(border_color)
                         )
                         .child(
                             SettingRow::new("Save Interval")
                                 .description("How often to auto-save (in seconds)")
                                 .control(
                                     render_value_display(
-                                        format!("{} seconds", self.settings.project.auto_save_interval),
+                                        format!("{} seconds", auto_save_interval),
                                         cx
                                     )
                                 )
@@ -152,9 +158,9 @@ impl SettingsScreen {
                         div()
                             .p_4()
                             .rounded_lg()
-                            .bg(hsla(theme.accent.h, theme.accent.s, theme.accent.l, 0.1))
+                            .bg(hsla(accent.h, accent.s, accent.l, 0.1))
                             .border_1()
-                            .border_color(hsla(theme.accent.h, theme.accent.s, theme.accent.l, 0.2))
+                            .border_color(hsla(accent.h, accent.s, accent.l, 0.2))
                             .child(
                                 h_flex()
                                     .gap_3()
@@ -162,12 +168,12 @@ impl SettingsScreen {
                                     .child(
                                         Icon::new(IconName::Info)
                                             .size(px(20.0))
-                                            .text_color(theme.accent)
+                                            .text_color(accent)
                                     )
                                     .child(
                                         div()
                                             .text_sm()
-                                            .text_color(theme.foreground)
+                                            .text_color(foreground)
                                             .child("Auto-save will save all open files at the specified interval. This helps prevent data loss.")
                                     )
                             )
@@ -177,7 +183,11 @@ impl SettingsScreen {
     }
 
     fn render_backup_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
+        let border_color = cx.theme().border;
+        let primary_color = cx.theme().primary;
+        let muted_foreground = cx.theme().muted_foreground;
+        let foreground = cx.theme().foreground;
+        let backups_enabled = self.settings.project.enable_backups;
 
         SettingCard::new("Backup Settings")
             .icon(IconName::Database)
@@ -188,7 +198,7 @@ impl SettingsScreen {
                     .gap_4()
                     .pt_4()
                     .border_t_1()
-                    .border_color(theme.border)
+                    .border_color(border_color)
                     .child(
                         SettingRow::new("Enable Backups")
                             .description("Automatically create backups when saving projects")
@@ -198,7 +208,7 @@ impl SettingsScreen {
                                     .items_center()
                                     .child(
                                         Switch::new("backup-enabled-switch")
-                                            .checked(self.settings.project.enable_backups)
+                                            .checked(backups_enabled)
                                             .on_click(cx.listener(|screen, _, _window, cx| {
                                                 screen.settings.project.enable_backups = !screen.settings.project.enable_backups;
                                                 cx.notify();
@@ -208,12 +218,12 @@ impl SettingsScreen {
                                         div()
                                             .text_sm()
                                             .font_weight(FontWeight::MEDIUM)
-                                            .text_color(if self.settings.project.enable_backups {
-                                                theme.primary
+                                            .text_color(if backups_enabled {
+                                                primary_color
                                             } else {
-                                                theme.muted_foreground
+                                                muted_foreground
                                             })
-                                            .child(if self.settings.project.enable_backups { "Enabled" } else { "Disabled" })
+                                            .child(if backups_enabled { "Enabled" } else { "Disabled" })
                                     )
                                     .child(
                                         Button::new("save-backup")
@@ -227,14 +237,14 @@ impl SettingsScreen {
                             )
                             .render(cx)
                     )
-                    .when(self.settings.project.enable_backups, |this| {
+                    .when(backups_enabled, |this| {
                         this.child(
                             div()
                                 .p_4()
                                 .rounded_lg()
-                                .bg(hsla(theme.primary.h, theme.primary.s, theme.primary.l, 0.1))
+                                .bg(hsla(primary_color.h, primary_color.s, primary_color.l, 0.1))
                                 .border_1()
-                                .border_color(hsla(theme.primary.h, theme.primary.s, theme.primary.l, 0.2))
+                                .border_color(hsla(primary_color.h, primary_color.s, primary_color.l, 0.2))
                                 .child(
                                     h_flex()
                                         .gap_3()
@@ -242,12 +252,12 @@ impl SettingsScreen {
                                         .child(
                                             Icon::new(IconName::CheckCircle)
                                                 .size(px(20.0))
-                                                .text_color(theme.primary)
+                                                .text_color(primary_color)
                                         )
                                         .child(
                                             div()
                                                 .text_sm()
-                                                .text_color(theme.foreground)
+                                                .text_color(foreground)
                                                 .child("Backups are stored in your project directory and are created automatically when you save.")
                                         )
                                 )
