@@ -5,10 +5,8 @@
 
 pub mod watchers;
 pub mod operations;
-pub mod asset_templates;
 
 pub use operations::AssetOperations;
-pub use asset_templates::{AssetKind, AssetCategory};
 
 use anyhow::Result;
 use std::path::PathBuf;

@@ -61,19 +61,12 @@ impl FileOperations {
         Ok(new_path)
     }
 
-    /// Create a new Blueprint class (uses engine_fs if available)
+    /// Create a new Blueprint class (temporary implementation)
+    /// 
+    /// This method will be deprecated once the Blueprint plugin provides
+    /// file type registration through the plugin system.
     pub fn new_class(&self, base_path: &Path, name: Option<&str>) -> Result<PathBuf> {
-        // If we have engine_fs, use it to create the asset properly
-        if let Some(ref fs) = self.engine_fs {
-            let class_name = name.unwrap_or("NewClass");
-            return fs.operations().create_asset(
-                engine_fs::AssetKind::BlueprintClass,
-                class_name,
-                Some(base_path.to_str().unwrap_or(".")),
-            );
-        }
-
-        // Fallback: manual creation
+        // Manual creation - will be replaced when Blueprint plugin is available
         let mut counter = 1;
         let mut new_path = base_path.join(name.unwrap_or("NewClass"));
 
