@@ -5,10 +5,6 @@ description = "A modern high-performance game engine written in Rust"
 publish = false
 version = "0.1.88"
 
-[lib]
-name = "pulsar_engine"
-path = "src/lib.rs"
-
 [[bin]]
 name = "pulsar_engine"
 path = "src/main.rs"
@@ -67,6 +63,7 @@ urlencoding.workspace = true
 open = "5"
 lsp-types.workspace = true
 ropey.workspace = true
+dotenv = "0.15"
 
 # New compiler dependencies
 syn = { version = "2.0", features = ["full", "parsing", "extra-traits", "visit", "visit-mut"] }
