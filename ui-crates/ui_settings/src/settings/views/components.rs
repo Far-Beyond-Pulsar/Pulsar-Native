@@ -45,24 +45,24 @@ impl SettingCard {
 
         v_flex()
             .w_full()
-            .gap_5()
-            .p_6()
+            .gap_4()
+            .p_5()
             .bg(theme.sidebar)
             .border_1()
             .border_color(theme.border)
-            .rounded_xl()
+            .rounded_lg()
             .shadow_sm()
             .child(
                 h_flex()
                     .items_start()
-                    .gap_4()
+                    .gap_3()
                     .when_some(self.icon, |this, icon| {
                         this.child(
                             div()
                                 .flex_shrink_0()
-                                .w(px(48.0))
-                                .h(px(48.0))
-                                .rounded_lg()
+                                .w(px(36.0))
+                                .h(px(36.0))
+                                .rounded_md()
                                 .bg(hsla(theme.primary.h, theme.primary.s, theme.primary.l, 0.15))
                                 .border_1()
                                 .border_color(hsla(theme.primary.h, theme.primary.s, theme.primary.l, 0.3))
@@ -71,7 +71,7 @@ impl SettingCard {
                                 .justify_center()
                                 .child(
                                     Icon::new(icon)
-                                        .size(px(24.0))
+                                        .size(px(18.0))
                                         .text_color(theme.primary)
                                 )
                         )
@@ -79,10 +79,10 @@ impl SettingCard {
                     .child(
                         v_flex()
                             .flex_1()
-                            .gap_2()
+                            .gap_1()
                             .child(
                                 div()
-                                    .text_lg()
+                                    .text_base()
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .text_color(theme.foreground)
                                     .child(self.title)
@@ -90,8 +90,8 @@ impl SettingCard {
                             .when_some(self.description, |this, desc| {
                                 this.child(
                                     div()
-                                        .text_sm()
-                                        .line_height(rems(1.5))
+                                        .text_xs()
+                                        .line_height(rems(1.4))
                                         .text_color(theme.muted_foreground)
                                         .child(desc)
                                 )
@@ -135,14 +135,14 @@ impl SettingRow {
             .w_full()
             .items_center()
             .justify_between()
-            .gap_6()
+            .gap_4()
             .child(
                 v_flex()
                     .flex_1()
-                    .gap_1p5()
+                    .gap_1()
                     .child(
                         div()
-                            .text_base()
+                            .text_sm()
                             .font_weight(FontWeight::MEDIUM)
                             .text_color(theme.foreground)
                             .child(self.label)
@@ -150,7 +150,7 @@ impl SettingRow {
                     .when_some(self.description, |this, desc| {
                         this.child(
                             div()
-                                .text_sm()
+                                .text_xs()
                                 .text_color(theme.muted_foreground)
                                 .child(desc)
                         )
@@ -171,15 +171,15 @@ pub fn render_value_display(value: impl Into<String>, cx: &mut App) -> impl Into
     let theme = cx.theme();
 
     div()
-        .px_4()
-        .py_2()
-        .rounded_lg()
+        .px_3()
+        .py_1p5()
+        .rounded_md()
         .bg(theme.background)
         .border_1()
         .border_color(theme.border)
         .child(
             div()
-                .text_sm()
+                .text_xs()
                 .font_family("monospace")
                 .text_color(theme.foreground)
                 .child(value.into())
@@ -190,20 +190,16 @@ pub fn render_value_display(value: impl Into<String>, cx: &mut App) -> impl Into
 pub fn render_section_header(title: impl Into<String>, cx: &mut App) -> impl IntoElement {
     let theme = cx.theme();
 
-    v_flex()
+    div()
         .w_full()
-        .gap_2()
+        .pb_3()
+        .border_b_1()
+        .border_color(theme.border)
         .child(
             div()
-                .text_2xl()
+                .text_lg()
                 .font_weight(FontWeight::BOLD)
                 .text_color(theme.foreground)
                 .child(title.into())
-        )
-        .child(
-            div()
-                .w_full()
-                .h(px(1.0))
-                .bg(theme.border)
         )
 }

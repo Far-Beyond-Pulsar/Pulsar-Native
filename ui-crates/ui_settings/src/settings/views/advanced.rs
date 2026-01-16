@@ -12,8 +12,8 @@ impl SettingsScreen {
     pub fn render_advanced_view(&self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .w_full()
-            .gap_6()
-            .child(render_section_header("Advanced Settings", cx))
+            .gap_4()
+            .child(render_section_header("Advanced", cx))
             .child(self.render_performance_card(cx))
             .child(self.render_debugging_card(cx))
             .child(self.render_extensions_card(cx))

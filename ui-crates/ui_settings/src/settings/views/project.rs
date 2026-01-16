@@ -12,8 +12,8 @@ impl SettingsScreen {
     pub fn render_project_view(&self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .w_full()
-            .gap_6()
-            .child(render_section_header("Project Settings", cx))
+            .gap_4()
+            .child(render_section_header("Project", cx))
             .child(self.render_project_defaults_card(cx))
             .child(self.render_auto_save_card(cx))
             .child(self.render_backup_card(cx))

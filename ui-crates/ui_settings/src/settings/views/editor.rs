@@ -12,8 +12,8 @@ impl SettingsScreen {
     pub fn render_editor_view(&self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .w_full()
-            .gap_6()
-            .child(render_section_header("Editor Settings", cx))
+            .gap_4()
+            .child(render_section_header("Editor", cx))
             .child(self.render_editor_appearance_card(cx))
             .child(self.render_editor_behavior_card(cx))
             .child(self.render_code_formatting_card(cx))

@@ -19,8 +19,8 @@ impl SettingsScreen {
 
         v_flex()
             .w_full()
-            .gap_6()
-            .child(render_section_header("Appearance Settings", cx))
+            .gap_4()
+            .child(render_section_header("Appearance", cx))
             .child(self.render_theme_card(&theme_names, cx))
             .child(self.render_ui_scale_card(cx))
             .child(self.render_color_scheme_info_card(cx))
