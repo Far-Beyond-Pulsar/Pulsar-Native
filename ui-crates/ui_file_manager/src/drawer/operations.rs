@@ -61,19 +61,9 @@ impl FileOperations {
         Ok(new_path)
     }
 
-    /// Create a new Blueprint class (uses engine_fs if available)
+    /// Create a new Blueprint class (uses fallback manual creation)
     pub fn new_class(&self, base_path: &Path, name: Option<&str>) -> Result<PathBuf> {
-        // If we have engine_fs, use it to create the asset properly
-        if let Some(ref fs) = self.engine_fs {
-            let class_name = name.unwrap_or("NewClass");
-            return fs.operations().create_asset(
-                engine_fs::AssetKind::BlueprintClass,
-                class_name,
-                Some(base_path.to_str().unwrap_or(".")),
-            );
-        }
-
-        // Fallback: manual creation
+        // Manual creation - plugins should handle this in the future
         let mut counter = 1;
         let mut new_path = base_path.join(name.unwrap_or("NewClass"));
 
