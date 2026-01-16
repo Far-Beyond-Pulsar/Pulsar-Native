@@ -258,7 +258,7 @@ impl SettingsScreen {
                                         .gap_3()
                                         .items_start()
                                         .child(
-                                            Icon::new(IconName::AlertTriangle)
+                                            Icon::new(IconName::TriangleAlert)
                                                 .size(px(20.0))
                                                 .text_color(warning_color)
                                         )
