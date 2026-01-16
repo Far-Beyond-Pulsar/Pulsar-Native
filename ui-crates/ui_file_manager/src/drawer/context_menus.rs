@@ -19,9 +19,9 @@ pub fn folder_context_menu(
         let file_types_clone = file_types.clone();
         
         let mut menu = menu
-            .submenu("Create", window, cx, move |submenu, window, cx| {
+            .submenu_with_icon("Create", ui::Icon::new(ui::IconName::Plus), window, cx, move |submenu, window, cx| {
                 let mut submenu = submenu
-                    .menu("Folder", Box::new(NewFolder::default()))
+                    .menu_with_icon("Folder", ui::Icon::new(ui::IconName::FolderPlus), Box::new(NewFolder::default()))
                     .separator();
 
                 // Build category tree structure
@@ -129,24 +129,24 @@ pub fn folder_context_menu(
                 submenu
             })
             .separator()
-            .menu("Cut", Box::new(Cut))
-            .menu("Copy", Box::new(Copy));
+            .menu_with_icon("Cut", ui::Icon::new(ui::IconName::Scissor), Box::new(Cut))
+            .menu_with_icon("Copy", ui::Icon::new(ui::IconName::Copy), Box::new(Copy));
 
         if has_clipboard {
-            menu = menu.menu("Paste", Box::new(Paste));
+            menu = menu.menu_with_icon("Paste", ui::Icon::new(ui::IconName::PasteClipboard), Box::new(Paste));
         }
 
         menu = menu
             .separator()
-            .menu("Rename", Box::new(RenameItem::default()))
-            .menu("Delete", Box::new(DeleteItem::default()))
+            .menu_with_icon("Rename", ui::Icon::new(ui::IconName::EditPencil), Box::new(RenameItem::default()))
+            .menu_with_icon("Delete", ui::Icon::new(ui::IconName::Trash), Box::new(DeleteItem::default()))
             .separator()
-            .menu("Duplicate", Box::new(DuplicateItem::default()))
+            .menu_with_icon("Duplicate", ui::Icon::new(ui::IconName::Copy), Box::new(DuplicateItem::default()))
             .separator()
             .menu_with_icon("Open in File Manager", ui::Icon::new(ui::IconName::ExternalLink), Box::new(OpenInFileManager::default()))
             .menu_with_icon("Open Terminal Here", ui::Icon::new(ui::IconName::Terminal), Box::new(OpenTerminalHere::default()))
             .separator()
-            .menu("Refresh", Box::new(RefreshFileManager));
+            .menu_with_icon("Refresh", ui::Icon::new(ui::IconName::Refresh), Box::new(RefreshFileManager));
 
         menu
     }
@@ -182,24 +182,24 @@ pub fn item_context_menu(
         // Class-specific actions
         if is_class {
             menu = menu
-                .menu("Open Class", Box::new(NewClass::default())) // Reuse action or create OpenClass
+                .menu_with_icon("Open Class", ui::Icon::new(ui::IconName::BookOpen), Box::new(NewClass::default()))
                 .separator();
         }
 
         menu = menu
-            .menu("Cut", Box::new(Cut))
-            .menu("Copy", Box::new(Copy));
+            .menu_with_icon("Cut", ui::Icon::new(ui::IconName::Scissor), Box::new(Cut))
+            .menu_with_icon("Copy", ui::Icon::new(ui::IconName::Copy), Box::new(Copy));
 
         if has_clipboard {
-            menu = menu.menu("Paste", Box::new(Paste));
+            menu = menu.menu_with_icon("Paste", ui::Icon::new(ui::IconName::PasteClipboard), Box::new(Paste));
         }
 
         menu = menu
             .separator()
-            .menu("Rename", Box::new(RenameItem::default()))
-            .menu("Delete", Box::new(DeleteItem::default()))
+            .menu_with_icon("Rename", ui::Icon::new(ui::IconName::EditPencil), Box::new(RenameItem::default()))
+            .menu_with_icon("Delete", ui::Icon::new(ui::IconName::Trash), Box::new(DeleteItem::default()))
             .separator()
-            .menu("Duplicate", Box::new(DuplicateItem::default()))
+            .menu_with_icon("Duplicate", ui::Icon::new(ui::IconName::Copy), Box::new(DuplicateItem::default()))
             .separator()
             .menu_with_icon("Validate Asset", ui::Icon::new(ui::IconName::CircleCheck), Box::new(ValidateAsset::default()))
             .menu_with_icon("Toggle Favorite", ui::Icon::new(ui::IconName::Star), Box::new(ToggleFavorite::default()))
