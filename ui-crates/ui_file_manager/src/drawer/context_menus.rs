@@ -19,7 +19,7 @@ pub fn folder_context_menu(
         let file_types_clone = file_types.clone();
         
         let mut menu = menu
-            .submenu_with_icon("Create", ui::Icon::new(ui::IconName::Plus), window, cx, move |submenu, window, cx| {
+            .submenu_with_icon(Some(ui::Icon::new(ui::IconName::Plus)), "Create", window, cx, move |submenu, window, cx| {
                 let mut submenu = submenu
                     .menu_with_icon("Folder", ui::Icon::new(ui::IconName::FolderPlus), Box::new(NewFolder::default()))
                     .separator();
