@@ -25,17 +25,17 @@ use std::sync::mpsc::channel;
 // --- Internal modules ---
 
 // Re-export core modules that UI needs
-pub mod assets;
-pub mod settings;
-pub mod logging;
-pub mod args;
-pub mod appdata;
-pub mod consts;
-pub mod discord;
-pub mod runtime;
-pub mod event_loop;
-pub mod window; // Winit integration (Winit + GPUI coordination)
-pub mod uri;    // URI scheme handling
+pub mod assets;     // Asset embedding and management
+pub mod settings;   // Engine settings loading and saving
+pub mod logging;    // Logging setup and configuration
+pub mod args;       // Command-line argument parsing
+pub mod appdata;    // App data and resource directory management
+pub mod consts;     // Engine constants (name, version, authors, etc.)
+pub mod discord;    // Discord Rich Presence integration
+pub mod runtime;    // Async runtime setup and management
+pub mod event_loop; // Main event loop handling
+pub mod window;     // Winit integration (Winit + GPUI coordination)
+pub mod uri;        // URI scheme handling
 
 // --- Engine state re-exports ---
 pub use engine_state::{
