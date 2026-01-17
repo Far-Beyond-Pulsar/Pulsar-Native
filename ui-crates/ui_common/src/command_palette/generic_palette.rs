@@ -111,6 +111,7 @@ impl<D: PaletteDelegate> GenericPalette<D> {
     }
 
     fn update_filter(&mut self, query: &str) {
+        let old_categories = self.filtered_categories.clone();
         self.filtered_categories = self.delegate.filter(query);
 
         // Update category states
@@ -124,7 +125,22 @@ impl<D: PaletteDelegate> GenericPalette<D> {
             })
             .collect();
 
-        self.selected_index = 0;
+        // Only reset selection if the filtered results actually changed
+        // This prevents arrow key navigation from resetting selection
+        let categories_changed = old_categories.len() != self.filtered_categories.len()
+            || old_categories.iter().zip(self.filtered_categories.iter()).any(|(a, b)| {
+                a.0 != b.0 || a.1.len() != b.1.len()
+            });
+
+        if categories_changed {
+            self.selected_index = 0;
+        } else {
+            // Clamp selection to valid range
+            let visible_items = self.get_all_visible_items();
+            if !visible_items.is_empty() && self.selected_index >= visible_items.len() {
+                self.selected_index = visible_items.len() - 1;
+            }
+        }
     }
 
     fn get_all_visible_items(&self) -> Vec<D::Item> {
@@ -280,10 +296,25 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                     .p_3()
                                     .border_b_1()
                                     .border_color(cx.theme().border)
-                                    .on_key_down(cx.listener(|_this, event: &KeyDownEvent, _window, cx| {
-                                        if event.keystroke.key.as_str() == "escape" {
-                                            cx.emit(DismissEvent);
-                                            cx.stop_propagation();
+                                    .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
+                                        match event.keystroke.key.as_str() {
+                                            "escape" => {
+                                                cx.emit(DismissEvent);
+                                                cx.stop_propagation();
+                                            }
+                                            "down" | "arrowdown" => {
+                                                this.move_selection(1, cx);
+                                                cx.stop_propagation();
+                                            }
+                                            "up" | "arrowup" => {
+                                                this.move_selection(-1, cx);
+                                                cx.stop_propagation();
+                                            }
+                                            "enter" | "return" => {
+                                                this.select_item(cx);
+                                                cx.stop_propagation();
+                                            }
+                                            _ => {}
                                         }
                                     }))
                                     .child(
@@ -398,6 +429,8 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                                                     )
                                                                     .child(
                                                                         div()
+                                                                            .flex_1()
+                                                                            .overflow_hidden()
                                                                             .text_xs()
                                                                             .font_semibold()
                                                                             .text_color(
@@ -408,6 +441,7 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                                                     .child(
                                                                         div()
                                                                             .text_xs()
+                                                                            .flex_shrink_0()
                                                                             .text_color(
                                                                                 cx.theme().muted_foreground,
                                                                             )
@@ -605,10 +639,14 @@ impl<D: PaletteDelegate> GenericPalette<D> {
                 v_flex()
                     .flex_1()
                     .gap_0p5()
+                    .overflow_hidden()
                     .child(
                         div()
                             .text_sm()
                             .font_semibold()
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .whitespace_nowrap()
                             .text_color(if is_selected {
                                 cx.theme().foreground
                             } else {
@@ -619,6 +657,9 @@ impl<D: PaletteDelegate> GenericPalette<D> {
                     .child(
                         div()
                             .text_xs()
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .whitespace_nowrap()
                             .text_color(cx.theme().muted_foreground)
                             .child(item.description().to_string()),
                     ),
