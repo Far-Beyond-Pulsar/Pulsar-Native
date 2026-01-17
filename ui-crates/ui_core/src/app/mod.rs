@@ -8,8 +8,6 @@ mod window_management;
 mod render;
 
 use gpui::{App, AppContext, Context, DismissEvent, Focusable, Window};
-use ui_common::command_palette::{CommandOrFile, CommandType};
-use ui::{ContextModal, notification::Notification};
 
 use crate::actions::*;
 
@@ -56,37 +54,46 @@ impl PulsarApp {
         self.toggle_multiplayer(window, cx);
     }
 
+    fn on_open_file(&mut self, action: &OpenFile, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_path(action.path.clone(), window, cx);
+    }
+
     fn on_toggle_command_palette(
         &mut self,
         _: &ToggleCommandPalette,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        use crate::unified_palette::AnyPaletteDelegate;
-        use ui_common::command_palette::GenericPalette;
+        use ui_common::command_palette::{GenericPalette, PaletteViewDelegate};
 
         self.state.command_palette_open = !self.state.command_palette_open;
 
         if self.state.command_palette_open {
-            if let Some(palette) = &self.state.command_palette {
-                palette.update(cx, |palette, cx| {
-                    let delegate = AnyPaletteDelegate::command(self.state.project_path.clone());
-                    palette.swap_delegate(delegate, window, cx);
-                });
+            // Get palette from state
+            let palette = self.state.command_palette.clone().expect("Palette not initialized");
 
-                let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
+            // Create or reuse view
+            if let Some(view) = &self.state.command_palette_view {
+                // Reuse existing view (already subscribed)
+                let input_handle = view.read(cx).search_input.read(cx).focus_handle(cx);
                 input_handle.focus(window);
             } else {
-                let delegate = AnyPaletteDelegate::command(self.state.project_path.clone());
-                let palette = cx.new(|cx| GenericPalette::new(delegate, window, cx));
+                // Create new view with delegate
+                let delegate = PaletteViewDelegate::new(palette.clone(), &*cx);
+                let view = cx.new(|cx| GenericPalette::new(delegate, window, cx));
 
-                cx.subscribe_in(&palette, window, |this: &mut PulsarApp, palette, _event: &DismissEvent, window, cx| {
-                    let selected_item = palette.update(cx, |palette, _cx| {
-                        palette.delegate_mut().take_selected_command()
+                // Subscribe to dismiss event
+                cx.subscribe_in(&view, window, move |this: &mut PulsarApp, view, _event: &DismissEvent, window, cx| {
+                    // Extract selected item ID
+                    let selected_item_id = view.update(cx, |view, _cx| {
+                        view.delegate_mut().take_selected_item()
                     });
 
-                    if let Some(item) = selected_item {
-                        this.handle_command_or_file_selected(item, window, cx);
+                    // Execute callback if item selected
+                    if let Some(item_id) = selected_item_id {
+                        palette.update(cx, |palette, cx| {
+                            let _ = palette.execute_item(item_id, window, cx);
+                        });
                     }
 
                     this.state.command_palette_open = false;
@@ -94,10 +101,11 @@ impl PulsarApp {
                     cx.notify();
                 }).detach();
 
-                let input_handle = palette.read(cx).search_input.read(cx).focus_handle(cx);
+                // Focus input
+                let input_handle = view.read(cx).search_input.read(cx).focus_handle(cx);
                 input_handle.focus(window);
 
-                self.state.command_palette = Some(palette);
+                self.state.command_palette_view = Some(view);
             }
         } else {
             self.state.focus_handle.focus(window);
@@ -106,66 +114,6 @@ impl PulsarApp {
         cx.notify();
     }
 
-    pub(crate) fn handle_command_or_file_selected(
-        &mut self,
-        item: CommandOrFile,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        match item {
-            CommandOrFile::Command(cmd) => {
-                match cmd.command_type {
-                    CommandType::Files => {
-                        self.state.command_palette_open = true;
-                        return;
-                    }
-                    CommandType::ToggleFileManager => {
-                        self.toggle_drawer(window, cx);
-                    }
-                    // TODO: Add the ability for plugins to register command palette commands
-                    // CommandType::ToggleTerminal => {
-                    //     self.toggle_terminal(window, cx);
-                    // }
-                    CommandType::ToggleMultiplayer => {
-                        self.toggle_multiplayer(window, cx);
-                    }
-                    CommandType::ToggleProblems => {
-                        self.toggle_problems(window, cx);
-                    }
-                    CommandType::OpenSettings => {
-                        cx.dispatch_action(&ui::OpenSettings);
-                    }
-                    CommandType::BuildProject => {
-                        window.push_notification(
-                            Notification::info("Build")
-                                .message("Building project..."),
-                            cx
-                        );
-                    }
-                    CommandType::RunProject => {
-                        window.push_notification(
-                            Notification::info("Run")
-                                .message("Running project..."),
-                            cx
-                        );
-                    }
-                    CommandType::RestartAnalyzer => {
-                        self.state.rust_analyzer.update(cx, |analyzer, cx| {
-                            analyzer.restart(window, cx);
-                        });
-                    }
-                    CommandType::StopAnalyzer => {
-                        self.state.rust_analyzer.update(cx, |analyzer, cx| {
-                            analyzer.stop(window, cx);
-                        });
-                    }
-                }
-            }
-            CommandOrFile::File(file) => {
-                self.open_path(file.path, window, cx);
-            }
-        }
-    }
 
     /// Update Discord Rich Presence with current editor state
     pub(crate) fn update_discord_presence(&self, cx: &App) {

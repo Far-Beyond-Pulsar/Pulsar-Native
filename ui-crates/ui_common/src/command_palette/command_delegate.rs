@@ -1,4 +1,4 @@
-use super::palette::{PaletteDelegate, PaletteItem};
+use super::palette_trait::{PaletteDelegate, PaletteItem};
 use super::{Command, CommandType};
 use std::path::PathBuf;
 use crate::file_utils::{FileInfo, FileType, find_openable_files};

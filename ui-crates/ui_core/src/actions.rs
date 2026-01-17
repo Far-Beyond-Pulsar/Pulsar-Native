@@ -1,5 +1,6 @@
 //! Actions for the Pulsar application
 
+use std::path::PathBuf;
 use gpui::Action;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -28,3 +29,10 @@ pub struct ToggleMultiplayer;
 #[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 #[action(namespace = pulsar_app)]
 pub struct ToggleCommandPalette;
+
+/// Action to open a file at a specific path
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = pulsar_app)]
+pub struct OpenFile {
+    pub path: PathBuf,
+}

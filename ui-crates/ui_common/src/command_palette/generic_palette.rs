@@ -1,7 +1,7 @@
 use gpui::{prelude::*, div, px, Axis, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable, KeyDownEvent, MouseButton, Render, Window};
 use ui::{h_flex, input::{Escape, InputEvent, InputState, TextInput}, text::TextView, v_flex, ActiveTheme as _, Icon, IconName, StyledExt};
 
-use super::palette::{PaletteDelegate, PaletteItem};
+use super::palette_trait::{PaletteDelegate, PaletteItem};
 
 struct CategoryState {
     name: String,

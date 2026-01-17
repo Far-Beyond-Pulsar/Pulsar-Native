@@ -1,11 +1,26 @@
 // Generic palette system
-pub mod palette;
+mod palette_trait;
 pub mod generic_palette;
 pub mod command_delegate;
 
-pub use palette::{PaletteDelegate, PaletteItem};
+// New palette manager system
+pub mod palette_manager;
+pub mod palette_data;
+pub mod palette_delegate;
+
+// Export traits (renamed from palette to palette_trait)
+pub use palette_trait::{PaletteDelegate, PaletteItem};
+
+// Export existing generic palette UI
 pub use generic_palette::GenericPalette;
+
+// Export legacy command delegate (will be removed in Phase 3)
 pub use command_delegate::{CommandDelegate, CommandOrFile};
+
+// Export new palette manager system
+pub use palette_manager::{PaletteManager, PaletteId};
+pub use palette_data::{Palette, ItemId};
+pub use palette_delegate::PaletteViewDelegate;
 
 use gpui::{prelude::*, div, px, Axis, Context, DismissEvent, Entity, EventEmitter, KeyDownEvent, MouseButton, Render, Window};
 use ui::{

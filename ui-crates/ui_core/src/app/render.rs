@@ -493,7 +493,7 @@ impl Render for PulsarApp {
         }
 
         let command_palette = if self.state.command_palette_open {
-            self.state.command_palette.clone()
+            self.state.command_palette_view.clone()
         } else {
             None
         };
@@ -507,6 +507,7 @@ impl Render for PulsarApp {
             .on_action(cx.listener(Self::on_toggle_problems))
             .on_action(cx.listener(Self::on_toggle_type_debugger))
             .on_action(cx.listener(Self::on_toggle_command_palette))
+            .on_action(cx.listener(Self::on_open_file))
             .child(
                 div()
                     .flex_1()

@@ -9,8 +9,7 @@ use ui_problems::ProblemsDrawer;
 // use ui_daw_editor::DawEditorPanel;
 use ui_type_debugger::TypeDebuggerDrawer;
 use ui_entry::EntryScreen;
-use ui_common::command_palette::GenericPalette;
-use crate::unified_palette::AnyPaletteDelegate;
+use ui_common::command_palette::{GenericPalette, Palette, PaletteId, PaletteViewDelegate};
 use plugin_manager::PluginManager;
 use engine_backend::services::rust_analyzer_manager::RustAnalyzerManager;
 
@@ -60,7 +59,9 @@ pub struct AppState {
 
     // Command Palette
     pub command_palette_open: bool,
-    pub command_palette: Option<Entity<GenericPalette<AnyPaletteDelegate>>>,
+    pub command_palette_id: Option<PaletteId>,
+    pub command_palette: Option<Entity<Palette>>,
+    pub command_palette_view: Option<Entity<GenericPalette<PaletteViewDelegate>>>,
 
     // Type picker tracking - commented out as ui_alias_editor has been migrated to plugins
     // pub active_type_picker_editor: Option<Entity<ui_alias_editor::AliasEditor>>,

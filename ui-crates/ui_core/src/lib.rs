@@ -4,7 +4,6 @@
 
 // Modules
 pub mod app;
-pub mod unified_palette;
 pub mod actions;
 pub mod root;
 pub mod builtin_editors;
@@ -19,10 +18,8 @@ pub use actions::{
     ToggleFileManager,
     ToggleProblems,
     ToggleMultiplayer,
+    OpenFile,
 };
-
-// Re-export palette types
-pub use unified_palette::{AnyPaletteDelegate, AnyPaletteItem};
 
 // Re-export file_utils from ui_common
 pub use ui_common::file_utils;

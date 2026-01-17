@@ -3,6 +3,7 @@
 use std::{path::PathBuf, sync::Arc};
 use gpui::{AppContext, Context, Entity, Window};
 use ui::dock::DockItem;
+use ui::ContextModal;
 use ui_file_manager::FileManagerDrawer;
 use ui_problems::ProblemsDrawer;
 use ui_level_editor::LevelEditorPanel;
@@ -185,6 +186,9 @@ impl PulsarApp {
             cx.subscribe_in(screen, window, event_handlers::on_project_selected).detach();
         }
 
+        // Initialize palette manager global
+        ui_common::command_palette::PaletteManager::init(cx);
+
         // Initialize plugin manager
         tracing::debug!("🔌 Initializing plugin system");
         let mut plugin_manager = PluginManager::new();
@@ -213,7 +217,7 @@ impl PulsarApp {
             }
         }
 
-        let app = Self {
+        let mut app = Self {
             state: crate::app::state::AppState {
                 dock_area,
                 project_path,
@@ -241,7 +245,9 @@ impl PulsarApp {
                 window_id,
                 shown_welcome_notification: false,
                 command_palette_open: false,
+                command_palette_id: None,
                 command_palette: None,
+                command_palette_view: None,
                 // active_type_picker_editor: None, // Migrated to plugins
                 focus_handle: cx.focus_handle(),
             },
@@ -286,6 +292,115 @@ impl PulsarApp {
         // Update Discord presence with initial tab if project is loaded
         if has_project && create_level_editor {
             app.update_discord_presence(cx);
+        }
+
+        // Register command palette
+        {
+            use ui_common::command_palette::PaletteManager;
+            use ui::IconName;
+            use crate::actions::*;
+
+            let (palette_id, palette_ref) = PaletteManager::register_palette("commands", window, cx);
+
+            // Populate with command items
+            palette_ref.update(cx, |palette, cx| {
+                palette.add_item(
+                    "Toggle File Manager",
+                    "Show or hide the file manager panel",
+                    IconName::Folder,
+                    "View",
+                    |window, cx| {
+                        window.dispatch_action(Box::new(ToggleFileManager), cx);
+                    },
+                    cx,
+                );
+
+                palette.add_item(
+                    "Open Settings",
+                    "Open application settings",
+                    IconName::Settings,
+                    "Application",
+                    |window, cx| {
+                        window.dispatch_action(Box::new(ui::OpenSettings), cx);
+                    },
+                    cx,
+                );
+
+                palette.add_item(
+                    "Toggle Multiplayer",
+                    "Enable or disable multiplayer collaboration",
+                    IconName::User,
+                    "Application",
+                    |window, cx| {
+                        window.dispatch_action(Box::new(ToggleMultiplayer), cx);
+                    },
+                    cx,
+                );
+
+                palette.add_item(
+                    "Toggle Problems",
+                    "Show or hide the problems panel",
+                    IconName::TriangleAlert,
+                    "View",
+                    |window, cx| {
+                        window.dispatch_action(Box::new(ToggleProblems), cx);
+                    },
+                    cx,
+                );
+
+                palette.add_item(
+                    "Build Project",
+                    "Build the current project",
+                    IconName::Hammer,
+                    "Project",
+                    |window, cx| {
+                        window.push_notification(
+                            ui::notification::Notification::info("Build")
+                                .message("Building project..."),
+                            cx
+                        );
+                    },
+                    cx,
+                );
+
+                palette.add_item(
+                    "Run Project",
+                    "Run the current project",
+                    IconName::Play,
+                    "Project",
+                    |window, cx| {
+                        window.push_notification(
+                            ui::notification::Notification::info("Run")
+                                .message("Running project..."),
+                            cx
+                        );
+                    },
+                    cx,
+                );
+
+                // Add files if we have a project path
+                if let Some(ref project_path) = app.state.project_path {
+                    use ui_common::file_utils::find_openable_files;
+                    let files = find_openable_files(project_path, Some(1000));
+
+                    for file in files {
+                        let path = file.path.clone();
+                        palette.add_item(
+                            file.name.clone(),
+                            file.path.to_string_lossy().to_string(),
+                            IconName::SubmitDocument,
+                            "Files",
+                            move |window, cx| {
+                                window.dispatch_action(Box::new(OpenFile { path: path.clone() }), cx);
+                            },
+                            cx,
+                        );
+                    }
+                }
+            });
+
+            app.state.command_palette_id = Some(palette_id);
+            app.state.command_palette = Some(palette_ref);
         }
 
         app

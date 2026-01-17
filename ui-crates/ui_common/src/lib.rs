@@ -9,7 +9,6 @@ pub mod menu;
 pub mod shared;
 
 // Re-export commonly used types
-pub use command_palette::CommandPalette;
 pub use menu::AppTitleBar;
 pub use file_utils::{FileInfo, FileType, find_openable_files};
 pub use shared::{StatusBar, ViewportControls, Toolbar, ToolbarButton, PropertyField};
