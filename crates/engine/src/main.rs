@@ -1,4 +1,4 @@
-//#![allow(warnings)]
+#![windows_subsystem = "windows"]
 //! Pulsar Engine Main Entry Point
 //!
 //! This file initializes the engine, sets up logging, loads configuration, handles app data,
@@ -117,4 +117,5 @@ fn main() {
     // --- Keep the log guard alive until the very end ---
     drop(_log_guard);
 }
+
 
