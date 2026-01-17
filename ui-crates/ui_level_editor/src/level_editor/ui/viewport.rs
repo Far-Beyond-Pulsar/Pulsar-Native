@@ -663,6 +663,7 @@ impl ViewportPanel {
 
         // Clone for scroll wheel handler
         let input_state_scroll = self.input_state.clone();
+        let mouse_right_captured = self.mouse_right_captured.clone();
         
         // Clone for left-click object selection
         let gpu_engine_for_click = gpu_engine.clone();
@@ -986,8 +987,18 @@ impl ViewportPanel {
                     .on_scroll_wheel(move |event: &gpui::ScrollWheelEvent, _phase, _cx| {
                         let scroll_delta: f32 = event.delta.pixel_delta(px(1.0)).y.into();
                         
-                        // Always zoom - simpler behavior
-                        input_state_scroll.set_zoom_delta(scroll_delta * 0.5);
+                        // Check if right-click is held (camera rotation mode)
+                        let is_rotating = mouse_right_captured.load(Ordering::Acquire);
+                        
+                        if is_rotating {
+                            // Right-click held: adjust camera move speed
+                            let speed_delta = scroll_delta * 0.5; // Scale for reasonable adjustment
+                            input_state_scroll.adjust_move_speed(speed_delta);
+                            tracing::debug!("[VIEWPORT] 🎮 Camera speed adjusted by {:.2}", speed_delta);
+                        } else {
+                            // Normal: zoom camera
+                            input_state_scroll.set_zoom_delta(scroll_delta * 0.5);
+                        }
                     })
                     .child(self.viewport.clone())
             )
