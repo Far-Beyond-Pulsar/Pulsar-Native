@@ -1,3 +1,8 @@
+//! Palette Data Structures
+//!
+//! This module contains the core data structures for palettes and palette items.
+//! Palettes hold items with rebindable callbacks that can be dynamically managed.
+
 use gpui::{App, Context, Window};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -6,7 +11,9 @@ use ui::IconName;
 use super::palette_manager::PaletteId;
 use super::palette_trait::PaletteItem;
 
-/// Unique identifier for an item within a palette
+/// Unique identifier for an item within a palette.
+///
+/// Used to reference specific items for rebinding callbacks or removal.
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub struct ItemId(usize);
 

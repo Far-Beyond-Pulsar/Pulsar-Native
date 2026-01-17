@@ -1,9 +1,16 @@
+//! Palette Manager - Global Registry for Command Palettes
+//!
+//! This module provides the central registry for managing command palette lifecycles.
+//! Palettes can be registered, retrieved, and unregistered by ID.
+
 use gpui::{App, AppContext as _, Entity, Global, WeakEntity, Window};
 use std::collections::HashMap;
 
 use super::palette_data::Palette;
 
-/// Unique identifier for a palette
+/// Unique identifier for a palette in the global registry.
+///
+/// Used to retrieve palettes after registration via `PaletteManager::get_palette()`.
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub struct PaletteId(usize);
 

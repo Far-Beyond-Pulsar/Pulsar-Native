@@ -1,3 +1,8 @@
+//! Palette View Delegate
+//!
+//! This module provides the bridge between the Palette data layer and the
+//! GenericPalette UI rendering component.
+
 use gpui::{App, AppContext as _, Entity};
 
 use super::palette_data::{ItemId, Palette, PaletteItemData};
