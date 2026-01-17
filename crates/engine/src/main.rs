@@ -117,5 +117,3 @@ fn main() {
     // --- Keep the log guard alive until the very end ---
     drop(_log_guard);
 }
-
-

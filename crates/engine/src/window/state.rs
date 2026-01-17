@@ -15,19 +15,19 @@
 //! │  - winit_window: Arc<WinitWindow>      │
 //! │  - gpui_app: Application               │
 //! │  - gpui_window: WindowHandle<Root>     │
-//! │                                         │
+//! │                                        │
 //! │ Event Tracking:                        │
 //! │  - last_cursor_position                │
 //! │  - motion_smoother                     │
 //! │  - current_modifiers                   │
 //! │  - pressed_mouse_buttons               │
 //! │  - click_state                         │
-//! │                                         │
+//! │                                        │
 //! │ D3D11 Rendering (Windows):             │
 //! │  - d3d_device, d3d_context             │
 //! │  - shared_texture, swap_chain          │
 //! │  - shaders, buffers                    │
-//! │                                         │
+//! │                                        │
 //! │ 3D Rendering:                          │
 //! │  - bevy_renderer (optional)            │
 //! └────────────────────────────────────────┘
@@ -70,110 +70,110 @@ use windows::Win32::Graphics::{Direct3D11::*, Dxgi::*};
 /// 5. Cleaned up when window closes
 pub struct WindowState {
     // ===== Core Window Components =====
-    
+
     /// Winit window handle (Arc for cheap cloning)
     pub winit_window: Arc<WinitWindow>,
-    
+
     /// GPUI application instance (independent per window)
     pub gpui_app: Application,
-    
+
     /// GPUI window handle (once initialized)
     pub gpui_window: Option<WindowHandle<Root>>,
-    
+
     /// Whether GPUI window has been initialized
     pub gpui_window_initialized: bool,
-    
+
     /// Whether this window needs to render on next frame
     pub needs_render: bool,
-    
+
     /// Type of window (Settings, ProjectEditor, etc.)
     pub window_type: Option<WindowRequest>,
 
     // ===== Event Tracking State =====
-    
+
     /// Last known cursor position (logical pixels)
     pub last_cursor_position: Point<Pixels>,
-    
+
     /// Motion smoother for high-quality mouse input
     pub motion_smoother: MotionSmoother,
-    
+
     /// Current keyboard modifier state
     pub current_modifiers: Modifiers,
-    
+
     /// Set of currently pressed mouse buttons
     pub pressed_mouse_buttons: HashSet<MouseButton>,
-    
+
     /// Click state tracker for double-click detection
     pub click_state: SimpleClickState,
 
     // ===== Direct3D 11 Rendering State (Windows only) =====
-    
+
     #[cfg(target_os = "windows")]
     /// D3D11 device for rendering
     pub d3d_device: Option<ID3D11Device>,
-    
+
     #[cfg(target_os = "windows")]
     /// D3D11 immediate context
     pub d3d_context: Option<ID3D11DeviceContext>,
-    
+
     #[cfg(target_os = "windows")]
     /// Shared texture from GPUI (for composition)
     pub shared_texture: Option<ID3D11Texture2D>,
-    
+
     #[cfg(target_os = "windows")]
     /// Whether shared texture has been initialized
     pub shared_texture_initialized: bool,
-    
+
     #[cfg(target_os = "windows")]
     /// Swap chain for presenting to window
     pub swap_chain: Option<IDXGISwapChain1>,
-    
+
     #[cfg(target_os = "windows")]
     /// Blend state for alpha compositing
     pub blend_state: Option<ID3D11BlendState>,
-    
+
     #[cfg(target_os = "windows")]
     /// Render target view (swap chain back buffer)
     pub render_target_view: Option<ID3D11RenderTargetView>,
-    
+
     #[cfg(target_os = "windows")]
     /// Vertex shader for fullscreen quad
     pub vertex_shader: Option<ID3D11VertexShader>,
-    
+
     #[cfg(target_os = "windows")]
     /// Pixel shader for texture sampling
     pub pixel_shader: Option<ID3D11PixelShader>,
-    
+
     #[cfg(target_os = "windows")]
     /// Vertex buffer for fullscreen quad
     pub vertex_buffer: Option<ID3D11Buffer>,
-    
+
     #[cfg(target_os = "windows")]
     /// Input layout for vertex shader
     pub input_layout: Option<ID3D11InputLayout>,
-    
+
     #[cfg(target_os = "windows")]
     /// Sampler state for texture filtering
     pub sampler_state: Option<ID3D11SamplerState>,
-    
+
     #[cfg(target_os = "windows")]
     /// Persistent GPUI texture (cached copy)
     pub persistent_gpui_texture: Option<ID3D11Texture2D>,
-    
+
     #[cfg(target_os = "windows")]
     /// Shader resource view for GPUI texture (cached)
     pub persistent_gpui_srv: Option<ID3D11ShaderResourceView>,
-    
+
     #[cfg(target_os = "windows")]
     /// Bevy 3D texture (if viewport active)
     pub bevy_texture: Option<ID3D11Texture2D>,
-    
+
     #[cfg(target_os = "windows")]
     /// Shader resource view for Bevy texture
     pub bevy_srv: Option<ID3D11ShaderResourceView>,
 
     // ===== 3D Rendering =====
-    
+
     /// Bevy renderer for this window (if it has a 3D viewport)
     pub bevy_renderer: Option<Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>>,
 }

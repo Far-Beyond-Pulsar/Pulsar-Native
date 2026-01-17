@@ -483,6 +483,7 @@ impl FileManagerDrawer {
                         tracing::info!("Added pattern to .gitignore");
                     }
                     
+                    
                     cx.notify();
                 }
             }

@@ -18,8 +18,8 @@
 //! ```text
 //! Raw Input → Update Target → Interpolate → Smoothed Position
 //!     ↓            ↓              ↓              ↓
-//!   Jumpy      Calculate      Apply         Smooth
-//!   Motion     Velocity       Easing        Motion
+//!   Jumpy       Calculate       Apply          Smooth
+//!   Motion      Velocity        Easing         Motion
 //! ```
 
 use gpui::*;
@@ -122,7 +122,7 @@ impl SimpleClickState {
     /// Click count: 1 for single click, 2 for double, 3 for triple, etc.
     pub fn update(&mut self, button: MouseButton, position: Point<Pixels>) -> usize {
         let now = Instant::now();
-        
+
         // Calculate distance using pixel operations
         let dx = (position.x - self.last_click_position.x).abs();
         let dy = (position.y - self.last_click_position.y).abs();
@@ -141,7 +141,7 @@ impl SimpleClickState {
         self.last_button = button;
         self.last_click_time = now;
         self.last_click_position = position;
-        
+
         self.current_count
     }
 }
@@ -170,7 +170,7 @@ impl Default for SimpleClickState {
 ///
 /// ```rust,ignore
 /// let mut smoother = MotionSmoother::new();
-/// 
+///
 /// // On mouse move
 /// smoother.update_target(new_position);
 /// if smoother.should_send_event() {
