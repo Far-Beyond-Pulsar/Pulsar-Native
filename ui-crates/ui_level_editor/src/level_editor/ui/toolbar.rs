@@ -228,16 +228,43 @@ impl ToolbarPanel {
                             .label(platform_label)
                             .tooltip("Target Platform")
                     )
-                    .popup_menu(move |menu, _window, _cx| {
+                    .popup_menu(move |menu, window, cx| {
                         menu
                             .label("Target Platform")
                             .separator()
-                            .menu_with_icon("Windows", IconName::Computer, Box::new(NoOpAction))
-                            .menu_with_icon("Linux", IconName::Linux, Box::new(NoOpAction))
-                            .menu_with_icon("macOS", IconName::Apple, Box::new(NoOpAction))
+                            .submenu_with_icon(Some(ui::Icon::new(IconName::Computer)), "Windows", window, cx, |menu, _, _| {
+                                menu
+                                    .menu_with_icon("x86_64 (64-bit)", IconName::CPU, Box::new(NoOpAction))
+                                    .menu_with_icon("x86 (32-bit)", IconName::CPU, Box::new(NoOpAction))
+                                    .menu_with_icon("ARM64", IconName::CPU, Box::new(NoOpAction))
+                            })
+                            .submenu_with_icon(Some(ui::Icon::new(IconName::Linux)), "Linux", window, cx, |menu, _, _| {
+                                menu
+                                    .menu_with_icon("x86_64", IconName::CPU, Box::new(NoOpAction))
+                                    .menu_with_icon("x86", IconName::CPU, Box::new(NoOpAction))
+                                    .menu_with_icon("ARM64", IconName::CPU, Box::new(NoOpAction))
+                                    .menu_with_icon("ARMv7", IconName::CPU, Box::new(NoOpAction))
+                            })
+                            .submenu_with_icon(Some(ui::Icon::new(IconName::Apple)), "macOS", window, cx, |menu, _, _| {
+                                menu
+                                    .menu_with_icon("Apple Silicon (ARM64)", IconName::CPU, Box::new(NoOpAction))
+                                    .menu_with_icon("Intel (x86_64)", IconName::CPU, Box::new(NoOpAction))
+                                    .menu_with_icon("Universal", IconName::CPU, Box::new(NoOpAction))
+                            })
                             .separator()
-                            .menu_with_icon("Android", IconName::Android, Box::new(NoOpAction))
-                            .menu_with_icon("iOS", IconName::Phone, Box::new(NoOpAction))
+                            .submenu_with_icon(Some(ui::Icon::new(IconName::Android)), "Android", window, cx, |menu, _, _| {
+                                menu
+                                    .menu_with_icon("ARM64-v8a", IconName::CPU, Box::new(NoOpAction))
+                                    .menu_with_icon("ARMv7", IconName::CPU, Box::new(NoOpAction))
+                                    .menu_with_icon("x86_64", IconName::CPU, Box::new(NoOpAction))
+                                    .menu_with_icon("x86", IconName::CPU, Box::new(NoOpAction))
+                            })
+                            .submenu_with_icon(Some(ui::Icon::new(IconName::Phone)), "iOS", window, cx, |menu, _, _| {
+                                menu
+                                    .menu_with_icon("ARM64 (Device)", IconName::CPU, Box::new(NoOpAction))
+                                    .menu_with_icon("ARM64 Simulator", IconName::CPU, Box::new(NoOpAction))
+                                    .menu_with_icon("Universal", IconName::CPU, Box::new(NoOpAction))
+                            })
                     })
             )
             .child(
