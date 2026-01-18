@@ -1192,38 +1192,44 @@ impl ViewportPanel {
                         .w(px(8.0))
                         .h_full()
                         .flex_shrink_0()
-                        .bg(cx.theme().background.opacity(0.9))
-                        .rounded_l(cx.theme().radius)
-                        .border_1()
-                        .border_color(cx.theme().border)
-                        .cursor(CursorStyle::PointingHand)
-                        .hover(|style| style.bg(cx.theme().background))
-                        .on_mouse_down(gpui::MouseButton::Left, {
-                            let state = state_arc.clone();
-                            move |event: &gpui::MouseDownEvent, _window, _cx| {
-                                let mut s = state.write();
-                                s.is_dragging_camera_overlay = true;
-                                let x: f32 = event.position.x.into();
-                                let y: f32 = event.position.y.into();
-                                s.camera_overlay_drag_start = Some((x, y));
-                            }
-                        })
+                        .py_1()
                         .child(
-                            // Grip dots - absolute positioned to fill height
                             div()
-                                .absolute()
-                                .top_0()
-                                .left_0()
-                                .right_0()
-                                .bottom_0()
-                                .flex()
-                                .flex_col()
-                                .items_center()
-                                .justify_center()
-                                .gap_0p5()
-                                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(gpui::white()))
-                                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(gpui::white()))
-                                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(gpui::white()))
+                                .w_full()
+                                .h_full()
+                                .bg(cx.theme().background.opacity(0.9))
+                                .rounded_l(cx.theme().radius)
+                                .border_1()
+                                .border_color(cx.theme().border)
+                                .cursor(CursorStyle::PointingHand)
+                                .hover(|style| style.bg(cx.theme().background))
+                                .on_mouse_down(gpui::MouseButton::Left, {
+                                    let state = state_arc.clone();
+                                    move |event: &gpui::MouseDownEvent, _window, _cx| {
+                                        let mut s = state.write();
+                                        s.is_dragging_camera_overlay = true;
+                                        let x: f32 = event.position.x.into();
+                                        let y: f32 = event.position.y.into();
+                                        s.camera_overlay_drag_start = Some((x, y));
+                                    }
+                                })
+                                .child(
+                                    // Grip dots - absolute positioned to fill height
+                                    div()
+                                        .absolute()
+                                        .top_0()
+                                        .left_0()
+                                        .right_0()
+                                        .bottom_0()
+                                        .flex()
+                                        .flex_col()
+                                        .items_center()
+                                        .justify_center()
+                                        .gap_0p5()
+                                        .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(gpui::white()))
+                                        .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(gpui::white()))
+                                        .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(gpui::white()))
+                                )
                         )
                 )
                 .child(
@@ -1377,13 +1383,13 @@ impl ViewportPanel {
             
             h_flex()
                 .gap_0()
-                .h(px(40.0))
+                .h(px(42.0))
                 .when(is_dragging, |f| f.cursor(CursorStyle::PointingHand))
                 .child(
                     // Drag handle (grip area)
                     div()
                         .relative()
-                        .w(px(8.0))
+                        .w(px(12.0))
                         .h_full()
                         .flex_shrink_0()
                         .bg(cx.theme().background.opacity(0.9))
