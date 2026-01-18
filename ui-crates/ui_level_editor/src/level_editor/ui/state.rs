@@ -128,7 +128,7 @@ impl Default for LevelEditorState {
             show_viewport_options: true,
             camera_mode_selector_collapsed: false,
             viewport_options_collapsed: false,
-            performance_overlay_collapsed: false,
+            performance_overlay_collapsed: true,
             gpu_pipeline_overlay_collapsed: false,
             fps_graph_is_line: true,
             // Performance metrics - default: Frame Time, GPU Memory, Input Latency
