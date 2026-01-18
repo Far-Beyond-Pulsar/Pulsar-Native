@@ -25,6 +25,7 @@ use gpui::*;
 use ui::bevy_viewport::BevyViewport;
 use ui::{h_flex, v_flex, ActiveTheme, StyledExt};
 use ui_common::ViewportControls;
+use ui::Sizable;
 
 use super::actions::*;
 use super::state::{CameraMode, LevelEditorState};
@@ -884,6 +885,40 @@ impl ViewportPanel {
                         gpu_engine,
                         cx,
                     )),
+            );
+        }
+
+        // Initialization overlay - show when renderer is still warming up (< 10 FPS)
+        if bevy_fps < 10.0 {
+            overlays = overlays.child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .bg(cx.theme().background.opacity(0.9))
+                    .child(
+                        v_flex()
+                            .gap_3()
+                            .items_center()
+                            .child(
+                                ui::spinner::Spinner::new()
+                                    .with_size(ui::Size::Large)
+                            )
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .text_color(cx.theme().foreground)
+                                    .child("Initializing 3D Renderer...")
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(format!("FPS: {:.1}", bevy_fps))
+                            )
+                    )
             );
         }
 

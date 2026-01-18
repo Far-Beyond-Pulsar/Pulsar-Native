@@ -72,6 +72,7 @@ pub mod scroll;
 pub mod sidebar;
 pub mod skeleton;
 pub mod slider;
+pub mod spinner;
 pub mod switch;
 pub mod tab;
 pub mod table;
