@@ -923,8 +923,44 @@ impl ViewportPanel {
                 let gpu_engine_move = gpu_engine_for_click.clone();
                 let element_bounds_move = element_bounds_for_click.clone();
                 let last_mouse_pos = Rc::new(RefCell::new(Option::<(f32, f32)>::None));
+                let state_arc_move = state_arc.clone();
                 
                 move |event: &gpui::MouseMoveEvent, _window, _cx| {
+                    // Handle overlay dragging first
+                    {
+                        let mut state = state_arc_move.write();
+                        
+                        // Camera overlay dragging (bottom-left, so invert Y)
+                        if state.is_dragging_camera_overlay {
+                            if let Some((start_x, start_y)) = state.camera_overlay_drag_start {
+                                let current_x: f32 = event.position.x.into();
+                                let current_y: f32 = event.position.y.into();
+                                let delta_x = current_x - start_x;
+                                let delta_y = current_y - start_y;
+                                
+                                state.camera_overlay_pos.0 = (state.camera_overlay_pos.0 + delta_x).max(0.0);
+                                state.camera_overlay_pos.1 = (state.camera_overlay_pos.1 - delta_y).max(0.0); // invert Y
+                                state.camera_overlay_drag_start = Some((current_x, current_y));
+                            }
+                            return; // Don't process viewport mouse when dragging overlay
+                        }
+                        
+                        // Viewport overlay dragging (top-left)
+                        if state.is_dragging_viewport_overlay {
+                            if let Some((start_x, start_y)) = state.viewport_overlay_drag_start {
+                                let current_x: f32 = event.position.x.into();
+                                let current_y: f32 = event.position.y.into();
+                                let delta_x = current_x - start_x;
+                                let delta_y = current_y - start_y;
+                                
+                                state.viewport_overlay_pos.0 = (state.viewport_overlay_pos.0 + delta_x).max(0.0);
+                                state.viewport_overlay_pos.1 = (state.viewport_overlay_pos.1 + delta_y).max(0.0);
+                                state.viewport_overlay_drag_start = Some((current_x, current_y));
+                            }
+                            return; // Don't process viewport mouse when dragging overlay
+                        }
+                    }
+                    
                     // Convert window to element coordinates
                     let bounds_opt = element_bounds_move.borrow();
                     let (element_x, element_y, viewport_width, viewport_height) = if let Some(ref bounds) = *bounds_opt {
@@ -965,10 +1001,18 @@ impl ViewportPanel {
                     }
                 }
             })
-            // Clear left_clicked flag on mouse up (so it's only true for one frame)
             .on_mouse_up(gpui::MouseButton::Left, {
                 let gpu_engine_up = gpu_engine_for_click.clone();
+                let state_arc_up = state_arc.clone();
                 move |_event: &gpui::MouseUpEvent, _window: &mut gpui::Window, _cx: &mut gpui::App| {
+                    // Stop dragging overlays
+                    let mut state = state_arc_up.write();
+                    state.is_dragging_camera_overlay = false;
+                    state.is_dragging_viewport_overlay = false;
+                    state.camera_overlay_drag_start = None;
+                    state.viewport_overlay_drag_start = None;
+                    drop(state);
+                    
                     if let Ok(engine) = gpu_engine_up.try_lock() {
                         if let Some(ref bevy_renderer) = engine.bevy_renderer {
                             let mut mouse_input = bevy_renderer.viewport_mouse_input.lock();
@@ -1020,13 +1064,14 @@ impl ViewportPanel {
             .when(state.show_viewport_options, |viewport_div| {
                 let state_arc_clone = state_arc.clone();
                 let (pos_x, pos_y) = state.viewport_overlay_pos;
+                let is_dragging_viewport = state.is_dragging_viewport_overlay;
                 viewport_div.child(
                     // Grid and rendering options (draggable from top-left)
                     div()
                         .absolute()
                         .top(px(pos_y))
                         .left(px(pos_x))
-                        .child(Self::render_viewport_options(state, state_arc_clone, cx))
+                        .child(Self::render_viewport_options(state, state_arc_clone, is_dragging_viewport, cx))
                 )
             });
 
@@ -1117,6 +1162,7 @@ impl ViewportPanel {
         collapsed: bool,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         input_state: InputState,
+        is_dragging: bool,
         cx: &mut Context<V>
     ) -> impl IntoElement
     where
@@ -1135,25 +1181,31 @@ impl ViewportPanel {
             // Expanded state - show full toolbar with camera speed controls and drag handle
             let current_speed = input_state.move_speed.load(Ordering::Relaxed) as f32 / 100.0;
             
-            let is_dragging = Rc::new(RefCell::new(false));
-            
             h_flex()
                 .gap_0()
+                .h(px(40.0))
+                .when(is_dragging, |f| f.cursor(CursorStyle::PointingHand))
                 .child(
                     // Drag handle (grip area)
                     div()
                         .relative()
                         .w(px(8.0))
+                        .h(px(40.0))
                         .flex_shrink_0()
                         .bg(cx.theme().border.opacity(0.5))
                         .rounded_l(cx.theme().radius)
                         .border_1()
                         .border_color(cx.theme().border)
+                        .cursor(CursorStyle::PointingHand)
                         .hover(|style| style.bg(cx.theme().border.opacity(0.7)))
                         .on_mouse_down(gpui::MouseButton::Left, {
-                            let dragging = is_dragging.clone();
-                            move |_event: &gpui::MouseDownEvent, _window, _cx| {
-                                *dragging.borrow_mut() = true;
+                            let state = state_arc.clone();
+                            move |event: &gpui::MouseDownEvent, _window, _cx| {
+                                let mut s = state.write();
+                                s.is_dragging_camera_overlay = true;
+                                let x: f32 = event.position.x.into();
+                                let y: f32 = event.position.y.into();
+                                s.camera_overlay_drag_start = Some((x, y));
                             }
                         })
                         .child(
@@ -1305,6 +1357,7 @@ impl ViewportPanel {
     fn render_viewport_options<V: 'static>(
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        is_dragging: bool,
         cx: &mut Context<V>
     ) -> impl IntoElement
     where
@@ -1321,57 +1374,44 @@ impl ViewportPanel {
                 .into_any_element()
         } else {
             // Expanded state - horizontal toolbar with toggles and additional controls, with drag handle
-            let drag_start_pos = Rc::new(RefCell::new(None::<(f32, f32, f32, f32)>)); // (start_mouse_x, start_mouse_y, start_overlay_x, start_overlay_y)
             
             h_flex()
                 .gap_0()
+                .h(px(40.0))
+                .when(is_dragging, |f| f.cursor(CursorStyle::PointingHand))
                 .child(
                     // Drag handle (grip area)
                     div()
+                        .relative()
                         .w(px(8.0))
-                        .h_full()
+                        .h(px(40.0))
+                        .flex_shrink_0()
                         .bg(cx.theme().border.opacity(0.5))
                         .rounded_l(cx.theme().radius)
                         .border_1()
                         .border_color(cx.theme().border)
+                        .cursor(CursorStyle::PointingHand)
                         .hover(|style| style.bg(cx.theme().border.opacity(0.7)))
                         .on_mouse_down(gpui::MouseButton::Left, {
-                            let drag_start = drag_start_pos.clone();
-                            let state_clone = state_arc.clone();
+                            let state = state_arc.clone();
                             move |event: &gpui::MouseDownEvent, _window, _cx| {
-                                let start_x = event.position.x.as_f32();
-                                let start_y = event.position.y.as_f32();
-                                let overlay_pos = state_clone.read().viewport_overlay_pos;
-                                *drag_start.borrow_mut() = Some((start_x, start_y, overlay_pos.0, overlay_pos.1));
-                            }
-                        })
-                        .on_mouse_move({
-                            let drag_start = drag_start_pos.clone();
-                            let state_clone = state_arc.clone();
-                            move |event: &gpui::MouseMoveEvent, _window, _cx| {
-                                if let Some((start_x, start_y, overlay_x, overlay_y)) = *drag_start.borrow() {
-                                    let delta_x = event.position.x.as_f32() - start_x;
-                                    let delta_y = event.position.y.as_f32() - start_y;
-                                    
-                                    let mut state = state_clone.write();
-                                    state.viewport_overlay_pos = (
-                                        (overlay_x + delta_x).max(0.0),
-                                        (overlay_y + delta_y).max(0.0), // top positioning, normal Y
-                                    );
-                                }
-                            }
-                        })
-                        .on_mouse_up(gpui::MouseButton::Left, {
-                            let drag_start = drag_start_pos.clone();
-                            move |_event: &gpui::MouseUpEvent, _window: &mut gpui::Window, _cx: &mut gpui::App| {
-                                *drag_start.borrow_mut() = None;
+                                let mut s = state.write();
+                                s.is_dragging_viewport_overlay = true;
+                                let x: f32 = event.position.x.into();
+                                let y: f32 = event.position.y.into();
+                                s.viewport_overlay_drag_start = Some((x, y));
                             }
                         })
                         .child(
-                            // Grip dots
-                            v_flex()
-                                .w_full()
-                                .h_full()
+                            // Grip dots - absolute positioned to fill height
+                            div()
+                                .absolute()
+                                .top_0()
+                                .left_0()
+                                .right_0()
+                                .bottom_0()
+                                .flex()
+                                .flex_col()
                                 .items_center()
                                 .justify_center()
                                 .gap_0p5()

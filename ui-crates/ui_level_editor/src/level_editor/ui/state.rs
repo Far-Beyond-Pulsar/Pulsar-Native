@@ -72,6 +72,11 @@ pub struct LevelEditorState {
     /// Overlay positions (in pixels from their default corners)
     pub camera_overlay_pos: (f32, f32),  // bottom-left overlay position
     pub viewport_overlay_pos: (f32, f32), // top-left overlay position
+    /// Dragging state for overlays
+    pub is_dragging_camera_overlay: bool,
+    pub is_dragging_viewport_overlay: bool,
+    pub camera_overlay_drag_start: Option<(f32, f32)>, // mouse position when drag started
+    pub viewport_overlay_drag_start: Option<(f32, f32)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -139,6 +144,10 @@ impl Default for LevelEditorState {
             hierarchy_drag_state: HierarchyDragState::None,
             camera_overlay_pos: (16.0, 16.0),  // default bottom-left position
             viewport_overlay_pos: (16.0, 16.0), // default top-left position
+            is_dragging_camera_overlay: false,
+            is_dragging_viewport_overlay: false,
+            camera_overlay_drag_start: None,
+            viewport_overlay_drag_start: None,
         }
     }
 }
