@@ -822,6 +822,34 @@ impl ViewportPanel {
             );
         }
 
+        // GPU Pipeline overlay - positions next to performance overlay if both visible
+        if state.show_gpu_pipeline_overlay {
+            let overlay_div = if state.show_performance_overlay {
+                // Position to the right of performance overlay
+                div()
+                    .absolute()
+                    .bottom_2()
+                    .left(px(420.0)) // 400px width + 20px gap
+            } else {
+                // Take performance overlay's position
+                div()
+                    .absolute()
+                    .bottom_2()
+                    .left_2()
+            };
+
+            overlays = overlays.child(
+                overlay_div
+                    .max_w(px(400.0))
+                    .child(render_gpu_pipeline_overlay(
+                        state,
+                        state_arc.clone(),
+                        gpu_engine,
+                        cx,
+                    )),
+            );
+        }
+
         overlays
     }
 }

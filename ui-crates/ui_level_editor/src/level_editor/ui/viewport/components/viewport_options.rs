@@ -112,6 +112,27 @@ where
                     div()
                         .text_xs()
                         .text_color(cx.theme().muted_foreground)
+                        .child("GPU"),
+                )
+                .child({
+                    let state_clone = state_arc.clone();
+                    Switch::new("toggle_gpu")
+                        .checked(state.show_gpu_pipeline_overlay)
+                        .on_click(move |checked, _, _| {
+                            state_clone
+                                .write()
+                                .set_show_gpu_pipeline_overlay(*checked);
+                        })
+                }),
+        )
+        .child(
+            h_flex()
+                .gap_1()
+                .items_center()
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
                         .child("Cam"),
                 )
                 .child({

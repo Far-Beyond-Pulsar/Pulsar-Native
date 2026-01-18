@@ -47,6 +47,7 @@ pub struct LevelEditorState {
     pub show_lighting: bool,
     pub show_grid: bool,
     pub show_performance_overlay: bool,
+    pub show_gpu_pipeline_overlay: bool,
     pub show_camera_mode_selector: bool,
     pub show_viewport_options: bool,
     /// Collapsed state for overlays (when X is clicked, overlay collapses to a button)
@@ -124,6 +125,7 @@ impl Default for LevelEditorState {
             show_lighting: true,
             show_grid: true,
             show_performance_overlay: false,
+            show_gpu_pipeline_overlay: false,
             show_camera_mode_selector: true,
             show_viewport_options: true,
             camera_mode_selector_collapsed: false,
@@ -415,6 +417,10 @@ impl LevelEditorState {
 
     pub fn set_show_performance_overlay(&mut self, show: bool) {
         self.show_performance_overlay = show;
+    }
+
+    pub fn set_show_gpu_pipeline_overlay(&mut self, show: bool) {
+        self.show_gpu_pipeline_overlay = show;
     }
 
     pub fn set_show_camera_mode_selector(&mut self, show: bool) {
