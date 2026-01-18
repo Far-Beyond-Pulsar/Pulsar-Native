@@ -1415,6 +1415,7 @@ impl ViewportPanel {
                                 .items_center()
                                 .justify_center()
                                 .gap_0p5()
+                                // TODO: Wouldn't hurt to have an SVG for this
                                 .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(gpui::white()))
                                 .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(gpui::white()))
                                 .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(gpui::white()))
