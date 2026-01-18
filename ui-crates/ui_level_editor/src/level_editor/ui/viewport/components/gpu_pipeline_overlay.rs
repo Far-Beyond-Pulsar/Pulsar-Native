@@ -71,16 +71,14 @@ where
         .map(|this| {
             if let Some(ref data) = gpu_data {
                 // Calculate passes and percentages
-                let total_ms = data.total_gpu_ms.max(0.01);
-                let mut render_passes: Vec<_> = data
+                let mut render_passes: Vec<&engine_backend::subsystems::render::DiagnosticMetric> = data
                     .render_metrics
                     .iter()
-                    .filter(|metric| metric.path.starts_with("render/") && metric.value_ms > 0.0)
-                    .map(|m| (m.name.replace("render/", ""), m.value_ms))
+                    .filter(|metric| metric.is_gpu && metric.value_ms > 0.0)
                     .collect();
 
                 render_passes.sort_by(|a, b| {
-                    b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
+                    b.value_ms.partial_cmp(&a.value_ms).unwrap_or(std::cmp::Ordering::Equal)
                 });
 
                 this.child(
@@ -133,11 +131,11 @@ where
                                 .child(
                                     v_flex()
                                         .gap_0p5()
-                                        .children(render_passes.iter().enumerate().map(|(i, (name, time_ms))| {
+                                        .children(render_passes.iter().enumerate().map(|(i, metric)| {
                                             let color_idx = i % PASS_COLORS.len();
                                             let (r, g, b) = PASS_COLORS[color_idx];
                                             let color = hsla(r, g, b, 1.0);
-                                            let percent = (time_ms / total_ms) * 100.0;
+                                            let percent = metric.percentage;
 
                                             h_flex()
                                                 .w_full()
@@ -163,7 +161,9 @@ where
                                                         .overflow_hidden()
                                                         .text_xs()
                                                         .text_color(muted)
-                                                        .child(name.clone())
+                                                        .line_height(relative(1.0))
+                                                        .whitespace_nowrap()
+                                                        .child(metric.name.clone())
                                                 )
                                                 .child(
                                                     // Time
@@ -173,7 +173,7 @@ where
                                                         .text_right()
                                                         .text_xs()
                                                         .text_color(foreground)
-                                                        .child(format!("{:.2}ms", time_ms))
+                                                        .child(format!("{:.2}ms", metric.value_ms))
                                                 )
                                                 .child(
                                                     // Percentage
