@@ -1,21 +1,22 @@
 use gpui::*;
 use ui::{
-    button::{Button, ButtonVariants as _}, h_flex, v_flex, ActiveTheme, IconName, Selectable, Sizable,
-    popover_menu::{PopoverMenu, PopoverMenuHandle, PopoverTrigger},
+    button::{Button, ButtonVariants as _, DropdownButton}, 
+    h_flex, v_flex, ActiveTheme, IconName, Selectable, Sizable,
+    popup_menu::PopupMenuExt,
 };
 use std::sync::Arc;
 
-use super::state::{LevelEditorState, TransformTool};
+use super::state::{LevelEditorState, TransformTool, MultiplayerMode, BuildConfig, TargetPlatform};
 use crate::level_editor::scene_database::{ObjectType, MeshType, LightType};
 
 /// Toolbar - Game management and quick actions
 /// 
 /// This toolbar sits above the viewport and provides controls for:
 /// - Play/pause/stop simulation
-/// - Multiplayer server management
-/// - Physics and simulation settings
-/// - Time scale and step controls
-/// - Build and deployment
+/// - Time scale controls
+/// - Multiplayer server management  
+/// - Build configuration and deployment
+/// - Performance profiling
 pub struct ToolbarPanel;
 
 impl ToolbarPanel {
@@ -38,13 +39,13 @@ impl ToolbarPanel {
             .border_color(cx.theme().border)
             .child(self.render_playback_controls(state, state_arc.clone(), cx))
             .child(self.render_separator(cx))
-            .child(self.render_simulation_controls(state, state_arc.clone(), cx))
+            .child(self.render_time_scale_dropdown(state, state_arc.clone(), cx))
             .child(self.render_separator(cx))
-            .child(self.render_multiplayer_controls(state, state_arc.clone(), cx))
+            .child(self.render_multiplayer_dropdown(state, state_arc.clone(), cx))
             .child(self.render_separator(cx))
-            .child(self.render_build_controls(state, state_arc.clone(), cx))
+            .child(self.render_build_dropdown(state, state_arc.clone(), cx))
             .child(div().flex_1())
-            .child(self.render_profiling_controls(state, state_arc.clone(), cx))
+            .child(self.render_profiling_button(state, state_arc.clone(), cx))
     }
 
     fn render_separator<V: 'static>(&self, cx: &mut Context<V>) -> impl IntoElement {
@@ -84,7 +85,6 @@ impl ToolbarPanel {
                 }
             })
             .child({
-                let state_clone = state_arc.clone();
                 Button::new("pause")
                     .icon(IconName::Pause)
                     .tooltip("Pause Simulation (F6)")
@@ -111,18 +111,9 @@ impl ToolbarPanel {
                         .into_any_element()
                 }
             })
-            .child(
-                Button::new("step")
-                    .icon(IconName::StepForward)
-                    .tooltip("Step One Frame (F10)")
-                    .ghost()
-                    .on_click(|_, _, _| {
-                        // TODO: Implement frame step
-                    })
-            )
     }
 
-    fn render_simulation_controls<V: 'static>(
+    fn render_time_scale_dropdown<V: 'static>(
         &self,
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
@@ -131,44 +122,30 @@ impl ToolbarPanel {
     where
         V: EventEmitter<ui::dock::PanelEvent> + Render,
     {
-        h_flex()
-            .gap_1()
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("Sim:")
-            )
-            .child(
-                Button::new("physics_menu")
-                    .icon(IconName::Atom)
-                    .tooltip("Physics Settings")
-                    .ghost()
-                    .on_click(|_, _, _| {
-                        // TODO: Open physics settings menu
-                    })
-            )
-            .child(
-                Button::new("timescale_menu")
-                    .text("1.0x")
+        let time_scale = state.game_time_scale;
+        let time_scale_label = format!("{}x", time_scale);
+        
+        DropdownButton::new("time_scale_dropdown")
+            .button(
+                Button::new("time_scale_button")
+                    .label(&time_scale_label)
+                    .icon(IconName::Clock)
                     .tooltip("Time Scale")
-                    .ghost()
-                    .on_click(|_, _, _| {
-                        // TODO: Open time scale menu (0.25x, 0.5x, 1x, 2x, 5x)
-                    })
             )
-            .child(
-                Button::new("fixed_timestep")
-                    .text("60Hz")
-                    .tooltip("Fixed Timestep Rate")
-                    .ghost()
-                    .on_click(|_, _, _| {
-                        // TODO: Open timestep menu
-                    })
-            )
+            .popup_menu(move |menu, _window, _cx| {
+                // For now, just close the menu - we'll wire up the actual state changes later
+                menu
+                    .label("Select Time Scale")
+                    .separator()
+                    .link("0.25x", "")
+                    .link("0.5x", "")
+                    .link("1.0x (Normal)", "")
+                    .link("2.0x", "")
+                    .link("4.0x", "")
+            })
     }
 
-    fn render_multiplayer_controls<V: 'static>(
+    fn render_multiplayer_dropdown<V: 'static>(
         &self,
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
@@ -177,53 +154,30 @@ impl ToolbarPanel {
     where
         V: EventEmitter<ui::dock::PanelEvent> + Render,
     {
-        h_flex()
-            .gap_1()
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("MP:")
+        let mode_label = match state.multiplayer_mode {
+            MultiplayerMode::Offline => "Offline",
+            MultiplayerMode::Host => "Hosting",
+            MultiplayerMode::Client => "Client",
+        };
+        
+        DropdownButton::new("multiplayer_dropdown")
+            .button(
+                Button::new("multiplayer_button")
+                    .label(mode_label)
+                    .icon(IconName::Network)
+                    .tooltip("Multiplayer Mode")
             )
-            .child(
-                Button::new("mp_server")
-                    .icon(IconName::Server)
-                    .tooltip("Start Multiplayer Server")
-                    .ghost()
-                    .on_click(|_, _, _| {
-                        // TODO: Start server
-                    })
-            )
-            .child(
-                Button::new("mp_client")
-                    .icon(IconName::Link)
-                    .tooltip("Connect as Client")
-                    .ghost()
-                    .on_click(|_, _, _| {
-                        // TODO: Connect to server
-                    })
-            )
-            .child(
-                Button::new("mp_status")
-                    .text("Offline")
-                    .tooltip("Network Status")
-                    .ghost()
-                    .on_click(|_, _, _| {
-                        // TODO: Show network stats
-                    })
-            )
-            .child(
-                Button::new("mp_settings")
-                    .icon(IconName::Settings)
-                    .tooltip("Multiplayer Settings")
-                    .ghost()
-                    .on_click(|_, _, _| {
-                        // TODO: Open MP settings (tick rate, lag compensation, etc)
-                    })
-            )
+            .popup_menu(move |menu, _window, _cx| {
+                menu
+                    .label("Multiplayer Mode")
+                    .separator()
+                    .link("Offline", "")
+                    .link("Host Server", "")
+                    .link("Connect as Client", "")
+            })
     }
 
-    fn render_build_controls<V: 'static>(
+    fn render_build_dropdown<V: 'static>(
         &self,
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
@@ -232,53 +186,71 @@ impl ToolbarPanel {
     where
         V: EventEmitter<ui::dock::PanelEvent> + Render,
     {
+        let config_label = match state.build_config {
+            BuildConfig::Debug => "Debug",
+            BuildConfig::Release => "Release",
+            BuildConfig::Shipping => "Shipping",
+        };
+        
+        let platform_label = match state.target_platform {
+            TargetPlatform::Windows => "Windows",
+            TargetPlatform::Linux => "Linux",
+            TargetPlatform::MacOS => "macOS",
+            TargetPlatform::Web => "Web",
+            TargetPlatform::Android => "Android",
+            TargetPlatform::IOS => "iOS",
+        };
+        
         h_flex()
             .gap_1()
             .child(
-                div()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("Build:")
-            )
-            .child(
-                Button::new("build_config")
-                    .text("Debug")
-                    .tooltip("Build Configuration")
-                    .ghost()
-                    .on_click(|_, _, _| {
-                        // TODO: Switch build config (Debug/Release/Shipping)
+                DropdownButton::new("build_config_dropdown")
+                    .button(
+                        Button::new("build_config_button")
+                            .label(config_label)
+                            .tooltip("Build Configuration")
+                    )
+                    .popup_menu(move |menu, _window, _cx| {
+                        menu
+                            .label("Build Configuration")
+                            .separator()
+                            .link("Debug (Fast Compile)", "")
+                            .link("Release (Optimized)", "")
+                            .link("Shipping (Final)", "")
                     })
             )
             .child(
-                Button::new("build_platform")
-                    .text("Windows")
-                    .tooltip("Target Platform")
-                    .ghost()
-                    .on_click(|_, _, _| {
-                        // TODO: Select platform
+                DropdownButton::new("platform_dropdown")
+                    .button(
+                        Button::new("platform_button")
+                            .label(platform_label)
+                            .tooltip("Target Platform")
+                    )
+                    .popup_menu(move |menu, _window, _cx| {
+                        menu
+                            .label("Target Platform")
+                            .separator()
+                            .link("Windows", "")
+                            .link("Linux", "")
+                            .link("macOS", "")
+                            .separator()
+                            .link("Web (WASM)", "")
+                            .separator()
+                            .link("Android", "")
+                            .link("iOS", "")
                     })
             )
             .child(
-                Button::new("build_run")
-                    .icon(IconName::Rocket)
-                    .tooltip("Build & Run Standalone")
-                    .ghost()
-                    .on_click(|_, _, _| {
-                        // TODO: Build and launch
-                    })
-            )
-            .child(
-                Button::new("build_package")
+                Button::new("build_deploy")
                     .icon(IconName::Package)
-                    .tooltip("Package for Distribution")
-                    .ghost()
-                    .on_click(|_, _, _| {
-                        // TODO: Open packaging dialog
+                    .tooltip("Build & Deploy")
+                    .on_click(move |_, _, _| {
+                        // TODO: Trigger build
                     })
             )
     }
 
-    fn render_profiling_controls<V: 'static>(
+    fn render_profiling_button<V: 'static>(
         &self,
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
@@ -287,34 +259,13 @@ impl ToolbarPanel {
     where
         V: EventEmitter<ui::dock::PanelEvent> + Render,
     {
-        h_flex()
-            .gap_1()
-            .child(
-                Button::new("profiler")
-                    .icon(IconName::Activity)
-                    .tooltip("Open Profiler")
-                    .ghost()
-                    .on_click(|_, _, _| {
-                        // TODO: Open profiler window
-                    })
-            )
-            .child(
-                Button::new("memory_profiler")
-                    .icon(IconName::Database)
-                    .tooltip("Memory Profiler")
-                    .ghost()
-                    .on_click(|_, _, _| {
-                        // TODO: Open memory profiler
-                    })
-            )
-            .child(
-                Button::new("network_profiler")
-                    .icon(IconName::TrendingUp)
-                    .tooltip("Network Profiler")
-                    .ghost()
-                    .on_click(|_, _, _| {
-                        // TODO: Open network stats
-                    })
-            )
+        let state_clone = state_arc.clone();
+        Button::new("toggle_profiling")
+            .icon(IconName::Activity)
+            .tooltip("Toggle Performance Overlay")
+            .selected(state.show_performance_overlay)
+            .on_click(move |_, _, _| {
+                state_clone.write().show_performance_overlay = !state_clone.read().show_performance_overlay;
+            })
     }
 }

@@ -80,6 +80,36 @@ pub struct LevelEditorState {
     pub viewport_overlay_drag_start: Option<(f32, f32)>,
     /// Camera movement speed (shared between UI and input)
     pub camera_move_speed: f32,
+    /// Game control toolbar state
+    pub game_time_scale: f32,
+    pub game_target_fps: u32,
+    pub multiplayer_mode: MultiplayerMode,
+    pub build_config: BuildConfig,
+    pub target_platform: TargetPlatform,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MultiplayerMode {
+    Offline,
+    Host,
+    Client,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BuildConfig {
+    Debug,
+    Release,
+    Shipping,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TargetPlatform {
+    Windows,
+    Linux,
+    MacOS,
+    Android,
+    IOS,
+    Web,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -153,6 +183,11 @@ impl Default for LevelEditorState {
             camera_overlay_drag_start: None,
             viewport_overlay_drag_start: None,
             camera_move_speed: 10.0,
+            game_time_scale: 1.0,
+            game_target_fps: 60,
+            multiplayer_mode: MultiplayerMode::Offline,
+            build_config: BuildConfig::Debug,
+            target_platform: TargetPlatform::Windows,
         }
     }
 }
