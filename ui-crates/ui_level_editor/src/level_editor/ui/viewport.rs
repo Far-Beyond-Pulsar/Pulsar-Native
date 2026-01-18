@@ -1430,6 +1430,7 @@ impl ViewportPanel {
                 .child(
                     // Main toolbar content
                     h_flex()
+                        .h_full() // Ensure toolbar matches drag handle height
                         .gap_2()
                         .p_1()
                         .bg(cx.theme().background.opacity(0.9))

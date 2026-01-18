@@ -284,17 +284,27 @@ impl QuicServer {
         Ok(())
     }
 
-    /// Configure QUIC server with TLS
+    /// Configure QUIC server with TLS and post-quantum key exchange
     fn configure_server(
         cert_chain: Vec<CertificateDer<'static>>,
         private_key: PrivateKeyDer<'static>,
     ) -> Result<ServerConfig> {
-        let mut crypto = rustls::ServerConfig::builder()
+        let provider = rustls::crypto::CryptoProvider {
+            cipher_suites: rustls::crypto::aws_lc_rs::default_provider().cipher_suites.clone(),
+            kx_groups: rustls_post_quantum::provider().kx_groups.clone(),
+            ..rustls::crypto::aws_lc_rs::default_provider()
+        };
+
+        let mut crypto = rustls::ServerConfig::builder_with_provider(Arc::new(provider))
+            .with_safe_default_protocol_versions()
+            .context("Failed to set protocol versions")?
             .with_no_client_auth()
             .with_single_cert(cert_chain, private_key)
             .context("Failed to configure TLS")?;
 
         crypto.alpn_protocols = vec![b"pulsar-multiedit".to_vec()];
+
+        info!("Post-quantum key exchange enabled (X25519MLKEM768)");
 
         let mut config = ServerConfig::with_crypto(Arc::new(
             quinn::crypto::rustls::QuicServerConfig::try_from(crypto)
@@ -349,12 +359,19 @@ impl QuicServer {
         Ok((certs, key))
     }
 
-    /// Create a QUIC client endpoint for P2P connections
+    /// Create a QUIC client endpoint for P2P connections with post-quantum key exchange
     pub async fn create_p2p_endpoint(bind_addr: SocketAddr) -> Result<Endpoint> {
         let mut endpoint = Endpoint::client(bind_addr).context("Failed to create client endpoint")?;
 
-        // Configure client with insecure verification for P2P (peers verify via other means)
-        let crypto = rustls::ClientConfig::builder()
+        let provider = rustls::crypto::CryptoProvider {
+            cipher_suites: rustls::crypto::aws_lc_rs::default_provider().cipher_suites.clone(),
+            kx_groups: rustls_post_quantum::provider().kx_groups.clone(),
+            ..rustls::crypto::aws_lc_rs::default_provider()
+        };
+
+        let crypto = rustls::ClientConfig::builder_with_provider(Arc::new(provider))
+            .with_safe_default_protocol_versions()
+            .unwrap()
             .dangerous()
             .with_custom_certificate_verifier(Arc::new(SkipServerVerification))
             .with_no_client_auth();

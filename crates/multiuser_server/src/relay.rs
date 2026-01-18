@@ -159,8 +159,25 @@ impl RelayServer {
             (vec![cert_der], key_der.into())
         };
 
-        let mut server_config = ServerConfig::with_single_cert(cert, key)
-            .context("Failed to create server config")?;
+        let provider = rustls::crypto::CryptoProvider {
+            cipher_suites: rustls::crypto::aws_lc_rs::default_provider().cipher_suites.clone(),
+            kx_groups: rustls_post_quantum::provider().kx_groups.clone(),
+            ..rustls::crypto::aws_lc_rs::default_provider()
+        };
+
+        let crypto = rustls::ServerConfig::builder_with_provider(Arc::new(provider))
+            .with_safe_default_protocol_versions()
+            .context("Failed to set protocol versions")?
+            .with_no_client_auth()
+            .with_single_cert(cert, key)
+            .context("Failed to configure TLS")?;
+
+        info!("Relay server using post-quantum key exchange (X25519MLKEM768)");
+
+        let mut server_config = ServerConfig::with_crypto(Arc::new(
+            quinn::crypto::rustls::QuicServerConfig::try_from(crypto)
+                .context("Failed to create QUIC crypto config")?,
+        ));
 
         // Configure transport parameters
         let mut transport = quinn::TransportConfig::default();
