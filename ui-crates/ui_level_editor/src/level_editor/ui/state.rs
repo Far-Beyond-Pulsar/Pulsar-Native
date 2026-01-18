@@ -78,6 +78,8 @@ pub struct LevelEditorState {
     pub is_dragging_viewport_overlay: bool,
     pub camera_overlay_drag_start: Option<(f32, f32)>, // mouse position when drag started
     pub viewport_overlay_drag_start: Option<(f32, f32)>,
+    /// Camera movement speed (shared between UI and input)
+    pub camera_move_speed: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -150,6 +152,7 @@ impl Default for LevelEditorState {
             is_dragging_viewport_overlay: false,
             camera_overlay_drag_start: None,
             viewport_overlay_drag_start: None,
+            camera_move_speed: 10.0,
         }
     }
 }
@@ -429,5 +432,9 @@ impl LevelEditorState {
 
     pub fn set_show_viewport_options(&mut self, show: bool) {
         self.show_viewport_options = show;
+    }
+
+    pub fn adjust_camera_move_speed(&mut self, delta: f32) {
+        self.camera_move_speed = (self.camera_move_speed + delta).clamp(0.5, 100.0);
     }
 }

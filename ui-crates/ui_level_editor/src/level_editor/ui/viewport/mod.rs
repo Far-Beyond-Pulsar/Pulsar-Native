@@ -61,7 +61,7 @@ pub struct ViewportPanel {
     metrics: RefCell<PerformanceMetrics>,
 
     /// Lock-free input state
-    input_state: InputState,
+    input_state: Arc<InputState>,
 
     /// Input thread spawn tracking
     input_thread_spawned: Arc<AtomicBool>,
@@ -100,7 +100,7 @@ impl ViewportPanel {
     where
         V: 'static,
     {
-        let input_state = InputState::new();
+        let input_state = Arc::new(InputState::new());
         let focus_handle = cx.focus_handle();
 
         Self {
@@ -366,7 +366,7 @@ impl ViewportPanel {
                     input.pan_delta_y = py;
 
                     input.zoom_delta = self.input_state.take_zoom_delta();
-                    input.move_speed = self.input_state.get_move_speed();
+                    input.move_speed = state.camera_move_speed;
                 }
             }
         }
@@ -418,6 +418,7 @@ impl ViewportPanel {
         let gpu_engine_for_click = gpu_engine.clone();
         let element_bounds_for_prepaint = self.element_bounds.clone();
         let element_bounds_for_click = self.element_bounds.clone();
+        let state_arc_scroll = state_arc.clone();
         let gpu_engine_clone = gpu_engine.clone();
         let locked_cursor_x = self.locked_cursor_x.clone();
         let locked_cursor_y = self.locked_cursor_y.clone();
@@ -719,10 +720,8 @@ impl ViewportPanel {
                         
                         if is_rotating {
                             // Adjust camera movement speed when holding right-click
-                            let speed_delta = scroll_delta * 2.0; // More noticeable adjustment
-                            input_state_scroll.adjust_move_speed(speed_delta);
-                            let new_speed = input_state_scroll.get_move_speed();
-                            tracing::info!("[VIEWPORT] 🎮 Camera speed adjusted: {:.2} (delta: {:.2})", new_speed, speed_delta);
+                            let speed_delta = scroll_delta * 2.0;
+                            state_arc_scroll.write().adjust_camera_move_speed(speed_delta);
                         } else {
                             // Normal zoom behavior when not holding right-click
                             input_state_scroll.set_zoom_delta(scroll_delta * 0.5);
@@ -786,8 +785,7 @@ impl ViewportPanel {
                         state,
                         state_arc.clone(),
                         state.camera_mode,
-                        self.input_state.get_move_speed(),
-                        Arc::new(self.input_state.clone()),
+                        self.input_state.clone(),
                         state.is_dragging_camera_overlay,
                         cx,
                     )),

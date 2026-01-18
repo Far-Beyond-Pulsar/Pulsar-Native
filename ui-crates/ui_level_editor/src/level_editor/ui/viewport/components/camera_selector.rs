@@ -77,7 +77,6 @@ fn camera_mode_buttons(
 
 /// Render camera speed controls.
 fn camera_speed_controls<S, V: 'static>(
-    current_speed: f32,
     input_state: Arc<S>,
     cx: &Context<V>,
 ) -> impl IntoElement
@@ -86,6 +85,8 @@ where
     S: CameraSpeedControl,
     V: Render,
 {
+    let current_speed = input_state.get_move_speed();
+    
     h_flex()
         .gap_1()
         .items_center()
@@ -129,6 +130,7 @@ where
 /// Trait for camera speed control.
 pub trait CameraSpeedControl {
     fn adjust_move_speed(&self, delta: f32);
+    fn get_move_speed(&self) -> f32;
 }
 
 /// Render the complete camera mode selector overlay.
@@ -136,7 +138,6 @@ pub fn render_camera_selector<V, S>(
     state: &LevelEditorState,
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     camera_mode: CameraMode,
-    current_speed: f32,
     input_state: Arc<S>,
     is_dragging: bool,
     cx: &mut Context<V>,
@@ -169,7 +170,7 @@ where
         .items_center()
         .child(camera_mode_buttons(state_arc.clone(), camera_mode))
         .child(div().h(px(20.0)).w_px().bg(cx.theme().border))
-        .child(camera_speed_controls(current_speed, input_state, cx))
+        .child(camera_speed_controls(input_state.clone(), cx))
         .child(
             Button::new("collapse_camera_mode")
                 .icon(IconName::X)

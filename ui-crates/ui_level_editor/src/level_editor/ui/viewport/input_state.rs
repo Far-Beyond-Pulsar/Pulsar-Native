@@ -3,10 +3,13 @@
 //! This module provides atomic-based input state tracking with zero mutex contention,
 //! enabling high-performance camera controls with latency tracking.
 
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use super::components::camera_selector::CameraSpeedControl;
+
+const MIN_MOVE_SPEED: f32 = 1.0;
+const MAX_MOVE_SPEED: f32 = 100.0;
 
 /// Lock-free input state using atomics - no mutex contention!
 #[derive(Clone)]
@@ -28,12 +31,12 @@ pub struct InputState {
     pub pan_delta_y: Arc<AtomicI32>,
     pub zoom_delta: Arc<AtomicI32>,
 
-    // Move speed adjustment
-    pub move_speed: Arc<AtomicI32>, // * 100 for precision
-
     // Input latency tracking (measured on input thread)
     // Stores microseconds since last input was received, as i64
     pub input_latency_us: Arc<AtomicU64>,
+    
+    // Camera move speed (stored as u32 bits for atomic access)
+    pub move_speed: Arc<AtomicU32>,
 }
 
 impl InputState {
@@ -51,8 +54,8 @@ impl InputState {
             pan_delta_x: Arc::new(AtomicI32::new(0)),
             pan_delta_y: Arc::new(AtomicI32::new(0)),
             zoom_delta: Arc::new(AtomicI32::new(0)),
-            move_speed: Arc::new(AtomicI32::new(2000)), // 20.0 * 100
             input_latency_us: Arc::new(AtomicU64::new(0)),
+            move_speed: Arc::new(AtomicU32::new(10.0_f32.to_bits())),
         }
     }
 
@@ -76,11 +79,6 @@ impl InputState {
     pub fn set_zoom_delta(&self, z: f32) {
         self.zoom_delta
             .store((z * 1000.0) as i32, Ordering::Relaxed);
-    }
-
-    /// Get current move speed.
-    pub fn get_move_speed(&self) -> f32 {
-        self.move_speed.load(Ordering::Relaxed) as f32 / 100.0
     }
 
     /// Get forward movement state.
@@ -170,18 +168,22 @@ impl InputState {
     }
 }
 
-impl CameraSpeedControl for InputState {
-    fn adjust_move_speed(&self, delta: f32) {
-        let current = self.move_speed.load(Ordering::Relaxed) as f32 / 100.0;
-        let new_speed = (current + delta).clamp(0.5, 100.0);
-        tracing::info!("[INPUT_STATE] 🔧 adjust_move_speed called: current={:.2}, delta={:.2}, new={:.2}", current, delta, new_speed);
-        self.move_speed
-            .store((new_speed * 100.0) as i32, Ordering::Relaxed);
-    }
-}
+
 
 impl Default for InputState {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl CameraSpeedControl for InputState {
+    fn get_move_speed(&self) -> f32 {
+        f32::from_bits(self.move_speed.load(Ordering::Relaxed))
+    }
+
+    fn adjust_move_speed(&self, delta: f32) {
+        let current = f32::from_bits(self.move_speed.load(Ordering::Relaxed));
+        let new_speed = (current + delta).max(MIN_MOVE_SPEED).min(MAX_MOVE_SPEED);
+        self.move_speed.store(new_speed.to_bits(), Ordering::Relaxed);
     }
 }
