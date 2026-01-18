@@ -174,6 +174,7 @@ impl CameraSpeedControl for InputState {
     fn adjust_move_speed(&self, delta: f32) {
         let current = self.move_speed.load(Ordering::Relaxed) as f32 / 100.0;
         let new_speed = (current + delta).clamp(0.5, 100.0);
+        tracing::info!("[INPUT_STATE] 🔧 adjust_move_speed called: current={:.2}, delta={:.2}, new={:.2}", current, delta, new_speed);
         self.move_speed
             .store((new_speed * 100.0) as i32, Ordering::Relaxed);
     }
