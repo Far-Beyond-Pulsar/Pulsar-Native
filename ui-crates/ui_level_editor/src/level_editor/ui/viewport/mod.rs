@@ -672,10 +672,13 @@ impl ViewportPanel {
                     .on_scroll_wheel(move |event: &gpui::ScrollWheelEvent, _phase, _cx| {
                         let scroll_delta: f32 = event.delta.pixel_delta(px(1.0)).y.into();
                         let is_rotating = mouse_right_captured.load(Ordering::Acquire);
+                        
+                        tracing::debug!("[VIEWPORT] 🖱️ Scroll event: delta={:.2}, right_captured={}", scroll_delta, is_rotating);
 
                         if is_rotating {
                             let speed_delta = scroll_delta * 0.5;
                             input_state_scroll.adjust_move_speed(speed_delta);
+                            tracing::debug!("[VIEWPORT] 🎮 Adjusted camera speed by {:.2}", speed_delta);
                         } else {
                             input_state_scroll.set_zoom_delta(scroll_delta * 0.5);
                         }
