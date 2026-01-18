@@ -25,6 +25,7 @@ use super::gizmos::rendering::{
 use super::interaction::viewport::{
     ViewportMouseInput, GizmoInteractionState, ActiveRaycastTask,
     viewport_click_initiate_raycast_system, viewport_poll_raycast_system, gizmo_drag_system,
+    clear_viewport_input_system,
 };
 
 /// Renderer state
@@ -192,6 +193,7 @@ impl BevyRenderer {
             .add_systems(Update, viewport_click_initiate_raycast_system) // FULLY ASYNC: Spawn Bevy worker task
             .add_systems(Update, viewport_poll_raycast_system)     // FULLY ASYNC: Poll result from worker
             .add_systems(Update, gizmo_drag_system)                // Gizmo dragging for object manipulation
+            .add_systems(Last, clear_viewport_input_system)        // Clear input flags at end of frame
             // Rendering systems - run last
             .add_systems(Update, update_metrics_system)            // Track FPS and frame times
             .add_systems(Update, update_gpu_profiler_system)       // Extract GPU profiler data from Bevy diagnostics

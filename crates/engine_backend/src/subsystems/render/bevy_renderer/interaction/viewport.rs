@@ -50,6 +50,13 @@ pub struct ActiveRaycastTask {
     pub task: Option<Task<RaycastResult>>,
 }
 
+/// System to clear input flags after processing (runs last in frame)
+pub fn clear_viewport_input_system(
+    mut mouse_input: ResMut<ViewportMouseInput>,
+) {
+    mouse_input.left_clicked = false;
+}
+
 /// System to initiate async raycast on click (spawns Bevy async task)
 pub fn viewport_click_initiate_raycast_system(
     mouse_input: Res<ViewportMouseInput>,
@@ -73,6 +80,14 @@ pub fn viewport_click_initiate_raycast_system(
         mouse_input.mouse_pos,
         camera,
         camera_transform,
+    );
+    
+    tracing::info!(
+        "[RAYCAST] 🎯 Click at screen pos ({:.3}, {:.3}), camera at ({:.1}, {:.1}, {:.1}), ray origin ({:.1}, {:.1}, {:.1}), dir ({:.3}, {:.3}, {:.3})",
+        mouse_input.mouse_pos.x, mouse_input.mouse_pos.y,
+        camera_transform.translation().x, camera_transform.translation().y, camera_transform.translation().z,
+        ray.origin.x, ray.origin.y, ray.origin.z,
+        ray.direction.x, ray.direction.y, ray.direction.z
     );
     
     // Collect all objects (lightweight: just ID + position)

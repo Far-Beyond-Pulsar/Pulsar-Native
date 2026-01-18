@@ -674,7 +674,7 @@ impl ViewportPanel {
 
                 move |event: &gpui::MouseDownEvent, window: &mut gpui::Window, _cx: &mut gpui::App| {
                     let bounds_opt = element_bounds.borrow();
-                    let (element_x, element_y, viewport_width, viewport_height) = if let Some(ref bounds) = *bounds_opt {
+                    let (element_x, element_y, gpui_width, gpui_height) = if let Some(ref bounds) = *bounds_opt {
                         let origin_x: f32 = bounds.origin.x.into();
                         let origin_y: f32 = bounds.origin.y.into();
                         let width: f32 = bounds.size.width.into();
@@ -691,16 +691,28 @@ impl ViewportPanel {
                         (pos_x, pos_y, width, height)
                     };
 
-                    let normalized_x = (element_x / viewport_width).clamp(0.0, 1.0);
-                    let normalized_y = (element_y / viewport_height).clamp(0.0, 1.0);
-
                     if let Ok(engine) = gpu_engine_click.try_lock() {
                         if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                            // The Bevy renderer draws to the full window (e.g. 1920x1080)
+                            // while the GPUI viewport is just a "hole" in the UI that shows it
+                            // We need to map from the click position within the GPUI viewport bounds
+                            // to normalized coordinates (0-1) within the GPUI viewport area
+                            let normalized_x = (element_x / gpui_width).clamp(0.0, 1.0);
+                            let normalized_y = (element_y / gpui_height).clamp(0.0, 1.0);
+                            
+                            tracing::info!(
+                                "[VIEWPORT] 🖱️ Left click:\n  Screen: ({}, {})\n  GPUI element: ({:.2}, {:.2}) in viewport {}x{}\n  Normalized: ({:.4}, {:.4})",
+                                event.position.x, event.position.y, 
+                                element_x, element_y, gpui_width, gpui_height,
+                                normalized_x, normalized_y
+                            );
+                            
                             let mut mouse_input = bevy_renderer.viewport_mouse_input.lock();
                             mouse_input.left_clicked = true;
                             mouse_input.left_down = true;
                             mouse_input.mouse_pos.x = normalized_x;
                             mouse_input.mouse_pos.y = normalized_y;
+                            tracing::info!("[VIEWPORT] 🎯 Sent mouse input to Bevy: pos=({:.4}, {:.4}), clicked=true", normalized_x, normalized_y);
                         }
                     }
                 }

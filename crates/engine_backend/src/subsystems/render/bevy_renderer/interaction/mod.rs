@@ -46,4 +46,5 @@ pub mod gizmo_interaction;
 pub use viewport::{
     ViewportMouseInput, GizmoInteractionState, ActiveRaycastTask, RaycastResult,
     viewport_click_initiate_raycast_system, viewport_poll_raycast_system, gizmo_drag_system,
+    clear_viewport_input_system,
 };
