@@ -265,7 +265,7 @@ impl PulsarApp {
                                             Button::new("analyzer-stop")
                                                 .ghost()
                                                 .icon(
-                                                    Icon::new(IconName::X)
+                                                    Icon::new(IconName::Close)
                                                         .size(px(12.))
                                                         .text_color(cx.theme().muted_foreground)
                                                 )

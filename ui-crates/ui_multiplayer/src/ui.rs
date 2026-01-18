@@ -973,7 +973,7 @@ impl MultiplayerWindow {
                                                         this.child(
                                                             Button::new(kick_id)
                                                                 .label("Kick")
-                                                                .icon(IconName::X)
+                                                                .icon(IconName::Close)
                                                                 .flex_1()
                                                                 .on_click(cx.listener(move |this, _, window, cx| {
                                                                     this.kick_user(peer_id_for_kick.clone(), window, cx);

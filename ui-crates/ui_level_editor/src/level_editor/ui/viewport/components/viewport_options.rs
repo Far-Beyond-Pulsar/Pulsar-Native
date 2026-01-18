@@ -183,7 +183,7 @@ where
         .child(overlay_toggles(state_arc.clone(), state, cx))
         .child(
             Button::new("collapse_viewport_options")
-                .icon(IconName::X)
+                .icon(IconName::Close)
                 .ghost()
                 .on_click(move |_, _, _| {
                     state_arc.write().set_viewport_options_collapsed(true);

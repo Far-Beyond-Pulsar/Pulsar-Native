@@ -174,7 +174,7 @@ where
         .child(camera_speed_controls(input_state.clone(), cx))
         .child(
             Button::new("collapse_camera_mode")
-                .icon(IconName::X)
+                .icon(IconName::Close)
                 .ghost()
                 .on_click(move |_, _, _| {
                     state_arc

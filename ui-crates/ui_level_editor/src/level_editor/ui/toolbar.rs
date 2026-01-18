@@ -100,7 +100,7 @@ impl ToolbarPanel {
                 let state_clone = state_arc.clone();
                 if state.is_play_mode() {
                     Button::new("stop")
-                        .icon(IconName::X)
+                        .icon(IconName::Close)
                         .tooltip("Stop Simulation (Shift+F5)")
                         .on_click(move |_, _, _| {
                             state_clone.write().exit_play_mode();
@@ -108,7 +108,7 @@ impl ToolbarPanel {
                         .into_any_element()
                 } else {
                     Button::new("stop_disabled")
-                        .icon(IconName::X)
+                        .icon(IconName::Close)
                         .tooltip("Not Playing")
                         .ghost()
                         .into_any_element()
