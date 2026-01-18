@@ -385,4 +385,29 @@ impl LevelEditorState {
     pub fn toggle_ui_consistency_graph(&mut self) {
         self.show_ui_consistency_graph = !self.show_ui_consistency_graph;
     }
+
+    // Setter methods for switches
+    pub fn set_show_grid(&mut self, show: bool) {
+        self.show_grid = show;
+    }
+
+    pub fn set_show_wireframe(&mut self, show: bool) {
+        self.show_wireframe = show;
+    }
+
+    pub fn set_show_lighting(&mut self, show: bool) {
+        self.show_lighting = show;
+    }
+
+    pub fn set_show_performance_overlay(&mut self, show: bool) {
+        self.show_performance_overlay = show;
+    }
+
+    pub fn set_show_camera_mode_selector(&mut self, show: bool) {
+        self.show_camera_mode_selector = show;
+    }
+
+    pub fn set_show_viewport_options(&mut self, show: bool) {
+        self.show_viewport_options = show;
+    }
 }

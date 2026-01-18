@@ -1004,13 +1004,14 @@ impl ViewportPanel {
             )
             .when(state.show_camera_mode_selector, |viewport_div| {
                 let state_arc_clone = state_arc.clone();
+                let input_state_clone = self.input_state.clone();
                 viewport_div.child(
                     // Camera mode selector (bottom-left)
                     div()
                         .absolute()
                         .bottom_4()
                         .left_4()
-                        .child(Self::render_camera_mode_selector(state.camera_mode, state.camera_mode_selector_collapsed, state_arc_clone, cx))
+                        .child(Self::render_camera_mode_selector(state.camera_mode, state.camera_mode_selector_collapsed, state_arc_clone, input_state_clone, cx))
                 )
             })
             .when(state.show_viewport_options, |viewport_div| {
@@ -1111,6 +1112,7 @@ impl ViewportPanel {
         camera_mode: CameraMode,
         collapsed: bool,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        input_state: InputState,
         cx: &mut Context<V>
     ) -> impl IntoElement
     where
@@ -1126,17 +1128,19 @@ impl ViewportPanel {
                 })
                 .into_any_element()
         } else {
-            // Expanded state - show full toolbar
+            // Expanded state - show full toolbar with camera speed controls
+            let current_speed = input_state.move_speed.load(Ordering::Relaxed) as f32 / 100.0;
+            
             h_flex()
-                .gap_1()
+                .gap_2()
                 .p_1()
                 .bg(cx.theme().background.opacity(0.9))
                 .rounded(cx.theme().radius)
                 .border_1()
                 .border_color(cx.theme().border)
-                .justify_between()
                 .items_center()
                 .child(
+                    // Camera mode buttons
                     h_flex()
                         .gap_1()
                         .child({
@@ -1190,15 +1194,63 @@ impl ViewportPanel {
                                 })
                         })
                 )
-                .child({
-                    let state_clone = state_arc.clone();
+                .child(
+                    // Divider
+                    div()
+                        .h(px(20.0))
+                        .w_px()
+                        .bg(cx.theme().border)
+                )
+                .child(
+                    // Camera speed controls
+                    h_flex()
+                        .gap_1()
+                        .items_center()
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .child("Speed")
+                        )
+                        .child({
+                            let input_clone = input_state.clone();
+                            Button::new("speed_down")
+                                .icon(IconName::Minus)
+                                .xsmall()
+                                .tooltip("Decrease camera speed")
+                                .on_click(move |_, _, _| {
+                                    input_clone.adjust_move_speed(-2.0);
+                                })
+                        })
+                        .child(
+                            div()
+                                .text_xs()
+                                .min_w(px(40.0))
+                                .text_center()
+                                .font_weight(gpui::FontWeight::MEDIUM)
+                                .text_color(cx.theme().foreground)
+                                .child(format!("{:.1}", current_speed))
+                        )
+                        .child({
+                            let input_clone = input_state.clone();
+                            Button::new("speed_up")
+                                .icon(IconName::Plus)
+                                .xsmall()
+                                .tooltip("Increase camera speed")
+                                .on_click(move |_, _, _| {
+                                    input_clone.adjust_move_speed(2.0);
+                                })
+                        })
+                )
+                .child(
+                    // Close button
                     Button::new("collapse_camera_mode")
                         .icon(IconName::X)
                         .ghost()
                         .on_click(move |_, _, _| {
-                            state_clone.write().set_camera_mode_selector_collapsed(true);
+                            state_arc.write().set_camera_mode_selector_collapsed(true);
                         })
-                })
+                )
                 .into_any_element()
         }
     }
@@ -1221,17 +1273,17 @@ impl ViewportPanel {
                 })
                 .into_any_element()
         } else {
-            // Expanded state - show full toolbar
+            // Expanded state - horizontal toolbar with toggles and additional controls
             h_flex()
-                .gap_1()
+                .gap_2()
                 .p_1()
                 .bg(cx.theme().background.opacity(0.9))
                 .rounded(cx.theme().radius)
                 .border_1()
                 .border_color(cx.theme().border)
-                .justify_between()
                 .items_center()
                 .child(
+                    // Visual toggles
                     h_flex()
                         .gap_1()
                         .child({
@@ -1265,15 +1317,68 @@ impl ViewportPanel {
                                 })
                         })
                 )
-                .child({
-                    let state_clone = state_arc.clone();
+                .child(
+                    // Divider
+                    div()
+                        .h(px(20.0))
+                        .w_px()
+                        .bg(cx.theme().border)
+                )
+                .child(
+                    // Overlay toggles with switches
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            h_flex()
+                                .gap_1()
+                                .items_center()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Perf")
+                                )
+                                .child({
+                                    let state_clone = state_arc.clone();
+                                    ui::switch::Switch::new("toggle_perf")
+                                        .checked(state.show_performance_overlay)
+                                        .xsmall()
+                                        .on_click(move |checked, _, _| {
+                                            state_clone.write().set_show_performance_overlay(*checked);
+                                        })
+                                })
+                        )
+                        .child(
+                            h_flex()
+                                .gap_1()
+                                .items_center()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Cam")
+                                )
+                                .child({
+                                    let state_clone = state_arc.clone();
+                                    ui::switch::Switch::new("toggle_cam")
+                                        .checked(state.show_camera_mode_selector)
+                                        .xsmall()
+                                        .on_click(move |checked, _, _| {
+                                            state_clone.write().set_show_camera_mode_selector(*checked);
+                                        })
+                                })
+                        )
+                )
+                .child(
+                    // Close button
                     Button::new("collapse_viewport_options")
                         .icon(IconName::X)
                         .ghost()
                         .on_click(move |_, _, _| {
-                            state_clone.write().set_viewport_options_collapsed(true);
+                            state_arc.write().set_viewport_options_collapsed(true);
                         })
-                })
+                )
                 .into_any_element()
         }
     }

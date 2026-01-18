@@ -1,4 +1,4 @@
-#![windows_subsystem = "windows"]
+//#![windows_subsystem = "windows"]
 //! Pulsar Engine Main Entry Point
 //!
 //! This file initializes the engine, sets up logging, loads configuration, handles app data,
