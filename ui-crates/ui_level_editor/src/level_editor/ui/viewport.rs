@@ -1190,14 +1190,14 @@ impl ViewportPanel {
                     div()
                         .relative()
                         .w(px(8.0))
-                        .h(px(40.0))
+                        .h_full()
                         .flex_shrink_0()
-                        .bg(cx.theme().border.opacity(0.5))
+                        .bg(cx.theme().background.opacity(0.9))
                         .rounded_l(cx.theme().radius)
                         .border_1()
                         .border_color(cx.theme().border)
                         .cursor(CursorStyle::PointingHand)
-                        .hover(|style| style.bg(cx.theme().border.opacity(0.7)))
+                        .hover(|style| style.bg(cx.theme().background))
                         .on_mouse_down(gpui::MouseButton::Left, {
                             let state = state_arc.clone();
                             move |event: &gpui::MouseDownEvent, _window, _cx| {
@@ -1221,9 +1221,9 @@ impl ViewportPanel {
                                 .items_center()
                                 .justify_center()
                                 .gap_0p5()
-                                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(cx.theme().muted_foreground.opacity(0.5)))
-                                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(cx.theme().muted_foreground.opacity(0.5)))
-                                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(cx.theme().muted_foreground.opacity(0.5)))
+                                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(gpui::white()))
+                                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(gpui::white()))
+                                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(gpui::white()))
                         )
                 )
                 .child(
@@ -1384,14 +1384,14 @@ impl ViewportPanel {
                     div()
                         .relative()
                         .w(px(8.0))
-                        .h(px(40.0))
+                        .h_full()
                         .flex_shrink_0()
-                        .bg(cx.theme().border.opacity(0.5))
+                        .bg(cx.theme().background.opacity(0.9))
                         .rounded_l(cx.theme().radius)
                         .border_1()
                         .border_color(cx.theme().border)
                         .cursor(CursorStyle::PointingHand)
-                        .hover(|style| style.bg(cx.theme().border.opacity(0.7)))
+                        .hover(|style| style.bg(cx.theme().background))
                         .on_mouse_down(gpui::MouseButton::Left, {
                             let state = state_arc.clone();
                             move |event: &gpui::MouseDownEvent, _window, _cx| {
@@ -1415,9 +1415,10 @@ impl ViewportPanel {
                                 .items_center()
                                 .justify_center()
                                 .gap_0p5()
-                                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(cx.theme().muted_foreground.opacity(0.5)))
-                                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(cx.theme().muted_foreground.opacity(0.5)))
-                                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(cx.theme().muted_foreground.opacity(0.5)))
+                                // TODO: Having an SVG for this wouldn't be so bad...
+                                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(gpui::white()))
+                                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(gpui::white()))
+                                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(gpui::white()))
                         )
                 )
                 .child(
