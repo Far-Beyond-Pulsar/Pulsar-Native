@@ -11,7 +11,7 @@ use ui::{button::{Button, ButtonVariants as _}, h_flex, switch::Switch, ActiveTh
 
 use crate::level_editor::ui::state::LevelEditorState;
 use super::toggle_button::create_state_toggle;
-use super::floating_toolbar::toolbar_with_drag_handle;
+use super::floating_toolbar::{toolbar_with_drag_handle, create_drag_handle};
 
 /// Visual toggle configuration.
 struct VisualToggle {
@@ -147,43 +147,12 @@ where
             .into_any_element();
     }
 
-    let drag_handle = div()
-        .relative()
-        .w(px(12.0))
-        .h(px(42.0))
-        .flex_shrink_0()
-        .bg(cx.theme().background.opacity(0.9))
-        .rounded_l(cx.theme().radius)
-        .border_1()
-        .border_color(cx.theme().border)
-        .cursor(CursorStyle::PointingHand)
-        .hover(|style| style.bg(cx.theme().background))
-        .on_mouse_down(MouseButton::Left, {
-            let state = state_arc.clone();
-            move |event: &MouseDownEvent, _window, _cx| {
-                let mut s = state.write();
-                s.is_dragging_viewport_overlay = true;
-                let x: f32 = event.position.x.into();
-                let y: f32 = event.position.y.into();
-                s.viewport_overlay_drag_start = Some((x, y));
-            }
-        })
-        .child(
-            div()
-                .absolute()
-                .top_0()
-                .left_0()
-                .right_0()
-                .bottom_0()
-                .flex()
-                .flex_col()
-                .items_center()
-                .justify_center()
-                .gap_0p5()
-                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(white()))
-                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(white()))
-                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(white())),
-        );
+    let drag_handle = create_drag_handle(
+        state_arc.clone(),
+        |s: &mut LevelEditorState, pos| s.viewport_overlay_drag_start = pos,
+        |s: &mut LevelEditorState, dragging| s.is_dragging_viewport_overlay = dragging,
+        cx,
+    );
 
     let toolbar_content = h_flex()
         .gap_2()

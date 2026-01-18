@@ -4,6 +4,8 @@
 //! and positioned anywhere in the viewport. It includes a drag handle with
 //! grip dots and supports custom content through children.
 
+use std::sync::Arc;
+
 use gpui::*;
 use gpui::prelude::FluentBuilder;
 use ui::{h_flex, v_flex, ActiveTheme, StyledExt};
@@ -80,35 +82,61 @@ impl<E: IntoElement> FloatingToolbar<E> {
     }
 }
 
-/// Render a drag handle with grip dots.
+/// Create a drag handle with mouse event handlers.
 ///
-/// This is the visual indicator that shows users where to click to drag the toolbar.
-pub fn drag_handle<V: 'static>(cx: &Context<V>) -> impl IntoElement
+/// # Arguments
+/// * `state_arc` - The state to update on drag
+/// * `drag_start_field` - Function to set the drag start coordinates
+/// * `is_dragging_field` - Function to set the dragging flag
+/// * `cx` - The window context
+pub fn create_drag_handle<V, S>(
+    state_arc: Arc<parking_lot::RwLock<S>>,
+    drag_start_field: impl Fn(&mut S, Option<(f32, f32)>) + Clone + 'static,
+    is_dragging_field: impl Fn(&mut S, bool) + Clone + 'static,
+    cx: &Context<V>,
+) -> impl IntoElement
 where
-    V: Render,
+    V: Render + 'static,
+    S: 'static,
 {
     div()
-        .flex()
-        .items_center()
-        .justify_center()
-        .w(px(20.0))
+        .relative()
+        .w(px(12.0))
         .h_full()
-        .bg(cx.theme().muted.opacity(0.5))
+        .flex_shrink_0()
+        .bg(cx.theme().background.opacity(0.9))
         .rounded_l(cx.theme().radius)
-        .border_l_1()
-        .border_y_1()
+        .border_1()
         .border_color(cx.theme().border)
-        .cursor(gpui::CursorStyle::OperationNotAllowed)
+        .cursor(CursorStyle::PointingHand)
+        .hover(|style| style.bg(cx.theme().background))
+        .on_mouse_down(MouseButton::Left, {
+            let state = state_arc.clone();
+            let drag_start = drag_start_field.clone();
+            let is_dragging = is_dragging_field.clone();
+            move |event: &MouseDownEvent, _window, _cx| {
+                let mut s = state.write();
+                let x: f32 = event.position.x.into();
+                let y: f32 = event.position.y.into();
+                drag_start(&mut s, Some((x, y)));
+                is_dragging(&mut s, true);
+            }
+        })
         .child(
             div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .right_0()
+                .bottom_0()
                 .flex()
                 .flex_col()
                 .items_center()
                 .justify_center()
                 .gap_0p5()
-                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(gpui::white()))
-                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(gpui::white()))
-                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(gpui::white())),
+                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(white()))
+                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(white()))
+                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(white())),
         )
 }
 

@@ -527,8 +527,8 @@ impl ViewportPanel {
                             let delta_y = current_y - start_y;
 
                             // Camera overlay positioned from right edge with .right(px(value))
-                            // User reported X feels inverted, so NOT inverting the delta
-                            state.camera_overlay_pos.0 = (state.camera_overlay_pos.0 + delta_x).max(0.0);
+                            // When dragging right, delta_x is positive, but right value should decrease
+                            state.camera_overlay_pos.0 = (state.camera_overlay_pos.0 - delta_x).max(0.0);
                             state.camera_overlay_pos.1 = (state.camera_overlay_pos.1 + delta_y).max(0.0);
                             state.camera_overlay_drag_start = Some((current_x, current_y));
                         }
