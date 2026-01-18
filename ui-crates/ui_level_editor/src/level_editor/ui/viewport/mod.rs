@@ -143,7 +143,7 @@ impl ViewportPanel {
         self.spawn_input_thread_once(gpu_engine);
 
         // Update performance metrics
-        self.update_performance_metrics(gpu_engine);
+        self.update_performance_metrics(gpu_engine, game_thread);
 
         // Send input to GPU
         self.send_input_to_gpu(gpu_engine, state);
@@ -283,14 +283,57 @@ impl ViewportPanel {
     }
 
     /// Update performance metrics from GPU.
-    fn update_performance_metrics(&self, gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>) {
+    fn update_performance_metrics(&self, gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>, game_thread: &Arc<GameThread>) {
         if let Ok(engine) = gpu_engine.try_lock() {
-            // Sample metrics (avoiding overhead of constant updates)
-            let fps = engine.get_bevy_fps();
+            let ui_fps = engine.get_fps() as f64;
+            let pipeline_us = engine.get_pipeline_time_us();
+            
+            let metrics_opt = engine.get_render_metrics();
+            let (memory_mb, draw_calls, vertices) = if let Some(ref m) = metrics_opt {
+                (m.memory_usage_mb, m.draw_calls, m.vertices_drawn)
+            } else {
+                (0.0, 0, 0)
+            };
 
             let mut metrics = self.metrics.borrow_mut();
-            metrics.add_fps(fps as f64);
-            // Add other metrics as needed from engine methods
+            
+            // Update FPS (track both UI and Bevy)
+            metrics.add_fps(ui_fps);
+            
+            // Update TPS from game thread
+            let game_tps = game_thread.get_tps() as f64;
+            metrics.add_tps(game_tps);
+            
+            // Update frame time
+            let frame_time_ms = pipeline_us as f64 / 1000.0;
+            metrics.add_frame_time(frame_time_ms);
+            
+            // Update memory
+            metrics.add_memory(memory_mb as f64);
+            
+            // Update draw calls
+            metrics.add_draw_calls(draw_calls as f64);
+            
+            // Update vertices
+            metrics.add_vertices(vertices as f64);
+            
+            // Calculate UI consistency (FPS variance)
+            if metrics.fps_history.len() >= 10 {
+                let sample_size = metrics.fps_history.len().min(30);
+                let recent_fps: Vec<f64> = metrics.fps_history.iter()
+                    .rev()
+                    .take(sample_size)
+                    .map(|d| d.fps)
+                    .collect();
+                
+                let mean = recent_fps.iter().sum::<f64>() / recent_fps.len() as f64;
+                let variance = recent_fps.iter()
+                    .map(|fps| (fps - mean).powi(2))
+                    .sum::<f64>() / recent_fps.len() as f64;
+                let std_dev = variance.sqrt();
+                
+                metrics.add_ui_consistency(std_dev);
+            }
         }
 
         // Add input latency
@@ -483,8 +526,9 @@ impl ViewportPanel {
                             let delta_x = current_x - start_x;
                             let delta_y = current_y - start_y;
 
-                            // Camera overlay is positioned from right edge, so invert X
-                            state.camera_overlay_pos.0 = (state.camera_overlay_pos.0 - delta_x).max(0.0);
+                            // Camera overlay positioned from right edge with .right(px(value))
+                            // User reported X feels inverted, so NOT inverting the delta
+                            state.camera_overlay_pos.0 = (state.camera_overlay_pos.0 + delta_x).max(0.0);
                             state.camera_overlay_pos.1 = (state.camera_overlay_pos.1 + delta_y).max(0.0);
                             state.camera_overlay_drag_start = Some((current_x, current_y));
                         }
