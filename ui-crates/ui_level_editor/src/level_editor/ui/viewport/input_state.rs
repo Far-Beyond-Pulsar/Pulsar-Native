@@ -184,5 +184,8 @@ impl CameraSpeedControl for InputState {
         let current = f32::from_bits(self.move_speed.load(Ordering::Relaxed));
         let new_speed = (current + delta).max(MIN_MOVE_SPEED).min(MAX_MOVE_SPEED);
         self.move_speed.store(new_speed.to_bits(), Ordering::Relaxed);
+        let verify = f32::from_bits(self.move_speed.load(Ordering::Relaxed));
+        tracing::info!("[INPUT_STATE] 🔧 adjust_move_speed: current={:.2}, delta={:.2}, new={:.2}, verify={:.2}, ptr={:p}", 
+            current, delta, new_speed, verify, &self.move_speed as *const _);
     }
 }

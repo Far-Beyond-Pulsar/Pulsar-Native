@@ -648,6 +648,25 @@ impl ViewportPanel {
                     crate::level_editor::ui::viewport::platform::unlock_cursor();
                 }
             })
+            // Scroll wheel for camera speed adjustment
+            .on_scroll_wheel({
+                let mouse_right_captured = mouse_right_captured.clone();
+                let input_state_scroll = self.input_state.clone();
+                
+                move |event: &gpui::ScrollWheelEvent, _phase, _cx| {
+                    let scroll_delta: f32 = event.delta.pixel_delta(px(1.0)).y.into();
+                    
+                    // Check if right-click is held (camera rotation mode)
+                    let is_rotating = mouse_right_captured.load(Ordering::Acquire);
+                    
+                    if is_rotating {
+                        // Right-click held: adjust camera move speed
+                        let speed_delta = scroll_delta * 0.5; // Scale for reasonable adjustment
+                        input_state_scroll.adjust_move_speed(speed_delta);
+                        tracing::info!("[VIEWPORT] 🎚️ Camera speed adjusted by {:.2}", speed_delta);
+                    }
+                }
+            })
             // Left-click for object selection
             .on_mouse_down(gpui::MouseButton::Left, {
                 let gpu_engine_click = gpu_engine_for_click.clone();
@@ -710,20 +729,26 @@ impl ViewportPanel {
             })
             .child({
                 let input_state_speed = Arc::clone(&self.input_state);
+                let mouse_right_captured_scroll = self.mouse_right_captured.clone();
                 // Main viewport - Bevy renders through this transparent area
                 div()
                     .flex()
                     .flex_1()
                     .size_full()
-                    .on_scroll_wheel(move |event: &gpui::ScrollWheelEvent, _phase, _cx| {
+                    .on_scroll_wheel(move |event: &gpui::ScrollWheelEvent, _phase, cx| {
                         let scroll_delta: f32 = event.delta.pixel_delta(px(1.0)).y.into();
-                        let is_rotating = mouse_right_captured.load(Ordering::Acquire);
+                        let is_rotating = mouse_right_captured_scroll.load(Ordering::Acquire);
+                        
+                        tracing::info!("[VIEWPORT] 📜 Scroll event received: delta={:.2}, is_rotating={}", scroll_delta, is_rotating);
                         
                         if is_rotating {
                             // Adjust camera movement speed when holding right-click
                             // Scroll up (positive) = increase speed, scroll down (negative) = decrease speed
                             let speed_delta = if scroll_delta > 0.0 { 2.0 } else if scroll_delta < 0.0 { -2.0 } else { 0.0 };
+                            tracing::info!("[VIEWPORT] 🎚️ Scroll adjusting speed, ptr={:p}, delta={}", Arc::as_ptr(&input_state_speed), speed_delta);
                             input_state_speed.adjust_move_speed(speed_delta);
+                            tracing::info!("[VIEWPORT] 🎚️ After adjust, speed={:.2}", input_state_speed.get_move_speed());
+                            cx.stop_propagation();
                         } else {
                             // Normal zoom behavior when not holding right-click
                             input_state_scroll.set_zoom_delta(scroll_delta * 0.5);

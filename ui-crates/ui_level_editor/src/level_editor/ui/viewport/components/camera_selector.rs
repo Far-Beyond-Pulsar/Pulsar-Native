@@ -86,6 +86,7 @@ where
     V: Render,
 {
     let current_speed = input_state.get_move_speed();
+    tracing::info!("[CAMERA_SELECTOR] 📊 Reading speed: {:.2}, ptr={:p}", current_speed, Arc::as_ptr(&input_state));
     
     h_flex()
         .gap_1()
