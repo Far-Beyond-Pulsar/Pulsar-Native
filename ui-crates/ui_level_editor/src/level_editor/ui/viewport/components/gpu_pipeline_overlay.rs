@@ -7,6 +7,7 @@ use gpui::prelude::FluentBuilder;
 use ui::{h_flex, v_flex, ActiveTheme, StyledExt};
 
 use crate::level_editor::ui::state::LevelEditorState;
+use engine_backend::subsystems::render::bevy_renderer::DiagnosticMetric;
 
 /// Color palette for pipeline passes
 const PASS_COLORS: &[(f32, f32, f32)] = &[
@@ -71,7 +72,7 @@ where
         .map(|this| {
             if let Some(ref data) = gpu_data {
                 // Calculate passes and percentages
-                let mut render_passes: Vec<&engine_backend::subsystems::render::DiagnosticMetric> = data
+                let mut render_passes: Vec<&DiagnosticMetric> = data
                     .render_metrics
                     .iter()
                     .filter(|metric| metric.is_gpu && metric.value_ms > 0.0)

@@ -829,7 +829,7 @@ impl ViewportPanel {
                 div()
                     .absolute()
                     .bottom_2()
-                    .left(px(420.0)) // 400px width + 20px gap
+                    .left(px(300.0)) // 400px width + 10px gap
             } else {
                 // Take performance overlay's position
                 div()
