@@ -81,7 +81,7 @@ where
     }
 
     pub fn tick_margin(mut self, tick_margin: usize) -> Self {
-        self.tick_margin = tick_margin;
+        self.tick_margin = tick_margin.max(1);
         self
     }
 

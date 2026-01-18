@@ -11,6 +11,7 @@ use ui::{button::{Button, ButtonVariants as _}, h_flex, switch::Switch, ActiveTh
 
 use crate::level_editor::ui::state::LevelEditorState;
 use super::toggle_button::create_state_toggle;
+use super::floating_toolbar::toolbar_with_drag_handle;
 
 /// Visual toggle configuration.
 struct VisualToggle {
@@ -146,92 +147,63 @@ where
             .into_any_element();
     }
 
+    let drag_handle = div()
+        .relative()
+        .w(px(12.0))
+        .h(px(42.0))
+        .flex_shrink_0()
+        .bg(cx.theme().background.opacity(0.9))
+        .rounded_l(cx.theme().radius)
+        .border_1()
+        .border_color(cx.theme().border)
+        .cursor(CursorStyle::PointingHand)
+        .hover(|style| style.bg(cx.theme().background))
+        .on_mouse_down(MouseButton::Left, {
+            let state = state_arc.clone();
+            move |event: &MouseDownEvent, _window, _cx| {
+                let mut s = state.write();
+                s.is_dragging_viewport_overlay = true;
+                let x: f32 = event.position.x.into();
+                let y: f32 = event.position.y.into();
+                s.viewport_overlay_drag_start = Some((x, y));
+            }
+        })
+        .child(
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .right_0()
+                .bottom_0()
+                .flex()
+                .flex_col()
+                .items_center()
+                .justify_center()
+                .gap_0p5()
+                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(white()))
+                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(white()))
+                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(white())),
+        );
+
+    let toolbar_content = h_flex()
+        .gap_2()
+        .items_center()
+        .child(visual_toggles(state_arc.clone(), state))
+        .child(div().h(px(20.0)).w_px().bg(cx.theme().border))
+        .child(overlay_toggles(state_arc.clone(), state, cx))
+        .child(
+            Button::new("collapse_viewport_options")
+                .icon(IconName::X)
+                .ghost()
+                .on_click(move |_, _, _| {
+                    state_arc.write().set_viewport_options_collapsed(true);
+                }),
+        );
+
     h_flex()
         .gap_0()
         .h(px(42.0))
         .when(is_dragging, |f| f.cursor(CursorStyle::PointingHand))
-        .child(
-            // Drag handle
-            div()
-                .relative()
-                .w(px(12.0))
-                .h_full()
-                .flex_shrink_0()
-                .bg(cx.theme().background.opacity(0.9))
-                .rounded_l(cx.theme().radius)
-                .border_1()
-                .border_color(cx.theme().border)
-                .cursor(CursorStyle::PointingHand)
-                .hover(|style| style.bg(cx.theme().background))
-                .on_mouse_down(MouseButton::Left, {
-                    let state = state_arc.clone();
-                    move |event: &MouseDownEvent, _window, _cx| {
-                        let mut s = state.write();
-                        s.is_dragging_viewport_overlay = true;
-                        let x: f32 = event.position.x.into();
-                        let y: f32 = event.position.y.into();
-                        s.viewport_overlay_drag_start = Some((x, y));
-                    }
-                })
-                .child(
-                    // Grip dots
-                    div()
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .right_0()
-                        .bottom_0()
-                        .flex()
-                        .flex_col()
-                        .items_center()
-                        .justify_center()
-                        .gap_0p5()
-                        .child(
-                            div()
-                                .w(px(2.0))
-                                .h(px(2.0))
-                                .rounded_full()
-                                .bg(white()),
-                        )
-                        .child(
-                            div()
-                                .w(px(2.0))
-                                .h(px(2.0))
-                                .rounded_full()
-                                .bg(white()),
-                        )
-                        .child(
-                            div()
-                                .w(px(2.0))
-                                .h(px(2.0))
-                                .rounded_full()
-                                .bg(white()),
-                        ),
-                ),
-        )
-        .child(
-            // Main toolbar content
-            h_flex()
-                .h_full()
-                .gap_2()
-                .p_1()
-                .bg(cx.theme().background.opacity(0.9))
-                .rounded_r(cx.theme().radius)
-                .border_y_1()
-                .border_r_1()
-                .border_color(cx.theme().border)
-                .items_center()
-                .child(visual_toggles(state_arc.clone(), state))
-                .child(div().h(px(20.0)).w_px().bg(cx.theme().border))
-                .child(overlay_toggles(state_arc.clone(), state, cx))
-                .child(
-                    Button::new("collapse_viewport_options")
-                        .icon(IconName::X)
-                        .ghost()
-                        .on_click(move |_, _, _| {
-                            state_arc.write().set_viewport_options_collapsed(true);
-                        }),
-                ),
-        )
+        .child(toolbar_with_drag_handle(drag_handle, toolbar_content, cx))
         .into_any_element()
 }
