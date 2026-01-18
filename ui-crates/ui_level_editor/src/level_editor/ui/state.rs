@@ -69,6 +69,9 @@ pub struct LevelEditorState {
     pub expanded_objects: HashSet<String>,
     /// Drag state for hierarchy reparenting
     pub hierarchy_drag_state: HierarchyDragState,
+    /// Overlay positions (in pixels from their default corners)
+    pub camera_overlay_pos: (f32, f32),  // bottom-left overlay position
+    pub viewport_overlay_pos: (f32, f32), // top-left overlay position
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -134,6 +137,8 @@ impl Default for LevelEditorState {
             show_ui_consistency_graph: false,
             expanded_objects: HashSet::new(),
             hierarchy_drag_state: HierarchyDragState::None,
+            camera_overlay_pos: (16.0, 16.0),  // default bottom-left position
+            viewport_overlay_pos: (16.0, 16.0), // default top-left position
         }
     }
 }

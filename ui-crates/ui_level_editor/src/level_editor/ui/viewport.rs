@@ -1005,23 +1005,27 @@ impl ViewportPanel {
             .when(state.show_camera_mode_selector, |viewport_div| {
                 let state_arc_clone = state_arc.clone();
                 let input_state_clone = self.input_state.clone();
+                let (pos_x, pos_y) = state.camera_overlay_pos;
+                let is_dragging_camera = state.is_dragging_camera_overlay;
+                
                 viewport_div.child(
-                    // Camera mode selector (bottom-left)
+                    // Camera mode selector (draggable from bottom-left)
                     div()
                         .absolute()
-                        .bottom_4()
-                        .left_4()
-                        .child(Self::render_camera_mode_selector(state.camera_mode, state.camera_mode_selector_collapsed, state_arc_clone, input_state_clone, cx))
+                        .bottom(px(pos_y))
+                        .left(px(pos_x))
+                        .child(Self::render_camera_mode_selector(state.camera_mode, state.camera_mode_selector_collapsed, state_arc_clone, input_state_clone, is_dragging_camera, cx))
                 )
             })
             .when(state.show_viewport_options, |viewport_div| {
                 let state_arc_clone = state_arc.clone();
+                let (pos_x, pos_y) = state.viewport_overlay_pos;
                 viewport_div.child(
-                    // Grid and rendering options (top-left)
+                    // Grid and rendering options (draggable from top-left)
                     div()
                         .absolute()
-                        .top_4()
-                        .left_4()
+                        .top(px(pos_y))
+                        .left(px(pos_x))
                         .child(Self::render_viewport_options(state, state_arc_clone, cx))
                 )
             });
@@ -1128,128 +1132,171 @@ impl ViewportPanel {
                 })
                 .into_any_element()
         } else {
-            // Expanded state - show full toolbar with camera speed controls
+            // Expanded state - show full toolbar with camera speed controls and drag handle
             let current_speed = input_state.move_speed.load(Ordering::Relaxed) as f32 / 100.0;
             
+            let is_dragging = Rc::new(RefCell::new(false));
+            
             h_flex()
-                .gap_2()
-                .p_1()
-                .bg(cx.theme().background.opacity(0.9))
-                .rounded(cx.theme().radius)
-                .border_1()
-                .border_color(cx.theme().border)
-                .items_center()
+                .gap_0()
                 .child(
-                    // Camera mode buttons
-                    h_flex()
-                        .gap_1()
-                        .child({
-                            let state_clone = state_arc.clone();
-                            Button::new("camera_perspective")
-                                .icon(IconName::Cube)
-                                .tooltip("Perspective View")
-                                .selected(matches!(camera_mode, CameraMode::Perspective))
-                                .on_click(move |_, _, _| {
-                                    state_clone.write().set_camera_mode(CameraMode::Perspective);
-                                })
-                        })
-                        .child({
-                            let state_clone = state_arc.clone();
-                            Button::new("camera_orthographic")
-                                .icon(IconName::Square)
-                                .tooltip("Orthographic View")
-                                .selected(matches!(camera_mode, CameraMode::Orthographic))
-                                .on_click(move |_, _, _| {
-                                    state_clone.write().set_camera_mode(CameraMode::Orthographic);
-                                })
-                        })
-                        .child({
-                            let state_clone = state_arc.clone();
-                            Button::new("camera_top")
-                                .icon(IconName::ArrowUp)
-                                .tooltip("Top View")
-                                .selected(matches!(camera_mode, CameraMode::Top))
-                                .on_click(move |_, _, _| {
-                                    state_clone.write().set_camera_mode(CameraMode::Top);
-                                })
-                        })
-                        .child({
-                            let state_clone = state_arc.clone();
-                            Button::new("camera_front")
-                                .icon(IconName::ArrowRight)
-                                .tooltip("Front View")
-                                .selected(matches!(camera_mode, CameraMode::Front))
-                                .on_click(move |_, _, _| {
-                                    state_clone.write().set_camera_mode(CameraMode::Front);
-                                })
-                        })
-                        .child({
-                            let state_clone = state_arc.clone();
-                            Button::new("camera_side")
-                                .icon(IconName::ArrowLeft)
-                                .tooltip("Side View")
-                                .selected(matches!(camera_mode, CameraMode::Side))
-                                .on_click(move |_, _, _| {
-                                    state_clone.write().set_camera_mode(CameraMode::Side);
-                                })
-                        })
-                )
-                .child(
-                    // Divider
+                    // Drag handle (grip area)
                     div()
-                        .h(px(20.0))
-                        .w_px()
-                        .bg(cx.theme().border)
+                        .relative()
+                        .w(px(8.0))
+                        .flex_shrink_0()
+                        .bg(cx.theme().border.opacity(0.5))
+                        .rounded_l(cx.theme().radius)
+                        .border_1()
+                        .border_color(cx.theme().border)
+                        .hover(|style| style.bg(cx.theme().border.opacity(0.7)))
+                        .on_mouse_down(gpui::MouseButton::Left, {
+                            let dragging = is_dragging.clone();
+                            move |_event: &gpui::MouseDownEvent, _window, _cx| {
+                                *dragging.borrow_mut() = true;
+                            }
+                        })
+                        .child(
+                            // Grip dots - absolute positioned to fill height
+                            div()
+                                .absolute()
+                                .top_0()
+                                .left_0()
+                                .right_0()
+                                .bottom_0()
+                                .flex()
+                                .flex_col()
+                                .items_center()
+                                .justify_center()
+                                .gap_0p5()
+                                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(cx.theme().muted_foreground.opacity(0.5)))
+                                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(cx.theme().muted_foreground.opacity(0.5)))
+                                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(cx.theme().muted_foreground.opacity(0.5)))
+                        )
                 )
                 .child(
-                    // Camera speed controls
+                    // Main toolbar content
                     h_flex()
-                        .gap_1()
+                        .gap_2()
+                        .p_1()
+                        .bg(cx.theme().background.opacity(0.9))
+                        .rounded_r(cx.theme().radius)
+                        .border_y_1()
+                        .border_r_1()
+                        .border_color(cx.theme().border)
                         .items_center()
                         .child(
-                            div()
-                                .text_xs()
-                                .text_color(cx.theme().muted_foreground)
-                                .child("Speed")
-                        )
-                        .child({
-                            let input_clone = input_state.clone();
-                            Button::new("speed_down")
-                                .icon(IconName::Minus)
-                                .xsmall()
-                                .tooltip("Decrease camera speed")
-                                .on_click(move |_, _, _| {
-                                    input_clone.adjust_move_speed(-2.0);
+                            // Camera mode buttons
+                            h_flex()
+                                .gap_1()
+                                .child({
+                                    let state_clone = state_arc.clone();
+                                    Button::new("camera_perspective")
+                                        .icon(IconName::Cube)
+                                        .tooltip("Perspective View")
+                                        .selected(matches!(camera_mode, CameraMode::Perspective))
+                                        .on_click(move |_, _, _| {
+                                            state_clone.write().set_camera_mode(CameraMode::Perspective);
+                                        })
                                 })
-                        })
+                                .child({
+                                    let state_clone = state_arc.clone();
+                                    Button::new("camera_orthographic")
+                                        .icon(IconName::Square)
+                                        .tooltip("Orthographic View")
+                                        .selected(matches!(camera_mode, CameraMode::Orthographic))
+                                        .on_click(move |_, _, _| {
+                                            state_clone.write().set_camera_mode(CameraMode::Orthographic);
+                                        })
+                                })
+                                .child({
+                                    let state_clone = state_arc.clone();
+                                    Button::new("camera_top")
+                                        .icon(IconName::ArrowUp)
+                                        .tooltip("Top View")
+                                        .selected(matches!(camera_mode, CameraMode::Top))
+                                        .on_click(move |_, _, _| {
+                                            state_clone.write().set_camera_mode(CameraMode::Top);
+                                        })
+                                })
+                                .child({
+                                    let state_clone = state_arc.clone();
+                                    Button::new("camera_front")
+                                        .icon(IconName::ArrowRight)
+                                        .tooltip("Front View")
+                                        .selected(matches!(camera_mode, CameraMode::Front))
+                                        .on_click(move |_, _, _| {
+                                            state_clone.write().set_camera_mode(CameraMode::Front);
+                                        })
+                                })
+                                .child({
+                                    let state_clone = state_arc.clone();
+                                    Button::new("camera_side")
+                                        .icon(IconName::ArrowLeft)
+                                        .tooltip("Side View")
+                                        .selected(matches!(camera_mode, CameraMode::Side))
+                                        .on_click(move |_, _, _| {
+                                            state_clone.write().set_camera_mode(CameraMode::Side);
+                                        })
+                                })
+                        )
                         .child(
+                            // Divider
                             div()
-                                .text_xs()
-                                .min_w(px(40.0))
-                                .text_center()
-                                .font_weight(gpui::FontWeight::MEDIUM)
-                                .text_color(cx.theme().foreground)
-                                .child(format!("{:.1}", current_speed))
+                                .h(px(20.0))
+                                .w_px()
+                                .bg(cx.theme().border)
                         )
-                        .child({
-                            let input_clone = input_state.clone();
-                            Button::new("speed_up")
-                                .icon(IconName::Plus)
-                                .xsmall()
-                                .tooltip("Increase camera speed")
-                                .on_click(move |_, _, _| {
-                                    input_clone.adjust_move_speed(2.0);
+                        .child(
+                            // Camera speed controls
+                            h_flex()
+                                .gap_1()
+                                .items_center()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Speed")
+                                )
+                                .child({
+                                    let input_clone = input_state.clone();
+                                    Button::new("speed_down")
+                                        .icon(IconName::Minus)
+                                        .xsmall()
+                                        .tooltip("Decrease camera speed")
+                                        .on_click(move |_, _, _| {
+                                            input_clone.adjust_move_speed(-2.0);
+                                        })
                                 })
-                        })
-                )
-                .child(
-                    // Close button
-                    Button::new("collapse_camera_mode")
-                        .icon(IconName::X)
-                        .ghost()
-                        .on_click(move |_, _, _| {
-                            state_arc.write().set_camera_mode_selector_collapsed(true);
-                        })
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .min_w(px(40.0))
+                                        .text_center()
+                                        .font_weight(gpui::FontWeight::MEDIUM)
+                                        .text_color(cx.theme().foreground)
+                                        .child(format!("{:.1}", current_speed))
+                                )
+                                .child({
+                                    let input_clone = input_state.clone();
+                                    Button::new("speed_up")
+                                        .icon(IconName::Plus)
+                                        .xsmall()
+                                        .tooltip("Increase camera speed")
+                                        .on_click(move |_, _, _| {
+                                            input_clone.adjust_move_speed(2.0);
+                                        })
+                                })
+                        )
+                        .child(
+                            // Close button
+                            Button::new("collapse_camera_mode")
+                                .icon(IconName::X)
+                                .ghost()
+                                .on_click(move |_, _, _| {
+                                    state_arc.write().set_camera_mode_selector_collapsed(true);
+                                })
+                        )
                 )
                 .into_any_element()
         }
@@ -1273,111 +1320,174 @@ impl ViewportPanel {
                 })
                 .into_any_element()
         } else {
-            // Expanded state - horizontal toolbar with toggles and additional controls
+            // Expanded state - horizontal toolbar with toggles and additional controls, with drag handle
+            let drag_start_pos = Rc::new(RefCell::new(None::<(f32, f32, f32, f32)>)); // (start_mouse_x, start_mouse_y, start_overlay_x, start_overlay_y)
+            
             h_flex()
-                .gap_2()
-                .p_1()
-                .bg(cx.theme().background.opacity(0.9))
-                .rounded(cx.theme().radius)
-                .border_1()
-                .border_color(cx.theme().border)
-                .items_center()
+                .gap_0()
                 .child(
-                    // Visual toggles
-                    h_flex()
-                        .gap_1()
-                        .child({
-                            let state_clone = state_arc.clone();
-                            Button::new("toggle_grid")
-                                .icon(IconName::LayoutDashboard)
-                                .tooltip("Toggle Grid")
-                                .selected(state.show_grid)
-                                .on_click(move |_, _, _| {
-                                    state_clone.write().toggle_grid();
-                                })
-                        })
-                        .child({
-                            let state_clone = state_arc.clone();
-                            Button::new("toggle_wireframe")
-                                .icon(IconName::Triangle)
-                                .tooltip("Toggle Wireframe")
-                                .selected(state.show_wireframe)
-                                .on_click(move |_, _, _| {
-                                    state_clone.write().toggle_wireframe();
-                                })
-                        })
-                        .child({
-                            let state_clone = state_arc.clone();
-                            Button::new("toggle_lighting")
-                                .icon(IconName::Sun)
-                                .tooltip("Toggle Lighting")
-                                .selected(state.show_lighting)
-                                .on_click(move |_, _, _| {
-                                    state_clone.write().toggle_lighting();
-                                })
-                        })
-                )
-                .child(
-                    // Divider
+                    // Drag handle (grip area)
                     div()
-                        .h(px(20.0))
-                        .w_px()
-                        .bg(cx.theme().border)
+                        .w(px(8.0))
+                        .h_full()
+                        .bg(cx.theme().border.opacity(0.5))
+                        .rounded_l(cx.theme().radius)
+                        .border_1()
+                        .border_color(cx.theme().border)
+                        .hover(|style| style.bg(cx.theme().border.opacity(0.7)))
+                        .on_mouse_down(gpui::MouseButton::Left, {
+                            let drag_start = drag_start_pos.clone();
+                            let state_clone = state_arc.clone();
+                            move |event: &gpui::MouseDownEvent, _window, _cx| {
+                                let start_x = event.position.x.as_f32();
+                                let start_y = event.position.y.as_f32();
+                                let overlay_pos = state_clone.read().viewport_overlay_pos;
+                                *drag_start.borrow_mut() = Some((start_x, start_y, overlay_pos.0, overlay_pos.1));
+                            }
+                        })
+                        .on_mouse_move({
+                            let drag_start = drag_start_pos.clone();
+                            let state_clone = state_arc.clone();
+                            move |event: &gpui::MouseMoveEvent, _window, _cx| {
+                                if let Some((start_x, start_y, overlay_x, overlay_y)) = *drag_start.borrow() {
+                                    let delta_x = event.position.x.as_f32() - start_x;
+                                    let delta_y = event.position.y.as_f32() - start_y;
+                                    
+                                    let mut state = state_clone.write();
+                                    state.viewport_overlay_pos = (
+                                        (overlay_x + delta_x).max(0.0),
+                                        (overlay_y + delta_y).max(0.0), // top positioning, normal Y
+                                    );
+                                }
+                            }
+                        })
+                        .on_mouse_up(gpui::MouseButton::Left, {
+                            let drag_start = drag_start_pos.clone();
+                            move |_event: &gpui::MouseUpEvent, _window: &mut gpui::Window, _cx: &mut gpui::App| {
+                                *drag_start.borrow_mut() = None;
+                            }
+                        })
+                        .child(
+                            // Grip dots
+                            v_flex()
+                                .w_full()
+                                .h_full()
+                                .items_center()
+                                .justify_center()
+                                .gap_0p5()
+                                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(cx.theme().muted_foreground.opacity(0.5)))
+                                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(cx.theme().muted_foreground.opacity(0.5)))
+                                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(cx.theme().muted_foreground.opacity(0.5)))
+                        )
                 )
                 .child(
-                    // Overlay toggles with switches
+                    // Main toolbar content
                     h_flex()
                         .gap_2()
+                        .p_1()
+                        .bg(cx.theme().background.opacity(0.9))
+                        .rounded_r(cx.theme().radius)
+                        .border_y_1()
+                        .border_r_1()
+                        .border_color(cx.theme().border)
                         .items_center()
                         .child(
+                            // Visual toggles
                             h_flex()
                                 .gap_1()
-                                .items_center()
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child("Perf")
-                                )
                                 .child({
                                     let state_clone = state_arc.clone();
-                                    ui::switch::Switch::new("toggle_perf")
-                                        .checked(state.show_performance_overlay)
-                                        .xsmall()
-                                        .on_click(move |checked, _, _| {
-                                            state_clone.write().set_show_performance_overlay(*checked);
+                                    Button::new("toggle_grid")
+                                        .icon(IconName::LayoutDashboard)
+                                        .tooltip("Toggle Grid")
+                                        .selected(state.show_grid)
+                                        .on_click(move |_, _, _| {
+                                            state_clone.write().toggle_grid();
+                                        })
+                                })
+                                .child({
+                                    let state_clone = state_arc.clone();
+                                    Button::new("toggle_wireframe")
+                                        .icon(IconName::Triangle)
+                                        .tooltip("Toggle Wireframe")
+                                        .selected(state.show_wireframe)
+                                        .on_click(move |_, _, _| {
+                                            state_clone.write().toggle_wireframe();
+                                        })
+                                })
+                                .child({
+                                    let state_clone = state_arc.clone();
+                                    Button::new("toggle_lighting")
+                                        .icon(IconName::Sun)
+                                        .tooltip("Toggle Lighting")
+                                        .selected(state.show_lighting)
+                                        .on_click(move |_, _, _| {
+                                            state_clone.write().toggle_lighting();
                                         })
                                 })
                         )
                         .child(
+                            // Divider
+                            div()
+                                .h(px(20.0))
+                                .w_px()
+                                .bg(cx.theme().border)
+                        )
+                        .child(
+                            // Overlay toggles with switches
                             h_flex()
-                                .gap_1()
+                                .gap_2()
                                 .items_center()
                                 .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child("Cam")
-                                )
-                                .child({
-                                    let state_clone = state_arc.clone();
-                                    ui::switch::Switch::new("toggle_cam")
-                                        .checked(state.show_camera_mode_selector)
-                                        .xsmall()
-                                        .on_click(move |checked, _, _| {
-                                            state_clone.write().set_show_camera_mode_selector(*checked);
+                                    h_flex()
+                                        .gap_1()
+                                        .items_center()
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child("Perf")
+                                        )
+                                        .child({
+                                            let state_clone = state_arc.clone();
+                                            ui::switch::Switch::new("toggle_perf")
+                                                .checked(state.show_performance_overlay)
+                                                .xsmall()
+                                                .on_click(move |checked, _, _| {
+                                                    state_clone.write().set_show_performance_overlay(*checked);
+                                                })
                                         })
+                                )
+                                .child(
+                                    h_flex()
+                                        .gap_1()
+                                        .items_center()
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child("Cam")
+                                        )
+                                        .child({
+                                            let state_clone = state_arc.clone();
+                                            ui::switch::Switch::new("toggle_cam")
+                                                .checked(state.show_camera_mode_selector)
+                                                .xsmall()
+                                                .on_click(move |checked, _, _| {
+                                                    state_clone.write().set_show_camera_mode_selector(*checked);
+                                                })
+                                        })
+                                )
+                        )
+                        .child(
+                            // Close button
+                            Button::new("collapse_viewport_options")
+                                .icon(IconName::X)
+                                .ghost()
+                                .on_click(move |_, _, _| {
+                                    state_arc.write().set_viewport_options_collapsed(true);
                                 })
                         )
-                )
-                .child(
-                    // Close button
-                    Button::new("collapse_viewport_options")
-                        .icon(IconName::X)
-                        .ghost()
-                        .on_click(move |_, _, _| {
-                            state_arc.write().set_viewport_options_collapsed(true);
-                        })
                 )
                 .into_any_element()
         }
