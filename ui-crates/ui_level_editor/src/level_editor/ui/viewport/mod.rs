@@ -366,7 +366,7 @@ impl ViewportPanel {
                     input.pan_delta_y = py;
 
                     input.zoom_delta = self.input_state.take_zoom_delta();
-                    input.move_speed = state.camera_move_speed;
+                    input.move_speed = self.input_state.get_move_speed();
                 }
             }
         }
@@ -412,7 +412,7 @@ impl ViewportPanel {
         drop(metrics);
 
         // Clone for event handlers
-        let input_state_scroll = self.input_state.clone();
+        let input_state_scroll = Arc::clone(&self.input_state);
         let mouse_right_captured = self.mouse_right_captured.clone();
         let mouse_middle_captured = self.mouse_middle_captured.clone();
         let gpu_engine_for_click = gpu_engine.clone();
@@ -708,7 +708,8 @@ impl ViewportPanel {
                     }
                 }
             })
-            .child(
+            .child({
+                let input_state_speed = Arc::clone(&self.input_state);
                 // Main viewport - Bevy renders through this transparent area
                 div()
                     .flex()
@@ -720,15 +721,16 @@ impl ViewportPanel {
                         
                         if is_rotating {
                             // Adjust camera movement speed when holding right-click
-                            let speed_delta = scroll_delta * 2.0;
-                            state_arc_scroll.write().adjust_camera_move_speed(speed_delta);
+                            // Scroll up (positive) = increase speed, scroll down (negative) = decrease speed
+                            let speed_delta = if scroll_delta > 0.0 { 2.0 } else if scroll_delta < 0.0 { -2.0 } else { 0.0 };
+                            input_state_speed.adjust_move_speed(speed_delta);
                         } else {
                             // Normal zoom behavior when not holding right-click
                             input_state_scroll.set_zoom_delta(scroll_delta * 0.5);
                         }
                     })
                     .child(viewport_entity)
-            )
+            })
             // Overlays
             .child(self.render_overlays(state, state_arc, fps_graph_state, ui_fps, bevy_fps, pipeline_us, fps_data, tps_data, frame_time_data, memory_data, draw_calls_data, vertices_data, input_latency_data, ui_consistency_data, gpu_engine, cx))
     }

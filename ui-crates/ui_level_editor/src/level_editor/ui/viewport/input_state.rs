@@ -12,7 +12,6 @@ const MIN_MOVE_SPEED: f32 = 1.0;
 const MAX_MOVE_SPEED: f32 = 100.0;
 
 /// Lock-free input state using atomics - no mutex contention!
-#[derive(Clone)]
 pub struct InputState {
     // Keyboard movement (atomic for lock-free access)
     pub forward: Arc<AtomicI32>,  // -1, 0, 1
