@@ -1183,13 +1183,13 @@ impl ViewportPanel {
             
             h_flex()
                 .gap_0()
-                .h(px(40.0))
+                .h(px(42.0))
                 .when(is_dragging, |f| f.cursor(CursorStyle::PointingHand))
                 .child(
                     // Drag handle (grip area)
                     div()
                         .relative()
-                        .w(px(8.0))
+                        .w(px(12.0))
                         .h_full()
                         .flex_shrink_0()
                         .py_1()
