@@ -7,6 +7,9 @@ use ui::{
 use std::sync::Arc;
 
 use super::state::{LevelEditorState, TransformTool, MultiplayerMode, BuildConfig, TargetPlatform};
+
+// Temporary no-op action for dropdowns
+gpui::actions!(level_editor, [NoOpAction]);
 use crate::level_editor::scene_database::{ObjectType, MeshType, LightType};
 
 /// Toolbar - Game management and quick actions
@@ -133,15 +136,14 @@ impl ToolbarPanel {
                     .tooltip("Time Scale")
             )
             .popup_menu(move |menu, _window, _cx| {
-                // For now, just close the menu - we'll wire up the actual state changes later
                 menu
                     .label("Select Time Scale")
                     .separator()
-                    .link("0.25x", "")
-                    .link("0.5x", "")
-                    .link("1.0x (Normal)", "")
-                    .link("2.0x", "")
-                    .link("4.0x", "")
+                    .menu_with_icon("0.25x", IconName::Clock, Box::new(NoOpAction))
+                    .menu_with_icon("0.5x", IconName::Clock, Box::new(NoOpAction))
+                    .menu_with_icon("1.0x (Normal)", IconName::Clock, Box::new(NoOpAction))
+                    .menu_with_icon("2.0x", IconName::Clock, Box::new(NoOpAction))
+                    .menu_with_icon("4.0x", IconName::Clock, Box::new(NoOpAction))
             })
     }
 
@@ -171,9 +173,9 @@ impl ToolbarPanel {
                 menu
                     .label("Multiplayer Mode")
                     .separator()
-                    .link("Offline", "")
-                    .link("Host Server", "")
-                    .link("Connect as Client", "")
+                    .menu_with_icon("Offline", IconName::PhoneDisabled, Box::new(NoOpAction))
+                    .menu_with_icon("Host Server", IconName::Server, Box::new(NoOpAction))
+                    .menu_with_icon("Connect as Client", IconName::Link, Box::new(NoOpAction))
             })
     }
 
@@ -214,9 +216,9 @@ impl ToolbarPanel {
                         menu
                             .label("Build Configuration")
                             .separator()
-                            .link("Debug (Fast Compile)", "")
-                            .link("Release (Optimized)", "")
-                            .link("Shipping (Final)", "")
+                            .menu_with_icon("Debug (Fast Compile)", IconName::Bug, Box::new(NoOpAction))
+                            .menu_with_icon("Release (Optimized)", IconName::Flash, Box::new(NoOpAction))
+                            .menu_with_icon("Shipping (Final)", IconName::Package, Box::new(NoOpAction))
                     })
             )
             .child(
@@ -230,14 +232,12 @@ impl ToolbarPanel {
                         menu
                             .label("Target Platform")
                             .separator()
-                            .link("Windows", "")
-                            .link("Linux", "")
-                            .link("macOS", "")
+                            .menu_with_icon("Windows", IconName::Computer, Box::new(NoOpAction))
+                            .menu_with_icon("Linux", IconName::Linux, Box::new(NoOpAction))
+                            .menu_with_icon("macOS", IconName::Apple, Box::new(NoOpAction))
                             .separator()
-                            .link("Web (WASM)", "")
-                            .separator()
-                            .link("Android", "")
-                            .link("iOS", "")
+                            .menu_with_icon("Android", IconName::Android, Box::new(NoOpAction))
+                            .menu_with_icon("iOS", IconName::Phone, Box::new(NoOpAction))
                     })
             )
             .child(
