@@ -25,13 +25,11 @@ pub fn render_flamegraph_canvas(
             let frame = Arc::clone(&frame);
             let lod_tree = Arc::clone(&lod_tree);
             let thread_offsets = Arc::clone(&thread_offsets);
-            println!("[CANVAS_SETUP] prepare callback clones: {:?}", clone_start.elapsed());
             move |bounds, _window, _cx| {
                 let closure_start = std::time::Instant::now();
                 let viewport_width: f32 = bounds.size.width.into();
                 let viewport_height: f32 = bounds.size.height.into();
                 let result = (bounds, Arc::clone(&frame), Arc::clone(&lod_tree), Arc::clone(&thread_offsets), view_state.clone(), viewport_width, viewport_height, palette.clone());
-                println!("[CANVAS_SETUP] prepare closure executed: {:?}", closure_start.elapsed());
                 result
             }
         },
@@ -45,7 +43,6 @@ pub fn render_flamegraph_canvas(
 
             let visible_range_start = std::time::Instant::now();
             let visible_time = visible_range(&frame, viewport_width, &view_state);
-            println!("[CANVAS] visible_range calc: {:?}", visible_range_start.elapsed());
 
             let paint_layer_start = std::time::Instant::now();
             window.paint_layer(bounds, |window| {
@@ -125,7 +122,6 @@ pub fn render_flamegraph_canvas(
                     vertical_max,
                     viewport_width - THREAD_LABEL_WIDTH,
                 );
-                println!("[CANVAS] LOD query: {:?} ({} spans)", lod_start.elapsed(), merged_spans.len());
 
                 // Paint pre-merged spans directly - NO additional merging needed!
                 let paint_start = std::time::Instant::now();
@@ -188,10 +184,7 @@ pub fn render_flamegraph_canvas(
                         window.paint_quad(fill(badge_bounds, hsla(0.0, 0.0, 1.0, 0.3)));
                     }
                 }
-                println!("[CANVAS] paint merged spans: {:?}", paint_start.elapsed());
             });
-            println!("[CANVAS] paint_layer total: {:?}", paint_layer_start.elapsed());
-            println!("[CANVAS] TOTAL paint callback: {:?}", paint_start.elapsed());
         },
     )
     .size_full()
