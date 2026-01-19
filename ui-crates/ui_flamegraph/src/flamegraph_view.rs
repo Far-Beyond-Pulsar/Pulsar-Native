@@ -315,24 +315,45 @@ impl Render for FlamegraphView {
                                     }
 
                                     // ========================================================================
-                                    // CRITICAL: ABSOLUTELY ZERO SPAN CULLING
-                                    // Every single span MUST be rendered at all zoom levels
-                                    // Strategy: Merge ALL adjacent spans into continuous blocks
-                                    // This prevents "popping" when zooming in/out
+                                    // OFFSCREEN CULLING with careful coordinate handling
+                                    // Cull spans outside viewport to improve performance
+                                    // Uses padding to prevent edge popping during pan/zoom
                                     // ========================================================================
-                                    
-                                    // Group ALL spans by (thread_id, depth) for continuous rendering
+
+                                    // Group visible spans by (thread_id, depth) for continuous rendering
                                     let mut span_groups: std::collections::HashMap<(u64, u32), Vec<(f32, f32, usize, f32)>> = std::collections::HashMap::new();
-                                    
+
+                                    // Culling padding to prevent edge artifacts
+                                    const CULL_PADDING: f32 = 100.0;
+
                                     for (idx, span) in frame.spans.iter().enumerate() {
-                                        // Calculate positions for ALL spans, no time-based culling
+                                        // Calculate Y position first for vertical culling
+                                        // Note: y is relative to canvas top (0 = top of canvas)
                                         let thread_y_offset = thread_offsets.get(&span.thread_id).copied().unwrap_or(0.0);
                                         let y = thread_y_offset + (span.depth as f32 * ROW_HEIGHT) + view_state.pan_y;
 
+                                        // Vertical culling: skip if completely outside viewport (with padding)
+                                        // y is in canvas-relative coordinates, viewport_height is the canvas height
+                                        if y + ROW_HEIGHT < -CULL_PADDING || y > viewport_height + CULL_PADDING {
+                                            continue;
+                                        }
+
+                                        // Time-based culling: check if span is in visible time range
+                                        if span.end_ns() < visible_time.start || span.start_ns > visible_time.end {
+                                            continue;
+                                        }
+
+                                        // Calculate X positions (canvas-relative coordinates)
                                         let x1 = Self::time_to_x(span.start_ns, &frame, viewport_width, &view_state);
                                         let x2 = Self::time_to_x(span.end_ns(), &frame, viewport_width, &view_state);
 
-                                        // Group ALL spans - no culling whatsoever
+                                        // Horizontal culling: skip if completely outside viewport (with padding)
+                                        // x1, x2 are canvas-relative, viewport_width is the canvas width
+                                        if x2 < -CULL_PADDING || x1 > viewport_width + CULL_PADDING {
+                                            continue;
+                                        }
+
+                                        // Group visible spans for rendering
                                         let key = (span.thread_id, span.depth);
                                         span_groups.entry(key).or_insert_with(Vec::new).push((x1, x2, idx, y));
                                     }
@@ -348,18 +369,15 @@ impl Render for FlamegraphView {
                                             let mut j = i + 1;
                                             let mut span_count = 1;
                                             
-                                            // ALWAYS merge adjacent spans with small gaps
-                                            // This prevents popping - spans stay merged at all zoom levels
+                                            // Merge adjacent spans only when nearly touching
+                                            // Very minimal merging to preserve detail
                                             while j < spans.len() {
                                                 let (next_start, next_end, _, _) = spans[j];
                                                 let gap = next_start - merge_end;
-                                                let current_width = merge_end - merge_start;
-                                                
-                                                // Merge if gap is small relative to current merged width
-                                                // OR if gap is absolutely tiny
-                                                // This keeps spans grouped consistently
-                                                let relative_gap_threshold = current_width * 0.1; // 10% of current width
-                                                let should_merge = gap < relative_gap_threshold.max(5.0);
+
+                                                // Only merge if gap is less than 1 pixel
+                                                // No relative threshold - just absolute minimum
+                                                let should_merge = gap < 1.0;
                                                 
                                                 if should_merge {
                                                     merge_end = next_end;
@@ -371,13 +389,15 @@ impl Render for FlamegraphView {
                                                 }
                                             }
                                             
-                                            // CRITICAL: Force minimum 2px width on EVERYTHING
-                                            let final_width = (merge_end - merge_start).max(2.0);
-                                            
+                                            // Calculate width and ensure minimum after padding
+                                            let total_width = merge_end - merge_start;
+                                            // CRITICAL: Ensure rendered width is at least MIN_SPAN_WIDTH (2px) AFTER padding
+                                            let rendered_width = (total_width - PADDING * 2.0).max(MIN_SPAN_WIDTH);
+
                                             // Choose color based on first span
                                             let first_span = &frame.spans[first_idx];
                                             let base_color = palette[(first_span.color_index as usize) % palette.len()];
-                                            
+
                                             // Darken slightly if multiple spans merged
                                             let color = if span_count > 1 {
                                                 hsla(
@@ -389,7 +409,7 @@ impl Render for FlamegraphView {
                                             } else {
                                                 base_color
                                             };
-                                            
+
                                             // Render the span/block
                                             let span_bounds = Bounds {
                                                 origin: point(
@@ -397,18 +417,18 @@ impl Render for FlamegraphView {
                                                     bounds.origin.y + px(y + PADDING)
                                                 ),
                                                 size: size(
-                                                    px(final_width - PADDING * 2.0),
+                                                    px(rendered_width),
                                                     px(ROW_HEIGHT - PADDING * 2.0)
                                                 ),
                                             };
 
                                             window.paint_quad(fill(span_bounds, color));
-                                            
+
                                             // Visual indicator if many spans merged
-                                            if span_count > 5 && final_width > 20.0 {
+                                            if span_count > 5 && total_width > 20.0 {
                                                 let badge_bounds = Bounds {
                                                     origin: point(
-                                                        bounds.origin.x + px(merge_start + final_width - 8.0),
+                                                        bounds.origin.x + px(merge_start + total_width - 8.0),
                                                         bounds.origin.y + px(y + PADDING)
                                                     ),
                                                     size: size(px(6.0), px(6.0)),
@@ -456,13 +476,29 @@ impl Render for FlamegraphView {
                         let delta_x: f32 = delta.x.into();
 
                         if event.modifiers.control || event.modifiers.platform {
+                            // Zoom around cursor position (horizontal only)
+                            let cursor_pos: Point<Pixels> = event.position;
+                            let cursor_x: f32 = cursor_pos.x.into();
+
+                            let old_zoom = view.view_state.zoom;
                             let zoom_factor = 1.0 - (delta_y * 0.01);
-                            view.view_state.zoom = (view.view_state.zoom * zoom_factor).clamp(0.1, 100.0);
+                            let new_zoom = old_zoom * zoom_factor;
+
+                            // Calculate world position under cursor before zoom (X only)
+                            let world_x = (cursor_x - view.view_state.pan_x) / old_zoom;
+
+                            // Update zoom
+                            view.view_state.zoom = new_zoom;
+
+                            // Adjust pan_x so the same world position stays under cursor
+                            // Keep pan_y unchanged
+                            view.view_state.pan_x = cursor_x - (world_x * new_zoom);
                         } else if event.modifiers.shift {
-                            view.view_state.pan_x -= delta_y;
+                            // Vertical panning with shift
+                            view.view_state.pan_y -= delta_y * 10.0;
                         } else {
-                            view.view_state.pan_x -= delta_x;
-                            view.view_state.pan_y -= delta_y;
+                            // Horizontal panning (default)
+                            view.view_state.pan_x -= delta_y * 10.0;
                         }
 
                         cx.notify();
