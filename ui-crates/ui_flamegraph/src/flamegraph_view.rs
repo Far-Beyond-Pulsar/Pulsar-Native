@@ -4,6 +4,7 @@ use crate::trace_data::{TraceData, TraceFrame};
 use std::ops::Range;
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use ui::ActiveTheme;
 
 const ROW_HEIGHT: f32 = 20.0;
 const MIN_SPAN_WIDTH: f32 = 2.0;
@@ -163,15 +164,16 @@ impl FlamegraphView {
         start_ns.saturating_sub(padding)..end_ns.saturating_add(padding)
     }
     
-    fn render_framerate_graph(&self, frame: &Arc<TraceFrame>, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_framerate_graph(&self, frame: &Arc<TraceFrame>, cx: &mut Context<Self>) -> impl IntoElement {
         let frame_times = frame.frame_times_ms.clone();
-        
+        let theme = cx.theme();
+
         div()
             .h(px(GRAPH_HEIGHT))
             .w_full()
-            .bg(rgb(0x202020))
+            .bg(theme.list)
             .border_b_1()
-            .border_color(rgb(0x404040))
+            .border_color(theme.border)
             .child(
                 canvas(
                     move |bounds, _window, _cx| {
@@ -236,16 +238,17 @@ impl FlamegraphView {
             )
     }
 
-    fn render_timeline_ruler(&self, frame: &Arc<TraceFrame>, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_timeline_ruler(&self, frame: &Arc<TraceFrame>, cx: &mut Context<Self>) -> impl IntoElement {
         let frame_for_canvas = Arc::clone(frame);
         let view_state = self.view_state.clone();
+        let theme = cx.theme();
 
         div()
             .h(px(TIMELINE_HEIGHT))
             .w_full()
-            .bg(rgb(0x2a2a2a))
+            .bg(theme.list_head)
             .border_b_1()
-            .border_color(rgb(0x404040))
+            .border_color(theme.border)
             .child(
                 canvas(
                     move |bounds, _window, _cx| {
@@ -315,7 +318,7 @@ impl FlamegraphView {
             )
     }
 
-    fn render_statistics_sidebar(&self, frame: &Arc<TraceFrame>, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_statistics_sidebar(&self, frame: &Arc<TraceFrame>, cx: &mut Context<Self>) -> impl IntoElement {
         let duration_ms = frame.duration_ns() as f64 / 1_000_000.0;
         let num_frames = frame.frame_times_ms.len();
         let avg_frame_time = if !frame.frame_times_ms.is_empty() {
@@ -326,6 +329,7 @@ impl FlamegraphView {
 
         let min_frame_time = frame.frame_times_ms.iter().copied().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(0.0);
         let max_frame_time = frame.frame_times_ms.iter().copied().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(0.0);
+        let theme = cx.theme();
 
         div()
             .absolute()
@@ -333,9 +337,9 @@ impl FlamegraphView {
             .top_0()
             .w(px(STATS_SIDEBAR_WIDTH))
             .h_full()
-            .bg(rgb(0x252525))
+            .bg(theme.popover)
             .border_l_1()
-            .border_color(rgb(0x404040))
+            .border_color(theme.border)
             .flex()
             .flex_col()
             .p_4()
@@ -344,7 +348,7 @@ impl FlamegraphView {
                 div()
                     .text_sm()
                     .font_weight(FontWeight::BOLD)
-                    .text_color(rgb(0xdddddd))
+                    .text_color(theme.foreground)
                     .child("Statistics")
             )
             .child(
@@ -359,13 +363,13 @@ impl FlamegraphView {
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(rgb(0x999999))
+                                    .text_color(theme.muted_foreground)
                                     .child("Total Spans:")
                             )
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(rgb(0xdddddd))
+                                    .text_color(theme.foreground)
                                     .child(format!("{}", frame.spans.len()))
                             )
                     )
@@ -376,13 +380,13 @@ impl FlamegraphView {
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(rgb(0x999999))
+                                    .text_color(theme.muted_foreground)
                                     .child("Duration:")
                             )
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(rgb(0xdddddd))
+                                    .text_color(theme.foreground)
                                     .child(format!("{:.2} ms", duration_ms))
                             )
                     )
@@ -393,13 +397,13 @@ impl FlamegraphView {
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(rgb(0x999999))
+                                    .text_color(theme.muted_foreground)
                                     .child("Frames:")
                             )
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(rgb(0xdddddd))
+                                    .text_color(theme.foreground)
                                     .child(format!("{}", num_frames))
                             )
                     )
@@ -410,13 +414,13 @@ impl FlamegraphView {
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(rgb(0x999999))
+                                    .text_color(theme.muted_foreground)
                                     .child("Avg Frame:")
                             )
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(rgb(0xdddddd))
+                                    .text_color(theme.foreground)
                                     .child(format!("{:.2} ms", avg_frame_time))
                             )
                     )
@@ -427,13 +431,13 @@ impl FlamegraphView {
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(rgb(0x999999))
+                                    .text_color(theme.muted_foreground)
                                     .child("Min Frame:")
                             )
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(rgb(0xdddddd))
+                                    .text_color(theme.foreground)
                                     .child(format!("{:.2} ms", min_frame_time))
                             )
                     )
@@ -444,13 +448,13 @@ impl FlamegraphView {
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(rgb(0x999999))
+                                    .text_color(theme.muted_foreground)
                                     .child("Max Frame:")
                             )
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(rgb(0xdddddd))
+                                    .text_color(theme.foreground)
                                     .child(format!("{:.2} ms", max_frame_time))
                             )
                     )
@@ -461,13 +465,13 @@ impl FlamegraphView {
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(rgb(0x999999))
+                                    .text_color(theme.muted_foreground)
                                     .child("Threads:")
                             )
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(rgb(0xdddddd))
+                                    .text_color(theme.foreground)
                                     .child(format!("{}", frame.threads.len()))
                             )
                     )
@@ -478,13 +482,13 @@ impl FlamegraphView {
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(rgb(0x999999))
+                                    .text_color(theme.muted_foreground)
                                     .child("Max Depth:")
                             )
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(rgb(0xdddddd))
+                                    .text_color(theme.foreground)
                                     .child(format!("{}", frame.max_depth))
                             )
                     )
@@ -494,7 +498,7 @@ impl FlamegraphView {
                     .mt_4()
                     .text_sm()
                     .font_weight(FontWeight::BOLD)
-                    .text_color(rgb(0xdddddd))
+                    .text_color(theme.foreground)
                     .child("Threads")
             )
             .child(
@@ -524,7 +528,7 @@ impl FlamegraphView {
                                 .child(
                                     div()
                                         .text_xs()
-                                        .text_color(rgb(0xcccccc))
+                                        .text_color(theme.foreground)
                                         .child(thread.name.clone())
                                 )
                         })
@@ -532,9 +536,10 @@ impl FlamegraphView {
             )
     }
 
-    fn render_thread_labels(&self, frame: &Arc<TraceFrame>, thread_offsets: &BTreeMap<u64, f32>, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_thread_labels(&self, frame: &Arc<TraceFrame>, thread_offsets: &BTreeMap<u64, f32>, cx: &mut Context<Self>) -> impl IntoElement {
         let thread_offsets = thread_offsets.clone();
         let view_state = self.view_state.clone();
+        let theme = cx.theme();
 
         div()
             .absolute()
@@ -542,9 +547,9 @@ impl FlamegraphView {
             .top_0()
             .w(px(THREAD_LABEL_WIDTH))
             .h_full()
-            .bg(rgb(0x252525))
+            .bg(theme.popover)
             .border_r_1()
-            .border_color(rgb(0x404040))
+            .border_color(theme.border)
             .overflow_hidden()
             .children(
                 thread_offsets.iter().map(|(thread_id, y_offset)| {
@@ -585,13 +590,14 @@ impl Render for FlamegraphView {
         let thread_offsets = cache.thread_offsets.clone();
         let view_state = self.view_state.clone();
         let palette = get_palette();
+        let theme = cx.theme().clone();
 
         let view_state_for_canvas = view_state.clone();
         let palette_for_canvas = palette.clone();
 
         v_flex()
             .size_full()
-            .bg(rgb(0x1a1a1a))
+            .bg(theme.background)
             .child(
                 // Framerate graph at top
                 self.render_framerate_graph(&frame, cx)
@@ -914,9 +920,9 @@ impl Render for FlamegraphView {
                 div()
                     .h(px(40.0))
                     .w_full()
-                    .bg(rgb(0x2a2a2a))
+                    .bg(theme.list_head)
                     .border_t_1()
-                    .border_color(rgb(0x404040))
+                    .border_color(theme.border)
                     .flex()
                     .items_center()
                     .px_4()
@@ -924,25 +930,25 @@ impl Render for FlamegraphView {
                     .child(
                         div()
                             .text_sm()
-                            .text_color(rgb(0xcccccc))
+                            .text_color(theme.foreground)
                             .child(format!("Spans: {}", frame.spans.len()))
                     )
                     .child(
                         div()
                             .text_sm()
-                            .text_color(rgb(0x999999))
+                            .text_color(theme.muted_foreground)
                             .child(format!("Threads: {}", frame.threads.len()))
                     )
                     .child(
                         div()
                             .text_sm()
-                            .text_color(rgb(0x999999))
+                            .text_color(theme.muted_foreground)
                             .child(format!("Duration: {:.2}ms", frame.duration_ns() as f64 / 1_000_000.0))
                     )
                     .child(
                         div()
                             .text_sm()
-                            .text_color(rgb(0x999999))
+                            .text_color(theme.muted_foreground)
                             .child(format!("Zoom: {:.1}x", view_state.zoom))
                     )
             )

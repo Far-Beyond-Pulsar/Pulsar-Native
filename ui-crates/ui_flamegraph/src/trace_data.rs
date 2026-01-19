@@ -373,8 +373,8 @@ impl TraceData {
                 }
             }
 
-            // === THREADS 7-10: JOB SYSTEM WORKERS ===
-            for worker_id in 0..4 {
+            // === THREADS 7-18: JOB SYSTEM WORKERS ===
+            for worker_id in 0..12 {
                 let thread_id = 7 + worker_id;
                 let job_start = frame_start + rng.gen_range(0..3_000_000);
                 let job_dur = rng.gen_range(2_000_000..7_000_000);
