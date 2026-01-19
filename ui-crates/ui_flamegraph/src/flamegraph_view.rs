@@ -14,6 +14,7 @@ const THREAD_LABEL_WIDTH: f32 = 120.0;
 const THREAD_ROW_PADDING: f32 = 30.0;
 const TIMELINE_HEIGHT: f32 = 30.0;
 const STATS_SIDEBAR_WIDTH: f32 = 250.0;
+const TITLE_BAR_HEIGHT: f32 = 34.0;
 
 fn get_palette() -> Vec<Hsla> {
     vec![
@@ -47,6 +48,9 @@ struct ViewState {
     drag_start_y: f32,
     drag_pan_start_x: f32,
     drag_pan_start_y: f32,
+    hovered_span: Option<usize>,
+    mouse_x: f32,
+    mouse_y: f32,
 }
 
 impl Default for ViewState {
@@ -60,6 +64,9 @@ impl Default for ViewState {
             drag_start_y: 0.0,
             drag_pan_start_x: 0.0,
             drag_pan_start_y: 0.0,
+            hovered_span: None,
+            mouse_x: 0.0,
+            mouse_y: 0.0,
         }
     }
 }
@@ -79,6 +86,8 @@ pub struct FlamegraphView {
     trace_data: TraceData,
     view_state: ViewState,
     cache: Option<(Arc<TraceFrame>, SpanCache)>,
+    viewport_width: Arc<std::sync::RwLock<f32>>,
+    viewport_height: Arc<std::sync::RwLock<f32>>,
 }
 
 impl FlamegraphView {
@@ -87,6 +96,8 @@ impl FlamegraphView {
             trace_data,
             view_state: ViewState::default(),
             cache: None,
+            viewport_width: Arc::new(std::sync::RwLock::new(1920.0)),
+            viewport_height: Arc::new(std::sync::RwLock::new(1080.0)),
         }
     }
 
@@ -536,6 +547,149 @@ impl FlamegraphView {
             )
     }
 
+    fn render_hover_popup(&self, frame: &Arc<TraceFrame>, cx: &mut Context<Self>) -> Option<impl IntoElement> {
+        let span_idx = self.view_state.hovered_span?;
+        let span = frame.spans.get(span_idx)?;
+        let theme = cx.theme();
+        
+        let duration_ms = span.duration_ns as f64 / 1_000_000.0;
+        let start_ms = (span.start_ns - frame.min_time_ns) as f64 / 1_000_000.0;
+        let end_ms = (span.end_ns() - frame.min_time_ns) as f64 / 1_000_000.0;
+        let thread_name = frame.threads.get(&span.thread_id).map(|t| t.name.clone()).unwrap_or_else(|| "Unknown".to_string());
+        
+        let popup_width = 280.0;
+        let mouse_x = self.view_state.mouse_x;
+        let mouse_y = self.view_state.mouse_y;
+        let viewport_width = *self.viewport_width.read().unwrap();
+        
+        // Position popup horizontally near the mouse cursor
+        let popup_x = if mouse_x + popup_width + 20.0 > viewport_width - STATS_SIDEBAR_WIDTH {
+            (mouse_x - popup_width - 10.0).max(0.0)
+        } else {
+            mouse_x + 15.0
+        };
+        
+        // Mouse Y is already relative to the canvas div (where the popup is also rendered)
+        // So no offset needed - just position slightly below the cursor
+        let popup_y = mouse_y + 5.0 - 200.0;
+        
+        Some(
+            div()
+                .absolute()
+                .left(px(popup_x))
+                .top(px(popup_y))
+                .w(px(popup_width))
+                .bg(theme.popover)
+                .border_1()
+                .border_color(theme.border)
+                .rounded(px(4.0))
+                .shadow_lg()
+                .p_3()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .child(
+                    div()
+                        .text_sm()
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(theme.foreground)
+                        .child(span.name.clone())
+                )
+                .child(
+                    div()
+                        .w_full()
+                        .h(px(1.0))
+                        .bg(theme.border)
+                )
+                .child(
+                    div()
+                        .flex()
+                        .justify_between()
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(theme.muted_foreground)
+                                .child("Duration:")
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(theme.foreground)
+                                .child(format!("{:.3} ms", duration_ms))
+                        )
+                )
+                .child(
+                    div()
+                        .flex()
+                        .justify_between()
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(theme.muted_foreground)
+                                .child("Start:")
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(theme.foreground)
+                                .child(format!("{:.3} ms", start_ms))
+                        )
+                )
+                .child(
+                    div()
+                        .flex()
+                        .justify_between()
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(theme.muted_foreground)
+                                .child("End:")
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(theme.foreground)
+                                .child(format!("{:.3} ms", end_ms))
+                        )
+                )
+                .child(
+                    div()
+                        .flex()
+                        .justify_between()
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(theme.muted_foreground)
+                                .child("Thread:")
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(theme.foreground)
+                                .child(thread_name)
+                        )
+                )
+                .child(
+                    div()
+                        .flex()
+                        .justify_between()
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(theme.muted_foreground)
+                                .child("Depth:")
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(theme.foreground)
+                                .child(format!("{}", span.depth))
+                        )
+                )
+        )
+    }
+
     fn render_thread_labels(&self, frame: &Arc<TraceFrame>, thread_offsets: &BTreeMap<u64, f32>, cx: &mut Context<Self>) -> impl IntoElement {
         let thread_offsets = thread_offsets.clone();
         let view_state = self.view_state.clone();
@@ -612,6 +766,17 @@ impl Render for FlamegraphView {
                     .w_full()
                     .overflow_hidden()
                     .relative()
+                    .on_children_prepainted({
+                        let viewport_width = self.viewport_width.clone();
+                        let viewport_height = self.viewport_height.clone();
+                        move |bounds: Vec<Bounds<Pixels>>, _window: &mut Window, _cx: &mut App| {
+                            // Store the canvas viewport dimensions
+                            if let Some(canvas_bounds) = bounds.first() {
+                                *viewport_width.write().unwrap() = canvas_bounds.size.width.into();
+                                *viewport_height.write().unwrap() = canvas_bounds.size.height.into();
+                            }
+                        }
+                    })
                     .child(
                         // Main flamegraph canvas
                         canvas(
@@ -861,17 +1026,54 @@ impl Render for FlamegraphView {
                         cx.notify();
                     }))
                     .on_mouse_move(cx.listener(|view, event: &MouseMoveEvent, _window, cx| {
+                        let pos: Point<Pixels> = event.position;
+                        let current_x: f32 = pos.x.into();
+                        let current_y: f32 = pos.y.into();
+                        
+                        view.view_state.mouse_x = current_x;
+                        view.view_state.mouse_y = current_y;
+                        
                         if view.view_state.dragging {
-                            let pos: Point<Pixels> = event.position;
-                            let current_x: f32 = pos.x.into();
-                            let current_y: f32 = pos.y.into();
                             let delta_x = current_x - view.view_state.drag_start_x;
                             let delta_y = current_y - view.view_state.drag_start_y;
                             
                             view.view_state.pan_x = view.view_state.drag_pan_start_x + delta_x;
                             view.view_state.pan_y = view.view_state.drag_pan_start_y + delta_y;
-                            cx.notify();
+                        } else {
+                            // Detect hovered span
+                            // Account for the offset from titlebar, framerate graph and timeline at the top
+                            let canvas_offset_y = TITLE_BAR_HEIGHT + GRAPH_HEIGHT + TIMELINE_HEIGHT;
+                            let canvas_y = current_y - canvas_offset_y;
+                            
+                            // Copy view_state values before borrowing
+                            let view_state_copy = view.view_state.clone();
+                            let viewport_width = *view.viewport_width.read().unwrap();
+                            let (frame, cache) = view.get_or_build_cache();
+                            
+                            let mut new_hovered_span = None;
+                            
+                            // Only check if mouse is within the canvas area
+                            if canvas_y >= 0.0 && current_x >= THREAD_LABEL_WIDTH {
+                                for (idx, span) in frame.spans.iter().enumerate() {
+                                    let thread_y_offset = cache.thread_offsets.get(&span.thread_id).copied().unwrap_or(0.0);
+                                    let y = thread_y_offset + (span.depth as f32 * ROW_HEIGHT) + view_state_copy.pan_y;
+                                    
+                                    if canvas_y >= y && canvas_y <= y + ROW_HEIGHT {
+                                        let x1 = Self::time_to_x(span.start_ns, &frame, viewport_width, &view_state_copy);
+                                        let x2 = Self::time_to_x(span.end_ns(), &frame, viewport_width, &view_state_copy);
+                                        
+                                        if current_x >= x1 && current_x <= x2 {
+                                            new_hovered_span = Some(idx);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            view.view_state.hovered_span = new_hovered_span;
                         }
+                        
+                        cx.notify();
                     }))
                     .on_scroll_wheel(cx.listener(|view, event: &ScrollWheelEvent, _window, cx| {
                         let delta = event.delta.pixel_delta(px(1.0));
@@ -913,6 +1115,10 @@ impl Render for FlamegraphView {
                     .child(
                         // Statistics sidebar on the right (rendered after canvas for proper layering)
                         self.render_statistics_sidebar(&frame, cx)
+                    )
+                    .children(
+                        // Hover popup (rendered last to be on top)
+                        self.render_hover_popup(&frame, cx)
                     )
             )
             .child(
