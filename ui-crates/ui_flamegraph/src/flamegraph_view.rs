@@ -177,6 +177,8 @@ impl FlamegraphView {
     
     fn render_framerate_graph(&self, frame: &Arc<TraceFrame>, cx: &mut Context<Self>) -> impl IntoElement {
         let frame_times = frame.frame_times_ms.clone();
+        let view_state = self.view_state.clone();
+        let frame_for_indicator = Arc::clone(frame);
         let theme = cx.theme();
 
         div()
@@ -188,10 +190,10 @@ impl FlamegraphView {
             .child(
                 canvas(
                     move |bounds, _window, _cx| {
-                        (bounds, frame_times.clone())
+                        (bounds, frame_times.clone(), view_state.clone(), Arc::clone(&frame_for_indicator))
                     },
                     move |bounds, state, window, _cx| {
-                        let (bounds, frame_times) = state;
+                        let (bounds, frame_times, view_state, frame) = state;
                         
                         if frame_times.is_empty() {
                             return;
@@ -241,6 +243,73 @@ impl FlamegraphView {
                                     size: size(px(point_width.max(1.0)), px(bar_height)),
                                 };
                                 window.paint_quad(fill(bar_bounds, color));
+                            }
+
+                            // Draw viewport indicator showing visible range in flamegraph
+                            if frame.duration_ns() > 0 {
+                                let effective_width = width - THREAD_LABEL_WIDTH;
+
+                                // Calculate the normalized visible range (0.0 to 1.0)
+                                let normalized_start = (-(view_state.pan_x + effective_width * 0.5)) / (effective_width * view_state.zoom);
+                                let normalized_end = ((effective_width * 1.5 - view_state.pan_x) / (effective_width * view_state.zoom));
+
+                                // Clamp to valid range
+                                let start_clamped = normalized_start.max(0.0).min(1.0);
+                                let end_clamped = normalized_end.max(0.0).min(1.0);
+
+                                // Convert to pixel positions
+                                let indicator_start_x = start_clamped * width;
+                                let indicator_end_x = end_clamped * width;
+                                let indicator_width = (indicator_end_x - indicator_start_x).max(2.0);
+
+                                // Draw semi-transparent overlay for non-visible regions
+                                if indicator_start_x > 0.0 {
+                                    let left_overlay = Bounds {
+                                        origin: bounds.origin,
+                                        size: size(px(indicator_start_x), px(height)),
+                                    };
+                                    window.paint_quad(fill(left_overlay, hsla(0.0, 0.0, 0.0, 0.5)));
+                                }
+
+                                if indicator_end_x < width {
+                                    let right_overlay = Bounds {
+                                        origin: point(bounds.origin.x + px(indicator_end_x), bounds.origin.y),
+                                        size: size(px(width - indicator_end_x), px(height)),
+                                    };
+                                    window.paint_quad(fill(right_overlay, hsla(0.0, 0.0, 0.0, 0.5)));
+                                }
+
+                                // Draw border around visible region
+                                let border_color = hsla(210.0 / 360.0, 0.8, 0.6, 0.9);
+                                let border_width = 2.0;
+
+                                // Top border
+                                let top_border = Bounds {
+                                    origin: point(bounds.origin.x + px(indicator_start_x), bounds.origin.y),
+                                    size: size(px(indicator_width), px(border_width)),
+                                };
+                                window.paint_quad(fill(top_border, border_color));
+
+                                // Bottom border
+                                let bottom_border = Bounds {
+                                    origin: point(bounds.origin.x + px(indicator_start_x), bounds.origin.y + px(height - border_width)),
+                                    size: size(px(indicator_width), px(border_width)),
+                                };
+                                window.paint_quad(fill(bottom_border, border_color));
+
+                                // Left border
+                                let left_border = Bounds {
+                                    origin: point(bounds.origin.x + px(indicator_start_x), bounds.origin.y),
+                                    size: size(px(border_width), px(height)),
+                                };
+                                window.paint_quad(fill(left_border, border_color));
+
+                                // Right border
+                                let right_border = Bounds {
+                                    origin: point(bounds.origin.x + px(indicator_end_x - border_width), bounds.origin.y),
+                                    size: size(px(border_width), px(height)),
+                                };
+                                window.paint_quad(fill(right_border, border_color));
                             }
                         });
                     },

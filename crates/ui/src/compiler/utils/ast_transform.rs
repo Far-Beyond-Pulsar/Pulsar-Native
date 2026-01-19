@@ -199,16 +199,8 @@ pub fn indent_code(code: &str, indent_level: usize) -> String {
         .join("\n")
 }
 
-/// Pretty-print a block of Rust code using rustfmt if available
-pub fn format_rust_code(code: &str) -> String {
-    // Try to parse and re-format using prettyplease
-    if let Ok(file) = syn::parse_file(code) {
-        prettyplease::unparse(&file)
-    } else {
-        // If parsing fails, return as-is
-        code.to_string()
-    }
-}
+// Re-export format_rust_code from the generation module
+pub use crate::compiler::generation::formatting::format_rust_code;
 
 /// Apply both exec_output replacement and parameter substitution
 pub fn inline_control_flow_function(

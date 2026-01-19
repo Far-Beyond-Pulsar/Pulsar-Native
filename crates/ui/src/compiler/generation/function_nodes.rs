@@ -24,7 +24,61 @@
 //! }
 //! ```
 
-// This module's functionality is currently in code_generator.rs
-// Future refactoring can extract it here
+use crate::compiler::core::NodeMetadata;
+use crate::graph::NodeInstance;
+use super::code_generator::CodeGenerator;
 
-pub use super::code_generator::*;
+impl<'a> CodeGenerator<'a> {
+    /// Generate code for a function node
+    pub fn generate_function_node(
+        &mut self,
+        node: &NodeInstance,
+        node_meta: &NodeMetadata,
+        output: &mut String,
+        indent_level: usize,
+    ) -> Result<(), String> {
+        let indent = "    ".repeat(indent_level);
+
+        // Collect arguments
+        let args = self.collect_arguments(node, node_meta)?;
+
+        // Check if this function returns a value
+        let has_return = node_meta.return_type.is_some();
+
+        if has_return {
+            // Store result in variable
+            let result_var = self
+                .data_resolver
+                .get_result_variable(&node.id)
+                .ok_or_else(|| format!("No result variable for node: {}", node.id))?;
+
+            output.push_str(&format!(
+                "{}let {} = {}({});\n",
+                indent,
+                result_var,
+                node_meta.name,
+                args.join(", ")
+            ));
+        } else {
+            // Just call the function
+            output.push_str(&format!(
+                "{}{}({});\n",
+                indent,
+                node_meta.name,
+                args.join(", ")
+            ));
+        }
+
+        // Follow execution chain
+        if let Some(exec_out) = node_meta.exec_outputs.first() {
+            let connected = self.exec_routing.get_connected_nodes(&node.id, exec_out);
+            for next_node_id in connected {
+                if let Some(next_node) = self.graph.nodes.get(next_node_id) {
+                    self.generate_exec_chain(next_node, output, indent_level)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+}

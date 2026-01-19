@@ -95,3 +95,7 @@ pub mod formatting;
 
 // Re-export main API
 pub use code_generator::CodeGenerator;
+pub use code_generator::generate_program;
+pub use imports::{collect_node_dependencies, collect_node_imports};
+pub use event_nodes::generate_file_header;
+pub use formatting::format_rust_code;
