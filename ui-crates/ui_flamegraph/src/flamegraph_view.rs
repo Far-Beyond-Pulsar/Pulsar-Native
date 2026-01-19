@@ -182,10 +182,17 @@ impl Render for FlamegraphView {
                             } else if view.view_state.graph_dragging {
                                 let pos: Point<Pixels> = event.position;
                                 let current_x: f32 = pos.x.into();
+                                let width = *viewport_width.read().unwrap();
                                 
-                                // Calculate delta and update pan (negate delta to match drag direction)
+                                // Calculate delta in graph space and convert to pan space
                                 let delta_x = current_x - view.view_state.graph_drag_start_x;
-                                view.view_state.pan_x = view.view_state.drag_pan_start_x - delta_x;
+                                
+                                // The viewport indicator represents the visible area in the bottom graph
+                                // We need to scale the drag delta by the zoom factor to sync speeds
+                                let effective_width = width - THREAD_LABEL_WIDTH;
+                                let scaled_delta = delta_x * view.view_state.zoom;
+                                
+                                view.view_state.pan_x = view.view_state.drag_pan_start_x - scaled_delta;
                                 cx.notify();
                             }
                         })
