@@ -98,7 +98,7 @@ pub fn render_statistics_sidebar(
 }
 
 /// Helper function to create a statistics row
-fn stat_row(label: &str, value: String, label_color: Hsla, value_color: Hsla) -> impl IntoElement {
+fn stat_row(label: impl Into<SharedString>, value: String, label_color: Hsla, value_color: Hsla) -> impl IntoElement {
     div()
         .flex()
         .justify_between()
@@ -106,7 +106,7 @@ fn stat_row(label: &str, value: String, label_color: Hsla, value_color: Hsla) ->
             div()
                 .text_xs()
                 .text_color(label_color)
-                .child(label)
+                .child(label.into())
         )
         .child(
             div()

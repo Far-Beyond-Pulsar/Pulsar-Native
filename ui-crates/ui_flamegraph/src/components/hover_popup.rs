@@ -75,7 +75,20 @@ pub fn render_hover_popup(
 }
 
 /// Helper function to create a popup info row
-fn popup_row(label: &str, value: String, label_color: Hsla, value_color: Hsla, bold_value: bool) -> impl IntoElement {
+fn popup_row(label: impl Into<SharedString>, value: String, label_color: Hsla, value_color: Hsla, bold_value: bool) -> impl IntoElement {
+    let value_div = if bold_value {
+        div()
+            .text_xs()
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(value_color)
+            .child(value)
+    } else {
+        div()
+            .text_xs()
+            .text_color(value_color)
+            .child(value)
+    };
+
     div()
         .flex()
         .justify_between()
@@ -83,13 +96,7 @@ fn popup_row(label: &str, value: String, label_color: Hsla, value_color: Hsla, b
             div()
                 .text_xs()
                 .text_color(label_color)
-                .child(label)
+                .child(label.into())
         )
-        .child(
-            div()
-                .text_xs()
-                .when(bold_value, |div| div.font_weight(FontWeight::SEMIBOLD))
-                .text_color(value_color)
-                .child(value)
-        )
+        .child(value_div)
 }
