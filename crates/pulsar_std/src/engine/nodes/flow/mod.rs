@@ -117,7 +117,7 @@ pub fn multi_branch(condition1: bool, condition2: bool, condition3: bool) {
 /// Matches the value against predefined cases or executes the default branch.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn switch_on_int(value: i64) {
-    match value as i32 {
+    match value {
         0 => exec_output!("Case0"),
         1 => exec_output!("Case1"),
         2 => exec_output!("Case2"),
