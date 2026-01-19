@@ -38,7 +38,6 @@ pub fn render_hover_popup(
     // Mouse Y is already relative to the canvas div (where the popup is also rendered)
     // So no offset needed - just position slightly below the cursor
     let popup_y = mouse_y + 5.0 - 150.0;
-    println!("[HP] setup calculations: {:?}", setup_start.elapsed());
 
     let render_start = std::time::Instant::now();
     let result = Some(
@@ -75,7 +74,6 @@ pub fn render_hover_popup(
             .child(popup_row("Thread:", thread_name, theme.muted_foreground, theme.foreground, false))
             .child(popup_row("Depth:", format!("{}", span.depth), theme.muted_foreground, theme.foreground, false))
     );
-    println!("[HP] render popup: {:?}", render_start.elapsed());
     result
 }
 

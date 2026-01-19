@@ -9,6 +9,8 @@ High-performance flamegraph visualization for profiling and tracing data in Puls
   - Ctrl/Cmd + Scroll to zoom in/out
   - Scroll to pan vertically
   - Shift + Scroll to pan horizontally
+  - **Left-click on framerate graph** to jump to and center that time range in the flamegraph viewer
+  - **Right-click on framerate graph** to reset zoom and pan
 - **Color-Coded Spans**: 16-color palette automatically assigned to distinguish different trace categories
 - **Viewport Culling**: Only renders visible spans for maximum performance
 - **Real-time Updates**: Thread-safe trace data structure for live profiling

@@ -150,6 +150,23 @@ pub fn render_framerate_graph(
                             };
                             window.paint_quad(fill(right_border, border_color));
                         }
+
+                        // Draw crop center indicator if set
+                        if let Some(crop_time_ns) = view_state.crop_center_time_ns {
+                            if crop_time_ns >= frame.min_time_ns && crop_time_ns <= frame.max_time_ns {
+                                let normalized_crop = (crop_time_ns - frame.min_time_ns) as f32 / 
+                                    frame.duration_ns() as f32;
+                                let crop_x = normalized_crop * width;
+                                
+                                // Draw a vertical line at the crop center
+                                let line_width = 3.0;
+                                let line_bounds = Bounds {
+                                    origin: point(bounds.origin.x + px(crop_x - line_width / 2.0), bounds.origin.y),
+                                    size: size(px(line_width), px(height)),
+                                };
+                                window.paint_quad(fill(line_bounds, hsla(30.0 / 360.0, 1.0, 0.5, 0.9))); // Orange indicator
+                            }
+                        }
                     });
                 },
             )

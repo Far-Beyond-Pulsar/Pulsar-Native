@@ -78,7 +78,48 @@ impl Render for FlamegraphView {
         let result = v_flex()
             .size_full()
             .bg(theme.background)
-            .child(framerate_graph)
+            .child(
+                div()
+                    .child(framerate_graph)
+                    .on_mouse_down(MouseButton::Left, {
+                        let frame = Arc::clone(&frame);
+                        let viewport_width = self.viewport_width.clone();
+                        cx.listener(move |view, event: &MouseDownEvent, _window, cx| {
+                            let pos: Point<Pixels> = event.position;
+                            let click_x: f32 = pos.x.into();
+                            let width = *viewport_width.read().unwrap();
+                            
+                            // Calculate the time at the click position
+                            if width > 0.0 && frame.duration_ns() > 0 {
+                                let normalized_pos = click_x / width;
+                                let clicked_time_ns = frame.min_time_ns + 
+                                    (normalized_pos as f64 * frame.duration_ns() as f64) as u64;
+                                
+                                // Store the clicked time and center the view on it
+                                view.view_state.crop_center_time_ns = Some(clicked_time_ns);
+                                
+                                // Calculate new pan_x to center this time in the viewport
+                                let effective_width = width - THREAD_LABEL_WIDTH;
+                                let normalized_time = (clicked_time_ns - frame.min_time_ns) as f32 / 
+                                    frame.duration_ns() as f32;
+                                
+                                // Pan so the clicked time is centered in the visible area
+                                view.view_state.pan_x = THREAD_LABEL_WIDTH + 
+                                    (effective_width * 0.5) - 
+                                    (normalized_time * effective_width * view.view_state.zoom);
+                                
+                                cx.notify();
+                            }
+                        })
+                    })
+                    .on_mouse_down(MouseButton::Right, cx.listener(|view, _event: &MouseDownEvent, _window, cx| {
+                        // Right-click resets the crop
+                        view.view_state.crop_center_time_ns = None;
+                        view.view_state.zoom = 1.0;
+                        view.view_state.pan_x = 0.0;
+                        cx.notify();
+                    }))
+            )
             .child(timeline_ruler)
             .child(
                 div()
