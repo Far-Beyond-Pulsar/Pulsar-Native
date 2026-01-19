@@ -571,7 +571,7 @@ impl FlamegraphView {
         
         // Mouse Y is already relative to the canvas div (where the popup is also rendered)
         // So no offset needed - just position slightly below the cursor
-        let popup_y = mouse_y + 5.0 - 200.0;
+        let popup_y = mouse_y + 5.0 - 150.0;
         
         Some(
             div()
