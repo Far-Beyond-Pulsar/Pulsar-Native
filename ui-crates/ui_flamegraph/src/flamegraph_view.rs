@@ -11,25 +11,28 @@ const PADDING: f32 = 2.0;
 const GRAPH_HEIGHT: f32 = 100.0;
 const THREAD_LABEL_WIDTH: f32 = 120.0;
 const THREAD_ROW_PADDING: f32 = 30.0;
+const TIMELINE_HEIGHT: f32 = 30.0;
+const STATS_SIDEBAR_WIDTH: f32 = 250.0;
 
 fn get_palette() -> Vec<Hsla> {
     vec![
-        hsla(0.0 / 360.0, 0.7, 0.6, 1.0),
-        hsla(20.0 / 360.0, 0.7, 0.6, 1.0),
-        hsla(40.0 / 360.0, 0.7, 0.6, 1.0),
-        hsla(60.0 / 360.0, 0.7, 0.6, 1.0),
-        hsla(120.0 / 360.0, 0.7, 0.6, 1.0),
-        hsla(180.0 / 360.0, 0.7, 0.6, 1.0),
-        hsla(200.0 / 360.0, 0.7, 0.6, 1.0),
-        hsla(220.0 / 360.0, 0.7, 0.6, 1.0),
-        hsla(240.0 / 360.0, 0.7, 0.6, 1.0),
-        hsla(260.0 / 360.0, 0.7, 0.6, 1.0),
-        hsla(280.0 / 360.0, 0.7, 0.6, 1.0),
-        hsla(300.0 / 360.0, 0.7, 0.6, 1.0),
-        hsla(320.0 / 360.0, 0.7, 0.6, 1.0),
-        hsla(340.0 / 360.0, 0.7, 0.6, 1.0),
-        hsla(160.0 / 360.0, 0.7, 0.6, 1.0),
-        hsla(100.0 / 360.0, 0.7, 0.6, 1.0),
+        // Professional color palette inspired by profiler tools
+        hsla(210.0 / 360.0, 0.75, 0.55, 1.0), // Blue
+        hsla(30.0 / 360.0, 0.80, 0.55, 1.0),  // Orange
+        hsla(140.0 / 360.0, 0.70, 0.50, 1.0), // Green
+        hsla(340.0 / 360.0, 0.75, 0.55, 1.0), // Pink
+        hsla(270.0 / 360.0, 0.70, 0.55, 1.0), // Purple
+        hsla(180.0 / 360.0, 0.65, 0.50, 1.0), // Cyan
+        hsla(50.0 / 360.0, 0.75, 0.55, 1.0),  // Yellow
+        hsla(10.0 / 360.0, 0.75, 0.55, 1.0),  // Red-Orange
+        hsla(160.0 / 360.0, 0.70, 0.50, 1.0), // Teal
+        hsla(290.0 / 360.0, 0.70, 0.55, 1.0), // Violet
+        hsla(195.0 / 360.0, 0.70, 0.55, 1.0), // Sky Blue
+        hsla(80.0 / 360.0, 0.65, 0.50, 1.0),  // Lime
+        hsla(320.0 / 360.0, 0.75, 0.55, 1.0), // Magenta
+        hsla(40.0 / 360.0, 0.75, 0.55, 1.0),  // Amber
+        hsla(250.0 / 360.0, 0.70, 0.55, 1.0), // Indigo
+        hsla(120.0 / 360.0, 0.70, 0.50, 1.0), // Emerald
     ]
 }
 
@@ -106,7 +109,7 @@ impl FlamegraphView {
 
     fn calculate_thread_y_offsets(frame: &TraceFrame) -> BTreeMap<u64, f32> {
         let mut offsets = BTreeMap::new();
-        let mut current_y = GRAPH_HEIGHT + THREAD_ROW_PADDING;
+        let mut current_y = GRAPH_HEIGHT + TIMELINE_HEIGHT + THREAD_ROW_PADDING;
         
         // Sort threads: GPU (0) first, Main Thread (1) second, then workers
         let mut thread_ids: Vec<u64> = frame.threads.keys().copied().collect();
@@ -149,7 +152,6 @@ impl FlamegraphView {
         
         // Calculate visible time range based on pan and zoom
         // Don't clamp to 0..1 here - allow wider range to prevent aggressive culling
-        let inv_zoom = 1.0 / view_state.zoom;
         let normalized_start = (-(view_state.pan_x + effective_width * 0.5)) / (effective_width * view_state.zoom);
         let normalized_end = ((effective_width * 1.5 - view_state.pan_x) / (effective_width * view_state.zoom));
 
@@ -167,9 +169,9 @@ impl FlamegraphView {
         div()
             .h(px(GRAPH_HEIGHT))
             .w_full()
-            .bg(rgb(0x181818))
+            .bg(rgb(0x202020))
             .border_b_1()
-            .border_color(rgb(0x3e3e3e))
+            .border_color(rgb(0x404040))
             .child(
                 canvas(
                     move |bounds, _window, _cx| {
@@ -234,6 +236,302 @@ impl FlamegraphView {
             )
     }
 
+    fn render_timeline_ruler(&self, frame: &Arc<TraceFrame>, _cx: &mut Context<Self>) -> impl IntoElement {
+        let frame_for_canvas = Arc::clone(frame);
+        let view_state = self.view_state.clone();
+
+        div()
+            .h(px(TIMELINE_HEIGHT))
+            .w_full()
+            .bg(rgb(0x2a2a2a))
+            .border_b_1()
+            .border_color(rgb(0x404040))
+            .child(
+                canvas(
+                    move |bounds, _window, _cx| {
+                        let viewport_width: f32 = bounds.size.width.into();
+                        (bounds, Arc::clone(&frame_for_canvas), view_state.clone(), viewport_width)
+                    },
+                    move |bounds, state, window, _cx| {
+                        let (bounds, frame, view_state, viewport_width) = state;
+
+                        if frame.duration_ns() == 0 {
+                            return;
+                        }
+
+                        let effective_width = viewport_width - THREAD_LABEL_WIDTH;
+
+                        window.paint_layer(bounds, |window| {
+                            // Calculate visible time range
+                            let visible_range = Self::visible_range(&frame, viewport_width, &view_state);
+                            let visible_duration = visible_range.end.saturating_sub(visible_range.start);
+
+                            // Determine appropriate time interval for markers
+                            let visible_ms = visible_duration as f64 / 1_000_000.0;
+                            let marker_interval_ms = if visible_ms < 10.0 {
+                                1.0
+                            } else if visible_ms < 50.0 {
+                                5.0
+                            } else if visible_ms < 100.0 {
+                                10.0
+                            } else if visible_ms < 500.0 {
+                                50.0
+                            } else {
+                                100.0
+                            };
+
+                            let marker_interval_ns = (marker_interval_ms * 1_000_000.0) as u64;
+
+                            // Draw time markers
+                            let first_marker = (visible_range.start / marker_interval_ns) * marker_interval_ns;
+                            let mut current_time = first_marker;
+
+                            while current_time <= visible_range.end {
+                                if current_time >= frame.min_time_ns {
+                                    let x = Self::time_to_x(current_time, &frame, viewport_width, &view_state);
+
+                                    if x >= THREAD_LABEL_WIDTH && x <= viewport_width {
+                                        // Draw tick mark
+                                        let tick_bounds = Bounds {
+                                            origin: point(bounds.origin.x + px(x), bounds.origin.y),
+                                            size: size(px(1.0), px(6.0)),
+                                        };
+                                        window.paint_quad(fill(tick_bounds, hsla(0.0, 0.0, 0.6, 1.0)));
+
+                                        // Draw time label
+                                        let time_ms = (current_time - frame.min_time_ns) as f64 / 1_000_000.0;
+                                        let label = format!("{:.1}ms", time_ms);
+
+                                        // TODO: Add text rendering when GPUI text API is available
+                                        // For now, just draw the tick marks
+                                    }
+                                }
+                                current_time += marker_interval_ns;
+                            }
+                        });
+                    },
+                )
+                .size_full()
+            )
+    }
+
+    fn render_statistics_sidebar(&self, frame: &Arc<TraceFrame>, _cx: &mut Context<Self>) -> impl IntoElement {
+        let duration_ms = frame.duration_ns() as f64 / 1_000_000.0;
+        let num_frames = frame.frame_times_ms.len();
+        let avg_frame_time = if !frame.frame_times_ms.is_empty() {
+            frame.frame_times_ms.iter().sum::<f32>() / frame.frame_times_ms.len() as f32
+        } else {
+            0.0
+        };
+
+        let min_frame_time = frame.frame_times_ms.iter().copied().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(0.0);
+        let max_frame_time = frame.frame_times_ms.iter().copied().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(0.0);
+
+        div()
+            .absolute()
+            .right_0()
+            .top_0()
+            .w(px(STATS_SIDEBAR_WIDTH))
+            .h_full()
+            .bg(rgb(0x252525))
+            .border_l_1()
+            .border_color(rgb(0x404040))
+            .flex()
+            .flex_col()
+            .p_4()
+            .gap_3()
+            .child(
+                div()
+                    .text_sm()
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(rgb(0xdddddd))
+                    .child("Statistics")
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .child(
+                        div()
+                            .flex()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0x999999))
+                                    .child("Total Spans:")
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0xdddddd))
+                                    .child(format!("{}", frame.spans.len()))
+                            )
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0x999999))
+                                    .child("Duration:")
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0xdddddd))
+                                    .child(format!("{:.2} ms", duration_ms))
+                            )
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0x999999))
+                                    .child("Frames:")
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0xdddddd))
+                                    .child(format!("{}", num_frames))
+                            )
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0x999999))
+                                    .child("Avg Frame:")
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0xdddddd))
+                                    .child(format!("{:.2} ms", avg_frame_time))
+                            )
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0x999999))
+                                    .child("Min Frame:")
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0xdddddd))
+                                    .child(format!("{:.2} ms", min_frame_time))
+                            )
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0x999999))
+                                    .child("Max Frame:")
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0xdddddd))
+                                    .child(format!("{:.2} ms", max_frame_time))
+                            )
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0x999999))
+                                    .child("Threads:")
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0xdddddd))
+                                    .child(format!("{}", frame.threads.len()))
+                            )
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0x999999))
+                                    .child("Max Depth:")
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0xdddddd))
+                                    .child(format!("{}", frame.max_depth))
+                            )
+                    )
+            )
+            .child(
+                div()
+                    .mt_4()
+                    .text_sm()
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(rgb(0xdddddd))
+                    .child("Threads")
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .children(
+                        frame.threads.values().take(10).map(|thread| {
+                            let thread_color = match thread.id {
+                                0 => rgb(0xff6b6b), // GPU
+                                1 => rgb(0x51cf66), // Main
+                                _ => rgb(0x74c0fc), // Others
+                            };
+
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .w(px(8.0))
+                                        .h(px(8.0))
+                                        .bg(thread_color)
+                                        .rounded(px(2.0))
+                                )
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(rgb(0xcccccc))
+                                        .child(thread.name.clone())
+                                )
+                        })
+                    )
+            )
+    }
+
     fn render_thread_labels(&self, frame: &Arc<TraceFrame>, thread_offsets: &BTreeMap<u64, f32>, _cx: &mut Context<Self>) -> impl IntoElement {
         let thread_offsets = thread_offsets.clone();
         let view_state = self.view_state.clone();
@@ -244,9 +542,9 @@ impl FlamegraphView {
             .top_0()
             .w(px(THREAD_LABEL_WIDTH))
             .h_full()
-            .bg(rgb(0x202020))
+            .bg(rgb(0x252525))
             .border_r_1()
-            .border_color(rgb(0x3e3e3e))
+            .border_color(rgb(0x404040))
             .overflow_hidden()
             .children(
                 thread_offsets.iter().map(|(thread_id, y_offset)| {
@@ -293,10 +591,14 @@ impl Render for FlamegraphView {
 
         v_flex()
             .size_full()
-            .bg(rgb(0x1e1e1e))
+            .bg(rgb(0x1a1a1a))
             .child(
                 // Framerate graph at top
                 self.render_framerate_graph(&frame, cx)
+            )
+            .child(
+                // Timeline ruler
+                self.render_timeline_ruler(&frame, cx)
             )
             .child(
                 div()
@@ -307,6 +609,10 @@ impl Render for FlamegraphView {
                     .child(
                         // Thread labels on the left
                         self.render_thread_labels(&frame, &thread_offsets, cx)
+                    )
+                    .child(
+                        // Statistics sidebar on the right
+                        self.render_statistics_sidebar(&frame, cx)
                     )
                     .child(
                         // Main flamegraph canvas
@@ -330,6 +636,42 @@ impl Render for FlamegraphView {
                                 let visible_time = Self::visible_range(&frame, viewport_width, &view_state);
 
                                 window.paint_layer(bounds, |window| {
+                                    // Draw vertical grid lines aligned with timeline
+                                    let visible_range_for_grid = Self::visible_range(&frame, viewport_width, &view_state);
+                                    let visible_duration = visible_range_for_grid.end.saturating_sub(visible_range_for_grid.start);
+                                    let visible_ms = visible_duration as f64 / 1_000_000.0;
+
+                                    let marker_interval_ms = if visible_ms < 10.0 {
+                                        1.0
+                                    } else if visible_ms < 50.0 {
+                                        5.0
+                                    } else if visible_ms < 100.0 {
+                                        10.0
+                                    } else if visible_ms < 500.0 {
+                                        50.0
+                                    } else {
+                                        100.0
+                                    };
+
+                                    let marker_interval_ns = (marker_interval_ms * 1_000_000.0) as u64;
+                                    let first_marker = (visible_range_for_grid.start / marker_interval_ns) * marker_interval_ns;
+                                    let mut current_time = first_marker;
+
+                                    while current_time <= visible_range_for_grid.end {
+                                        if current_time >= frame.min_time_ns {
+                                            let x = Self::time_to_x(current_time, &frame, viewport_width, &view_state);
+
+                                            if x >= THREAD_LABEL_WIDTH && x <= viewport_width {
+                                                let grid_bounds = Bounds {
+                                                    origin: point(bounds.origin.x + px(x), bounds.origin.y),
+                                                    size: size(px(1.0), px(viewport_height)),
+                                                };
+                                                window.paint_quad(fill(grid_bounds, hsla(0.0, 0.0, 0.25, 0.15)));
+                                            }
+                                        }
+                                        current_time += marker_interval_ns;
+                                    }
+
                                     // Draw thread separators
                                     for (idx, (thread_id, y_offset)) in thread_offsets.iter().enumerate() {
                                         if idx > 0 {
@@ -401,7 +743,7 @@ impl Render for FlamegraphView {
                                         
                                         let mut i = 0;
                                         while i < spans.len() {
-                                            let (mut merge_start, mut merge_end, first_idx, y) = spans[i];
+                                            let (merge_start, mut merge_end, first_idx, y) = spans[i];
                                             let mut j = i + 1;
                                             let mut span_count = 1;
                                             
@@ -446,7 +788,7 @@ impl Render for FlamegraphView {
                                                 base_color
                                             };
 
-                                            // Render the span/block
+                                            // Render the span/block with subtle border
                                             let span_bounds = Bounds {
                                                 origin: point(
                                                     bounds.origin.x + px(merge_start + PADDING),
@@ -458,7 +800,34 @@ impl Render for FlamegraphView {
                                                 ),
                                             };
 
+                                            // Fill with main color
                                             window.paint_quad(fill(span_bounds, color));
+
+                                            // Add subtle top border for depth
+                                            if rendered_width > 4.0 {
+                                                let highlight_color = hsla(
+                                                    color.h,
+                                                    color.s * 0.7,
+                                                    (color.l * 1.15).min(0.95),
+                                                    0.4
+                                                );
+                                                let top_border = Bounds {
+                                                    origin: span_bounds.origin,
+                                                    size: size(px(rendered_width), px(1.0)),
+                                                };
+                                                window.paint_quad(fill(top_border, highlight_color));
+
+                                                // Add subtle bottom shadow
+                                                let shadow_color = hsla(0.0, 0.0, 0.0, 0.3);
+                                                let bottom_border = Bounds {
+                                                    origin: point(
+                                                        span_bounds.origin.x,
+                                                        span_bounds.origin.y + span_bounds.size.height - px(1.0)
+                                                    ),
+                                                    size: size(px(rendered_width), px(1.0)),
+                                                };
+                                                window.paint_quad(fill(bottom_border, shadow_color));
+                                            }
 
                                             // Visual indicator if many spans merged
                                             if span_count > 5 && total_width > 20.0 {
@@ -545,9 +914,9 @@ impl Render for FlamegraphView {
                 div()
                     .h(px(40.0))
                     .w_full()
-                    .bg(rgb(0x252525))
+                    .bg(rgb(0x2a2a2a))
                     .border_t_1()
-                    .border_color(rgb(0x3e3e3e))
+                    .border_color(rgb(0x404040))
                     .flex()
                     .items_center()
                     .px_4()
