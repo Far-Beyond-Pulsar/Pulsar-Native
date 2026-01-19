@@ -14910,6 +14910,7 @@ dependencies = [
  "gpui",
  "plugin_editor_api",
  "plugin_manager",
+ "rand 0.8.5",
  "schemars",
  "serde",
  "serde_json",
@@ -14919,6 +14920,7 @@ dependencies = [
  "ui_common",
  "ui_entry",
  "ui_file_manager",
+ "ui_flamegraph",
  "ui_level_editor",
  "ui_loading_screen",
  "ui_multiplayer",
@@ -14986,6 +14988,20 @@ dependencies = [
  "ui",
  "ui_common",
  "walkdir",
+]
+
+[[package]]
+name = "ui_flamegraph"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "gpui",
+ "parking_lot",
+ "rand 0.8.5",
+ "serde",
+ "tracing",
+ "ui",
+ "ui_common",
 ]
 
 [[package]]

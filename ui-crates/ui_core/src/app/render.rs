@@ -210,6 +210,22 @@ impl PulsarApp {
                                         app.toggle_multiplayer(window, cx);
                                     })),
                             )
+                            .child(
+                                Button::new("toggle-flamegraph")
+                                    .ghost()
+                                    .icon(
+                                        Icon::new(IconName::Activity)
+                                            .size(px(16.))
+                                            .text_color(cx.theme().muted_foreground)
+                                    )
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(4.))
+                                    .tooltip("Flamegraph Profiler")
+                                    .on_click(cx.listener(|app, _, window, cx| {
+                                        app.toggle_flamegraph(window, cx);
+                                    })),
+                            )
                             // Render plugin statusbar buttons for left position
                             .children(self.render_plugin_statusbar_buttons(StatusbarPosition::Left, cx))
                             .child(
@@ -506,6 +522,7 @@ impl Render for PulsarApp {
             .on_action(cx.listener(Self::on_toggle_file_manager))
             .on_action(cx.listener(Self::on_toggle_problems))
             .on_action(cx.listener(Self::on_toggle_type_debugger))
+            .on_action(cx.listener(Self::on_toggle_flamegraph))
             .on_action(cx.listener(Self::on_toggle_command_palette))
             .on_action(cx.listener(Self::on_open_file))
             .child(

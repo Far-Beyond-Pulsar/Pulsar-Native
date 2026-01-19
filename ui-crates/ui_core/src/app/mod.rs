@@ -54,6 +54,15 @@ impl PulsarApp {
         self.toggle_multiplayer(window, cx);
     }
 
+    fn on_toggle_flamegraph(
+        &mut self,
+        _: &ToggleFlamegraph,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.toggle_flamegraph(window, cx);
+    }
+
     fn on_open_file(&mut self, action: &OpenFile, window: &mut Window, cx: &mut Context<Self>) {
         self.open_path(action.path.clone(), window, cx);
     }

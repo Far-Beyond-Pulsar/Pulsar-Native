@@ -22,6 +22,7 @@ members = [
     "ui-crates/ui_settings",
     "ui-crates/ui_multiplayer",
     "ui-crates/ui_problems",
+    "ui-crates/ui_flamegraph",
     "ui-crates/ui_file_manager",
     "ui-crates/ui_loading_screen",
     "ui-crates/ui_project_launcher", "ui-crates/ui_about", "ui-crates/ui_documentation", "crates/pulsar_docs",
@@ -78,6 +79,7 @@ ui_level_editor = { path = "ui-crates/ui_level_editor" }
 ui_settings = { path = "ui-crates/ui_settings" }
 ui_multiplayer = { path = "ui-crates/ui_multiplayer" }
 ui_problems = { path = "ui-crates/ui_problems" }
+ui_flamegraph = { path = "ui-crates/ui_flamegraph" }
 ui_file_manager = { path = "ui-crates/ui_file_manager" }
 ui_common = { path = "ui-crates/ui_common" }
 ui_loading_screen = { path = "ui-crates/ui_loading_screen" }

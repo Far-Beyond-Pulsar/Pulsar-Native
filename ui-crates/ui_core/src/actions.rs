@@ -25,6 +25,11 @@ pub struct ToggleTypeDebugger;
 #[action(namespace = pulsar_app)]
 pub struct ToggleMultiplayer;
 
+/// Action to toggle the flamegraph profiler
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = pulsar_app)]
+pub struct ToggleFlamegraph;
+
 /// Action to toggle the command palette
 #[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 #[action(namespace = pulsar_app)]

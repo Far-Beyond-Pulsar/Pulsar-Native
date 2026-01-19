@@ -1,0 +1,22 @@
+[package]
+name = "ui_flamegraph"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# UI framework
+gpui.workspace = true
+ui.workspace = true
+
+# UI crates
+ui_common.workspace = true
+
+# Utilities
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+tracing = "0.1.44"
+parking_lot = "0.12"
+
+[dev-dependencies]
+rand = "0.8"
