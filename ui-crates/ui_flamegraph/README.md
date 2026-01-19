@@ -5,6 +5,7 @@ High-performance flamegraph visualization for profiling and tracing data in Puls
 ## Features
 
 - **Hyper-Efficient Rendering**: Uses GPUI's batched quad rendering system to display thousands of trace spans with smooth 60+ FPS performance
+- **Real-Time Profiling**: Built-in DTrace integration for live CPU profiling of the running process (cross-platform: Windows, macOS, Linux, FreeBSD)
 - **Interactive Zooming & Panning**: 
   - Ctrl/Cmd + Scroll to zoom in/out
   - Scroll to pan vertically
@@ -35,24 +36,48 @@ High-performance flamegraph visualization for profiling and tracing data in Puls
 ## Usage
 
 ```rust
-use ui_flamegraph::{FlamegraphWindow, TraceData, TraceSpan};
+use ui_flamegraph::{FlamegraphWindow, TraceData, BackgroundProfiler};
+use std::sync::Arc;
 
-// Create trace data
-let trace = TraceData::new();
+// Option 1: Use with sample data
+let trace = TraceData::with_sample_data();
+FlamegraphWindow::open(trace, cx);
 
-// Add spans
-trace.add_span(TraceSpan {
-    name: "Frame Update".into(),
-    start_ns: 0,
-    duration_ns: 16_600_000, // 16.6ms
-    depth: 0,
-    thread_id: 1,
-    color_index: 0,
-});
+// Option 2: Use with real-time profiling (requires DTrace and admin/sudo)
+let trace = Arc::new(TraceData::new());
+
+// Start background profiler at 99 Hz, updating UI every 1000ms
+let profiler = BackgroundProfiler::new(Arc::clone(&trace), 99, 1000);
+profiler.start(); // Requires DTrace to be installed and elevated privileges
 
 // Open flamegraph window
 FlamegraphWindow::open(trace, cx);
+
+// Later: stop profiling
+profiler.stop();
 ```
+
+### Real-Time Profiling Requirements
+
+The `BackgroundProfiler` uses DTrace to sample the running process. Requirements:
+
+**Windows:**
+- Install DTrace: `Enable-WindowsOptionalFeature -Online -FeatureName DTrace`
+- Run as Administrator
+
+**macOS:**
+- DTrace is built-in
+- Run with `sudo` or code signing entitlements
+
+**Linux:**
+- Install DTrace from your distribution
+- Run with `sudo` or appropriate capabilities
+
+**FreeBSD:**
+- DTrace is built-in
+- Run with appropriate privileges
+
+See `crates/dtrace_profiler/README.md` for detailed installation instructions.
 
 ## Controls
 

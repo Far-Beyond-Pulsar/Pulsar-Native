@@ -176,36 +176,7 @@ impl PulsarApp {
     }
 
     pub(super) fn toggle_flamegraph(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        // Generate comprehensive sample data with 2000 frames and dedicated subsystem threads
-        let trace_data = TraceData::with_sample_data();
-
-        let _ = cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(Bounds {
-                    origin: Point {
-                        x: px(140.0),
-                        y: px(140.0),
-                    },
-                    size: size(px(1400.0), px(900.0)),
-                })),
-                titlebar: Some(gpui::TitlebarOptions {
-                    title: None,
-                    appears_transparent: true,
-                    traffic_light_position: None,
-                }),
-                kind: WindowKind::Normal,
-                is_resizable: true,
-                window_decorations: Some(gpui::WindowDecorations::Client),
-                window_min_size: Some(gpui::Size {
-                    width: px(800.),
-                    height: px(600.),
-                }),
-                ..Default::default()
-            },
-            move |window, cx| {
-                let flamegraph_window = FlamegraphWindow::new(trace_data, window, cx);
-                cx.new(|cx| Root::new(flamegraph_window.into(), window, cx))
-            },
-        );
+        // Open flamegraph window with DTrace profiling option
+        let _ = ui_flamegraph::FlamegraphWindow::open(cx);
     }
 }

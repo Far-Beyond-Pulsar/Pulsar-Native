@@ -1,19 +1,30 @@
 use gpui::*;
-use ui::{TitleBar, v_flex, ActiveTheme};
+use ui::{TitleBar, v_flex, h_flex, ActiveTheme, StyledExt};
 use crate::{FlamegraphView, TraceData};
+use std::sync::Arc;
 
 pub struct FlamegraphWindow {
     view: Entity<FlamegraphView>,
+    profiler: Option<dtrace_profiler::DTraceProfiler>,
+    trace_data: Arc<TraceData>,
+    is_profiling: bool,
 }
 
 impl FlamegraphWindow {
-    pub fn new(trace_data: TraceData, _window: &mut Window, cx: &mut App) -> Entity<Self> {
-        let view = cx.new(|_cx| FlamegraphView::new(trace_data));
-
-        cx.new(|_cx| Self { view })
+    pub fn new(trace_data: Arc<TraceData>, _window: &mut Window, cx: &mut App) -> Entity<Self> {
+        let view = cx.new(|_cx| FlamegraphView::new((*trace_data).clone()));
+        
+        cx.new(|_cx| Self { 
+            view,
+            profiler: None,
+            trace_data,
+            is_profiling: false,
+        })
     }
 
-    pub fn open(trace_data: TraceData, cx: &mut App) -> WindowHandle<Self> {
+    pub fn open(cx: &mut App) -> WindowHandle<Self> {
+        let trace_data = Arc::new(TraceData::new());
+        
         let window_options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds {
                 origin: point(px(100.0), px(100.0)),
@@ -42,16 +53,164 @@ impl FlamegraphWindow {
             Self::new(trace_data, _window, cx)
         }).unwrap()
     }
+
+    fn start_profiling(&mut self, cx: &mut Context<Self>) {
+        if self.is_profiling {
+            return;
+        }
+
+        // Create database path in temp directory with timestamp
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let db_path = std::env::temp_dir().join(format!("dtrace_profile_{}.db", timestamp));
+        
+        println!("[PROFILER] Starting trace with database: {:?}", db_path);
+
+        // Create profiler with database
+        let mut profiler = match dtrace_profiler::DTraceProfiler::with_database(&db_path) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("[PROFILER] Failed to create profiler: {}", e);
+                return;
+            }
+        };
+
+        // Start profiling at 99 Hz
+        if let Err(e) = profiler.start(99) {
+            eprintln!("[PROFILER] Failed to start profiling: {}", e);
+            eprintln!("[PROFILER] Troubleshooting:");
+            eprintln!("[PROFILER]   1. Make sure you rebooted after installing DTrace");
+            eprintln!("[PROFILER]   2. Run this application as Administrator (right-click → Run as administrator)");
+            eprintln!("[PROFILER]   3. Check if dtrace.exe exists: where dtrace.exe");
+            eprintln!("[PROFILER]   4. Try running manually: dtrace.exe -V");
+            return;
+        }
+
+        self.profiler = Some(profiler);
+        self.is_profiling = true;
+
+        // Start update timer to poll for new samples
+        let trace_data = Arc::clone(&self.trace_data);
+        let view = self.view.clone();
+        cx.spawn(async move |this, mut cx| {
+            let mut last_timestamp = 0u64;
+            
+            loop {
+                cx.background_executor().timer(std::time::Duration::from_millis(1000)).await;
+                
+                // Check if still profiling
+                let should_continue = cx.update(|cx| {
+                    this.update(cx, |window, _cx| window.is_profiling).ok()
+                }).ok().flatten().unwrap_or(false);
+
+                if !should_continue {
+                    break;
+                }
+
+                // Get profiler and fetch new samples
+                let _ = cx.update(|cx| {
+                    this.update(cx, |window, cx| {
+                        if let Some(ref profiler) = window.profiler {
+                            // Get samples from database since last timestamp
+                            match profiler.get_samples_from_db(last_timestamp) {
+                                Ok(samples) if !samples.is_empty() => {
+                                    println!("[PROFILER] Got {} new samples from DB", samples.len());
+                                    
+                                    // Convert samples to TraceSpans and add to trace_data
+                                    for sample in &samples {
+                                        // For now, just log - full conversion needs TraceSpan builder
+                                        println!("[PROFILER] Sample: {} frames from PID {}", 
+                                            sample.stack_frames.len(), sample.process_id);
+                                    }
+                                    
+                                    // Update last timestamp
+                                    if let Some(last_sample) = samples.last() {
+                                        last_timestamp = last_sample.timestamp_ns;
+                                    }
+                                    
+                                    // Notify view to refresh
+                                    cx.notify();
+                                }
+                                Err(e) => {
+                                    eprintln!("[PROFILER] Failed to read samples: {}", e);
+                                }
+                                _ => {}
+                            }
+                        }
+                    })
+                });
+            }
+        }).detach();
+
+        cx.notify();
+    }
+
+    fn stop_profiling(&mut self, cx: &mut Context<Self>) {
+        if let Some(mut profiler) = self.profiler.take() {
+            profiler.stop();
+            println!("[PROFILER] Profiling stopped");
+        }
+        self.is_profiling = false;
+        cx.notify();
+    }
 }
 
 impl Render for FlamegraphWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
+        let is_profiling = self.is_profiling;
         
         v_flex()
             .size_full()
             .bg(theme.background)
-            .child(TitleBar::new().child("Flamegraph Profiler"))
+            .child(
+                TitleBar::new()
+                    .child("Flamegraph Profiler - Live CPU Sampling")
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                if !is_profiling {
+                                    div()
+                                        .on_mouse_down(MouseButton::Left, cx.listener(|this, _event, _window, cx| {
+                                            this.start_profiling(cx);
+                                        }))
+                                        .child("▶ Start")
+                                        .px_3()
+                                        .py_1()
+                                        .bg(gpui::green())
+                                        .rounded(px(4.0))
+                                        .cursor(CursorStyle::PointingHand)
+                                        .text_size(px(12.0))
+                                } else {
+                                    div()
+                                        .flex()
+                                        .gap_2()
+                                        .child(
+                                            div()
+                                                .on_mouse_down(MouseButton::Left, cx.listener(|this, _event, _window, cx| {
+                                                    this.stop_profiling(cx);
+                                                }))
+                                                .child("⏹ Stop")
+                                                .px_3()
+                                                .py_1()
+                                                .bg(gpui::red())
+                                                .rounded(px(4.0))
+                                                .cursor(CursorStyle::PointingHand)
+                                                .text_size(px(12.0))
+                                        )
+                                        .child(
+                                            div()
+                                                .child("● Recording")
+                                                .text_color(gpui::red())
+                                                .text_size(px(12.0))
+                                        )
+                                }
+                            )
+                    )
+            )
             .child(
                 div()
                     .flex_1()

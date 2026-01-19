@@ -10,6 +10,7 @@ members = [
     "crates/pulsar_std",
     "crates/multiuser_server",
     "crates/net",
+    "crates/dtrace_profiler",
     # Plugin system
     "crates/plugin_editor_api",
     "crates/plugin_manager",

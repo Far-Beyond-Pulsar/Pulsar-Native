@@ -40,6 +40,22 @@ impl TraceFrame {
         Self::default()
     }
 
+    pub fn with_data(spans: Vec<TraceSpan>, threads: HashMap<u64, String>) -> Self {
+        let mut frame = Self::default();
+        
+        // Convert thread names HashMap to ThreadInfo HashMap
+        for (id, name) in threads {
+            frame.threads.insert(id, ThreadInfo { id, name });
+        }
+        
+        // Add all spans
+        for span in spans {
+            frame.add_span(span);
+        }
+        
+        frame
+    }
+
     pub fn add_span(&mut self, span: TraceSpan) {
         if self.spans.is_empty() {
             self.min_time_ns = span.start_ns;
@@ -822,6 +838,10 @@ impl TraceData {
 
     pub fn get_frame(&self) -> Arc<TraceFrame> {
         Arc::clone(&self.inner.read())
+    }
+
+    pub fn set_frame(&self, frame: TraceFrame) {
+        *self.inner.write() = Arc::new(frame);
     }
 
     pub fn clear(&self) {

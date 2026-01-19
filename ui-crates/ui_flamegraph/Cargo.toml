@@ -12,6 +12,9 @@ ui.workspace = true
 # UI crates
 ui_common.workspace = true
 
+# Profiling - our custom DTrace wrapper
+dtrace_profiler = { path = "../../crates/dtrace_profiler" }
+
 # Utilities
 anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
