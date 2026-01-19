@@ -19,7 +19,9 @@ pub struct ViewState {
     pub hovered_span: Option<usize>,
     pub mouse_x: f32,
     pub mouse_y: f32,
-    pub crop_center_time_ns: Option<u64>,
+    pub crop_dragging: bool,
+    pub crop_start_time_ns: Option<u64>,
+    pub crop_end_time_ns: Option<u64>,
 }
 
 impl Default for ViewState {
@@ -36,7 +38,9 @@ impl Default for ViewState {
             hovered_span: None,
             mouse_x: 0.0,
             mouse_y: 0.0,
-            crop_center_time_ns: None,
+            crop_dragging: false,
+            crop_start_time_ns: None,
+            crop_end_time_ns: None,
         }
     }
 }

@@ -20,7 +20,6 @@ pub fn render_thread_labels(
     let thread_offsets = thread_offsets.clone();
     let view_state = view_state.clone();
     let theme = cx.theme();
-    println!("[TL] setup clones: {:?}", setup_start.elapsed());
 
     let render_start = std::time::Instant::now();
     let result = div()
@@ -56,6 +55,5 @@ pub fn render_thread_labels(
                     )
             })
         );
-    println!("[TL] render labels: {:?}", render_start.elapsed());
     result
 }

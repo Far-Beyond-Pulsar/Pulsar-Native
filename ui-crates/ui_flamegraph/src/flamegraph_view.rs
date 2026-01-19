@@ -89,32 +89,94 @@ impl Render for FlamegraphView {
                             let click_x: f32 = pos.x.into();
                             let width = *viewport_width.read().unwrap();
                             
-                            // Calculate the time at the click position
                             if width > 0.0 && frame.duration_ns() > 0 {
                                 let normalized_pos = click_x / width;
                                 let clicked_time_ns = frame.min_time_ns + 
                                     (normalized_pos as f64 * frame.duration_ns() as f64) as u64;
                                 
-                                // Store the clicked time and center the view on it
-                                view.view_state.crop_center_time_ns = Some(clicked_time_ns);
+                                // Check if shift is pressed for crop mode
+                                if event.modifiers.shift {
+                                    // Start crop drag
+                                    view.view_state.crop_dragging = true;
+                                    view.view_state.crop_start_time_ns = Some(clicked_time_ns);
+                                    view.view_state.crop_end_time_ns = Some(clicked_time_ns);
+                                } else {
+                                    // Normal click - jump to that time
+                                    let effective_width = width - THREAD_LABEL_WIDTH;
+                                    let normalized_time = (clicked_time_ns - frame.min_time_ns) as f32 / 
+                                        frame.duration_ns() as f32;
+                                    
+                                    // Pan so the clicked time is centered in the visible area
+                                    view.view_state.pan_x = THREAD_LABEL_WIDTH + 
+                                        (effective_width * 0.5) - 
+                                        (normalized_time * effective_width * view.view_state.zoom);
+                                }
+                                cx.notify();
+                            }
+                        })
+                    })
+                    .on_mouse_up(MouseButton::Left, {
+                        let frame = Arc::clone(&frame);
+                        let viewport_width = self.viewport_width.clone();
+                        cx.listener(move |view, _event: &MouseUpEvent, _window, cx| {
+                            if view.view_state.crop_dragging {
+                                view.view_state.crop_dragging = false;
                                 
-                                // Calculate new pan_x to center this time in the viewport
-                                let effective_width = width - THREAD_LABEL_WIDTH;
-                                let normalized_time = (clicked_time_ns - frame.min_time_ns) as f32 / 
-                                    frame.duration_ns() as f32;
-                                
-                                // Pan so the clicked time is centered in the visible area
-                                view.view_state.pan_x = THREAD_LABEL_WIDTH + 
-                                    (effective_width * 0.5) - 
-                                    (normalized_time * effective_width * view.view_state.zoom);
+                                // Zoom and pan to the selected crop area
+                                if let (Some(start_ns), Some(end_ns)) = 
+                                    (view.view_state.crop_start_time_ns, view.view_state.crop_end_time_ns) {
+                                    let start = start_ns.min(end_ns);
+                                    let end = start_ns.max(end_ns);
+                                    
+                                    if end > start {
+                                        let width = *viewport_width.read().unwrap();
+                                        let effective_width = width - THREAD_LABEL_WIDTH;
+                                        
+                                        // Calculate zoom level to fit the selection
+                                        let selection_duration = (end - start) as f32;
+                                        let total_duration = frame.duration_ns() as f32;
+                                        let new_zoom = total_duration / selection_duration;
+                                        
+                                        // Calculate pan to center the selection
+                                        let selection_center = start + ((end - start) / 2);
+                                        let normalized_center = (selection_center - frame.min_time_ns) as f32 / 
+                                            frame.duration_ns() as f32;
+                                        
+                                        view.view_state.zoom = new_zoom;
+                                        view.view_state.pan_x = THREAD_LABEL_WIDTH + 
+                                            (effective_width * 0.5) - 
+                                            (normalized_center * effective_width * new_zoom);
+                                    }
+                                }
                                 
                                 cx.notify();
                             }
                         })
                     })
+                    .on_mouse_move({
+                        let frame = Arc::clone(&frame);
+                        let viewport_width = self.viewport_width.clone();
+                        cx.listener(move |view, event: &MouseMoveEvent, _window, cx| {
+                            if view.view_state.crop_dragging {
+                                let pos: Point<Pixels> = event.position;
+                                let mouse_x: f32 = pos.x.into();
+                                let width = *viewport_width.read().unwrap();
+                                
+                                if width > 0.0 && frame.duration_ns() > 0 {
+                                    let normalized_pos = mouse_x / width;
+                                    let current_time_ns = frame.min_time_ns + 
+                                        (normalized_pos as f64 * frame.duration_ns() as f64) as u64;
+                                    view.view_state.crop_end_time_ns = Some(current_time_ns);
+                                    cx.notify();
+                                }
+                            }
+                        })
+                    })
                     .on_mouse_down(MouseButton::Right, cx.listener(|view, _event: &MouseDownEvent, _window, cx| {
-                        // Right-click resets the crop
-                        view.view_state.crop_center_time_ns = None;
+                        // Right-click resets the crop and view
+                        view.view_state.crop_dragging = false;
+                        view.view_state.crop_start_time_ns = None;
+                        view.view_state.crop_end_time_ns = None;
                         view.view_state.zoom = 1.0;
                         view.view_state.pan_x = 0.0;
                         cx.notify();
