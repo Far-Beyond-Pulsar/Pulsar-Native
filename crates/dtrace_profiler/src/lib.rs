@@ -164,9 +164,14 @@ impl DTraceProfiler {
     /// Get samples from database since a timestamp
     pub fn get_samples_from_db(&self, since_ns: u64) -> Result<Vec<Sample>> {
         if let (Some(ref db_path), Some(trace_id)) = (&self.db_path, self.trace_id) {
+            println!("[PROFILER] Reading samples from DB: trace_id={}, since_ns={}", trace_id, since_ns);
             let db = TraceDatabase::create(db_path)?;
-            db.get_samples_since(trace_id, since_ns)
+            let samples = db.get_samples_since(trace_id, since_ns)?;
+            println!("[PROFILER] DB returned {} samples", samples.len());
+            Ok(samples)
         } else {
+            println!("[PROFILER] No DB path or trace_id: db_path={:?}, trace_id={:?}", 
+                self.db_path, self.trace_id);
             Ok(Vec::new())
         }
     }

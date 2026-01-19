@@ -12,7 +12,9 @@ pub struct FlamegraphWindow {
 
 impl FlamegraphWindow {
     pub fn new(trace_data: Arc<TraceData>, _window: &mut Window, cx: &mut App) -> Entity<Self> {
-        let view = cx.new(|_cx| FlamegraphView::new((*trace_data).clone()));
+        // Clone the Arc so window and view share the same TraceData
+        let view_trace_data = Arc::clone(&trace_data);
+        let view = cx.new(move |_cx| FlamegraphView::new((*view_trace_data).clone()));
         
         cx.new(|_cx| Self { 
             view,
@@ -116,14 +118,27 @@ impl FlamegraphWindow {
                             // Get samples from database since last timestamp
                             match profiler.get_samples_from_db(last_timestamp) {
                                 Ok(samples) if !samples.is_empty() => {
-                                    println!("[PROFILER] Got {} new samples from DB", samples.len());
+                                    println!("[PROFILER] Got {} new samples from DB, converting to spans", samples.len());
                                     
                                     // Convert samples to TraceSpans and add to trace_data
                                     for sample in &samples {
-                                        // For now, just log - full conversion needs TraceSpan builder
-                                        println!("[PROFILER] Sample: {} frames from PID {}", 
-                                            sample.stack_frames.len(), sample.process_id);
+                                        // Each stack frame becomes a span with increasing depth
+                                        for (depth, frame) in sample.stack_frames.iter().enumerate() {
+                                            let span = crate::TraceSpan {
+                                                name: frame.function_name.clone(),
+                                                start_ns: sample.timestamp_ns,
+                                                duration_ns: 1_000_000, // 1ms default duration for samples
+                                                depth: depth as u32,
+                                                thread_id: sample.thread_id,
+                                                color_index: (depth % 10) as u8,
+                                            };
+                                            
+                                            trace_data.add_span(span);
+                                        }
                                     }
+                                    
+                                    println!("[PROFILER] Added {} spans to trace data", 
+                                        samples.iter().map(|s| s.stack_frames.len()).sum::<usize>());
                                     
                                     // Update last timestamp
                                     if let Some(last_sample) = samples.last() {
@@ -131,6 +146,7 @@ impl FlamegraphWindow {
                                     }
                                     
                                     // Notify view to refresh
+                                    window.view.update(cx, |_, vcx| vcx.notify());
                                     cx.notify();
                                 }
                                 Err(e) => {

@@ -26,7 +26,7 @@ pub fn run_platform_sampler(
     // For now, just use simple sampling via PowerShell Get-Process
     // This is a fallback - full ETW would be much more complex
     let mut batch_samples = Vec::new();
-    let batch_size = 100;
+    let batch_size = 10; // Send to DB every 10 samples (10 seconds)
 
     while *running.read() {
         // Simple CPU sampling using PowerShell
@@ -56,11 +56,11 @@ pub fn run_platform_sampler(
             samples.write().push(sample.clone());
             batch_samples.push(sample);
 
-            if batch_samples.len() >= batch_size {
-                if let Some(ref sender) = db_sender {
-                    let _ = sender.send(batch_samples.clone());
-                    batch_samples.clear();
-                }
+            // Send to database immediately for testing, or when batch is full
+            if let Some(ref sender) = db_sender {
+                let _ = sender.send(batch_samples.clone());
+                println!("[PROFILER] Sent {} samples to database", batch_samples.len());
+                batch_samples.clear();
             }
         }
 
