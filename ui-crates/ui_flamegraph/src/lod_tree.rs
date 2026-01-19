@@ -152,7 +152,6 @@ impl LODTree {
             levels.push(level);
         }
 
-        println!("[LOD] Built {} levels in {:?}", levels.len(), build_start.elapsed());
         Self { levels }
     }
 
@@ -197,9 +196,6 @@ impl LODTree {
         let mut result = Vec::new();
 
         self.levels[level_idx].query(time_start, time_end, y_min, y_max, &mut result);
-
-        println!("[LOD] Selected level {} (bucket={}ns), returned {} spans",
-            level_idx, self.levels[level_idx].bucket_size_ns, result.len());
 
         result
     }

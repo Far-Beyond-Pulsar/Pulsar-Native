@@ -19,7 +19,6 @@ pub fn render_framerate_graph(
     let view_state = view_state.clone();
     let frame_for_indicator = Arc::clone(frame);
     let theme = cx.theme();
-    println!("[FG] setup clones: {:?}", setup_start.elapsed());
 
     div()
         .h(px(GRAPH_HEIGHT))

@@ -24,7 +24,6 @@ pub fn render_statistics_sidebar(
     let min_frame_time = frame.frame_times_ms.iter().copied().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(0.0);
     let max_frame_time = frame.frame_times_ms.iter().copied().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(0.0);
     let theme = cx.theme();
-    println!("[SS] data calculations: {:?}", setup_start.elapsed());
 
     let render_start = std::time::Instant::now();
     let result = div()
@@ -98,7 +97,6 @@ pub fn render_statistics_sidebar(
                     })
                 )
         );
-    println!("[SS] render sidebar: {:?}", render_start.elapsed());
     result
 }
 

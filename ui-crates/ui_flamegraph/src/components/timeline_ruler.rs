@@ -18,7 +18,6 @@ pub fn render_timeline_ruler(
     let frame_for_canvas = Arc::clone(frame);
     let view_state = view_state.clone();
     let theme = cx.theme();
-    println!("[TR] setup clones: {:?}", setup_start.elapsed());
 
     div()
         .h(px(TIMELINE_HEIGHT))
@@ -91,8 +90,6 @@ pub fn render_timeline_ruler(
                             current_time += marker_interval_ns;
                         }
                     });
-                    println!("[TR] paint_layer: {:?}", paint_layer_start.elapsed());
-                    println!("[TR] TOTAL paint callback: {:?}", paint_start.elapsed());
                 },
             )
             .size_full()
