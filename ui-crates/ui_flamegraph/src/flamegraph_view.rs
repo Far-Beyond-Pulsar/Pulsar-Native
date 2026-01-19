@@ -317,13 +317,11 @@ impl Render for FlamegraphView {
                                     // ========================================================================
                                     // CRITICAL: ABSOLUTELY ZERO SPAN CULLING
                                     // Every single span MUST be rendered at all zoom levels
-                                    // Spans are either drawn individually or merged intelligently
-                                    // NEVER skip or hide spans based on viewport, time, or any other criteria
+                                    // Strategy: Merge ALL adjacent spans into continuous blocks
+                                    // This prevents "popping" when zooming in/out
                                     // ========================================================================
                                     
-                                    // Draw spans with intelligent merging
-                                    // NEVER CULL - ALWAYS MERGE instead
-                                    // Group ALL spans by (thread_id, depth) for merging
+                                    // Group ALL spans by (thread_id, depth) for continuous rendering
                                     let mut span_groups: std::collections::HashMap<(u64, u32), Vec<(f32, f32, usize, f32)>> = std::collections::HashMap::new();
                                     
                                     for (idx, span) in frame.spans.iter().enumerate() {
@@ -339,7 +337,7 @@ impl Render for FlamegraphView {
                                         span_groups.entry(key).or_insert_with(Vec::new).push((x1, x2, idx, y));
                                     }
                                     
-                                    // Process each group and merge slivers with statistically insignificant gaps
+                                    // Process each group - merge adjacent spans into continuous blocks
                                     for ((thread_id, depth), mut spans) in span_groups {
                                         // Sort by x1 position
                                         spans.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
@@ -347,137 +345,78 @@ impl Render for FlamegraphView {
                                         let mut i = 0;
                                         while i < spans.len() {
                                             let (mut merge_start, mut merge_end, first_idx, y) = spans[i];
-                                            let width = merge_end - merge_start;
+                                            let mut j = i + 1;
+                                            let mut span_count = 1;
                                             
-                                            // ========================================================================
-                                            // CRITICAL: NO CULLING WHATSOEVER
-                                            // Do NOT add viewport checks here - ALL spans must be processed
-                                            // ========================================================================
-                                            
-                                            // Check if this is a sliver (≤ 5 pixels wide)
-                                            let is_sliver = width <= 5.0;
-                                            
-                                            if is_sliver {
-                                                // CRITICAL: ALL slivers MUST be visible
-                                                // We merge slivers aggressively to prevent disappearing
-                                                let mut j = i + 1;
-                                                let mut merged_count = 1;
-                                                let mut total_span_width = width;
-                                                let mut total_gap_width = 0.0;
+                                            // ALWAYS merge adjacent spans with small gaps
+                                            // This prevents popping - spans stay merged at all zoom levels
+                                            while j < spans.len() {
+                                                let (next_start, next_end, _, _) = spans[j];
+                                                let gap = next_start - merge_end;
+                                                let current_width = merge_end - merge_start;
                                                 
-                                                // Look ahead to find merge candidates
-                                                // Be VERY aggressive - merge with ANY nearby sliver
-                                                while j < spans.len() {
-                                                    let (next_start, next_end, _, _) = spans[j];
-                                                    let next_width = next_end - next_start;
-                                                    let gap = next_start - merge_end;
-                                                    
-                                                    // Only consider slivers (≤ 5px) for merging
-                                                    if next_width <= 5.0 {
-                                                        // MUCH MORE AGGRESSIVE MERGING
-                                                        // Merge if gap is reasonable (< 50px)
-                                                        // This prevents isolated tiny spans from disappearing
-                                                        let avg_span_width = total_span_width / merged_count as f32;
-                                                        let is_reasonable_gap = gap < 50.0; // Very lenient
-                                                        let is_insignificant_gap = gap <= avg_span_width * 3.0; // Was 1.5, now 3.0
-                                                        let is_tiny_gap = gap < 5.0; // Was 2.0, now 5.0
-                                                        
-                                                        if is_reasonable_gap && (is_insignificant_gap || is_tiny_gap) {
-                                                            total_span_width += next_width;
-                                                            total_gap_width += gap;
-                                                            merge_end = next_end;
-                                                            merged_count += 1;
-                                                            j += 1;
-                                                        } else {
-                                                            // Gap is too large, stop merging
-                                                            break;
-                                                        }
-                                                    } else {
-                                                        // Next span is not a sliver, stop merging
-                                                        break;
-                                                    }
-                                                }
+                                                // Merge if gap is small relative to current merged width
+                                                // OR if gap is absolutely tiny
+                                                // This keeps spans grouped consistently
+                                                let relative_gap_threshold = current_width * 0.1; // 10% of current width
+                                                let should_merge = gap < relative_gap_threshold.max(5.0);
                                                 
-                                                // CRITICAL: Force minimum visible width
-                                                // Even a single tiny span MUST be at least 2px wide
-                                                let merged_width = (merge_end - merge_start).max(MIN_SPAN_WIDTH).max(2.0);
-                                                
-                                                // Use a blended color for merged spans
-                                                let first_span = &frame.spans[first_idx];
-                                                let base_color = palette[(first_span.color_index as usize) % palette.len()];
-                                                
-                                                // Visual distinction based on merge intensity
-                                                let merge_ratio = total_gap_width / (merge_end - merge_start);
-                                                let merged_color = if merged_count > 1 {
-                                                    // Darken based on how much we merged
-                                                    let darkness = 0.9 - (merge_ratio * 0.2).min(0.3_f32);
-                                                    hsla(
-                                                        base_color.h,
-                                                        base_color.s * 0.85,
-                                                        base_color.l * darkness,
-                                                        1.0
-                                                    )
+                                                if should_merge {
+                                                    merge_end = next_end;
+                                                    span_count += 1;
+                                                    j += 1;
                                                 } else {
-                                                    base_color
-                                                };
-                                                
-                                                let span_bounds = Bounds {
-                                                    origin: point(
-                                                        bounds.origin.x + px(merge_start + PADDING),
-                                                        bounds.origin.y + px(y + PADDING)
-                                                    ),
-                                                    size: size(
-                                                        px(merged_width - PADDING * 2.0),
-                                                        px(ROW_HEIGHT - PADDING * 2.0)
-                                                    ),
-                                                };
-
-                                                window.paint_quad(fill(span_bounds, merged_color));
-                                                
-                                                // Show merge indicator if heavily merged (>3 spans)
-                                                if merged_width > 20.0 && merged_count > 3 {
-                                                    let badge_bounds = Bounds {
-                                                        origin: point(
-                                                            bounds.origin.x + px(merge_start + merged_width - 8.0),
-                                                            bounds.origin.y + px(y + PADDING)
-                                                        ),
-                                                        size: size(px(6.0), px(6.0)),
-                                                    };
-                                                    window.paint_quad(fill(badge_bounds, hsla(0.0, 0.0, 1.0, 0.4)));
+                                                    // Gap too large, stop merging
+                                                    break;
                                                 }
-                                                
-                                                i = j; // Skip merged spans
-                                            } else {
-                                                // Draw normal span (not a sliver)
-                                                let span = &frame.spans[first_idx];
-                                                let color = palette[(span.color_index as usize) % palette.len()];
-                                                let final_width = width.max(MIN_SPAN_WIDTH);
-                                                
-                                                let span_bounds = Bounds {
-                                                    origin: point(
-                                                        bounds.origin.x + px(merge_start + PADDING),
-                                                        bounds.origin.y + px(y + PADDING)
-                                                    ),
-                                                    size: size(
-                                                        px(final_width - PADDING * 2.0),
-                                                        px(ROW_HEIGHT - PADDING * 2.0)
-                                                    ),
-                                                };
-
-                                                window.paint_quad(fill(span_bounds, color));
-
-                                                // Draw text if span is wide enough
-                                                if final_width > 50.0 {
-                                                    let text_color = if color.l > 0.5 {
-                                                        hsla(0.0, 0.0, 0.0, 1.0)
-                                                    } else {
-                                                        hsla(0.0, 0.0, 1.0, 1.0)
-                                                    };
-                                                    // Text rendering would go here
-                                                }
-                                                
-                                                i += 1;
                                             }
+                                            
+                                            // CRITICAL: Force minimum 2px width on EVERYTHING
+                                            let final_width = (merge_end - merge_start).max(2.0);
+                                            
+                                            // Choose color based on first span
+                                            let first_span = &frame.spans[first_idx];
+                                            let base_color = palette[(first_span.color_index as usize) % palette.len()];
+                                            
+                                            // Darken slightly if multiple spans merged
+                                            let color = if span_count > 1 {
+                                                hsla(
+                                                    base_color.h,
+                                                    base_color.s * 0.9,
+                                                    base_color.l * 0.85,
+                                                    1.0
+                                                )
+                                            } else {
+                                                base_color
+                                            };
+                                            
+                                            // Render the span/block
+                                            let span_bounds = Bounds {
+                                                origin: point(
+                                                    bounds.origin.x + px(merge_start + PADDING),
+                                                    bounds.origin.y + px(y + PADDING)
+                                                ),
+                                                size: size(
+                                                    px(final_width - PADDING * 2.0),
+                                                    px(ROW_HEIGHT - PADDING * 2.0)
+                                                ),
+                                            };
+
+                                            window.paint_quad(fill(span_bounds, color));
+                                            
+                                            // Visual indicator if many spans merged
+                                            if span_count > 5 && final_width > 20.0 {
+                                                let badge_bounds = Bounds {
+                                                    origin: point(
+                                                        bounds.origin.x + px(merge_start + final_width - 8.0),
+                                                        bounds.origin.y + px(y + PADDING)
+                                                    ),
+                                                    size: size(px(6.0), px(6.0)),
+                                                };
+                                                window.paint_quad(fill(badge_bounds, hsla(0.0, 0.0, 1.0, 0.3)));
+                                            }
+                                            
+                                            i = j;
                                         }
                                     }
                                 });

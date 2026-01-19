@@ -103,25 +103,25 @@ Generated data simulates realistic game engine execution:
 - **Performance**: Merging reduces 10,000 individual draws to ~500 merged draws without data loss
 
 ### Span Merging Algorithm
-When zoomed out, many tiny spans (slivers) appear side-by-side. **ALL slivers are guaranteed visible:**
+**Anti-Popping Strategy: Merge ALL adjacent spans consistently**
+
+The algorithm treats the entire timeline as continuous blocks instead of individual spans:
 
 1. **Group spans** by (thread_id, depth)
 2. **Sort by X position** within each group
-3. **Detect slivers**: Spans ≤ 5 pixels wide
-4. **Aggressive merging** to prevent disappearing:
-   - Merge ANY sliver with nearby slivers (gap < 50px)
-   - Use statistical analysis (gap ≤ 3× average span width)
-   - Use proximity check (gap < 5px)
-5. **Force minimum width**: Even isolated slivers rendered at 2px minimum
-6. **Render merged span**: Single rectangle covering all merged slivers
-7. **Visual distinction**: 
-   - Darkness based on merge ratio (gap width / total width)
-   - 85% saturation, 60-90% lightness
-   - White indicator badge for >3 merged spans
+3. **Merge adjacent spans** with small relative gaps:
+   - Gap < 10% of current merged width
+   - OR gap < 5px (absolute minimum)
+4. **Force minimum 2px width** on ALL rendered blocks
+5. **Consistent merging** prevents popping during zoom
+6. **Visual distinction**: 
+   - Single span: Full color
+   - Merged 2-5 spans: 90% saturation, 85% lightness
+   - Merged 5+ spans: White indicator badge
 
-**Key principle: ZERO DISAPPEARING - Every span visible through aggressive merging + minimum width enforcement!**
+**Key principle: RELATIVE gap threshold prevents zoom-based popping!**
 
-This ensures complete data visibility at any zoom level.
+By using a threshold relative to the current merged width (10%), spans that are merged stay merged at all zoom levels, eliminating the "popping" effect.
 
 ### Visual Design
 - **Thread label sidebar**: 120px, dark background, colored labels
