@@ -17,6 +17,7 @@ anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 tracing = "0.1.44"
 parking_lot = "0.12"
+rand = "0.8"
 
 [dev-dependencies]
 rand = "0.8"
