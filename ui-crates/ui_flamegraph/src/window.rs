@@ -120,8 +120,15 @@ impl FlamegraphWindow {
                                 Ok(samples) if !samples.is_empty() => {
                                     println!("[PROFILER] Got {} new samples from DB, converting to spans", samples.len());
                                     
+                                    let current_frame = trace_data.get_frame();
+                                    println!("[PROFILER] Before: TraceFrame has {} spans, time range: {} - {}", 
+                                        current_frame.spans.len(), current_frame.min_time_ns, current_frame.max_time_ns);
+                                    
                                     // Convert samples to TraceSpans and add to trace_data
                                     for sample in &samples {
+                                        println!("[PROFILER] Sample: timestamp={}, thread={}, {} frames", 
+                                            sample.timestamp_ns, sample.thread_id, sample.stack_frames.len());
+                                        
                                         // Each stack frame becomes a span with increasing depth
                                         for (depth, frame) in sample.stack_frames.iter().enumerate() {
                                             let span = crate::TraceSpan {
@@ -133,12 +140,16 @@ impl FlamegraphWindow {
                                                 color_index: (depth % 10) as u8,
                                             };
                                             
+                                            println!("[PROFILER] Adding span: '{}' at depth {} on thread {}, time {} -> {}", 
+                                                span.name, span.depth, span.thread_id, span.start_ns, span.end_ns());
+                                            
                                             trace_data.add_span(span);
                                         }
                                     }
                                     
-                                    println!("[PROFILER] Added {} spans to trace data", 
-                                        samples.iter().map(|s| s.stack_frames.len()).sum::<usize>());
+                                    let updated_frame = trace_data.get_frame();
+                                    println!("[PROFILER] After: TraceFrame has {} spans, time range: {} - {}", 
+                                        updated_frame.spans.len(), updated_frame.min_time_ns, updated_frame.max_time_ns);
                                     
                                     // Update last timestamp
                                     if let Some(last_sample) = samples.last() {
