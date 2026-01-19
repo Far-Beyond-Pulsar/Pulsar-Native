@@ -90,13 +90,13 @@ impl TraceFrame {
 
 #[derive(Clone)]
 pub struct TraceData {
-    inner: Arc<RwLock<TraceFrame>>,
+    inner: Arc<RwLock<Arc<TraceFrame>>>,
 }
 
 impl TraceData {
     pub fn new() -> Self {
         Self {
-            inner: Arc::new(RwLock::new(TraceFrame::new())),
+            inner: Arc::new(RwLock::new(Arc::new(TraceFrame::new()))),
         }
     }
 
@@ -413,19 +413,21 @@ impl TraceData {
     }
 
     pub fn add_span(&self, span: TraceSpan) {
-        self.inner.write().add_span(span);
+        let mut guard = self.inner.write();
+        Arc::make_mut(&mut guard).add_span(span);
     }
 
     pub fn add_frame_time(&self, ms: f32) {
-        self.inner.write().add_frame_time(ms);
+        let mut guard = self.inner.write();
+        Arc::make_mut(&mut guard).add_frame_time(ms);
     }
 
-    pub fn get_frame(&self) -> TraceFrame {
-        self.inner.read().clone()
+    pub fn get_frame(&self) -> Arc<TraceFrame> {
+        Arc::clone(&self.inner.read())
     }
 
     pub fn clear(&self) {
-        *self.inner.write() = TraceFrame::new();
+        *self.inner.write() = Arc::new(TraceFrame::new());
     }
 }
 

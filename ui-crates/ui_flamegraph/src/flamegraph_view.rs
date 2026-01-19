@@ -3,6 +3,7 @@ use ui::v_flex;
 use crate::trace_data::{TraceData, TraceFrame};
 use std::ops::Range;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 const ROW_HEIGHT: f32 = 20.0;
 const MIN_SPAN_WIDTH: f32 = 2.0;
@@ -59,9 +60,21 @@ impl Default for ViewState {
     }
 }
 
+struct SpanCache {
+    thread_offsets: BTreeMap<u64, f32>,
+}
+
+impl SpanCache {
+    fn build(frame: &TraceFrame) -> Self {
+        let thread_offsets = FlamegraphView::calculate_thread_y_offsets(frame);
+        Self { thread_offsets }
+    }
+}
+
 pub struct FlamegraphView {
     trace_data: TraceData,
     view_state: ViewState,
+    cache: Option<(Arc<TraceFrame>, SpanCache)>,
 }
 
 impl FlamegraphView {
@@ -69,7 +82,26 @@ impl FlamegraphView {
         Self {
             trace_data,
             view_state: ViewState::default(),
+            cache: None,
         }
+    }
+
+    fn get_or_build_cache(&mut self) -> (&Arc<TraceFrame>, &SpanCache) {
+        let frame = self.trace_data.get_frame();
+
+        // Check if cache is valid (same Arc pointer)
+        let needs_rebuild = match &self.cache {
+            Some((cached_frame, _)) => !Arc::ptr_eq(cached_frame, &frame),
+            None => true,
+        };
+
+        if needs_rebuild {
+            let cache = SpanCache::build(&frame);
+            self.cache = Some((Arc::clone(&frame), cache));
+        }
+
+        let (frame_ref, cache_ref) = self.cache.as_ref().unwrap();
+        (frame_ref, cache_ref)
     }
 
     fn calculate_thread_y_offsets(frame: &TraceFrame) -> BTreeMap<u64, f32> {
@@ -129,7 +161,7 @@ impl FlamegraphView {
         start_ns.saturating_sub(padding)..end_ns.saturating_add(padding)
     }
     
-    fn render_framerate_graph(&self, frame: &TraceFrame, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_framerate_graph(&self, frame: &Arc<TraceFrame>, _cx: &mut Context<Self>) -> impl IntoElement {
         let frame_times = frame.frame_times_ms.clone();
         
         div()
@@ -202,8 +234,8 @@ impl FlamegraphView {
             )
     }
 
-    fn render_thread_labels(&self, frame: &TraceFrame, _cx: &mut Context<Self>) -> impl IntoElement {
-        let thread_offsets = Self::calculate_thread_y_offsets(frame);
+    fn render_thread_labels(&self, frame: &Arc<TraceFrame>, thread_offsets: &BTreeMap<u64, f32>, _cx: &mut Context<Self>) -> impl IntoElement {
+        let thread_offsets = thread_offsets.clone();
         let view_state = self.view_state.clone();
 
         div()
@@ -250,11 +282,12 @@ impl FlamegraphView {
 
 impl Render for FlamegraphView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let frame = self.trace_data.get_frame();
+        let (frame, cache) = self.get_or_build_cache();
+        let frame = Arc::clone(frame);
+        let thread_offsets = cache.thread_offsets.clone();
         let view_state = self.view_state.clone();
         let palette = get_palette();
 
-        let frame_for_canvas = frame.clone();
         let view_state_for_canvas = view_state.clone();
         let palette_for_canvas = palette.clone();
 
@@ -273,24 +306,27 @@ impl Render for FlamegraphView {
                     .relative()
                     .child(
                         // Thread labels on the left
-                        self.render_thread_labels(&frame, cx)
+                        self.render_thread_labels(&frame, &thread_offsets, cx)
                     )
                     .child(
                         // Main flamegraph canvas
                         canvas(
-                            move |bounds, _window, _cx| {
-                                let viewport_width: f32 = bounds.size.width.into();
-                                let viewport_height: f32 = bounds.size.height.into();
-                                (bounds, frame_for_canvas.clone(), view_state_for_canvas.clone(), viewport_width, viewport_height, palette_for_canvas.clone())
+                            {
+                                let frame = Arc::clone(&frame);
+                                let thread_offsets = thread_offsets.clone();
+                                move |bounds, _window, _cx| {
+                                    let viewport_width: f32 = bounds.size.width.into();
+                                    let viewport_height: f32 = bounds.size.height.into();
+                                    (bounds, Arc::clone(&frame), thread_offsets.clone(), view_state_for_canvas.clone(), viewport_width, viewport_height, palette_for_canvas.clone())
+                                }
                             },
                             move |bounds, state, window, _cx| {
-                                let (bounds_prep, frame, view_state, viewport_width, viewport_height, palette) = state;
+                                let (bounds_prep, frame, thread_offsets, view_state, viewport_width, viewport_height, palette) = state;
 
                                 if frame.spans.is_empty() {
                                     return;
                                 }
 
-                                let thread_offsets = Self::calculate_thread_y_offsets(&frame);
                                 let visible_time = Self::visible_range(&frame, viewport_width, &view_state);
 
                                 window.paint_layer(bounds, |window| {
