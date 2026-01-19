@@ -22,6 +22,8 @@ pub struct ViewState {
     pub crop_dragging: bool,
     pub crop_start_time_ns: Option<u64>,
     pub crop_end_time_ns: Option<u64>,
+    pub graph_dragging: bool,
+    pub graph_drag_start_x: f32,
 }
 
 impl Default for ViewState {
@@ -41,6 +43,8 @@ impl Default for ViewState {
             crop_dragging: false,
             crop_start_time_ns: None,
             crop_end_time_ns: None,
+            graph_dragging: false,
+            graph_drag_start_x: 0.0,
         }
     }
 }

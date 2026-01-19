@@ -100,18 +100,25 @@ impl Render for FlamegraphView {
                                     view.view_state.crop_dragging = true;
                                     view.view_state.crop_start_time_ns = Some(clicked_time_ns);
                                     view.view_state.crop_end_time_ns = Some(clicked_time_ns);
+                                    cx.notify();
                                 } else {
-                                    // Normal click - jump to that time
+                                    // Check if click is within the viewport indicator rectangle
                                     let effective_width = width - THREAD_LABEL_WIDTH;
-                                    let normalized_time = (clicked_time_ns - frame.min_time_ns) as f32 / 
-                                        frame.duration_ns() as f32;
+                                    let normalized_start = (-(view.view_state.pan_x + effective_width * 0.5)) / (effective_width * view.view_state.zoom);
+                                    let normalized_end = ((effective_width * 1.5 - view.view_state.pan_x) / (effective_width * view.view_state.zoom));
+                                    let start_clamped = normalized_start.max(0.0).min(1.0);
+                                    let end_clamped = normalized_end.max(0.0).min(1.0);
+                                    let indicator_start_x = start_clamped * width;
+                                    let indicator_end_x = end_clamped * width;
                                     
-                                    // Pan so the clicked time is centered in the visible area
-                                    view.view_state.pan_x = THREAD_LABEL_WIDTH + 
-                                        (effective_width * 0.5) - 
-                                        (normalized_time * effective_width * view.view_state.zoom);
+                                    // Only start drag if click is within the viewport indicator
+                                    if click_x >= indicator_start_x && click_x <= indicator_end_x {
+                                        view.view_state.graph_dragging = true;
+                                        view.view_state.graph_drag_start_x = click_x;
+                                        view.view_state.drag_pan_start_x = view.view_state.pan_x;
+                                        cx.notify();
+                                    }
                                 }
-                                cx.notify();
                             }
                         })
                     })
@@ -150,6 +157,9 @@ impl Render for FlamegraphView {
                                 }
                                 
                                 cx.notify();
+                            } else if view.view_state.graph_dragging {
+                                view.view_state.graph_dragging = false;
+                                cx.notify();
                             }
                         })
                     })
@@ -169,12 +179,21 @@ impl Render for FlamegraphView {
                                     view.view_state.crop_end_time_ns = Some(current_time_ns);
                                     cx.notify();
                                 }
+                            } else if view.view_state.graph_dragging {
+                                let pos: Point<Pixels> = event.position;
+                                let current_x: f32 = pos.x.into();
+                                
+                                // Calculate delta and update pan
+                                let delta_x = current_x - view.view_state.graph_drag_start_x;
+                                view.view_state.pan_x = view.view_state.drag_pan_start_x + delta_x;
+                                cx.notify();
                             }
                         })
                     })
                     .on_mouse_down(MouseButton::Right, cx.listener(|view, _event: &MouseDownEvent, _window, cx| {
                         // Right-click resets the crop and view
                         view.view_state.crop_dragging = false;
+                        view.view_state.graph_dragging = false;
                         view.view_state.crop_start_time_ns = None;
                         view.view_state.crop_end_time_ns = None;
                         view.view_state.zoom = 1.0;

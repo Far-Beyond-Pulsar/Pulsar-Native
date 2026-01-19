@@ -9,7 +9,7 @@ High-performance flamegraph visualization for profiling and tracing data in Puls
   - Ctrl/Cmd + Scroll to zoom in/out
   - Scroll to pan vertically
   - Shift + Scroll to pan horizontally
-  - **Left-click on framerate graph** to jump to and center that time in the flamegraph viewer
+  - **Left-click and drag on framerate graph** to move the viewport indicator (the viewing area in the bottom flamegraph)
   - **Shift + Left-click and drag on framerate graph** to select and crop/zoom to a specific time range
   - **Right-click on framerate graph** to reset zoom and pan
 - **Color-Coded Spans**: 16-color palette automatically assigned to distinguish different trace categories
@@ -59,7 +59,7 @@ FlamegraphWindow::open(trace, cx);
 - **Zoom**: Ctrl/Cmd + Mouse Wheel
 - **Pan Vertical**: Mouse Wheel
 - **Pan Horizontal**: Shift + Mouse Wheel
-- **Jump to Time**: Left-click on framerate graph
+- **Move Viewport**: Left-click and drag on framerate graph (moves the viewing rectangle)
 - **Crop to Time Range**: Shift + Left-click and drag on framerate graph
 - **Reset View**: Right-click on framerate graph
 
