@@ -607,14 +607,6 @@ impl Render for FlamegraphView {
                     .overflow_hidden()
                     .relative()
                     .child(
-                        // Thread labels on the left
-                        self.render_thread_labels(&frame, &thread_offsets, cx)
-                    )
-                    .child(
-                        // Statistics sidebar on the right
-                        self.render_statistics_sidebar(&frame, cx)
-                    )
-                    .child(
                         // Main flamegraph canvas
                         canvas(
                             {
@@ -908,6 +900,14 @@ impl Render for FlamegraphView {
 
                         cx.notify();
                     }))
+                    .child(
+                        // Thread labels on the left (rendered after canvas for proper layering)
+                        self.render_thread_labels(&frame, &thread_offsets, cx)
+                    )
+                    .child(
+                        // Statistics sidebar on the right (rendered after canvas for proper layering)
+                        self.render_statistics_sidebar(&frame, cx)
+                    )
             )
             .child(
                 // Status bar at bottom
