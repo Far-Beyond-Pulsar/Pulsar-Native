@@ -183,9 +183,9 @@ impl Render for FlamegraphView {
                                 let pos: Point<Pixels> = event.position;
                                 let current_x: f32 = pos.x.into();
                                 
-                                // Calculate delta and update pan
+                                // Calculate delta and update pan (negate delta to match drag direction)
                                 let delta_x = current_x - view.view_state.graph_drag_start_x;
-                                view.view_state.pan_x = view.view_state.drag_pan_start_x + delta_x;
+                                view.view_state.pan_x = view.view_state.drag_pan_start_x - delta_x;
                                 cx.notify();
                             }
                         })
