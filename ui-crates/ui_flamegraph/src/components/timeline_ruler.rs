@@ -14,9 +14,11 @@ pub fn render_timeline_ruler(
     view_state: &ViewState,
     cx: &mut Context<impl Render>,
 ) -> impl IntoElement {
+    let setup_start = std::time::Instant::now();
     let frame_for_canvas = Arc::clone(frame);
     let view_state = view_state.clone();
     let theme = cx.theme();
+    println!("[TR] setup clones: {:?}", setup_start.elapsed());
 
     div()
         .h(px(TIMELINE_HEIGHT))
@@ -31,6 +33,7 @@ pub fn render_timeline_ruler(
                     (bounds, Arc::clone(&frame_for_canvas), view_state.clone(), viewport_width)
                 },
                 move |bounds, state, window, _cx| {
+                    let paint_start = std::time::Instant::now();
                     let (bounds, frame, view_state, viewport_width) = state;
 
                     if frame.duration_ns() == 0 {
@@ -39,6 +42,7 @@ pub fn render_timeline_ruler(
 
                     let effective_width = viewport_width - THREAD_LABEL_WIDTH;
 
+                    let paint_layer_start = std::time::Instant::now();
                     window.paint_layer(bounds, |window| {
                         // Calculate visible time range
                         let visible_range_val = visible_range(&frame, viewport_width, &view_state);
@@ -87,6 +91,8 @@ pub fn render_timeline_ruler(
                             current_time += marker_interval_ns;
                         }
                     });
+                    println!("[TR] paint_layer: {:?}", paint_layer_start.elapsed());
+                    println!("[TR] TOTAL paint callback: {:?}", paint_start.elapsed());
                 },
             )
             .size_full()

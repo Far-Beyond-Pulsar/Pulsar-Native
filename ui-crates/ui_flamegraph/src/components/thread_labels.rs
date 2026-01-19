@@ -16,11 +16,14 @@ pub fn render_thread_labels(
     view_state: &ViewState,
     cx: &mut Context<impl Render>,
 ) -> impl IntoElement {
+    let setup_start = std::time::Instant::now();
     let thread_offsets = thread_offsets.clone();
     let view_state = view_state.clone();
     let theme = cx.theme();
+    println!("[TL] setup clones: {:?}", setup_start.elapsed());
 
-    div()
+    let render_start = std::time::Instant::now();
+    let result = div()
         .absolute()
         .left_0()
         .top_0()
@@ -52,5 +55,7 @@ pub fn render_thread_labels(
                             .child(thread.name.clone())
                     )
             })
-        )
+        );
+    println!("[TL] render labels: {:?}", render_start.elapsed());
+    result
 }

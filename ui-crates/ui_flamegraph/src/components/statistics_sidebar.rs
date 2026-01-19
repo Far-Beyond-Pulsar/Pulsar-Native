@@ -12,6 +12,7 @@ pub fn render_statistics_sidebar(
     frame: &Arc<TraceFrame>,
     cx: &mut Context<impl Render>,
 ) -> impl IntoElement {
+    let setup_start = std::time::Instant::now();
     let duration_ms = frame.duration_ns() as f64 / 1_000_000.0;
     let num_frames = frame.frame_times_ms.len();
     let avg_frame_time = if !frame.frame_times_ms.is_empty() {
@@ -23,8 +24,10 @@ pub fn render_statistics_sidebar(
     let min_frame_time = frame.frame_times_ms.iter().copied().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(0.0);
     let max_frame_time = frame.frame_times_ms.iter().copied().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(0.0);
     let theme = cx.theme();
+    println!("[SS] data calculations: {:?}", setup_start.elapsed());
 
-    div()
+    let render_start = std::time::Instant::now();
+    let result = div()
         .absolute()
         .right_0()
         .top_0()
@@ -94,7 +97,9 @@ pub fn render_statistics_sidebar(
                             )
                     })
                 )
-        )
+        );
+    println!("[SS] render sidebar: {:?}", render_start.elapsed());
+    result
 }
 
 /// Helper function to create a statistics row

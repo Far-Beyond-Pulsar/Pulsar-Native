@@ -12,6 +12,7 @@ mod colors;
 mod state;
 mod coordinates;
 mod components;
+mod lod_tree;
 
 pub use flamegraph_view::FlamegraphView;
 pub use trace_data::{TraceData, TraceSpan, TraceFrame, ThreadInfo};

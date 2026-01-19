@@ -53,27 +53,39 @@ impl FlamegraphView {
 
 impl Render for FlamegraphView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let start = std::time::Instant::now();
+
+        let cache_start = std::time::Instant::now();
         let (frame, cache) = self.get_or_build_cache();
+        println!("[PERF] get_or_build_cache: {:?}", cache_start.elapsed());
+
+        let clone_start = std::time::Instant::now();
         let frame = Arc::clone(frame);
-        let thread_offsets = cache.thread_offsets.clone();
+        let thread_offsets = Arc::clone(&cache.thread_offsets);
+        let lod_tree = Arc::clone(&cache.lod_tree);
         let view_state = self.view_state.clone();
         let palette = get_palette();
         let theme = cx.theme().clone();
 
         let view_state_for_canvas = view_state.clone();
         let palette_for_canvas = palette.clone();
+        println!("[PERF] clones and setup: {:?}", clone_start.elapsed());
 
-        v_flex()
+        let render_start = std::time::Instant::now();
+
+        let fg_start = std::time::Instant::now();
+        let framerate_graph = render_framerate_graph(&frame, &view_state, cx);
+        println!("[PERF] render_framerate_graph: {:?}", fg_start.elapsed());
+
+        let tr_start = std::time::Instant::now();
+        let timeline_ruler = render_timeline_ruler(&frame, &view_state, cx);
+        println!("[PERF] render_timeline_ruler: {:?}", tr_start.elapsed());
+
+        let result = v_flex()
             .size_full()
             .bg(theme.background)
-            .child(
-                // Framerate graph at top
-                render_framerate_graph(&frame, &view_state, cx)
-            )
-            .child(
-                // Timeline ruler
-                render_timeline_ruler(&frame, &view_state, cx)
-            )
+            .child(framerate_graph)
+            .child(timeline_ruler)
             .child(
                 div()
                     .flex_1()
@@ -91,15 +103,18 @@ impl Render for FlamegraphView {
                             }
                         }
                     })
-                    .child(
-                        // Main flamegraph canvas
-                        render_flamegraph_canvas(
+                    .child({
+                        let canvas_start = std::time::Instant::now();
+                        let canvas = render_flamegraph_canvas(
                             Arc::clone(&frame),
-                            thread_offsets.clone(),
+                            Arc::clone(&lod_tree),
+                            Arc::clone(&thread_offsets),
                             view_state_for_canvas.clone(),
                             palette_for_canvas.clone()
-                        )
-                    )
+                        );
+                        println!("[PERF] render_flamegraph_canvas: {:?}", canvas_start.elapsed());
+                        canvas
+                    })
                     .on_mouse_down(MouseButton::Right, cx.listener(|view, event: &MouseDownEvent, _window, cx| {
                         view.view_state.dragging = true;
                         let pos: Point<Pixels> = event.position;
@@ -196,18 +211,24 @@ impl Render for FlamegraphView {
 
                         cx.notify();
                     }))
-                    .child(
-                        // Thread labels on the left (rendered after canvas for proper layering)
-                        render_thread_labels(&frame, &thread_offsets, &view_state, cx)
-                    )
-                    .child(
-                        // Statistics sidebar on the right (rendered after canvas for proper layering)
-                        render_statistics_sidebar(&frame, cx)
-                    )
-                    .children(
-                        // Hover popup (rendered last to be on top)
-                        render_hover_popup(&frame, &view_state, *self.viewport_width.read().unwrap(), cx)
-                    )
+                    .child({
+                        let tl_start = std::time::Instant::now();
+                        let labels = render_thread_labels(&frame, &*thread_offsets, &view_state, cx);
+                        println!("[PERF] render_thread_labels: {:?}", tl_start.elapsed());
+                        labels
+                    })
+                    .child({
+                        let ss_start = std::time::Instant::now();
+                        let sidebar = render_statistics_sidebar(&frame, cx);
+                        println!("[PERF] render_statistics_sidebar: {:?}", ss_start.elapsed());
+                        sidebar
+                    })
+                    .children({
+                        let hp_start = std::time::Instant::now();
+                        let popup = render_hover_popup(&frame, &view_state, *self.viewport_width.read().unwrap(), cx);
+                        println!("[PERF] render_hover_popup: {:?}", hp_start.elapsed());
+                        popup
+                    })
             )
             .child(
                 // Status bar at bottom
@@ -245,6 +266,10 @@ impl Render for FlamegraphView {
                             .text_color(theme.muted_foreground)
                             .child(format!("Zoom: {:.1}x", view_state.zoom))
                     )
-            )
+            );
+
+        println!("[PERF] TOTAL render time: {:?}", start.elapsed());
+        println!("----------------------------------------");
+        result
     }
 }

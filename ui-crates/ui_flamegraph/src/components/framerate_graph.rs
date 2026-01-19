@@ -14,10 +14,12 @@ pub fn render_framerate_graph(
     view_state: &ViewState,
     cx: &mut Context<impl Render>,
 ) -> impl IntoElement {
+    let setup_start = std::time::Instant::now();
     let frame_times = frame.frame_times_ms.clone();
     let view_state = view_state.clone();
     let frame_for_indicator = Arc::clone(frame);
     let theme = cx.theme();
+    println!("[FG] setup clones: {:?}", setup_start.elapsed());
 
     div()
         .h(px(GRAPH_HEIGHT))

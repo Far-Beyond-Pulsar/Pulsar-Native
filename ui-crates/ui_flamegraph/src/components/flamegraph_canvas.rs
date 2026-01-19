@@ -5,35 +5,49 @@ use std::sync::Arc;
 use std::collections::BTreeMap;
 use crate::trace_data::TraceFrame;
 use crate::state::ViewState;
+use crate::lod_tree::LODTree;
 use crate::constants::*;
 use crate::coordinates::{visible_range, time_to_x};
+use crate::colors::get_palette;
 
 /// Render the main flamegraph canvas with all spans
 pub fn render_flamegraph_canvas(
     frame: Arc<TraceFrame>,
-    thread_offsets: BTreeMap<u64, f32>,
+    lod_tree: Arc<LODTree>,
+    thread_offsets: Arc<BTreeMap<u64, f32>>,
     view_state: ViewState,
     palette: Vec<Hsla>,
 ) -> impl IntoElement {
+    let setup_start = std::time::Instant::now();
     canvas(
         {
+            let clone_start = std::time::Instant::now();
             let frame = Arc::clone(&frame);
-            let thread_offsets = thread_offsets.clone();
+            let lod_tree = Arc::clone(&lod_tree);
+            let thread_offsets = Arc::clone(&thread_offsets);
+            println!("[CANVAS_SETUP] prepare callback clones: {:?}", clone_start.elapsed());
             move |bounds, _window, _cx| {
+                let closure_start = std::time::Instant::now();
                 let viewport_width: f32 = bounds.size.width.into();
                 let viewport_height: f32 = bounds.size.height.into();
-                (bounds, Arc::clone(&frame), thread_offsets.clone(), view_state.clone(), viewport_width, viewport_height, palette.clone())
+                let result = (bounds, Arc::clone(&frame), Arc::clone(&lod_tree), Arc::clone(&thread_offsets), view_state.clone(), viewport_width, viewport_height, palette.clone());
+                println!("[CANVAS_SETUP] prepare closure executed: {:?}", closure_start.elapsed());
+                result
             }
         },
         move |bounds, state, window, _cx| {
-            let (bounds_prep, frame, thread_offsets, view_state, viewport_width, viewport_height, palette) = state;
+            let paint_start = std::time::Instant::now();
+            let (bounds_prep, frame, lod_tree, thread_offsets, view_state, viewport_width, viewport_height, palette) = state;
 
             if frame.spans.is_empty() {
                 return;
             }
 
+            let visible_range_start = std::time::Instant::now();
             let visible_time = visible_range(&frame, viewport_width, &view_state);
+            println!("[CANVAS] visible_range calc: {:?}", visible_range_start.elapsed());
 
+            let paint_layer_start = std::time::Instant::now();
             window.paint_layer(bounds, |window| {
                 // Draw vertical grid lines aligned with timeline
                 let visible_range_for_grid = visible_range(&frame, viewport_width, &view_state);
@@ -97,150 +111,87 @@ pub fn render_flamegraph_canvas(
                 // Uses padding to prevent edge popping during pan/zoom
                 // ========================================================================
 
-                // Group visible spans by (thread_id, depth) for continuous rendering
-                let mut span_groups: std::collections::HashMap<(u64, u32), Vec<(f32, f32, usize, f32)>> = std::collections::HashMap::new();
+                // LOD QUERY: Get pre-merged spans at appropriate detail level
+                // O(output) complexity - independent of total dataset size!
+                let lod_start = std::time::Instant::now();
 
-                for (idx, span) in frame.spans.iter().enumerate() {
-                    // Calculate Y position first for vertical culling
-                    // Note: y is relative to canvas top (0 = top of canvas)
-                    let thread_y_offset = thread_offsets.get(&span.thread_id).copied().unwrap_or(0.0);
-                    let y = thread_y_offset + (span.depth as f32 * ROW_HEIGHT) + view_state.pan_y;
+                let vertical_min = -CULL_PADDING - view_state.pan_y;
+                let vertical_max = viewport_height + CULL_PADDING - view_state.pan_y;
 
-                    // Vertical culling: skip if completely outside viewport (with padding)
-                    // y is in canvas-relative coordinates, viewport_height is the canvas height
-                    if y + ROW_HEIGHT < -CULL_PADDING || y > viewport_height + CULL_PADDING {
-                        continue;
+                let merged_spans = lod_tree.query_dynamic(
+                    visible_time.start,
+                    visible_time.end,
+                    vertical_min,
+                    vertical_max,
+                    viewport_width - THREAD_LABEL_WIDTH,
+                );
+                println!("[CANVAS] LOD query: {:?} ({} spans)", lod_start.elapsed(), merged_spans.len());
+
+                // Paint pre-merged spans directly - NO additional merging needed!
+                let paint_start = std::time::Instant::now();
+                let palette = get_palette();
+
+                for merged_span in merged_spans {
+                    let x1 = time_to_x(merged_span.start_ns, &frame, viewport_width, &view_state);
+                    let x2 = time_to_x(merged_span.end_ns, &frame, viewport_width, &view_state);
+                    let width = x2 - x1;
+
+                    if width < 0.5 {
+                        continue;  // Too small to see
                     }
 
-                    // Time-based culling: check if span is in visible time range
-                    if span.end_ns() < visible_time.start || span.start_ns > visible_time.end {
-                        continue;
-                    }
+                    let y = merged_span.y + view_state.pan_y;
+                    let rendered_width = (width - PADDING * 2.0).max(MIN_SPAN_WIDTH);
 
-                    // Calculate X positions (canvas-relative coordinates)
-                    let x1 = time_to_x(span.start_ns, &frame, viewport_width, &view_state);
-                    let x2 = time_to_x(span.end_ns(), &frame, viewport_width, &view_state);
+                    let base_color = palette[merged_span.color_index % palette.len()];
 
-                    // Horizontal culling: skip if completely outside viewport (with padding)
-                    // x1, x2 are canvas-relative, viewport_width is the canvas width
-                    if x2 < -CULL_PADDING || x1 > viewport_width + CULL_PADDING {
-                        continue;
-                    }
+                    // Darken if multiple spans merged
+                    let color = if merged_span.span_count > 1 {
+                        hsla(base_color.h, base_color.s * 0.9, base_color.l * 0.85, 1.0)
+                    } else {
+                        base_color
+                    };
 
-                    // Group visible spans for rendering
-                    let key = (span.thread_id, span.depth);
-                    span_groups.entry(key).or_insert_with(Vec::new).push((x1, x2, idx, y));
-                }
+                    let span_bounds = Bounds {
+                        origin: point(
+                            bounds.origin.x + px(x1 + PADDING),
+                            bounds.origin.y + px(y + PADDING)
+                        ),
+                        size: size(px(rendered_width), px(ROW_HEIGHT - PADDING * 2.0)),
+                    };
 
-                // Process each group - merge adjacent spans into continuous blocks
-                for ((thread_id, depth), mut spans) in span_groups {
-                    // Sort by x1 position
-                    spans.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+                    window.paint_quad(fill(span_bounds, color));
 
-                    let mut i = 0;
-                    while i < spans.len() {
-                        let (merge_start, mut merge_end, first_idx, y) = spans[i];
-                        let mut j = i + 1;
-                        let mut span_count = 1;
-
-                        // Merge adjacent spans only when nearly touching
-                        // Very minimal merging to preserve detail
-                        while j < spans.len() {
-                            let (next_start, next_end, _, _) = spans[j];
-                            let gap = next_start - merge_end;
-
-                            // Only merge if gap is less than 1 pixel
-                            // No relative threshold - just absolute minimum
-                            let should_merge = gap < 1.0;
-
-                            if should_merge {
-                                merge_end = next_end;
-                                span_count += 1;
-                                j += 1;
-                            } else {
-                                // Gap too large, stop merging
-                                break;
-                            }
-                        }
-
-                        // Calculate width and ensure minimum after padding
-                        let total_width = merge_end - merge_start;
-                        // CRITICAL: Ensure rendered width is at least MIN_SPAN_WIDTH (2px) AFTER padding
-                        let rendered_width = (total_width - PADDING * 2.0).max(MIN_SPAN_WIDTH);
-
-                        // Choose color based on first span
-                        let first_span = &frame.spans[first_idx];
-                        let base_color = palette[(first_span.color_index as usize) % palette.len()];
-
-                        // Darken slightly if multiple spans merged
-                        let color = if span_count > 1 {
-                            hsla(
-                                base_color.h,
-                                base_color.s * 0.9,
-                                base_color.l * 0.85,
-                                1.0
-                            )
-                        } else {
-                            base_color
+                    // Add borders for larger spans
+                    if rendered_width > 4.0 {
+                        let highlight_color = hsla(color.h, color.s * 0.7, (color.l * 1.15).min(0.95), 0.4);
+                        let top_border = Bounds {
+                            origin: span_bounds.origin,
+                            size: size(px(rendered_width), px(1.0)),
                         };
+                        window.paint_quad(fill(top_border, highlight_color));
 
-                        // Render the span/block with subtle border
-                        let span_bounds = Bounds {
-                            origin: point(
-                                bounds.origin.x + px(merge_start + PADDING),
-                                bounds.origin.y + px(y + PADDING)
-                            ),
-                            size: size(
-                                px(rendered_width),
-                                px(ROW_HEIGHT - PADDING * 2.0)
-                            ),
+                        let shadow_color = hsla(0.0, 0.0, 0.0, 0.3);
+                        let bottom_border = Bounds {
+                            origin: point(span_bounds.origin.x, span_bounds.origin.y + span_bounds.size.height - px(1.0)),
+                            size: size(px(rendered_width), px(1.0)),
                         };
+                        window.paint_quad(fill(bottom_border, shadow_color));
+                    }
 
-                        // Fill with main color
-                        window.paint_quad(fill(span_bounds, color));
-
-                        // Add subtle top border for depth
-                        if rendered_width > 4.0 {
-                            let highlight_color = hsla(
-                                color.h,
-                                color.s * 0.7,
-                                (color.l * 1.15).min(0.95),
-                                0.4
-                            );
-                            let top_border = Bounds {
-                                origin: span_bounds.origin,
-                                size: size(px(rendered_width), px(1.0)),
-                            };
-                            window.paint_quad(fill(top_border, highlight_color));
-
-                            // Add subtle bottom shadow
-                            let shadow_color = hsla(0.0, 0.0, 0.0, 0.3);
-                            let bottom_border = Bounds {
-                                origin: point(
-                                    span_bounds.origin.x,
-                                    span_bounds.origin.y + span_bounds.size.height - px(1.0)
-                                ),
-                                size: size(px(rendered_width), px(1.0)),
-                            };
-                            window.paint_quad(fill(bottom_border, shadow_color));
-                        }
-
-                        // Visual indicator if many spans merged
-                        if span_count > 5 && total_width > 20.0 {
-                            let badge_bounds = Bounds {
-                                origin: point(
-                                    bounds.origin.x + px(merge_start + total_width - 8.0),
-                                    bounds.origin.y + px(y + PADDING)
-                                ),
-                                size: size(px(6.0), px(6.0)),
-                            };
-                            window.paint_quad(fill(badge_bounds, hsla(0.0, 0.0, 1.0, 0.3)));
-                        }
-
-                        i = j;
+                    // Badge for heavily merged spans
+                    if merged_span.span_count > 5 && width > 20.0 {
+                        let badge_bounds = Bounds {
+                            origin: point(bounds.origin.x + px(x1 + width - 8.0), bounds.origin.y + px(y + PADDING)),
+                            size: size(px(6.0), px(6.0)),
+                        };
+                        window.paint_quad(fill(badge_bounds, hsla(0.0, 0.0, 1.0, 0.3)));
                     }
                 }
+                println!("[CANVAS] paint merged spans: {:?}", paint_start.elapsed());
             });
+            println!("[CANVAS] paint_layer total: {:?}", paint_layer_start.elapsed());
+            println!("[CANVAS] TOTAL paint callback: {:?}", paint_start.elapsed());
         },
     )
     .size_full()

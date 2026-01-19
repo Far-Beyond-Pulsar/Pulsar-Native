@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use crate::trace_data::TraceFrame;
 use crate::constants::*;
+use crate::lod_tree::LODTree;
 
 /// View state for pan, zoom, and interaction
 #[derive(Clone)]
@@ -38,16 +39,46 @@ impl Default for ViewState {
     }
 }
 
-/// Cache for pre-computed span layout data
+/// Rectangle bounds for spatial queries
+#[derive(Clone, Copy, Debug)]
+pub struct Rect {
+    pub x_min: u64,  // time in ns
+    pub x_max: u64,
+    pub y_min: f32,  // pixel Y
+    pub y_max: f32,
+}
+
+impl Rect {
+    fn intersects(&self, other: &Rect) -> bool {
+        self.x_min <= other.x_max && self.x_max >= other.x_min &&
+        self.y_min <= other.y_max && self.y_max >= other.y_min
+    }
+
+    fn contains(&self, other: &Rect) -> bool {
+        other.x_min >= self.x_min && other.x_max <= self.x_max &&
+        other.y_min >= self.y_min && other.y_max <= self.y_max
+    }
+}
+
+use std::sync::Arc;
+
+/// Cache with hierarchical LOD tree - O(output) queries!
+/// Uses Arc - NO CLONING!
 pub struct SpanCache {
-    pub thread_offsets: BTreeMap<u64, f32>,
+    pub thread_offsets: Arc<BTreeMap<u64, f32>>,
+    pub lod_tree: Arc<LODTree>,
 }
 
 impl SpanCache {
-    /// Build cache from a trace frame
     pub fn build(frame: &TraceFrame) -> Self {
+        let build_start = std::time::Instant::now();
         let thread_offsets = calculate_thread_y_offsets(frame);
-        Self { thread_offsets }
+        let lod_tree = LODTree::build(frame, &thread_offsets);
+        println!("[CACHE] total cache build: {:?}", build_start.elapsed());
+        Self {
+            thread_offsets: Arc::new(thread_offsets),
+            lod_tree: Arc::new(lod_tree),
+        }
     }
 }
 
