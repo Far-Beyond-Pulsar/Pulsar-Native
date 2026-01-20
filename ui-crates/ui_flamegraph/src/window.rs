@@ -8,6 +8,8 @@ pub struct FlamegraphWindow {
     collector: Option<Arc<InstrumentationCollector>>,
     trace_data: Arc<TraceData>,
     is_profiling: bool,
+    current_db_path: Option<std::path::PathBuf>,
+    db_connection: Option<Arc<parking_lot::Mutex<rusqlite::Connection>>>,
 }
 
 impl FlamegraphWindow {
@@ -21,6 +23,8 @@ impl FlamegraphWindow {
             collector: None,
             trace_data,
             is_profiling: false,
+            current_db_path: None,
+            db_connection: None,
         })
     }
 
@@ -63,6 +67,30 @@ impl FlamegraphWindow {
 
         println!("[PROFILER] Starting instrumentation collector");
 
+        // Create database file in project directory
+        if let Some(project_path) = engine_state::get_project_path() {
+            match profiling::database::ensure_profiling_dir(project_path) {
+                Ok(profiling_dir) => {
+                    let db_filename = profiling::database::generate_db_filename();
+                    let db_path = profiling_dir.join(&db_filename);
+                    
+                    match profiling::database::create_database(&db_path) {
+                        Ok(conn) => {
+                            println!("[PROFILER] Created database: {}", db_path.display());
+                            self.current_db_path = Some(db_path);
+                            self.db_connection = Some(Arc::new(parking_lot::Mutex::new(conn)));
+                        }
+                        Err(e) => {
+                            eprintln!("[PROFILER] Failed to create database: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[PROFILER] Failed to create profiling directory: {}", e);
+                }
+            }
+        }
+
         // Create instrumentation collector
         let collector = Arc::new(InstrumentationCollector::new(
             Arc::clone(&self.trace_data),
@@ -86,11 +114,99 @@ impl FlamegraphWindow {
             collector.stop();
         }
 
+        // Save all events to database before stopping
+        if let Some(db_conn) = &self.db_connection {
+            let events = profiling::get_all_events();
+            if let Err(e) = profiling::database::save_events(&db_conn.lock(), &events) {
+                eprintln!("[PROFILER] Failed to save events to database: {}", e);
+            } else {
+                println!("[PROFILER] Saved {} events to database", events.len());
+                if let Some(path) = &self.current_db_path {
+                    println!("[PROFILER] Database saved to: {}", path.display());
+                }
+            }
+        }
+
         self.collector = None;
         self.is_profiling = false;
         
         println!("[PROFILER] Instrumentation profiling stopped");
         _cx.notify();
+    }
+
+    fn open_database_picker(&mut self, cx: &mut Context<Self>) {
+        // Stop current profiling if active
+        if self.is_profiling {
+            self.stop_profiling(cx);
+        }
+
+        // Open file picker for .db files using rfd
+        let file_dialog = rfd::AsyncFileDialog::new()
+            .set_title("Select Profiling Database")
+            .add_filter("Database", &["db"])
+            .set_directory(
+                engine_state::get_project_path()
+                    .and_then(|p| std::path::PathBuf::from(p).join(".pulsar/profiling/flamegraph").canonicalize().ok())
+                    .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
+            );
+
+        cx.spawn(async move |this, cx| {
+            if let Some(file) = file_dialog.pick_file().await {
+                let db_path = file.path().to_path_buf();
+                cx.update(|cx| {
+                    this.update(cx, |this, cx| {
+                        this.load_from_database(db_path, cx);
+                    }).ok();
+                }).ok();
+            }
+        }).detach();
+    }
+
+    fn load_from_database(&mut self, db_path: std::path::PathBuf, _cx: &mut Context<Self>) {
+        match rusqlite::Connection::open(&db_path) {
+            Ok(conn) => {
+                match profiling::database::load_events(&conn) {
+                    Ok(events) => {
+                        println!("[PROFILER] Loaded {} events from {}", events.len(), db_path.display());
+                        
+                        // Convert to TraceData format
+                        if let Err(e) = crate::profiler::convert_profile_events_to_trace(&events, &self.trace_data) {
+                            eprintln!("[PROFILER] Failed to convert events: {}", e);
+                        }
+                        
+                        self.current_db_path = Some(db_path);
+                        _cx.notify();
+                    }
+                    Err(e) => {
+                        eprintln!("[PROFILER] Failed to load events from database: {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("[PROFILER] Failed to open database: {}", e);
+            }
+        }
+    }
+
+    fn open_file_dialog(&mut self, cx: &mut Context<Self>) {
+        if let Some(project_path) = engine_state::get_project_path() {
+            // List available sessions
+            match profiling::database::list_profiling_sessions(project_path) {
+                Ok(sessions) => {
+                    println!("[PROFILER] Found {} profiling sessions", sessions.len());
+                    if let Some(latest) = sessions.first() {
+                        // For now, just load the latest
+                        // TODO: Show a UI list to pick from
+                        self.load_from_database(latest.clone(), cx);
+                    } else {
+                        println!("[PROFILER] No profiling sessions found");
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[PROFILER] Failed to list sessions: {}", e);
+                }
+            }
+        }
     }
 }
 
@@ -145,6 +261,20 @@ impl Render for FlamegraphWindow {
                                                 .text_size(px(12.0))
                                         )
                                 }
+                            )
+                            .child(
+                                // Open button - load past recordings via file picker
+                                div()
+                                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _event, _window, cx| {
+                                        this.open_database_picker(cx);
+                                    }))
+                                    .child("📂 Open")
+                                    .px_3()
+                                    .py_1()
+                                    .bg(theme.accent)
+                                    .rounded(px(4.0))
+                                    .cursor(CursorStyle::PointingHand)
+                                    .text_size(px(12.0))
                             )
                     )
             )

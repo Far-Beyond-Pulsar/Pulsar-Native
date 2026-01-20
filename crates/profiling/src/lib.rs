@@ -20,6 +20,8 @@ use parking_lot::RwLock;
 use crossbeam_channel::{Sender, Receiver, unbounded};
 use serde::{Serialize, Deserialize};
 
+pub mod database;
+
 /// A profiling event captured via instrumentation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfileEvent {
