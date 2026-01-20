@@ -44,25 +44,15 @@ impl FlamegraphView {
         if needs_rebuild {
             let cache = SpanCache::build(&frame);
             
-            // Adjust zoom/pan to maintain absolute visible time range when data grows
-            let new_duration = frame.duration_ns();
-            if self.view_state.last_data_duration_ns > 0 && new_duration > self.view_state.last_data_duration_ns {
-                // Data has grown - adjust zoom to maintain absolute visible range
-                if let (Some(vis_start), Some(vis_end)) = (self.view_state.visible_start_ns, self.view_state.visible_end_ns) {
-                    let visible_duration = vis_end - vis_start;
-                    
-                    // Calculate new zoom to maintain the same absolute time window
-                    let new_zoom = new_duration as f32 / visible_duration as f32;
-                    
-                    // Calculate new pan to maintain the same start position
-                    let new_pan_x = -(vis_start as f32 / new_duration as f32) * new_zoom;
-                    
-                    self.view_state.zoom = new_zoom;
-                    self.view_state.pan_x = new_pan_x;
-                }
+            // Initialize zoom if this is the first frame
+            if self.view_state.zoom == 0.0 && frame.duration_ns() > 0 {
+                let effective_width = self.view_state.viewport_width - THREAD_LABEL_WIDTH;
+                self.view_state.zoom = effective_width / frame.duration_ns() as f32;
+                self.view_state.pan_x = 0.0; // Start at left
             }
+            // Note: When new data arrives, zoom stays constant (absolute pixels per nanosecond)
+            // This prevents the "zooming out" effect as more data comes in
             
-            self.view_state.last_data_duration_ns = new_duration;
             self.cache = Some((Arc::clone(&frame), cache));
         }
 
@@ -85,12 +75,6 @@ impl Render for FlamegraphView {
         let view_state = self.view_state.clone();
         let palette = get_palette();
         let theme = cx.theme().clone();
-        
-        // Update visible range tracking for zoom preservation
-        let viewport_width = *self.viewport_width.read().unwrap();
-        let visible_time = visible_range(&frame, viewport_width, &view_state);
-        self.view_state.visible_start_ns = Some(visible_time.start);
-        self.view_state.visible_end_ns = Some(visible_time.end);
 
         let view_state_for_canvas = view_state.clone();
         let palette_for_canvas = palette.clone();
@@ -165,20 +149,14 @@ impl Render for FlamegraphView {
                                         let width = *viewport_width.read().unwrap();
                                         let effective_width = width - THREAD_LABEL_WIDTH;
                                         
-                                        // Calculate zoom level to fit the selection
-                                        let selection_duration = (end - start) as f32;
-                                        let total_duration = frame.duration_ns() as f32;
-                                        let new_zoom = total_duration / selection_duration;
+                                        // Calculate absolute zoom: pixels per nanosecond
+                                        let selection_duration_ns = (end - start) as f32;
+                                        let new_zoom = effective_width / selection_duration_ns;
                                         
-                                        // Calculate pan to center the selection
-                                        let selection_center = start + ((end - start) / 2);
-                                        let normalized_center = (selection_center - frame.min_time_ns) as f32 / 
-                                            frame.duration_ns() as f32;
-                                        
+                                        // Calculate pan to put selection at left edge
+                                        let selection_start_offset = (start - frame.min_time_ns) as f32;
                                         view.view_state.zoom = new_zoom;
-                                        view.view_state.pan_x = THREAD_LABEL_WIDTH + 
-                                            (effective_width * 0.5) - 
-                                            (normalized_center * effective_width * new_zoom);
+                                        view.view_state.pan_x = -selection_start_offset * new_zoom;
                                     }
                                 }
                                 
@@ -223,16 +201,26 @@ impl Render for FlamegraphView {
                             }
                         })
                     })
-                    .on_mouse_down(MouseButton::Right, cx.listener(|view, _event: &MouseDownEvent, _window, cx| {
-                        // Right-click resets the crop and view
-                        view.view_state.crop_dragging = false;
-                        view.view_state.graph_dragging = false;
-                        view.view_state.crop_start_time_ns = None;
-                        view.view_state.crop_end_time_ns = None;
-                        view.view_state.zoom = 1.0;
-                        view.view_state.pan_x = 0.0;
-                        cx.notify();
-                    }))
+                    .on_mouse_down(MouseButton::Right, {
+                        let frame = Arc::clone(&frame);
+                        let viewport_width = self.viewport_width.clone();
+                        cx.listener(move |view, _event: &MouseDownEvent, _window, cx| {
+                            // Right-click resets the crop and view
+                            view.view_state.crop_dragging = false;
+                            view.view_state.graph_dragging = false;
+                            view.view_state.crop_start_time_ns = None;
+                            view.view_state.crop_end_time_ns = None;
+                            
+                            // Reset to fit entire duration
+                            let width = *viewport_width.read().unwrap();
+                            let effective_width = width - THREAD_LABEL_WIDTH;
+                            if frame.duration_ns() > 0 {
+                                view.view_state.zoom = effective_width / frame.duration_ns() as f32;
+                            }
+                            view.view_state.pan_x = 0.0;
+                            cx.notify();
+                        })
+                    })
             )
             .child(timeline_ruler)
             .child(
@@ -254,6 +242,13 @@ impl Render for FlamegraphView {
                     })
                     .child({
                         let canvas_start = std::time::Instant::now();
+                        let frame = Arc::clone(&frame);
+                        
+                        // Track viewport width in view_state
+                        let width = *self.viewport_width.read().unwrap();
+                        self.view_state.viewport_width = width;
+                        
+                        let (_, cache) = self.get_or_build_cache();
                         let canvas = render_flamegraph_canvas(
                             Arc::clone(&frame),
                             Arc::clone(&lod_tree),

@@ -40,8 +40,13 @@ use windows::{
 /// * `window_id` - ID of the window to redraw
 #[cfg(target_os = "windows")]
 pub unsafe fn handle_redraw(app: &mut WinitGpuiApp, window_id: WindowId) {
+    profiling::profile_scope!("Render::Composite");
+    
     // Claim Bevy renderer first (needs mutable app reference)
-    claim_bevy_renderer(app, &window_id);
+    {
+        profiling::profile_scope!("Render::ClaimBevy");
+        claim_bevy_renderer(app, &window_id);
+    }
 
     // Now get window state mutably
     let window_state = app.windows.get_mut(&window_id);

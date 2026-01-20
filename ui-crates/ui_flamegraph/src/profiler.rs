@@ -30,16 +30,34 @@ impl InstrumentationCollector {
     pub fn start(&self) {
         let mut running = self.running.write();
         if *running {
+            println!("[PROFILER] Already running, ignoring start request");
             return; // Already running
         }
         *running = true;
+
+        println!("[PROFILER] Profiling enabled: {}", profiling::is_profiling_enabled());
+        
+        // Create a test span to verify the system works
+        {
+            profiling::profile_scope!("TEST_SPAN_FROM_COLLECTOR");
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        
+        // Small delay to let the test span be recorded
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        
+        // CRITICAL: Collect events from channel into storage FIRST
+        profiling::collect_events();
+        
+        println!("[PROFILER] Current event count: {}", profiling::get_all_events().len());
 
         let trace_data = Arc::clone(&self.trace_data);
         let running_flag = Arc::clone(&self.running);
         let update_interval = self.update_interval_ms;
 
-        // Enable profiling globally
-        profiling::enable_profiling();
+        // NOTE: Don't enable/disable profiling here!
+        // Profiling is enabled globally at engine startup
+        // We just collect the events that are already being recorded
 
         thread::spawn(move || {
             collector_loop(trace_data, running_flag, update_interval);
@@ -64,40 +82,58 @@ fn collector_loop(
     update_interval_ms: u64,
 ) {
     println!("[PROFILER] Starting instrumentation collector");
+    
+    let mut last_event_count = 0;
 
     while *running.read() {
         thread::sleep(Duration::from_millis(update_interval_ms));
 
-        // Collect events from the profiler
-        let events = profiling::collect_events();
+        // CRITICAL: Collect from channel into storage first!
+        profiling::collect_events();
         
-        if events.is_empty() {
+        // NOW get all events from storage
+        let all_events = profiling::get_all_events();
+        
+        // Only process new events since last update
+        if all_events.len() <= last_event_count {
             continue;
         }
+        
+        let new_events = &all_events[last_event_count..];
+        last_event_count = all_events.len();
 
-        println!("[PROFILER] Collected {} instrumentation events", events.len());
+        println!("[PROFILER] Collected {} new instrumentation events (total: {})", 
+            new_events.len(), all_events.len());
 
-        // Convert to TraceData format
-        if let Err(e) = convert_profile_events_to_trace(&events, &trace_data) {
+        // Convert ONLY new events to TraceData format
+        if let Err(e) = convert_profile_events_to_trace(new_events, &trace_data) {
             eprintln!("[PROFILER] Failed to convert events: {}", e);
         }
     }
 
-    profiling::disable_profiling();
+    // NOTE: Don't disable profiling here! 
+    // Profiling is managed by the engine, not the collector
     println!("[PROFILER] Instrumentation collector stopped");
 }
 
-/// Convert profiling events to TraceData format
+/// Convert profiling events to TraceData format and ADD them (don't replace!)
 pub fn convert_profile_events_to_trace(
     events: &[profiling::ProfileEvent],
     trace_data: &TraceData,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use std::collections::HashMap;
 
-    let mut spans = Vec::new();
-    let mut thread_names = HashMap::new();
+    // Get current frame to preserve existing data
+    let current_frame = trace_data.get_frame();
+    let existing_span_count = current_frame.spans.len();
+    let mut spans = current_frame.spans.clone();
+    let mut thread_names: HashMap<u64, String> = current_frame.threads.iter()
+        .map(|(id, info)| (*id, info.name.clone()))
+        .collect();
 
-    // Process each event
+    println!("[PROFILER] BEFORE: {} existing spans", existing_span_count);
+
+    // Add new events to existing spans
     for (idx, event) in events.iter().enumerate() {
         let thread_id = event.thread_id;
         
@@ -116,10 +152,24 @@ pub fn convert_profile_events_to_trace(
             thread_id,
             color_index: (idx % 16) as u8,
         });
+        
+        // Debug: Print first few spans to see durations
+        if idx < 3 {
+            println!("[PROFILER] Span {}: {} @ {}ns for {}ns ({:.2}ms)", 
+                idx, event.name, event.start_ns, event.duration_ns,
+                event.duration_ns as f64 / 1_000_000.0);
+        }
     }
 
-    // Update the trace data
-    trace_data.set_frame(TraceFrame::with_data(spans, thread_names));
+    println!("[PROFILER] AFTER: {} spans (added {})", spans.len(), spans.len() - existing_span_count);
+
+    // Update the trace data with accumulated spans
+    trace_data.set_frame(TraceFrame::with_data(spans.clone(), thread_names.clone()));
+    
+    // Verify it was set correctly
+    let verification_frame = trace_data.get_frame();
+    println!("[PROFILER] VERIFIED: TraceData now has {} spans across {} threads", 
+        verification_frame.spans.len(), verification_frame.threads.len());
 
     Ok(())
 }

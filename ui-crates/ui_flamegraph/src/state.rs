@@ -8,7 +8,7 @@ use crate::lod_tree::LODTree;
 /// View state for pan, zoom, and interaction
 #[derive(Clone)]
 pub struct ViewState {
-    pub zoom: f32,
+    pub zoom: f32,  // Pixels per nanosecond (absolute zoom)
     pub pan_x: f32,
     pub pan_y: f32,
     pub dragging: bool,
@@ -25,16 +25,14 @@ pub struct ViewState {
     pub graph_dragging: bool,
     pub graph_drag_start_x: f32,
     
-    // Track absolute visible time range to maintain view when data grows
-    pub visible_start_ns: Option<u64>,
-    pub visible_end_ns: Option<u64>,
-    pub last_data_duration_ns: u64,
+    // Track viewport width for absolute zoom initialization
+    pub viewport_width: f32,
 }
 
 impl Default for ViewState {
     fn default() -> Self {
         Self {
-            zoom: 1.0,
+            zoom: 0.0, // Will be initialized based on first frame
             pan_x: 0.0,
             pan_y: 0.0,
             dragging: false,
@@ -50,9 +48,7 @@ impl Default for ViewState {
             crop_end_time_ns: None,
             graph_dragging: false,
             graph_drag_start_x: 0.0,
-            visible_start_ns: None,
-            visible_end_ns: None,
-            last_data_duration_ns: 0,
+            viewport_width: 1000.0, // Default
         }
     }
 }
