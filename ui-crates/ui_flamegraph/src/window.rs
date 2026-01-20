@@ -93,6 +93,13 @@ impl FlamegraphWindow {
         self.profiler = Some(profiler);
         self.is_profiling = true;
 
+        // Clear existing trace data and start fresh
+        self.trace_data.clear();
+
+        // Track the first sample timestamp as our zero point
+        let start_time = Arc::new(std::sync::RwLock::new(None::<u64>));
+        let start_time_clone = Arc::clone(&start_time);
+
         // Start update timer to poll for new samples
         let trace_data = Arc::clone(&self.trace_data);
         let view = self.view.clone();
@@ -120,21 +127,30 @@ impl FlamegraphWindow {
                                 Ok(samples) if !samples.is_empty() => {
                                     println!("[PROFILER] Got {} new samples from DB, converting to spans", samples.len());
                                     
+                                    // Set start time from first sample
+                                    if start_time_clone.read().unwrap().is_none() {
+                                        *start_time_clone.write().unwrap() = Some(samples[0].timestamp_ns);
+                                        println!("[PROFILER] Set start time: {}", samples[0].timestamp_ns);
+                                    }
+                                    
+                                    let start = start_time_clone.read().unwrap().unwrap();
+                                    
                                     let current_frame = trace_data.get_frame();
                                     println!("[PROFILER] Before: TraceFrame has {} spans, time range: {} - {}", 
                                         current_frame.spans.len(), current_frame.min_time_ns, current_frame.max_time_ns);
                                     
                                     // Convert samples to TraceSpans and add to trace_data
                                     for sample in &samples {
-                                        println!("[PROFILER] Sample: timestamp={}, thread={}, {} frames", 
-                                            sample.timestamp_ns, sample.thread_id, sample.stack_frames.len());
+                                        let relative_time = sample.timestamp_ns - start;
+                                        println!("[PROFILER] Sample: timestamp={} (relative={}), thread={}, {} frames", 
+                                            sample.timestamp_ns, relative_time, sample.thread_id, sample.stack_frames.len());
                                         
                                         // Each stack frame becomes a span with increasing depth
                                         for (depth, frame) in sample.stack_frames.iter().enumerate() {
                                             let span = crate::TraceSpan {
                                                 name: frame.function_name.clone(),
-                                                start_ns: sample.timestamp_ns,
-                                                duration_ns: 1_000_000, // 1ms default duration for samples
+                                                start_ns: relative_time,
+                                                duration_ns: 500_000_000, // 0.5 second duration to make it visible
                                                 depth: depth as u32,
                                                 thread_id: sample.thread_id,
                                                 color_index: (depth % 10) as u8,
