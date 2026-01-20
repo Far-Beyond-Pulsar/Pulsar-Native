@@ -21,6 +21,9 @@ raw-window-handle.workspace = true
 engine_backend.workspace = true
 engine_state.workspace = true
 
+# Profiling - instrumentation-based
+profiling = { path = "../profiling" }
+
 # UI crates - commented out to avoid circular dependency during build
 # The UI crates depend on engine, so we can't have engine depend on them
 # Instead, engine will link against them at runtime

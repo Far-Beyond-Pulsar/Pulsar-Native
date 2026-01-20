@@ -75,6 +75,7 @@ impl BevyRenderer {
         let render_thread = std::thread::Builder::new()
             .name("bevy-render".to_string())
             .spawn(move || {
+                profiling::set_thread_name("Bevy Render Thread");
                 Self::run_bevy_renderer(
                     RENDER_WIDTH,
                     RENDER_HEIGHT,
@@ -116,6 +117,7 @@ impl BevyRenderer {
         shutdown: Arc<AtomicBool>,
         game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
     ) {
+        profiling::profile_scope!("BevyRenderer::Run");
         tracing::debug!("[BEVY] 🚀 Starting headless renderer {}x{}", width, height);
 
         let mut app = App::new();

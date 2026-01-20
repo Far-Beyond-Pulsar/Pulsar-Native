@@ -164,6 +164,7 @@ impl TraceDatabase {
                 process_id: process_id as u64,
                 timestamp_ns: timestamp_ns as u64,
                 stack_frames,
+                thread_name: None, // Database doesn't store thread names yet
             });
         }
 

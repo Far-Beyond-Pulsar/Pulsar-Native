@@ -1,11 +1,11 @@
 use gpui::*;
 use ui::{TitleBar, v_flex, h_flex, ActiveTheme, StyledExt};
-use crate::{FlamegraphView, TraceData};
+use crate::{FlamegraphView, TraceData, InstrumentationCollector};
 use std::sync::Arc;
 
 pub struct FlamegraphWindow {
     view: Entity<FlamegraphView>,
-    profiler: Option<dtrace_profiler::DTraceProfiler>,
+    collector: Option<Arc<InstrumentationCollector>>,
     trace_data: Arc<TraceData>,
     is_profiling: bool,
 }
@@ -18,7 +18,7 @@ impl FlamegraphWindow {
         
         cx.new(|_cx| Self { 
             view,
-            profiler: None,
+            collector: None,
             trace_data,
             is_profiling: false,
         })
@@ -33,7 +33,7 @@ impl FlamegraphWindow {
                 size: size(px(1200.0), px(800.0)),
             })),
             titlebar: Some(TitlebarOptions {
-                title: Some("Flamegraph Trace Viewer".into()),
+                title: Some("Flamegraph Profiler (Instrumentation)".into()),
                 appears_transparent: false,
                 traffic_light_position: None,
             }),
@@ -56,134 +56,41 @@ impl FlamegraphWindow {
         }).unwrap()
     }
 
-    fn start_profiling(&mut self, cx: &mut Context<Self>) {
+    fn start_profiling(&mut self, _cx: &mut Context<Self>) {
         if self.is_profiling {
             return;
         }
 
-        // Create database path in temp directory with timestamp
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        let db_path = std::env::temp_dir().join(format!("dtrace_profile_{}.db", timestamp));
+        println!("[PROFILER] Starting instrumentation collector");
+
+        // Create instrumentation collector
+        let collector = Arc::new(InstrumentationCollector::new(
+            Arc::clone(&self.trace_data),
+            100, // Update UI every 100ms
+        ));
         
-        println!("[PROFILER] Starting trace with database: {:?}", db_path);
+        collector.start();
+        self.collector = Some(collector);
+        self.is_profiling = true;
 
-        // Create profiler with database
-        let mut profiler = match dtrace_profiler::DTraceProfiler::with_database(&db_path) {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("[PROFILER] Failed to create profiler: {}", e);
-                return;
-            }
-        };
+        println!("[PROFILER] Instrumentation profiling started");
+        _cx.notify();
+    }
 
-        // Start profiling at 99 Hz
-        if let Err(e) = profiler.start(99) {
-            eprintln!("[PROFILER] Failed to start profiling: {}", e);
-            eprintln!("[PROFILER] Troubleshooting:");
-            eprintln!("[PROFILER]   1. Make sure you rebooted after installing DTrace");
-            eprintln!("[PROFILER]   2. Run this application as Administrator (right-click → Run as administrator)");
-            eprintln!("[PROFILER]   3. Check if dtrace.exe exists: where dtrace.exe");
-            eprintln!("[PROFILER]   4. Try running manually: dtrace.exe -V");
+    fn stop_profiling(&mut self, _cx: &mut Context<Self>) {
+        if !self.is_profiling {
             return;
         }
 
-        self.profiler = Some(profiler);
-        self.is_profiling = true;
-
-        // DON'T clear existing trace data - keep zoom/pan state
-        // self.trace_data.clear();
-
-        // Track the first sample timestamp as our zero point
-        let start_time = Arc::new(std::sync::RwLock::new(None::<u64>));
-        let start_time_clone = Arc::clone(&start_time);
-
-        // Start update timer to poll for new samples
-        let trace_data = Arc::clone(&self.trace_data);
-        let view = self.view.clone();
-        cx.spawn(async move |this, mut cx| {
-            let mut last_timestamp = 0u64;
-            
-            loop {
-                cx.background_executor().timer(std::time::Duration::from_millis(1000)).await;
-                
-                // Check if still profiling
-                let should_continue = cx.update(|cx| {
-                    this.update(cx, |window, _cx| window.is_profiling).ok()
-                }).ok().flatten().unwrap_or(false);
-
-                if !should_continue {
-                    break;
-                }
-
-                // Get profiler and fetch new samples
-                let _ = cx.update(|cx| {
-                    this.update(cx, |window, cx| {
-                        if let Some(ref profiler) = window.profiler {
-                            // Get samples from database since last timestamp
-                            match profiler.get_samples_from_db(last_timestamp) {
-                                Ok(samples) if !samples.is_empty() => {
-                                    // Set start time from first sample
-                                    if start_time_clone.read().unwrap().is_none() {
-                                        *start_time_clone.write().unwrap() = Some(samples[0].timestamp_ns);
-                                    }
-                                    
-                                    let start = start_time_clone.read().unwrap().unwrap();
-                                    
-                                    // Convert samples to TraceSpans and add to trace_data
-                                    for sample in &samples {
-                                        let relative_time = sample.timestamp_ns - start;
-                                        
-                                        // Each stack frame becomes a span with increasing depth
-                                        // Use sample interval as duration (time until next sample)
-                                        let sample_duration_ns = 10_000_000; // 10ms at 99Hz
-                                        
-                                        for (depth, frame) in sample.stack_frames.iter().enumerate() {
-                                            let span = crate::TraceSpan {
-                                                name: frame.function_name.clone(),
-                                                start_ns: relative_time,
-                                                duration_ns: sample_duration_ns,
-                                                depth: depth as u32,
-                                                thread_id: sample.thread_id,
-                                                color_index: (depth % 10) as u8,
-                                            };
-                                            
-                                            trace_data.add_span(span);
-                                        }
-                                    }
-                                    
-                                    // Update last timestamp
-                                    if let Some(last_sample) = samples.last() {
-                                        last_timestamp = last_sample.timestamp_ns;
-                                    }
-                                    
-                                    // Notify view to refresh
-                                    window.view.update(cx, |_, vcx| vcx.notify());
-                                    cx.notify();
-                                }
-                                Err(e) => {
-                                    eprintln!("[PROFILER] Failed to read samples: {}", e);
-                                }
-                                _ => {}
-                            }
-                        }
-                    })
-                });
-            }
-        }).detach();
-
-        cx.notify();
-    }
-
-    fn stop_profiling(&mut self, cx: &mut Context<Self>) {
-        if let Some(mut profiler) = self.profiler.take() {
-            profiler.stop();
-            println!("[PROFILER] Profiling stopped");
+        if let Some(collector) = &self.collector {
+            collector.stop();
         }
+
+        self.collector = None;
         self.is_profiling = false;
-        cx.notify();
+        
+        println!("[PROFILER] Instrumentation profiling stopped");
+        _cx.notify();
     }
 }
 
@@ -197,7 +104,7 @@ impl Render for FlamegraphWindow {
             .bg(theme.background)
             .child(
                 TitleBar::new()
-                    .child("Flamegraph Profiler - Live CPU Sampling")
+                    .child("Flamegraph Profiler - Instrumentation (Unreal Insights Style)")
                     .child(
                         h_flex()
                             .gap_2()

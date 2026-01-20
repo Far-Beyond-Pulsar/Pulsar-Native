@@ -1,6 +1,6 @@
 //! Flamegraph Tracing UI
 //!
-//! High-performance flamegraph visualization with instanced rendering
+//! High-performance flamegraph visualization with instrumentation-based profiling
 
 mod flamegraph_view;
 mod trace_data;
@@ -14,9 +14,11 @@ mod coordinates;
 mod components;
 mod lod_tree;
 
+// Profiling module
+mod profiler;
+
 pub use flamegraph_view::FlamegraphView;
 pub use trace_data::{TraceData, TraceSpan, TraceFrame, ThreadInfo};
 pub use window::FlamegraphWindow;
+pub use profiler::{InstrumentationCollector, convert_profile_events_to_trace};
 
-// Re-export dtrace_profiler
-pub use dtrace_profiler::DTraceProfiler as BackgroundProfiler;

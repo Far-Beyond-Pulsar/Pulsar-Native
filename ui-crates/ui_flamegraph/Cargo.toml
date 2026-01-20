@@ -12,14 +12,14 @@ ui.workspace = true
 # UI crates
 ui_common.workspace = true
 
-# Profiling - our custom DTrace wrapper
-dtrace_profiler = { path = "../../crates/dtrace_profiler" }
+# Profiling - instrumentation-based (Unreal Insights style)
+profiling = { path = "../../crates/profiling" }
+parking_lot = "0.12"
 
 # Utilities
 anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 tracing = "0.1.44"
-parking_lot = "0.12"
 rand = "0.8"
 
 [dev-dependencies]

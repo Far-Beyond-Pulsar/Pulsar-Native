@@ -28,6 +28,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Engine state for global project path
 engine_state = { path = "../engine_state" }
 
+# Profiling - instrumentation-based
+profiling = { path = "../profiling" }
+
 # UI dependencies needed for services
 gpui.workspace = true
 ui.workspace = true

@@ -37,10 +37,13 @@ pub struct EngineBackend {
 
 impl EngineBackend {
     pub async fn init() -> Self {
+        profiling::profile_scope!("EngineBackend::Init");
+        
         let physics_engine = Arc::new(Mutex::new(PhysicsEngine::new()));
 
         let physics_engine_clone = Arc::clone(&physics_engine);
         tokio::spawn(async move {
+            profiling::set_thread_name("Physics Thread");
             let mut engine = physics_engine_clone.lock().await;
             engine.start().await;
         });

@@ -57,7 +57,16 @@ pub use engine_state::{
 /// - Registers URI scheme
 /// - Runs the main event loop
 fn main() {
+    profiling::profile_scope!("Engine::Main");
+    
+    // Name the main thread
+    profiling::set_thread_name("Main Thread");
+    
+    // Enable profiling globally
+    profiling::enable_profiling();
+    
     // --- Load environment and initialize logging ---
+    profiling::profile_scope!("Engine::Init");
     dotenv::dotenv().ok();
     let parsed = args::parse_args();
     let _log_guard = logging::init(parsed.verbose);
@@ -71,19 +80,29 @@ fn main() {
     tracing::debug!("Command-line arguments: {:?}", std::env::args().collect::<Vec<_>>());
 
     // --- App data and configuration setup ---
-    let appdata = appdata::setup_appdata();
-    tracing::debug!("App data directory: {:?}", appdata.appdata_dir);
-    tracing::debug!("Themes directory: {:?}", appdata.themes_dir);
-    tracing::debug!("Config directory: {:?}", appdata.config_dir);
-    tracing::debug!("Config file: {:?}", appdata.config_file);
+    {
+        profiling::profile_scope!("Engine::Setup::AppData");
+        let appdata = appdata::setup_appdata();
+        tracing::debug!("App data directory: {:?}", appdata.appdata_dir);
+        tracing::debug!("Themes directory: {:?}", appdata.themes_dir);
+        tracing::debug!("Config directory: {:?}", appdata.config_dir);
+        tracing::debug!("Config file: {:?}", appdata.config_file);
 
-    // --- Load engine settings ---
-    tracing::debug!("Loading engine settings from {:?}", appdata.config_file);
-    let _engine_settings = EngineSettings::load(&appdata.config_file);
+        // --- Load engine settings ---
+        tracing::debug!("Loading engine settings from {:?}", appdata.config_file);
+        let _engine_settings = EngineSettings::load(&appdata.config_file);
+    }
 
     // --- Initialize async runtime and engine backend ---
-    let rt = runtime::create_runtime();
-    rt.block_on(engine_backend::EngineBackend::init());
+    let rt = {
+        profiling::profile_scope!("Engine::Setup::Runtime");
+        let rt = runtime::create_runtime();
+        rt.block_on(async {
+            profiling::profile_scope!("Engine::Backend::Init");
+            engine_backend::EngineBackend::init().await;
+        });
+        rt // Return rt from the block
+    };
 
     // --- Engine state and window channel setup ---
     let (window_tx, window_rx) = channel::<WindowRequest>();

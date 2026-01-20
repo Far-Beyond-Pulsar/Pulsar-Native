@@ -25,6 +25,19 @@ pub struct ThreadInfo {
     pub name: String,
 }
 
+impl ThreadInfo {
+    /// Check if this thread has a human-friendly name (not just "Thread N")
+    pub fn has_custom_name(&self) -> bool {
+        !self.name.starts_with("Thread ")
+    }
+    
+    /// Get a sort priority (lower = earlier)
+    /// Named threads come first, then unnamed threads sorted by ID
+    pub fn sort_priority(&self) -> (bool, u64) {
+        (!self.has_custom_name(), self.id)
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct TraceFrame {
     pub spans: Vec<TraceSpan>,
@@ -93,6 +106,13 @@ impl TraceFrame {
         } else {
             self.max_time_ns - self.min_time_ns
         }
+    }
+    
+    /// Get threads sorted with named threads first, then by ID
+    pub fn get_sorted_threads(&self) -> Vec<ThreadInfo> {
+        let mut threads: Vec<ThreadInfo> = self.threads.values().cloned().collect();
+        threads.sort_by_key(|t| t.sort_priority());
+        threads
     }
     
     pub fn add_frame_time(&mut self, ms: f32) {

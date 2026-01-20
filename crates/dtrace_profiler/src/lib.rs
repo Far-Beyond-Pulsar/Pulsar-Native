@@ -31,6 +31,8 @@ pub struct Sample {
     pub timestamp_ns: u64,
     /// Stack frames from bottom (deepest) to top
     pub stack_frames: Vec<StackFrame>,
+    /// Optional thread name
+    pub thread_name: Option<String>,
 }
 
 /// A single stack frame

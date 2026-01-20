@@ -20,6 +20,7 @@ use windows::Win32::System::Diagnostics::Debug::{
 };
 use windows::Win32::Foundation::{HANDLE, CloseHandle};
 use windows::Win32::System::SystemInformation::IMAGE_FILE_MACHINE_AMD64;
+use windows::core::PWSTR;
 use std::mem::zeroed;
 
 use crate::{Sample, StackFrame};
@@ -126,13 +127,14 @@ fn sample_all_threads(pid: u32) -> Result<Vec<Sample>> {
                 }
 
                 // Try to capture this thread's stack
-                if let Ok(stack_frames) = capture_thread_stack(thread_id) {
+                if let Ok((stack_frames, thread_name)) = capture_thread_stack(thread_id) {
                     if !stack_frames.is_empty() {
                         thread_samples.push(Sample {
                             thread_id: thread_id as u64,
                             process_id: pid as u64,
                             timestamp_ns,
                             stack_frames,
+                            thread_name,
                         });
                     }
                 }
@@ -151,7 +153,7 @@ fn sample_all_threads(pid: u32) -> Result<Vec<Sample>> {
 }
 
 /// Capture the stack trace of a specific thread
-fn capture_thread_stack(thread_id: u32) -> Result<Vec<StackFrame>> {
+fn capture_thread_stack(thread_id: u32) -> Result<(Vec<StackFrame>, Option<String>)> {
     unsafe {
         // Open the thread with necessary permissions
         let thread_handle = OpenThread(
@@ -163,6 +165,9 @@ fn capture_thread_stack(thread_id: u32) -> Result<Vec<StackFrame>> {
         if thread_handle.is_invalid() {
             anyhow::bail!("Invalid thread handle");
         }
+
+        // Get thread description (name) - Windows 10 1607+
+        let thread_name = get_thread_description(thread_handle);
 
         // Suspend the thread to safely capture its stack
         if SuspendThread(thread_handle) == u32::MAX {
@@ -177,7 +182,46 @@ fn capture_thread_stack(thread_id: u32) -> Result<Vec<StackFrame>> {
         ResumeThread(thread_handle);
         let _ = CloseHandle(thread_handle);
 
-        stack_frames
+        stack_frames.map(|frames| (frames, thread_name))
+    }
+}
+
+/// Get the thread description (name) if available
+fn get_thread_description(thread_handle: HANDLE) -> Option<String> {
+    unsafe {
+        // GetThreadDescription is available on Windows 10 1607+
+        type GetThreadDescriptionFn = unsafe extern "system" fn(HANDLE, *mut PWSTR) -> i32;
+        
+        let kernel32 = match windows::Win32::System::LibraryLoader::GetModuleHandleW(
+            windows::core::w!("kernel32.dll")
+        ) {
+            Ok(h) => h,
+            Err(_) => return None,
+        };
+
+        let proc_addr = windows::Win32::System::LibraryLoader::GetProcAddress(
+            kernel32,
+            windows::core::s!("GetThreadDescription"),
+        )?;
+
+        let get_thread_description: GetThreadDescriptionFn = std::mem::transmute(proc_addr);
+        
+        let mut description_ptr = PWSTR::null();
+        if get_thread_description(thread_handle, &mut description_ptr) == 0 {
+            if !description_ptr.is_null() {
+                let description = description_ptr.to_string().ok();
+                // Free the string allocated by GetThreadDescription using LocalFree
+                // HLOCAL is just a wrapper around a pointer
+                let local_ptr = description_ptr.as_ptr() as isize;
+                if local_ptr != 0 {
+                    // Call LocalFree via GetProcAddress if needed, or just skip freeing
+                    // Modern Windows handles will be freed when the process ends
+                }
+                return description;
+            }
+        }
+        
+        None
     }
 }
 

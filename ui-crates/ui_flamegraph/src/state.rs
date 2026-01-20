@@ -105,15 +105,12 @@ pub fn calculate_thread_y_offsets(frame: &TraceFrame) -> BTreeMap<u64, f32> {
     let mut offsets = BTreeMap::new();
     let mut current_y = GRAPH_HEIGHT + TIMELINE_HEIGHT + THREAD_ROW_PADDING;
 
-    // Sort threads: GPU (0) first, Main Thread (1) second, then workers
-    let mut thread_ids: Vec<u64> = frame.threads.keys().copied().collect();
-    thread_ids.sort_by_key(|id| match id {
-        0 => (0, *id), // GPU first
-        1 => (1, *id), // Main Thread second
-        _ => (2, *id), // Workers after
-    });
+    // Get threads sorted with named threads first, then by ID
+    let sorted_threads = frame.get_sorted_threads();
 
-    for thread_id in thread_ids {
+    for thread_info in sorted_threads {
+        let thread_id = thread_info.id;
+        
         // Calculate max depth for this thread
         let max_depth_for_thread = frame.spans
             .iter()
