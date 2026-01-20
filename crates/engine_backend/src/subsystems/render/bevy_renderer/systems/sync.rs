@@ -15,6 +15,7 @@ pub fn sync_gizmo_state_system(
     shared_gizmo: Res<SharedGizmoStateResource>,
     mut bevy_gizmo: ResMut<GizmoStateResource>,
 ) {
+    profiling::profile_scope!("Bevy::SyncGizmoState");
     // Try to lock shared state (non-blocking)
     if let Ok(shared) = shared_gizmo.0.try_lock() {
         // Copy all fields from shared to Bevy's resource
@@ -31,6 +32,7 @@ pub fn sync_viewport_mouse_input_system(
     shared_mouse: Res<SharedViewportMouseInputResource>,
     mut bevy_mouse: ResMut<ViewportMouseInput>,
 ) {
+    profiling::profile_scope!("Bevy::SyncMouseInput");
     // Try to lock shared state (non-blocking) - parking_lot returns Option, not Result
     if let Some(shared) = shared_mouse.0.try_lock() {
         // Copy all mouse input fields
@@ -48,6 +50,7 @@ pub fn sync_game_objects_system(
     game_thread: Res<GameThreadResource>,
     mut query: Query<(&GameObjectId, &mut Transform)>,
 ) {
+    profiling::profile_scope!("Bevy::SyncGameObjects");
     // Get game state if available
     let Some(ref game_state_arc) = game_thread.0 else {
         return; // No game thread connected
@@ -92,6 +95,7 @@ pub fn update_gizmo_target_system(
     mut gizmo_state: ResMut<GizmoStateResource>,
     objects: Query<(&GameObjectId, &Transform)>,
 ) {
+    profiling::profile_scope!("Bevy::UpdateGizmoTarget");
     // Only update if a gizmo tool is active and an object is selected
     if !gizmo_state.enabled || gizmo_state.selected_object_id.is_none() {
         return;
@@ -131,6 +135,7 @@ pub fn update_camera_viewport_system(
     mut camera_query: Query<&mut Camera, With<MainCamera>>,
     mut images: ResMut<Assets<Image>>,
 ) {
+    profiling::profile_scope!("Bevy::UpdateCameraViewport");
     // Read viewport bounds from shared camera input
     let Ok(camera_input) = camera_input_res.0.try_lock() else {
         return; // Can't lock, skip this frame

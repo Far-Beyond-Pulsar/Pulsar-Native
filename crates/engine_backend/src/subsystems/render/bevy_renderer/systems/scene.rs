@@ -307,6 +307,7 @@ pub fn swap_render_buffers_system(
     shared_textures: Res<SharedTexturesResource>,
     mut camera_query: Query<&mut Camera, With<MainCamera>>,
 ) {
+    profiling::profile_scope!("GPU::Bevy::SwapBuffers");
     // Get the shared textures
     let textures = match shared_textures.0.lock().ok().and_then(|l| l.as_ref().cloned()) {
         Some(t) => t,
@@ -314,26 +315,29 @@ pub fn swap_render_buffers_system(
     };
 
     // Swap the buffer indices atomically
-    let old_write = textures.write_index.load(std::sync::atomic::Ordering::Acquire);
-    let old_read = textures.read_index.load(std::sync::atomic::Ordering::Acquire);
-    
-    // Swap: write becomes read, read becomes write
-    textures.write_index.store(old_read, std::sync::atomic::Ordering::Release);
-    textures.read_index.store(old_write, std::sync::atomic::Ordering::Release);
-    
-    let new_write = textures.write_index.load(std::sync::atomic::Ordering::Acquire);
-    
-    // Increment frame counter
-    textures.frame_number.fetch_add(1, std::sync::atomic::Ordering::Release);
-    
-    // Update camera target to render to the new write buffer
-    for mut camera in camera_query.iter_mut() {
-        let new_target_handle = textures.textures[new_write].clone();
-        camera.target = bevy::camera::RenderTarget::Image(new_target_handle.into());
+    {
+        profiling::profile_scope!("GPU::Bevy::AtomicSwap");
+        let old_write = textures.write_index.load(std::sync::atomic::Ordering::Acquire);
+        let old_read = textures.read_index.load(std::sync::atomic::Ordering::Acquire);
         
-        // Log every 120 frames (once per second at 120 FPS)
-        static FRAME_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let frame = FRAME_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        // Swap: write becomes read, read becomes write
+        textures.write_index.store(old_read, std::sync::atomic::Ordering::Release);
+        textures.read_index.store(old_write, std::sync::atomic::Ordering::Release);
+        
+        let new_write = textures.write_index.load(std::sync::atomic::Ordering::Acquire);
+        
+        // Increment frame counter
+        textures.frame_number.fetch_add(1, std::sync::atomic::Ordering::Release);
+        
+        // Update camera target to render to the new write buffer
+        for mut camera in camera_query.iter_mut() {
+            let new_target_handle = textures.textures[new_write].clone();
+            camera.target = bevy::camera::RenderTarget::Image(new_target_handle.into());
+            
+            // Log every 120 frames (once per second at 120 FPS)
+            static FRAME_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let frame = FRAME_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
     }
 }
 

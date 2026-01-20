@@ -16,6 +16,7 @@ pub fn update_metrics_system(
     materials: Res<Assets<StandardMaterial>>,
     cameras: Query<&Camera>,
 ) {
+    profiling::profile_scope!("Bevy::UpdateMetrics");
     // Increment frame count
     let _frame_count = metrics.frames_rendered.fetch_add(1, Ordering::Relaxed);
 
@@ -82,6 +83,7 @@ pub fn update_gpu_profiler_system(
     diagnostics: Res<DiagnosticsStore>,
     profiler: Res<GpuProfilerResource>,
 ) {
+    profiling::profile_scope!("Bevy::UpdateGPUProfiler");
     use bevy::diagnostic::DiagnosticPath;
     
     // Helper to get GPU timing from diagnostic path

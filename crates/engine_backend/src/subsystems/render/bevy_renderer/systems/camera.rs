@@ -10,6 +10,7 @@ pub fn sync_camera_input_system(
     camera_input_resource: Res<CameraInputResource>,
     mut camera_input: ResMut<CameraInput>,
 ) {
+    profiling::profile_scope!("Bevy::SyncCameraInput");
     // Try to lock the shared camera input without blocking
     if let Ok(mut shared_input) = camera_input_resource.0.try_lock() {
         // Copy the input from the input thread to the Bevy ECS resource
@@ -38,6 +39,7 @@ pub fn camera_movement_system(
     mut camera_input: ResMut<CameraInput>,
     mut query: Query<&mut Transform, With<MainCamera>>,
 ) {
+    profiling::profile_scope!("Bevy::CameraMovement");
     let Ok(mut transform) = query.single_mut() else {
         return;
     };

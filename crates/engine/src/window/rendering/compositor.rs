@@ -66,24 +66,35 @@ pub unsafe fn handle_redraw(app: &mut WinitGpuiApp, window_id: WindowId) {
 
     // Render GPUI if needed
     if should_render_gpui {
+        profiling::profile_scope!("GPU::GPUI::Render");
         if let Some(gpui_window_ref) = &window_state.gpui_window {
-            let _ = window_state.gpui_app.update(|app| {
-                app.refresh_windows();
-            });
-            let _ = window_state.gpui_app.update(|app| {
-                app.draw_windows();
-            });
+            {
+                profiling::profile_scope!("GPU::GPUI::RefreshWindows");
+                let _ = window_state.gpui_app.update(|app| {
+                    app.refresh_windows();
+                });
+            }
+            {
+                profiling::profile_scope!("GPU::GPUI::DrawWindows");
+                let _ = window_state.gpui_app.update(|app| {
+                    app.draw_windows();
+                });
+            }
         }
         window_state.needs_render = false;
     }
 
     // Lazy initialization of shared texture on first render
     if !window_state.shared_texture_initialized && window_state.gpui_window.is_some() && window_state.d3d_device.is_some() {
+        profiling::profile_scope!("GPU::Compositor::InitSharedTexture");
         initialize_shared_texture(window_state);
     }
 
     // Perform D3D11 composition
-    compose_frame(window_state, should_render_gpui);
+    {
+        profiling::profile_scope!("GPU::Compositor::ComposeFrame");
+        compose_frame(window_state, should_render_gpui);
+    }
 
     // Request continuous redraws if we have a Bevy renderer
     if window_state.bevy_renderer.is_some() {
