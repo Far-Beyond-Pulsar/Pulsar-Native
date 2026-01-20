@@ -142,22 +142,22 @@ impl FlamegraphWindow {
                                     // Convert samples to TraceSpans and add to trace_data
                                     for sample in &samples {
                                         let relative_time = sample.timestamp_ns - start;
-                                        println!("[PROFILER] Sample: timestamp={} (relative={}), thread={}, {} frames", 
-                                            sample.timestamp_ns, relative_time, sample.thread_id, sample.stack_frames.len());
+                                        println!("[PROFILER] Sample: timestamp={} (relative={}ns = {}ms), thread={}, {} frames", 
+                                            sample.timestamp_ns, relative_time, relative_time / 1_000_000, sample.thread_id, sample.stack_frames.len());
                                         
                                         // Each stack frame becomes a span with increasing depth
+                                        // Use sample interval as duration (time until next sample)
+                                        let sample_duration_ns = 10_000_000; // 10ms at 99Hz
+                                        
                                         for (depth, frame) in sample.stack_frames.iter().enumerate() {
                                             let span = crate::TraceSpan {
                                                 name: frame.function_name.clone(),
                                                 start_ns: relative_time,
-                                                duration_ns: 500_000_000, // 0.5 second duration to make it visible
+                                                duration_ns: sample_duration_ns,
                                                 depth: depth as u32,
                                                 thread_id: sample.thread_id,
                                                 color_index: (depth % 10) as u8,
                                             };
-                                            
-                                            println!("[PROFILER] Adding span: '{}' at depth {} on thread {}, time {} -> {}", 
-                                                span.name, span.depth, span.thread_id, span.start_ns, span.end_ns());
                                             
                                             trace_data.add_span(span);
                                         }

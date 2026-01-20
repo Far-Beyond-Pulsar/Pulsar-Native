@@ -4515,6 +4515,7 @@ name = "dtrace_profiler"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "backtrace",
  "cc",
  "crossbeam-channel",
  "parking_lot",
