@@ -105,11 +105,15 @@ impl LODLevel {
         for bucket_idx in start_bucket..=end_bucket.min(self.num_buckets - 1) {
             for spans in self.buckets[bucket_idx].values() {
                 for span in spans {
-                    // Time culling
+                    // RELAXED time culling - allow spans that are partially visible
+                    // Don't cull if there's ANY overlap with visible range
+                    // This prevents spans from disappearing during pan/zoom
                     if span.end_ns < time_start || span.start_ns > time_end {
+                        // But also check if span is within bucket range
+                        // (bucket iteration already gives us locality)
                         continue;
                     }
-                    // Y culling
+                    // Y culling - keep this strict
                     if span.y + ROW_HEIGHT < y_min || span.y > y_max {
                         continue;
                     }

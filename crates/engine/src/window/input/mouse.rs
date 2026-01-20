@@ -94,6 +94,7 @@ pub fn handle_cursor_moved(
     window_id: WindowId,
     position: PhysicalPosition<f64>,
 ) {
+    profiling::profile_scope!("Input::CursorMoved");
     // Get the window state
     let Some(window_state) = app.windows.get_mut(&window_id) else {
         return;
@@ -172,6 +173,7 @@ pub fn handle_mouse_input(
     state: ElementState,
     button: WinitMouseButton,
 ) {
+    profiling::profile_scope!("Input::MouseButton");
     // Get the window state
     let Some(window_state) = app.windows.get_mut(&window_id) else {
         return;
@@ -304,6 +306,7 @@ pub fn handle_mouse_wheel(
     window_id: WindowId,
     delta: MouseScrollDelta,
 ) {
+    profiling::profile_scope!("Input::MouseWheel");
     // Get the window state
     let Some(window_state) = app.windows.get_mut(&window_id) else {
         return;

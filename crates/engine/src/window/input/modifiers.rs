@@ -23,6 +23,7 @@ pub fn handle_modifiers_changed(
     window_id: WindowId,
     new_modifiers: ModifiersState,
 ) {
+    profiling::profile_scope!("Input::Modifiers");
     // Get the window state
     let Some(window_state) = app.windows.get_mut(&window_id) else {
         return;

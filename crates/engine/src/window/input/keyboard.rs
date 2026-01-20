@@ -127,6 +127,7 @@ pub fn handle_keyboard_input(
     window_id: WindowId,
     event: KeyEvent,
 ) {
+    profiling::profile_scope!("Input::Keyboard");
     tracing::debug!("🎹 Keyboard event: {:?}, repeat: {}", event.physical_key, event.repeat);
 
     // Get the window state

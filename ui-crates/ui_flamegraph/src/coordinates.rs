@@ -48,10 +48,17 @@ pub fn visible_range(frame: &TraceFrame, viewport_width: f32, view_state: &ViewS
     let left_edge_ns = (-view_state.pan_x) / zoom;
     let right_edge_ns = (effective_width - view_state.pan_x) / zoom;
     
-    let start_ns = (frame.min_time_ns as f64 + left_edge_ns as f64).max(0.0) as u64;
+    let start_ns = (frame.min_time_ns as f64 + left_edge_ns as f64) as u64;
     let end_ns = (frame.min_time_ns as f64 + right_edge_ns as f64) as u64;
 
-    // Add generous padding to avoid aggressive culling
-    let padding = ((end_ns - start_ns) / 2).max(frame.duration_ns() / 10);
-    start_ns.saturating_sub(padding)..end_ns.saturating_add(padding)
+    // CRITICAL: Add HUGE padding to prevent culling during pan/zoom
+    // Use 100% of visible range as padding on EACH side
+    // This ensures spans are loaded well before they come into view
+    let visible_duration = end_ns.saturating_sub(start_ns);
+    let padding = visible_duration.max(frame.duration_ns() / 5);
+    
+    let padded_start = start_ns.saturating_sub(padding).max(frame.min_time_ns);
+    let padded_end = end_ns.saturating_add(padding).min(frame.min_time_ns + frame.duration_ns());
+    
+    padded_start..padded_end
 }
