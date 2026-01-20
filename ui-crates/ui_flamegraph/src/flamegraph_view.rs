@@ -43,6 +43,26 @@ impl FlamegraphView {
 
         if needs_rebuild {
             let cache = SpanCache::build(&frame);
+            
+            // Adjust zoom/pan to maintain absolute visible time range when data grows
+            let new_duration = frame.duration_ns();
+            if self.view_state.last_data_duration_ns > 0 && new_duration > self.view_state.last_data_duration_ns {
+                // Data has grown - adjust zoom to maintain absolute visible range
+                if let (Some(vis_start), Some(vis_end)) = (self.view_state.visible_start_ns, self.view_state.visible_end_ns) {
+                    let visible_duration = vis_end - vis_start;
+                    
+                    // Calculate new zoom to maintain the same absolute time window
+                    let new_zoom = new_duration as f32 / visible_duration as f32;
+                    
+                    // Calculate new pan to maintain the same start position
+                    let new_pan_x = -(vis_start as f32 / new_duration as f32) * new_zoom;
+                    
+                    self.view_state.zoom = new_zoom;
+                    self.view_state.pan_x = new_pan_x;
+                }
+            }
+            
+            self.view_state.last_data_duration_ns = new_duration;
             self.cache = Some((Arc::clone(&frame), cache));
         }
 
@@ -65,6 +85,12 @@ impl Render for FlamegraphView {
         let view_state = self.view_state.clone();
         let palette = get_palette();
         let theme = cx.theme().clone();
+        
+        // Update visible range tracking for zoom preservation
+        let viewport_width = *self.viewport_width.read().unwrap();
+        let visible_time = visible_range(&frame, viewport_width, &view_state);
+        self.view_state.visible_start_ns = Some(visible_time.start);
+        self.view_state.visible_end_ns = Some(visible_time.end);
 
         let view_state_for_canvas = view_state.clone();
         let palette_for_canvas = palette.clone();

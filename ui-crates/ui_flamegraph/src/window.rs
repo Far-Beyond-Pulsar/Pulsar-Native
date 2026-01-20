@@ -93,8 +93,8 @@ impl FlamegraphWindow {
         self.profiler = Some(profiler);
         self.is_profiling = true;
 
-        // Clear existing trace data and start fresh
-        self.trace_data.clear();
+        // DON'T clear existing trace data - keep zoom/pan state
+        // self.trace_data.clear();
 
         // Track the first sample timestamp as our zero point
         let start_time = Arc::new(std::sync::RwLock::new(None::<u64>));
@@ -125,25 +125,16 @@ impl FlamegraphWindow {
                             // Get samples from database since last timestamp
                             match profiler.get_samples_from_db(last_timestamp) {
                                 Ok(samples) if !samples.is_empty() => {
-                                    println!("[PROFILER] Got {} new samples from DB, converting to spans", samples.len());
-                                    
                                     // Set start time from first sample
                                     if start_time_clone.read().unwrap().is_none() {
                                         *start_time_clone.write().unwrap() = Some(samples[0].timestamp_ns);
-                                        println!("[PROFILER] Set start time: {}", samples[0].timestamp_ns);
                                     }
                                     
                                     let start = start_time_clone.read().unwrap().unwrap();
                                     
-                                    let current_frame = trace_data.get_frame();
-                                    println!("[PROFILER] Before: TraceFrame has {} spans, time range: {} - {}", 
-                                        current_frame.spans.len(), current_frame.min_time_ns, current_frame.max_time_ns);
-                                    
                                     // Convert samples to TraceSpans and add to trace_data
                                     for sample in &samples {
                                         let relative_time = sample.timestamp_ns - start;
-                                        println!("[PROFILER] Sample: timestamp={} (relative={}ns = {}ms), thread={}, {} frames", 
-                                            sample.timestamp_ns, relative_time, relative_time / 1_000_000, sample.thread_id, sample.stack_frames.len());
                                         
                                         // Each stack frame becomes a span with increasing depth
                                         // Use sample interval as duration (time until next sample)
@@ -162,10 +153,6 @@ impl FlamegraphWindow {
                                             trace_data.add_span(span);
                                         }
                                     }
-                                    
-                                    let updated_frame = trace_data.get_frame();
-                                    println!("[PROFILER] After: TraceFrame has {} spans, time range: {} - {}", 
-                                        updated_frame.spans.len(), updated_frame.min_time_ns, updated_frame.max_time_ns);
                                     
                                     // Update last timestamp
                                     if let Some(last_sample) = samples.last() {

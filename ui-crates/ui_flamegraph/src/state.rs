@@ -24,6 +24,11 @@ pub struct ViewState {
     pub crop_end_time_ns: Option<u64>,
     pub graph_dragging: bool,
     pub graph_drag_start_x: f32,
+    
+    // Track absolute visible time range to maintain view when data grows
+    pub visible_start_ns: Option<u64>,
+    pub visible_end_ns: Option<u64>,
+    pub last_data_duration_ns: u64,
 }
 
 impl Default for ViewState {
@@ -45,6 +50,9 @@ impl Default for ViewState {
             crop_end_time_ns: None,
             graph_dragging: false,
             graph_drag_start_x: 0.0,
+            visible_start_ns: None,
+            visible_end_ns: None,
+            last_data_duration_ns: 0,
         }
     }
 }
