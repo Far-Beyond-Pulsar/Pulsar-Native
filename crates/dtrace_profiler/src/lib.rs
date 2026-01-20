@@ -15,7 +15,7 @@ mod unix;
 use std::sync::Arc;
 use std::path::{Path, PathBuf};
 use parking_lot::RwLock;
-use anyhow::{Result, Context};
+use anyhow::{Result};
 use crossbeam_channel::{Sender, Receiver, unbounded};
 
 pub use database::{TraceDatabase, TraceInfo};
