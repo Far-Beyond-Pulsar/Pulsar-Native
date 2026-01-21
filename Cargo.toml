@@ -40,10 +40,10 @@ debug = true
 
 [workspace.dependencies]
 ######################### TGPUI #########################
-gpui = { git = "https://github.com/tristanpoland/zed", rev="2047043a00dc138e3d8127c8921c96927acea8f8", features = ["runtime_shaders", "macos-blade"] }
-gpui_macros = { git = "https://github.com/tristanpoland/zed", rev="2047043a00dc138e3d8127c8921c96927acea8f8" }
-reqwest_client = { git = "https://github.com/tristanpoland/zed", rev = "2047043a00dc138e3d8127c8921c96927acea8f8" }
-sum_tree = { git = "https://github.com/tristanpoland/zed", rev = "2047043a00dc138e3d8127c8921c96927acea8f8" }
+gpui = { git = "https://github.com/tristanpoland/zed", rev="5afd04e8182a3ca0a083502479d6b652c73e4178", features = ["runtime_shaders", "macos-blade"] }
+gpui_macros = { git = "https://github.com/tristanpoland/zed", rev="5afd04e8182a3ca0a083502479d6b652c73e4178" }
+reqwest_client = { git = "https://github.com/tristanpoland/zed", rev = "5afd04e8182a3ca0a083502479d6b652c73e4178" }
+sum_tree = { git = "https://github.com/tristanpoland/zed", rev = "5afd04e8182a3ca0a083502479d6b652c73e4178" }
 
 ###################### Local WGPUI ######################
 # gpui = { path = "C:/Users/redst/OneDrive/Documents/GitHub/gpui-ce/crates/gpui", features = ["runtime_shaders", "macos-blade"] }

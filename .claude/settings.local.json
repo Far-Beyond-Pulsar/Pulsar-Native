@@ -24,7 +24,10 @@
       "Bash(powershell -Command \"Get-ChildItem ''C:\\Users\\redst\\.cargo\\git\\checkouts'' | Select-Object Name\")",
       "Bash(powershell -Command \"Get-ChildItem ''C:\\Users\\redst\\.cargo\\git\\checkouts\\zed-08308dd575ff016e'' | Select-Object Name\")",
       "Bash(powershell -Command \"Get-ChildItem ''C:\\Users\\redst\\.cargo\\git\\checkouts\\zed-08308dd575ff016e\\2047043\\crates'' -Directory | Select-Object Name\")",
-      "Bash(move:*)"
+      "Bash(move:*)",
+      "Bash(git ls-remote:*)",
+      "Bash(powershell -Command \"Get-ChildItem ''C:\\Users\\redst\\.cargo\\git\\checkouts\\zed-08308dd575ff016e\\5afd04e\\crates'' -Directory | Select-Object Name\")",
+      "Bash(cargo update:*)"
     ]
   }
 }
