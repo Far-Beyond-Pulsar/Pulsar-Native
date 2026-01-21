@@ -35,6 +35,9 @@ members = [
 default-members = ["crates/engine"]
 resolver = "2"
 
+[workspace.package]
+edition = "2021"
+
 [profile.release]
 debug = true
 
@@ -43,6 +46,8 @@ debug = true
 gpui = { git = "https://github.com/tristanpoland/zed", rev="5afd04e8182a3ca0a083502479d6b652c73e4178", features = ["runtime_shaders", "macos-blade"] }
 gpui_macros = { git = "https://github.com/tristanpoland/zed", rev="5afd04e8182a3ca0a083502479d6b652c73e4178" }
 reqwest_client = { git = "https://github.com/tristanpoland/zed", rev = "5afd04e8182a3ca0a083502479d6b652c73e4178" }
+
+#sum_tree = { path="crates/sum_tree" }
 sum_tree = { git = "https://github.com/tristanpoland/zed", rev = "5afd04e8182a3ca0a083502479d6b652c73e4178" }
 
 ###################### Local WGPUI ######################
@@ -72,6 +77,10 @@ engine_state = { path = "crates/engine_state" }
 engine_fs = { path = "crates/engine_fs" }
 
 # UI component crates
+    ztracing = "0.1"
+    ctor = "0.2"
+    rand = "0.8"
+    zlog = "0.1"
 ui_core = { path = "ui-crates/ui_core" }
 ui_entry = { path = "ui-crates/ui_entry" }
 # ui_script_editor = { path = "ui-crates/ui_script_editor" }
@@ -115,6 +124,8 @@ itertools = "0.13"
 rapier3d = { version = "*", features = [ "simd-stable" ] }
 sysuri = "0.2"
 urlencoding = "2.1"
+
+rayon = "1.8"
 
 [workspace.dependencies.windows]
 features = ["Wdk", "Wdk_System", "Wdk_System_SystemServices", "Win32_System_Threading", "Win32_System_SystemInformation", "Win32_Graphics_Direct3D_Fxc"]
