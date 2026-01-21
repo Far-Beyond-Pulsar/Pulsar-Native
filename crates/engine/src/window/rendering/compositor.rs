@@ -42,6 +42,16 @@ use windows::{
 pub unsafe fn handle_redraw(app: &mut WinitGpuiApp, window_id: WindowId) {
     profiling::profile_scope!("Render::Composite");
     
+    // Track frame time for profiler
+    static mut LAST_FRAME_TIME: Option<std::time::Instant> = None;
+    let frame_start = std::time::Instant::now();
+    
+    if let Some(last_time) = LAST_FRAME_TIME {
+        let frame_time_ms = frame_start.duration_since(last_time).as_secs_f32() * 1000.0;
+        profiling::record_frame_time(frame_time_ms);
+    }
+    LAST_FRAME_TIME = Some(frame_start);
+    
     // Claim Bevy renderer first (needs mutable app reference)
     {
         profiling::profile_scope!("Render::ClaimBevy");

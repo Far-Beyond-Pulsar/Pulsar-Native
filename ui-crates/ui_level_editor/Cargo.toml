@@ -15,6 +15,7 @@ ui_common.workspace = true
 # Engine
 engine_state.workspace = true
 engine_backend.workspace = true
+profiling.workspace = true
 
 # Utilities
 anyhow = "1.0"

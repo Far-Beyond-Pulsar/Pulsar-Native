@@ -130,12 +130,22 @@ pub fn convert_profile_events_to_trace(
     let mut thread_names: HashMap<u64, String> = current_frame.threads.iter()
         .map(|(id, info)| (*id, info.name.clone()))
         .collect();
+    let mut frame_times = current_frame.frame_times_ms.clone();
 
     println!("[PROFILER] BEFORE: {} existing spans", existing_span_count);
 
-    // Add new events to existing spans
+    // Add new events to existing spans and extract frame times
     for (idx, event) in events.iter().enumerate() {
         let thread_id = event.thread_id;
+        
+        // Check if this is a frame marker event
+        if event.name == "__FRAME_MARKER__" {
+            // Extract frame time from duration field (stored in nanoseconds)
+            let frame_time_ms = event.duration_ns as f32 / 1_000_000.0;
+            frame_times.push(frame_time_ms);
+            println!("[PROFILER] Frame marker: {:.2}ms ({:.1} FPS)", frame_time_ms, 1000.0 / frame_time_ms);
+            continue; // Don't add frame markers as regular spans
+        }
         
         // Use the thread name from the event if available
         let thread_name = event.thread_name.clone()
@@ -161,15 +171,18 @@ pub fn convert_profile_events_to_trace(
         }
     }
 
-    println!("[PROFILER] AFTER: {} spans (added {})", spans.len(), spans.len() - existing_span_count);
+    println!("[PROFILER] AFTER: {} spans (added {}), {} frame times", 
+        spans.len(), spans.len() - existing_span_count, frame_times.len());
 
-    // Update the trace data with accumulated spans
-    trace_data.set_frame(TraceFrame::with_data(spans.clone(), thread_names.clone()));
+    // Update the trace data with accumulated spans and frame times
+    let mut frame = TraceFrame::with_data(spans.clone(), thread_names.clone());
+    frame.frame_times_ms = frame_times;
+    trace_data.set_frame(frame);
     
     // Verify it was set correctly
     let verification_frame = trace_data.get_frame();
-    println!("[PROFILER] VERIFIED: TraceData now has {} spans across {} threads", 
-        verification_frame.spans.len(), verification_frame.threads.len());
+    println!("[PROFILER] VERIFIED: TraceData now has {} spans across {} threads, {} frame times", 
+        verification_frame.spans.len(), verification_frame.threads.len(), verification_frame.frame_times_ms.len());
 
     Ok(())
 }

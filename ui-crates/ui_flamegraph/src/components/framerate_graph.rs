@@ -87,18 +87,38 @@ pub fn render_framerate_graph(
                         // Draw viewport indicator showing visible range in flamegraph
                         if frame.duration_ns() > 0 {
                             let effective_width = width - THREAD_LABEL_WIDTH;
-
-                            // Calculate the normalized visible range (0.0 to 1.0)
-                            let normalized_start = (-(view_state.pan_x + effective_width * 0.5)) / (effective_width * view_state.zoom);
-                            let normalized_end = ((effective_width * 1.5 - view_state.pan_x) / (effective_width * view_state.zoom));
-
-                            // Clamp to valid range
-                            let start_clamped = normalized_start.max(0.0).min(1.0);
-                            let end_clamped = normalized_end.max(0.0).min(1.0);
-
-                            // Convert to pixel positions
-                            let indicator_start_x = start_clamped * width;
-                            let indicator_end_x = end_clamped * width;
+                            
+                            // Use the SAME coordinate system as time_to_x
+                            // Calculate what times are visible in the flamegraph viewport
+                            let zoom = if view_state.zoom == 0.0 {
+                                effective_width / frame.duration_ns() as f32
+                            } else {
+                                view_state.zoom
+                            };
+                            
+                            // Visible time range: from where pan_x = 0 to where pan_x = effective_width
+                            // time_to_x formula: (time_offset * zoom) + pan_x + THREAD_LABEL_WIDTH = x
+                            // Solve for time when x = THREAD_LABEL_WIDTH (left edge):
+                            //   (time_offset * zoom) + pan_x + THREAD_LABEL_WIDTH = THREAD_LABEL_WIDTH
+                            //   time_offset * zoom = -pan_x
+                            //   time_offset = -pan_x / zoom
+                            let visible_start_offset = -view_state.pan_x / zoom;
+                            let visible_end_offset = (effective_width - view_state.pan_x) / zoom;
+                            
+                            let visible_start_ns = (frame.min_time_ns as f64 + visible_start_offset as f64) as u64;
+                            let visible_end_ns = (frame.min_time_ns as f64 + visible_end_offset as f64) as u64;
+                            
+                            // Clamp to frame bounds
+                            let visible_start_ns = visible_start_ns.max(frame.min_time_ns).min(frame.min_time_ns + frame.duration_ns());
+                            let visible_end_ns = visible_end_ns.max(frame.min_time_ns).min(frame.min_time_ns + frame.duration_ns());
+                            
+                            // Convert to normalized positions in the framerate graph (0.0 to 1.0)
+                            let start_normalized = (visible_start_ns.saturating_sub(frame.min_time_ns)) as f32 / frame.duration_ns() as f32;
+                            let end_normalized = (visible_end_ns.saturating_sub(frame.min_time_ns)) as f32 / frame.duration_ns() as f32;
+                            
+                            // Convert to pixel positions in framerate graph
+                            let indicator_start_x = start_normalized * width;
+                            let indicator_end_x = end_normalized * width;
                             let indicator_width = (indicator_end_x - indicator_start_x).max(2.0);
 
                             // Draw semi-transparent overlay for non-visible regions

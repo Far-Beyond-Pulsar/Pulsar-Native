@@ -25,18 +25,23 @@ pub fn start_watcher(
     watcher.watch(&project_root, RecursiveMode::Recursive)?;
 
     // Spawn thread to handle events
-    std::thread::spawn(move || {
-        while let Ok(event) = rx.recv() {
-            handle_fs_event(&event, &type_database);
-        }
-        // Keep watcher alive
-        drop(watcher);
-    });
+    std::thread::Builder::new()
+        .name("FS Watcher".to_string())
+        .spawn(move || {
+            profiling::set_thread_name("FS Watcher");
+            while let Ok(event) = rx.recv() {
+                profiling::profile_scope!("fs_event_handle");
+                handle_fs_event(&event, &type_database);
+            }
+            // Keep watcher alive
+            drop(watcher);
+        })?;
 
     Ok(())
 }
 
 fn handle_fs_event(event: &Event, type_database: &TypeDatabase) {
+    profiling::profile_scope!("handle_fs_event");
     tracing::debug!("Filesystem event: {:?}", event);
 
     match &event.kind {

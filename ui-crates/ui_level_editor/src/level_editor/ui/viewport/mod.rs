@@ -169,11 +169,13 @@ impl ViewportPanel {
         let locked_cursor_y = self.locked_cursor_y.clone();
 
         std::thread::spawn(move || {
+            profiling::set_thread_name("Input Thread");
             tracing::debug!("[INPUT-THREAD] 🚀 Dedicated RAW INPUT processing thread started");
             let device_state = DeviceState::new();
             let mut last_mouse_pos: Option<(i32, i32)> = None;
 
             loop {
+                profiling::profile_scope!("input_poll");
                 let input_start = std::time::Instant::now();
                 std::thread::sleep(std::time::Duration::from_millis(8)); // ~120Hz
 
@@ -209,8 +211,10 @@ impl ViewportPanel {
                 }
 
                 // Poll keyboard
-                let keys: Vec<Keycode> = device_state.get_keys();
-                let forward = if keys.contains(&Keycode::W) {
+                {
+                    profiling::profile_scope!("keyboard_poll");
+                    let keys: Vec<Keycode> = device_state.get_keys();
+                    let forward = if keys.contains(&Keycode::W) {
                     1
                 } else if keys.contains(&Keycode::S) {
                     -1
@@ -234,14 +238,17 @@ impl ViewportPanel {
                 } else {
                     0
                 };
-                let boost = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
+                    let boost = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
 
-                input_state.set_forward(forward);
-                input_state.set_right(right);
-                input_state.set_up(up);
-                input_state.set_boost(boost);
+                    input_state.set_forward(forward);
+                    input_state.set_right(right);
+                    input_state.set_up(up);
+                    input_state.set_boost(boost);
+                }
 
                 // Poll mouse and calculate delta
+                {
+                    profiling::profile_scope!("mouse_poll");
                 #[cfg(target_os = "windows")]
                 {
                     let locked_screen_x = locked_cursor_x.load(Ordering::Relaxed);
@@ -274,6 +281,7 @@ impl ViewportPanel {
                             }
                         }
                     }
+                }
                 }
 
                 // Track latency

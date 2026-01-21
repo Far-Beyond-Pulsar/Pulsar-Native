@@ -170,6 +170,29 @@ pub fn clear_events() {
     PROFILER.clear();
 }
 
+/// Record a frame time (for FPS tracking in profiler UI)
+pub fn record_frame_time(frame_time_ms: f32) {
+    if !PROFILER.is_enabled() {
+        return;
+    }
+
+    // Submit a special frame marker event
+    let event = ProfileEvent {
+        name: "__FRAME_MARKER__".to_string(),
+        thread_id: get_thread_id(),
+        thread_name: THREAD_NAME.with(|tn| tn.borrow().clone()),
+        process_id: PROFILER.get_process_id(),
+        parent_name: None,
+        start_ns: get_time_ns(),
+        duration_ns: (frame_time_ms * 1_000_000.0) as u64, // Store frame time in duration field
+        depth: 0,
+        location: None,
+        metadata: Some(format!("frame_time_ms:{}", frame_time_ms)),
+    };
+    
+    PROFILER.submit_event(event);
+}
+
 /// RAII scope guard for profiling
 pub struct ProfileScope {
     name: String,

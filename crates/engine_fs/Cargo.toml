@@ -13,6 +13,7 @@ serde_json = "1.0"
 notify = "8.2.0"
 dashmap = "6.1"
 walkdir = "2.5"
+profiling = { path = "../profiling" }
 
 [dev-dependencies]
 tempfile = "3.8"

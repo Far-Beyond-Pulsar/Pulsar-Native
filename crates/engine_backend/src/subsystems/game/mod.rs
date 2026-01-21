@@ -247,7 +247,10 @@ impl GameThread {
 
         tracing::debug!("[GAME-THREAD] ⚡ start() method called - about to spawn thread...");
         
-        thread::spawn(move || {
+        std::thread::Builder::new()
+            .name("Game Logic".to_string())
+            .spawn(move || {
+            profiling::set_thread_name("Game Logic");
             tracing::debug!("[GAME-THREAD] 🚀 Thread spawned successfully!");
             
             // Set thread priority for game logic
@@ -275,6 +278,8 @@ impl GameThread {
             tracing::debug!("[GAME-THREAD] Target frame time: {:?}", target_frame_time);
 
             loop {
+                profiling::profile_scope!("game_tick");
+                
                 // Check if thread is disabled - if so, sleep and skip this iteration
                 if !enabled.load(Ordering::Relaxed) {
                     thread::sleep(Duration::from_millis(100));
@@ -292,6 +297,7 @@ impl GameThread {
                 let mut steps = 0;
 
                 while accumulated_time >= target_frame_time && steps < max_steps {
+                    profiling::profile_scope!("game_state_update");
                     // Update game state
                     if let Ok(mut game_state) = state.try_lock() {
                         game_state.update(fixed_dt);
@@ -326,9 +332,9 @@ impl GameThread {
                     thread::yield_now();
                 }
             }
-
+            
             tracing::debug!("[GAME-THREAD] Stopped");
-        });
+        }).expect("Failed to spawn game thread");
         
         tracing::debug!("[GAME-THREAD] ✅ Thread spawn completed, returning from start()");
     }

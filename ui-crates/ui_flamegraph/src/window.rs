@@ -1,7 +1,8 @@
 use gpui::*;
-use ui::{TitleBar, v_flex, h_flex, ActiveTheme, StyledExt};
+use ui::{TitleBar, v_flex, h_flex, ActiveTheme, StyledExt, button::Button, IconName};
 use crate::{FlamegraphView, TraceData, InstrumentationCollector};
 use std::sync::Arc;
+use gpui::prelude::FluentBuilder;
 
 pub struct FlamegraphWindow {
     view: Entity<FlamegraphView>,
@@ -36,11 +37,7 @@ impl FlamegraphWindow {
                 origin: point(px(100.0), px(100.0)),
                 size: size(px(1200.0), px(800.0)),
             })),
-            titlebar: Some(TitlebarOptions {
-                title: Some("Flamegraph Profiler (Instrumentation)".into()),
-                appears_transparent: false,
-                traffic_light_position: None,
-            }),
+            titlebar: Some(TitleBar::title_bar_options()),
             window_background: WindowBackgroundAppearance::Opaque,
             focus: true,
             show: true,
@@ -48,9 +45,9 @@ impl FlamegraphWindow {
             is_movable: true,
             is_minimizable: true,
             is_resizable: true,
-            window_decorations: None,
+            window_decorations: Some(WindowDecorations::Client),
             display_id: None,
-            window_min_size: Some(size(px(600.0), px(400.0))),
+            window_min_size: Some(size(px(800.0), px(600.0))),
             tabbing_identifier: None,
             app_id: None,
         };
@@ -220,61 +217,111 @@ impl Render for FlamegraphWindow {
             .bg(theme.background)
             .child(
                 TitleBar::new()
-                    .child("Flamegraph Profiler - Instrumentation (Unreal Insights Style)")
                     .child(
                         h_flex()
-                            .gap_2()
+                            .gap_3()
+                            .items_center()
+                            .child(
+                                div()
+                                    .flex()
+                                    .gap_2()
+                                    .items_baseline()
+                                    .child(
+                                        div()
+                                            .text_size(px(14.0))
+                                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                                            .text_color(theme.foreground)
+                                            .child("Flamegraph Profiler")
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .text_color(theme.muted_foreground)
+                                            .child("• Instrumentation-Based")
+                                    )
+                            )
+                            .when(self.current_db_path.is_some(), |this| {
+                                this.child(
+                                    div()
+                                        .px_2()
+                                        .py_0p5()
+                                        .rounded(px(4.0))
+                                        .bg(theme.accent.opacity(0.1))
+                                        .child(
+                                            div()
+                                                .text_size(px(10.0))
+                                                .text_color(theme.accent)
+                                                .font_weight(gpui::FontWeight::MEDIUM)
+                                                .child(format!("Session: {}", 
+                                                    self.current_db_path.as_ref()
+                                                        .and_then(|p| p.file_name())
+                                                        .and_then(|n| n.to_str())
+                                                        .unwrap_or("Unknown")
+                                                ))
+                                        )
+                                )
+                            })
+                    )
+                    .child(
+                        h_flex()
+                            .gap_3()
+                            .items_center()
                             .child(
                                 if !is_profiling {
-                                    div()
-                                        .on_mouse_down(MouseButton::Left, cx.listener(|this, _event, _window, cx| {
+                                    Button::new("start-profiling")
+                                        .icon(IconName::Play)
+                                        .label("Record")
+                                        .on_click(cx.listener(|this, _event, _window, cx| {
                                             this.start_profiling(cx);
                                         }))
-                                        .child("▶ Start")
-                                        .px_3()
-                                        .py_1()
-                                        .bg(gpui::green())
-                                        .rounded(px(4.0))
-                                        .cursor(CursorStyle::PointingHand)
-                                        .text_size(px(12.0))
+                                        .into_any_element()
                                 } else {
-                                    div()
-                                        .flex()
-                                        .gap_2()
+                                    h_flex()
+                                        .gap_3()
+                                        .items_center()
                                         .child(
                                             div()
-                                                .on_mouse_down(MouseButton::Left, cx.listener(|this, _event, _window, cx| {
-                                                    this.stop_profiling(cx);
-                                                }))
-                                                .child("⏹ Stop")
+                                                .flex()
+                                                .items_center()
+                                                .gap_2()
                                                 .px_3()
                                                 .py_1()
-                                                .bg(gpui::red())
-                                                .rounded(px(4.0))
-                                                .cursor(CursorStyle::PointingHand)
-                                                .text_size(px(12.0))
+                                                .rounded(px(6.0))
+                                                .bg(gpui::red().opacity(0.15))
+                                                .border_1()
+                                                .border_color(gpui::red().opacity(0.3))
+                                                .child(
+                                                    div()
+                                                        .size(px(8.0))
+                                                        .rounded(px(4.0))
+                                                        .bg(gpui::red())
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_size(px(12.0))
+                                                        .text_color(gpui::red())
+                                                        .font_weight(gpui::FontWeight::BOLD)
+                                                        .child("RECORDING")
+                                                )
                                         )
                                         .child(
-                                            div()
-                                                .child("● Recording")
-                                                .text_color(gpui::red())
-                                                .text_size(px(12.0))
+                                            Button::new("stop-profiling")
+                                                .icon(IconName::Square)
+                                                .label("Stop")
+                                                .on_click(cx.listener(|this, _event, _window, cx| {
+                                                    this.stop_profiling(cx);
+                                                }))
                                         )
+                                        .into_any_element()
                                 }
                             )
                             .child(
-                                // Open button - load past recordings via file picker
-                                div()
-                                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _event, _window, cx| {
+                                Button::new("open-session")
+                                    .icon(IconName::FolderOpen)
+                                    .label("Open Session")
+                                    .on_click(cx.listener(|this, _event, _window, cx| {
                                         this.open_database_picker(cx);
                                     }))
-                                    .child("📂 Open")
-                                    .px_3()
-                                    .py_1()
-                                    .bg(theme.accent)
-                                    .rounded(px(4.0))
-                                    .cursor(CursorStyle::PointingHand)
-                                    .text_size(px(12.0))
                             )
                     )
             )

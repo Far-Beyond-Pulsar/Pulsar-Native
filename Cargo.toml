@@ -107,6 +107,7 @@ raw-window-handle = "0.6.2"
 winit = "0.30"
 smol = "1"
 tracing = "0.1.41"
+profiling = { path = "crates/profiling" }
 notify = "7.0.0"
 lsp-types = "0.97.0"
 directories = "5"

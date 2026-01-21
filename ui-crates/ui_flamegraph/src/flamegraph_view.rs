@@ -113,13 +113,25 @@ impl Render for FlamegraphView {
                                     cx.notify();
                                 } else {
                                     // Check if click is within the viewport indicator rectangle
+                                    // Use SAME math as framerate_graph.rs viewport indicator
                                     let effective_width = width - THREAD_LABEL_WIDTH;
-                                    let normalized_start = (-(view.view_state.pan_x + effective_width * 0.5)) / (effective_width * view.view_state.zoom);
-                                    let normalized_end = ((effective_width * 1.5 - view.view_state.pan_x) / (effective_width * view.view_state.zoom));
-                                    let start_clamped = normalized_start.max(0.0).min(1.0);
-                                    let end_clamped = normalized_end.max(0.0).min(1.0);
-                                    let indicator_start_x = start_clamped * width;
-                                    let indicator_end_x = end_clamped * width;
+                                    let zoom = if view.view_state.zoom == 0.0 {
+                                        effective_width / frame.duration_ns() as f32
+                                    } else {
+                                        view.view_state.zoom
+                                    };
+                                    
+                                    let visible_start_offset = -view.view_state.pan_x / zoom;
+                                    let visible_end_offset = (effective_width - view.view_state.pan_x) / zoom;
+                                    let visible_start_ns = (frame.min_time_ns as f64 + visible_start_offset as f64) as u64;
+                                    let visible_end_ns = (frame.min_time_ns as f64 + visible_end_offset as f64) as u64;
+                                    let visible_start_ns = visible_start_ns.max(frame.min_time_ns).min(frame.min_time_ns + frame.duration_ns());
+                                    let visible_end_ns = visible_end_ns.max(frame.min_time_ns).min(frame.min_time_ns + frame.duration_ns());
+                                    
+                                    let start_normalized = (visible_start_ns.saturating_sub(frame.min_time_ns)) as f32 / frame.duration_ns() as f32;
+                                    let end_normalized = (visible_end_ns.saturating_sub(frame.min_time_ns)) as f32 / frame.duration_ns() as f32;
+                                    let indicator_start_x = start_normalized * width;
+                                    let indicator_end_x = end_normalized * width;
                                     
                                     // Only start drag if click is within the viewport indicator
                                     if click_x >= indicator_start_x && click_x <= indicator_end_x {
