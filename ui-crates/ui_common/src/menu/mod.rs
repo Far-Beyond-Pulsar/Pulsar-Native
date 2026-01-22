@@ -1102,42 +1102,31 @@ impl Render for LocaleSelector {
                     .ghost()
                     .icon(IconName::Globe)
                     .popup_menu(move |menu, _, _| {
-                        // Dynamically add all available locales
-                        let locales = rust_i18n::available_locales!();
-                        let mut menu = menu;
-                        
-                        for locale_code in locales {
-                            let display_name = get_locale_display_name(locale_code);
-                            let is_selected = current_locale == locale_code;
-                            menu = menu.menu_with_check(
-                                display_name,
-                                is_selected,
-                                Box::new(SelectLocale(locale_code.to_string()))
-                            );
-                        }
-                        
+                        // Add all available locales
                         menu
+                            .menu_with_check(
+                                "English",
+                                current_locale == "en",
+                                Box::new(SelectLocale("en".into()))
+                            )
+                            .menu_with_check(
+                                "简体中文 (Simplified Chinese)",
+                                current_locale == "zh-CN",
+                                Box::new(SelectLocale("zh-CN".into()))
+                            )
+                            .menu_with_check(
+                                "繁體中文 (Traditional Chinese)",
+                                current_locale == "zh-HK",
+                                Box::new(SelectLocale("zh-HK".into()))
+                            )
+                            .menu_with_check(
+                                "Italiano (Italian)",
+                                current_locale == "it",
+                                Box::new(SelectLocale("it".into()))
+                            )
                     })
                     .anchor(Corner::TopRight)
             )
-    }
-}
-
-/// Get the display name for a locale code
-fn get_locale_display_name(locale_code: &str) -> &'static str {
-    match locale_code {
-        "en" => "English",
-        "zh-CN" => "简体中文 (Simplified Chinese)",
-        "zh-HK" => "繁體中文 (Traditional Chinese)",
-        "it" => "Italiano (Italian)",
-        "ja" => "日本語 (Japanese)",
-        "ko" => "한국어 (Korean)",
-        "de" => "Deutsch (German)",
-        "fr" => "Français (French)",
-        "es" => "Español (Spanish)",
-        "pt-BR" => "Português (Portuguese)",
-        "ru" => "Русский (Russian)",
-        _ => locale_code,
     }
 }
 
