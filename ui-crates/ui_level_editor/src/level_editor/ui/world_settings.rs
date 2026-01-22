@@ -155,6 +155,16 @@ impl WorldSettings {
         let chevron_icon = if is_collapsed { IconName::ChevronRight } else { IconName::ChevronDown };
         let section_id = SharedString::from(format!("section-{}", title));
         
+        // Translate the title for display
+        let translated_title = match title {
+            "Environment" => t!("LevelEditor.WorldSettings.Environment").to_string(),
+            "Global Illumination" => t!("LevelEditor.WorldSettings.GlobalIllumination").to_string(),
+            "Fog & Atmosphere" => t!("LevelEditor.WorldSettings.FogAtmosphere").to_string(),
+            "Physics" => t!("LevelEditor.WorldSettings.Physics").to_string(),
+            "Audio" => t!("LevelEditor.WorldSettings.Audio").to_string(),
+            _ => title.to_string(),
+        };
+        
         v_flex()
             .w_full()
             .rounded(px(8.0))
@@ -192,7 +202,7 @@ impl WorldSettings {
                             .text_sm()
                             .font_weight(FontWeight::MEDIUM)
                             .text_color(cx.theme().foreground)
-                            .child(title.to_string())
+                            .child(translated_title)
                     )
             )
             .when(!is_collapsed, |this| {
@@ -212,46 +222,46 @@ impl WorldSettings {
         match section_name {
             "Environment" => v_flex()
                 .gap_3()
-                .child(Self::render_dropdown_row("Skybox", "Default Sky", cx))
-                .child(Self::render_color_row("Sky Color", Hsla { h: 210.0, s: 0.6, l: 0.7, a: 1.0 }, cx))
-                .child(Self::render_color_row("Horizon Color", Hsla { h: 30.0, s: 0.7, l: 0.8, a: 1.0 }, cx))
-                .child(Self::render_color_row("Ground Color", Hsla { h: 30.0, s: 0.3, l: 0.3, a: 1.0 }, cx))
-                .child(Self::render_property_row("Sky Intensity", "1.0", "", cx))
-                .child(Self::render_toggle_row("Enable Clouds", true, cx))
+                .child(Self::render_dropdown_row(&t!("LevelEditor.WorldSettings.Skybox").to_string(), &t!("LevelEditor.Common.DefaultSky").to_string(), cx))
+                .child(Self::render_color_row(&t!("LevelEditor.WorldSettings.SkyColor").to_string(), Hsla { h: 210.0, s: 0.6, l: 0.7, a: 1.0 }, cx))
+                .child(Self::render_color_row(&t!("LevelEditor.WorldSettings.HorizonColor").to_string(), Hsla { h: 30.0, s: 0.7, l: 0.8, a: 1.0 }, cx))
+                .child(Self::render_color_row(&t!("LevelEditor.WorldSettings.GroundColor").to_string(), Hsla { h: 30.0, s: 0.3, l: 0.3, a: 1.0 }, cx))
+                .child(Self::render_property_row(&t!("LevelEditor.WorldSettings.SkyIntensity").to_string(), "1.0", "", cx))
+                .child(Self::render_toggle_row(&t!("LevelEditor.WorldSettings.EnableClouds").to_string(), true, cx))
                 .into_any_element(),
             "Global Illumination" => v_flex()
                 .gap_3()
-                .child(Self::render_color_row("Ambient Color", Hsla { h: 220.0, s: 0.2, l: 0.4, a: 1.0 }, cx))
-                .child(Self::render_property_row("Ambient Intensity", "0.3", "", cx))
-                .child(Self::render_dropdown_row("GI Mode", "Baked", cx))
-                .child(Self::render_property_row("Bounce Count", "2", "", cx))
-                .child(Self::render_toggle_row("Realtime GI", false, cx))
-                .child(Self::render_toggle_row("Ambient Occlusion", true, cx))
+                .child(Self::render_color_row(&t!("LevelEditor.WorldSettings.AmbientColor").to_string(), Hsla { h: 220.0, s: 0.2, l: 0.4, a: 1.0 }, cx))
+                .child(Self::render_property_row(&t!("LevelEditor.WorldSettings.AmbientIntensity").to_string(), "0.3", "", cx))
+                .child(Self::render_dropdown_row(&t!("LevelEditor.WorldSettings.GIMode").to_string(), &t!("LevelEditor.Common.Baked").to_string(), cx))
+                .child(Self::render_property_row(&t!("LevelEditor.WorldSettings.BounceCount").to_string(), "2", "", cx))
+                .child(Self::render_toggle_row(&t!("LevelEditor.WorldSettings.RealtimeGI").to_string(), false, cx))
+                .child(Self::render_toggle_row(&t!("LevelEditor.WorldSettings.AmbientOcclusion").to_string(), true, cx))
                 .into_any_element(),
             "Fog & Atmosphere" => v_flex()
                 .gap_3()
-                .child(Self::render_toggle_row("Enable Fog", true, cx))
-                .child(Self::render_dropdown_row("Fog Mode", "Exponential", cx))
-                .child(Self::render_color_row("Fog Color", Hsla { h: 210.0, s: 0.3, l: 0.7, a: 1.0 }, cx))
-                .child(Self::render_property_row("Fog Density", "0.02", "", cx))
-                .child(Self::render_property_row("Fog Start", "10", "m", cx))
-                .child(Self::render_property_row("Fog End", "500", "m", cx))
+                .child(Self::render_toggle_row(&t!("LevelEditor.WorldSettings.EnableFog").to_string(), true, cx))
+                .child(Self::render_dropdown_row(&t!("LevelEditor.WorldSettings.FogMode").to_string(), &t!("LevelEditor.Common.Exponential").to_string(), cx))
+                .child(Self::render_color_row(&t!("LevelEditor.WorldSettings.FogColor").to_string(), Hsla { h: 210.0, s: 0.3, l: 0.7, a: 1.0 }, cx))
+                .child(Self::render_property_row(&t!("LevelEditor.WorldSettings.FogDensity").to_string(), "0.02", "", cx))
+                .child(Self::render_property_row(&t!("LevelEditor.WorldSettings.FogStart").to_string(), "10", "m", cx))
+                .child(Self::render_property_row(&t!("LevelEditor.WorldSettings.FogEnd").to_string(), "500", "m", cx))
                 .into_any_element(),
             "Physics" => v_flex()
                 .gap_3()
-                .child(Self::render_vector3_display("Gravity", [0.0, -9.81, 0.0], cx))
-                .child(Self::render_property_row("Time Scale", "1.0", "x", cx))
-                .child(Self::render_property_row("Fixed Timestep", "0.02", "s", cx))
-                .child(Self::render_toggle_row("Enable Physics", true, cx))
-                .child(Self::render_toggle_row("Auto Simulation", true, cx))
+                .child(Self::render_vector3_display(&t!("LevelEditor.WorldSettings.Gravity").to_string(), [0.0, -9.81, 0.0], cx))
+                .child(Self::render_property_row(&t!("LevelEditor.WorldSettings.TimeScale").to_string(), "1.0", "x", cx))
+                .child(Self::render_property_row(&t!("LevelEditor.WorldSettings.FixedTimestep").to_string(), "0.02", "s", cx))
+                .child(Self::render_toggle_row(&t!("LevelEditor.WorldSettings.EnablePhysics").to_string(), true, cx))
+                .child(Self::render_toggle_row(&t!("LevelEditor.WorldSettings.AutoSimulation").to_string(), true, cx))
                 .into_any_element(),
             "Audio" => v_flex()
                 .gap_3()
-                .child(Self::render_property_row("Master Volume", "1.0", "", cx))
-                .child(Self::render_property_row("Speed of Sound", "343", "m/s", cx))
-                .child(Self::render_property_row("Doppler Factor", "1.0", "", cx))
-                .child(Self::render_dropdown_row("Reverb Preset", "None", cx))
-                .child(Self::render_toggle_row("Enable Spatial Audio", true, cx))
+                .child(Self::render_property_row(&t!("LevelEditor.WorldSettings.MasterVolume").to_string(), "1.0", "", cx))
+                .child(Self::render_property_row(&t!("LevelEditor.WorldSettings.SpeedOfSound").to_string(), "343", "m/s", cx))
+                .child(Self::render_property_row(&t!("LevelEditor.WorldSettings.DopplerFactor").to_string(), "1.0", "", cx))
+                .child(Self::render_dropdown_row(&t!("LevelEditor.WorldSettings.ReverbPreset").to_string(), &t!("LevelEditor.Common.None").to_string(), cx))
+                .child(Self::render_toggle_row(&t!("LevelEditor.WorldSettings.EnableSpatialAudio").to_string(), true, cx))
                 .into_any_element(),
             _ => div().into_any_element(),
         }
