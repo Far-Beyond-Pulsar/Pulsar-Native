@@ -8,6 +8,7 @@ use std::sync::Arc;
 use gpui::*;
 use gpui::prelude::FluentBuilder;
 use ui::{button::{Button, ButtonVariants as _}, h_flex, switch::Switch, ActiveTheme, IconName, Selectable, StyledExt};
+use rust_i18n::t;
 
 use crate::level_editor::ui::state::LevelEditorState;
 use super::toggle_button::create_state_toggle;
@@ -48,7 +49,7 @@ fn visual_toggles(
         .child(create_state_toggle(
             "toggle_grid",
             IconName::LayoutDashboard,
-            "Toggle Grid",
+            &t!("LevelEditor.Viewport.ToggleGrid").to_string(),
             state.show_grid,
             state_arc.clone(),
             |s: &mut LevelEditorState| s.toggle_grid(),
@@ -56,7 +57,7 @@ fn visual_toggles(
         .child(create_state_toggle(
             "toggle_wireframe",
             IconName::Triangle,
-            "Toggle Wireframe",
+            &t!("LevelEditor.Viewport.ToggleWireframe").to_string(),
             state.show_wireframe,
             state_arc.clone(),
             |s: &mut LevelEditorState| s.toggle_wireframe(),
@@ -64,7 +65,7 @@ fn visual_toggles(
         .child(create_state_toggle(
             "toggle_lighting",
             IconName::Sun,
-            "Toggle Lighting",
+            &t!("LevelEditor.Viewport.ToggleLighting").to_string(),
             state.show_lighting,
             state_arc.clone(),
             |s: &mut LevelEditorState| s.toggle_lighting(),
@@ -91,7 +92,7 @@ where
                     div()
                         .text_xs()
                         .text_color(cx.theme().muted_foreground)
-                        .child("Perf"),
+                        .child(t!("LevelEditor.ViewportOptions.Perf").to_string()),
                 )
                 .child({
                     let state_clone = state_arc.clone();
@@ -107,6 +108,32 @@ where
         .child(
             h_flex()
                 .gap_1()
+                .items_center()
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(t!("LevelEditor.ViewportOptions.GPU").to_string()),
+                )
+                .child({
+                    let state_clone = state_arc.clone();
+                    Switch::new("toggle_gpu")
+                        .checked(state.show_gpu_pipeline_overlay)
+                        .on_click(move |checked, _, _| {
+                            state_clone.write().set_show_gpu_pipeline_overlay(*checked);
+                        })
+                }),
+        )
+        .child(
+            h_flex()
+                .gap_1()
+                .items_center()
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(t!("LevelEditor.ViewportOptions.Cam").to_string()),
+                )
                 .items_center()
                 .child(
                     div()
@@ -133,7 +160,7 @@ where
                     div()
                         .text_xs()
                         .text_color(cx.theme().muted_foreground)
-                        .child("Cam"),
+                        .child(t!("LevelEditor.ViewportOptions.Cam").to_string()),
                 )
                 .child({
                     let state_clone = state_arc.clone();
@@ -161,7 +188,7 @@ where
     if state.viewport_options_collapsed {
         return Button::new("expand_viewport_options")
             .icon(IconName::LayoutDashboard)
-            .tooltip("Viewport Options")
+            .tooltip(t!("LevelEditor.Viewport.ViewportOptions"))
             .on_click(move |_, _, _| {
                 state_arc.write().set_viewport_options_collapsed(false);
             })

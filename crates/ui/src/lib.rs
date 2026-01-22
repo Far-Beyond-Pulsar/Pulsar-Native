@@ -128,6 +128,13 @@ use std::ops::Deref;
 
 rust_i18n::i18n!("locales", fallback = "en");
 
+// Re-export translation function for use by other ui crates
+/// Translate a key to the current locale
+#[inline]
+pub fn translate(key: &str) -> String {
+    rust_i18n::t!(key).to_string()
+}
+
 /// Initialize the components.
 ///
 /// You must initialize the components at your application's entry point.

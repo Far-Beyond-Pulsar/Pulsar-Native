@@ -8,6 +8,7 @@ use std::sync::Arc;
 use gpui::*;
 use gpui::prelude::FluentBuilder;
 use ui::{button::{Button, ButtonVariants as _}, h_flex, v_flex, ActiveTheme, IconName, Selectable, Sizable, StyledExt};
+use rust_i18n::t;
 
 use crate::level_editor::ui::state::{CameraMode, LevelEditorState};
 use super::toggle_button::create_state_toggle;
@@ -63,8 +64,17 @@ fn camera_mode_buttons(
         let state_clone = state_arc.clone();
         let target_mode = mode_btn.mode;
         let icon = mode_btn.icon.clone();
-        let tooltip = mode_btn.tooltip;
         let id = mode_btn.id;
+        
+        // Translate tooltip dynamically
+        let tooltip = match mode_btn.mode {
+            CameraMode::Perspective => t!("LevelEditor.Camera.PerspectiveView"),
+            CameraMode::Orthographic => t!("LevelEditor.Camera.OrthographicView"),
+            CameraMode::Top => t!("LevelEditor.Camera.TopView"),
+            CameraMode::Front => t!("LevelEditor.Camera.FrontView"),
+            CameraMode::Side => t!("LevelEditor.Camera.SideView"),
+        };
+        
         Button::new(id)
             .icon(icon)
             .tooltip(tooltip)
@@ -95,14 +105,14 @@ where
             div()
                 .text_xs()
                 .text_color(cx.theme().muted_foreground)
-                .child("Speed"),
+                .child(t!("LevelEditor.Camera.Speed").to_string()),
         )
         .child({
             let input_clone = input_state.clone();
             Button::new("speed_down")
                 .icon(IconName::Minus)
                 .small()
-                .tooltip("Decrease camera speed")
+                .tooltip(t!("LevelEditor.Camera.DecreaseSpeed"))
                 .on_click(move |_, _, _| {
                     input_clone.adjust_move_speed(-2.0);
                 })
@@ -121,7 +131,7 @@ where
             Button::new("speed_up")
                 .icon(IconName::Plus)
                 .small()
-                .tooltip("Increase camera speed")
+                .tooltip(t!("LevelEditor.Camera.IncreaseSpeed"))
                 .on_click(move |_, _, _| {
                     input_clone.adjust_move_speed(2.0);
                 })
@@ -150,7 +160,7 @@ where
     if state.camera_mode_selector_collapsed {
         return Button::new("expand_camera_mode")
             .icon(IconName::Cube)
-            .tooltip("Camera Mode")
+            .tooltip(t!("LevelEditor.Camera.CameraMode"))
             .on_click(move |_, _, _| {
                 state_arc
                     .write()

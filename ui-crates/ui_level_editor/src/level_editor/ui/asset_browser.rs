@@ -3,6 +3,7 @@ use gpui::*;
 use ui::{
     button::{Button, ButtonVariants as _}, h_flex, v_flex, scroll::ScrollbarAxis, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
 };
+use rust_i18n::t;
 
 /// Asset Browser - Browse and preview project assets
 pub struct AssetBrowser {
@@ -129,7 +130,7 @@ impl AssetBrowser {
                                     .icon(IconName::ArrowLeft)
                                     .ghost()
                                     .xsmall()
-                                    .tooltip("Back")
+                                    .tooltip(t!("LevelEditor.Assets.Back"))
                             )
                             .child(
                                 div()
@@ -141,7 +142,7 @@ impl AssetBrowser {
                                             .as_ref()
                                             .and_then(|p| p.file_name())
                                             .and_then(|s| s.to_str())
-                                            .unwrap_or("Assets")
+                                            .unwrap_or(&t!("LevelEditor.Assets.Assets").to_string())
                                             .to_string()
                                     )
                             )
@@ -168,7 +169,7 @@ impl AssetBrowser {
                                     .icon(IconName::Refresh)
                                     .ghost()
                                     .xsmall()
-                                    .tooltip("Refresh")
+                                    .tooltip(t!("LevelEditor.Assets.Refresh"))
                             )
                     )
             )

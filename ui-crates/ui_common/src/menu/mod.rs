@@ -1,4 +1,6 @@
 use std::rc::Rc;
+// Import translation function from ui crate
+use ui::translate as t;
 
 use gpui::{
     actions,
@@ -378,108 +380,108 @@ pub fn init_app_menus(title: impl Into<SharedString>, cx: &mut App) {
             },
             // File Menu
             Menu {
-                name: "File".into(),
+                name: t("Menu.File").into(),
                 items: vec![
                     MenuItem::Submenu(Menu {
-                        name: "New".into(),
+                        name: t("Menu.File.New").into(),
                         items: vec![
-                            MenuItem::action("New File", NewFile),
-                            MenuItem::action("New Window", NewWindow),
+                            MenuItem::action(&t("Menu.File.NewFile"), NewFile),
+                            MenuItem::action(&t("Menu.File.NewWindow"), NewWindow),
                             MenuItem::separator(),
-                            MenuItem::action("New Project", NewProject),
-                            MenuItem::action("New Scene", NewScene),
-                            MenuItem::action("New Script", NewScript),
-                            MenuItem::action("New Shader", NewShader),
-                            MenuItem::action("New Material", NewMaterial),
-                            MenuItem::action("New Prefab", NewPrefab),
+                            MenuItem::action(&t("Menu.File.NewProject"), NewProject),
+                            MenuItem::action(&t("Menu.File.NewScene"), NewScene),
+                            MenuItem::action(&t("Menu.File.NewScript"), NewScript),
+                            MenuItem::action(&t("Menu.File.NewShader"), NewShader),
+                            MenuItem::action(&t("Menu.File.NewMaterial"), NewMaterial),
+                            MenuItem::action(&t("Menu.File.NewPrefab"), NewPrefab),
                             MenuItem::separator(),
-                            MenuItem::action("New Blueprint", NewBlueprint),
-                            MenuItem::action("New Component", NewComponent),
-                            MenuItem::action("New System", NewSystem)
+                            MenuItem::action(&t("Menu.File.NewBlueprint"), NewBlueprint),
+                            MenuItem::action(&t("Menu.File.NewComponent"), NewComponent),
+                            MenuItem::action(&t("Menu.File.NewSystem"), NewSystem)
                         ],
                     }),
                     MenuItem::separator(),
-                    MenuItem::action("Open", OpenFile),
-                    MenuItem::action("Open Folder", OpenFolder),
+                    MenuItem::action(&t("Menu.File.Open"), OpenFile),
+                    MenuItem::action(&t("Menu.File.OpenFolder"), OpenFolder),
                     MenuItem::Submenu(Menu {
-                        name: "Open Recent".into(),
+                        name: t("Menu.File.OpenRecent").into(),
                         items: vec![
-                            MenuItem::action("Recent Projects", OpenRecent),
-                            MenuItem::action("Recent Files", OpenRecentFiles),
+                            MenuItem::action(&t("Menu.File.RecentProjects"), OpenRecent),
+                            MenuItem::action(&t("Menu.File.RecentFiles"), OpenRecentFiles),
                             MenuItem::separator(),
-                            MenuItem::action("Clear Recent", ClearRecent)
+                            MenuItem::action(&t("Menu.File.ClearRecent"), ClearRecent)
                         ],
                     }),
                     MenuItem::separator(),
-                    MenuItem::action("Save", SaveFile),
-                    MenuItem::action("Save As...", SaveAs),
-                    MenuItem::action("Save All", SaveAll),
-                    MenuItem::action("Save Workspace", SaveWorkspace),
+                    MenuItem::action(&t("Menu.File.Save"), SaveFile),
+                    MenuItem::action(&t("Menu.File.SaveAs"), SaveAs),
+                    MenuItem::action(&t("Menu.File.SaveAll"), SaveAll),
+                    MenuItem::action(&t("Menu.File.SaveWorkspace"), SaveWorkspace),
                     MenuItem::separator(),
                     MenuItem::Submenu(Menu {
-                        name: "Import".into(),
+                        name: t("Menu.File.Import").into(),
                         items: vec![
-                            MenuItem::action("Import Asset", ImportAsset),
-                            MenuItem::action("Import Model (FBX/GLTF)", ImportModel),
-                            MenuItem::action("Import Texture", ImportTexture),
-                            MenuItem::action("Import Audio", ImportAudio),
+                            MenuItem::action(&t("Menu.File.ImportAsset"), ImportAsset),
+                            MenuItem::action(&t("Menu.File.ImportModel"), ImportModel),
+                            MenuItem::action(&t("Menu.File.ImportTexture"), ImportTexture),
+                            MenuItem::action(&t("Menu.File.ImportAudio"), ImportAudio),
                             MenuItem::separator(),
-                            MenuItem::action("Batch Import", BatchImport),
-                            MenuItem::action("Import from Unity", ImportFromUnity),
-                            MenuItem::action("Import from Unreal", ImportFromUnreal),
-                            MenuItem::action("Import from Godot", ImportFromGodot)
+                            MenuItem::action(&t("Menu.File.BatchImport"), BatchImport),
+                            MenuItem::action(&t("Menu.File.ImportFromUnity"), ImportFromUnity),
+                            MenuItem::action(&t("Menu.File.ImportFromUnreal"), ImportFromUnreal),
+                            MenuItem::action(&t("Menu.File.ImportFromGodot"), ImportFromGodot)
                         ],
                     }),
                     MenuItem::Submenu(Menu {
-                        name: "Export".into(),
+                        name: t("Menu.File.Export").into(),
                         items: vec![
-                            MenuItem::action("Export Build", ExportBuild),
-                            MenuItem::action("Export Scene", ExportScene),
-                            MenuItem::action("Export Selected", ExportSelected),
+                            MenuItem::action(&t("Menu.File.ExportBuild"), ExportBuild),
+                            MenuItem::action(&t("Menu.File.ExportScene"), ExportScene),
+                            MenuItem::action(&t("Menu.File.ExportSelected"), ExportSelected),
                             MenuItem::separator(),
-                            MenuItem::action("Export for Windows", ExportWindows),
-                            MenuItem::action("Export for Linux", ExportLinux),
-                            MenuItem::action("Export for macOS", ExportMacOS),
-                            MenuItem::action("Export for Web (WASM)", ExportWeb),
-                            MenuItem::action("Export for Android", ExportAndroid),
-                            MenuItem::action("Export for iOS", ExportIOS)
+                            MenuItem::action(&t("Menu.File.ExportWindows"), ExportWindows),
+                            MenuItem::action(&t("Menu.File.ExportLinux"), ExportLinux),
+                            MenuItem::action(&t("Menu.File.ExportMacOS"), ExportMacOS),
+                            MenuItem::action(&t("Menu.File.ExportWeb"), ExportWeb),
+                            MenuItem::action(&t("Menu.File.ExportAndroid"), ExportAndroid),
+                            MenuItem::action(&t("Menu.File.ExportIOS"), ExportIOS)
                         ],
                     }),
                     MenuItem::separator(),
-                    MenuItem::action("Revert File", RevertFile),
-                    MenuItem::action("Close File", CloseFile),
-                    MenuItem::action("Close Folder", CloseFolder),
-                    MenuItem::action("Close All", CloseAll),
-                    MenuItem::action("Close Others", CloseOthers)
+                    MenuItem::action(&t("Menu.File.RevertFile"), RevertFile),
+                    MenuItem::action(&t("Menu.File.CloseFile"), CloseFile),
+                    MenuItem::action(&t("Menu.File.CloseFolder"), CloseFolder),
+                    MenuItem::action(&t("Menu.File.CloseAll"), CloseAll),
+                    MenuItem::action(&t("Menu.File.CloseOthers"), CloseOthers)
                 ],
             },
             // Edit Menu
             Menu {
-                name: "Edit".into(),
+                name: t("Menu.Edit").into(),
                 items: vec![
-                    MenuItem::action("Undo", Undo),
-                    MenuItem::action("Redo", Redo),
+                    MenuItem::action(&t("Menu.Edit.Undo"), Undo),
+                    MenuItem::action(&t("Menu.Edit.Redo"), Redo),
                     MenuItem::separator(),
-                    MenuItem::action("Cut", Cut),
-                    MenuItem::action("Copy", Copy),
-                    MenuItem::action("Paste", Paste),
-                    MenuItem::action("Delete", Delete),
+                    MenuItem::action(&t("Menu.Edit.Cut"), Cut),
+                    MenuItem::action(&t("Menu.Edit.Copy"), Copy),
+                    MenuItem::action(&t("Menu.Edit.Paste"), Paste),
+                    MenuItem::action(&t("Menu.Edit.Delete"), Delete),
                     MenuItem::separator(),
-                    MenuItem::action("Select All", SelectAll),
+                    MenuItem::action(&t("Menu.Edit.SelectAll"), SelectAll),
                     MenuItem::action("Select None", SelectNone),
                     MenuItem::separator(),
                     MenuItem::Submenu(Menu {
-                        name: "Find".into(),
+                        name: t("Menu.Edit.Find").into(),
                         items: vec![
-                            MenuItem::action("Find", Find),
+                            MenuItem::action(&t("Menu.Edit.Find"), Find),
                             MenuItem::action("Find Next", FindNext),
                             MenuItem::action("Find Previous", FindPrevious),
                             MenuItem::separator(),
-                            MenuItem::action("Replace", FindReplace),
+                            MenuItem::action(&t("Menu.Edit.Replace"), FindReplace),
                             MenuItem::action("Replace Next", ReplaceNext),
                             MenuItem::action("Replace All", ReplaceAll),
                             MenuItem::separator(),
-                            MenuItem::action("Find in Files", FindInFiles),
+                            MenuItem::action(&t("Menu.Edit.FindInFiles"), FindInFiles),
                             MenuItem::action("Replace in Files", ReplaceInFiles),
                             MenuItem::separator(),
                             MenuItem::action("Find Usages", FindUsages),
@@ -531,22 +533,22 @@ pub fn init_app_menus(title: impl Into<SharedString>, cx: &mut App) {
             },
             // View Menu
             Menu {
-                name: "View".into(),
+                name: t("Menu.View").into(),
                 items: vec![
                     MenuItem::Submenu(Menu {
-                        name: "Panels".into(),
+                        name: t("Menu.View.Panels").into(),
                         items: vec![
                             MenuItem::action("Explorer", ToggleExplorer),
                             MenuItem::action("Scene Hierarchy", ToggleHierarchy),
-                            MenuItem::action("Inspector", ToggleInspector),
+                            MenuItem::action(&t("Menu.View.Inspector"), ToggleInspector),
                             MenuItem::action("Asset Browser", ToggleAssetBrowser),
                             MenuItem::separator(),
-                            MenuItem::action("Console", ToggleConsole),
+                            MenuItem::action(&t("Menu.View.Console"), ToggleConsole),
                             MenuItem::action("Output", ToggleOutput),
                             MenuItem::action("Problems", ToggleProblems),
                             MenuItem::action("Debug", ToggleDebug),
                             MenuItem::separator(),
-                            MenuItem::action("Profiler", ToggleProfiler),
+                            MenuItem::action(&t("Menu.View.Profiler"), ToggleProfiler),
                             MenuItem::action("Memory Analyzer", ToggleMemoryAnalyzer),
                             MenuItem::action("Network", ToggleNetwork)
                         ],
@@ -567,15 +569,15 @@ pub fn init_app_menus(title: impl Into<SharedString>, cx: &mut App) {
                         ],
                     }),
                     MenuItem::separator(),
-                    MenuItem::action("Command Palette", CommandPalette),
+                    MenuItem::action(&t("Menu.View.CommandPalette"), CommandPalette),
                     MenuItem::action("Quick Open", QuickOpen),
                     MenuItem::separator(),
                     MenuItem::Submenu(Menu {
                         name: "Zoom".into(),
                         items: vec![
-                            MenuItem::action("Zoom In", ZoomIn),
-                            MenuItem::action("Zoom Out", ZoomOut),
-                            MenuItem::action("Reset Zoom", ResetZoom)
+                            MenuItem::action(&t("Menu.View.ZoomIn"), ZoomIn),
+                            MenuItem::action(&t("Menu.View.ZoomOut"), ZoomOut),
+                            MenuItem::action(&t("Menu.View.ResetZoom"), ResetZoom)
                         ],
                     }),
                     MenuItem::separator(),
@@ -584,7 +586,7 @@ pub fn init_app_menus(title: impl Into<SharedString>, cx: &mut App) {
                     MenuItem::action("Toggle Breadcrumbs", ToggleBreadcrumbs),
                     MenuItem::action("Toggle Whitespace", ToggleWhitespace),
                     MenuItem::separator(),
-                    MenuItem::action("Enter Fullscreen", ToggleFullscreen),
+                    MenuItem::action(&t("Menu.View.ToggleFullscreen"), ToggleFullscreen),
                     MenuItem::action("Zen Mode", ToggleZenMode)
                 ],
             },
@@ -926,22 +928,22 @@ pub fn init_app_menus(title: impl Into<SharedString>, cx: &mut App) {
             },
             // Help Menu
             Menu {
-                name: "Help".into(),
+                name: t("Menu.Help").into(),
                 items: vec![
-                    MenuItem::action("Documentation", ShowDocumentation),
-                    MenuItem::action("API Reference", ShowAPIReference),
-                    MenuItem::action("Tutorials", ShowTutorials),
+                    MenuItem::action(&t("Menu.Help.Documentation"), ShowDocumentation),
+                    MenuItem::action(&t("Menu.Help.API"), ShowAPIReference),
+                    MenuItem::action(&t("Menu.Help.Tutorials"), ShowTutorials),
                     MenuItem::separator(),
                     MenuItem::action("Keyboard Shortcuts", ShowShortcuts),
-                    MenuItem::action("Command Palette", CommandPalette),
+                    MenuItem::action(&t("Menu.View.CommandPalette"), CommandPalette),
                     MenuItem::separator(),
-                    MenuItem::action("Report Issue", ReportIssue),
+                    MenuItem::action(&t("Menu.Help.ReportBug"), ReportIssue),
                     MenuItem::action("View Logs", ViewLogs),
                     MenuItem::separator(),
                     MenuItem::action("Check for Updates", CheckUpdates),
                     MenuItem::action("Release Notes", ReleaseNotes),
                     MenuItem::separator(),
-                    MenuItem::action("About Pulsar Engine", AboutApp)
+                    MenuItem::action(&t("Menu.Help.About"), AboutApp)
                 ],
             }
         ]
@@ -953,6 +955,8 @@ pub struct AppTitleBar {
     locale_selector: Entity<LocaleSelector>,
     font_size_selector: Entity<FontSizeSelector>,
     theme_switcher: Entity<ThemeSwitcher>,
+    title: SharedString,
+    last_locale: String,
     child: Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>,
     _subscriptions: Vec<Subscription>,
 }
@@ -963,20 +967,31 @@ impl AppTitleBar {
         window: &mut Window,
         cx: &mut Context<Self>
     ) -> Self {
-        init_app_menus(title, cx);
+        let title_str = title.into();
+        init_app_menus(title_str.clone(), cx);
 
         let app_menu_bar = AppMenuBar::new(window, cx);
         let locale_selector = cx.new(|cx| LocaleSelector::new(window, cx));
         let font_size_selector = cx.new(|cx| FontSizeSelector::new(window, cx));
         let theme_switcher = cx.new(|cx| ThemeSwitcher::new(cx));
+        
+        // Subscribe to locale changes
+        let subscriptions = vec![
+            cx.subscribe(&locale_selector, move |this: &mut Self, _, _event: &SelectLocale, cx| {
+                // Just notify to trigger re-render
+                cx.notify();
+            })
+        ];
 
         Self {
             app_menu_bar,
             locale_selector,
             font_size_selector,
             theme_switcher,
+            title: title_str,
+            last_locale: locale().to_string(),
             child: Rc::new(|_, _| div().into_any_element()),
-            _subscriptions: vec![],
+            _subscriptions: subscriptions,
         }
     }
 
@@ -1000,6 +1015,18 @@ impl AppTitleBar {
 // TODO: (From @tristanpoland) Near as I can tell this tracing::info! call is never executed. Look into this when debugging the titlebar
 impl Render for AppTitleBar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Only rebuild menus if locale changed
+        let current_locale = locale().to_string();
+        if current_locale != self.last_locale {
+            eprintln!("DEBUG: Locale changed from {} to {}", self.last_locale, current_locale);
+            eprintln!("DEBUG: Test translation Menu.File = {}", t("Menu.File"));
+            
+            // Rebuild menus and app menu bar
+            init_app_menus(self.title.clone(), cx);
+            self.app_menu_bar = AppMenuBar::new(window, cx);
+            self.last_locale = current_locale;
+        }
+        
         let notifications_count = window.notifications(cx).len();
 
         TitleBar::new()
@@ -1069,6 +1096,8 @@ struct LocaleSelector {
     focus_handle: FocusHandle,
 }
 
+impl gpui::EventEmitter<SelectLocale> for LocaleSelector {}
+
 impl LocaleSelector {
     pub fn new(_: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
@@ -1080,9 +1109,17 @@ impl LocaleSelector {
         &mut self,
         locale: &SelectLocale,
         window: &mut Window,
-        _: &mut Context<Self>
+        cx: &mut Context<Self>
     ) {
+        // Set locale globally - this affects ALL crates using rust_i18n
         set_locale(&locale.0);
+        
+        // Also set in ui_level_editor if it has its own translations
+        // (Level editor may have its own separate translation context)
+        
+        // Emit event so AppTitleBar can rebuild menus
+        cx.emit(locale.clone());
+        
         window.refresh();
     }
 }
@@ -1238,3 +1275,4 @@ impl Render for FontSizeSelector {
             )
     }
 }
+
