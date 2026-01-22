@@ -108,7 +108,7 @@ impl PropertiesPanel {
                             .text_base()
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(cx.theme().foreground)
-                            .child(t!("LevelEditor.Properties.Title"))
+                            .child(t!("LevelEditor.Properties.Title").to_string())
                     )
                     .when(has_selection, |this| {
                         this.child(
@@ -120,7 +120,7 @@ impl PropertiesPanel {
                                 .text_xs()
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(cx.theme().accent)
-                                .child(t!("LevelEditor.Properties.Selected"))
+                                .child(t!("LevelEditor.Properties.Selected").to_string())
                         )
                     })
             )
@@ -156,14 +156,14 @@ impl PropertiesPanel {
                             .text_base()
                             .font_weight(FontWeight::MEDIUM)
                             .text_color(cx.theme().muted_foreground)
-                            .child(t!("LevelEditor.Properties.NoSelection"))
+                            .child(t!("LevelEditor.Properties.NoSelection").to_string())
                     )
                     .child(
                         div()
                             .text_sm()
                             .text_color(cx.theme().muted_foreground.opacity(0.7))
                             .text_center()
-                            .child(t!("LevelEditor.Properties.NoSelectionDesc"))
+                            .child(t!("LevelEditor.Properties.NoSelectionDesc").to_string())
                     )
             )
     }
