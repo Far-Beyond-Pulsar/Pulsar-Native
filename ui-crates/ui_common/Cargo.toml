@@ -32,3 +32,4 @@ serde_json = "1.0"
 regex = "1.10"
 tokio = { version = "1", features = ["full"] }
 flume = "0.11"
+rust-i18n.workspace = true

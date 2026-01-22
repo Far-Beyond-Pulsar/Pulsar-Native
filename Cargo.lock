@@ -15250,6 +15250,7 @@ dependencies = [
  "portable-pty",
  "regex",
  "ropey",
+ "rust-i18n",
  "serde",
  "serde_json",
  "tokio",
