@@ -6,6 +6,7 @@ use ui::{
 };
 use std::sync::Arc;
 use std::collections::HashSet;
+use rust_i18n::t;
 
 use super::state::LevelEditorState;
 use crate::level_editor::WorldSettingsPanel;
@@ -75,7 +76,7 @@ impl WorldSettings {
                             .text_base()
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(cx.theme().foreground)
-                            .child("World Settings")
+                            .child(t!("LevelEditor.WorldSettings.Title").to_string())
                     )
             )
             .child(
@@ -86,7 +87,7 @@ impl WorldSettings {
                             .icon(IconName::Refresh)
                             .ghost()
                             .xsmall()
-                            .tooltip("Reset to Defaults")
+                            .tooltip(t!("LevelEditor.WorldSettings.ResetDefaults"))
                     )
                     .child(
                         Button::new("more_options")
@@ -132,13 +133,13 @@ impl WorldSettings {
                                     .text_base()
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .text_color(cx.theme().foreground)
-                                    .child("Untitled Scene")
+                                    .child(t!("LevelEditor.WorldSettings.UntitledScene").to_string())
                             )
                             .child(
                                 div()
                                     .text_xs()
                                     .text_color(cx.theme().muted_foreground)
-                                    .child("Last saved: Never")
+                                    .child(t!("LevelEditor.WorldSettings.LastSaved").to_string())
                             )
                     )
             )
