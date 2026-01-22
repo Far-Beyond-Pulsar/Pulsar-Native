@@ -102,6 +102,11 @@ Menu.View.TogglePanel: Attiva/Disattiva Pannello
 Menu.View.Console: Console
 Menu.View.Inspector: Ispettore
 Menu.View.Profiler: Profiler
+Menu.View.ToggleMinimap: Attiva/Disattiva Minimappa
+Menu.View.ToggleLineNumbers: Attiva/Disattiva Numeri di Riga
+Menu.View.ToggleBreadcrumbs: Attiva/Disattiva Breadcrumb
+Menu.View.ToggleWhitespace: Attiva/Disattiva Spazi Bianchi
+Menu.View.ZenMode: Modalità Zen
 Menu.Help.Documentation: Documentazione
 Menu.Help.GettingStarted: Guida Introduttiva
 Menu.Help.Tutorials: Tutorial

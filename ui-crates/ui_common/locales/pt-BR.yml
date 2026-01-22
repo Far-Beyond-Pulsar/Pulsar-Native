@@ -36,5 +36,90 @@ Input.Cut: Cortar
 Input.Copy: Copiar
 Input.Paste: Colar
 Input.Select All: "Selecionar Tudo"
-Input.Go to Definition: "Ir para Defini├º├úo"
-Input.Show Code Actions: "Mostrar A├º├╡es de C├│digo"
+Input.Go to Definition: "Ir para Definição"
+Input.Show Code Actions: "Mostrar Ações de Código"
+Menu.File: Arquivo
+Menu.Edit: Editar
+Menu.View: Ver
+Menu.Help: Ajuda
+Menu.File.New: Novo
+Menu.File.NewFile: Novo Arquivo
+Menu.File.NewWindow: Nova Janela
+Menu.File.NewProject: Novo Projeto
+Menu.File.NewScene: Nova Cena
+Menu.File.NewScript: Novo Script
+Menu.File.NewShader: Novo Shader
+Menu.File.NewMaterial: Novo Material
+Menu.File.NewPrefab: Novo Prefab
+Menu.File.NewBlueprint: Novo Blueprint
+Menu.File.NewComponent: Novo Componente
+Menu.File.NewSystem: Novo Sistema
+Menu.File.Open: Abrir
+Menu.File.OpenFolder: Abrir Pasta
+Menu.File.OpenRecent: Recentes
+Menu.File.RecentProjects: Projetos Recentes
+Menu.File.RecentFiles: Arquivos Recentes
+Menu.File.ClearRecent: Limpar Recentes
+Menu.File.Save: Salvar
+Menu.File.SaveAs: Salvar Como...
+Menu.File.SaveAll: Salvar Tudo
+Menu.File.SaveWorkspace: Salvar Workspace
+Menu.File.Import: Importar
+Menu.File.ImportAsset: Importar Asset
+Menu.File.ImportModel: Importar Modelo (FBX/GLTF)
+Menu.File.ImportTexture: Importar Textura
+Menu.File.ImportAudio: Importar Áudio
+Menu.File.BatchImport: Importação em Lote
+Menu.File.ImportFromUnity: Importar do Unity
+Menu.File.ImportFromUnreal: Importar do Unreal
+Menu.File.ImportFromGodot: Importar do Godot
+Menu.File.Export: Exportar
+Menu.File.ExportBuild: Exportar Build
+Menu.File.ExportScene: Exportar Cena
+Menu.File.ExportSelected: Exportar Selecionado
+Menu.File.ExportWindows: Exportar para Windows
+Menu.File.ExportLinux: Exportar para Linux
+Menu.File.ExportMacOS: Exportar para macOS
+Menu.File.ExportWeb: Exportar para Web (WASM)
+Menu.File.ExportAndroid: Exportar para Android
+Menu.File.ExportIOS: Exportar para iOS
+Menu.File.RevertFile: Reverter Arquivo
+Menu.File.CloseFile: Fechar Arquivo
+Menu.File.CloseFolder: Fechar Pasta
+Menu.File.CloseAll: Fechar Tudo
+Menu.File.CloseOthers: Fechar Outros
+Menu.Edit.Undo: Desfazer
+Menu.Edit.Redo: Refazer
+Menu.Edit.Cut: Cortar
+Menu.Edit.Copy: Copiar
+Menu.Edit.Paste: Colar
+Menu.Edit.Delete: Excluir
+Menu.Edit.Duplicate: Duplicar
+Menu.Edit.SelectAll: Selecionar Tudo
+Menu.Edit.Find: Localizar
+Menu.Edit.FindInFiles: Localizar em Arquivos
+Menu.Edit.Replace: Substituir
+Menu.Edit.Preferences: Preferências
+Menu.View.CommandPalette: Paleta de Comandos
+Menu.View.ToggleFullscreen: Alternar Tela Cheia
+Menu.View.ZoomIn: Aumentar Zoom
+Menu.View.ZoomOut: Diminuir Zoom
+Menu.View.ResetZoom: Resetar Zoom
+Menu.View.Panels: Painéis
+Menu.View.TogglePanel: Alternar Painel
+Menu.View.Console: Console
+Menu.View.Inspector: Inspetor
+Menu.View.Profiler: Profiler
+Menu.View.ToggleMinimap: Alternar Minimapa
+Menu.View.ToggleLineNumbers: Alternar Números de Linha
+Menu.View.ToggleBreadcrumbs: Alternar Breadcrumbs
+Menu.View.ToggleWhitespace: Alternar Espaços em Branco
+Menu.View.ZenMode: Modo Zen
+Menu.Help.Documentation: Documentação
+Menu.Help.GettingStarted: Começando
+Menu.Help.Tutorials: Tutoriais
+Menu.Help.API: Referência da API
+Menu.Help.ReportBug: Reportar Bug
+Menu.Help.RequestFeature: Solicitar Recurso
+Menu.Help.Community: Comunidade
+Menu.Help.About: Sobre Pulsar

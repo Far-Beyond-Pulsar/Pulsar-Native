@@ -79,6 +79,11 @@ Menu.View.TogglePanel: "切換面板"
 Menu.View.Console: "控制台"
 Menu.View.Inspector: "檢查器"
 Menu.View.Profiler: "性能分析器"
+Menu.View.ToggleMinimap: "切換小地圖"
+Menu.View.ToggleLineNumbers: "切換行號"
+Menu.View.ToggleBreadcrumbs: "切換麵包屑"
+Menu.View.ToggleWhitespace: "切換空白字符"
+Menu.View.ZenMode: "禪模式"
 
 # Help Menu
 Menu.Help.Documentation: "文檔"

@@ -110,6 +110,11 @@ Menu.View.TogglePanel: Toggle Panel
 Menu.View.Console: Console
 Menu.View.Inspector: Inspector
 Menu.View.Profiler: Profiler
+Menu.View.ToggleMinimap: Toggle Minimap
+Menu.View.ToggleLineNumbers: Toggle Line Numbers
+Menu.View.ToggleBreadcrumbs: Toggle Breadcrumbs
+Menu.View.ToggleWhitespace: Toggle Whitespace
+Menu.View.ZenMode: Zen Mode
 Menu.Help.Documentation: Documentation
 Menu.Help.GettingStarted: Getting Started
 Menu.Help.Tutorials: Tutorials
