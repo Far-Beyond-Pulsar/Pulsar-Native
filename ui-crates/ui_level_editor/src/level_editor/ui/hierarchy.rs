@@ -182,7 +182,7 @@ impl HierarchyPanel {
                                     .border_color(cx.theme().border)
                                     .text_xs()
                                     .text_color(cx.theme().muted_foreground)
-                                    .tooltip(t!("LevelEditor.Hierarchy.DropHere").to_string())
+                                    .child(t!("LevelEditor.Hierarchy.DropHere").to_string())
                                     .on_mouse_up(MouseButton::Left, move |_, _, _| {
                                         let mut state_write = state_clone_for_root_drop.write();
                                         if let HierarchyDragState::DraggingObject { object_id: dragged_id, .. } = &state_write.hierarchy_drag_state {
