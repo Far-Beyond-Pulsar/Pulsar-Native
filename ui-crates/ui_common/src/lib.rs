@@ -2,8 +2,26 @@
 //!
 //! Shared helpers and utilities used across all UI components
 
-// DO NOT initialize rust_i18n here - use translations from the ui crate instead
-// The ui crate is the central translation repository
+// Initialize translations for ui_common (menus, titlebar, etc.)
+rust_i18n::i18n!("locales", fallback = "en");
+
+/// Translate a key to the current locale
+#[inline]
+pub fn translate(key: &str) -> String {
+    rust_i18n::t!(key).into_owned()
+}
+
+/// Get the current locale
+#[inline]
+pub fn locale() -> impl std::ops::Deref<Target = str> {
+    rust_i18n::locale()
+}
+
+/// Set the current locale
+#[inline]
+pub fn set_locale(locale: &str) {
+    rust_i18n::set_locale(locale)
+}
 
 pub mod command_palette;
 pub mod file_utils;

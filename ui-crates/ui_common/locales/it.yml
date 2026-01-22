@@ -1,91 +1,112 @@
-it:
+# UI Translations - it
 
-# Main Menu Bar
-Menu.File: "File"
-Menu.Edit: "Modifica"
-Menu.View: "Visualizza"
-Menu.Help: "Aiuto"
-
-# File Menu
-Menu.File.New: "Nuovo"
-Menu.File.NewFile: "Nuovo File"
-Menu.File.NewWindow: "Nuova Finestra"
-Menu.File.NewProject: "Nuovo Progetto"
-Menu.File.NewScene: "Nuova Scena"
-Menu.File.NewScript: "Nuovo Script"
-Menu.File.NewShader: "Nuovo Shader"
-Menu.File.NewMaterial: "Nuovo Materiale"
-Menu.File.NewPrefab: "Nuovo Prefab"
-Menu.File.NewBlueprint: "Nuovo Blueprint"
-Menu.File.NewComponent: "Nuovo Componente"
-Menu.File.NewSystem: "Nuovo Sistema"
-Menu.File.Open: "Apri"
-Menu.File.OpenFolder: "Apri Cartella"
-Menu.File.OpenRecent: "Apri Recenti"
-Menu.File.RecentProjects: "Progetti Recenti"
-Menu.File.RecentFiles: "File Recenti"
-Menu.File.ClearRecent: "Cancella Recenti"
-Menu.File.Save: "Salva"
-Menu.File.SaveAs: "Salva Come..."
-Menu.File.SaveAll: "Salva Tutto"
-Menu.File.SaveWorkspace: "Salva Workspace"
-Menu.File.Import: "Importa"
-Menu.File.ImportAsset: "Importa Risorsa"
-Menu.File.ImportModel: "Importa Modello (FBX/GLTF)"
-Menu.File.ImportTexture: "Importa Texture"
-Menu.File.ImportAudio: "Importa Audio"
-Menu.File.BatchImport: "Importazione Batch"
-Menu.File.ImportFromUnity: "Importa da Unity"
-Menu.File.ImportFromUnreal: "Importa da Unreal"
-Menu.File.ImportFromGodot: "Importa da Godot"
-Menu.File.Export: "Esporta"
-Menu.File.ExportBuild: "Esporta Build"
-Menu.File.ExportScene: "Esporta Scena"
-Menu.File.ExportSelected: "Esporta Selezionati"
-Menu.File.ExportWindows: "Esporta per Windows"
-Menu.File.ExportLinux: "Esporta per Linux"
-Menu.File.ExportMacOS: "Esporta per macOS"
-Menu.File.ExportWeb: "Esporta per Web (WASM)"
-Menu.File.ExportAndroid: "Esporta per Android"
-Menu.File.ExportIOS: "Esporta per iOS"
-Menu.File.RevertFile: "Ripristina File"
-Menu.File.CloseFile: "Chiudi File"
-Menu.File.CloseFolder: "Chiudi Cartella"
-Menu.File.CloseAll: "Chiudi Tutto"
-Menu.File.CloseOthers: "Chiudi Altri"
-
-# Edit Menu
-Menu.Edit.Undo: "Annulla"
-Menu.Edit.Redo: "Ripeti"
-Menu.Edit.Cut: "Taglia"
-Menu.Edit.Copy: "Copia"
-Menu.Edit.Paste: "Incolla"
-Menu.Edit.Delete: "Elimina"
-Menu.Edit.Duplicate: "Duplica"
-Menu.Edit.SelectAll: "Seleziona Tutto"
-Menu.Edit.Find: "Trova"
-Menu.Edit.FindInFiles: "Trova nei File"
-Menu.Edit.Replace: "Sostituisci"
-Menu.Edit.Preferences: "Preferenze"
-
-# View Menu
-Menu.View.CommandPalette: "Palette Comandi"
-Menu.View.ToggleFullscreen: "Attiva/Disattiva Schermo Intero"
-Menu.View.ZoomIn: "Aumenta Zoom"
-Menu.View.ZoomOut: "Riduci Zoom"
-Menu.View.ResetZoom: "Reimposta Zoom"
-Menu.View.Panels: "Pannelli"
-Menu.View.TogglePanel: "Attiva/Disattiva Pannello"
-Menu.View.Console: "Console"
-Menu.View.Inspector: "Ispettore"
-Menu.View.Profiler: "Profiler"
-
-# Help Menu
-Menu.Help.Documentation: "Documentazione"
-Menu.Help.GettingStarted: "Guida Introduttiva"
-Menu.Help.Tutorials: "Tutorial"
-Menu.Help.API: "Riferimento API"
-Menu.Help.ReportBug: "Segnala Bug"
-Menu.Help.RequestFeature: "Richiedi Funzionalità"
-Menu.Help.Community: "Comunità"
-Menu.Help.About: "Info su Pulsar"
+Calendar.week.0: Do
+Calendar.week.1: Lu
+Calendar.week.2: Ma
+Calendar.week.3: Me
+Calendar.week.4: Gi
+Calendar.week.5: Ve
+Calendar.week.6: Sa
+Calendar.month.January: Gennaio
+Calendar.month.February: Febbraio
+Calendar.month.March: Marzo
+Calendar.month.April: Aprile
+Calendar.month.May: Maggio
+Calendar.month.June: Giugno
+Calendar.month.July: Luglio
+Calendar.month.August: Agosto
+Calendar.month.September: Settembre
+Calendar.month.October: Ottobre
+Calendar.month.November: Novembre
+Calendar.month.December: Dicembre
+DatePicker.placeholder: "Seleziona data"
+Dropdown.placeholder: Seleziona
+Dock.Unnamed: "Senza nome"
+Dock.Close: Chiudi
+Dock.Zoom In: Zoom In
+Dock.Zoom Out: Zoom Out
+Dock.Collapse: Nascondi
+Dock.Expand: Espandi
+Modal.ok: OK
+Modal.cancel: Annulla
+List.search_placeholder: Ricerca...
+Menu.File: File
+Menu.Edit: Modifica
+Menu.View: Visualizza
+Menu.Help: Aiuto
+Menu.File.New: Nuovo
+Menu.File.NewFile: Nuovo File
+Menu.File.NewWindow: Nuova Finestra
+Menu.File.NewProject: Nuovo Progetto
+Menu.File.NewScene: Nuova Scena
+Menu.File.NewScript: Nuovo Script
+Menu.File.NewShader: Nuovo Shader
+Menu.File.NewMaterial: Nuovo Materiale
+Menu.File.NewPrefab: Nuovo Prefab
+Menu.File.NewBlueprint: Nuovo Blueprint
+Menu.File.NewComponent: Nuovo Componente
+Menu.File.NewSystem: Nuovo Sistema
+Menu.File.Open: Apri
+Menu.File.OpenFolder: Apri Cartella
+Menu.File.OpenRecent: Apri Recenti
+Menu.File.RecentProjects: Progetti Recenti
+Menu.File.RecentFiles: File Recenti
+Menu.File.ClearRecent: Cancella Recenti
+Menu.File.Save: Salva
+Menu.File.SaveAs: Salva Come...
+Menu.File.SaveAll: Salva Tutto
+Menu.File.SaveWorkspace: Salva Workspace
+Menu.File.Import: Importa
+Menu.File.ImportAsset: Importa Risorsa
+Menu.File.ImportModel: Importa Modello (FBX/GLTF)
+Menu.File.ImportTexture: Importa Texture
+Menu.File.ImportAudio: Importa Audio
+Menu.File.BatchImport: Importazione Batch
+Menu.File.ImportFromUnity: Importa da Unity
+Menu.File.ImportFromUnreal: Importa da Unreal
+Menu.File.ImportFromGodot: Importa da Godot
+Menu.File.Export: Esporta
+Menu.File.ExportBuild: Esporta Build
+Menu.File.ExportScene: Esporta Scena
+Menu.File.ExportSelected: Esporta Selezionati
+Menu.File.ExportWindows: Esporta per Windows
+Menu.File.ExportLinux: Esporta per Linux
+Menu.File.ExportMacOS: Esporta per macOS
+Menu.File.ExportWeb: Esporta per Web (WASM)
+Menu.File.ExportAndroid: Esporta per Android
+Menu.File.ExportIOS: Esporta per iOS
+Menu.File.RevertFile: Ripristina File
+Menu.File.CloseFile: Chiudi File
+Menu.File.CloseFolder: Chiudi Cartella
+Menu.File.CloseAll: Chiudi Tutto
+Menu.File.CloseOthers: Chiudi Altri
+Menu.Edit.Undo: Annulla
+Menu.Edit.Redo: Ripeti
+Menu.Edit.Cut: Taglia
+Menu.Edit.Copy: Copia
+Menu.Edit.Paste: Incolla
+Menu.Edit.Delete: Elimina
+Menu.Edit.Duplicate: Duplica
+Menu.Edit.SelectAll: Seleziona Tutto
+Menu.Edit.Find: Trova
+Menu.Edit.FindInFiles: Trova nei File
+Menu.Edit.Replace: Sostituisci
+Menu.Edit.Preferences: Preferenze
+Menu.View.CommandPalette: Palette Comandi
+Menu.View.ToggleFullscreen: Attiva/Disattiva Schermo Intero
+Menu.View.ZoomIn: Aumenta Zoom
+Menu.View.ZoomOut: Riduci Zoom
+Menu.View.ResetZoom: Reimposta Zoom
+Menu.View.Panels: Pannelli
+Menu.View.TogglePanel: Attiva/Disattiva Pannello
+Menu.View.Console: Console
+Menu.View.Inspector: Ispettore
+Menu.View.Profiler: Profiler
+Menu.Help.Documentation: Documentazione
+Menu.Help.GettingStarted: Guida Introduttiva
+Menu.Help.Tutorials: Tutorial
+Menu.Help.API: Riferimento API
+Menu.Help.ReportBug: Segnala Bug
+Menu.Help.RequestFeature: Richiedi Funzionalit├á
+Menu.Help.Community: Comunit ├á
+Menu.Help.About: Info su Pulsar
