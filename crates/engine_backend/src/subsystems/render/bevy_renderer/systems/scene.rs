@@ -11,6 +11,7 @@ pub fn setup_scene(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     shared_textures: Res<SharedTexturesResource>,
+    asset_server: Res<AssetServer>,
 ) {
     tracing::debug!("[BEVY] 🎬 Setting up scene...");
 
@@ -87,7 +88,7 @@ pub fn setup_scene(
                     Ok(level) => {
                         println!("[BEVY DEBUG] ✅ JSON parsing successful! Found {} objects", level.game_objects.len());
                         tracing::debug!("[BEVY] ✅ Level file parsed successfully");
-                        spawn_level_objects(&mut commands, &mut meshes, &mut materials, &level, &mut id);
+                        spawn_level_objects(&mut commands, &mut meshes, &mut materials, &level, &mut id, &asset_server);
                         tracing::debug!("[BEVY] ✅ Level loaded with {} objects", id - 1);
                     }
                     Err(e) => {
@@ -212,7 +213,14 @@ struct MaterialData {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
 enum MeshType {
+    Primitive(PrimitiveMeshType),
+    File { file: String },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+enum PrimitiveMeshType {
     Cube,
     Sphere,
     Cylinder,
@@ -225,15 +233,34 @@ fn spawn_level_objects(
     materials: &mut ResMut<Assets<StandardMaterial>>,
     level: &LevelData,
     id: &mut u32,
+    asset_server: &Res<AssetServer>,
 ) {
     for obj in &level.game_objects {
         let scale = &obj.transform.scale;
-        let mesh = match obj.mesh_type {
-            MeshType::Cube => meshes.add(Cuboid::new(scale[0], scale[1], scale[2])),
-            MeshType::Sphere => meshes.add(Sphere::new(scale[0]).mesh().ico(5).unwrap()),
-            MeshType::Cylinder => meshes.add(Cylinder::new(scale[0], scale[1])),
-            MeshType::Plane => meshes.add(Cuboid::new(scale[0], 0.1, scale[2])),
+        
+        let mesh = match &obj.mesh_type {
+            MeshType::Primitive(prim) => {
+                Some(match prim {
+                    PrimitiveMeshType::Cube => meshes.add(Cuboid::new(scale[0], scale[1], scale[2])),
+                    PrimitiveMeshType::Sphere => meshes.add(Sphere::new(scale[0]).mesh().ico(5).unwrap()),
+                    PrimitiveMeshType::Cylinder => meshes.add(Cylinder::new(scale[0], scale[1])),
+                    PrimitiveMeshType::Plane => meshes.add(Cuboid::new(scale[0], 0.1, scale[2])),
+                })
+            }
+            MeshType::File { file } => {
+                // Load GLTF file - for now just log and skip
+                tracing::warn!("[BEVY] ⚠️ GLTF mesh requested but not yet implemented: {}", file);
+                println!("[BEVY] ⚠️ GLTF mesh '{}' skipped - not yet implemented", file);
+                None
+            }
         };
+        
+        if mesh.is_none() {
+            *id += 1;
+            continue;
+        }
+        
+        let mesh = mesh.unwrap();
 
         let rotation = Quat::from_euler(
             EulerRot::XYZ,

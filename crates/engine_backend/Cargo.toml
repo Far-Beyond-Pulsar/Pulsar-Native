@@ -45,6 +45,7 @@ bevy = { version = "0.17.2", default-features = false, features = [
     "bevy_asset",
     "bevy_winit",
     "bevy_pbr",
+    "bevy_gltf",
     "x11",
     "wayland",
 ] }
