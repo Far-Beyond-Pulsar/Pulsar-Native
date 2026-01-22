@@ -16,7 +16,7 @@ use super::systems::{
     sync_game_objects_system, update_gizmo_target_system,
     update_camera_viewport_system,
     update_metrics_system, update_gpu_profiler_system,
-    setup_scene, swap_render_buffers_system, debug_rendering_system,
+    setup_scene, swap_render_buffers_system, debug_rendering_system, debug_asset_loading,
 };
 use super::textures::*;
 use super::gizmos::rendering::{
@@ -217,6 +217,7 @@ impl BevyRenderer {
             .add_systems(Update, update_gizmo_visuals)             // Level editor gizmos
             .add_systems(Update, update_selection_highlighting)    // Selection outlines
             .add_systems(Update, debug_rendering_system)           // Add debug system
+            .add_systems(Update, debug_asset_loading)              // Monitor asset loading
             .add_systems(Update, swap_render_buffers_system);      // CRITICAL: Swap buffers for double-buffering
 
         // Render world systems

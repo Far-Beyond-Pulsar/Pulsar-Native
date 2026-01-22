@@ -41,5 +41,5 @@ pub use sync::{
 };
 pub use metrics::{update_metrics_system, update_gpu_profiler_system};
 pub use scene::{
-    setup_scene, swap_render_buffers_system, debug_rendering_system,
+    setup_scene, swap_render_buffers_system, debug_rendering_system, debug_asset_loading,
 };

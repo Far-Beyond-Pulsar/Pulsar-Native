@@ -3,6 +3,7 @@
 use bevy::prelude::*;
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::gltf::{Gltf, GltfMesh};
+use bevy::asset::{AssetServer, LoadState};
 use crate::subsystems::render::bevy_renderer::core::{MainCamera, GameObjectId, SharedTexturesResource};
 use std::path::Path;
 
@@ -260,7 +261,7 @@ fn spawn_level_objects(
                 })
             }
             MeshType::File { file } => {
-                // Load mesh file - supports OBJ via bevy_obj plugin
+                // Load mesh file directly as Mesh (not Scene)
                 tracing::debug!("[BEVY] 📦 Loading mesh: {}", file);
                 println!("[BEVY] 📦 Loading mesh: {}", file);
                 
@@ -275,12 +276,37 @@ fn spawn_level_objects(
                 let asset_path = format!("scenes/{}", file);
                 println!("[BEVY DEBUG] Loading mesh from: {}", asset_path);
                 
-                // Load as a scene - OBJ plugin handles this automatically
-                let scene_handle: Handle<Scene> = asset_server.load(&asset_path);
+                // Load directly as a Mesh handle - materials must be set manually
+                let mesh_handle: Handle<Mesh> = asset_server.load(&asset_path);
                 
-                // CRITICAL: SceneRoot parent MUST have visibility components or children won't render!
+                // Use material from level file if provided, otherwise use default
+                let material = if let Some(mat) = &obj.material {
+                    let color = mat.color.as_ref().map(|c| {
+                        if c.len() >= 3 {
+                            [c[0], c[1], c[2]]
+                        } else {
+                            [0.8, 0.8, 0.8]
+                        }
+                    }).unwrap_or([0.8, 0.8, 0.8]);
+                    
+                    materials.add(StandardMaterial {
+                        base_color: Color::srgb(color[0], color[1], color[2]),
+                        metallic: mat.metallic.unwrap_or(0.0),
+                        perceptual_roughness: mat.roughness.unwrap_or(0.5),
+                        ..default()
+                    })
+                } else {
+                    // Default gray material
+                    materials.add(StandardMaterial {
+                        base_color: Color::srgb(0.7, 0.7, 0.7),
+                        ..default()
+                    })
+                };
+                
+                // Spawn as a regular mesh entity
                 commands.spawn((
-                    SceneRoot(scene_handle),
+                    Mesh3d(mesh_handle),
+                    MeshMaterial3d(material),
                     Transform::from_translation(Vec3::new(
                         obj.transform.position[0],
                         obj.transform.position[1],
@@ -288,14 +314,11 @@ fn spawn_level_objects(
                     ))
                     .with_rotation(rotation)
                     .with_scale(Vec3::new(scale[0], scale[1], scale[2])),
-                    GlobalTransform::default(),
-                    Visibility::default(),
-                    InheritedVisibility::default(),
-                    ViewVisibility::default(),
                     GameObjectId((*id).into()),
                 ));
                 
-                println!("[BEVY] ✅ Mesh scene entity spawned with visibility components");
+                println!("[BEVY] ✅ OBJ mesh spawned at ({}, {}, {}) - specify material in level file",
+                    obj.transform.position[0], obj.transform.position[1], obj.transform.position[2]);
                 *id += 1;
                 continue;
             }
@@ -420,4 +443,23 @@ pub fn debug_rendering_system(
     mut _counter: Local<u32>,
 ) {
     // Any debug info can be printed here
+}
+
+// System to monitor asset loading status
+pub fn debug_asset_loading(
+    asset_server: Res<AssetServer>,
+    meshes: Res<Assets<Mesh>>,
+    mut last_check: Local<f32>,
+    time: Res<Time>,
+) {
+    *last_check += time.delta_secs();
+    if *last_check < 2.0 {
+        return;
+    }
+    *last_check = 0.0;
+    
+    let mesh_count = meshes.len();
+    if mesh_count > 0 {
+        println!("[BEVY ASSETS] Loaded meshes count: {}", mesh_count);
+    }
 }
