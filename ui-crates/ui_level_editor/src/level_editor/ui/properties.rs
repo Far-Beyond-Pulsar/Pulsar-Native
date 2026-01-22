@@ -7,6 +7,7 @@ use ui::{
 };
 use std::sync::Arc;
 use std::collections::HashSet;
+use rust_i18n::t;
 
 use super::state::{LevelEditorState, Transform};
 use crate::level_editor::scene_database::ObjectType;
@@ -107,7 +108,7 @@ impl PropertiesPanel {
                             .text_base()
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(cx.theme().foreground)
-                            .child("Properties")
+                            .child(t!("LevelEditor.Properties.Title"))
                     )
                     .when(has_selection, |this| {
                         this.child(
@@ -119,7 +120,7 @@ impl PropertiesPanel {
                                 .text_xs()
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(cx.theme().accent)
-                                .child("1 selected")
+                                .child(t!("LevelEditor.Properties.Selected"))
                         )
                     })
             )
@@ -155,14 +156,14 @@ impl PropertiesPanel {
                             .text_base()
                             .font_weight(FontWeight::MEDIUM)
                             .text_color(cx.theme().muted_foreground)
-                            .child("No Selection")
+                            .child(t!("LevelEditor.Properties.NoSelection"))
                     )
                     .child(
                         div()
                             .text_sm()
                             .text_color(cx.theme().muted_foreground.opacity(0.7))
                             .text_center()
-                            .child("Select an object in the scene to view and edit its properties")
+                            .child(t!("LevelEditor.Properties.NoSelectionDesc"))
                     )
             )
     }

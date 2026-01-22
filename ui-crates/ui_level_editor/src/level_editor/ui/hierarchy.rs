@@ -5,6 +5,7 @@ use ui::{
     h_flex, v_flex, scroll::ScrollbarAxis, ActiveTheme, Icon, IconName, Sizable, StyledExt,
 };
 use std::sync::Arc;
+use rust_i18n::t;
 
 use super::state::{LevelEditorState, SceneObject};
 use super::actions::*;
@@ -67,7 +68,7 @@ impl HierarchyPanel {
                                     .text_base()
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .text_color(cx.theme().foreground)
-                                    .child("Hierarchy")
+                                    .child(t!("LevelEditor.Hierarchy.Title"))
                             )
                             .child(
                                 div()
@@ -90,7 +91,7 @@ impl HierarchyPanel {
                                     .icon(IconName::Plus)
                                     .ghost()
                                     .xsmall()
-                                    .tooltip("Add Object")
+                                    .tooltip(t!("LevelEditor.Hierarchy.AddObject"))
                                     .on_click(move |_, _, _| {
                                         use crate::level_editor::scene_database::{SceneObjectData, ObjectType, Transform};
                                         let objects_count = state_clone.read().scene_objects().len();
@@ -114,7 +115,7 @@ impl HierarchyPanel {
                                     .icon(IconName::FolderPlus)
                                     .ghost()
                                     .xsmall()
-                                    .tooltip("Add Folder")
+                                    .tooltip(t!("LevelEditor.Hierarchy.AddFolder"))
                                     .on_click(move |_, _, _| {
                                         use crate::level_editor::scene_database::{SceneObjectData, ObjectType, Transform};
                                         let objects_count = state_clone.read().scene_objects().len();
@@ -138,7 +139,7 @@ impl HierarchyPanel {
                                     .icon(IconName::Trash)
                                     .ghost()
                                     .xsmall()
-                                    .tooltip("Delete Selected")
+                                    .tooltip(t!("LevelEditor.Hierarchy.DeleteSelected"))
                                     .on_click(move |_, _, _| {
                                         if let Some(id) = state_clone.read().selected_object() {
                                             state_clone.read().scene_database.remove_object(&id);
@@ -181,7 +182,7 @@ impl HierarchyPanel {
                                     .border_color(cx.theme().border)
                                     .text_xs()
                                     .text_color(cx.theme().muted_foreground)
-                                    .child("Drop here to make root-level")
+                                    .child(t!("LevelEditor.Hierarchy.DropHere"))
                                     .on_mouse_up(MouseButton::Left, move |_, _, _| {
                                         let mut state_write = state_clone_for_root_drop.write();
                                         if let HierarchyDragState::DraggingObject { object_id: dragged_id, .. } = &state_write.hierarchy_drag_state {
