@@ -49,6 +49,7 @@ bevy = { version = "0.17.2", default-features = false, features = [
     "x11",
     "wayland",
 ] }
+bevy_obj = "0.17"
 wgpu = "26"
 wgpu-hal = "26"
 wgpu-types = "26"

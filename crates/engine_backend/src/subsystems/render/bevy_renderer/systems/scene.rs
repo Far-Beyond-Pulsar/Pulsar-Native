@@ -2,6 +2,7 @@
 
 use bevy::prelude::*;
 use bevy::core_pipeline::tonemapping::Tonemapping;
+use bevy::gltf::{Gltf, GltfMesh};
 use crate::subsystems::render::bevy_renderer::core::{MainCamera, GameObjectId, SharedTexturesResource};
 use std::path::Path;
 
@@ -120,6 +121,17 @@ pub fn setup_scene(
         },
         Transform::from_xyz(4.0, 8.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
+    
+    // DEBUG: Small blue sphere at origin to verify rendering works
+    commands.spawn((
+        Mesh3d(meshes.add(Sphere::new(0.5))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.0, 0.5, 1.0),
+            ..default()
+        })),
+        Transform::from_xyz(0.0, 0.0, 0.0),
+    ));
+    println!("[BEVY DEBUG] 🔵 Debug blue sphere spawned at origin");
     
     // Ambient light
     commands.insert_resource(AmbientLight {
@@ -248,10 +260,44 @@ fn spawn_level_objects(
                 })
             }
             MeshType::File { file } => {
-                // Load GLTF file - for now just log and skip
-                tracing::warn!("[BEVY] ⚠️ GLTF mesh requested but not yet implemented: {}", file);
-                println!("[BEVY] ⚠️ GLTF mesh '{}' skipped - not yet implemented", file);
-                None
+                // Load mesh file - supports OBJ via bevy_obj plugin
+                tracing::debug!("[BEVY] 📦 Loading mesh: {}", file);
+                println!("[BEVY] 📦 Loading mesh: {}", file);
+                
+                let rotation = Quat::from_euler(
+                    EulerRot::XYZ,
+                    obj.transform.rotation[0].to_radians(),
+                    obj.transform.rotation[1].to_radians(),
+                    obj.transform.rotation[2].to_radians(),
+                );
+                
+                // File path is relative to level file, resolve to project root
+                let asset_path = format!("scenes/{}", file);
+                println!("[BEVY DEBUG] Loading mesh from: {}", asset_path);
+                
+                // Load as a scene - OBJ plugin handles this automatically
+                let scene_handle: Handle<Scene> = asset_server.load(&asset_path);
+                
+                // CRITICAL: SceneRoot parent MUST have visibility components or children won't render!
+                commands.spawn((
+                    SceneRoot(scene_handle),
+                    Transform::from_translation(Vec3::new(
+                        obj.transform.position[0],
+                        obj.transform.position[1],
+                        obj.transform.position[2],
+                    ))
+                    .with_rotation(rotation)
+                    .with_scale(Vec3::new(scale[0], scale[1], scale[2])),
+                    GlobalTransform::default(),
+                    Visibility::default(),
+                    InheritedVisibility::default(),
+                    ViewVisibility::default(),
+                    GameObjectId((*id).into()),
+                ));
+                
+                println!("[BEVY] ✅ Mesh scene entity spawned with visibility components");
+                *id += 1;
+                continue;
             }
         };
         

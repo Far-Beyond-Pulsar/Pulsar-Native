@@ -132,8 +132,20 @@ impl BevyRenderer {
         #[cfg(target_os = "linux")]
         let backend_config = bevy::render::settings::Backends::VULKAN;
         
+        // Configure Bevy's asset server to use the project directory as the asset root
+        let project_path = engine_state::get_project_path()
+            .unwrap_or("C:\\Users\\redst\\OneDrive\\Documents\\Pulsar_Projects\\blank_project")
+            .to_string();
+        
+        tracing::debug!("[BEVY] 📁 Setting asset path to project directory: {}", project_path);
+        println!("[BEVY] 📁 Asset path set to: {}", project_path);
+        
         app.add_plugins(
             DefaultPlugins
+                .set(bevy::asset::AssetPlugin {
+                    file_path: project_path,
+                    ..default()
+                })
                 .set(bevy::window::WindowPlugin {
                     primary_window: Some(bevy::window::Window {
                         present_mode: bevy::window::PresentMode::Immediate,
@@ -151,8 +163,11 @@ impl BevyRenderer {
                     ),
                     ..default()
                 })
-                .disable::<bevy::winit::WinitPlugin>()
+                .disable::<bevy::winit::WinitPlugin>(),
         );
+        
+        // Add OBJ file support plugin
+        app.add_plugins(bevy_obj::ObjPlugin);
 
         app.add_plugins(bevy::app::ScheduleRunnerPlugin::run_loop(
             Duration::ZERO //Duration::from_secs_f64(1.0 / 3000.0),
