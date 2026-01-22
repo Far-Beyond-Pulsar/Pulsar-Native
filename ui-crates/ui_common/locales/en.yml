@@ -123,3 +123,243 @@ Menu.Help.ReportBug: Report Bug
 Menu.Help.RequestFeature: Request Feature
 Menu.Help.Community: Community
 Menu.Help.About: About Pulsar
+Menu.Edit.SelectNone: Select None
+Menu.Edit.FindNext: Find Next
+Menu.Edit.FindPrevious: Find Previous
+Menu.Edit.ReplaceNext: Replace Next
+Menu.Edit.ReplaceAll: Replace All
+Menu.Edit.ReplaceInFiles: Replace in Files
+Menu.Edit.FindUsages: Find Usages
+Menu.Edit.FindImplementations: Find Implementations
+Menu.Edit.CodeActions: Code Actions
+Menu.Edit.FormatDocument: Format Document
+Menu.Edit.FormatSelection: Format Selection
+Menu.Edit.CommentLine: Comment Line
+Menu.Edit.UncommentLine: Uncomment Line
+Menu.Edit.ToggleComment: Toggle Comment
+Menu.Edit.Fold: Fold
+Menu.Edit.Unfold: Unfold
+Menu.Edit.FoldAll: Fold All
+Menu.Edit.UnfoldAll: Unfold All
+Menu.Edit.SortLines: Sort Lines
+Menu.Edit.RemoveDuplicates: Remove Duplicates
+Menu.Edit.TrimWhitespace: Trim Trailing Whitespace
+Menu.Selection: Selection
+Menu.Selection.SelectLine: Select Line
+Menu.Selection.SelectWord: Select Word
+Menu.Selection.SelectScope: Select Scope
+Menu.Selection.ExpandSelection: Expand Selection
+Menu.Selection.ShrinkSelection: Shrink Selection
+Menu.Selection.AddCursorAbove: Add Cursor Above
+Menu.Selection.AddCursorBelow: Add Cursor Below
+Menu.Selection.AddCursorLineEnds: Add Cursor at Line Ends
+Menu.Selection.SelectAllOccurrences: Select All Occurrences
+Menu.Selection.SelectNextOccurrence: Select Next Occurrence
+Menu.Selection.SkipOccurrence: Skip Occurrence
+Menu.View.Explorer: Explorer
+Menu.View.Hierarchy: Scene Hierarchy
+Menu.View.AssetBrowser: Asset Browser
+Menu.View.Output: Output
+Menu.View.Problems: Problems
+Menu.View.Debug: Debug
+Menu.View.MemoryAnalyzer: Memory Analyzer
+Menu.View.Network: Network
+Menu.View.Appearance: Appearance
+Menu.View.Layout: Layout
+Menu.View.SplitHorizontal: Split Horizontal
+Menu.View.SplitVertical: Split Vertical
+Menu.View.SingleColumn: Single Column
+Menu.View.TwoColumns: Two Columns
+Menu.View.ThreeColumns: Three Columns
+Menu.View.ResetLayout: Reset Layout
+Menu.View.SaveLayout: Save Layout
+Menu.View.QuickOpen: Quick Open
+Menu.Go: Go
+Menu.Go.GoToFile: Go to File
+Menu.Go.GoToSymbol: Go to Symbol
+Menu.Go.GoToLine: Go to Line
+Menu.Go.GoToDefinition: Go to Definition
+Menu.Go.GoToTypeDefinition: Go to Type Definition
+Menu.Go.GoToImplementation: Go to Implementation
+Menu.Go.GoToReferences: Go to References
+Menu.Go.GoBack: Go Back
+Menu.Go.GoForward: Go Forward
+Menu.Go.GoToLastEdit: Go to Last Edit
+Menu.Go.NextProblem: Next Problem
+Menu.Go.PreviousProblem: Previous Problem
+Menu.Project: Project
+Menu.Project.ProjectSettings: Project Settings
+Menu.Project.BuildSettings: Build Settings
+Menu.Project.PackageSettings: Package Settings
+Menu.Project.Dependencies: Dependencies
+Menu.Project.AddDependency: Add Dependency
+Menu.Project.UpdateDependencies: Update Dependencies
+Menu.Project.RemoveUnused: Remove Unused
+Menu.Project.OpenCargoToml: Cargo.toml
+Menu.Project.GenerateDocs: Generate Documentation
+Menu.Project.RunCargoCheck: Run Cargo Check
+Menu.Project.RunClippy: Run Clippy
+Menu.Project.FormatProject: Format Project
+Menu.Build: Build
+Menu.Build.BuildProject: Build Project
+Menu.Build.BuildAndRun: Build & Run
+Menu.Build.BuildRelease: Build Release
+Menu.Build.Rebuild: Rebuild All
+Menu.Build.Clean: Clean Build
+Menu.Build.BuildConfiguration: Build Configuration
+Menu.Build.BuildDebug: Debug
+Menu.Build.BuildReleaseDebug: Release with Debug Info
+Menu.Build.BuildProfile: Profile
+Menu.Build.CancelBuild: Cancel Build
+Menu.Build.ShowBuildOutput: Show Build Output
+Menu.Run: Run
+Menu.Run.RunProject: Run Project
+Menu.Run.RunWithoutDebug: Run Without Debugging
+Menu.Run.Stop: Stop
+Menu.Run.Restart: Restart
+Menu.Run.DebugProject: Debug Project
+Menu.Run.Debugging: Debugging
+Menu.Run.StartDebug: Start Debugging
+Menu.Run.StopDebug: Stop Debugging
+Menu.Run.RestartDebug: Restart Debugging
+Menu.Run.StepOver: Step Over
+Menu.Run.StepInto: Step Into
+Menu.Run.StepOut: Step Out
+Menu.Run.Continue: Continue
+Menu.Run.ToggleBreakpoint: Toggle Breakpoint
+Menu.Run.DisableBreakpoints: Disable All Breakpoints
+Menu.Run.RemoveBreakpoints: Remove All Breakpoints
+Menu.Run.Testing: Testing
+Menu.Run.RunTests: Run All Tests
+Menu.Run.RunFailedTests: Run Failed Tests
+Menu.Run.RunFileTests: Run Tests in File
+Menu.Run.DebugTest: Debug Test
+Menu.Run.RunCoverage: Coverage
+Menu.Run.Performance: Performance
+Menu.Run.RunBenchmarks: Run Benchmarks
+Menu.Run.CompareBenchmarks: Compare Benchmarks
+Menu.Run.ProfileBuild: Profile Build
+Menu.GameEngine: Game Engine
+Menu.GameEngine.Scene: Scene
+Menu.GameEngine.NewScene: New Scene
+Menu.GameEngine.OpenScene: Open Scene
+Menu.GameEngine.SaveScene: Save Scene
+Menu.GameEngine.SaveSceneAs: Save Scene As
+Menu.GameEngine.PlayScene: Play Scene
+Menu.GameEngine.PauseScene: Pause Scene
+Menu.GameEngine.StopScene: Stop Scene
+Menu.GameEngine.SceneSettings: Scene Settings
+Menu.GameEngine.GameObject: GameObject
+Menu.GameEngine.CreateEmpty: Create Empty
+Menu.GameEngine.3DObjects: 3D Objects
+Menu.GameEngine.CreateCube: Cube
+Menu.GameEngine.CreateSphere: Sphere
+Menu.GameEngine.CreateCapsule: Capsule
+Menu.GameEngine.CreateCylinder: Cylinder
+Menu.GameEngine.CreatePlane: Plane
+Menu.GameEngine.CreateTerrain: Terrain
+Menu.GameEngine.2DObjects: 2D Objects
+Menu.GameEngine.CreateSprite: Sprite
+Menu.GameEngine.CreateTilemap: Tilemap
+Menu.GameEngine.CreateParticles2D: Particle System 2D
+Menu.GameEngine.Light: Light
+Menu.GameEngine.CreateDirectionalLight: Directional Light
+Menu.GameEngine.CreatePointLight: Point Light
+Menu.GameEngine.CreateSpotLight: Spot Light
+Menu.GameEngine.CreateAreaLight: Area Light
+Menu.GameEngine.Audio: Audio
+Menu.GameEngine.CreateAudioSource: Audio Source
+Menu.GameEngine.CreateAudioListener: Audio Listener
+Menu.GameEngine.Effects: Effects
+Menu.GameEngine.CreateParticleSystem: Particle System
+Menu.GameEngine.CreateVFX: Visual Effect
+Menu.GameEngine.CreatePostProcessing: Post Processing
+Menu.GameEngine.Camera: Camera
+Menu.GameEngine.CreateCamera: Camera
+Menu.GameEngine.CreateOrthoCamera: Orthographic Camera
+Menu.GameEngine.UI: UI
+Menu.GameEngine.CreateCanvas: Canvas
+Menu.GameEngine.CreatePanel: Panel
+Menu.GameEngine.CreateButton: Button
+Menu.GameEngine.CreateText: Text
+Menu.GameEngine.CreateImage: Image
+Menu.GameEngine.CreateSlider: Slider
+Menu.GameEngine.CreateInputField: Input Field
+Menu.GameEngine.Physics: Physics
+Menu.GameEngine.AddRigidbody: Add Rigidbody
+Menu.GameEngine.AddCollider: Add Collider
+Menu.GameEngine.AddCharacterController: Add Character Controller
+Menu.GameEngine.PhysicsSettings: Physics Settings
+Menu.GameEngine.CollisionMatrix: Collision Matrix
+Menu.GameEngine.Rendering: Rendering
+Menu.GameEngine.RenderSettings: Render Settings
+Menu.GameEngine.LightingSettings: Lighting Settings
+Menu.GameEngine.QualitySettings: Quality Settings
+Menu.GameEngine.BakeLighting: Bake Lighting
+Menu.GameEngine.ClearBakedData: Clear Baked Data
+Menu.GameEngine.FrameDebugger: Frame Debugger
+Menu.GameEngine.EngineProfiler: Profiler
+Menu.GameEngine.PackageManager: Package Manager
+Menu.GameEngine.AssetStore: Asset Store
+Menu.Assets: Assets
+Menu.Assets.CreateAsset: Create Asset
+Menu.Assets.ImportAsset: Import Asset
+Menu.Assets.Create: Create
+Menu.Assets.CreateMaterial: Material
+Menu.Assets.CreateShader: Shader
+Menu.Assets.CreateTexture: Texture
+Menu.Assets.CreateAnimClip: Animation Clip
+Menu.Assets.CreateAnimController: Animator Controller
+Menu.Assets.CreateAudioMixer: Audio Mixer
+Menu.Assets.CreateRenderTexture: Render Texture
+Menu.Assets.CreatePrefab: Prefab
+Menu.Assets.CreateScriptableObject: ScriptableObject
+Menu.Assets.Refresh: Refresh
+Menu.Assets.Reimport: Reimport
+Menu.Assets.ReimportAll: Reimport All
+Menu.Assets.FindReferences: Find References
+Menu.Assets.FindMissingReferences: Find Missing References
+Menu.Tools: Tools
+Menu.Tools.Rust: Rust
+Menu.Tools.CargoCommands: Cargo Commands
+Menu.Tools.GenerateRustAnalyzer: Generate Rust-Analyzer
+Menu.Tools.ExpandMacro: Expand Macro
+Menu.Tools.ShowSyntaxTree: Show Syntax Tree
+Menu.Tools.ShowHIR: Show HIR
+Menu.Tools.InlineVariable: Inline Variable
+Menu.Tools.ExtractFunction: Extract Function
+Menu.Tools.ExtractVariable: Extract Variable
+Menu.Tools.Shaders: Shaders
+Menu.Tools.ShaderEditor: Shader Editor
+Menu.Tools.CompileShader: Compile Shader
+Menu.Tools.ShaderVariants: Shader Variants
+Menu.Tools.SPIRVDisassembly: SPIR-V Disassembly
+Menu.Tools.Animation: Animation
+Menu.Tools.AnimationWindow: Animation Window
+Menu.Tools.AnimatorWindow: Animator
+Menu.Tools.Timeline: Timeline
+Menu.Tools.MaterialEditor: Material Editor
+Menu.Tools.TerrainTools: Terrain Tools
+Menu.Tools.ParticleEditor: Particle Editor
+Menu.Tools.AudioMixerWindow: Audio Mixer
+Menu.Tools.VersionControl: Version Control
+Menu.Tools.TaskManager: Task Manager
+Menu.Tools.Extensions: Extensions
+Menu.Window: Window
+Menu.Window.Minimize: Minimize
+Menu.Window.Zoom: Zoom
+Menu.Window.BringAllToFront: Bring All to Front
+Menu.Window.NewWindow: New Window
+Menu.Window.CloseWindow: Close Window
+Menu.Help.Shortcuts: Keyboard Shortcuts
+Menu.Help.ViewLogs: View Logs
+Menu.Help.CheckUpdates: Check for Updates
+Menu.Help.ReleaseNotes: Release Notes
+Menu.App.AboutApp: About Pulsar Engine
+Menu.App.CheckUpdates: Check for Updates
+Menu.App.Preferences: Preferences
+Menu.App.Settings: Settings
+Menu.App.Hide: Hide Pulsar
+Menu.App.HideOthers: Hide Others
+Menu.App.ShowAll: Show All
+Menu.App.QuitApp: Quit Pulsar

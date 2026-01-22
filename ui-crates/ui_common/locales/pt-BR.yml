@@ -123,3 +123,243 @@ Menu.Help.ReportBug: Reportar Bug
 Menu.Help.RequestFeature: Solicitar Recurso
 Menu.Help.Community: Comunidade
 Menu.Help.About: Sobre Pulsar
+Menu.Edit.SelectNone: Desselecionar Tudo
+Menu.Edit.FindNext: Localizar Próximo
+Menu.Edit.FindPrevious: Localizar Anterior
+Menu.Edit.ReplaceNext: Substituir Próximo
+Menu.Edit.ReplaceAll: Substituir Tudo
+Menu.Edit.ReplaceInFiles: Substituir em Arquivos
+Menu.Edit.FindUsages: Localizar Usos
+Menu.Edit.FindImplementations: Localizar Implementações
+Menu.Edit.CodeActions: Ações de Código
+Menu.Edit.FormatDocument: Formatar Documento
+Menu.Edit.FormatSelection: Formatar Seleção
+Menu.Edit.CommentLine: Comentar Linha
+Menu.Edit.UncommentLine: Descomentar Linha
+Menu.Edit.ToggleComment: Alternar Comentário
+Menu.Edit.Fold: Recolher
+Menu.Edit.Unfold: Expandir
+Menu.Edit.FoldAll: Recolher Tudo
+Menu.Edit.UnfoldAll: Expandir Tudo
+Menu.Edit.SortLines: Ordenar Linhas
+Menu.Edit.RemoveDuplicates: Remover Duplicados
+Menu.Edit.TrimWhitespace: Remover Espaços em Branco Finais
+Menu.Selection: Seleção
+Menu.Selection.SelectLine: Selecionar Linha
+Menu.Selection.SelectWord: Selecionar Palavra
+Menu.Selection.SelectScope: Selecionar Escopo
+Menu.Selection.ExpandSelection: Expandir Seleção
+Menu.Selection.ShrinkSelection: Reduzir Seleção
+Menu.Selection.AddCursorAbove: Adicionar Cursor Acima
+Menu.Selection.AddCursorBelow: Adicionar Cursor Abaixo
+Menu.Selection.AddCursorLineEnds: Adicionar Cursor no Fim da Linha
+Menu.Selection.SelectAllOccurrences: Selecionar Todas as Ocorrências
+Menu.Selection.SelectNextOccurrence: Selecionar Próxima Ocorrência
+Menu.Selection.SkipOccurrence: Pular Ocorrência
+Menu.View.Explorer: Explorador
+Menu.View.Hierarchy: Hierarquia da Cena
+Menu.View.AssetBrowser: Navegador de Assets
+Menu.View.Output: Saída
+Menu.View.Problems: Problemas
+Menu.View.Debug: Depuração
+Menu.View.MemoryAnalyzer: Analisador de Memória
+Menu.View.Network: Rede
+Menu.View.Appearance: Aparência
+Menu.View.Layout: Layout
+Menu.View.SplitHorizontal: Dividir Horizontalmente
+Menu.View.SplitVertical: Dividir Verticalmente
+Menu.View.SingleColumn: Coluna Única
+Menu.View.TwoColumns: Duas Colunas
+Menu.View.ThreeColumns: Três Colunas
+Menu.View.ResetLayout: Resetar Layout
+Menu.View.SaveLayout: Salvar Layout
+Menu.View.QuickOpen: Abertura Rápida
+Menu.Go: Ir
+Menu.Go.GoToFile: Ir para Arquivo
+Menu.Go.GoToSymbol: Ir para Símbolo
+Menu.Go.GoToLine: Ir para Linha
+Menu.Go.GoToDefinition: Ir para Definição
+Menu.Go.GoToTypeDefinition: Ir para Definição de Tipo
+Menu.Go.GoToImplementation: Ir para Implementação
+Menu.Go.GoToReferences: Ir para Referências
+Menu.Go.GoBack: Voltar
+Menu.Go.GoForward: Avançar
+Menu.Go.GoToLastEdit: Ir para Última Edição
+Menu.Go.NextProblem: Próximo Problema
+Menu.Go.PreviousProblem: Problema Anterior
+Menu.Project: Projeto
+Menu.Project.ProjectSettings: Configurações do Projeto
+Menu.Project.BuildSettings: Configurações de Build
+Menu.Project.PackageSettings: Configurações de Pacote
+Menu.Project.Dependencies: Dependências
+Menu.Project.AddDependency: Adicionar Dependência
+Menu.Project.UpdateDependencies: Atualizar Dependências
+Menu.Project.RemoveUnused: Remover Não Utilizados
+Menu.Project.OpenCargoToml: Cargo.toml
+Menu.Project.GenerateDocs: Gerar Documentação
+Menu.Project.RunCargoCheck: Executar Cargo Check
+Menu.Project.RunClippy: Executar Clippy
+Menu.Project.FormatProject: Formatar Projeto
+Menu.Build: Compilar
+Menu.Build.BuildProject: Compilar Projeto
+Menu.Build.BuildAndRun: Compilar e Executar
+Menu.Build.BuildRelease: Compilar Release
+Menu.Build.Rebuild: Recompilar Tudo
+Menu.Build.Clean: Limpar Build
+Menu.Build.BuildConfiguration: Configuração de Build
+Menu.Build.BuildDebug: Debug
+Menu.Build.BuildReleaseDebug: Release com Info de Debug
+Menu.Build.BuildProfile: Perfil
+Menu.Build.CancelBuild: Cancelar Build
+Menu.Build.ShowBuildOutput: Mostrar Saída do Build
+Menu.Run: Executar
+Menu.Run.RunProject: Executar Projeto
+Menu.Run.RunWithoutDebug: Executar Sem Depuração
+Menu.Run.Stop: Parar
+Menu.Run.Restart: Reiniciar
+Menu.Run.DebugProject: Depurar Projeto
+Menu.Run.Debugging: Depuração
+Menu.Run.StartDebug: Iniciar Depuração
+Menu.Run.StopDebug: Parar Depuração
+Menu.Run.RestartDebug: Reiniciar Depuração
+Menu.Run.StepOver: Próximo Passo
+Menu.Run.StepInto: Entrar em Função
+Menu.Run.StepOut: Sair de Função
+Menu.Run.Continue: Continuar
+Menu.Run.ToggleBreakpoint: Alternar Breakpoint
+Menu.Run.DisableBreakpoints: Desabilitar Todos os Breakpoints
+Menu.Run.RemoveBreakpoints: Remover Todos os Breakpoints
+Menu.Run.Testing: Testes
+Menu.Run.RunTests: Executar Todos os Testes
+Menu.Run.RunFailedTests: Executar Testes Falhados
+Menu.Run.RunFileTests: Executar Testes no Arquivo
+Menu.Run.DebugTest: Depurar Teste
+Menu.Run.RunCoverage: Cobertura
+Menu.Run.Performance: Desempenho
+Menu.Run.RunBenchmarks: Executar Benchmarks
+Menu.Run.CompareBenchmarks: Comparar Benchmarks
+Menu.Run.ProfileBuild: Perfilar Build
+Menu.GameEngine: Motor do Jogo
+Menu.GameEngine.Scene: Cena
+Menu.GameEngine.NewScene: Nova Cena
+Menu.GameEngine.OpenScene: Abrir Cena
+Menu.GameEngine.SaveScene: Salvar Cena
+Menu.GameEngine.SaveSceneAs: Salvar Cena Como
+Menu.GameEngine.PlayScene: Reproduzir Cena
+Menu.GameEngine.PauseScene: Pausar Cena
+Menu.GameEngine.StopScene: Parar Cena
+Menu.GameEngine.SceneSettings: Configurações da Cena
+Menu.GameEngine.GameObject: GameObject
+Menu.GameEngine.CreateEmpty: Criar Vazio
+Menu.GameEngine.3DObjects: Objetos 3D
+Menu.GameEngine.CreateCube: Cubo
+Menu.GameEngine.CreateSphere: Esfera
+Menu.GameEngine.CreateCapsule: Cápsula
+Menu.GameEngine.CreateCylinder: Cilindro
+Menu.GameEngine.CreatePlane: Plano
+Menu.GameEngine.CreateTerrain: Terreno
+Menu.GameEngine.2DObjects: Objetos 2D
+Menu.GameEngine.CreateSprite: Sprite
+Menu.GameEngine.CreateTilemap: Tilemap
+Menu.GameEngine.CreateParticles2D: Sistema de Partículas 2D
+Menu.GameEngine.Light: Luz
+Menu.GameEngine.CreateDirectionalLight: Luz Direcional
+Menu.GameEngine.CreatePointLight: Luz Pontual
+Menu.GameEngine.CreateSpotLight: Luz Spot
+Menu.GameEngine.CreateAreaLight: Luz de Área
+Menu.GameEngine.Audio: Áudio
+Menu.GameEngine.CreateAudioSource: Fonte de Áudio
+Menu.GameEngine.CreateAudioListener: Ouvinte de Áudio
+Menu.GameEngine.Effects: Efeitos
+Menu.GameEngine.CreateParticleSystem: Sistema de Partículas
+Menu.GameEngine.CreateVFX: Efeito Visual
+Menu.GameEngine.CreatePostProcessing: Pós-Processamento
+Menu.GameEngine.Camera: Câmera
+Menu.GameEngine.CreateCamera: Câmera
+Menu.GameEngine.CreateOrthoCamera: Câmera Ortográfica
+Menu.GameEngine.UI: UI
+Menu.GameEngine.CreateCanvas: Canvas
+Menu.GameEngine.CreatePanel: Painel
+Menu.GameEngine.CreateButton: Botão
+Menu.GameEngine.CreateText: Texto
+Menu.GameEngine.CreateImage: Imagem
+Menu.GameEngine.CreateSlider: Slider
+Menu.GameEngine.CreateInputField: Campo de Entrada
+Menu.GameEngine.Physics: Física
+Menu.GameEngine.AddRigidbody: Adicionar Rigidbody
+Menu.GameEngine.AddCollider: Adicionar Collider
+Menu.GameEngine.AddCharacterController: Adicionar Character Controller
+Menu.GameEngine.PhysicsSettings: Configurações de Física
+Menu.GameEngine.CollisionMatrix: Matriz de Colisão
+Menu.GameEngine.Rendering: Renderização
+Menu.GameEngine.RenderSettings: Configurações de Renderização
+Menu.GameEngine.LightingSettings: Configurações de Iluminação
+Menu.GameEngine.QualitySettings: Configurações de Qualidade
+Menu.GameEngine.BakeLighting: Preparar Iluminação
+Menu.GameEngine.ClearBakedData: Limpar Dados Preparados
+Menu.GameEngine.FrameDebugger: Depurador de Quadros
+Menu.GameEngine.EngineProfiler: Profiler
+Menu.GameEngine.PackageManager: Gerenciador de Pacotes
+Menu.GameEngine.AssetStore: Loja de Assets
+Menu.Assets: Assets
+Menu.Assets.CreateAsset: Criar Asset
+Menu.Assets.ImportAsset: Importar Asset
+Menu.Assets.Create: Criar
+Menu.Assets.CreateMaterial: Material
+Menu.Assets.CreateShader: Shader
+Menu.Assets.CreateTexture: Textura
+Menu.Assets.CreateAnimClip: Clipe de Animação
+Menu.Assets.CreateAnimController: Controlador de Animação
+Menu.Assets.CreateAudioMixer: Mixer de Áudio
+Menu.Assets.CreateRenderTexture: Textura de Renderização
+Menu.Assets.CreatePrefab: Prefab
+Menu.Assets.CreateScriptableObject: ScriptableObject
+Menu.Assets.Refresh: Atualizar
+Menu.Assets.Reimport: Reimportar
+Menu.Assets.ReimportAll: Reimportar Tudo
+Menu.Assets.FindReferences: Localizar Referências
+Menu.Assets.FindMissingReferences: Localizar Referências Ausentes
+Menu.Tools: Ferramentas
+Menu.Tools.Rust: Rust
+Menu.Tools.CargoCommands: Comandos Cargo
+Menu.Tools.GenerateRustAnalyzer: Gerar Rust-Analyzer
+Menu.Tools.ExpandMacro: Expandir Macro
+Menu.Tools.ShowSyntaxTree: Mostrar Árvore de Sintaxe
+Menu.Tools.ShowHIR: Mostrar HIR
+Menu.Tools.InlineVariable: Variável Inline
+Menu.Tools.ExtractFunction: Extrair Função
+Menu.Tools.ExtractVariable: Extrair Variável
+Menu.Tools.Shaders: Shaders
+Menu.Tools.ShaderEditor: Editor de Shader
+Menu.Tools.CompileShader: Compilar Shader
+Menu.Tools.ShaderVariants: Variantes de Shader
+Menu.Tools.SPIRVDisassembly: Desmontagem SPIR-V
+Menu.Tools.Animation: Animação
+Menu.Tools.AnimationWindow: Janela de Animação
+Menu.Tools.AnimatorWindow: Animator
+Menu.Tools.Timeline: Linha do Tempo
+Menu.Tools.MaterialEditor: Editor de Material
+Menu.Tools.TerrainTools: Ferramentas de Terreno
+Menu.Tools.ParticleEditor: Editor de Partículas
+Menu.Tools.AudioMixerWindow: Mixer de Áudio
+Menu.Tools.VersionControl: Controle de Versão
+Menu.Tools.TaskManager: Gerenciador de Tarefas
+Menu.Tools.Extensions: Extensões
+Menu.Window: Janela
+Menu.Window.Minimize: Minimizar
+Menu.Window.Zoom: Zoom
+Menu.Window.BringAllToFront: Trazer Todas para Frente
+Menu.Window.NewWindow: Nova Janela
+Menu.Window.CloseWindow: Fechar Janela
+Menu.Help.Shortcuts: Atalhos de Teclado
+Menu.Help.ViewLogs: Ver Logs
+Menu.Help.CheckUpdates: Verificar Atualizações
+Menu.Help.ReleaseNotes: Notas de Lançamento
+Menu.App.AboutApp: Sobre Pulsar Engine
+Menu.App.CheckUpdates: Verificar Atualizações
+Menu.App.Preferences: Preferências
+Menu.App.Settings: Configurações
+Menu.App.Hide: Ocultar Pulsar
+Menu.App.HideOthers: Ocultar Outros
+Menu.App.ShowAll: Mostrar Tudo
+Menu.App.QuitApp: Sair do Pulsar

@@ -363,18 +363,18 @@ pub fn init_app_menus(title: impl Into<SharedString>, cx: &mut App) {
             Menu {
                 name: title.into(),
                 items: vec![
-                    MenuItem::action("About Pulsar Engine", AboutApp),
+                    MenuItem::action(t!("Menu.App.AboutApp").to_string(), AboutApp),
                     MenuItem::separator(),
-                    MenuItem::action("Check for Updates", CheckUpdates),
+                    MenuItem::action(t!("Menu.App.CheckUpdates").to_string(), CheckUpdates),
                     MenuItem::separator(),
-                    MenuItem::action("Preferences", Preferences),
-                    MenuItem::action("Settings", Settings),
+                    MenuItem::action(t!("Menu.App.Preferences").to_string(), Preferences),
+                    MenuItem::action(t!("Menu.App.Settings").to_string(), Settings),
                     MenuItem::separator(),
-                    MenuItem::action("Hide Pulsar", Hide),
-                    MenuItem::action("Hide Others", HideOthers),
-                    MenuItem::action("Show All", ShowAll),
+                    MenuItem::action(t!("Menu.App.Hide").to_string(), Hide),
+                    MenuItem::action(t!("Menu.App.HideOthers").to_string(), HideOthers),
+                    MenuItem::action(t!("Menu.App.ShowAll").to_string(), ShowAll),
                     MenuItem::separator(),
-                    MenuItem::action("Quit Pulsar", QuitApp)
+                    MenuItem::action(t!("Menu.App.QuitApp").to_string(), QuitApp)
                 ],
             },
             // File Menu
@@ -467,67 +467,67 @@ pub fn init_app_menus(title: impl Into<SharedString>, cx: &mut App) {
                     MenuItem::action(t!("Menu.Edit.Delete").to_string(), Delete),
                     MenuItem::separator(),
                     MenuItem::action(t!("Menu.Edit.SelectAll").to_string(), SelectAll),
-                    MenuItem::action("Select None", SelectNone),
+                    MenuItem::action(t!("Menu.Edit.SelectNone").to_string(), SelectNone),
                     MenuItem::separator(),
                     MenuItem::Submenu(Menu {
                         name: t!("Menu.Edit.Find").into(),
                         items: vec![
                             MenuItem::action(t!("Menu.Edit.Find").to_string(), Find),
-                            MenuItem::action("Find Next", FindNext),
-                            MenuItem::action("Find Previous", FindPrevious),
+                            MenuItem::action(t!("Menu.Edit.FindNext").to_string(), FindNext),
+                            MenuItem::action(t!("Menu.Edit.FindPrevious").to_string(), FindPrevious),
                             MenuItem::separator(),
                             MenuItem::action(t!("Menu.Edit.Replace").to_string(), FindReplace),
-                            MenuItem::action("Replace Next", ReplaceNext),
-                            MenuItem::action("Replace All", ReplaceAll),
+                            MenuItem::action(t!("Menu.Edit.ReplaceNext").to_string(), ReplaceNext),
+                            MenuItem::action(t!("Menu.Edit.ReplaceAll").to_string(), ReplaceAll),
                             MenuItem::separator(),
                             MenuItem::action(t!("Menu.Edit.FindInFiles").to_string(), FindInFiles),
-                            MenuItem::action("Replace in Files", ReplaceInFiles),
+                            MenuItem::action(t!("Menu.Edit.ReplaceInFiles").to_string(), ReplaceInFiles),
                             MenuItem::separator(),
-                            MenuItem::action("Find Usages", FindUsages),
-                            MenuItem::action("Find Implementations", FindImplementations)
+                            MenuItem::action(t!("Menu.Edit.FindUsages").to_string(), FindUsages),
+                            MenuItem::action(t!("Menu.Edit.FindImplementations").to_string(), FindImplementations)
                         ],
                     }),
                     MenuItem::separator(),
                     MenuItem::Submenu(Menu {
-                        name: "Code".into(),
+                        name: t!("Menu.Edit.CodeActions").into(),
                         items: vec![
-                            MenuItem::action("Format Document", FormatDocument),
-                            MenuItem::action("Format Selection", FormatSelection),
+                            MenuItem::action(t!("Menu.Edit.FormatDocument").to_string(), FormatDocument),
+                            MenuItem::action(t!("Menu.Edit.FormatSelection").to_string(), FormatSelection),
                             MenuItem::separator(),
-                            MenuItem::action("Comment Line", CommentLine),
-                            MenuItem::action("Uncomment Line", UncommentLine),
-                            MenuItem::action("Toggle Comment", ToggleComment),
+                            MenuItem::action(t!("Menu.Edit.CommentLine").to_string(), CommentLine),
+                            MenuItem::action(t!("Menu.Edit.UncommentLine").to_string(), UncommentLine),
+                            MenuItem::action(t!("Menu.Edit.ToggleComment").to_string(), ToggleComment),
                             MenuItem::separator(),
-                            MenuItem::action("Fold", Fold),
-                            MenuItem::action("Unfold", Unfold),
-                            MenuItem::action("Fold All", FoldAll),
-                            MenuItem::action("Unfold All", UnfoldAll),
+                            MenuItem::action(t!("Menu.Edit.Fold").to_string(), Fold),
+                            MenuItem::action(t!("Menu.Edit.Unfold").to_string(), Unfold),
+                            MenuItem::action(t!("Menu.Edit.FoldAll").to_string(), FoldAll),
+                            MenuItem::action(t!("Menu.Edit.UnfoldAll").to_string(), UnfoldAll),
                             MenuItem::separator(),
-                            MenuItem::action("Sort Lines", SortLines),
-                            MenuItem::action("Remove Duplicates", RemoveDuplicates),
-                            MenuItem::action("Trim Trailing Whitespace", TrimWhitespace)
+                            MenuItem::action(t!("Menu.Edit.SortLines").to_string(), SortLines),
+                            MenuItem::action(t!("Menu.Edit.RemoveDuplicates").to_string(), RemoveDuplicates),
+                            MenuItem::action(t!("Menu.Edit.TrimWhitespace").to_string(), TrimWhitespace)
                         ],
                     })
                 ],
             },
             // Selection Menu
             Menu {
-                name: "Selection".into(),
+                name: t!("Menu.Selection").into(),
                 items: vec![
-                    MenuItem::action("Select Line", SelectLine),
-                    MenuItem::action("Select Word", SelectWord),
-                    MenuItem::action("Select Scope", SelectScope),
+                    MenuItem::action(t!("Menu.Selection.SelectLine").to_string(), SelectLine),
+                    MenuItem::action(t!("Menu.Selection.SelectWord").to_string(), SelectWord),
+                    MenuItem::action(t!("Menu.Selection.SelectScope").to_string(), SelectScope),
                     MenuItem::separator(),
-                    MenuItem::action("Expand Selection", ExpandSelection),
-                    MenuItem::action("Shrink Selection", ShrinkSelection),
+                    MenuItem::action(t!("Menu.Selection.ExpandSelection").to_string(), ExpandSelection),
+                    MenuItem::action(t!("Menu.Selection.ShrinkSelection").to_string(), ShrinkSelection),
                     MenuItem::separator(),
-                    MenuItem::action("Add Cursor Above", AddCursorAbove),
-                    MenuItem::action("Add Cursor Below", AddCursorBelow),
-                    MenuItem::action("Add Cursor at Line Ends", AddCursorLineEnds),
+                    MenuItem::action(t!("Menu.Selection.AddCursorAbove").to_string(), AddCursorAbove),
+                    MenuItem::action(t!("Menu.Selection.AddCursorBelow").to_string(), AddCursorBelow),
+                    MenuItem::action(t!("Menu.Selection.AddCursorLineEnds").to_string(), AddCursorLineEnds),
                     MenuItem::separator(),
-                    MenuItem::action("Select All Occurrences", SelectAllOccurrences),
-                    MenuItem::action("Select Next Occurrence", SelectNextOccurrence),
-                    MenuItem::action("Skip Occurrence", SkipOccurrence)
+                    MenuItem::action(t!("Menu.Selection.SelectAllOccurrences").to_string(), SelectAllOccurrences),
+                    MenuItem::action(t!("Menu.Selection.SelectNextOccurrence").to_string(), SelectNextOccurrence),
+                    MenuItem::action(t!("Menu.Selection.SkipOccurrence").to_string(), SkipOccurrence)
                 ],
             },
             // View Menu
@@ -537,39 +537,39 @@ pub fn init_app_menus(title: impl Into<SharedString>, cx: &mut App) {
                     MenuItem::Submenu(Menu {
                         name: t!("Menu.View.Panels").into(),
                         items: vec![
-                            MenuItem::action("Explorer", ToggleExplorer),
-                            MenuItem::action("Scene Hierarchy", ToggleHierarchy),
+                            MenuItem::action(t!("Menu.View.Explorer").to_string(), ToggleExplorer),
+                            MenuItem::action(t!("Menu.View.Hierarchy").to_string(), ToggleHierarchy),
                             MenuItem::action(t!("Menu.View.Inspector"), ToggleInspector),
-                            MenuItem::action("Asset Browser", ToggleAssetBrowser),
+                            MenuItem::action(t!("Menu.View.AssetBrowser").to_string(), ToggleAssetBrowser),
                             MenuItem::separator(),
                             MenuItem::action(t!("Menu.View.Console"), ToggleConsole),
-                            MenuItem::action("Output", ToggleOutput),
-                            MenuItem::action("Problems", ToggleProblems),
-                            MenuItem::action("Debug", ToggleDebug),
+                            MenuItem::action(t!("Menu.View.Output").to_string(), ToggleOutput),
+                            MenuItem::action(t!("Menu.View.Problems").to_string(), ToggleProblems),
+                            MenuItem::action(t!("Menu.View.Debug").to_string(), ToggleDebug),
                             MenuItem::separator(),
                             MenuItem::action(t!("Menu.View.Profiler"), ToggleProfiler),
-                            MenuItem::action("Memory Analyzer", ToggleMemoryAnalyzer),
-                            MenuItem::action("Network", ToggleNetwork)
+                            MenuItem::action(t!("Menu.View.MemoryAnalyzer").to_string(), ToggleMemoryAnalyzer),
+                            MenuItem::action(t!("Menu.View.Network").to_string(), ToggleNetwork)
                         ],
                     }),
                     MenuItem::separator(),
                     MenuItem::Submenu(Menu {
-                        name: "Editor Layout".into(),
+                        name: t!("Menu.View.Layout").into(),
                         items: vec![
-                            MenuItem::action("Split Horizontal", SplitHorizontal),
-                            MenuItem::action("Split Vertical", SplitVertical),
+                            MenuItem::action(t!("Menu.View.SplitHorizontal").to_string(), SplitHorizontal),
+                            MenuItem::action(t!("Menu.View.SplitVertical").to_string(), SplitVertical),
                             MenuItem::separator(),
-                            MenuItem::action("Single Column", SingleColumn),
-                            MenuItem::action("Two Columns", TwoColumns),
-                            MenuItem::action("Three Columns", ThreeColumns),
+                            MenuItem::action(t!("Menu.View.SingleColumn").to_string(), SingleColumn),
+                            MenuItem::action(t!("Menu.View.TwoColumns").to_string(), TwoColumns),
+                            MenuItem::action(t!("Menu.View.ThreeColumns").to_string(), ThreeColumns),
                             MenuItem::separator(),
-                            MenuItem::action("Reset Layout", ResetLayout),
-                            MenuItem::action("Save Layout", SaveLayout)
+                            MenuItem::action(t!("Menu.View.ResetLayout").to_string(), ResetLayout),
+                            MenuItem::action(t!("Menu.View.SaveLayout").to_string(), SaveLayout)
                         ],
                     }),
                     MenuItem::separator(),
                     MenuItem::action(t!("Menu.View.CommandPalette"), CommandPalette),
-                    MenuItem::action("Quick Open", QuickOpen),
+                    MenuItem::action(t!("Menu.View.QuickOpen").to_string(), QuickOpen),
                     MenuItem::separator(),
                     MenuItem::Submenu(Menu {
                         name: "Zoom".into(),
@@ -591,338 +591,338 @@ pub fn init_app_menus(title: impl Into<SharedString>, cx: &mut App) {
             },
             // Go Menu
             Menu {
-                name: "Go To".into(),
+                name: t!("Menu.Go").into(),
                 items: vec![
-                    MenuItem::action("Go to File", GoToFile),
-                    MenuItem::action("Go to Symbol", GoToSymbol),
-                    MenuItem::action("Go to Line", GoToLine),
+                    MenuItem::action(t!("Menu.Go.GoToFile").to_string(), GoToFile),
+                    MenuItem::action(t!("Menu.Go.GoToSymbol").to_string(), GoToSymbol),
+                    MenuItem::action(t!("Menu.Go.GoToLine").to_string(), GoToLine),
                     MenuItem::separator(),
-                    MenuItem::action("Go to Definition", GoToDefinition),
-                    MenuItem::action("Go to Type Definition", GoToTypeDefinition),
-                    MenuItem::action("Go to Implementation", GoToImplementation),
-                    MenuItem::action("Go to References", GoToReferences),
+                    MenuItem::action(t!("Menu.Go.GoToDefinition").to_string(), GoToDefinition),
+                    MenuItem::action(t!("Menu.Go.GoToTypeDefinition").to_string(), GoToTypeDefinition),
+                    MenuItem::action(t!("Menu.Go.GoToImplementation").to_string(), GoToImplementation),
+                    MenuItem::action(t!("Menu.Go.GoToReferences").to_string(), GoToReferences),
                     MenuItem::separator(),
-                    MenuItem::action("Go Back", GoBack),
-                    MenuItem::action("Go Forward", GoForward),
-                    MenuItem::action("Go to Last Edit", GoToLastEdit),
+                    MenuItem::action(t!("Menu.Go.GoBack").to_string(), GoBack),
+                    MenuItem::action(t!("Menu.Go.GoForward").to_string(), GoForward),
+                    MenuItem::action(t!("Menu.Go.GoToLastEdit").to_string(), GoToLastEdit),
                     MenuItem::separator(),
-                    MenuItem::action("Next Problem", NextProblem),
-                    MenuItem::action("Previous Problem", PreviousProblem)
+                    MenuItem::action(t!("Menu.Go.NextProblem").to_string(), NextProblem),
+                    MenuItem::action(t!("Menu.Go.PreviousProblem").to_string(), PreviousProblem)
                 ],
             },
             // Project Menu
             Menu {
-                name: "Project".into(),
+                name: t!("Menu.Project").into(),
                 items: vec![
-                    MenuItem::action("Project Settings", ProjectSettings),
-                    MenuItem::action("Build Settings", BuildSettings),
-                    MenuItem::action("Package Settings", PackageSettings),
+                    MenuItem::action(t!("Menu.Project.ProjectSettings").to_string(), ProjectSettings),
+                    MenuItem::action(t!("Menu.Project.BuildSettings").to_string(), BuildSettings),
+                    MenuItem::action(t!("Menu.Project.PackageSettings").to_string(), PackageSettings),
                     MenuItem::separator(),
                     MenuItem::Submenu(Menu {
-                        name: "Dependencies".into(),
+                        name: t!("Menu.Project.Dependencies").into(),
                         items: vec![
-                            MenuItem::action("Add Dependency", AddDependency),
-                            MenuItem::action("Update Dependencies", UpdateDependencies),
-                            MenuItem::action("Remove Unused", RemoveUnusedDeps),
+                            MenuItem::action(t!("Menu.Project.AddDependency").to_string(), AddDependency),
+                            MenuItem::action(t!("Menu.Project.UpdateDependencies").to_string(), UpdateDependencies),
+                            MenuItem::action(t!("Menu.Project.RemoveUnused").to_string(), RemoveUnusedDeps),
                             MenuItem::separator(),
-                            MenuItem::action("Cargo.toml", OpenCargoToml)
+                            MenuItem::action(t!("Menu.Project.OpenCargoToml").to_string(), OpenCargoToml)
                         ],
                     }),
                     MenuItem::separator(),
-                    MenuItem::action("Generate Documentation", GenerateDocs),
-                    MenuItem::action("Run Cargo Check", RunCargoCheck),
-                    MenuItem::action("Run Clippy", RunClippy),
-                    MenuItem::action("Format Project", FormatProject)
+                    MenuItem::action(t!("Menu.Project.GenerateDocs").to_string(), GenerateDocs),
+                    MenuItem::action(t!("Menu.Project.RunCargoCheck").to_string(), RunCargoCheck),
+                    MenuItem::action(t!("Menu.Project.RunClippy").to_string(), RunClippy),
+                    MenuItem::action(t!("Menu.Project.FormatProject").to_string(), FormatProject)
                 ],
             },
             // Build Menu
             Menu {
-                name: "Build".into(),
+                name: t!("Menu.Build").into(),
                 items: vec![
-                    MenuItem::action("Build Project", Build),
-                    MenuItem::action("Build & Run", BuildAndRun),
-                    MenuItem::action("Build Release", BuildRelease),
+                    MenuItem::action(t!("Menu.Build.BuildProject").to_string(), Build),
+                    MenuItem::action(t!("Menu.Build.BuildAndRun").to_string(), BuildAndRun),
+                    MenuItem::action(t!("Menu.Build.BuildRelease").to_string(), BuildRelease),
                     MenuItem::separator(),
-                    MenuItem::action("Rebuild All", Rebuild),
-                    MenuItem::action("Clean Build", Clean),
+                    MenuItem::action(t!("Menu.Build.Rebuild").to_string(), Rebuild),
+                    MenuItem::action(t!("Menu.Build.Clean").to_string(), Clean),
                     MenuItem::separator(),
                     MenuItem::Submenu(Menu {
-                        name: "Build Configuration".into(),
+                        name: t!("Menu.Build.BuildConfiguration").into(),
                         items: vec![
-                            MenuItem::action("Debug", BuildDebug),
-                            MenuItem::action("Release", BuildRelease),
-                            MenuItem::action("Release with Debug Info", BuildReleaseDebug),
+                            MenuItem::action(t!("Menu.Build.BuildDebug").to_string(), BuildDebug),
+                            MenuItem::action(t!("Menu.Build.BuildRelease").to_string(), BuildRelease),
+                            MenuItem::action(t!("Menu.Build.BuildReleaseDebug").to_string(), BuildReleaseDebug),
                             MenuItem::separator(),
-                            MenuItem::action("Profile", BuildProfile)
+                            MenuItem::action(t!("Menu.Build.BuildProfile").to_string(), BuildProfile)
                         ],
                     }),
                     MenuItem::separator(),
-                    MenuItem::action("Cancel Build", CancelBuild),
-                    MenuItem::action("Show Build Output", ShowBuildOutput)
+                    MenuItem::action(t!("Menu.Build.CancelBuild").to_string(), CancelBuild),
+                    MenuItem::action(t!("Menu.Build.ShowBuildOutput").to_string(), ShowBuildOutput)
                 ],
             },
             // Run Menu
             Menu {
-                name: "Run".into(),
+                name: t!("Menu.Run").into(),
                 items: vec![
-                    MenuItem::action("Run Project", RunProject),
-                    MenuItem::action("Run Without Debugging", RunWithoutDebug),
-                    MenuItem::action("Stop", StopExecution),
-                    MenuItem::action("Restart", RestartExecution),
+                    MenuItem::action(t!("Menu.Run.RunProject").to_string(), RunProject),
+                    MenuItem::action(t!("Menu.Run.RunWithoutDebug").to_string(), RunWithoutDebug),
+                    MenuItem::action(t!("Menu.Run.Stop").to_string(), StopExecution),
+                    MenuItem::action(t!("Menu.Run.Restart").to_string(), RestartExecution),
                     MenuItem::separator(),
-                    MenuItem::action("Debug Project", DebugProject),
+                    MenuItem::action(t!("Menu.Run.DebugProject").to_string(), DebugProject),
                     MenuItem::Submenu(Menu {
-                        name: "Debug".into(),
+                        name: t!("Menu.Run.Debugging").into(),
                         items: vec![
-                            MenuItem::action("Start Debugging", StartDebug),
-                            MenuItem::action("Stop Debugging", StopDebug),
-                            MenuItem::action("Restart Debugging", RestartDebug),
+                            MenuItem::action(t!("Menu.Run.StartDebug").to_string(), StartDebug),
+                            MenuItem::action(t!("Menu.Run.StopDebug").to_string(), StopDebug),
+                            MenuItem::action(t!("Menu.Run.RestartDebug").to_string(), RestartDebug),
                             MenuItem::separator(),
-                            MenuItem::action("Step Over", StepOver),
-                            MenuItem::action("Step Into", StepInto),
-                            MenuItem::action("Step Out", StepOut),
-                            MenuItem::action("Continue", Continue),
+                            MenuItem::action(t!("Menu.Run.StepOver").to_string(), StepOver),
+                            MenuItem::action(t!("Menu.Run.StepInto").to_string(), StepInto),
+                            MenuItem::action(t!("Menu.Run.StepOut").to_string(), StepOut),
+                            MenuItem::action(t!("Menu.Run.Continue").to_string(), Continue),
                             MenuItem::separator(),
-                            MenuItem::action("Toggle Breakpoint", ToggleBreakpoint),
-                            MenuItem::action("Disable All Breakpoints", DisableBreakpoints),
-                            MenuItem::action("Remove All Breakpoints", RemoveBreakpoints)
+                            MenuItem::action(t!("Menu.Run.ToggleBreakpoint").to_string(), ToggleBreakpoint),
+                            MenuItem::action(t!("Menu.Run.DisableBreakpoints").to_string(), DisableBreakpoints),
+                            MenuItem::action(t!("Menu.Run.RemoveBreakpoints").to_string(), RemoveBreakpoints)
                         ],
                     }),
                     MenuItem::separator(),
                     MenuItem::Submenu(Menu {
-                        name: "Tests".into(),
+                        name: t!("Menu.Run.Testing").into(),
                         items: vec![
-                            MenuItem::action("Run All Tests", RunTests),
-                            MenuItem::action("Run Failed Tests", RunFailedTests),
-                            MenuItem::action("Run Tests in File", RunFileTests),
+                            MenuItem::action(t!("Menu.Run.RunTests").to_string(), RunTests),
+                            MenuItem::action(t!("Menu.Run.RunFailedTests").to_string(), RunFailedTests),
+                            MenuItem::action(t!("Menu.Run.RunFileTests").to_string(), RunFileTests),
                             MenuItem::separator(),
-                            MenuItem::action("Debug Test", DebugTest),
-                            MenuItem::action("Coverage", RunCoverage)
+                            MenuItem::action(t!("Menu.Run.DebugTest").to_string(), DebugTest),
+                            MenuItem::action(t!("Menu.Run.RunCoverage").to_string(), RunCoverage)
                         ],
                     }),
                     MenuItem::separator(),
                     MenuItem::Submenu(Menu {
-                        name: "Benchmarks".into(),
+                        name: t!("Menu.Run.Performance").into(),
                         items: vec![
-                            MenuItem::action("Run Benchmarks", RunBenchmarks),
-                            MenuItem::action("Compare Benchmarks", CompareBenchmarks),
-                            MenuItem::action("Profile Build", ProfileBuild)
+                            MenuItem::action(t!("Menu.Run.RunBenchmarks").to_string(), RunBenchmarks),
+                            MenuItem::action(t!("Menu.Run.CompareBenchmarks").to_string(), CompareBenchmarks),
+                            MenuItem::action(t!("Menu.Run.ProfileBuild").to_string(), ProfileBuild)
                         ],
                     })
                 ],
             },
             // Engine Menu
             Menu {
-                name: "Engine".into(),
+                name: t!("Menu.GameEngine").into(),
                 items: vec![
                     MenuItem::Submenu(Menu {
-                        name: "Scene".into(),
+                        name: t!("Menu.GameEngine.Scene").into(),
                         items: vec![
-                            MenuItem::action("New Scene", NewScene),
-                            MenuItem::action("Open Scene", OpenScene),
-                            MenuItem::action("Save Scene", SaveScene),
-                            MenuItem::action("Save Scene As", SaveSceneAs),
+                            MenuItem::action(t!("Menu.GameEngine.NewScene").to_string(), NewScene),
+                            MenuItem::action(t!("Menu.GameEngine.OpenScene").to_string(), OpenScene),
+                            MenuItem::action(t!("Menu.GameEngine.SaveScene").to_string(), SaveScene),
+                            MenuItem::action(t!("Menu.GameEngine.SaveSceneAs").to_string(), SaveSceneAs),
                             MenuItem::separator(),
-                            MenuItem::action("Play Scene", PlayScene),
-                            MenuItem::action("Pause Scene", PauseScene),
-                            MenuItem::action("Stop Scene", StopScene),
+                            MenuItem::action(t!("Menu.GameEngine.PlayScene").to_string(), PlayScene),
+                            MenuItem::action(t!("Menu.GameEngine.PauseScene").to_string(), PauseScene),
+                            MenuItem::action(t!("Menu.GameEngine.StopScene").to_string(), StopScene),
                             MenuItem::separator(),
-                            MenuItem::action("Scene Settings", SceneSettings)
+                            MenuItem::action(t!("Menu.GameEngine.SceneSettings").to_string(), SceneSettings)
                         ],
                     }),
                     MenuItem::Submenu(Menu {
-                        name: "GameObject".into(),
+                        name: t!("Menu.GameEngine.GameObject").into(),
                         items: vec![
-                            MenuItem::action("Create Empty", CreateEmpty),
+                            MenuItem::action(t!("Menu.GameEngine.CreateEmpty").to_string(), CreateEmpty),
                             MenuItem::separator(),
                             MenuItem::Submenu(Menu {
-                                name: "3D Object".into(),
+                                name: t!("Menu.GameEngine.3DObjects").into(),
                                 items: vec![
-                                    MenuItem::action("Cube", CreateCube),
-                                    MenuItem::action("Sphere", CreateSphere),
-                                    MenuItem::action("Capsule", CreateCapsule),
-                                    MenuItem::action("Cylinder", CreateCylinder),
-                                    MenuItem::action("Plane", CreatePlane),
+                                    MenuItem::action(t!("Menu.GameEngine.CreateCube").to_string(), CreateCube),
+                                    MenuItem::action(t!("Menu.GameEngine.CreateSphere").to_string(), CreateSphere),
+                                    MenuItem::action(t!("Menu.GameEngine.CreateCapsule").to_string(), CreateCapsule),
+                                    MenuItem::action(t!("Menu.GameEngine.CreateCylinder").to_string(), CreateCylinder),
+                                    MenuItem::action(t!("Menu.GameEngine.CreatePlane").to_string(), CreatePlane),
                                     MenuItem::separator(),
-                                    MenuItem::action("Terrain", CreateTerrain)
+                                    MenuItem::action(t!("Menu.GameEngine.CreateTerrain").to_string(), CreateTerrain)
                                 ],
                             }),
                             MenuItem::Submenu(Menu {
-                                name: "2D Object".into(),
+                                name: t!("Menu.GameEngine.2DObjects").into(),
                                 items: vec![
-                                    MenuItem::action("Sprite", CreateSprite),
-                                    MenuItem::action("Tilemap", CreateTilemap),
-                                    MenuItem::action("Particle System 2D", CreateParticles2D)
+                                    MenuItem::action(t!("Menu.GameEngine.CreateSprite").to_string(), CreateSprite),
+                                    MenuItem::action(t!("Menu.GameEngine.CreateTilemap").to_string(), CreateTilemap),
+                                    MenuItem::action(t!("Menu.GameEngine.CreateParticles2D").to_string(), CreateParticles2D)
                                 ],
                             }),
                             MenuItem::Submenu(Menu {
-                                name: "Light".into(),
+                                name: t!("Menu.GameEngine.Light").into(),
                                 items: vec![
-                                    MenuItem::action("Directional Light", CreateDirectionalLight),
-                                    MenuItem::action("Point Light", CreatePointLight),
-                                    MenuItem::action("Spot Light", CreateSpotLight),
-                                    MenuItem::action("Area Light", CreateAreaLight)
+                                    MenuItem::action(t!("Menu.GameEngine.CreateDirectionalLight").to_string(), CreateDirectionalLight),
+                                    MenuItem::action(t!("Menu.GameEngine.CreatePointLight").to_string(), CreatePointLight),
+                                    MenuItem::action(t!("Menu.GameEngine.CreateSpotLight").to_string(), CreateSpotLight),
+                                    MenuItem::action(t!("Menu.GameEngine.CreateAreaLight").to_string(), CreateAreaLight)
                                 ],
                             }),
                             MenuItem::Submenu(Menu {
-                                name: "Audio".into(),
+                                name: t!("Menu.GameEngine.Audio").into(),
                                 items: vec![
-                                    MenuItem::action("Audio Source", CreateAudioSource),
-                                    MenuItem::action("Audio Listener", CreateAudioListener)
+                                    MenuItem::action(t!("Menu.GameEngine.CreateAudioSource").to_string(), CreateAudioSource),
+                                    MenuItem::action(t!("Menu.GameEngine.CreateAudioListener").to_string(), CreateAudioListener)
                                 ],
                             }),
                             MenuItem::Submenu(Menu {
-                                name: "Effects".into(),
+                                name: t!("Menu.GameEngine.Effects").into(),
                                 items: vec![
-                                    MenuItem::action("Particle System", CreateParticleSystem),
-                                    MenuItem::action("Visual Effect", CreateVFX),
-                                    MenuItem::action("Post Processing", CreatePostProcessing)
+                                    MenuItem::action(t!("Menu.GameEngine.CreateParticleSystem").to_string(), CreateParticleSystem),
+                                    MenuItem::action(t!("Menu.GameEngine.CreateVFX").to_string(), CreateVFX),
+                                    MenuItem::action(t!("Menu.GameEngine.CreatePostProcessing").to_string(), CreatePostProcessing)
                                 ],
                             }),
                             MenuItem::Submenu(Menu {
-                                name: "Camera".into(),
+                                name: t!("Menu.GameEngine.Camera").into(),
                                 items: vec![
-                                    MenuItem::action("Camera", CreateCamera),
-                                    MenuItem::action("Orthographic Camera", CreateOrthoCamera)
+                                    MenuItem::action(t!("Menu.GameEngine.CreateCamera").to_string(), CreateCamera),
+                                    MenuItem::action(t!("Menu.GameEngine.CreateOrthoCamera").to_string(), CreateOrthoCamera)
                                 ],
                             }),
                             MenuItem::Submenu(Menu {
-                                name: "UI".into(),
+                                name: t!("Menu.GameEngine.UI").into(),
                                 items: vec![
-                                    MenuItem::action("Canvas", CreateCanvas),
-                                    MenuItem::action("Panel", CreatePanel),
-                                    MenuItem::action("Button", CreateButton),
-                                    MenuItem::action("Text", CreateText),
-                                    MenuItem::action("Image", CreateImage),
-                                    MenuItem::action("Slider", CreateSlider),
-                                    MenuItem::action("Input Field", CreateInputField)
+                                    MenuItem::action(t!("Menu.GameEngine.CreateCanvas").to_string(), CreateCanvas),
+                                    MenuItem::action(t!("Menu.GameEngine.CreatePanel").to_string(), CreatePanel),
+                                    MenuItem::action(t!("Menu.GameEngine.CreateButton").to_string(), CreateButton),
+                                    MenuItem::action(t!("Menu.GameEngine.CreateText").to_string(), CreateText),
+                                    MenuItem::action(t!("Menu.GameEngine.CreateImage").to_string(), CreateImage),
+                                    MenuItem::action(t!("Menu.GameEngine.CreateSlider").to_string(), CreateSlider),
+                                    MenuItem::action(t!("Menu.GameEngine.CreateInputField").to_string(), CreateInputField)
                                 ],
                             })
                         ],
                     }),
                     MenuItem::separator(),
                     MenuItem::Submenu(Menu {
-                        name: "Physics".into(),
+                        name: t!("Menu.GameEngine.Physics").into(),
                         items: vec![
-                            MenuItem::action("Add Rigidbody", AddRigidbody),
-                            MenuItem::action("Add Collider", AddCollider),
-                            MenuItem::action("Add Character Controller", AddCharacterController),
+                            MenuItem::action(t!("Menu.GameEngine.AddRigidbody").to_string(), AddRigidbody),
+                            MenuItem::action(t!("Menu.GameEngine.AddCollider").to_string(), AddCollider),
+                            MenuItem::action(t!("Menu.GameEngine.AddCharacterController").to_string(), AddCharacterController),
                             MenuItem::separator(),
-                            MenuItem::action("Physics Settings", PhysicsSettings),
-                            MenuItem::action("Collision Matrix", CollisionMatrix)
+                            MenuItem::action(t!("Menu.GameEngine.PhysicsSettings").to_string(), PhysicsSettings),
+                            MenuItem::action(t!("Menu.GameEngine.CollisionMatrix").to_string(), CollisionMatrix)
                         ],
                     }),
                     MenuItem::Submenu(Menu {
-                        name: "Rendering".into(),
+                        name: t!("Menu.GameEngine.Rendering").into(),
                         items: vec![
-                            MenuItem::action("Render Settings", RenderSettings),
-                            MenuItem::action("Lighting Settings", LightingSettings),
-                            MenuItem::action("Quality Settings", QualitySettings),
+                            MenuItem::action(t!("Menu.GameEngine.RenderSettings").to_string(), RenderSettings),
+                            MenuItem::action(t!("Menu.GameEngine.LightingSettings").to_string(), LightingSettings),
+                            MenuItem::action(t!("Menu.GameEngine.QualitySettings").to_string(), QualitySettings),
                             MenuItem::separator(),
-                            MenuItem::action("Bake Lighting", BakeLighting),
-                            MenuItem::action("Clear Baked Data", ClearBakedData),
+                            MenuItem::action(t!("Menu.GameEngine.BakeLighting").to_string(), BakeLighting),
+                            MenuItem::action(t!("Menu.GameEngine.ClearBakedData").to_string(), ClearBakedData),
                             MenuItem::separator(),
-                            MenuItem::action("Frame Debugger", FrameDebugger),
-                            MenuItem::action("Profiler", EngineProfiler)
+                            MenuItem::action(t!("Menu.GameEngine.FrameDebugger").to_string(), FrameDebugger),
+                            MenuItem::action(t!("Menu.GameEngine.EngineProfiler").to_string(), EngineProfiler)
                         ],
                     }),
                     MenuItem::separator(),
-                    MenuItem::action("Package Manager", PackageManager),
-                    MenuItem::action("Asset Store", AssetStore)
+                    MenuItem::action(t!("Menu.GameEngine.PackageManager").to_string(), PackageManager),
+                    MenuItem::action(t!("Menu.GameEngine.AssetStore").to_string(), AssetStore)
                 ],
             },
             // Assets Menu
             Menu {
-                name: "Assets".into(),
+                name: t!("Menu.Assets").into(),
                 items: vec![
-                    MenuItem::action("Create Asset", CreateAsset),
-                    MenuItem::action("Import Asset", ImportAsset),
+                    MenuItem::action(t!("Menu.Assets.CreateAsset").to_string(), CreateAsset),
+                    MenuItem::action(t!("Menu.Assets.ImportAsset").to_string(), ImportAsset),
                     MenuItem::separator(),
                     MenuItem::Submenu(Menu {
-                        name: "Create".into(),
+                        name: t!("Menu.Assets.Create").into(),
                         items: vec![
-                            MenuItem::action("Material", CreateMaterial),
-                            MenuItem::action("Shader", CreateShader),
-                            MenuItem::action("Texture", CreateTexture),
+                            MenuItem::action(t!("Menu.Assets.CreateMaterial").to_string(), CreateMaterial),
+                            MenuItem::action(t!("Menu.Assets.CreateShader").to_string(), CreateShader),
+                            MenuItem::action(t!("Menu.Assets.CreateTexture").to_string(), CreateTexture),
                             MenuItem::separator(),
-                            MenuItem::action("Animation Clip", CreateAnimClip),
-                            MenuItem::action("Animator Controller", CreateAnimController),
+                            MenuItem::action(t!("Menu.Assets.CreateAnimClip").to_string(), CreateAnimClip),
+                            MenuItem::action(t!("Menu.Assets.CreateAnimController").to_string(), CreateAnimController),
                             MenuItem::separator(),
-                            MenuItem::action("Audio Mixer", CreateAudioMixer),
-                            MenuItem::action("Render Texture", CreateRenderTexture),
+                            MenuItem::action(t!("Menu.Assets.CreateAudioMixer").to_string(), CreateAudioMixer),
+                            MenuItem::action(t!("Menu.Assets.CreateRenderTexture").to_string(), CreateRenderTexture),
                             MenuItem::separator(),
-                            MenuItem::action("Prefab", CreatePrefab),
-                            MenuItem::action("ScriptableObject", CreateScriptableObject)
+                            MenuItem::action(t!("Menu.Assets.CreatePrefab").to_string(), CreatePrefab),
+                            MenuItem::action(t!("Menu.Assets.CreateScriptableObject").to_string(), CreateScriptableObject)
                         ],
                     }),
                     MenuItem::separator(),
-                    MenuItem::action("Refresh", RefreshAssets),
-                    MenuItem::action("Reimport", ReimportAssets),
-                    MenuItem::action("Reimport All", ReimportAllAssets),
+                    MenuItem::action(t!("Menu.Assets.Refresh").to_string(), RefreshAssets),
+                    MenuItem::action(t!("Menu.Assets.Reimport").to_string(), ReimportAssets),
+                    MenuItem::action(t!("Menu.Assets.ReimportAll").to_string(), ReimportAllAssets),
                     MenuItem::separator(),
-                    MenuItem::action("Find References", FindAssetReferences),
-                    MenuItem::action("Find Missing References", FindMissingReferences)
+                    MenuItem::action(t!("Menu.Assets.FindReferences").to_string(), FindAssetReferences),
+                    MenuItem::action(t!("Menu.Assets.FindMissingReferences").to_string(), FindMissingReferences)
                 ],
             },
             // Tools Menu
             Menu {
-                name: "Tools".into(),
+                name: t!("Menu.Tools").into(),
                 items: vec![
                     MenuItem::Submenu(Menu {
-                        name: "Rust".into(),
+                        name: t!("Menu.Tools.Rust").into(),
                         items: vec![
-                            MenuItem::action("Cargo Commands", CargoCommands),
-                            MenuItem::action("Generate Rust-Analyzer", GenerateRustAnalyzer),
+                            MenuItem::action(t!("Menu.Tools.CargoCommands").to_string(), CargoCommands),
+                            MenuItem::action(t!("Menu.Tools.GenerateRustAnalyzer").to_string(), GenerateRustAnalyzer),
                             MenuItem::separator(),
-                            MenuItem::action("Expand Macro", ExpandMacro),
-                            MenuItem::action("Show Syntax Tree", ShowSyntaxTree),
-                            MenuItem::action("Show HIR", ShowHIR),
+                            MenuItem::action(t!("Menu.Tools.ExpandMacro").to_string(), ExpandMacro),
+                            MenuItem::action(t!("Menu.Tools.ShowSyntaxTree").to_string(), ShowSyntaxTree),
+                            MenuItem::action(t!("Menu.Tools.ShowHIR").to_string(), ShowHIR),
                             MenuItem::separator(),
-                            MenuItem::action("Inline Variable", InlineVariable),
-                            MenuItem::action("Extract Function", ExtractFunction),
-                            MenuItem::action("Extract Variable", ExtractVariable)
+                            MenuItem::action(t!("Menu.Tools.InlineVariable").to_string(), InlineVariable),
+                            MenuItem::action(t!("Menu.Tools.ExtractFunction").to_string(), ExtractFunction),
+                            MenuItem::action(t!("Menu.Tools.ExtractVariable").to_string(), ExtractVariable)
                         ],
                     }),
                     MenuItem::Submenu(Menu {
-                        name: "Shader".into(),
+                        name: t!("Menu.Tools.Shaders").into(),
                         items: vec![
-                            MenuItem::action("Shader Editor", ShaderEditor),
-                            MenuItem::action("Compile Shader", CompileShader),
-                            MenuItem::action("Shader Variants", ShaderVariants),
+                            MenuItem::action(t!("Menu.Tools.ShaderEditor").to_string(), ShaderEditor),
+                            MenuItem::action(t!("Menu.Tools.CompileShader").to_string(), CompileShader),
+                            MenuItem::action(t!("Menu.Tools.ShaderVariants").to_string(), ShaderVariants),
                             MenuItem::separator(),
-                            MenuItem::action("SPIR-V Disassembly", SPIRVDisassembly)
+                            MenuItem::action(t!("Menu.Tools.SPIRVDisassembly").to_string(), SPIRVDisassembly)
                         ],
                     }),
                     MenuItem::Submenu(Menu {
-                        name: "Animation".into(),
+                        name: t!("Menu.Tools.Animation").into(),
                         items: vec![
-                            MenuItem::action("Animation Window", AnimationWindow),
-                            MenuItem::action("Animator", AnimatorWindow),
-                            MenuItem::action("Timeline", Timeline)
+                            MenuItem::action(t!("Menu.Tools.AnimationWindow").to_string(), AnimationWindow),
+                            MenuItem::action(t!("Menu.Tools.AnimatorWindow").to_string(), AnimatorWindow),
+                            MenuItem::action(t!("Menu.Tools.Timeline").to_string(), Timeline)
                         ],
                     }),
                     MenuItem::separator(),
-                    MenuItem::action("Material Editor", MaterialEditor),
-                    MenuItem::action("Terrain Tools", TerrainTools),
-                    MenuItem::action("Particle Editor", ParticleEditor),
-                    MenuItem::action("Audio Mixer", AudioMixerWindow),
+                    MenuItem::action(t!("Menu.Tools.MaterialEditor").to_string(), MaterialEditor),
+                    MenuItem::action(t!("Menu.Tools.TerrainTools").to_string(), TerrainTools),
+                    MenuItem::action(t!("Menu.Tools.ParticleEditor").to_string(), ParticleEditor),
+                    MenuItem::action(t!("Menu.Tools.AudioMixerWindow").to_string(), AudioMixerWindow),
                     MenuItem::separator(),
-                    MenuItem::action("Version Control", VersionControl),
-                    MenuItem::action("Task Manager", TaskManager),
-                    MenuItem::action("Extensions", Extensions)
+                    MenuItem::action(t!("Menu.Tools.VersionControl").to_string(), VersionControl),
+                    MenuItem::action(t!("Menu.Tools.TaskManager").to_string(), TaskManager),
+                    MenuItem::action(t!("Menu.Tools.Extensions").to_string(), Extensions)
                 ],
             },
             // Window Menu
             Menu {
-                name: "Window".into(),
+                name: t!("Menu.Window").into(),
                 items: vec![
-                    MenuItem::action("Minimize", Minimize),
-                    MenuItem::action("Zoom", Zoom),
+                    MenuItem::action(t!("Menu.Window.Minimize").to_string(), Minimize),
+                    MenuItem::action(t!("Menu.Window.Zoom").to_string(), Zoom),
                     MenuItem::separator(),
-                    MenuItem::action("Bring All to Front", BringAllToFront),
+                    MenuItem::action(t!("Menu.Window.BringAllToFront").to_string(), BringAllToFront),
                     MenuItem::separator(),
-                    MenuItem::action("New Window", NewWindow),
-                    MenuItem::action("Close Window", CloseWindow)
+                    MenuItem::action(t!("Menu.Window.NewWindow").to_string(), NewWindow),
+                    MenuItem::action(t!("Menu.Window.CloseWindow").to_string(), CloseWindow)
                 ],
             },
             // Help Menu
@@ -933,14 +933,14 @@ pub fn init_app_menus(title: impl Into<SharedString>, cx: &mut App) {
                     MenuItem::action(&t!("Menu.Help.API").to_string(), ShowAPIReference),
                     MenuItem::action(&t!("Menu.Help.Tutorials").to_string(), ShowTutorials),
                     MenuItem::separator(),
-                    MenuItem::action("Keyboard Shortcuts", ShowShortcuts),
+                    MenuItem::action(t!("Menu.Help.Shortcuts").to_string(), ShowShortcuts),
                     MenuItem::action(&t!("Menu.View.CommandPalette").to_string(), CommandPalette),
                     MenuItem::separator(),
                     MenuItem::action(&t!("Menu.Help.ReportBug").to_string(), ReportIssue),
-                    MenuItem::action("View Logs", ViewLogs),
+                    MenuItem::action(t!("Menu.Help.ViewLogs").to_string(), ViewLogs),
                     MenuItem::separator(),
-                    MenuItem::action("Check for Updates", CheckUpdates),
-                    MenuItem::action("Release Notes", ReleaseNotes),
+                    MenuItem::action(t!("Menu.Help.CheckUpdates").to_string(), CheckUpdates),
+                    MenuItem::action(t!("Menu.Help.ReleaseNotes").to_string(), ReleaseNotes),
                     MenuItem::separator(),
                     MenuItem::action(&t!("Menu.Help.About").to_string(), AboutApp)
                 ],
