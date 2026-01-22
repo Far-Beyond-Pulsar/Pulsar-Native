@@ -5,43 +5,43 @@ Calendar:
     zh-CN: 日
     zh-HK: 日
     it: Do
-    pt-BR: Do
+    pt-BR: Dom
   week.1:
     en: Mo
     zh-CN: 一
     zh-HK: 一
     it: Lu
-    pt-BR: Se
+    pt-BR: Seg
   week.2:
     en: Tu
     zh-CN: 二
     zh-HK: 二
     it: Ma
-    pt-BR: Te
+    pt-BR: Ter
   week.3:
     en: We
     zh-CN: 三
     zh-HK: 三
     it: Me
-    pt-BR: Qu
+    pt-BR: Qua
   week.4:
     en: Th
     zh-CN: 四
     zh-HK: 四
     it: Gi
-    pt-BR: Qu
+    pt-BR: Qui
   week.5:
     en: Fr
     zh-CN: 五
     zh-HK: 五
     it: Ve
-    pt-BR: Se
+    pt-BR: Sex
   week.6:
     en: Sa
     zh-CN: 六
     zh-HK: 六
     it: Sa
-    pt-BR: Sá
+    pt-BR: Sab
   month.January:
     en: January
     zh-CN: 一月
