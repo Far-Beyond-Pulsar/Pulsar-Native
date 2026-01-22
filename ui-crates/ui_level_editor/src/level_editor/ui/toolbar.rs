@@ -5,6 +5,7 @@ use ui::{
     popup_menu::PopupMenuExt,
 };
 use std::sync::Arc;
+use rust_i18n::t;
 
 use super::state::{LevelEditorState, TransformTool, MultiplayerMode, BuildConfig, TargetPlatform};
 
@@ -74,7 +75,7 @@ impl ToolbarPanel {
                 if state.is_edit_mode() {
                     Button::new("play")
                         .icon(IconName::Play)
-                        .tooltip("Start Simulation (F5)")
+                        .tooltip(t!("LevelEditor.Toolbar.StartSimulation"))
                         .on_click(move |_, _, _| {
                             state_clone.write().enter_play_mode();
                         })
@@ -82,7 +83,7 @@ impl ToolbarPanel {
                 } else {
                     Button::new("play_disabled")
                         .icon(IconName::Play)
-                        .tooltip("Simulation Running")
+                        .tooltip(t!("LevelEditor.Toolbar.SimulationRunning"))
                         .ghost()
                         .into_any_element()
                 }
@@ -90,7 +91,7 @@ impl ToolbarPanel {
             .child({
                 Button::new("pause")
                     .icon(IconName::Pause)
-                    .tooltip("Pause Simulation (F6)")
+                    .tooltip(t!("LevelEditor.Toolbar.PauseSimulation"))
                     .ghost()
                     .on_click(move |_, _, _| {
                         // TODO: Implement pause
@@ -101,7 +102,7 @@ impl ToolbarPanel {
                 if state.is_play_mode() {
                     Button::new("stop")
                         .icon(IconName::Close)
-                        .tooltip("Stop Simulation (Shift+F5)")
+                        .tooltip(t!("LevelEditor.Toolbar.StopSimulation"))
                         .on_click(move |_, _, _| {
                             state_clone.write().exit_play_mode();
                         })
@@ -109,7 +110,7 @@ impl ToolbarPanel {
                 } else {
                     Button::new("stop_disabled")
                         .icon(IconName::Close)
-                        .tooltip("Not Playing")
+                        .tooltip(t!("LevelEditor.Toolbar.NotPlaying"))
                         .ghost()
                         .into_any_element()
                 }
@@ -133,11 +134,11 @@ impl ToolbarPanel {
                 Button::new("time_scale_button")
                     .label(&time_scale_label)
                     .icon(IconName::Clock)
-                    .tooltip("Time Scale")
+                    .tooltip(t!("LevelEditor.Toolbar.TimeScale"))
             )
             .popup_menu(move |menu, _window, _cx| {
                 menu
-                    .label("Select Time Scale")
+                    .label(t!("LevelEditor.Toolbar.SelectTimeScale"))
                     .separator()
                     .menu_with_icon("0.25x", IconName::Clock, Box::new(NoOpAction))
                     .menu_with_icon("0.5x", IconName::Clock, Box::new(NoOpAction))
@@ -167,11 +168,11 @@ impl ToolbarPanel {
                 Button::new("multiplayer_button")
                     .label(mode_label)
                     .icon(IconName::Network)
-                    .tooltip("Multiplayer Mode")
+                    .tooltip(t!("LevelEditor.Toolbar.MultiplayerMode"))
             )
             .popup_menu(move |menu, _window, _cx| {
                 menu
-                    .label("Multiplayer Mode")
+                    .label(t!("LevelEditor.Toolbar.MultiplayerMode"))
                     .separator()
                     .menu_with_icon("Offline", IconName::PhoneDisabled, Box::new(NoOpAction))
                     .menu_with_icon("Host Server", IconName::Server, Box::new(NoOpAction))
@@ -210,11 +211,11 @@ impl ToolbarPanel {
                     .button(
                         Button::new("build_config_button")
                             .label(config_label)
-                            .tooltip("Build Configuration")
+                            .tooltip(t!("LevelEditor.Toolbar.BuildConfiguration"))
                     )
                     .popup_menu(move |menu, _window, _cx| {
                         menu
-                            .label("Build Configuration")
+                            .label(t!("LevelEditor.Toolbar.BuildConfiguration"))
                             .separator()
                             .menu_with_icon("Debug (Fast Compile)", IconName::Bug, Box::new(NoOpAction))
                             .menu_with_icon("Release (Optimized)", IconName::Flash, Box::new(NoOpAction))
@@ -226,11 +227,11 @@ impl ToolbarPanel {
                     .button(
                         Button::new("platform_button")
                             .label(platform_label)
-                            .tooltip("Target Platform")
+                            .tooltip(t!("LevelEditor.Toolbar.TargetPlatform"))
                     )
                     .popup_menu(move |menu, window, cx| {
                         menu
-                            .label("Target Platform")
+                            .label(t!("LevelEditor.Toolbar.TargetPlatform"))
                             .separator()
                             .submenu_with_icon(Some(ui::Icon::new(IconName::Computer)), "Windows", window, cx, |menu, _, _| {
                                 menu
@@ -270,7 +271,7 @@ impl ToolbarPanel {
             .child(
                 Button::new("build_deploy")
                     .icon(IconName::Package)
-                    .tooltip("Build & Deploy")
+                    .tooltip(t!("LevelEditor.Toolbar.BuildDeploy"))
                     .on_click(move |_, _, _| {
                         // TODO: Trigger build
                     })
@@ -289,7 +290,7 @@ impl ToolbarPanel {
         let state_clone = state_arc.clone();
         Button::new("toggle_profiling")
             .icon(IconName::Activity)
-            .tooltip("Toggle Performance Overlay")
+            .tooltip(t!("LevelEditor.Toolbar.TogglePerformance"))
             .selected(state.show_performance_overlay)
             .on_click(move |_, _, _| {
                 state_clone.write().show_performance_overlay = !state_clone.read().show_performance_overlay;

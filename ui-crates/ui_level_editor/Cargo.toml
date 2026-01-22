@@ -29,6 +29,7 @@ chrono = { version = "0.4", features = ["serde"] }
 schemars = "1.0"
 device_query = "4.0.1"
 raw-window-handle = "0.6"
+rust-i18n.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winuser", "shellapi"] }

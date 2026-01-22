@@ -123,17 +123,6 @@ pub fn setup_scene(
         Transform::from_xyz(4.0, 8.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
     
-    // DEBUG: Small blue sphere at origin to verify rendering works
-    commands.spawn((
-        Mesh3d(meshes.add(Sphere::new(0.5))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.0, 0.5, 1.0),
-            ..default()
-        })),
-        Transform::from_xyz(0.0, 0.0, 0.0),
-    ));
-    println!("[BEVY DEBUG] 🔵 Debug blue sphere spawned at origin");
-    
     // Ambient light
     commands.insert_resource(AmbientLight {
         color: Color::WHITE,
@@ -261,7 +250,7 @@ fn spawn_level_objects(
                 })
             }
             MeshType::File { file } => {
-                // Load mesh file directly as Mesh (not Scene)
+                // Load mesh file directly as Mesh
                 tracing::debug!("[BEVY] 📦 Loading mesh: {}", file);
                 println!("[BEVY] 📦 Loading mesh: {}", file);
                 
@@ -276,34 +265,55 @@ fn spawn_level_objects(
                 let asset_path = format!("scenes/{}", file);
                 println!("[BEVY DEBUG] Loading mesh from: {}", asset_path);
                 
-                // Load directly as a Mesh handle - materials must be set manually
-                let mesh_handle: Handle<Mesh> = asset_server.load(&asset_path);
+                // Load directly as a Mesh handle with special settings
+                let mesh_handle: Handle<Mesh> = asset_server.load_with_settings(
+                    &asset_path,
+                    |settings: &mut bevy_obj::ObjSettings| {
+                        settings.force_compute_normals = true;
+                        settings.prefer_flat_normals = false; // Use smooth normals
+                    },
+                );
                 
-                // Use material from level file if provided, otherwise use default
+                // Try to load textures from MTL file
+                let mtl_path = asset_path.replace(".obj", ".mtl");
+                let project_path = engine_state::get_project_path()
+                    .unwrap_or("C:\\Users\\redst\\OneDrive\\Documents\\Pulsar_Projects\\blank_project");
+                let full_mtl_path = Path::new(project_path).join(&mtl_path);
+                
+                // Don't load textures for now - just use metallic material
+                // (No texture variables needed)
+                
+                if full_mtl_path.exists() {
+                    println!("[BEVY DEBUG] MTL file found but textures disabled - using metallic material");
+                }
+                
+                // Use material from level file if provided, otherwise metallic gray
                 let material = if let Some(mat) = &obj.material {
                     let color = mat.color.as_ref().map(|c| {
                         if c.len() >= 3 {
                             [c[0], c[1], c[2]]
                         } else {
-                            [0.8, 0.8, 0.8]
+                            [0.7, 0.7, 0.7]
                         }
-                    }).unwrap_or([0.8, 0.8, 0.8]);
+                    }).unwrap_or([0.7, 0.7, 0.7]);
                     
                     materials.add(StandardMaterial {
                         base_color: Color::srgb(color[0], color[1], color[2]),
-                        metallic: mat.metallic.unwrap_or(0.0),
-                        perceptual_roughness: mat.roughness.unwrap_or(0.5),
+                        metallic: mat.metallic.unwrap_or(0.9),
+                        perceptual_roughness: mat.roughness.unwrap_or(0.2),
                         ..default()
                     })
                 } else {
-                    // Default gray material
+                    // Metallic gray material
                     materials.add(StandardMaterial {
                         base_color: Color::srgb(0.7, 0.7, 0.7),
+                        metallic: 0.9,
+                        perceptual_roughness: 0.2,
                         ..default()
                     })
                 };
                 
-                // Spawn as a regular mesh entity
+                // Spawn as mesh entity with material
                 commands.spawn((
                     Mesh3d(mesh_handle),
                     MeshMaterial3d(material),
@@ -317,7 +327,7 @@ fn spawn_level_objects(
                     GameObjectId((*id).into()),
                 ));
                 
-                println!("[BEVY] ✅ OBJ mesh spawned at ({}, {}, {}) - specify material in level file",
+                println!("[BEVY] ✅ OBJ mesh spawned at ({}, {}, {}) with metallic material",
                     obj.transform.position[0], obj.transform.position[1], obj.transform.position[2]);
                 *id += 1;
                 continue;
@@ -449,6 +459,7 @@ pub fn debug_rendering_system(
 pub fn debug_asset_loading(
     asset_server: Res<AssetServer>,
     meshes: Res<Assets<Mesh>>,
+    images: Res<Assets<Image>>,
     mut last_check: Local<f32>,
     time: Res<Time>,
 ) {
@@ -459,7 +470,8 @@ pub fn debug_asset_loading(
     *last_check = 0.0;
     
     let mesh_count = meshes.len();
-    if mesh_count > 0 {
-        println!("[BEVY ASSETS] Loaded meshes count: {}", mesh_count);
+    let image_count = images.len();
+    if mesh_count > 0 || image_count > 0 {
+        println!("[BEVY ASSETS] Loaded meshes: {}, images: {}", mesh_count, image_count);
     }
 }

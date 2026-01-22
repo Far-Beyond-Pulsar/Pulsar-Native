@@ -15382,6 +15382,7 @@ dependencies = [
  "parking_lot",
  "profiling 0.1.0",
  "raw-window-handle 0.6.2",
+ "rust-i18n",
  "schemars",
  "serde",
  "serde_json",
