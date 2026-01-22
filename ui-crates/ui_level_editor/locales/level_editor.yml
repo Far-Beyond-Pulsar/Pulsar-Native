@@ -8,72 +8,84 @@ LevelEditor.Toolbar.StartSimulation:
   zh-CN: "开始模拟 (F5)"
   zh-HK: "開始模擬 (F5)"
   it: "Avvia Simulazione (F5)"
+  pt-BR: "Iniciar Simulação (F5)"
 
 LevelEditor.Toolbar.SimulationRunning:
   en: "Simulation Running"
   zh-CN: "模拟运行中"
   zh-HK: "模擬運行中"
   it: "Simulazione in Esecuzione"
+  pt-BR: "Simulação em Execução"
 
 LevelEditor.Toolbar.PauseSimulation:
   en: "Pause Simulation (F6)"
   zh-CN: "暂停模拟 (F6)"
   zh-HK: "暫停模擬 (F6)"
   it: "Pausa Simulazione (F6)"
+  pt-BR: "Pausar Simulação (F6)"
 
 LevelEditor.Toolbar.StopSimulation:
   en: "Stop Simulation (Shift+F5)"
   zh-CN: "停止模拟 (Shift+F5)"
   zh-HK: "停止模擬 (Shift+F5)"
   it: "Ferma Simulazione (Shift+F5)"
+  pt-BR: "Parar Simulação (Shift+F5)"
 
 LevelEditor.Toolbar.NotPlaying:
   en: "Not Playing"
   zh-CN: "未播放"
   zh-HK: "未播放"
   it: "Non in Riproduzione"
+  pt-BR: "Não Reproduzindo"
 
 LevelEditor.Toolbar.TimeScale:
   en: "Time Scale"
   zh-CN: "时间缩放"
   zh-HK: "時間縮放"
   it: "Scala Temporale"
+  pt-BR: "Escala de Tempo"
 
 LevelEditor.Toolbar.SelectTimeScale:
   en: "Select Time Scale"
   zh-CN: "选择时间缩放"
   zh-HK: "選擇時間縮放"
   it: "Seleziona Scala Temporale"
+  pt-BR: "Selecionar Escala de Tempo"
 
 LevelEditor.Toolbar.MultiplayerMode:
   en: "Multiplayer Mode"
   zh-CN: "多人游戏模式"
   zh-HK: "多人遊戲模式"
   it: "Modalità Multigiocatore"
+  pt-BR: "Modo Multijogador"
 
 LevelEditor.Toolbar.BuildConfiguration:
   en: "Build Configuration"
   zh-CN: "构建配置"
   zh-HK: "構建配置"
   it: "Configurazione Build"
+  pt-BR: "Configuração de Build"
 
 LevelEditor.Toolbar.TargetPlatform:
   en: "Target Platform"
   zh-CN: "目标平台"
   zh-HK: "目標平台"
   it: "Piattaforma di Destinazione"
+  pt-BR: "Plataforma de Destino"
 
 LevelEditor.Toolbar.BuildDeploy:
   en: "Build & Deploy"
   zh-CN: "构建和部署"
   zh-HK: "構建和部署"
   it: "Build e Deploy"
+  pt-BR: "Compilar e Implantar"
 
 LevelEditor.Toolbar.TogglePerformance:
   en: "Toggle Performance Overlay"
   zh-CN: "切换性能叠加层"
   zh-HK: "切換性能疊加層"
   it: "Attiva/Disattiva Overlay Prestazioni"
+  pt-BR: "Alternar Overlay de Desempenho"
 
 # Hierarchy Panel
 LevelEditor.Hierarchy.Title:
@@ -81,30 +93,35 @@ LevelEditor.Hierarchy.Title:
   zh-CN: "层级"
   zh-HK: "層級"
   it: "Gerarchia"
+  pt-BR: "Hierarquia"
 
 LevelEditor.Hierarchy.AddObject:
   en: "Add Object"
   zh-CN: "添加对象"
   zh-HK: "添加對象"
   it: "Aggiungi Oggetto"
+  pt-BR: "Adicionar Objeto"
 
 LevelEditor.Hierarchy.AddFolder:
   en: "Add Folder"
   zh-CN: "添加文件夹"
   zh-HK: "添加文件夾"
   it: "Aggiungi Cartella"
+  pt-BR: "Adicionar Pasta"
 
 LevelEditor.Hierarchy.DeleteSelected:
   en: "Delete Selected"
   zh-CN: "删除选中项"
   zh-HK: "刪除選中項"
   it: "Elimina Selezionati"
+  pt-BR: "Excluir Selecionados"
 
 LevelEditor.Hierarchy.DropHere:
   en: "Drop here to make root-level"
   zh-CN: "拖放到这里以成为根级别"
   zh-HK: "拖放到這裡以成為根級別"
   it: "Rilascia qui per rendere root-level"
+  pt-BR: "Solte aqui para tornar nível raiz"
 
 # Properties Panel
 LevelEditor.Properties.Title:
@@ -112,42 +129,49 @@ LevelEditor.Properties.Title:
   zh-CN: "属性"
   zh-HK: "屬性"
   it: "Proprietà"
+  pt-BR: "Propriedades"
 
 LevelEditor.Properties.Selected:
   en: "1 selected"
   zh-CN: "已选择 1 个"
   zh-HK: "已選擇 1 個"
   it: "1 selezionato"
+  pt-BR: "1 selecionado"
 
 LevelEditor.Properties.NoSelection:
   en: "No Selection"
   zh-CN: "未选择"
   zh-HK: "未選擇"
   it: "Nessuna Selezione"
+  pt-BR: "Nenhuma Seleção"
 
 LevelEditor.Properties.NoSelectionDesc:
   en: "Select an object in the scene to view and edit its properties"
   zh-CN: "在场景中选择一个对象以查看和编辑其属性"
   zh-HK: "在場景中選擇一個對象以查看和編輯其屬性"
   it: "Seleziona un oggetto nella scena per visualizzare e modificare le sue proprietà"
+  pt-BR: "Selecione um objeto na cena para visualizar e editar suas propriedades"
 
 LevelEditor.Properties.NoSettings:
   en: "No additional settings"
   zh-CN: "没有其他设置"
   zh-HK: "沒有其他設置"
   it: "Nessuna impostazione aggiuntiva"
+  pt-BR: "Nenhuma configuração adicional"
 
 LevelEditor.Properties.AddComponent:
   en: "Add Component"
   zh-CN: "添加组件"
   zh-HK: "添加組件"
   it: "Aggiungi Componente"
+  pt-BR: "Adicionar Componente"
 
 LevelEditor.Properties.Transform:
   en: "Transform"
   zh-CN: "变换"
   zh-HK: "變換"
   it: "Trasformazione"
+  pt-BR: "Transformação"
 
 # Asset Browser
 LevelEditor.Assets.Back:
@@ -155,12 +179,14 @@ LevelEditor.Assets.Back:
   zh-CN: "返回"
   zh-HK: "返回"
   it: "Indietro"
+  pt-BR: "Voltar"
 
 LevelEditor.Assets.Refresh:
   en: "Refresh"
   zh-CN: "刷新"
   zh-HK: "刷新"
   it: "Aggiorna"
+  pt-BR: "Atualizar"
 
 # World Settings
 LevelEditor.WorldSettings.Title:
@@ -168,24 +194,28 @@ LevelEditor.WorldSettings.Title:
   zh-CN: "世界设置"
   zh-HK: "世界設置"
   it: "Impostazioni Mondo"
+  pt-BR: "Configurações do Mundo"
 
 LevelEditor.WorldSettings.ResetDefaults:
   en: "Reset to Defaults"
   zh-CN: "重置为默认值"
   zh-HK: "重置為默認值"
   it: "Ripristina Predefiniti"
+  pt-BR: "Restaurar Padrões"
 
 LevelEditor.WorldSettings.UntitledScene:
   en: "Untitled Scene"
   zh-CN: "未命名场景"
   zh-HK: "未命名場景"
   it: "Scena Senza Titolo"
+  pt-BR: "Cena Sem Título"
 
 LevelEditor.WorldSettings.LastSaved:
   en: "Last saved: Never"
   zh-CN: "上次保存：从未"
   zh-HK: "上次保存：從未"
   it: "Ultimo salvataggio: Mai"
+  pt-BR: "Último salvamento: Nunca"
 
 # Viewport
 LevelEditor.Viewport.InitializingRenderer:
@@ -193,42 +223,49 @@ LevelEditor.Viewport.InitializingRenderer:
   zh-CN: "正在初始化 3D 渲染器..."
   zh-HK: "正在初始化 3D 渲染器..."
   it: "Inizializzazione Renderer 3D..."
+  pt-BR: "Inicializando Renderizador 3D..."
 
 LevelEditor.Viewport.LoadingWorkspace:
   en: "Loading workspace..."
   zh-CN: "正在加载工作区..."
   zh-HK: "正在加載工作區..."
   it: "Caricamento workspace..."
+  pt-BR: "Carregando espaço de trabalho..."
 
 LevelEditor.Viewport.CameraMode:
   en: "Camera Mode"
   zh-CN: "相机模式"
   zh-HK: "相機模式"
   it: "Modalità Telecamera"
+  pt-BR: "Modo Câmera"
 
 LevelEditor.Viewport.Speed:
   en: "Speed"
   zh-CN: "速度"
   zh-HK: "速度"
   it: "Velocità"
+  pt-BR: "Velocidade"
 
 LevelEditor.Viewport.DecreaseCameraSpeed:
   en: "Decrease camera speed"
   zh-CN: "降低相机速度"
   zh-HK: "降低相機速度"
   it: "Diminuisci velocità telecamera"
+  pt-BR: "Diminuir velocidade da câmera"
 
 LevelEditor.Viewport.IncreaseCameraSpeed:
   en: "Increase camera speed"
   zh-CN: "增加相机速度"
   zh-HK: "增加相機速度"
   it: "Aumenta velocità telecamera"
+  pt-BR: "Aumentar velocidade da câmera"
 
 LevelEditor.Viewport.ViewportOptions:
   en: "Viewport Options"
   zh-CN: "视口选项"
   zh-HK: "視口選項"
   it: "Opzioni Viewport"
+  pt-BR: "Opções da Viewport"
 
 # Performance Overlay
 LevelEditor.Performance.Title:
@@ -236,48 +273,56 @@ LevelEditor.Performance.Title:
   zh-CN: "性能"
   zh-HK: "性能"
   it: "Prestazioni"
+  pt-BR: "Desempenho"
 
 LevelEditor.Performance.Close:
   en: "Close"
   zh-CN: "关闭"
   zh-HK: "關閉"
   it: "Chiudi"
+  pt-BR: "Fechar"
 
 LevelEditor.Performance.ShowStats:
   en: "Show Performance Stats"
   zh-CN: "显示性能统计"
   zh-HK: "顯示性能統計"
   it: "Mostra Statistiche Prestazioni"
+  pt-BR: "Mostrar Estatísticas de Desempenho"
 
 LevelEditor.Performance.Rendering:
   en: "Rendering"
   zh-CN: "渲染"
   zh-HK: "渲染"
   it: "Rendering"
+  pt-BR: "Renderização"
 
 LevelEditor.Performance.Input:
   en: "Input"
   zh-CN: "输入"
   zh-HK: "輸入"
   it: "Input"
+  pt-BR: "Entrada"
 
 LevelEditor.Performance.FPSHistory:
   en: "FPS History"
   zh-CN: "FPS 历史"
   zh-HK: "FPS 歷史"
   it: "Cronologia FPS"
+  pt-BR: "Histórico de FPS"
 
 LevelEditor.Performance.FrameTime:
   en: "Frame Time (ms)"
   zh-CN: "帧时间 (毫秒)"
   zh-HK: "幀時間 (毫秒)"
   it: "Tempo Frame (ms)"
+  pt-BR: "Tempo de Quadro (ms)"
 
 LevelEditor.Performance.InputLatency:
   en: "Input Latency (ms)"
   zh-CN: "输入延迟 (毫秒)"
   zh-HK: "輸入延遲 (毫秒)"
   it: "Latenza Input (ms)"
+  pt-BR: "Latência de Entrada (ms)"
 
 # GPU Pipeline Overlay
 LevelEditor.GPU.Title:
@@ -285,42 +330,49 @@ LevelEditor.GPU.Title:
   zh-CN: "GPU 流水线"
   zh-HK: "GPU 流水線"
   it: "Pipeline GPU"
+  pt-BR: "Pipeline GPU"
 
 LevelEditor.GPU.Pass:
   en: "Pass"
   zh-CN: "通道"
   zh-HK: "通道"
   it: "Pass"
+  pt-BR: "Pass"
 
 LevelEditor.GPU.Time:
   en: "Time"
   zh-CN: "时间"
   zh-HK: "時間"
   it: "Tempo"
+  pt-BR: "Tempo"
 
 LevelEditor.GPU.Percentage:
   en: "%"
   zh-CN: "%"
   zh-HK: "%"
   it: "%"
+  pt-BR: "%"
 
 LevelEditor.GPU.TotalGPU:
   en: "Total GPU"
   zh-CN: "GPU 总计"
   zh-HK: "GPU 總計"
   it: "GPU Totale"
+  pt-BR: "GPU Total"
 
 LevelEditor.GPU.FrameTime:
   en: "Frame Time"
   zh-CN: "帧时间"
   zh-HK: "幀時間"
   it: "Tempo Frame"
+  pt-BR: "Tempo de Quadro"
 
 LevelEditor.GPU.NoData:
   en: "No GPU data available"
   zh-CN: "没有可用的 GPU 数据"
   zh-HK: "沒有可用的 GPU 數據"
   it: "Nessun dato GPU disponibile"
+  pt-BR: "Nenhum dado GPU disponível"
 
 # Material Section
 LevelEditor.Material.Title:
@@ -328,6 +380,7 @@ LevelEditor.Material.Title:
   zh-CN: "材质"
   zh-HK: "材質"
   it: "Materiale"
+  pt-BR: "Material"
 
 # Viewport Options Labels
 LevelEditor.ViewportOptions.Perf:
@@ -335,18 +388,21 @@ LevelEditor.ViewportOptions.Perf:
   zh-CN: "性能"
   zh-HK: "性能"
   it: "Perf"
+  pt-BR: "Desempenho"
 
 LevelEditor.ViewportOptions.GPU:
   en: "GPU"
   zh-CN: "GPU"
   zh-HK: "GPU"
   it: "GPU"
+  pt-BR: "GPU"
 
 LevelEditor.ViewportOptions.Cam:
   en: "Cam"
   zh-CN: "相机"
   zh-HK: "相機"
   it: "Cam"
+  pt-BR: "Câmera"
 
 # Additional Panel and UI Strings
 LevelEditor.Panel.LoadingWorkspace:
@@ -354,6 +410,7 @@ LevelEditor.Panel.LoadingWorkspace:
   zh-CN: "正在加载工作区..."
   zh-HK: "正在加載工作區..."
   it: "Caricamento workspace..."
+  pt-BR: "Carregando espaço de trabalho..."
 
 # Language Names (for locale selector)
 Language.English:
@@ -361,63 +418,74 @@ Language.English:
   zh-CN: "英语"
   zh-HK: "英語"
   it: "Inglese"
+  pt-BR: "Inglês"
 
 Language.SimplifiedChinese:
   en: "Simplified Chinese"
   zh-CN: "简体中文"
   zh-HK: "簡體中文"
   it: "Cinese Semplificato"
+  pt-BR: "Chinês Simplificado"
 
 Language.TraditionalChinese:
   en: "Traditional Chinese"
   zh-CN: "繁体中文"
   zh-HK: "繁體中文"
   it: "Cinese Tradizionale"
+  pt-BR: "Chinês Tradicional"
 
 Language.Italian:
   en: "Italian"
   zh-CN: "意大利语"
   zh-HK: "意大利語"
   it: "Italiano"
+  pt-BR: "Italiano"
 
 Language.Japanese:
   en: "Japanese"
   zh-CN: "日语"
   zh-HK: "日語"
   it: "Giapponese"
+  pt-BR: "Japonês"
 
 Language.Korean:
   en: "Korean"
   zh-CN: "韩语"
   zh-HK: "韓語"
   it: "Coreano"
+  pt-BR: "Coreano"
 
 Language.German:
   en: "German"
   zh-CN: "德语"
   zh-HK: "德語"
   it: "Tedesco"
+  pt-BR: "Alemão"
 
 Language.French:
   en: "French"
   zh-CN: "法语"
   zh-HK: "法語"
   it: "Francese"
+  pt-BR: "Francês"
 
 Language.Spanish:
   en: "Spanish"
   zh-CN: "西班牙语"
   zh-HK: "西班牙語"
   it: "Spagnolo"
+  pt-BR: "Espanhol"
 
 Language.Portuguese:
   en: "Portuguese"
   zh-CN: "葡萄牙语"
   zh-HK: "葡萄牙語"
   it: "Portoghese"
+  pt-BR: "Português"
 
 Language.Russian:
   en: "Russian"
   zh-CN: "俄语"
   zh-HK: "俄語"
   it: "Russo"
+  pt-BR: "Russo"
