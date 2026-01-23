@@ -1,5 +1,6 @@
 use gpui::prelude::*;
 use gpui::*;
+use rust_i18n::t;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use ui::{
@@ -575,7 +576,7 @@ impl FileManagerDrawer {
                                             .text_base()
                                             .font_weight(gpui::FontWeight::BOLD)
                                             .text_color(cx.theme().foreground)
-                                            .child("Project Files")
+                                            .child(t!("FileManager.ProjectFiles").to_string())
                                     )
                             )
                             .child(
@@ -586,7 +587,7 @@ impl FileManagerDrawer {
                                             .icon(IconName::ChevronDown)
                                             .ghost()
                                             .xsmall()
-                                            .tooltip("Expand All")
+                                            .tooltip(t!("FileManager.ExpandAll").to_string())
                                             .on_click(cx.listener(|drawer, _event, _window, cx| {
                                                 if let Some(ref mut tree) = drawer.folder_tree {
                                                     tree.expand_all();
@@ -599,7 +600,7 @@ impl FileManagerDrawer {
                                             .icon(IconName::ChevronUp)
                                             .ghost()
                                             .xsmall()
-                                            .tooltip("Collapse All")
+                                            .tooltip(t!("FileManager.CollapseAll").to_string())
                                             .on_click(cx.listener(|drawer, _event, _window, cx| {
                                                 if let Some(ref mut tree) = drawer.folder_tree {
                                                     tree.collapse_all();
@@ -950,14 +951,14 @@ impl FileManagerDrawer {
                     .text_xs()
                     .font_medium()
                     .text_color(cx.theme().accent)
-                    .child(format!("{} items", items.len()))
+                    .child(t!("FileManager.Items", count => items.len()).to_string())
             )
             // Lock button
             .child(
                 Button::new("lock")
                     .icon(IconName::Lock)
                     .ghost()
-                    .tooltip("Lock Files")
+                    .tooltip(t!("FileManager.Properties").to_string())
                     .on_click(cx.listener(|_drawer, _event, _window, _cx| {
                         // TODO: Implement lock functionality
                     }))
@@ -967,7 +968,7 @@ impl FileManagerDrawer {
                 Button::new("toggle-view")
                     .icon(IconName::LayoutDashboard)
                     .ghost()
-                    .tooltip("Grid View")
+                    .tooltip(t!("FileManager.GridView").to_string())
                     .on_click(cx.listener(|drawer, _event, _window, cx| {
                         drawer.view_mode = ViewMode::Grid;
                         cx.notify();
@@ -977,7 +978,7 @@ impl FileManagerDrawer {
                 Button::new("toggle-list")
                     .icon(IconName::List)
                     .ghost()
-                    .tooltip("List View")
+                    .tooltip(t!("FileManager.ListView").to_string())
                     .on_click(cx.listener(|drawer, _event, _window, cx| {
                         drawer.view_mode = ViewMode::List;
                         cx.notify();
@@ -987,7 +988,7 @@ impl FileManagerDrawer {
                 Button::new("split-view")
                     .icon(IconName::HorizontalSplit)
                     .ghost()
-                    .tooltip("Split View")
+                    .tooltip(t!("FileManager.ViewMode").to_string())
                     .on_click(cx.listener(|_drawer, _event, _window, _cx| {
                         // TODO: Implement split view
                     }))
@@ -997,7 +998,7 @@ impl FileManagerDrawer {
                 Button::new("new-file")
                     .icon(IconName::PagePlus)
                     .ghost()
-                    .tooltip("New File")
+                    .tooltip(t!("FileManager.NewFile").to_string())
                     .on_click(cx.listener(|drawer, _event, _window, cx| {
                         drawer.start_new_file(cx);
                     }))
@@ -1006,7 +1007,7 @@ impl FileManagerDrawer {
                 Button::new("new-folder")
                     .icon(IconName::FolderPlus)
                     .ghost()
-                    .tooltip("New Folder")
+                    .tooltip(t!("FileManager.NewFolder").to_string())
                     .on_click(cx.listener(|drawer, _event, _window, cx| {
                         drawer.start_new_folder(cx);
                     }))
@@ -1016,7 +1017,7 @@ impl FileManagerDrawer {
                 Button::new("refresh")
                     .icon(IconName::Refresh)
                     .ghost()
-                    .tooltip("Refresh")
+                    .tooltip(t!("FileManager.Refresh").to_string())
                     .on_click(cx.listener(|drawer, _event, _window, cx| {
                         if let Some(ref path) = drawer.project_path {
                             drawer.folder_tree = FolderNode::from_path(path);
@@ -1029,7 +1030,7 @@ impl FileManagerDrawer {
                 Button::new("filter")
                     .icon(IconName::Filter)
                     .ghost()
-                    .tooltip("Filter")
+                    .tooltip(t!("FileManager.SortBy").to_string())
                     .on_click(cx.listener(|_drawer, _event, _window, _cx| {
                         // TODO: Implement filter
                     }))
@@ -1039,7 +1040,11 @@ impl FileManagerDrawer {
                 Button::new("toggle-hidden")
                     .icon(if self.show_hidden_files { IconName::EyeOff } else { IconName::Eye })
                     .ghost()
-                    .tooltip(if self.show_hidden_files { "Hide Hidden Files" } else { "Show Hidden Files" })
+                    .tooltip(if self.show_hidden_files { 
+                        t!("FileManager.HideHidden").to_string() 
+                    } else { 
+                        t!("FileManager.ShowHidden").to_string() 
+                    })
                     .on_click(cx.listener(|drawer, _event, _window, cx| {
                         drawer.show_hidden_files = !drawer.show_hidden_files;
                         cx.notify();
@@ -1050,7 +1055,7 @@ impl FileManagerDrawer {
                 Button::new("external")
                     .icon(IconName::ExternalLink)
                     .ghost()
-                    .tooltip("Open in File Explorer")
+                    .tooltip(t!("FileManager.OpenInFileManager").to_string())
                     .on_click(cx.listener(|drawer, _event, _window, _cx| {
                         if let Some(ref folder) = drawer.selected_folder {
                             #[cfg(target_os = "windows")]

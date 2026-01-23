@@ -1,0 +1,45 @@
+# File Manager - zh-CN
+
+FileManager.ProjectFiles: "项目文件"
+FileManager.ExpandAll: "展开全部"
+FileManager.CollapseAll: "折叠全部"
+FileManager.SearchFolders: "搜索文件夹..."
+FileManager.SearchFiles: "搜索文件..."
+FileManager.Items: "%{count} 项"
+FileManager.Selected: "已选择 %{count} 项"
+FileManager.NoItems: "无项目"
+FileManager.EmptyFolder: "此文件夹为空"
+FileManager.EmptyFolderDesc: "右键单击以创建文件或文件夹"
+FileManager.ViewMode: "查看模式"
+FileManager.SortBy: "排序方式"
+FileManager.Refresh: "刷新"
+
+# Context Menu Items
+FileManager.NewFile: "新建文件"
+FileManager.NewFolder: "新建文件夹"
+FileManager.Open: "打开"
+FileManager.OpenWith: "打开方式"
+FileManager.Rename: "重命名"
+FileManager.Delete: "删除"
+FileManager.Duplicate: "复制"
+FileManager.Copy: "复制"
+FileManager.Cut: "剪切"
+FileManager.Paste: "粘贴"
+FileManager.OpenInFileManager: "在文件管理器中显示"
+FileManager.OpenTerminalHere: "在此处打开终端"
+FileManager.Properties: "属性"
+
+# View Modes
+FileManager.ListView: "列表视图"
+FileManager.GridView: "网格视图"
+FileManager.TreeView: "树视图"
+
+# Sort Options
+FileManager.SortByName: "名称"
+FileManager.SortByDate: "修改日期"
+FileManager.SortBySize: "大小"
+FileManager.SortByType: "类型"
+FileManager.SortAscending: "升序"
+FileManager.SortDescending: "降序"
+FileManager.ShowHidden: "显示隐藏文件"
+FileManager.HideHidden: "隐藏隐藏文件"

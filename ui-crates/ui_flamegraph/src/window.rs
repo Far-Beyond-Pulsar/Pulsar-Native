@@ -1,4 +1,5 @@
 use gpui::*;
+use rust_i18n::t;
 use ui::{TitleBar, v_flex, h_flex, ActiveTheme, StyledExt, button::Button, IconName};
 use crate::{FlamegraphView, TraceData, InstrumentationCollector};
 use std::sync::Arc;
@@ -270,7 +271,7 @@ impl Render for FlamegraphWindow {
                                 if !is_profiling {
                                     Button::new("start-profiling")
                                         .icon(IconName::Play)
-                                        .label("Record")
+                                        .label(t!("Flamegraph.Record").to_string())
                                         .on_click(cx.listener(|this, _event, _window, cx| {
                                             this.start_profiling(cx);
                                         }))
@@ -301,13 +302,13 @@ impl Render for FlamegraphWindow {
                                                         .text_size(px(12.0))
                                                         .text_color(gpui::red())
                                                         .font_weight(gpui::FontWeight::BOLD)
-                                                        .child("RECORDING")
+                                                        .child(t!("Flamegraph.Recording").to_string())
                                                 )
                                         )
                                         .child(
                                             Button::new("stop-profiling")
                                                 .icon(IconName::Square)
-                                                .label("Stop")
+                                                .label(t!("Flamegraph.Stop").to_string())
                                                 .on_click(cx.listener(|this, _event, _window, cx| {
                                                     this.stop_profiling(cx);
                                                 }))
@@ -318,7 +319,7 @@ impl Render for FlamegraphWindow {
                             .child(
                                 Button::new("open-session")
                                     .icon(IconName::FolderOpen)
-                                    .label("Open Session")
+                                    .label(t!("Flamegraph.OpenSession").to_string())
                                     .on_click(cx.listener(|this, _event, _window, cx| {
                                         this.open_database_picker(cx);
                                     }))

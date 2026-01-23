@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 gpui = { workspace = true }
 ui = { path = "../../crates/ui" }
+ui_common = { workspace = true }
 chrono = "0.4"
 
 [lints]

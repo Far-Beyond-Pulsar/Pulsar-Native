@@ -38,6 +38,15 @@ Input.Paste: Colar
 Input.Select All: "Selecionar Tudo"
 Input.Go to Definition: "Ir para Definição"
 Input.Show Code Actions: "Mostrar Ações de Código"
+
+# Window Titles
+Window.Title.AboutPulsar: "Sobre Pulsar Engine"
+Window.Title.FileManager: "Gerenciador de Arquivos"
+Window.Title.Problems: "Problemas"
+Window.Title.TypeDebugger: "Depurador de Tipos"
+Window.Title.Settings: "Configurações"
+Window.Title.Documentation: "Documentação"
+
 Menu.File: Arquivo
 Menu.Edit: Editar
 Menu.View: Ver

@@ -5,6 +5,7 @@ use gpui::*;
 use ui::{
     v_flex, ActiveTheme as _, TitleBar,
 };
+use ui_common::translate;
 
 use crate::{FileManagerDrawer, FileSelected};
 
@@ -53,7 +54,7 @@ impl Render for FileManagerWindow {
         v_flex()
             .size_full()
             .bg(theme.background)
-            .child(TitleBar::new().child("File Manager"))
+            .child(TitleBar::new().child(translate("Window.Title.FileManager")))
             .child(
                 div()
                     .flex_1()

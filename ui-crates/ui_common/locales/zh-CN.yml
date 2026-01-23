@@ -1,5 +1,13 @@
 zh-CN:
 
+# Window Titles
+Window.Title.AboutPulsar: "关于 Pulsar 引擎"
+Window.Title.FileManager: "文件管理器"
+Window.Title.Problems: "问题"
+Window.Title.TypeDebugger: "类型调试器"
+Window.Title.Settings: "设置"
+Window.Title.Documentation: "文档"
+
 # Main Menu Bar
 Menu.File: "文件"
 Menu.Edit: "编辑"

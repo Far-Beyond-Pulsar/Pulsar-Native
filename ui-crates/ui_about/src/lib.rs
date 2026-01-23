@@ -4,6 +4,7 @@ use ui::{
     button::{Button, ButtonVariants as _},
     Icon, IconName,
 };
+use ui_common::translate;
 use chrono::Datelike;
 
 pub struct AboutWindow {
@@ -33,7 +34,7 @@ impl Render for AboutWindow {
             .track_focus(&self.focus_handle)
             .size_full()
             .bg(theme.background)
-            .child(TitleBar::new().child("About Pulsar Engine"))
+            .child(TitleBar::new().child(translate("Window.Title.AboutPulsar")))
             .child(
                 div()
                     .flex_1()

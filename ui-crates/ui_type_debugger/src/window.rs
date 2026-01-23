@@ -5,6 +5,7 @@ use gpui::*;
 use ui::{
     v_flex, ActiveTheme as _, TitleBar,
 };
+use ui_common::translate;
 
 use crate::{TypeDebuggerDrawer, NavigateToType};
 
@@ -35,7 +36,7 @@ impl Render for TypeDebuggerWindow {
         v_flex()
             .size_full()
             .bg(theme.background)
-            .child(TitleBar::new().child("Type Debugger"))
+            .child(TitleBar::new().child(translate("Window.Title.TypeDebugger")))
             .child(
                 div()
                     .flex_1()

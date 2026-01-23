@@ -7,6 +7,7 @@ use ui::{
     resizable::{h_resizable, resizable_panel, ResizableState},
     input::{InputState, TextInput},
 };
+use ui_common::translate;
 use std::path::PathBuf;
 
 mod engine_docs;
@@ -147,7 +148,7 @@ impl Render for DocumentationWindow {
             .track_focus(&self.focus_handle)
             .size_full()
             .bg(theme.background)
-            .child(TitleBar::new().child("Documentation"))
+            .child(TitleBar::new().child(translate("Window.Title.Documentation")))
             .child(
                 // Professional header with modern styling
                 v_flex()

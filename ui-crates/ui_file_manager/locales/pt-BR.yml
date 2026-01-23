@@ -1,0 +1,45 @@
+# File Manager - pt-BR
+
+FileManager.ProjectFiles: "Arquivos do Projeto"
+FileManager.ExpandAll: "Expandir Tudo"
+FileManager.CollapseAll: "Recolher Tudo"
+FileManager.SearchFolders: "Pesquisar pastas..."
+FileManager.SearchFiles: "Pesquisar arquivos..."
+FileManager.Items: "%{count} itens"
+FileManager.Selected: "%{count} selecionados"
+FileManager.NoItems: "Nenhum item"
+FileManager.EmptyFolder: "Esta pasta está vazia"
+FileManager.EmptyFolderDesc: "Clique com o botão direito para criar arquivos ou pastas"
+FileManager.ViewMode: "Modo de Visualização"
+FileManager.SortBy: "Ordenar por"
+FileManager.Refresh: "Atualizar"
+
+# Context Menu Items
+FileManager.NewFile: "Novo Arquivo"
+FileManager.NewFolder: "Nova Pasta"
+FileManager.Open: "Abrir"
+FileManager.OpenWith: "Abrir com"
+FileManager.Rename: "Renomear"
+FileManager.Delete: "Excluir"
+FileManager.Duplicate: "Duplicar"
+FileManager.Copy: "Copiar"
+FileManager.Cut: "Recortar"
+FileManager.Paste: "Colar"
+FileManager.OpenInFileManager: "Mostrar no Gerenciador de Arquivos"
+FileManager.OpenTerminalHere: "Abrir Terminal Aqui"
+FileManager.Properties: "Propriedades"
+
+# View Modes
+FileManager.ListView: "Visualização em Lista"
+FileManager.GridView: "Visualização em Grade"
+FileManager.TreeView: "Visualização em Árvore"
+
+# Sort Options
+FileManager.SortByName: "Nome"
+FileManager.SortByDate: "Data de Modificação"
+FileManager.SortBySize: "Tamanho"
+FileManager.SortByType: "Tipo"
+FileManager.SortAscending: "Ascendente"
+FileManager.SortDescending: "Descendente"
+FileManager.ShowHidden: "Mostrar Arquivos Ocultos"
+FileManager.HideHidden: "Ocultar Arquivos Ocultos"

@@ -1,4 +1,5 @@
 use gpui::*;
+use rust_i18n::t;
 use ui::{
     dock::{Panel, PanelEvent, DockItem},
     workspace::Workspace,
@@ -239,14 +240,35 @@ impl LevelEditorPanel {
         let selected_name = self.state.selected_object()
             .and_then(|id| self.state.scene_database.get_object(&id))
             .map(|obj| obj.name.clone())
-            .unwrap_or_else(|| "None".to_string());
+            .unwrap_or_else(|| t!("LevelEditor.StatusBar.None").to_string());
+        
+        let grid_status = if self.state.show_grid {
+            t!("LevelEditor.StatusBar.GridOn").to_string()
+        } else {
+            t!("LevelEditor.StatusBar.GridOff").to_string()
+        };
+        
+        let camera_mode_str = match self.state.camera_mode {
+            CameraMode::Perspective => t!("LevelEditor.CameraMode.Perspective").to_string(),
+            CameraMode::Orthographic => t!("LevelEditor.CameraMode.Orthographic").to_string(),
+            CameraMode::Top => t!("LevelEditor.CameraMode.Top").to_string(),
+            CameraMode::Front => t!("LevelEditor.CameraMode.Front").to_string(),
+            CameraMode::Side => t!("LevelEditor.CameraMode.Side").to_string(),
+        };
+        
+        let tool_name = match self.state.current_tool {
+            TransformTool::Select => t!("LevelEditor.Tool.Select").to_string(),
+            TransformTool::Move => t!("LevelEditor.Tool.Move").to_string(),
+            TransformTool::Rotate => t!("LevelEditor.Tool.Rotate").to_string(),
+            TransformTool::Scale => t!("LevelEditor.Tool.Scale").to_string(),
+        };
         
         StatusBar::new()
-            .add_left_item(format!("Objects: {}", objects_count))
-            .add_left_item(format!("Selected: {}", selected_name))
-            .add_right_item(format!("{:?}", self.state.camera_mode))
-            .add_right_item(format!("Grid: {}", if self.state.show_grid { "On" } else { "Off" }))
-            .add_right_item(format!("Tool: {:?}", self.state.current_tool))
+            .add_left_item(t!("LevelEditor.StatusBar.Objects", count => objects_count).to_string())
+            .add_left_item(t!("LevelEditor.StatusBar.Selected", name => &selected_name).to_string())
+            .add_right_item(camera_mode_str)
+            .add_right_item(grid_status)
+            .add_right_item(t!("LevelEditor.StatusBar.Tool", name => &tool_name).to_string())
             .render(cx)
     }
 

@@ -1,0 +1,9 @@
+# UI Core Translations - en
+
+# Status Bar
+StatusBar.RustAnalyzer: "rust-analyzer"
+StatusBar.Stop: "Stop"
+StatusBar.Restart: "Restart"
+StatusBar.Start: "Start"
+StatusBar.Multiplayer: "Multiplayer Collaboration"
+StatusBar.Flamegraph: "Flamegraph Profiler"

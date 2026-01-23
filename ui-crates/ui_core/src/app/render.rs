@@ -6,6 +6,7 @@ use ui::{
     h_flex, v_flex, ActiveTheme as _, ContextModal as _, StyledExt as _, button::{Button, ButtonVariants as _}, Icon, IconName,
 };
 use ui::notification::Notification;
+use rust_i18n::t;
 use engine_backend::services::rust_analyzer_manager::AnalyzerStatus;
 use plugin_editor_api::{StatusbarPosition, StatusbarAction};
 use std::path::PathBuf;
@@ -205,7 +206,7 @@ impl PulsarApp {
                                     .px_2()
                                     .py_1()
                                     .rounded(px(4.))
-                                    .tooltip("Multiplayer Collaboration")
+                                    .tooltip(t!("StatusBar.Multiplayer").to_string())
                                     .on_click(cx.listener(|app, _, window, cx| {
                                         app.toggle_multiplayer(window, cx);
                                     })),
@@ -221,7 +222,7 @@ impl PulsarApp {
                                     .px_2()
                                     .py_1()
                                     .rounded(px(4.))
-                                    .tooltip("Flamegraph Profiler")
+                                    .tooltip(t!("StatusBar.Flamegraph").to_string())
                                     .on_click(cx.listener(|app, _, window, cx| {
                                         app.toggle_flamegraph(window, cx);
                                     })),
@@ -250,7 +251,7 @@ impl PulsarApp {
                                     .text_xs()
                                     .font_medium()
                                     .text_color(cx.theme().foreground)
-                                    .child("rust-analyzer"),
+                                    .child(t!("StatusBar.RustAnalyzer").to_string()),
                             )
                             .child(
                                 div()
@@ -288,7 +289,7 @@ impl PulsarApp {
                                                 .p_1()
                                                 .rounded(px(3.))
                                                 .hover(|s| s.bg(cx.theme().danger.opacity(0.2)))
-                                                .tooltip("Stop")
+                                                .tooltip(t!("StatusBar.Stop").to_string())
                                                 .on_click(cx.listener(|app, _, window, cx| {
                                                     app.state.rust_analyzer.update(cx, |analyzer, cx| {
                                                         analyzer.stop(window, cx);
@@ -306,7 +307,7 @@ impl PulsarApp {
                                             )
                                             .p_1()
                                             .rounded(px(3.))
-                                            .tooltip(if is_running { "Restart" } else { "Start" })
+                                            .tooltip(if is_running { t!("StatusBar.Restart").to_string() } else { t!("StatusBar.Start").to_string() })
                                             .on_click(cx.listener(move |app, _, window, cx| {
                                                 if let Some(project) = app.state.project_path.clone() {
                                                     app.state.rust_analyzer.update(cx, |analyzer, cx| {

@@ -1,5 +1,13 @@
 zh-HK:
 
+# Window Titles
+Window.Title.AboutPulsar: "關於 Pulsar 引擎"
+Window.Title.FileManager: "檔案管理器"
+Window.Title.Problems: "問題"
+Window.Title.TypeDebugger: "類型調試器"
+Window.Title.Settings: "設置"
+Window.Title.Documentation: "文檔"
+
 # Main Menu Bar
 Menu.File: "文件"
 Menu.Edit: "編輯"

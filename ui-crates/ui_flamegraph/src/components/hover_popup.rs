@@ -1,6 +1,7 @@
 //! Hover popup component showing span details
 
 use gpui::*;
+use rust_i18n::t;
 use std::sync::Arc;
 use crate::trace_data::TraceFrame;
 use crate::state::ViewState;
@@ -22,7 +23,7 @@ pub fn render_hover_popup(
     let duration_ms = span.duration_ns as f64 / 1_000_000.0;
     let start_ms = (span.start_ns - frame.min_time_ns) as f64 / 1_000_000.0;
     let end_ms = (span.end_ns() - frame.min_time_ns) as f64 / 1_000_000.0;
-    let thread_name = frame.threads.get(&span.thread_id).map(|t| t.name.clone()).unwrap_or_else(|| "Unknown".to_string());
+    let thread_name = frame.threads.get(&span.thread_id).map(|t| t.name.clone()).unwrap_or_else(|| t!("Flamegraph.Unknown").to_string());
 
     let popup_width = 280.0;
     let mouse_x = view_state.mouse_x;
@@ -68,11 +69,11 @@ pub fn render_hover_popup(
                     .h(px(1.0))
                     .bg(theme.border)
             )
-            .child(popup_row("Duration:", format!("{:.3} ms", duration_ms), theme.muted_foreground, theme.foreground, true))
-            .child(popup_row("Start:", format!("{:.3} ms", start_ms), theme.muted_foreground, theme.foreground, false))
-            .child(popup_row("End:", format!("{:.3} ms", end_ms), theme.muted_foreground, theme.foreground, false))
-            .child(popup_row("Thread:", thread_name, theme.muted_foreground, theme.foreground, false))
-            .child(popup_row("Depth:", format!("{}", span.depth), theme.muted_foreground, theme.foreground, false))
+            .child(popup_row(t!("Flamegraph.Duration").to_string(), format!("{:.3} ms", duration_ms), theme.muted_foreground, theme.foreground, true))
+            .child(popup_row(t!("Flamegraph.Start").to_string(), format!("{:.3} ms", start_ms), theme.muted_foreground, theme.foreground, false))
+            .child(popup_row(t!("Flamegraph.End").to_string(), format!("{:.3} ms", end_ms), theme.muted_foreground, theme.foreground, false))
+            .child(popup_row(t!("Flamegraph.Thread").to_string(), thread_name, theme.muted_foreground, theme.foreground, false))
+            .child(popup_row(t!("Flamegraph.Depth").to_string(), format!("{}", span.depth), theme.muted_foreground, theme.foreground, false))
     );
     result
 }

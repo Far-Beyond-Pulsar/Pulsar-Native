@@ -1,0 +1,31 @@
+# Flamegraph Profiler - zh-HK
+
+# Window Title
+Flamegraph.Title: "火焰圖分析器"
+
+# Toolbar Buttons
+Flamegraph.Record: "錄製"
+Flamegraph.Stop: "停止"
+Flamegraph.Recording: "正在錄製"
+Flamegraph.OpenSession: "開啟會話"
+
+# Statistics Sidebar
+Flamegraph.Statistics: "統計資訊"
+Flamegraph.TotalSpans: "總跨度："
+Flamegraph.Duration: "持續時間："
+Flamegraph.Frames: "幀數："
+Flamegraph.AvgFrame: "平均幀："
+Flamegraph.MinFrame: "最小幀："
+Flamegraph.MaxFrame: "最大幀："
+Flamegraph.Threads: "線程："
+Flamegraph.MaxDepth: "最大深度："
+
+# Hover Popup
+Flamegraph.Start: "開始："
+Flamegraph.End: "結束："
+Flamegraph.Thread: "線程："
+Flamegraph.Depth: "深度："
+Flamegraph.Unknown: "未知"
+
+# Units
+Flamegraph.Milliseconds: "%{value} 毫秒"

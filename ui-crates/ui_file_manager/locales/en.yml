@@ -1,0 +1,45 @@
+# File Manager - en
+
+FileManager.ProjectFiles: "Project Files"
+FileManager.ExpandAll: "Expand All"
+FileManager.CollapseAll: "Collapse All"
+FileManager.SearchFolders: "Search folders..."
+FileManager.SearchFiles: "Search files..."
+FileManager.Items: "%{count} items"
+FileManager.Selected: "%{count} selected"
+FileManager.NoItems: "No items"
+FileManager.EmptyFolder: "This folder is empty"
+FileManager.EmptyFolderDesc: "Right-click to create files or folders"
+FileManager.ViewMode: "View Mode"
+FileManager.SortBy: "Sort By"
+FileManager.Refresh: "Refresh"
+
+# Context Menu Items
+FileManager.NewFile: "New File"
+FileManager.NewFolder: "New Folder"
+FileManager.Open: "Open"
+FileManager.OpenWith: "Open With"
+FileManager.Rename: "Rename"
+FileManager.Delete: "Delete"
+FileManager.Duplicate: "Duplicate"
+FileManager.Copy: "Copy"
+FileManager.Cut: "Cut"
+FileManager.Paste: "Paste"
+FileManager.OpenInFileManager: "Show in File Manager"
+FileManager.OpenTerminalHere: "Open Terminal Here"
+FileManager.Properties: "Properties"
+
+# View Modes
+FileManager.ListView: "List View"
+FileManager.GridView: "Grid View"
+FileManager.TreeView: "Tree View"
+
+# Sort Options
+FileManager.SortByName: "Name"
+FileManager.SortByDate: "Date Modified"
+FileManager.SortBySize: "Size"
+FileManager.SortByType: "Type"
+FileManager.SortAscending: "Ascending"
+FileManager.SortDescending: "Descending"
+FileManager.ShowHidden: "Show Hidden Files"
+FileManager.HideHidden: "Hide Hidden Files"

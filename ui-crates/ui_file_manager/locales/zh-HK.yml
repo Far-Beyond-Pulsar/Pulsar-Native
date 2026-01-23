@@ -1,0 +1,45 @@
+# File Manager - zh-HK
+
+FileManager.ProjectFiles: "專案檔案"
+FileManager.ExpandAll: "展開全部"
+FileManager.CollapseAll: "收起全部"
+FileManager.SearchFolders: "搜尋資料夾..."
+FileManager.SearchFiles: "搜尋檔案..."
+FileManager.Items: "%{count} 項"
+FileManager.Selected: "已選擇 %{count} 項"
+FileManager.NoItems: "無項目"
+FileManager.EmptyFolder: "此資料夾為空"
+FileManager.EmptyFolderDesc: "右鍵點擊以建立檔案或資料夾"
+FileManager.ViewMode: "檢視模式"
+FileManager.SortBy: "排序方式"
+FileManager.Refresh: "重新整理"
+
+# Context Menu Items
+FileManager.NewFile: "新增檔案"
+FileManager.NewFolder: "新增資料夾"
+FileManager.Open: "開啟"
+FileManager.OpenWith: "開啟方式"
+FileManager.Rename: "重新命名"
+FileManager.Delete: "刪除"
+FileManager.Duplicate: "複製"
+FileManager.Copy: "複製"
+FileManager.Cut: "剪下"
+FileManager.Paste: "貼上"
+FileManager.OpenInFileManager: "在檔案管理員中顯示"
+FileManager.OpenTerminalHere: "在此處開啟終端機"
+FileManager.Properties: "內容"
+
+# View Modes
+FileManager.ListView: "清單檢視"
+FileManager.GridView: "網格檢視"
+FileManager.TreeView: "樹狀檢視"
+
+# Sort Options
+FileManager.SortByName: "名稱"
+FileManager.SortByDate: "修改日期"
+FileManager.SortBySize: "大小"
+FileManager.SortByType: "類型"
+FileManager.SortAscending: "升序"
+FileManager.SortDescending: "降序"
+FileManager.ShowHidden: "顯示隱藏檔案"
+FileManager.HideHidden: "隱藏隱藏檔案"

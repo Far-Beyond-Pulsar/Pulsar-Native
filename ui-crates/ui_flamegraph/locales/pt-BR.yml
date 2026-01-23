@@ -1,0 +1,31 @@
+# Flamegraph Profiler - pt-BR
+
+# Window Title
+Flamegraph.Title: "Profiler Flamegraph"
+
+# Toolbar Buttons
+Flamegraph.Record: "Gravar"
+Flamegraph.Stop: "Parar"
+Flamegraph.Recording: "GRAVANDO"
+Flamegraph.OpenSession: "Abrir Sessão"
+
+# Statistics Sidebar
+Flamegraph.Statistics: "Estatísticas"
+Flamegraph.TotalSpans: "Intervalos Totais:"
+Flamegraph.Duration: "Duração:"
+Flamegraph.Frames: "Quadros:"
+Flamegraph.AvgFrame: "Quadro Médio:"
+Flamegraph.MinFrame: "Quadro Mínimo:"
+Flamegraph.MaxFrame: "Quadro Máximo:"
+Flamegraph.Threads: "Threads:"
+Flamegraph.MaxDepth: "Profundidade Máxima:"
+
+# Hover Popup
+Flamegraph.Start: "Início:"
+Flamegraph.End: "Fim:"
+Flamegraph.Thread: "Thread:"
+Flamegraph.Depth: "Profundidade:"
+Flamegraph.Unknown: "Desconhecido"
+
+# Units
+Flamegraph.Milliseconds: "%{value} ms"

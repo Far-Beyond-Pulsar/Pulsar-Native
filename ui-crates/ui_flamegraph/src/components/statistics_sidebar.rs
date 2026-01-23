@@ -1,6 +1,7 @@
 //! Statistics sidebar component showing session statistics
 
 use gpui::*;
+use rust_i18n::t;
 use std::sync::Arc;
 use crate::trace_data::TraceFrame;
 use crate::constants::STATS_SIDEBAR_WIDTH;
@@ -44,21 +45,21 @@ pub fn render_statistics_sidebar(
                 .text_sm()
                 .font_weight(FontWeight::BOLD)
                 .text_color(theme.foreground)
-                .child("Statistics")
+                .child(t!("Flamegraph.Statistics").to_string())
         )
         .child(
             div()
                 .flex()
                 .flex_col()
                 .gap_2()
-                .child(stat_row("Total Spans:", format!("{}", frame.spans.len()), theme.muted_foreground, theme.foreground))
-                .child(stat_row("Duration:", format!("{:.2} ms", duration_ms), theme.muted_foreground, theme.foreground))
-                .child(stat_row("Frames:", format!("{}", num_frames), theme.muted_foreground, theme.foreground))
-                .child(stat_row("Avg Frame:", format!("{:.2} ms", avg_frame_time), theme.muted_foreground, theme.foreground))
-                .child(stat_row("Min Frame:", format!("{:.2} ms", min_frame_time), theme.muted_foreground, theme.foreground))
-                .child(stat_row("Max Frame:", format!("{:.2} ms", max_frame_time), theme.muted_foreground, theme.foreground))
-                .child(stat_row("Threads:", format!("{}", frame.threads.len()), theme.muted_foreground, theme.foreground))
-                .child(stat_row("Max Depth:", format!("{}", frame.max_depth), theme.muted_foreground, theme.foreground))
+                .child(stat_row(t!("Flamegraph.TotalSpans").to_string(), format!("{}", frame.spans.len()), theme.muted_foreground, theme.foreground))
+                .child(stat_row(t!("Flamegraph.Duration").to_string(), format!("{:.2} ms", duration_ms), theme.muted_foreground, theme.foreground))
+                .child(stat_row(t!("Flamegraph.Frames").to_string(), format!("{}", num_frames), theme.muted_foreground, theme.foreground))
+                .child(stat_row(t!("Flamegraph.AvgFrame").to_string(), format!("{:.2} ms", avg_frame_time), theme.muted_foreground, theme.foreground))
+                .child(stat_row(t!("Flamegraph.MinFrame").to_string(), format!("{:.2} ms", min_frame_time), theme.muted_foreground, theme.foreground))
+                .child(stat_row(t!("Flamegraph.MaxFrame").to_string(), format!("{:.2} ms", max_frame_time), theme.muted_foreground, theme.foreground))
+                .child(stat_row(t!("Flamegraph.Threads").to_string(), format!("{}", frame.threads.len()), theme.muted_foreground, theme.foreground))
+                .child(stat_row(t!("Flamegraph.MaxDepth").to_string(), format!("{}", frame.max_depth), theme.muted_foreground, theme.foreground))
         )
         .child(
             div()
@@ -66,7 +67,7 @@ pub fn render_statistics_sidebar(
                 .text_sm()
                 .font_weight(FontWeight::BOLD)
                 .text_color(theme.foreground)
-                .child("Threads")
+                .child(t!("Flamegraph.Threads").to_string())
         )
         .child(
             div()

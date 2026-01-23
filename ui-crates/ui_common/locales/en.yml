@@ -38,6 +38,15 @@ Input.Paste: Paste
 Input.Select All: Select All
 Input.Go to Definition: Go to Definition
 Input.Show Code Actions: Show Code Actions
+
+# Window Titles
+Window.Title.AboutPulsar: "About Pulsar Engine"
+Window.Title.FileManager: "File Manager"
+Window.Title.Problems: "Problems"
+Window.Title.TypeDebugger: "Type Debugger"
+Window.Title.Settings: "Settings"
+Window.Title.Documentation: "Documentation"
+
 Menu.File: File
 Menu.Edit: Edit
 Menu.View: View

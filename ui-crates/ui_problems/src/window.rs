@@ -5,6 +5,7 @@ use gpui::*;
 use ui::{
     v_flex, ActiveTheme as _, TitleBar,
 };
+use ui_common::translate;
 
 use crate::{ProblemsDrawer, NavigateToDiagnostic};
 
@@ -35,7 +36,7 @@ impl Render for ProblemsWindow {
         v_flex()
             .size_full()
             .bg(theme.background)
-            .child(TitleBar::new().child("Problems"))
+            .child(TitleBar::new().child(translate("Window.Title.Problems")))
             .child(
                 div()
                     .flex_1()

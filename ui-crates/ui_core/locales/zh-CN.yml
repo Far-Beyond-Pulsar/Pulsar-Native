@@ -1,0 +1,9 @@
+zh-CN:
+
+# Status Bar
+StatusBar.RustAnalyzer: "rust-analyzer"
+StatusBar.Stop: "停止"
+StatusBar.Restart: "重启"
+StatusBar.Start: "启动"
+StatusBar.Multiplayer: "多人协作"
+StatusBar.Flamegraph: "火焰图分析器"

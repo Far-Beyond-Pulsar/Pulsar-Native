@@ -15234,6 +15234,7 @@ dependencies = [
  "chrono",
  "gpui",
  "ui",
+ "ui_common",
 ]
 
 [[package]]
@@ -15272,6 +15273,7 @@ dependencies = [
  "plugin_editor_api",
  "plugin_manager",
  "rand 0.8.5",
+ "rust-i18n",
  "schemars",
  "serde",
  "serde_json",
@@ -15301,6 +15303,7 @@ dependencies = [
  "pulsar_docs",
  "regex",
  "ui",
+ "ui_common",
 ]
 
 [[package]]
@@ -15342,6 +15345,7 @@ dependencies = [
  "gpui",
  "notify 7.0.0",
  "plugin_editor_api",
+ "rust-i18n",
  "schemars",
  "serde",
  "serde_json",
@@ -15363,6 +15367,7 @@ dependencies = [
  "rand 0.8.5",
  "rfd 0.9.1",
  "rusqlite",
+ "rust-i18n",
  "serde",
  "tracing",
  "ui",

@@ -30,6 +30,15 @@ Dock.Expand: Espandi
 Modal.ok: OK
 Modal.cancel: Annulla
 List.search_placeholder: Ricerca...
+
+# Window Titles
+Window.Title.AboutPulsar: "Info su Pulsar Engine"
+Window.Title.FileManager: "Gestore File"
+Window.Title.Problems: "Problemi"
+Window.Title.TypeDebugger: "Type Debugger"
+Window.Title.Settings: "Impostazioni"
+Window.Title.Documentation: "Documentazione"
+
 Menu.File: File
 Menu.Edit: Modifica
 Menu.View: Visualizza

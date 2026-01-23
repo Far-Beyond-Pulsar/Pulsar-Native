@@ -24,6 +24,7 @@ serde = { version = "1.0", features = ["derive"] }
 tracing = "0.1.44"
 rand = "0.8"
 rfd = "0.9"
+rust-i18n.workspace = true
 
 [dev-dependencies]
 rand = "0.8"

@@ -2,6 +2,9 @@
 //!
 //! Core application components including PulsarApp and PulsarRoot
 
+// Initialize translations
+rust_i18n::i18n!("locales", fallback = "en");
+
 // Modules
 pub mod app;
 pub mod actions;
@@ -26,6 +29,16 @@ pub use ui_common::file_utils;
 
 // Re-export actions from ui crate
 pub use ui::OpenSettings;
+
+/// Get current locale
+pub fn locale() -> String {
+    rust_i18n::locale().to_string()
+}
+
+/// Set locale
+pub fn set_locale(locale: &str) {
+    rust_i18n::set_locale(locale);
+}
 
 // Re-export builtin editor registration
 pub use builtin_editors::register_all_builtin_editors;
