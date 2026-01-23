@@ -1,0 +1,14 @@
+zh-CN:
+
+# Drawer Title
+TypeDebugger.Title: "类型数据库"
+
+# Search & Actions
+TypeDebugger.Search.Placeholder: "搜索类型..."
+TypeDebugger.Action.ClearAll: "清除所有类型"
+TypeDebugger.Action.GroupByKind: "按类型分组"
+TypeDebugger.Action.ShowFlatList: "显示平铺列表"
+
+# Empty State
+TypeDebugger.Empty.Title: "未找到类型"
+TypeDebugger.Empty.Message: "没有符合搜索条件的类型。"

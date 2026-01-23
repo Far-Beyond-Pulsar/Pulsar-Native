@@ -18,3 +18,4 @@ type_db.workspace = true
 # Utilities
 anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
+rust-i18n.workspace = true

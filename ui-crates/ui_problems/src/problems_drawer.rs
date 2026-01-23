@@ -2,6 +2,7 @@
 // Displays rust-analyzer diagnostics with professional UI and search capabilities
 
 use gpui::{prelude::*, *};
+use rust_i18n::t;
 use ui::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, ActiveTheme as _, IconName, Sizable as _,
@@ -482,7 +483,7 @@ impl ProblemsDrawer {
                                     .text_base()
                                     .font_weight(gpui::FontWeight::BOLD)
                                     .text_color(cx.theme().foreground)
-                                    .child("Problems")
+                                    .child(t!("Problems.Title").to_string())
                             )
                             // Severity counts with professional styling
                             .child(
@@ -525,9 +526,9 @@ impl ProblemsDrawer {
                                         IconName::Folder
                                     })
                                     .tooltip(if self.group_by_file {
-                                        "Show flat list"
+                                        t!("Problems.Action.ShowFlatList").to_string()
                                     } else {
-                                        "Group by file"
+                                        t!("Problems.Action.GroupByFile").to_string()
                                     })
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.toggle_grouping(cx);
@@ -538,7 +539,7 @@ impl ProblemsDrawer {
                                     .ghost()
                                     .small()
                                     .icon(IconName::Close)
-                                    .tooltip("Clear all problems")
+                                    .tooltip(t!("Problems.Action.ClearAll").to_string())
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.clear_diagnostics(cx);
                                     }))
@@ -579,11 +580,11 @@ impl ProblemsDrawer {
                             .icon(IconName::Filter)
                             .label(current_filter_label.clone())
                             .popup_menu_with_anchor(Corner::BottomRight, move |menu, _window, _cx| {
-                                menu.menu_with_check("All Problems", is_all_selected, Box::new(FilterAll))
+                                menu.menu_with_check(t!("Problems.Filter.All").to_string(), is_all_selected, Box::new(FilterAll))
                                     .separator()
-                                    .menu_with_check("Errors", is_errors_selected, Box::new(FilterErrors))
-                                    .menu_with_check("Warnings", is_warnings_selected, Box::new(FilterWarnings))
-                                    .menu_with_check("Information", is_info_selected, Box::new(FilterInfo))
+                                    .menu_with_check(t!("Problems.Filter.Errors").to_string(), is_errors_selected, Box::new(FilterErrors))
+                                    .menu_with_check(t!("Problems.Filter.Warnings").to_string(), is_warnings_selected, Box::new(FilterWarnings))
+                                    .menu_with_check(t!("Problems.Filter.Information").to_string(), is_info_selected, Box::new(FilterInfo))
                             })
                     })
             )
@@ -664,9 +665,9 @@ impl ProblemsDrawer {
                                 .text_color(cx.theme().muted_foreground)
                                 .line_height(rems(1.5))
                                 .child(if !self.search_query.is_empty() {
-                                    "No problems match your search. Try a different query."
+                                    t!("Problems.Empty.NoMatch").to_string()
                                 } else {
-                                    "Your code is looking great! Keep up the good work."
+                                    t!("Problems.Empty.AllGood").to_string()
                                 })
                         )
                 )
@@ -950,7 +951,7 @@ impl ProblemsDrawer {
                         div()
                             .text_xs()
                             .text_color(cx.theme().muted_foreground)
-                            .child("Loading quick fixes...")
+                            .child(t!("Problems.Loading").to_string())
                     )
             );
         }
@@ -970,7 +971,7 @@ impl ProblemsDrawer {
                         .text_xs()
                         .font_weight(gpui::FontWeight::BOLD)
                         .text_color(cx.theme().muted_foreground)
-                        .child("Suggested Fix(es):")
+                        .child(t!("Problems.SuggestedFixes").to_string())
                 );
             
             for (hint_index, hint) in diagnostic.hints.iter().enumerate() {
@@ -995,7 +996,7 @@ impl ProblemsDrawer {
                         .text_xs()
                         .font_weight(gpui::FontWeight::BOLD)
                         .text_color(cx.theme().muted_foreground)
-                        .child("Related:")
+                        .child(t!("Problems.Related").to_string())
                 );
             
             for sub in &diagnostic.subitems {
@@ -1286,7 +1287,7 @@ impl ProblemsDrawer {
                                             .text_xs()
                                             .font_weight(gpui::FontWeight::BOLD)
                                             .text_color(Hsla { h: 0.0, s: 0.7, l: 0.65, a: 1.0 })
-                                            .child("BEFORE")
+                                            .child(t!("Problems.Before").to_string())
                                     )
                             )
                     )
@@ -1313,7 +1314,7 @@ impl ProblemsDrawer {
                                             .text_xs()
                                             .font_weight(gpui::FontWeight::BOLD)
                                             .text_color(Hsla { h: 120.0, s: 0.7, l: 0.55, a: 1.0 })
-                                            .child("AFTER")
+                                            .child(t!("Problems.After").to_string())
                                     )
                             )
                     )

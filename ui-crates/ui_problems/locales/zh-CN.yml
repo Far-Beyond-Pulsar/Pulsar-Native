@@ -1,0 +1,29 @@
+zh-CN:
+
+# Drawer Title
+Problems.Title: "问题"
+
+# Filter Labels
+Problems.Filter.All: "所有问题"
+Problems.Filter.Errors: "错误"
+Problems.Filter.Warnings: "警告"
+Problems.Filter.Information: "信息"
+Problems.Filter.Hints: "提示"
+
+# Search & Actions
+Problems.Search.Placeholder: "搜索问题..."
+Problems.Action.ClearAll: "清除所有问题"
+Problems.Action.GroupByFile: "按文件分组"
+Problems.Action.ShowFlatList: "显示平铺列表"
+
+# Empty State
+Problems.Empty.Title: "未检测到问题"
+Problems.Empty.NoMatch: "没有符合搜索条件的问题。请尝试其他查询。"
+Problems.Empty.AllGood: "您的代码看起来很棒！继续保持！"
+
+# Diagnostics
+Problems.Loading: "正在加载快速修复..."
+Problems.SuggestedFixes: "建议的修复："
+Problems.Related: "相关："
+Problems.Before: "之前"
+Problems.After: "之后"

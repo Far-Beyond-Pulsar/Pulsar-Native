@@ -1,0 +1,29 @@
+zh-HK:
+
+# Drawer Title
+Problems.Title: "問題"
+
+# Filter Labels
+Problems.Filter.All: "所有問題"
+Problems.Filter.Errors: "錯誤"
+Problems.Filter.Warnings: "警告"
+Problems.Filter.Information: "信息"
+Problems.Filter.Hints: "提示"
+
+# Search & Actions
+Problems.Search.Placeholder: "搜尋問題..."
+Problems.Action.ClearAll: "清除所有問題"
+Problems.Action.GroupByFile: "按檔案分組"
+Problems.Action.ShowFlatList: "顯示平鋪列表"
+
+# Empty State
+Problems.Empty.Title: "未檢測到問題"
+Problems.Empty.NoMatch: "沒有符合搜尋條件的問題。請嘗試其他查詢。"
+Problems.Empty.AllGood: "您的代碼看起來很棒！繼續保持！"
+
+# Diagnostics
+Problems.Loading: "正在載入快速修復..."
+Problems.SuggestedFixes: "建議的修復："
+Problems.Related: "相關："
+Problems.Before: "之前"
+Problems.After: "之後"

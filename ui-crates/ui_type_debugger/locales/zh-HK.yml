@@ -1,0 +1,14 @@
+zh-HK:
+
+# Drawer Title
+TypeDebugger.Title: "類型數據庫"
+
+# Search & Actions
+TypeDebugger.Search.Placeholder: "搜尋類型..."
+TypeDebugger.Action.ClearAll: "清除所有類型"
+TypeDebugger.Action.GroupByKind: "按類型分組"
+TypeDebugger.Action.ShowFlatList: "顯示平鋪列表"
+
+# Empty State
+TypeDebugger.Empty.Title: "未找到類型"
+TypeDebugger.Empty.Message: "沒有符合搜尋條件的類型。"

@@ -2,6 +2,7 @@
 //! Displays all registered types with professional UI and search capabilities
 
 use gpui::{prelude::*, *};
+use rust_i18n::t;
 use ui::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _,
@@ -229,7 +230,7 @@ impl TypeDebuggerDrawer {
                                     .text_base()
                                     .font_weight(gpui::FontWeight::BOLD)
                                     .text_color(cx.theme().foreground)
-                                    .child("Type Database")
+                                    .child(t!("TypeDebugger.Title").to_string())
                             )
                             // Type counts with professional styling
                             .child(
@@ -279,9 +280,9 @@ impl TypeDebuggerDrawer {
                                         IconName::Folder
                                     })
                                     .tooltip(if self.group_by_kind {
-                                        "Show flat list"
+                                        t!("TypeDebugger.Action.ShowFlatList").to_string()
                                     } else {
-                                        "Group by kind"
+                                        t!("TypeDebugger.Action.GroupByKind").to_string()
                                     })
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.toggle_grouping(cx);
@@ -292,7 +293,7 @@ impl TypeDebuggerDrawer {
                                     .ghost()
                                     .small()
                                     .icon(IconName::Close)
-                                    .tooltip("Clear all types")
+                                    .tooltip(t!("TypeDebugger.Action.ClearAll").to_string())
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.clear_types(cx);
                                     }))
@@ -411,7 +412,7 @@ impl TypeDebuggerDrawer {
                                 .text_lg()
                                 .font_weight(gpui::FontWeight::BOLD)
                                 .text_color(cx.theme().foreground)
-                                .child("No types found")
+                                .child(t!("TypeDebugger.Empty.Title").to_string())
                         )
                         .child(
                             div()

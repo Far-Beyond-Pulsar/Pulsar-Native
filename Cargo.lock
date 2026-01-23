@@ -15441,6 +15441,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "gpui",
+ "rust-i18n",
  "serde",
  "similar",
  "tracing",
@@ -15483,6 +15484,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "gpui",
+ "rust-i18n",
  "serde",
  "type_db",
  "ui",

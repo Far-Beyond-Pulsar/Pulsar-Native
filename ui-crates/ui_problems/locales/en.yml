@@ -1,0 +1,29 @@
+# UI Problems Translations - en
+
+# Drawer Title
+Problems.Title: "Problems"
+
+# Filter Labels
+Problems.Filter.All: "All Problems"
+Problems.Filter.Errors: "Errors"
+Problems.Filter.Warnings: "Warnings"
+Problems.Filter.Information: "Information"
+Problems.Filter.Hints: "Hints"
+
+# Search & Actions
+Problems.Search.Placeholder: "Search problems..."
+Problems.Action.ClearAll: "Clear all problems"
+Problems.Action.GroupByFile: "Group by file"
+Problems.Action.ShowFlatList: "Show flat list"
+
+# Empty State
+Problems.Empty.Title: "No problems detected"
+Problems.Empty.NoMatch: "No problems match your search. Try a different query."
+Problems.Empty.AllGood: "Your code is looking great! Keep up the good work."
+
+# Diagnostics
+Problems.Loading: "Loading quick fixes..."
+Problems.SuggestedFixes: "Suggested Fix(es):"
+Problems.Related: "Related:"
+Problems.Before: "BEFORE"
+Problems.After: "AFTER"
