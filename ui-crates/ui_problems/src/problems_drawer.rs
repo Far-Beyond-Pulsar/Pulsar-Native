@@ -297,26 +297,41 @@ impl ProblemsDrawer {
     }
 
     fn get_filtered_diagnostics(&self) -> Vec<Diagnostic> {
-        let diagnostics = self.diagnostics.lock().unwrap().clone();
+        let diagnostics = self.diagnostics.lock().unwrap();
 
-        let mut filtered = diagnostics;
-
-        // Filter by severity
-        if let Some(severity) = &self.filtered_severity {
-            filtered.retain(|d| &d.severity == severity);
+        // Early return if no filtering needed
+        if self.filtered_severity.is_none() && self.search_query.is_empty() {
+            return diagnostics.clone();
         }
 
-        // Filter by search query
-        if !self.search_query.is_empty() {
-            let query = self.search_query.to_lowercase();
-            filtered.retain(|d| {
-                d.message.to_lowercase().contains(&query) ||
-                d.file_path.to_lowercase().contains(&query) ||
-                d.source.as_ref().map_or(false, |s| s.to_lowercase().contains(&query))
-            });
-        }
+        // Build filtered vec with a single pass
+        let query = if !self.search_query.is_empty() {
+            Some(self.search_query.to_lowercase())
+        } else {
+            None
+        };
 
-        filtered
+        diagnostics
+            .iter()
+            .filter(|d| {
+                // Filter by severity
+                if let Some(severity) = &self.filtered_severity {
+                    if &d.severity != severity {
+                        return false;
+                    }
+                }
+
+                // Filter by search query
+                if let Some(q) = &query {
+                    return d.message.to_lowercase().contains(q) ||
+                           d.file_path.to_lowercase().contains(q) ||
+                           d.source.as_ref().map_or(false, |s| s.to_lowercase().contains(q));
+                }
+
+                true
+            })
+            .cloned()
+            .collect()
     }
 
     fn get_grouped_diagnostics(&self) -> HashMap<String, Vec<Diagnostic>> {
@@ -742,11 +757,13 @@ impl ProblemsDrawer {
             let items: Vec<Div> = diagnostics.iter().map(|diagnostic| {
                 let is_selected = selected_index == Some(global_index);
                 let drawer = drawer_entity.clone();
+                // Clone once for the closure
                 let diag = diagnostic.clone();
                 let idx = global_index;
                 global_index += 1;
 
-                self.render_diagnostic_item(idx, diagnostic.clone(), is_selected, move |_window, cx| {
+                // Move diag into closure instead of cloning again
+                self.render_diagnostic_item(idx, diag.clone(), is_selected, move |_window, cx| {
                     drawer.update(cx, |drawer, cx| {
                         drawer.select_diagnostic(idx, cx);
                         drawer.navigate_to_diagnostic(&diag, cx);

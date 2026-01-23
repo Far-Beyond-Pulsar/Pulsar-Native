@@ -38,6 +38,8 @@ pub fn camera_movement_system(
     time: Res<Time>,
     mut camera_input: ResMut<CameraInput>,
     mut query: Query<&mut Transform, With<MainCamera>>,
+    mut velocity: Local<Vec3>,
+    mut smoothed_mouse_delta: Local<(f32, f32)>,
 ) {
     profiling::profile_scope!("Bevy::CameraMovement");
     let Ok(mut transform) = query.single_mut() else {
@@ -45,10 +47,8 @@ pub fn camera_movement_system(
     };
 
     let delta_time = time.delta_secs();
-    
+
     // --- Unreal-style movement ramp-up (acceleration) with doubled ramp and mouse smoothing ---
-    static mut VELOCITY: Vec3 = Vec3::ZERO;
-    static mut SMOOTHED_MOUSE_DELTA: (f32, f32) = (0.0, 0.0);
     let mut input_dir = Vec3::ZERO;
     if camera_input.forward.abs() > 0.001 {
         input_dir += transform.forward().as_vec3() * camera_input.forward;
@@ -69,39 +69,36 @@ pub fn camera_movement_system(
     };
     let accel = base_speed * 12.0; // doubled acceleration rate
     let friction = 4.0;
-    unsafe {
-        // Accelerate towards input direction
-        let desired_velocity = input_dir * base_speed;
-        let delta_v = desired_velocity - VELOCITY;
-        let accel_step = accel * delta_time;
-        let friction_step = friction * delta_time;
-        if delta_v.length() > accel_step {
-            VELOCITY += delta_v.normalize() * accel_step;
-        } else {
-            VELOCITY = desired_velocity;
-        }
-        if input_dir == Vec3::ZERO {
-            let speed = VELOCITY.length();
-            if speed > friction_step {
-                VELOCITY -= VELOCITY.normalize() * friction_step;
-            } else {
-                VELOCITY = Vec3::ZERO;
-            }
-        }
-        transform.translation += VELOCITY * delta_time;
+
+    // Accelerate towards input direction
+    let desired_velocity = input_dir * base_speed;
+    let delta_v = desired_velocity - *velocity;
+    let accel_step = accel * delta_time;
+    let friction_step = friction * delta_time;
+    if delta_v.length() > accel_step {
+        *velocity += delta_v.normalize() * accel_step;
+    } else {
+        *velocity = desired_velocity;
     }
+    if input_dir == Vec3::ZERO {
+        let speed = velocity.length();
+        if speed > friction_step {
+            let velocity_normalized = velocity.normalize();
+            *velocity -= velocity_normalized * friction_step;
+        } else {
+            *velocity = Vec3::ZERO;
+        }
+    }
+    transform.translation += *velocity * delta_time;
 
     // --- Mouse delta smoothing for rotation ---
     let smoothing = 0.25; // 0 = no smoothing, 1 = infinite smoothing
-    let (smooth_x, smooth_y) = unsafe {
-        let (prev_x, prev_y) = SMOOTHED_MOUSE_DELTA;
-        let target_x = camera_input.mouse_delta_x;
-        let target_y = camera_input.mouse_delta_y;
-        let smooth_x = prev_x + (target_x - prev_x) * smoothing;
-        let smooth_y = prev_y + (target_y - prev_y) * smoothing;
-        SMOOTHED_MOUSE_DELTA = (smooth_x, smooth_y);
-        (smooth_x, smooth_y)
-    };
+    let (prev_x, prev_y) = *smoothed_mouse_delta;
+    let target_x = camera_input.mouse_delta_x;
+    let target_y = camera_input.mouse_delta_y;
+    let smooth_x = prev_x + (target_x - prev_x) * smoothing;
+    let smooth_y = prev_y + (target_y - prev_y) * smoothing;
+    *smoothed_mouse_delta = (smooth_x, smooth_y);
     // Use smoothed deltas for rotation
     if smooth_x.abs() > 0.001 || smooth_y.abs() > 0.001 {
         let yaw_delta = -smooth_x * camera_input.look_sensitivity * delta_time;

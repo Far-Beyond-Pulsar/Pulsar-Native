@@ -1,6 +1,6 @@
 use crate::{
     TypeRef, TypeAstNode, StructAsset, EnumAsset, TraitAsset, AliasAsset,
-    Visibility, TypeSystemError, Result, VariantPayload,
+    Visibility, Result, VariantPayload,
 };
 
 /// Renders a type reference to Rust code

@@ -6,6 +6,7 @@
 
 use winit::window::WindowId;
 use crate::window::WinitGpuiApp;
+use std::sync::atomic::{AtomicU32, AtomicU64, AtomicBool, Ordering};
 
 #[cfg(target_os = "windows")]
 use windows::{
@@ -41,16 +42,21 @@ use windows::{
 #[cfg(target_os = "windows")]
 pub unsafe fn handle_redraw(app: &mut WinitGpuiApp, window_id: WindowId) {
     profiling::profile_scope!("Render::Composite");
-    
-    // Track frame time for profiler
-    static mut LAST_FRAME_TIME: Option<std::time::Instant> = None;
-    let frame_start = std::time::Instant::now();
-    
-    if let Some(last_time) = LAST_FRAME_TIME {
-        let frame_time_ms = frame_start.duration_since(last_time).as_secs_f32() * 1000.0;
+
+    // Track frame time for profiler (thread-safe atomic storing microseconds since program start)
+    use std::time::SystemTime;
+    static LAST_FRAME_TIME_MICROS: AtomicU64 = AtomicU64::new(0);
+
+    let now_micros = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_micros() as u64;
+
+    let last_micros = LAST_FRAME_TIME_MICROS.swap(now_micros, Ordering::Relaxed);
+    if last_micros != 0 {
+        let frame_time_ms = (now_micros.saturating_sub(last_micros)) as f32 / 1000.0;
         profiling::record_frame_time(frame_time_ms);
     }
-    LAST_FRAME_TIME = Some(frame_start);
     
     // Claim Bevy renderer first (needs mutable app reference)
     {
@@ -66,12 +72,12 @@ pub unsafe fn handle_redraw(app: &mut WinitGpuiApp, window_id: WindowId) {
 
     let should_render_gpui = window_state.needs_render;
 
-    // Diagnostic: Show decoupled rendering rates
-    static mut COMPOSITOR_FRAME_COUNT: u32 = 0;
-    static mut GPUI_FRAME_COUNT: u32 = 0;
-    COMPOSITOR_FRAME_COUNT += 1;
+    // Diagnostic: Show decoupled rendering rates (thread-safe atomics)
+    static COMPOSITOR_FRAME_COUNT: AtomicU32 = AtomicU32::new(0);
+    static GPUI_FRAME_COUNT: AtomicU32 = AtomicU32::new(0);
+    COMPOSITOR_FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
     if should_render_gpui {
-        GPUI_FRAME_COUNT += 1;
+        GPUI_FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
     }
 
     // Render GPUI if needed
@@ -120,8 +126,15 @@ pub fn handle_redraw(_app: &mut WinitGpuiApp, _window_id: WindowId) {
 
 #[cfg(target_os = "windows")]
 unsafe fn initialize_shared_texture(window_state: &mut crate::window::WindowState) {
-    let gpui_window_ref = window_state.gpui_window.as_ref().unwrap();
-    let device = window_state.d3d_device.as_ref().unwrap();
+    let Some(gpui_window_ref) = window_state.gpui_window.as_ref() else {
+        tracing::error!("❌ Cannot initialize shared texture: GPUI window not available");
+        return;
+    };
+
+    let Some(device) = window_state.d3d_device.as_ref() else {
+        tracing::error!("❌ Cannot initialize shared texture: D3D11 device not available");
+        return;
+    };
 
     let handle_result = window_state.gpui_app.update(|app| {
         gpui_window_ref.update(app, |_view, window, _cx| {
@@ -153,21 +166,23 @@ unsafe fn initialize_shared_texture(window_state: &mut crate::window::WindowStat
                         let mut persistent_texture: Option<ID3D11Texture2D> = None;
                         let create_result = device.CreateTexture2D(&desc, None, Some(&mut persistent_texture));
 
-                        if create_result.is_ok() && persistent_texture.is_some() {
-                            let tex = persistent_texture.as_ref().unwrap();
+                        if create_result.is_ok() {
+                            if let Some(tex) = &persistent_texture {
+                                let mut srv: Option<ID3D11ShaderResourceView> = None;
+                                let srv_result = device.CreateShaderResourceView(tex, None, Some(&mut srv));
 
-                            let mut srv: Option<ID3D11ShaderResourceView> = None;
-                            let srv_result = device.CreateShaderResourceView(tex, None, Some(&mut srv));
+                                if srv_result.is_ok() && srv.is_some() {
+                                    window_state.persistent_gpui_srv = srv;
+                                    tracing::debug!("✨ Created cached SRV for persistent texture");
+                                } else {
+                                    tracing::error!("❌ Failed to create SRV: {:?}", srv_result);
+                                }
 
-                            if srv_result.is_ok() && srv.is_some() {
-                                window_state.persistent_gpui_srv = srv;
-                                tracing::debug!("✨ Created cached SRV for persistent texture");
+                                window_state.persistent_gpui_texture = persistent_texture;
+                                tracing::debug!("✨ Created persistent GPUI texture buffer!");
                             } else {
-                                tracing::error!("❌ Failed to create SRV: {:?}", srv_result);
+                                tracing::error!("❌ Persistent texture is None despite successful creation");
                             }
-
-                            window_state.persistent_gpui_texture = persistent_texture;
-                            tracing::debug!("✨ Created persistent GPUI texture buffer!");
                         } else {
                             tracing::error!("❌ Failed to create persistent texture: {:?}", create_result);
                         }
@@ -193,7 +208,10 @@ unsafe fn claim_bevy_renderer(app: &mut WinitGpuiApp, window_id: &WindowId) {
     let window_state = app.windows.get_mut(window_id).unwrap();
 
     if window_state.bevy_renderer.is_none() {
-        let window_id_u64 = std::mem::transmute::<_, u64>(*window_id);
+        let Some(window_id_u64) = app.window_id_map.get_id(window_id) else {
+            tracing::warn!("⚠️ Window ID not registered for Bevy renderer claim");
+            return;
+        };
 
         if let Some(renderer_handle) = app.engine_state.get_window_gpu_renderer(window_id_u64) {
             if let Ok(gpu_renderer) = renderer_handle.clone().downcast::<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>() {
@@ -229,10 +247,10 @@ unsafe fn compose_frame(window_state: &mut crate::window::WindowState, should_re
     let Some(input_layout) = window_state.input_layout.clone() else { return };
     let Some(sampler_state) = window_state.sampler_state.clone() else { return };
 
-    // Check device status periodically
-    static mut DEVICE_CHECK_COUNTER: u32 = 0;
-    DEVICE_CHECK_COUNTER += 1;
-    if DEVICE_CHECK_COUNTER % 300 == 0 {
+    // Check device status periodically (thread-safe atomic)
+    static DEVICE_CHECK_COUNTER: AtomicU32 = AtomicU32::new(0);
+    let counter = DEVICE_CHECK_COUNTER.fetch_add(1, Ordering::Relaxed);
+    if counter % 300 == 0 {
         if let Some(device) = window_state.d3d_device.as_ref() {
             let device_reason = device.GetDeviceRemovedReason();
             if device_reason.is_err() {
@@ -286,9 +304,9 @@ unsafe fn compose_frame(window_state: &mut crate::window::WindowState, should_re
     // Present
     let present_result = swap_chain.Present(1, DXGI_PRESENT(0));
     if present_result.is_err() {
-        static mut PRESENT_ERROR_COUNT: u32 = 0;
-        PRESENT_ERROR_COUNT += 1;
-        if PRESENT_ERROR_COUNT == 1 || PRESENT_ERROR_COUNT % 600 == 0 {
+        static PRESENT_ERROR_COUNT: AtomicU32 = AtomicU32::new(0);
+        let count = PRESENT_ERROR_COUNT.fetch_add(1, Ordering::Relaxed);
+        if count == 0 || count % 600 == 0 {
             tracing::error!("[COMPOSITOR] ❌ Present failed: {:?}", present_result);
         }
     }
@@ -328,21 +346,21 @@ unsafe fn render_bevy_layer(window_state: &mut crate::window::WindowState, conte
         let hresult = e.code().0;
         let is_device_error = hresult == 0x887A0005_u32 as i32 || hresult == 0x887A0006_u32 as i32 || hresult == 0x887A0007_u32 as i32;
 
-        static mut OPEN_ERROR_COUNT: u32 = 0;
-        static mut LAST_WAS_DEVICE_ERROR: bool = false;
-        OPEN_ERROR_COUNT += 1;
+        static OPEN_ERROR_COUNT: AtomicU32 = AtomicU32::new(0);
+        static LAST_WAS_DEVICE_ERROR: AtomicBool = AtomicBool::new(false);
+        let count = OPEN_ERROR_COUNT.fetch_add(1, Ordering::Relaxed);
 
         if is_device_error {
-            if !LAST_WAS_DEVICE_ERROR || OPEN_ERROR_COUNT % 600 == 1 {
+            let was_device_error = LAST_WAS_DEVICE_ERROR.swap(true, Ordering::Relaxed);
+            if !was_device_error || count % 600 == 1 {
                 tracing::error!("[COMPOSITOR] ❌ GPU DEVICE REMOVED/SUSPENDED: {:?}", e);
-                LAST_WAS_DEVICE_ERROR = true;
             }
             window_state.bevy_texture = None;
             window_state.bevy_srv = None;
         } else {
-            LAST_WAS_DEVICE_ERROR = false;
-            if OPEN_ERROR_COUNT == 1 || OPEN_ERROR_COUNT % 60 == 0 {
-                tracing::error!("[COMPOSITOR] ❌ Failed to open Bevy shared resource: {:?} (count: {})", e, OPEN_ERROR_COUNT);
+            LAST_WAS_DEVICE_ERROR.store(false, Ordering::Relaxed);
+            if count == 0 || count % 60 == 0 {
+                tracing::error!("[COMPOSITOR] ❌ Failed to open Bevy shared resource: {:?} (count: {})", e, count + 1);
             }
         }
         return;
@@ -356,8 +374,8 @@ unsafe fn render_bevy_layer(window_state: &mut crate::window::WindowState, conte
     let window_size = window_state.winit_window.inner_size();
 
     if bevy_tex_desc.Width != window_size.width || bevy_tex_desc.Height != window_size.height {
-        static mut SIZE_MISMATCH_COUNT: u32 = 0;
-        SIZE_MISMATCH_COUNT += 1;
+        static SIZE_MISMATCH_COUNT: AtomicU32 = AtomicU32::new(0);
+        SIZE_MISMATCH_COUNT.fetch_add(1, Ordering::Relaxed);
     }
 
     // Create or reuse SRV
@@ -421,16 +439,16 @@ unsafe fn create_bevy_srv(window_state: &mut crate::window::WindowState, bevy_te
         let hresult = e.code().0;
         let is_device_error = hresult == 0x887A0005_u32 as i32 || hresult == 0x887A0006_u32 as i32 || hresult == 0x887A0007_u32 as i32;
 
-        static mut SRV_ERROR_COUNT: u32 = 0;
-        SRV_ERROR_COUNT += 1;
+        static SRV_ERROR_COUNT: AtomicU32 = AtomicU32::new(0);
+        let count = SRV_ERROR_COUNT.fetch_add(1, Ordering::Relaxed);
         if is_device_error {
-            if SRV_ERROR_COUNT == 1 || SRV_ERROR_COUNT % 600 == 0 {
+            if count == 0 || count % 600 == 0 {
                 tracing::error!("[COMPOSITOR] ❌ GPU device error creating SRV: {:?}", e);
             }
             window_state.bevy_texture = None;
             window_state.bevy_srv = None;
-        } else if SRV_ERROR_COUNT == 1 || SRV_ERROR_COUNT % 60 == 0 {
-            tracing::error!("[COMPOSITOR] ❌ Failed to create SRV: {:?} (count: {})", e, SRV_ERROR_COUNT);
+        } else if count == 0 || count % 60 == 0 {
+            tracing::error!("[COMPOSITOR] ❌ Failed to create SRV: {:?} (count: {})", e, count + 1);
         }
     }
 

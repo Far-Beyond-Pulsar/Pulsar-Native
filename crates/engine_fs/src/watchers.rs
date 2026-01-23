@@ -49,14 +49,16 @@ fn handle_fs_event(event: &Event, type_database: &TypeDatabase) {
             // File created or modified
             for path in &event.paths {
                 if let Some((name, kind)) = get_type_info(path) {
-                    type_database.register_with_path(
+                    if let Err(e) = type_database.register_with_path(
                         name.clone(),
                         path.clone(),
                         kind,
                         None,
                         Some(format!("{:?}: {}", kind, name)),
                         None,
-                    );
+                    ) {
+                        tracing::warn!("Failed to register type '{}': {:?}", name, e);
+                    }
                 }
             }
         }

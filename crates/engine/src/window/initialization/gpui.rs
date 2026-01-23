@@ -119,7 +119,7 @@ pub fn initialize_gpui_window(
     tracing::debug!("✨ GPUI components initialized");
 
     // Store window_id in EngineState metadata BEFORE opening GPUI window
-    let window_id_u64 = unsafe { std::mem::transmute::<_, u64>(*window_id) };
+    let window_id_u64 = app.window_id_map.register(*window_id);
     tracing::debug!("[WINDOW-INIT] 🔖 Window ID for this window: {}", window_id_u64);
     engine_state.set_metadata("latest_window_id".to_string(), window_id_u64.to_string());
 

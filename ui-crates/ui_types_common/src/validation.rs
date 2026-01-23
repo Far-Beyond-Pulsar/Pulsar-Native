@@ -1,8 +1,8 @@
 use regex::Regex;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use crate::{
     TypeRef, TypeAstNode, TypeIndex, TypeKind, AliasAsset,
-    StructAsset, EnumAsset, TraitAsset, TypeSystemError, Result, PRIMITIVES, CONSTRUCTORS,
+    StructAsset, EnumAsset, TraitAsset, TypeSystemError, Result, PRIMITIVES,
     VariantPayload,
 };
 

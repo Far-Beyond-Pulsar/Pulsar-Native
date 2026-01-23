@@ -92,10 +92,14 @@ pub fn handle_about_to_wait(
         match request {
             WindowRequest::CloseWindow { window_id } => {
                 // Find and close the window with this ID
-                let window_id_native = unsafe { std::mem::transmute::<u64, WindowId>(window_id) };
-                if app.windows.remove(&window_id_native).is_some() {
-                    tracing::debug!("✨ Closed window with ID: {:?}", window_id);
-                    app.engine_state.decrement_window_count();
+                if let Some(window_id_native) = app.window_id_map.get_window_id(window_id) {
+                    if app.windows.remove(&window_id_native).is_some() {
+                        tracing::debug!("✨ Closed window with ID: {:?}", window_id);
+                        app.window_id_map.remove(&window_id_native);
+                        app.engine_state.decrement_window_count();
+                    }
+                } else {
+                    tracing::warn!("⚠️ Attempted to close unknown window ID: {}", window_id);
                 }
             }
             _ => {

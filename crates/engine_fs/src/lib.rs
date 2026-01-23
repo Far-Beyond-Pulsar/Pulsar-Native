@@ -120,14 +120,16 @@ impl EngineFs {
                     };
 
                     if let Some(kind) = type_kind {
-                        self.type_database.register_with_path(
+                        if let Err(e) = self.type_database.register_with_path(
                             type_name.clone(),
                             path.clone(),
                             kind,
                             None,
                             Some(format!("{:?}: {}", kind, type_name)),
                             None,
-                        );
+                        ) {
+                            tracing::warn!("Failed to register type '{}': {:?}", type_name, e);
+                        }
                     }
                 }
             }

@@ -47,14 +47,16 @@ impl AssetOperations {
             .context("Failed to write alias file")?;
 
         // Register in type database
-        self.type_database.register_with_path(
+        if let Err(e) = self.type_database.register_with_path(
             name.to_string(),
             file_path.clone(),
             TypeKind::Alias,
             None,
             Some(format!("Type alias: {}", name)),
             None,
-        );
+        ) {
+            tracing::warn!("Failed to register type alias '{}': {:?}", name, e);
+        }
 
         Ok(file_path)
     }
@@ -78,14 +80,16 @@ impl AssetOperations {
             .context("Failed to write alias file")?;
 
         // Update in type database
-        self.type_database.register_with_path(
+        if let Err(e) = self.type_database.register_with_path(
             asset.name.clone(),
             file_path.clone(),
             TypeKind::Alias,
             None,
             Some(format!("Type alias: {}", asset.name)),
             None,
-        );
+        ) {
+            tracing::warn!("Failed to update type alias '{}': {:?}", asset.name, e);
+        }
 
         Ok(())
     }
@@ -111,14 +115,16 @@ impl AssetOperations {
             .context("Invalid alias JSON")?;
 
         // Register in type database
-        self.type_database.register_with_path(
+        if let Err(e) = self.type_database.register_with_path(
             asset.name.clone(),
             file_path.clone(),
             TypeKind::Alias,
             None,
             Some(format!("Type alias: {}", asset.name)),
             None,
-        );
+        ) {
+            tracing::warn!("Failed to register type alias '{}': {:?}", asset.name, e);
+        }
 
         Ok(())
     }
@@ -138,14 +144,16 @@ impl AssetOperations {
         let asset: ui_types_common::AliasAsset = serde_json::from_str(&content)
             .context("Invalid alias JSON")?;
 
-        self.type_database.register_with_path(
+        if let Err(e) = self.type_database.register_with_path(
             asset.name.clone(),
             new_path.clone(),
             TypeKind::Alias,
             None,
             Some(format!("Type alias: {}", asset.name)),
             None,
-        );
+        ) {
+            tracing::warn!("Failed to register renamed type alias '{}': {:?}", asset.name, e);
+        }
 
         Ok(())
     }
@@ -215,14 +223,16 @@ impl AssetOperations {
             _ => return Ok(()), // Other asset types don't need indexing yet
         };
 
-        self.type_database.register_with_path(
+        if let Err(e) = self.type_database.register_with_path(
             name.clone(),
             file_path.clone(),
             type_kind,
             None,
             Some(format!("{:?}: {}", type_kind, name)),
             None,
-        );
+        ) {
+            tracing::warn!("Failed to register type '{}': {:?}", name, e);
+        }
 
         Ok(())
     }
@@ -276,14 +286,16 @@ impl AssetOperations {
             };
 
             if let Some(kind) = type_kind {
-                self.type_database.register_with_path(
+                if let Err(e) = self.type_database.register_with_path(
                     name.clone(),
                     new_path.clone(),
                     kind,
                     None,
                     Some(format!("{:?}: {}", kind, name)),
-            None,
-                );
+                    None,
+                ) {
+                    tracing::warn!("Failed to register renamed type '{}': {:?}", name, e);
+                }
             }
         }
 

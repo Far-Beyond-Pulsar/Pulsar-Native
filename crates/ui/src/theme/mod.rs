@@ -84,11 +84,10 @@ impl DerefMut for Theme {
 impl Global for Theme {}
 
 // Global function pointer for plugin theme accessor (set by export_plugin! macro)
-// SAFETY: This stores a function pointer that's transmuted from/to *mut ().
 // The type signature MUST match exactly: unsafe fn() -> Option<&'static Theme>
 // The plugin MUST ensure this function remains valid for its entire lifetime.
-static PLUGIN_THEME_ACCESSOR: std::sync::atomic::AtomicPtr<()> =
-    std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+static PLUGIN_THEME_ACCESSOR: std::sync::RwLock<Option<unsafe fn() -> Option<&'static Theme>>> =
+    std::sync::RwLock::new(None);
 
 impl Theme {
     /// Register a plugin theme accessor function
@@ -100,8 +99,8 @@ impl Theme {
     /// - Return None if theme is unavailable
     /// - Not panic
     pub fn register_plugin_accessor(accessor: unsafe fn() -> Option<&'static Theme>) {
-        // Store the function pointer (type-erased to *mut ())
-        PLUGIN_THEME_ACCESSOR.store(accessor as *mut (), std::sync::atomic::Ordering::Release);
+        // Store the function pointer directly in the RwLock
+        *PLUGIN_THEME_ACCESSOR.write().unwrap() = Some(accessor);
     }
 
     /// Returns the global theme reference
@@ -113,18 +112,13 @@ impl Theme {
             Some(theme) => theme,
             None => {
                 // If we're in a plugin context, try the plugin accessor
-                let accessor_ptr = PLUGIN_THEME_ACCESSOR.load(std::sync::atomic::Ordering::Acquire);
-
-                // Validate pointer before transmuting
-                if !accessor_ptr.is_null() {
-                    // SAFETY: We trust that the plugin registered a valid function pointer
-                    // with the correct signature. This is a cross-DLL contract.
-                    let accessor: unsafe fn() -> Option<&'static Theme> =
-                        unsafe { std::mem::transmute(accessor_ptr) };
-
-                    // Call the accessor (it returns None if theme unavailable)
-                    if let Some(theme) = unsafe { accessor() } {
-                        return theme;
+                if let Ok(accessor_guard) = PLUGIN_THEME_ACCESSOR.read() {
+                    if let Some(accessor) = *accessor_guard {
+                        // Call the accessor (it returns None if theme unavailable)
+                        // SAFETY: The plugin registered this function and guarantees it's valid
+                        if let Some(theme) = unsafe { accessor() } {
+                            return theme;
+                        }
                     }
                 }
 

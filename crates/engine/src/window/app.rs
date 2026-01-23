@@ -54,7 +54,7 @@ use ui_loading_screen::create_loading_component;
 use ui_about::create_about_window;
 use ui_documentation::create_documentation_window;
 use ui_common::menu::{AboutApp, ShowDocumentation};
-use crate::window::{convert_modifiers, convert_mouse_button, WindowState};
+use crate::window::{convert_modifiers, convert_mouse_button, WindowState, WindowIdMap};
 use engine_state::{EngineState, WindowRequest};
 use gpui::*;
 use raw_window_handle::HasWindowHandle;
@@ -107,6 +107,8 @@ pub struct WinitGpuiApp {
     pub(crate) engine_state: EngineState,
     pub(crate) window_request_rx: Receiver<WindowRequest>,
     pub(crate) pending_window_requests: Vec<WindowRequest>,
+    /// Safe mapping between WindowId and u64 (avoids unsafe transmute)
+    pub(crate) window_id_map: WindowIdMap,
 }
 
 impl WinitGpuiApp {
@@ -124,6 +126,7 @@ impl WinitGpuiApp {
             engine_state,
             window_request_rx,
             pending_window_requests: Vec::new(),
+            window_id_map: WindowIdMap::new(),
         }
     }
 

@@ -24,9 +24,11 @@ pub fn handle_close_requested(
     tracing::debug!("\n🚪 Closing window...");
 
     // Clean up window-specific GPU renderer
-    let window_id_u64 = unsafe { std::mem::transmute::<_, u64>(window_id) };
-    app.engine_state.remove_window_gpu_renderer(window_id_u64);
+    if let Some(window_id_u64) = app.window_id_map.get_id(&window_id) {
+        app.engine_state.remove_window_gpu_renderer(window_id_u64);
+    }
 
+    app.window_id_map.remove(&window_id);
     app.windows.remove(&window_id);
     app.engine_state.decrement_window_count();
 

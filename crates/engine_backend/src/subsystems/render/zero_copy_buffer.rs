@@ -172,12 +172,16 @@ impl ZeroCopyFrameBuffer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
+    /// Test dimensions (Full HD)
+    const TEST_WIDTH: u32 = 1920;
+    const TEST_HEIGHT: u32 = 1080;
+
     #[test]
     fn test_buffer_sizes() {
         // Test that alignment calculations are correct
-        let width = 1920u32;
-        let height = 1080u32;
+        let width = TEST_WIDTH;
+        let height = TEST_HEIGHT;
         
         let row_bytes = width * 4;
         let aligned_row = RenderDevice::align_copy_bytes_per_row(row_bytes as usize);

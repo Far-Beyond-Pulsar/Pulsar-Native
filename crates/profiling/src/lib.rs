@@ -339,4 +339,5 @@ macro_rules! profile_function {
 }
 
 // Add once_cell dependency
-use once_cell::sync::Lazy;
+// Lazy removed - not currently used
+// use once_cell::sync::Lazy;

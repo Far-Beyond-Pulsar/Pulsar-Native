@@ -11,6 +11,43 @@
 use crate::blueprint;
 
 // =============================================================================
+// Constants
+// =============================================================================
+
+/// Maximum valid port number (TCP/UDP)
+const PORT_MAX: i64 = 65535;
+
+/// Minimum valid port number
+const PORT_MIN: i64 = 1;
+
+/// Upper bound of well-known ports
+const WELL_KNOWN_PORT_MAX: i64 = 1023;
+
+/// Lower bound of registered ports
+const REGISTERED_PORT_MIN: i64 = 1024;
+
+/// Upper bound of registered ports
+const REGISTERED_PORT_MAX: i64 = 49151;
+
+/// Lower bound of dynamic/private ports
+const DYNAMIC_PORT_MIN: i64 = 49152;
+
+/// Maximum value for an IP octet
+const OCTET_MAX: i64 = 255;
+
+/// Minimum value for an IP octet
+const OCTET_MIN: i64 = 0;
+
+/// Number of octets in an IPv4 address
+const IPV4_OCTET_COUNT: usize = 4;
+
+/// Maximum CIDR mask bits for IPv4
+const IPV4_CIDR_MAX: i64 = 32;
+
+/// Minimum CIDR mask bits
+const CIDR_MIN: i64 = 0;
+
+// =============================================================================
 // IP Address Operations
 // =============================================================================
 
@@ -27,10 +64,10 @@ use crate::blueprint;
 #[blueprint(type: crate::NodeTypes::pure, category: "Network", color: "#16A085")]
 pub fn validate_ipv4(ip: String) -> bool {
     let parts: Vec<&str> = ip.split('.').collect();
-    if parts.len() != 4 {
+    if parts.len() != IPV4_OCTET_COUNT {
         return false;
     }
-    
+
     parts.iter().all(|part| {
         part.parse::<u8>().is_ok()
     })
@@ -70,11 +107,11 @@ pub fn parse_ipv4(ip: String) -> String {
 /// Creates an IPv4 address from four octets.
 #[blueprint(type: crate::NodeTypes::pure, category: "Network", color: "#16A085")]
 pub fn create_ipv4(octet1: i64, octet2: i64, octet3: i64, octet4: i64) -> String {
-    format!("{}.{}.{}.{}", 
-        octet1.clamp(0, 255),
-        octet2.clamp(0, 255),
-        octet3.clamp(0, 255),
-        octet4.clamp(0, 255)
+    format!("{}.{}.{}.{}",
+        octet1.clamp(OCTET_MIN, OCTET_MAX),
+        octet2.clamp(OCTET_MIN, OCTET_MAX),
+        octet3.clamp(OCTET_MIN, OCTET_MAX),
+        octet4.clamp(OCTET_MIN, OCTET_MAX)
     )
 }
 
@@ -137,7 +174,7 @@ pub fn is_private_ip(ip: String) -> bool {
 /// Validates a port number.
 #[blueprint(type: crate::NodeTypes::pure, category: "Network", color: "#16A085")]
 pub fn validate_port(port: i64) -> bool {
-    port > 0 && port <= 65535
+    port >= PORT_MIN && port <= PORT_MAX
 }
 
 /// Check if port is well-known (0-1023).
@@ -152,7 +189,7 @@ pub fn validate_port(port: i64) -> bool {
 /// Checks if a port is in the well-known range (0-1023).
 #[blueprint(type: crate::NodeTypes::pure, category: "Network", color: "#16A085")]
 pub fn is_well_known_port(port: i64) -> bool {
-    port >= 0 && port <= 1023
+    port >= OCTET_MIN && port <= WELL_KNOWN_PORT_MAX
 }
 
 /// Check if port is registered (1024-49151).
@@ -167,7 +204,7 @@ pub fn is_well_known_port(port: i64) -> bool {
 /// Checks if a port is in the registered range (1024-49151).
 #[blueprint(type: crate::NodeTypes::pure, category: "Network", color: "#16A085")]
 pub fn is_registered_port(port: i64) -> bool {
-    port >= 1024 && port <= 49151
+    port >= REGISTERED_PORT_MIN && port <= REGISTERED_PORT_MAX
 }
 
 /// Check if port is dynamic/private (49152-65535).
@@ -182,7 +219,7 @@ pub fn is_registered_port(port: i64) -> bool {
 /// Checks if a port is in the dynamic/private range (49152-65535).
 #[blueprint(type: crate::NodeTypes::pure, category: "Network", color: "#16A085")]
 pub fn is_dynamic_port(port: i64) -> bool {
-    port >= 49152 && port <= 65535
+    port >= DYNAMIC_PORT_MIN && port <= PORT_MAX
 }
 
 // =============================================================================
@@ -412,5 +449,5 @@ pub fn cidr_to_mask(cidr: String) -> i64 {
 /// Creates CIDR notation from IP and mask bits.
 #[blueprint(type: crate::NodeTypes::pure, category: "Network", color: "#16A085")]
 pub fn create_cidr(ip: String, mask_bits: i64) -> String {
-    format!("{}/{}", ip, mask_bits.clamp(0, 32))
+    format!("{}/{}", ip, mask_bits.clamp(CIDR_MIN, IPV4_CIDR_MAX))
 }
