@@ -7,7 +7,7 @@ use gpui::*;
 use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, MouseButton as WinitMouseButton, MouseScrollDelta};
 use winit::window::{WindowId, ResizeDirection, CursorIcon};
-use crate::window::{WinitGpuiApp, convert_mouse_button};
+use crate::window::{WinitGpuiApp, ToGpuiMouseButton};
 
 // Constants for window manipulation (in logical pixels, will be scaled)
 const TITLEBAR_HEIGHT_LOGICAL: f64 = 34.0;  // Match TitleBar::TITLE_BAR_HEIGHT
@@ -183,7 +183,7 @@ pub fn handle_mouse_input(
     let mut event_handled_by_gpui = false;
 
     if let Some(gpui_window_ref) = window_state.gpui_window.as_ref() {
-        let gpui_button = convert_mouse_button(button);
+        let gpui_button = button.to_gpui();
         let position = window_state.last_cursor_position;
 
         match state {

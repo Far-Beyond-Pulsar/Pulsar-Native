@@ -102,7 +102,7 @@ mod windows_impl {
         let result = D3D11CreateDevice(
             None, // Use default adapter
             D3D_DRIVER_TYPE_HARDWARE, // Hardware acceleration
-            None, // No software rasterizer
+            HMODULE::default(), // No software rasterizer
             create_flags, // Creation flags
             Some(&[D3D_FEATURE_LEVEL_11_0]), // Required feature level
             D3D11_SDK_VERSION, // SDK version

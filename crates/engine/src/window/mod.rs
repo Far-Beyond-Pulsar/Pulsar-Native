@@ -68,7 +68,10 @@ pub mod initialization;
 mod window_id_map;
 
 pub use app::WinitGpuiApp;
-pub use events::{convert_modifiers, convert_mouse_button, MotionSmoother, SimpleClickState};
+pub use events::{
+    convert_modifiers, convert_mouse_button, MotionSmoother, SimpleClickState,
+    ToGpuiMouseButton, ToGpuiModifiers,
+};
 pub use state::WindowState;
 pub use window_id_map::WindowIdMap;
 

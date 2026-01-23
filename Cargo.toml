@@ -32,10 +32,10 @@ ttf-parser = { opt-level = 3 }
 [workspace.dependencies]
 
 # ---------- GPUI (Zed fork) ----------
-gpui = { git = "https://github.com/tristanpoland/zed", rev = "2047043a00dc138e3d8127c8921c96927acea8f8", features = ["runtime_shaders", "macos-blade"] }
-gpui_macros = { git = "https://github.com/tristanpoland/zed", rev = "2047043a00dc138e3d8127c8921c96927acea8f8" }
+gpui           = { git = "https://github.com/tristanpoland/zed", rev = "2047043a00dc138e3d8127c8921c96927acea8f8", features = ["runtime_shaders", "macos-blade"] }
+gpui_macros    = { git = "https://github.com/tristanpoland/zed", rev = "2047043a00dc138e3d8127c8921c96927acea8f8" }
 reqwest_client = { git = "https://github.com/tristanpoland/zed", rev = "2047043a00dc138e3d8127c8921c96927acea8f8" }
-sum_tree = { git = "https://github.com/tristanpoland/zed", rev = "2047043a00dc138e3d8127c8921c96927acea8f8" }
+sum_tree       = { git = "https://github.com/tristanpoland/zed", rev = "2047043a00dc138e3d8127c8921c96927acea8f8" }
 
 # ---------- Local Overrides (uncomment to use) ----------
 # gpui = { path = "C:/Users/redst/OneDrive/Documents/GitHub/gpui-ce/crates/gpui", features = ["runtime_shaders", "macos-blade"] }
@@ -82,25 +82,25 @@ plugin_editor_api = { path = "crates/plugin_editor_api" }
 plugin_manager    = { path = "crates/plugin_manager" }
 
 # ---------- Third-party ----------
-anyhow = "1"
-log = "0.4"
-serde = { version = "1.0.219", features = ["derive"] }
-serde_repr = "0.1"
-serde_json = "1"
-schemars = "1"
-smallvec = "1"
-rust-i18n = "3"
+anyhow = "1.0.100"
+log = "0.4.29"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_repr = "0.1.20"
+serde_json = "1.0.149"
+schemars = "1.2.0"
+smallvec = "1.15.1"
+rust-i18n = "3.1.5"
 raw-window-handle = "0.6.2"
-winit = "0.30"
-smol = "1"
-tracing = "0.1.41"
-notify = "7.0.0"
+winit = "0.30.12"
+smol = "1.3.0"
+tracing = "0.1.44"
+notify = "8.2.0"
 lsp-types = "0.97.0"
-directories = "5"
-itertools = "0.13"
-rapier3d = { version = "*", features = ["simd-stable"] }
-sysuri = "0.2"
-urlencoding = "2.1"
+directories = "6.0.0"
+itertools = "0.14.0"
+rapier3d = { version = "0.32.0", features = ["simd-stable"] }
+sysuri = "0.4.0"
+urlencoding = "2.1.3"
 
 ropey = { version = "=2.0.0-beta.1", features = ["metric_utf16", "metric_lines_lf"] }
 
@@ -109,14 +109,19 @@ ropey = { version = "=2.0.0-beta.1", features = ["metric_utf16", "metric_lines_l
 ###################################
 
 [workspace.dependencies.windows]
-version = "0.58.0"
+version = "0.62.2"
 features = [
     "Wdk",
     "Wdk_System",
     "Wdk_System_SystemServices",
     "Win32_System_Threading",
     "Win32_System_SystemInformation",
+    "Win32_Graphics_Direct3D",
     "Win32_Graphics_Direct3D_Fxc",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Foundation",
 ]
 
 ###################################

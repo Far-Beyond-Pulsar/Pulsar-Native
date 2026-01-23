@@ -1,13 +1,10 @@
+
 use rapier3d::prelude::*;
+use bevy::prelude::Vec3;
 
 pub struct PhysicsEngine {
-    //TODO: There are better type sigs for this \/
-    gravity: nalgebra::Matrix<
-        f32,
-        nalgebra::Const<3>,
-        nalgebra::Const<1>,
-        nalgebra::ArrayStorage<f32, 3, 1>
-    >,
+    // Gravity as Vec3 for compatibility with PhysicsPipeline::step
+    gravity: Vec3,
     integration_parameters: IntegrationParameters,
     physics_pipeline: PhysicsPipeline,
     island_manager: IslandManager,
@@ -29,7 +26,7 @@ impl PhysicsEngine {
         let collider_set = ColliderSet::new();
 
         /* Create other structures necessary for the simulation. */
-        let gravity = vector![0.0, -9.81, 0.0];
+        let gravity = Vec3::new(0.0, -9.81, 0.0);
         let integration_parameters = IntegrationParameters::default();
         let physics_pipeline = PhysicsPipeline::new();
         let island_manager = IslandManager::new();
@@ -60,7 +57,7 @@ impl PhysicsEngine {
     
     pub async fn start(&mut self) {
         
-        let rigid_body = RigidBodyBuilder::dynamic().translation(vector![0.0, 10.0, 0.0]).build();
+        let rigid_body = RigidBodyBuilder::dynamic().translation([0.0, 10.0, 0.0].into()).build();
         let ball_body_handle = self.rigid_body_set.insert(rigid_body);
         
         
@@ -74,7 +71,7 @@ impl PhysicsEngine {
 
         loop {
             self.physics_pipeline.step(
-                &self.gravity,
+                self.gravity,
                 &self.integration_parameters,
                 &mut self.island_manager,
                 &mut self.broad_phase,

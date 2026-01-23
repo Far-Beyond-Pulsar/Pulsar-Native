@@ -370,7 +370,7 @@ unsafe fn render_bevy_layer(window_state: &mut crate::window::WindowState, conte
 
     // Validate size
     let mut bevy_tex_desc = D3D11_TEXTURE2D_DESC::default();
-    bevy_tex.GetDesc(&mut bevy_tex_desc as *mut _);
+    bevy_tex.GetDesc(&mut bevy_tex_desc as *mut D3D11_TEXTURE2D_DESC);
     let window_size = window_state.winit_window.inner_size();
 
     if bevy_tex_desc.Width != window_size.width || bevy_tex_desc.Height != window_size.height {
