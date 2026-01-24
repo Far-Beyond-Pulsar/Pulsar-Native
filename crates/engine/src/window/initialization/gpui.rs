@@ -35,6 +35,8 @@ pub fn initialize_gpui_window(
     window_id: &WindowId,
     engine_context: &EngineContext,
 ) {
+    profiling::profile_scope!("Window::InitGPUI");
+
     let window_state = app.windows.get_mut(window_id).expect("Window state must exist");
 
     let winit_window = window_state.winit_window.clone();

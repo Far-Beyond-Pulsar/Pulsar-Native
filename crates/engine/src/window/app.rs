@@ -140,6 +140,8 @@ impl WinitGpuiApp {
     ///
     /// **Note**: This method is `pub(crate)` to allow access from lifecycle handlers
     pub(crate) fn create_window(&mut self, event_loop: &ActiveEventLoop, request: WindowRequest) {
+        profiling::profile_scope!("Window::Create");
+
         let (title, size) = match &request {
             WindowRequest::Entry => ("Pulsar Engine", (1280.0, 720.0)),
             WindowRequest::Settings => ("Settings", (800.0, 600.0)),
@@ -150,7 +152,7 @@ impl WinitGpuiApp {
             WindowRequest::CloseWindow { .. } => return, // Handled elsewhere
         };
 
-        tracing::debug!("≡ƒ¬ƒ [CREATE-WINDOW] Creating new window: {} (type: {:?})", title, request);
+        tracing::debug!("🪟 [CREATE-WINDOW] Creating new window: {} (type: {:?})", title, request);
 
         let mut window_attributes = WinitWindow::default_attributes()
             .with_title(title)

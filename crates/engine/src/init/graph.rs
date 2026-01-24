@@ -253,17 +253,23 @@ impl InitGraph {
         for id in order {
             let task = self.tasks.remove(&id).unwrap();
 
-            tracing::debug!("Executing init task: {}", task.name);
+            tracing::debug!("▶ Executing init task: {}", task.name);
 
-            profiling::profile_scope!("Engine::Init");
+            // Profile each initialization task with its specific name
+            let scope_name = format!("Engine::Init::{}", task.name);
+            profiling::profile_scope!(&scope_name);
 
+            let start = std::time::Instant::now();
             (task.executor)(context).map_err(|e| InitError::TaskFailed {
                 task: task.name,
                 error: e.to_string(),
             })?;
+            let duration = start.elapsed();
+
+            tracing::debug!("✓ Completed init task: {} ({:?})", task.name, duration);
         }
 
-        tracing::info!("Engine initialization complete");
+        tracing::info!("🎉 Engine initialization complete");
         Ok(())
     }
 

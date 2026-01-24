@@ -34,6 +34,8 @@ pub fn create_window_content(
     window: &mut Window,
     cx: &mut App,
 ) -> Entity<ui::Root> {
+    profiling::profile_scope!("Window::CreateContent");
+
     match window_type {
         Some(WindowRequest::Entry) => {
             create_entry_component(window, cx, engine_context, captured_window_id)

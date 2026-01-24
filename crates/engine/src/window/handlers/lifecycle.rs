@@ -22,6 +22,8 @@ pub fn handle_resumed(
     app: &mut WinitGpuiApp,
     event_loop: &ActiveEventLoop,
 ) {
+    profiling::profile_scope!("Lifecycle::Resumed");
+
     // Only create main window if no windows exist
     if !app.windows.is_empty() {
         return;
@@ -61,6 +63,8 @@ pub fn handle_about_to_wait(
     app: &mut WinitGpuiApp,
     event_loop: &ActiveEventLoop,
 ) {
+    profiling::profile_scope!("Lifecycle::AboutToWait");
+
     // LAZY CHECK: If GPUI windows need rendering, request redraw
     // This happens once per event loop iteration, not blocking
     for (_window_id, window_state) in &mut app.windows {
