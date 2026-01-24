@@ -1,7 +1,45 @@
-//! Initialization Dependency Graph
+//! # Initialization Dependency Graph
 //!
 //! Provides a declarative way to define engine initialization with explicit dependencies.
-//! Replaces the procedural 15-step initialization in main.rs with a validated dependency graph.
+//!
+//! ## Why?
+//!
+//! The old initialization was a 15-step procedural sequence where dependencies were implicit:
+//! - Discord init depended on `set_global()` being called first (line 127 needed line 122)
+//! - URI registration depended on runtime already running (line 131 needed line 98)
+//! - No documentation of required ordering
+//! - Hard to add new initialization steps
+//!
+//! ## How It Works
+//!
+//! 1. **Define tasks** with explicit dependencies:
+//!    ```ignore
+//!    graph.add_task(InitTask::new(
+//!        DISCORD,
+//!        "Discord Rich Presence",
+//!        vec![SET_GLOBAL],  // Explicit dependency!
+//!        Box::new(|ctx| { /* init code */ })
+//!    ))
+//!    ```
+//!
+//! 2. **Validate graph** - Detects cycles and missing dependencies:
+//!    ```ignore
+//!    let order = graph.build_order()?; // Returns Err if cycle detected
+//!    ```
+//!
+//! 3. **Execute in order** - Tasks run in topological order:
+//!    ```ignore
+//!    graph.execute(&mut init_ctx)?;
+//!    ```
+//!
+//! ## Profiling
+//!
+//! Each task is automatically profiled with scope `Engine::Init::{TaskName}` and
+//! timing is logged with ▶ (start) and ✓ (complete) markers.
+//!
+//! ## Algorithm
+//!
+//! Uses **Kahn's algorithm** for topological sorting to determine execution order.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use thiserror::Error;

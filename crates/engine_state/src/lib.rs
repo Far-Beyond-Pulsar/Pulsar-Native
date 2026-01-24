@@ -1,15 +1,47 @@
-//! Engine State Management
+//! # Engine State Management
 //!
 //! Provides thread-safe, type-safe state management for the Pulsar Engine.
-//! - Typed context objects (EngineContext, WindowContext, ProjectContext)
-//! - Type-safe renderer registry
-//! - Communication channels
-//! - Global registries
+//!
+//! ## Architecture
+//!
+//! The engine state system is built on typed context objects instead of string-based metadata:
+//!
+//! - **`EngineContext`** - Main engine-wide state with typed fields
+//! - **`WindowContext`** - Per-window state (window ID, type, renderer)
+//! - **`ProjectContext`** - Project-specific data (path, window association)
+//! - **`LaunchContext`** - Startup parameters (URI projects, verbose mode)
+//!
+//! ## Type Safety
+//!
+//! Instead of stringly-typed metadata:
+//! ```ignore
+//! // Old (runtime errors possible):
+//! engine_state.get_metadata("current_project_path")
+//! engine_state.set_metadata("latest_window_id", id.to_string())
+//! ```
+//!
+//! Use compile-time type-safe contexts:
+//! ```ignore
+//! // New (compile-time safety):
+//! engine_context.project.read().map(|p| p.path.clone())
+//! // Window ID passed directly as parameter
+//! ```
+//!
+//! ## Renderer Registry
+//!
+//! Type-safe renderer storage using enums instead of `Arc<dyn Any>`:
+//! ```ignore
+//! // Old (runtime panic risk):
+//! renderer.downcast::<Mutex<GpuRenderer>>().unwrap()
+//!
+//! // New (compile-time safety):
+//! handle.as_bevy::<Mutex<GpuRenderer>>() // Returns Option
+//! ```
 
 mod channels;
 mod discord;
 
-// New typed systems
+// Typed systems (primary API)
 pub mod context;
 pub mod renderers_typed;
 
@@ -21,7 +53,7 @@ pub use context::{EngineContext, WindowContext, ProjectContext, LaunchContext};
 pub use renderers_typed::{TypedRendererHandle, TypedRendererRegistry, RendererType};
 
 // Type alias for backward compatibility - EngineState is now EngineContext
-#[deprecated(note = "Use EngineContext instead")]
+#[deprecated(since = "0.2.0", note = "Use EngineContext instead - provides typed context fields")]
 pub type EngineState = EngineContext;
 
 // Project path storage for backward compatibility

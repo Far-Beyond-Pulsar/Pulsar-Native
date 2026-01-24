@@ -1,8 +1,35 @@
 //#![windows_subsystem = "windows"]
-//! Pulsar Engine Main Entry Point
+//! # Pulsar Engine Main Entry Point
 //!
-//! This file initializes the engine, sets up logging, loads configuration, handles app data,
-//! initializes the runtime, sets up Discord Rich Presence, and launches the main event loop.
+//! ## Initialization Architecture
+//!
+//! The engine uses a **dependency graph-based initialization system** (`InitGraph`) that:
+//! - Explicitly declares dependencies between initialization tasks
+//! - Validates the dependency graph (detects cycles, missing dependencies)
+//! - Executes tasks in topological order
+//! - Provides comprehensive profiling instrumentation
+//!
+//! ## Key Systems
+//!
+//! - **Typed Context System** (`EngineContext`) - Type-safe state management
+//! - **Dependency Graph Init** (`InitGraph`) - Declarative startup ordering
+//! - **Window System** (`WinitGpuiApp`) - Multi-window management with GPUI + D3D11
+//! - **Profiling** - Per-task timing and performance analysis
+//!
+//! ## Initialization Tasks
+//!
+//! 1. **Logging** - Tracy/tracing setup
+//! 2. **App Data** - Config directory initialization
+//! 3. **Settings** - Load engine configuration
+//! 4. **Runtime** - Tokio async runtime
+//! 5. **Backend** - Engine backend subsystems (physics, etc.)
+//! 6. **Channels** - Window request communication
+//! 7. **Engine Context** - Global typed state
+//! 8. **Set Global** - Register context globally
+//! 9. **Discord** - Rich presence initialization
+//! 10. **URI Registration** - Custom URI scheme (pulsar://)
+//!
+//! Each task is profiled with `Engine::Init::{TaskName}` scope.
 
 // Re-export render from backend where it actually lives
 pub use engine_backend::subsystems::render;
