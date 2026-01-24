@@ -26,7 +26,8 @@
       "Bash(powershell -Command \"Get-ChildItem ''C:\\Users\\redst\\.cargo\\git\\checkouts\\zed-08308dd575ff016e\\2047043\\crates'' -Directory | Select-Object Name\")",
       "Bash(move:*)",
       "Bash(cargo clippy:*)",
-      "Bash(cargo install:*)"
+      "Bash(cargo install:*)",
+      "Bash(cargo run:*)"
     ]
   }
 }

@@ -156,7 +156,8 @@ fn main() {
         "Window Channels",
         vec![],
         Box::new(|ctx| {
-            let (_window_tx, window_rx) = channel::<WindowRequest>();
+            let (window_tx, window_rx) = channel::<WindowRequest>();
+            ctx.window_tx = Some(window_tx);
             ctx.window_rx = Some(window_rx);
             Ok(())
         })
@@ -168,8 +169,10 @@ fn main() {
         "Engine Context",
         vec![CHANNELS],
         Box::new(|ctx| {
-            let (window_tx, _) = channel::<WindowRequest>();
-            let engine_context = EngineContext::new().with_window_sender(window_tx.clone());
+            let window_tx = ctx.window_tx.as_ref()
+                .ok_or_else(|| init::InitError::MissingContext("Window sender not initialized"))?
+                .clone();
+            let engine_context = EngineContext::new().with_window_sender(window_tx);
 
             // Handle URI project path if present
             if let Some(uri::UriCommand::OpenProject { path }) = &ctx.launch_args.uri_command {

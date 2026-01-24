@@ -6,7 +6,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use thiserror::Error;
 use tokio::runtime::Runtime;
-use engine_state::{EngineContext, WindowRequestReceiver};
+use engine_state::{EngineContext, WindowRequestReceiver, WindowRequestSender};
 use crate::args::ParsedArgs;
 use crate::logging::LogGuard;
 
@@ -79,6 +79,9 @@ pub struct InitContext {
     /// Engine backend
     pub backend: Option<engine_backend::EngineBackend>,
 
+    /// Window request sender channel
+    pub window_tx: Option<WindowRequestSender>,
+
     /// Window request receiver channel
     pub window_rx: Option<WindowRequestReceiver>,
 
@@ -94,6 +97,7 @@ impl InitContext {
             log_guard: None,
             runtime: None,
             backend: None,
+            window_tx: None,
             window_rx: None,
             engine_context: None,
         }
