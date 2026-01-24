@@ -5,6 +5,7 @@
 use crate::uri;
 
 /// Result of parsing command-line arguments.
+#[derive(Clone)]
 pub struct ParsedArgs {
     pub verbose: bool,
     pub uri_command: Option<uri::UriCommand>,

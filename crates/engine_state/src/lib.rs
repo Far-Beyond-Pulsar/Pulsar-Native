@@ -6,16 +6,29 @@
 //! - GPU renderers (per-window)
 //! - Communication channels
 //! - Global registries
+//!
+//! # New Typed System (Phase 1)
+//!
+//! The `context` and `renderers_typed` modules provide type-safe replacements
+//! for the string-based metadata and Arc<dyn Any> renderer systems.
 
 mod metadata;
 mod renderers;
 mod channels;
 mod discord;
 
+// New typed systems (Phase 1)
+pub mod context;
+pub mod renderers_typed;
+
 pub use metadata::Metadata;
 pub use renderers::{RendererRegistry, RendererHandle};
 pub use channels::{WindowRequest, WindowRequestSender, WindowRequestReceiver, window_request_channel};
 pub use discord::DiscordPresence;
+
+// Re-export new typed systems
+pub use context::{EngineContext, WindowContext, ProjectContext, LaunchContext};
+pub use renderers_typed::{TypedRendererHandle, TypedRendererRegistry, RendererType};
 
 use std::sync::Arc;
 use parking_lot::RwLock;

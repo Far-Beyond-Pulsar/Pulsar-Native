@@ -55,7 +55,7 @@ use ui_about::create_about_window;
 use ui_documentation::create_documentation_window;
 use ui_common::menu::{AboutApp, ShowDocumentation};
 use crate::window::{convert_modifiers, convert_mouse_button, WindowState, WindowIdMap};
-use engine_state::{EngineState, WindowRequest};
+use engine_state::{EngineState, EngineContext, WindowRequest};
 use gpui::*;
 use raw_window_handle::HasWindowHandle;
 use ui::Root;
@@ -105,6 +105,7 @@ use windows::{
 pub struct WinitGpuiApp {
     pub(crate) windows: HashMap<WindowId, WindowState>,
     pub(crate) engine_state: EngineState,
+    pub(crate) engine_context: Option<EngineContext>,
     pub(crate) window_request_rx: Receiver<WindowRequest>,
     pub(crate) pending_window_requests: Vec<WindowRequest>,
     /// Safe mapping between WindowId and u64 (avoids unsafe transmute)
@@ -112,7 +113,29 @@ pub struct WinitGpuiApp {
 }
 
 impl WinitGpuiApp {
-    /// Create a new application handler
+    /// Create a new application handler with EngineContext (new version)
+    ///
+    /// # Arguments
+    /// * `engine_context` - Typed engine context
+    /// * `window_request_rx` - Channel for receiving window creation requests
+    ///
+    /// # Returns
+    /// New WinitGpuiApp ready to be run
+    pub fn new_ctx(engine_context: EngineContext, window_request_rx: Receiver<WindowRequest>) -> Self {
+        // Create a compatibility EngineState for legacy code
+        let engine_state = EngineState::new();
+
+        Self {
+            windows: HashMap::new(),
+            engine_state,
+            engine_context: Some(engine_context),
+            window_request_rx,
+            pending_window_requests: Vec::new(),
+            window_id_map: WindowIdMap::new(),
+        }
+    }
+
+    /// Create a new application handler (legacy EngineState version)
     ///
     /// # Arguments
     /// * `engine_state` - Shared engine state
@@ -120,10 +143,12 @@ impl WinitGpuiApp {
     ///
     /// # Returns
     /// New WinitGpuiApp ready to be run
+    #[deprecated(note = "Use new_ctx with EngineContext instead")]
     pub fn new(engine_state: EngineState, window_request_rx: Receiver<WindowRequest>) -> Self {
         Self {
             windows: HashMap::new(),
             engine_state,
+            engine_context: None,
             window_request_rx,
             pending_window_requests: Vec::new(),
             window_id_map: WindowIdMap::new(),

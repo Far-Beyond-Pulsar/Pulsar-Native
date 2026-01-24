@@ -16,6 +16,7 @@ gpui.workspace = true
 ui = { workspace = true, features = ["tree-sitter-languages"] }
 winit.workspace = true
 raw-window-handle.workspace = true
+thiserror = "2.0"
 
 # Engine crates
 engine_backend.workspace = true
