@@ -1165,6 +1165,11 @@ impl Render for LocaleSelector {
                                 current_locale == "pt-BR",
                                 Box::new(SelectLocale("pt-BR".into()))
                             )
+                            .menu_with_check(
+                                "Lolcat",
+                                current_locale == "lol",
+                                Box::new(SelectLocale("lol".into()))
+                            )
                     })
                     .anchor(Corner::TopRight)
             )

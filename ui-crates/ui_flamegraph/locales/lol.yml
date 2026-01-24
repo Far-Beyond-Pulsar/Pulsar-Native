@@ -1,0 +1,31 @@
+# Flamegraph Profiler - lol (LOLCAT)
+
+# Window Title
+Flamegraph.Title: "Flamegraf Profilrcat"
+
+# Toolbar Buttons
+Flamegraph.Record: "Recurd"
+Flamegraph.Stop: "STAHP"
+Flamegraph.Recording: "RECURDIN NAO"
+Flamegraph.OpenSession: "Opn Seshun"
+
+# Statistics Sidebar
+Flamegraph.Statistics: "Statz"
+Flamegraph.TotalSpans: "Total Spanz:"
+Flamegraph.Duration: "Durashun:"
+Flamegraph.Frames: "Framez:"
+Flamegraph.AvgFrame: "Avg Fraem:"
+Flamegraph.MinFrame: "Min Fraem:"
+Flamegraph.MaxFrame: "Max Fraem:"
+Flamegraph.Threads: "Thredz:"
+Flamegraph.MaxDepth: "Max Depf:"
+
+# Hover Popup
+Flamegraph.Start: "Start:"
+Flamegraph.End: "End:"
+Flamegraph.Thread: "Thred:"
+Flamegraph.Depth: "Depf:"
+Flamegraph.Unknown: "Unknoen (so confuz)"
+
+# Units
+Flamegraph.Milliseconds: "%{value} millisekndz"

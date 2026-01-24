@@ -1,0 +1,9 @@
+# UI Core Translations - lol (LOLCAT)
+
+# Status Bar
+StatusBar.RustAnalyzer: "rust-analyzrcat"
+StatusBar.Stop: "STAHP"
+StatusBar.Restart: "Start Ovr Agen"
+StatusBar.Start: "GO GO GO"
+StatusBar.Multiplayer: "Multiplayah Colabrayshun"
+StatusBar.Flamegraph: "Flamegraf Profilrcat"

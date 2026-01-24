@@ -1,0 +1,29 @@
+# UI Problems Translations - lol (LOLCAT)
+
+# Drawer Title
+Problems.Title: "Problemz"
+
+# Filter Labels
+Problems.Filter.All: "All Problemz"
+Problems.Filter.Errors: "Errurz"
+Problems.Filter.Warnings: "Warningz"
+Problems.Filter.Information: "Infurmayshun"
+Problems.Filter.Hints: "Hintz"
+
+# Search & Actions
+Problems.Search.Placeholder: "Serch problemz..."
+Problems.Action.ClearAll: "Cleer all problemz"
+Problems.Action.GroupByFile: "Grup by file"
+Problems.Action.ShowFlatList: "Sho flat list"
+
+# Empty State
+Problems.Empty.Title: "No problemz detektd"
+Problems.Empty.NoMatch: "No problemz mach ur serch. Try diffrent kwery."
+Problems.Empty.AllGood: "Ur code iz lookin great! Keep up teh gud werk."
+
+# Diagnostics
+Problems.Loading: "Loadin kwik fixez..."
+Problems.SuggestedFixes: "Sugestd Fix(ez):"
+Problems.Related: "Relatd:"
+Problems.Before: "BEFOR"
+Problems.After: "AFTR"

@@ -1,0 +1,374 @@
+# UI Translations - lol (LOLCAT)
+
+Calendar.week.0: Caturday Jr
+Calendar.week.1: Meowday
+Calendar.week.2: Chewsday
+Calendar.week.3: Wensday
+Calendar.week.4: Furzday
+Calendar.week.5: Fryday
+Calendar.week.6: Caturday
+Calendar.month.January: Janyoowary
+Calendar.month.February: Febyoowary
+Calendar.month.March: Marz
+Calendar.month.April: Aprilz
+Calendar.month.May: Mai
+Calendar.month.June: Joon
+Calendar.month.July: Joolai
+Calendar.month.August: Awgust
+Calendar.month.September: Septembr
+Calendar.month.October: Octobr
+Calendar.month.November: Novembr
+Calendar.month.December: Decembr
+DatePicker.placeholder: "Pick da date plz"
+Dropdown.placeholder: "U can pick 1 nao"
+Dock.Unnamed: Namles Kitteh
+Dock.Close: Cloz It
+Dock.Zoom In: MOAR BIGR
+Dock.Zoom Out: MOAR SMALLR
+Dock.Collapse: Colaps
+Dock.Expand: EXPANDZ
+Modal.ok: OKAI
+Modal.cancel: Nevrmind
+List.search_placeholder: Serch fur...
+Input.Replace: Replase
+Input.Replace All: Replase All Teh Thingz
+Input.Cut: Cutted
+Input.Copy: Copypasta
+Input.Paste: Paest
+Input.Select All: Pick All Teh Thingz
+Input.Go to Definition: Go 2 Definishun
+Input.Show Code Actions: Show Codez Acshuns
+
+# Window Titles
+Window.Title.AboutPulsar: "Bout Pulsarcat Engin"
+Window.Title.FileManager: "File Organizr Kitteh"
+Window.Title.Problems: "Problemz (Oopsies)"
+Window.Title.TypeDebugger: "Type Bug Findr"
+Window.Title.Settings: "Settingz"
+Window.Title.Documentation: "Instrukshuns Manual"
+
+Menu.File: Filez
+Menu.Edit: Editz
+Menu.View: Lookz
+Menu.Help: HALP
+Menu.File.New: Nyu
+Menu.File.NewFile: Nyu File
+Menu.File.NewWindow: Nyu Windoh
+Menu.File.NewProject: Nyu Projek
+Menu.File.NewScene: Nyu Sceen
+Menu.File.NewScript: Nyu Script
+Menu.File.NewShader: Nyu Shadr
+Menu.File.NewMaterial: Nyu Matereeul
+Menu.File.NewPrefab: Nyu Preefab
+Menu.File.NewBlueprint: Nyu Blooprant
+Menu.File.NewComponent: Nyu Komponunt
+Menu.File.NewSystem: Nyu Sistum
+Menu.File.Open: Opun
+Menu.File.OpenFolder: Opun Foldr
+Menu.File.OpenRecent: Opun Reesunt
+Menu.File.RecentProjects: Reesunt Projekz
+Menu.File.RecentFiles: Reesunt Filez
+Menu.File.ClearRecent: Cleer Reesunt
+Menu.File.Save: Savs
+Menu.File.SaveAs: Savs Az...
+Menu.File.SaveAll: Savs All Teh Thingz
+Menu.File.SaveWorkspace: Savs Wurkspays
+Menu.File.Import: Impurt
+Menu.File.ImportAsset: Impurt Asett
+Menu.File.ImportModel: Impurt Modl (FBX/GLTF)
+Menu.File.ImportTexture: Impurt Texchr
+Menu.File.ImportAudio: Impurt Meowsic
+Menu.File.ImportFromUnity: Impurt frum Unity
+Menu.File.ImportFromUnreal: Impurt frum Unreal
+Menu.File.ImportFromGodot: Impurt frum Godot
+Menu.File.BatchImport: Batch Impurt
+Menu.File.Export: Expurt
+Menu.File.ExportBuild: Expurt Bild
+Menu.File.ExportScene: Expurt Sceen
+Menu.File.ExportSelected: Expurt Selectd
+Menu.File.ExportWindows: Expurt 4 Windowz
+Menu.File.ExportLinux: Expurt 4 Linuks
+Menu.File.ExportMacOS: Expurt 4 macOS
+Menu.File.ExportWeb: Expurt 4 Teh Webz (WASM)
+Menu.File.ExportAndroid: Expurt 4 Androyd
+Menu.File.ExportIOS: Expurt 4 iOS
+Menu.File.RevertFile: Undu File
+Menu.File.CloseFile: Cloz File
+Menu.File.CloseFolder: Cloz Foldr
+Menu.File.CloseAll: Cloz All Teh Thingz
+Menu.File.CloseOthers: Cloz Othr Stuffs
+Menu.Edit.Undo: UNDU PLZ
+Menu.Edit.Redo: REDU PLZ
+Menu.Edit.Cut: Cutted
+Menu.Edit.Copy: Copypasta
+Menu.Edit.Paste: Paest
+Menu.Edit.Delete: DELET DIS
+Menu.Edit.Duplicate: Maek Dublikat
+Menu.Edit.SelectAll: Pick All Teh Thingz
+Menu.Edit.Find: Find Teh Thing
+Menu.Edit.FindInFiles: Find In Filez
+Menu.Edit.Replace: Replase
+Menu.Edit.Preferences: Preferensiz
+Menu.View.CommandPalette: Comand Palett
+Menu.View.ToggleFullscreen: Toggul Fulscren
+Menu.View.ZoomIn: MOAR BIGR
+Menu.View.ZoomOut: MOAR SMALLR
+Menu.View.ResetZoom: Reset Zum
+Menu.View.Panels: Panelz
+Menu.View.TogglePanel: Toggul Panel
+Menu.View.Console: Consol
+Menu.View.Inspector: Inspectr
+Menu.View.Profiler: Profilr
+Menu.View.ToggleMinimap: Toggul Minimap
+Menu.View.ToggleLineNumbers: Toggul Line Numbrz
+Menu.View.ToggleBreadcrumbs: Toggul Bredcrumz
+Menu.View.ToggleWhitespace: Toggul Witespase
+Menu.View.ZenMode: Zen Moed (Peacful Kitteh)
+Menu.Help.Documentation: Instrukshuns
+Menu.Help.GettingStarted: Startin Owt
+Menu.Help.Tutorials: Tutorialz
+Menu.Help.API: API Referens
+Menu.Help.ReportBug: Report Bugz
+Menu.Help.RequestFeature: Request Nyu Feetchr
+Menu.Help.Community: Komunity
+Menu.Help.About: Bout Pulsarcat
+Menu.Edit.SelectNone: Pick Nuthin
+Menu.Edit.FindNext: Find Nekst
+Menu.Edit.FindPrevious: Find Previus
+Menu.Edit.ReplaceNext: Replase Nekst
+Menu.Edit.ReplaceAll: Replase All
+Menu.Edit.ReplaceInFiles: Replase In Filez
+Menu.Edit.FindUsages: Find Usajez
+Menu.Edit.FindImplementations: Find Implementashunz
+Menu.Edit.CodeActions: Cod Acshuns
+Menu.Edit.FormatDocument: Format Documunt
+Menu.Edit.FormatSelection: Format Selekshun
+Menu.Edit.CommentLine: Comunt Lien
+Menu.Edit.UncommentLine: Uncomunt Lien
+Menu.Edit.ToggleComment: Toggul Comunt
+Menu.Edit.Fold: Fold
+Menu.Edit.Unfold: Unfold
+Menu.Edit.FoldAll: Fold All
+Menu.Edit.UnfoldAll: Unfold All
+Menu.Edit.SortLines: Sort Lienz
+Menu.Edit.RemoveDuplicates: Remov Dublikats
+Menu.Edit.TrimWhitespace: Trim Witespase
+Menu.Selection: Selekshun
+Menu.Selection.SelectLine: Pick Lien
+Menu.Selection.SelectWord: Pick Werd
+Menu.Selection.SelectScope: Pick Scop
+Menu.Selection.ExpandSelection: Expans Selekshun
+Menu.Selection.ShrinkSelection: Shrink Selekshun
+Menu.Selection.AddCursorAbove: Add Cursr Abuv
+Menu.Selection.AddCursorBelow: Add Cursr Belo
+Menu.Selection.AddCursorLineEnds: Add Cursr @ Line Endz
+Menu.Selection.SelectAllOccurrences: Pick All Occurrunses
+Menu.Selection.SelectNextOccurrence: Pick Nekst Occurrunse
+Menu.Selection.SkipOccurrence: Skip Occurrunse
+Menu.View.Explorer: Explorr
+Menu.View.Hierarchy: Sceen Hierarky
+Menu.View.AssetBrowser: Asset Browzr
+Menu.View.Output: Owtput
+Menu.View.Problems: Problemz
+Menu.View.Debug: Debugg
+Menu.View.MemoryAnalyzer: Memry Analyzr
+Menu.View.Network: Netwurk
+Menu.View.Appearance: Appearans
+Menu.View.Layout: Layout
+Menu.View.SplitHorizontal: Split Horizontl
+Menu.View.SplitVertical: Split Verticl
+Menu.View.SingleColumn: Singl Columm
+Menu.View.TwoColumns: 2 Columnz
+Menu.View.ThreeColumns: 3 Columnz
+Menu.View.ResetLayout: Reset Layout
+Menu.View.SaveLayout: Savs Layout
+Menu.View.QuickOpen: Quik Opun
+Menu.Go: Goe
+Menu.Go.GoToFile: Goe 2 File
+Menu.Go.GoToSymbol: Goe 2 Simbol
+Menu.Go.GoToLine: Goe 2 Lien
+Menu.Go.GoToDefinition: Goe 2 Definishun
+Menu.Go.GoToTypeDefinition: Goe 2 Type Definishun
+Menu.Go.GoToImplementation: Goe 2 Implementashun
+Menu.Go.GoToReferences: Goe 2 Referenses
+Menu.Go.GoBack: Goe Bak
+Menu.Go.GoForward: Goe Forwrd
+Menu.Go.GoToLastEdit: Goe 2 Last Edit
+Menu.Go.NextProblem: Nekst Problem
+Menu.Go.PreviousProblem: Previus Problem
+Menu.Project: Projek
+Menu.Project.ProjectSettings: Projek Settingz
+Menu.Project.BuildSettings: Bild Settingz
+Menu.Project.PackageSettings: Pakaje Settingz
+Menu.Project.Dependencies: Dependenseez
+Menu.Project.AddDependency: Add Dependensy
+Menu.Project.UpdateDependencies: Updaet Dependenseez
+Menu.Project.RemoveUnused: Remov Unusd
+Menu.Project.OpenCargoToml: Cargo.toml
+Menu.Project.GenerateDocs: Generat Docz
+Menu.Project.RunCargoCheck: Run Cargo Chek
+Menu.Project.RunClippy: Run Clippy (Offis Asistunt)
+Menu.Project.FormatProject: Format Projek
+Menu.Build: Bild
+Menu.Build.BuildProject: Bild Projek
+Menu.Build.BuildAndRun: Bild & Run
+Menu.Build.BuildRelease: Bild Relees
+Menu.Build.Rebuild: Rebild All
+Menu.Build.Clean: Cleen Bild
+Menu.Build.BuildConfiguration: Bild Configurashun
+Menu.Build.BuildDebug: Debug
+Menu.Build.BuildReleaseDebug: Relees wif Debug Info
+Menu.Build.BuildProfile: Profiel
+Menu.Build.CancelBuild: Cancul Bild
+Menu.Build.ShowBuildOutput: Show Bild Owtput
+Menu.Run: Runz
+Menu.Run.RunProject: Run Projek
+Menu.Run.RunWithoutDebug: Run Wifout Debuggin
+Menu.Run.Stop: STAHP
+Menu.Run.Restart: Restart
+Menu.Run.DebugProject: Debug Projek
+Menu.Run.Debugging: Debuggin
+Menu.Run.StartDebug: Start Debuggin
+Menu.Run.StopDebug: Stop Debuggin
+Menu.Run.RestartDebug: Restart Debuggin
+Menu.Run.StepOver: Step Ovr
+Menu.Run.StepInto: Step Intu
+Menu.Run.StepOut: Step Owt
+Menu.Run.Continue: Continyu
+Menu.Run.ToggleBreakpoint: Toggul Breakpoynt
+Menu.Run.DisableBreakpoints: Disabl All Breakpoyntz
+Menu.Run.RemoveBreakpoints: Remov All Breakpoyntz
+Menu.Run.Testing: Testin
+Menu.Run.RunTests: Run All Testz
+Menu.Run.RunFailedTests: Run Faild Testz
+Menu.Run.RunFileTests: Run Testz in File
+Menu.Run.DebugTest: Debug Test
+Menu.Run.RunCoverage: Coveraj
+Menu.Run.Performance: Performuns
+Menu.Run.RunBenchmarks: Run Benchmarkz
+Menu.Run.CompareBenchmarks: Compar Benchmarkz
+Menu.Run.ProfileBuild: Profiel Bild
+Menu.GameEngine: Gaem Engin
+Menu.GameEngine.Scene: Sceen
+Menu.GameEngine.NewScene: Nyu Sceen
+Menu.GameEngine.OpenScene: Opun Sceen
+Menu.GameEngine.SaveScene: Savs Sceen
+Menu.GameEngine.SaveSceneAs: Savs Sceen Az
+Menu.GameEngine.PlayScene: PLAY SCEEN NAO
+Menu.GameEngine.PauseScene: Pawz Sceen
+Menu.GameEngine.StopScene: Stop Sceen
+Menu.GameEngine.SceneSettings: Sceen Settingz
+Menu.GameEngine.GameObject: GaemObjekt
+Menu.GameEngine.CreateEmpty: Creat Emty
+Menu.GameEngine.3DObjects: 3D Objektz
+Menu.GameEngine.CreateCube: Maek Cube
+Menu.GameEngine.CreateSphere: Maek Speer
+Menu.GameEngine.CreateCapsule: Maek Capsul
+Menu.GameEngine.CreateCylinder: Maek Cylindr
+Menu.GameEngine.CreatePlane: Maek Plaen
+Menu.GameEngine.CreateTerrain: Maek Terrain
+Menu.GameEngine.2DObjects: 2D Objektz
+Menu.GameEngine.CreateSprite: Maek Spriet
+Menu.GameEngine.CreateTilemap: Maek Tielmap
+Menu.GameEngine.CreateParticles2D: Maek Particl Sistum 2D
+Menu.GameEngine.Light: Liet
+Menu.GameEngine.CreateDirectionalLight: Maek Direkshunul Liet
+Menu.GameEngine.CreatePointLight: Maek Poynt Liet
+Menu.GameEngine.CreateSpotLight: Maek Spot Liet
+Menu.GameEngine.CreateAreaLight: Maek Area Liet
+Menu.GameEngine.Audio: Meowsic
+Menu.GameEngine.CreateAudioSource: Maek Meowsic Sours
+Menu.GameEngine.CreateAudioListener: Maek Meowsic Listnr
+Menu.GameEngine.Effects: Efektz
+Menu.GameEngine.CreateParticleSystem: Maek Particl Sistum
+Menu.GameEngine.CreateVFX: Maek Visual Efekt
+Menu.GameEngine.CreatePostProcessing: Maek Post Prosessin
+Menu.GameEngine.Camera: Camra
+Menu.GameEngine.CreateCamera: Maek Camra
+Menu.GameEngine.CreateOrthoCamera: Maek Ortografic Camra
+Menu.GameEngine.UI: Yoo Eye
+Menu.GameEngine.CreateCanvas: Maek Canvas
+Menu.GameEngine.CreatePanel: Maek Panel
+Menu.GameEngine.CreateButton: Maek Buttn
+Menu.GameEngine.CreateText: Maek Tekst
+Menu.GameEngine.CreateImage: Maek Imaj
+Menu.GameEngine.CreateSlider: Maek Slidr
+Menu.GameEngine.CreateInputField: Maek Input Field
+Menu.GameEngine.Physics: Fisiks
+Menu.GameEngine.AddRigidbody: Add Rigidbody
+Menu.GameEngine.AddCollider: Add Collidr
+Menu.GameEngine.AddCharacterController: Add Charaktr Controllr
+Menu.GameEngine.PhysicsSettings: Fisiks Settingz
+Menu.GameEngine.CollisionMatrix: Colishun Matriks
+Menu.GameEngine.Rendering: Rendrin
+Menu.GameEngine.RenderSettings: Rendr Settingz
+Menu.GameEngine.LightingSettings: Lietin Settingz
+Menu.GameEngine.QualitySettings: Qualiti Settingz
+Menu.GameEngine.BakeLighting: Baek Lietin
+Menu.GameEngine.ClearBakedData: Cleer Baekd Data
+Menu.GameEngine.FrameDebugger: Fraem Debuggr
+Menu.GameEngine.EngineProfiler: Engin Profilr
+Menu.GameEngine.PackageManager: Pakaje Managr
+Menu.GameEngine.AssetStore: Asset Stor
+Menu.Assets: Asetz
+Menu.Assets.CreateAsset: Creat Aset
+Menu.Assets.ImportAsset: Impurt Aset
+Menu.Assets.Create: Creat
+Menu.Assets.CreateMaterial: Maek Matereeul
+Menu.Assets.CreateShader: Maek Shadr
+Menu.Assets.CreateTexture: Maek Texchr
+Menu.Assets.CreateAnimClip: Maek Animashun Clip
+Menu.Assets.CreateAnimController: Maek Animatr Controllr
+Menu.Assets.CreateAudioMixer: Maek Meowsic Miksrr
+Menu.Assets.CreateRenderTexture: Maek Rendr Texchr
+Menu.Assets.CreatePrefab: Maek Preefab
+Menu.Assets.CreateScriptableObject: Maek ScriptablObjekt
+Menu.Assets.Refresh: Refreshz
+Menu.Assets.Reimport: Reimport
+Menu.Assets.ReimportAll: Reimport All
+Menu.Assets.FindReferences: Find Referenses
+Menu.Assets.FindMissingReferences: Find Missin Referenses
+Menu.Tools: Toolz
+Menu.Tools.Rust: Rust
+Menu.Tools.CargoCommands: Cargo Comandz
+Menu.Tools.GenerateRustAnalyzer: Generat Rust-Analyzr
+Menu.Tools.ExpandMacro: Expans Makro
+Menu.Tools.ShowSyntaxTree: Show Sintaks Tree
+Menu.Tools.ShowHIR: Show HIR
+Menu.Tools.InlineVariable: Inlien Variabul
+Menu.Tools.ExtractFunction: Ekstract Funkshun
+Menu.Tools.ExtractVariable: Ekstract Variabul
+Menu.Tools.Shaders: Shadrz
+Menu.Tools.ShaderEditor: Shadr Editr
+Menu.Tools.CompileShader: Compiel Shadr
+Menu.Tools.ShaderVariants: Shadr Variuntz
+Menu.Tools.SPIRVDisassembly: SPIR-V Disassembli
+Menu.Tools.Animation: Animashun
+Menu.Tools.AnimationWindow: Animashun Windoh
+Menu.Tools.AnimatorWindow: Animatr
+Menu.Tools.Timeline: Tiemlien
+Menu.Tools.MaterialEditor: Matereeul Editr
+Menu.Tools.TerrainTools: Terrain Toolz
+Menu.Tools.ParticleEditor: Particl Editr
+Menu.Tools.AudioMixerWindow: Meowsic Miksrr
+Menu.Tools.VersionControl: Vershun Kontrol
+Menu.Tools.TaskManager: Task Managr
+Menu.Tools.Extensions: Ekstenshunz
+Menu.Window: Windoh
+Menu.Window.Minimize: Minimyz
+Menu.Window.Zoom: Zum
+Menu.Window.BringAllToFront: Brin All 2 Frunt
+Menu.Window.NewWindow: Nyu Windoh
+Menu.Window.CloseWindow: Cloz Windoh
+Menu.Help.Shortcuts: Keybord Shortcutz
+Menu.Help.ViewLogs: View Logz
+Menu.Help.CheckUpdates: Chek 4 Updaetz
+Menu.Help.ReleaseNotes: Relees Noetz
+Menu.App.AboutApp: Bout Pulsarcat Engin
+Menu.App.CheckUpdates: Chek 4 Updaetz
+Menu.App.Preferences: Preferensiz
+Menu.App.Settings: Settingz
+Menu.App.Hide: Hied Pulsarcat
+Menu.App.HideOthers: Hied Othrz
+Menu.App.ShowAll: Show All
+Menu.App.QuitApp: Qwit Pulsarcat (Bai Bai!)

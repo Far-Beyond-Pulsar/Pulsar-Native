@@ -1,0 +1,45 @@
+# File Manager - lol (LOLCAT)
+
+FileManager.ProjectFiles: "Projekt Filez"
+FileManager.ExpandAll: "EXPAND ALL TEH THINGZ"
+FileManager.CollapseAll: "COLAPS ALL TEH THINGZ"
+FileManager.SearchFolders: "Serch foldrz..."
+FileManager.SearchFiles: "Serch filez..."
+FileManager.Items: "%{count} itemz"
+FileManager.Selected: "%{count} selectd"
+FileManager.NoItems: "No itemz (so sad)"
+FileManager.EmptyFolder: "Dis foldr iz emty"
+FileManager.EmptyFolderDesc: "Rite-clik 2 maek filez or foldrz"
+FileManager.ViewMode: "Vu Moed"
+FileManager.SortBy: "Sort Bai"
+FileManager.Refresh: "Refraysh"
+
+# Context Menu Items
+FileManager.NewFile: "Noo File"
+FileManager.NewFolder: "Noo Foldr"
+FileManager.Open: "Opn"
+FileManager.OpenWith: "Opn Wif"
+FileManager.Rename: "Reenaem"
+FileManager.Delete: "DELEET"
+FileManager.Duplicate: "Duplikate"
+FileManager.Copy: "Copypasta"
+FileManager.Cut: "Cutted"
+FileManager.Paste: "Paste"
+FileManager.OpenInFileManager: "Sho In File Mangr"
+FileManager.OpenTerminalHere: "Opn Termnl Heer"
+FileManager.Properties: "Proprtees"
+
+# View Modes
+FileManager.ListView: "List Vu"
+FileManager.GridView: "Grid Vu"
+FileManager.TreeView: "Tree Vu (liek cat climbin)"
+
+# Sort Options
+FileManager.SortByName: "Naem"
+FileManager.SortByDate: "Date Modifid"
+FileManager.SortBySize: "Siz"
+FileManager.SortByType: "Typ"
+FileManager.SortAscending: "Ascendin"
+FileManager.SortDescending: "Descendin"
+FileManager.ShowHidden: "Sho Hiddn Filez"
+FileManager.HideHidden: "Hide Hiddn Filez"

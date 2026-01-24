@@ -1,0 +1,14 @@
+# UI Type Debugger Translations - lol (LOLCAT)
+
+# Drawer Title
+TypeDebugger.Title: "Typ Databays"
+
+# Search & Actions
+TypeDebugger.Search.Placeholder: "Serch typz..."
+TypeDebugger.Action.ClearAll: "Cleer all typz"
+TypeDebugger.Action.GroupByKind: "Grup by kinde"
+TypeDebugger.Action.ShowFlatList: "Sho flat list"
+
+# Empty State
+TypeDebugger.Empty.Title: "No typz fownd"
+TypeDebugger.Empty.Message: "No typz mach ur serch criteereeah."
