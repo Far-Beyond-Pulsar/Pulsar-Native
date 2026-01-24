@@ -128,6 +128,9 @@ pub struct EngineContext {
 
     /// Window count
     pub window_count: Arc<parking_lot::Mutex<usize>>,
+
+    /// Typed renderer registry (replaces old Arc<dyn Any> system)
+    pub renderers: crate::renderers_typed::TypedRendererRegistry,
 }
 
 impl EngineContext {
@@ -141,6 +144,7 @@ impl EngineContext {
             type_database: Arc::new(RwLock::new(None)),
             window_sender: Arc::new(RwLock::new(None)),
             window_count: Arc::new(parking_lot::Mutex::new(0)),
+            renderers: crate::renderers_typed::TypedRendererRegistry::new(),
         }
     }
 
@@ -201,6 +205,11 @@ impl EngineContext {
         Ok(())
     }
 
+    /// Get Discord presence handle
+    pub fn discord(&self) -> Option<DiscordPresence> {
+        self.discord.read().clone()
+    }
+
     /// Update Discord presence
     pub fn update_discord_presence(
         &self,
@@ -221,6 +230,15 @@ impl EngineContext {
     /// Get global type database
     pub fn type_database(&self) -> Option<Arc<TypeDatabase>> {
         self.type_database.read().clone()
+    }
+
+    /// Legacy metadata setter (for backward compatibility)
+    ///
+    /// **Deprecated**: Use typed context fields instead.
+    /// This method exists only for compatibility during migration.
+    pub fn set_metadata(&self, _key: String, _value: String) {
+        // No-op: metadata system has been replaced with typed contexts
+        // Calling code should be migrated to use typed fields
     }
 
     /// Set as global instance (for GPUI views that need global access)

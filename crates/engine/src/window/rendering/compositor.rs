@@ -213,16 +213,18 @@ unsafe fn claim_bevy_renderer(app: &mut WinitGpuiApp, window_id: &WindowId) {
             return;
         };
 
-        if let Some(renderer_handle) = app.engine_state.get_window_gpu_renderer(window_id_u64) {
-            if let Ok(gpu_renderer) = renderer_handle.clone().downcast::<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>() {
-                window_state.bevy_renderer = Some(gpu_renderer);
+        // Try to get renderer for this window
+        if let Some(handle) = app.engine_context.renderers.get(window_id_u64) {
+            if let Some(bevy_renderer) = handle.as_bevy::<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>() {
+                window_state.bevy_renderer = Some(bevy_renderer.clone());
             }
-        } else if let Some(renderer_handle) = app.engine_state.get_window_gpu_renderer(0) {
-            if let Ok(gpu_renderer) = renderer_handle.clone().downcast::<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>() {
-                app.engine_state.set_window_gpu_renderer(window_id_u64, gpu_renderer.clone() as std::sync::Arc<dyn std::any::Any + Send + Sync>);
-                app.engine_state.remove_window_gpu_renderer(0);
-                app.engine_state.set_metadata("has_pending_viewport_renderer".to_string(), "false".to_string());
-                window_state.bevy_renderer = Some(gpu_renderer);
+        } else if let Some(handle) = app.engine_context.renderers.get(0) {
+            // Claim renderer from window ID 0 (pending renderer)
+            if let Some(bevy_renderer) = handle.as_bevy::<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>() {
+                let new_handle = engine_state::TypedRendererHandle::bevy(window_id_u64, bevy_renderer.clone());
+                app.engine_context.renderers.register(window_id_u64, new_handle);
+                app.engine_context.renderers.unregister(0);
+                window_state.bevy_renderer = Some(bevy_renderer.clone());
             }
         }
     }

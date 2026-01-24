@@ -10,7 +10,7 @@ use crate::assets::Assets;
 use crate::OpenSettings;
 use ui_core::ToggleCommandPalette;
 use ui_common::menu::{AboutApp, ShowDocumentation};
-use engine_state::{EngineState, WindowRequest};
+use engine_state::{EngineContext, WindowRequest};
 use crate::window::{WinitGpuiApp, WindowState};
 use crate::window::initialization::window_content;
 use std::sync::Arc;
@@ -29,11 +29,11 @@ use std::sync::Arc;
 /// # Arguments
 /// * `app` - The application state
 /// * `window_id` - ID of the window to initialize
-/// * `engine_state` - Shared engine state
+/// * `engine_context` - Typed engine context
 pub fn initialize_gpui_window(
     app: &mut WinitGpuiApp,
     window_id: &WindowId,
-    engine_state: &EngineState,
+    engine_context: &EngineContext,
 ) {
     let window_state = app.windows.get_mut(window_id).expect("Window state must exist");
 
@@ -70,8 +70,8 @@ pub fn initialize_gpui_window(
     // Initialize GPUI components (fonts, themes, keybindings)
     let gpui_app = &mut window_state.gpui_app;
 
-    // Clone engine_state for use in closures
-    let engine_state_for_actions = engine_state.clone();
+    // Clone engine_context for use in closures
+    let engine_context_for_actions = engine_context.clone();
 
     // Load custom fonts
     gpui_app.update(|gpui_app| {
@@ -95,22 +95,22 @@ pub fn initialize_gpui_window(
             // Blueprint editor keybindings handled by plugin
         ]);
 
-        let engine_state = engine_state_for_actions.clone();
+        let engine_context = engine_context_for_actions.clone();
         gpui_app.on_action(move |_: &OpenSettings, _app_cx| {
             tracing::debug!("⚙️ Settings window requested - creating new window!");
-            engine_state.request_window(WindowRequest::Settings);
+            engine_context.request_window(WindowRequest::Settings);
         });
 
-        let engine_state = engine_state_for_actions.clone();
+        let engine_context = engine_context_for_actions.clone();
         gpui_app.on_action(move |_: &AboutApp, _app_cx| {
             tracing::debug!("ℹ️ About window requested - creating new window!");
-            engine_state.request_window(WindowRequest::About);
+            engine_context.request_window(WindowRequest::About);
         });
 
-        let engine_state = engine_state_for_actions.clone();
+        let engine_context = engine_context_for_actions.clone();
         gpui_app.on_action(move |_: &ShowDocumentation, _app_cx| {
             tracing::debug!("📖 Documentation window requested - creating new window!");
-            engine_state.request_window(WindowRequest::Documentation);
+            engine_context.request_window(WindowRequest::Documentation);
         });
 
         gpui_app.activate(true);
@@ -118,20 +118,18 @@ pub fn initialize_gpui_window(
 
     tracing::debug!("✨ GPUI components initialized");
 
-    // Store window_id in EngineState metadata BEFORE opening GPUI window
+    // Register window ID mapping
     let window_id_u64 = app.window_id_map.register(*window_id);
     tracing::debug!("[WINDOW-INIT] 🔖 Window ID for this window: {}", window_id_u64);
-    engine_state.set_metadata("latest_window_id".to_string(), window_id_u64.to_string());
 
-    // If this is a project editor window, also store it with a special key
+    // If this is a project editor window, log it
     if matches!(&window_state.window_type, Some(WindowRequest::ProjectEditor { .. })) {
-        engine_state.set_metadata("current_project_window_id".to_string(), window_id_u64.to_string());
         tracing::debug!("[WINDOW-INIT] 🎨 This is a ProjectEditor window with ID: {}", window_id_u64);
     }
 
-    // Capture window_id_u64 and engine_state for use in the closure
+    // Capture window_id_u64 and engine_context for use in the closure
     let captured_window_id = window_id_u64;
-    let engine_state_for_events = engine_state.clone();
+    let engine_context_for_events = engine_context.clone();
     tracing::debug!("[WINDOW-INIT] 📦 Captured window_id for closure: {}", captured_window_id);
 
     // Get window type before borrowing gpui_app mutably
@@ -139,7 +137,7 @@ pub fn initialize_gpui_window(
 
     // Open GPUI window using external window API with appropriate view
     let gpui_window = gpui_app.open_window_external(external_handle.clone(), |window, cx| {
-        window_content::create_window_content(&window_type, captured_window_id, &engine_state_for_events, window, cx)
+        window_content::create_window_content(&window_type, captured_window_id, &engine_context_for_events, window, cx)
     }).expect("Failed to open GPUI window");
 
     // Store the GPUI window handle

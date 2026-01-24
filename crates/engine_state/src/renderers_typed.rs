@@ -16,12 +16,10 @@ use crate::context::WindowId;
 #[derive(Clone)]
 pub enum RendererType {
     /// Bevy renderer (D3D12-based, used for 3D viewports)
-    #[cfg(feature = "bevy_renderer")]
-    Bevy(Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>),
+    Bevy(Arc<dyn std::any::Any + Send + Sync>),
 
     /// WGPU renderer (cross-platform, future renderer option)
-    #[cfg(feature = "wgpu_renderer")]
-    Wgpu(Arc<Mutex<WgpuRenderer>>),
+    Wgpu(Arc<dyn std::any::Any + Send + Sync>),
 
     /// Placeholder for custom renderers from plugins
     Custom {
@@ -30,25 +28,19 @@ pub enum RendererType {
     },
 }
 
-// Placeholder for WGPU renderer (not implemented yet)
-#[cfg(feature = "wgpu_renderer")]
-pub struct WgpuRenderer;
-
 impl RendererType {
     /// Get as Bevy renderer if this is a Bevy variant
-    #[cfg(feature = "bevy_renderer")]
-    pub fn as_bevy(&self) -> Option<&Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>> {
+    pub fn as_bevy<T: Send + Sync + 'static>(&self) -> Option<Arc<T>> {
         match self {
-            RendererType::Bevy(renderer) => Some(renderer),
+            RendererType::Bevy(renderer) => renderer.clone().downcast::<T>().ok(),
             _ => None,
         }
     }
 
     /// Get as WGPU renderer if this is a WGPU variant
-    #[cfg(feature = "wgpu_renderer")]
-    pub fn as_wgpu(&self) -> Option<&Arc<Mutex<WgpuRenderer>>> {
+    pub fn as_wgpu<T: Send + Sync + 'static>(&self) -> Option<Arc<T>> {
         match self {
-            RendererType::Wgpu(renderer) => Some(renderer),
+            RendererType::Wgpu(renderer) => renderer.clone().downcast::<T>().ok(),
             _ => None,
         }
     }
@@ -66,9 +58,7 @@ impl RendererType {
     /// Get the name of this renderer type
     pub fn name(&self) -> &str {
         match self {
-            #[cfg(feature = "bevy_renderer")]
             RendererType::Bevy(_) => "Bevy",
-            #[cfg(feature = "wgpu_renderer")]
             RendererType::Wgpu(_) => "WGPU",
             RendererType::Custom { name, .. } => name,
         }
@@ -94,17 +84,18 @@ impl TypedRendererHandle {
     }
 
     /// Convenience method to create a Bevy renderer handle
-    #[cfg(feature = "bevy_renderer")]
-    pub fn bevy(
+    pub fn bevy<T: Send + Sync + 'static>(
         window_id: WindowId,
-        renderer: Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
+        renderer: Arc<T>,
     ) -> Self {
         Self::new(window_id, RendererType::Bevy(renderer))
     }
 
     /// Convenience method to create a WGPU renderer handle
-    #[cfg(feature = "wgpu_renderer")]
-    pub fn wgpu(window_id: WindowId, renderer: Arc<Mutex<WgpuRenderer>>) -> Self {
+    pub fn wgpu<T: Send + Sync + 'static>(
+        window_id: WindowId,
+        renderer: Arc<T>,
+    ) -> Self {
         Self::new(window_id, RendererType::Wgpu(renderer))
     }
 
@@ -118,14 +109,12 @@ impl TypedRendererHandle {
     }
 
     /// Get as Bevy renderer (type-safe, no runtime errors)
-    #[cfg(feature = "bevy_renderer")]
-    pub fn as_bevy(&self) -> Option<&Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>> {
+    pub fn as_bevy<T: Send + Sync + 'static>(&self) -> Option<Arc<T>> {
         self.renderer_type.as_bevy()
     }
 
     /// Get as WGPU renderer (type-safe, no runtime errors)
-    #[cfg(feature = "wgpu_renderer")]
-    pub fn as_wgpu(&self) -> Option<&Arc<Mutex<WgpuRenderer>>> {
+    pub fn as_wgpu<T: Send + Sync + 'static>(&self) -> Option<Arc<T>> {
         self.renderer_type.as_wgpu()
     }
 
@@ -203,13 +192,12 @@ pub mod migration {
     ///
     /// This is used during migration when we receive an old-style renderer handle
     /// and need to convert it to the new typed system.
-    #[cfg(feature = "bevy_renderer")]
-    pub fn from_any_bevy(
+    pub fn from_any_bevy<T: Send + Sync + 'static>(
         window_id: WindowId,
         handle: Arc<dyn std::any::Any + Send + Sync>,
     ) -> Option<TypedRendererHandle> {
         handle
-            .downcast::<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>()
+            .downcast::<T>()
             .ok()
             .map(|renderer| TypedRendererHandle::bevy(window_id, renderer))
     }

@@ -38,10 +38,9 @@ pub mod window;     // Winit integration (Winit + GPUI coordination)
 pub mod uri;        // URI scheme handling
 pub mod init;       // Initialization dependency graph (Phase 1 - new)
 
-// --- Engine state re-exports ---
+// --- Engine context re-exports ---
 pub use engine_state::{
     EngineContext,
-    EngineState, // Keep for backward compatibility temporarily
     WindowRequest,
     WindowRequestSender,
     WindowRequestReceiver,
@@ -209,7 +208,7 @@ fn main() {
                 init::InitError::MissingContext("Engine context not initialized")
             )?;
 
-            if let Err(e) = discord::init_discord_ctx(engine_context, consts::DISCORD_APP_ID) {
+            if let Err(e) = discord::init_discord(engine_context, consts::DISCORD_APP_ID) {
                 tracing::warn!("Failed to initialize Discord Rich Presence: {}", e);
             }
             Ok(())
@@ -247,5 +246,5 @@ fn main() {
 
     // Run the main event loop
     profiling::profile_scope!("Engine::EventLoop");
-    event_loop::run_event_loop_ctx(engine_context, window_rx);
+    event_loop::run_event_loop(engine_context, window_rx);
 }

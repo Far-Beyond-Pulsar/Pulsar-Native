@@ -89,20 +89,21 @@ impl LevelEditorPanel {
         let gpu_engine = Arc::new(Mutex::new(GpuRenderer::new(1600, 900))); // No game state initially
         let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
 
-        // Store GPU renderer in global EngineState using a marker that the render loop will pick up
+        // Store GPU renderer in global EngineContext using a marker that the render loop will pick up
         // The render loop will associate it with the correct window when it first renders
-        if let Some(engine_state) = engine_state::EngineState::global() {
+        if let Some(engine_context) = engine_state::EngineContext::global() {
             if let Some(wid) = window_id {
                 // We have the actual window ID - register directly!
-                engine_state.set_window_gpu_renderer(wid, gpu_engine.clone());
+                let handle = engine_state::TypedRendererHandle::bevy(wid, gpu_engine.clone());
+                engine_context.renderers.register(wid, handle);
             } else {
                 // Fallback: Use a sentinel value (0) to mark this renderer as pending association with a window
                 // The main render loop will detect windows with viewports and claim this renderer
-                engine_state.set_window_gpu_renderer(0, gpu_engine.clone());
-                engine_state.set_metadata("has_pending_viewport_renderer".to_string(), "true".to_string());
+                let handle = engine_state::TypedRendererHandle::bevy(0, gpu_engine.clone());
+                engine_context.renderers.register(0, handle);
             }
         } else {
-            tracing::debug!("[LEVEL-EDITOR] ❌ ERROR: No global EngineState found!");
+            tracing::debug!("[LEVEL-EDITOR] ❌ ERROR: No global EngineContext found!");
         }
 
         // Viewport stays transparent - Bevy renders directly to winit back buffer BEHIND GPUI
