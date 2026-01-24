@@ -236,6 +236,7 @@ impl EngineContext {
     ///
     /// **Deprecated**: Use typed context fields instead.
     /// This method exists only for compatibility during migration.
+    #[deprecated(since = "0.2.0", note = "Use typed context fields instead (e.g., engine_context.project.write())")]
     pub fn set_metadata(&self, _key: String, _value: String) {
         // No-op: metadata system has been replaced with typed contexts
         // Calling code should be migrated to use typed fields
