@@ -447,8 +447,6 @@ impl ViewportPanel {
             .size_full()
             .relative()
             // TRANSPARENT - no background! This creates the "hole" to see Bevy rendering
-            .border_1()
-            .border_color(cx.theme().border)
             .rounded(cx.theme().radius)
             // CRITICAL: Capture element bounds and update Bevy camera viewport
             .on_children_prepainted(move |children_bounds: Vec<Bounds<Pixels>>, _window, _cx| {
