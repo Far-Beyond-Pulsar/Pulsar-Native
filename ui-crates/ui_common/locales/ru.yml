@@ -83,7 +83,7 @@ Menu.File.ImportFromUnity: Импорт из Unity
 Menu.File.ImportFromUnreal: Импорт из Unreal
 Menu.File.ImportFromGodot: Импорт из Godot
 Menu.File.Export: Экспорт
-Menu.File.ExportBuild: Экспорт сборки 
+Menu.File.ExportBuild: Экспорт сборки
 Menu.File.ExportScene: Экспорт сцены
 Menu.File.ExportSelected: Экспорт выделенного
 Menu.File.ExportWindows: Экспорт для Windows
