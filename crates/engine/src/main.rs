@@ -172,7 +172,13 @@ fn main() {
                 engine_backend::EngineBackend::init().await
             });
 
-            ctx.backend = Some(backend);
+            // Set backend as global for access from other parts of the engine
+            let backend_arc = std::sync::Arc::new(parking_lot::RwLock::new(backend));
+            engine_backend::EngineBackend::set_global(backend_arc.clone());
+
+            // Store backend for later use (we keep both the Arc and unwrapped version for now)
+            // TODO: Refactor to only use Arc version
+            ctx.backend = Some(parking_lot::RwLock::into_inner(std::sync::Arc::try_unwrap(backend_arc).unwrap()));
             Ok(())
         })
     )).unwrap();

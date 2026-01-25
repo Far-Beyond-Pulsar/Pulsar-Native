@@ -79,11 +79,21 @@ impl LevelEditorPanel {
         let viewport = cx.new(|cx| BevyViewport::new(1600, 900, cx));
         let viewport_state = viewport.read(cx).shared_state();
         
-        // Create game thread but DON'T start it yet (editor starts in Edit mode)
-        let game_thread = Arc::new(GameThread::new(240.0));
+        // Get the central GameThread from the global EngineBackend
+        let game_thread = if let Some(backend) = engine_backend::EngineBackend::global() {
+            let backend_guard = backend.read();
+            backend_guard.game_thread()
+                .expect("GameThread not initialized in EngineBackend")
+                .clone()
+        } else {
+            panic!("EngineBackend not initialized! Cannot create level editor viewport.");
+        };
+
+        // CRITICAL: Start disabled for Edit mode (editor starts in Edit, not Play)
+        game_thread.set_enabled(false);
+
+        // Get game state reference (needed for renderer integration)
         let _game_state = game_thread.get_state();
-        game_thread.set_enabled(false); // CRITICAL: Start disabled for Edit mode
-        game_thread.start(); // Thread runs but does nothing while disabled
         
         // Create GPU render engine WITHOUT game thread link initially (Edit mode)
         let gpu_engine = Arc::new(Mutex::new(GpuRenderer::new(1600, 900))); // No game state initially

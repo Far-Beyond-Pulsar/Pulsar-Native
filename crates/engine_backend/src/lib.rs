@@ -13,7 +13,7 @@ pub mod services;
 
 pub use tokio;
 pub use subsystems::physics::PhysicsEngine;
-pub use subsystems::game::{GameThread, GameState, GameObject};
+pub use subsystems::game::{GameThread, ManagedGameThread, GameState, GameObject};
 pub use subsystems::world::World;
 pub use subsystems::render::{WgpuRenderer, BevyRenderer, Framebuffer as RenderFramebuffer};
 pub use subsystems::framework::{SubsystemRegistry, SubsystemContext, Subsystem, SubsystemError};
@@ -32,9 +32,13 @@ pub const ENGINE_THREADS: [&str; 8] = [
 ];
 
 use tokio::sync::Mutex;
+use std::sync::OnceLock;
+
+static GLOBAL_BACKEND: OnceLock<Arc<parking_lot::RwLock<EngineBackend>>> = OnceLock::new();
 
 pub struct EngineBackend {
     subsystems: SubsystemRegistry,
+    game_thread: Option<Arc<GameThread>>,
 }
 
 impl EngineBackend {
@@ -50,8 +54,11 @@ impl EngineBackend {
         registry.register(PhysicsEngine::new())
             .expect("Failed to register PhysicsEngine subsystem");
 
-        registry.register(GameThread::new(60.0)) // 60 TPS target
-            .expect("Failed to register GameThread subsystem");
+        let managed_game_thread = ManagedGameThread::new(60.0); // 60 TPS target
+        let game_thread_ref = managed_game_thread.game_thread().clone();
+
+        registry.register(managed_game_thread)
+            .expect("Failed to register ManagedGameThread subsystem");
 
         // NOTE: World subsystem cannot be registered here because PebbleVault::VaultManager
         // doesn't implement Send + Sync. It must be managed separately.
@@ -66,7 +73,10 @@ impl EngineBackend {
 
         tracing::info!("✅ Engine Backend initialized with all subsystems");
 
-        EngineBackend { subsystems: registry }
+        EngineBackend {
+            subsystems: registry,
+            game_thread: Some(game_thread_ref),
+        }
     }
 
     /// Get a reference to the subsystem registry
@@ -84,5 +94,20 @@ impl EngineBackend {
         profiling::profile_scope!("EngineBackend::Shutdown");
         tracing::info!("Shutting down Engine Backend");
         self.subsystems.shutdown_all()
+    }
+
+    /// Get the central GameThread instance
+    pub fn game_thread(&self) -> Option<&Arc<GameThread>> {
+        self.game_thread.as_ref()
+    }
+
+    /// Set as global instance (for access from other parts of the engine)
+    pub fn set_global(backend: Arc<parking_lot::RwLock<Self>>) {
+        GLOBAL_BACKEND.set(backend).ok();
+    }
+
+    /// Get global instance
+    pub fn global() -> Option<&'static Arc<parking_lot::RwLock<EngineBackend>>> {
+        GLOBAL_BACKEND.get()
     }
 }
