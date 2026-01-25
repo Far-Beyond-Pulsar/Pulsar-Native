@@ -60,7 +60,7 @@ Menu.File.NewScript: Новый скрипт
 Menu.File.NewShader: Новый шейдер
 Menu.File.NewMaterial: Новый материал
 Menu.File.NewPrefab: Новый префаб
-Menu.File.NewBlueprint: Новый чертеж (Blueprint)
+Menu.File.NewBlueprint: Новый чертеж
 Menu.File.NewComponent: Новый компонент
 Menu.File.NewSystem: Новая система
 Menu.File.Open: Открыть
@@ -135,7 +135,7 @@ Menu.Help.About: О Pulsar
 Menu.Edit.SelectNone: Снять выделение
 Menu.Edit.FindNext: Найти далее
 Menu.Edit.FindPrevious: Найти ранее
-Menu.Edit.ReplaceNext: Заменить следующее
+Menu.Edit.ReplaceNext: Заменить следующий
 Menu.Edit.ReplaceAll: Заменить всё
 Menu.Edit.ReplaceInFiles: Заменить в файлах
 Menu.Edit.FindUsages: Найти использования
@@ -161,12 +161,12 @@ Menu.Selection.ExpandSelection: Расширить выделение
 Menu.Selection.ShrinkSelection: Сузить выделение
 Menu.Selection.AddCursorAbove: Добавить курсор выше
 Menu.Selection.AddCursorBelow: Добавить курсор ниже
-Menu.Selection.AddCursorLineEnds: Добавить курсоры в конец строк
+Menu.Selection.AddCursorLineEnds: Добавить курсор в конец строки
 Menu.Selection.SelectAllOccurrences: Выделить все вхождения
 Menu.Selection.SelectNextOccurrence: Выделить следующее вхождение
 Menu.Selection.SkipOccurrence: Пропустить вхождение
 Menu.View.Explorer: Проводник
-Menu.View.Hierarchy: Список объектов (Иерархия)
+Menu.View.Hierarchy: Список объектов
 Menu.View.AssetBrowser: Обзор файлов проекта
 Menu.View.Output: Вывод
 Menu.View.Problems: Проблемы
@@ -224,7 +224,7 @@ Menu.Build.ShowBuildOutput: Показать вывод сборки
 Menu.Run: Запуск
 Menu.Run.RunProject: Запустить проект
 Menu.Run.RunWithoutDebug: Запуск без отладки
-Menu.Run.Stop: Стоп
+Menu.Run.Stop: Остановить
 Menu.Run.Restart: Перезапустить
 Menu.Run.DebugProject: Отладка проекта
 Menu.Run.Debugging: Отладка
