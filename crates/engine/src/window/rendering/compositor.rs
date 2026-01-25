@@ -3,6 +3,9 @@
 //! This module contains the complete D3D11 composition logic for rendering
 //! multiple layers (background, Bevy 3D, GPUI UI) to the screen with zero-copy
 //! GPU texture sharing.
+//! 
+//! WARNING: This module is Windows-only and will soon be depricated as we
+//!          transition to WGPUI which will allow gpui-internal surfaces
 
 use winit::window::WindowId;
 use crate::window::WinitGpuiApp;
