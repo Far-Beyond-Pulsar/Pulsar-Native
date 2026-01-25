@@ -27,7 +27,9 @@
       "Bash(move:*)",
       "Bash(cargo clippy:*)",
       "Bash(cargo install:*)",
-      "Bash(cargo run:*)"
+      "Bash(cargo run:*)",
+      "Bash(done)",
+      "Bash(rg:*)"
     ]
   }
 }

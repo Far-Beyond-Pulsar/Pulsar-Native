@@ -5,16 +5,29 @@
 //!
 //! This modular design allows for better organization, maintainability,
 //! and scalability of the engine's codebase.
+//!
+//! ## Subsystem Framework
+//!
+//! The subsystem framework provides a trait-based architecture for all engine subsystems:
+//! - **Subsystem trait**: Common interface for init, shutdown, and lifecycle management
+//! - **SubsystemRegistry**: Manages subsystems with dependency resolution (topological sort)
+//! - **Type-safe dependencies**: Explicit dependency declarations prevent initialization bugs
+//!
+//! ## Migrated Subsystems
+//!
+//! The following subsystems have been migrated to use the Subsystem trait:
+//! - ✅ **PhysicsEngine** - Rapier3D physics simulation with async task spawning
+//! - ✅ **GameThread** - Fixed timestep game loop with std::thread
+//! - ❌ **World** - Cannot implement Subsystem due to PebbleVault not being Send+Sync
+//!
+//! ## Pending Subsystems
+//!
+//! These subsystems are planned for future migration:
+//! - ⏳ Audio, Input, Networking, Scripting, UI
+//! - All new subsystems should implement the Subsystem trait from the start
 
-// Subsystem framework (addresses the TODO below)
+// Subsystem framework
 pub mod framework;
-
-// TODO: Implement a generic subsystem trait and have each subsystem implement it.
-//       This will allow for better management and interaction between subsystems
-//       via generic function calls.
-//
-// NOTE: The framework module above provides the Subsystem trait and SubsystemRegistry.
-//       This TODO will be completed in Phase 2 when each subsystem implements the trait.
 pub mod assets;
 pub mod audio;
 pub mod classes;

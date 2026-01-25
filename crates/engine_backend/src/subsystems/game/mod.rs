@@ -21,9 +21,13 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use crate::subsystems::framework::{Subsystem, SubsystemContext, SubsystemError, SubsystemId};
 
 #[cfg(target_os = "windows")]
 use windows::Win32::System::Threading::{GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_ABOVE_NORMAL};
+
+/// Subsystem ID for the game thread
+pub const GAME_SUBSYSTEM_ID: SubsystemId = SubsystemId::new("game");
 
 /// Represents a game object with position, velocity, and other properties
 #[derive(Debug, Clone)]
@@ -107,6 +111,7 @@ pub struct GameThread {
     target_tps: f32,
     tps: Arc<Mutex<f32>>,
     frame_count: Arc<AtomicU64>,
+    thread_handle: Option<thread::JoinHandle<()>>,
 }
 
 impl GameThread {
@@ -209,6 +214,7 @@ impl GameThread {
             target_tps,
             tps: Arc::new(Mutex::new(0.0)),
             frame_count: Arc::new(AtomicU64::new(0)),
+            thread_handle: None,
         }
     }
 
@@ -237,106 +243,146 @@ impl GameThread {
         self.enabled.store(!current, Ordering::Relaxed);
     }
 
-    /// Start the game thread with fixed timestep game loop
-    pub fn start(&self) {
+}
+
+impl Subsystem for GameThread {
+    fn id(&self) -> SubsystemId {
+        GAME_SUBSYSTEM_ID
+    }
+
+    fn dependencies(&self) -> Vec<SubsystemId> {
+        vec![] // Game thread has no dependencies
+    }
+
+    fn init(&mut self, _context: &SubsystemContext) -> Result<(), SubsystemError> {
+        profiling::profile_scope!("Subsystem::Game::Init");
+
         let state = self.state.clone();
         let enabled = self.enabled.clone();
         let target_tps = self.target_tps;
         let tps = self.tps.clone();
         let frame_count = self.frame_count.clone();
 
-        tracing::debug!("[GAME-THREAD] ⚡ start() method called - about to spawn thread...");
-        
-        std::thread::Builder::new()
+        tracing::debug!("[GAME-THREAD] ⚡ Initializing game thread subsystem...");
+
+        let handle = std::thread::Builder::new()
             .name("Game Logic".to_string())
             .spawn(move || {
-            profiling::set_thread_name("Game Logic");
-            tracing::debug!("[GAME-THREAD] 🚀 Thread spawned successfully!");
-            
-            // Set thread priority for game logic
-            #[cfg(target_os = "windows")]
-            {
-                unsafe {
-                    let handle = GetCurrentThread();
-                    let _ = SetThreadPriority(handle, THREAD_PRIORITY_ABOVE_NORMAL);
-                }
-                tracing::debug!("[GAME-THREAD] Started with high priority on Windows");
-            }
+                profiling::set_thread_name("Game Logic");
+                tracing::debug!("[GAME-THREAD] 🚀 Thread spawned successfully!");
 
-            #[cfg(not(target_os = "windows"))]
-            {
-                tracing::debug!("[GAME-THREAD] Started (priority control not available on this platform)");
-            }
-
-            let target_frame_time = Duration::from_secs_f32(1.0 / target_tps);
-            let mut last_tick = Instant::now();
-            let mut tps_timer = Instant::now();
-            let mut tick_count = 0u32;
-            let mut accumulated_time = Duration::ZERO;
-
-            tracing::debug!("[GAME-THREAD] Starting game loop at target {} TPS", target_tps);
-            tracing::debug!("[GAME-THREAD] Target frame time: {:?}", target_frame_time);
-
-            loop {
-                profiling::profile_scope!("game_tick");
-                
-                // Check if thread is disabled - if so, sleep and skip this iteration
-                if !enabled.load(Ordering::Relaxed) {
-                    thread::sleep(Duration::from_millis(100));
-                    continue;
+                // Set thread priority for game logic
+                #[cfg(target_os = "windows")]
+                {
+                    unsafe {
+                        let handle = GetCurrentThread();
+                        let _ = SetThreadPriority(handle, THREAD_PRIORITY_ABOVE_NORMAL);
+                    }
+                    tracing::debug!("[GAME-THREAD] Started with high priority on Windows");
                 }
 
-                let frame_start = Instant::now();
-                let delta = frame_start - last_tick;
-                last_tick = frame_start;
-                accumulated_time += delta;
+                #[cfg(not(target_os = "windows"))]
+                {
+                    tracing::debug!("[GAME-THREAD] Started (priority control not available on this platform)");
+                }
 
-                // Fixed timestep update
-                let fixed_dt = 1.0 / target_tps;
-                let max_steps = 5; // Prevent spiral of death
-                let mut steps = 0;
+                let target_frame_time = Duration::from_secs_f32(1.0 / target_tps);
+                let mut last_tick = Instant::now();
+                let mut tps_timer = Instant::now();
+                let mut tick_count = 0u32;
+                let mut accumulated_time = Duration::ZERO;
 
-                while accumulated_time >= target_frame_time && steps < max_steps {
-                    profiling::profile_scope!("game_state_update");
-                    // Update game state
-                    if let Ok(mut game_state) = state.try_lock() {
-                        game_state.update(fixed_dt);
+                tracing::debug!("[GAME-THREAD] Starting game loop at target {} TPS", target_tps);
+                tracing::debug!("[GAME-THREAD] Target frame time: {:?}", target_frame_time);
+
+                loop {
+                    profiling::profile_scope!("Game::Tick");
+
+                    // Check if thread is disabled - exit loop if disabled
+                    if !enabled.load(Ordering::Relaxed) {
+                        tracing::debug!("[GAME-THREAD] Thread disabled, exiting loop");
+                        break;
                     }
 
-                    accumulated_time -= target_frame_time;
-                    steps += 1;
-                    tick_count += 1;
-                    frame_count.fetch_add(1, Ordering::Relaxed);
-                }
+                    let frame_start = Instant::now();
+                    let delta = frame_start - last_tick;
+                    last_tick = frame_start;
+                    accumulated_time += delta;
 
-                // Calculate TPS every second
-                if tps_timer.elapsed() >= Duration::from_secs(1) {
-                    let measured_tps = tick_count as f32 / tps_timer.elapsed().as_secs_f32();
-                    if let Ok(mut tps_lock) = tps.lock() {
-                        *tps_lock = measured_tps;
+                    // Fixed timestep update
+                    let fixed_dt = 1.0 / target_tps;
+                    let max_steps = 5; // Prevent spiral of death
+                    let mut steps = 0;
+
+                    while accumulated_time >= target_frame_time && steps < max_steps {
+                        profiling::profile_scope!("Game::StateUpdate");
+                        // Update game state
+                        if let Ok(mut game_state) = state.try_lock() {
+                            game_state.update(fixed_dt);
+                        }
+
+                        accumulated_time -= target_frame_time;
+                        steps += 1;
+                        tick_count += 1;
+                        frame_count.fetch_add(1, Ordering::Relaxed);
                     }
 
-                    tick_count = 0;
-                    tps_timer = Instant::now();
+                    // Calculate TPS every second
+                    if tps_timer.elapsed() >= Duration::from_secs(1) {
+                        let measured_tps = tick_count as f32 / tps_timer.elapsed().as_secs_f32();
+                        if let Ok(mut tps_lock) = tps.lock() {
+                            *tps_lock = measured_tps;
+                        }
+
+                        tick_count = 0;
+                        tps_timer = Instant::now();
+                    }
+
+                    // Sleep to maintain target TPS with some CPU throttling
+                    let frame_time = frame_start.elapsed();
+                    if frame_time < target_frame_time {
+                        let sleep_time = target_frame_time - frame_time;
+                        thread::sleep(sleep_time);
+                    }
+
+                    // Periodic yield for system responsiveness
+                    if frame_count.load(Ordering::Relaxed) % 30 == 0 {
+                        thread::yield_now();
+                    }
                 }
 
-                // Sleep to maintain target TPS with some CPU throttling
-                let frame_time = frame_start.elapsed();
-                if frame_time < target_frame_time {
-                    let sleep_time = target_frame_time - frame_time;
-                    thread::sleep(sleep_time);
-                }
+                tracing::debug!("[GAME-THREAD] Stopped");
+            })
+            .map_err(|e| SubsystemError::InitFailed(format!("Failed to spawn game thread: {}", e)))?;
 
-                // Periodic yield for system responsiveness
-                if frame_count.load(Ordering::Relaxed) % 30 == 0 {
-                    thread::yield_now();
-                }
-            }
-            
-            tracing::debug!("[GAME-THREAD] Stopped");
-        }).expect("Failed to spawn game thread");
-        
-        tracing::debug!("[GAME-THREAD] ✅ Thread spawn completed, returning from start()");
+        self.thread_handle = Some(handle);
+        tracing::info!("✓ Game thread initialized and running at {} TPS", target_tps);
+
+        Ok(())
+    }
+
+    fn shutdown(&mut self) -> Result<(), SubsystemError> {
+        profiling::profile_scope!("Subsystem::Game::Shutdown");
+
+        tracing::debug!("[GAME-THREAD] Shutting down game thread");
+
+        // Signal thread to stop
+        self.enabled.store(false, Ordering::Relaxed);
+
+        // Wait for thread to finish
+        if let Some(handle) = self.thread_handle.take() {
+            // Give the thread a moment to see the enabled flag change
+            thread::sleep(Duration::from_millis(50));
+
+            // Join the thread (it should exit gracefully)
+            handle.join().map_err(|_| {
+                SubsystemError::ShutdownFailed("Game thread panicked during shutdown".to_string())
+            })?;
+
+            tracing::info!("✓ Game thread stopped");
+        }
+
+        Ok(())
     }
 }
 
