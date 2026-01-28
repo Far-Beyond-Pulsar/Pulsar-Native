@@ -4,7 +4,7 @@
 //! content views based on WindowRequest type.
 
 use gpui::*;
-use engine_state::{EngineState, WindowRequest};
+use engine_state::{EngineContext, WindowRequest, ProjectContext};
 use ui_core::{PulsarApp, PulsarRoot};
 use ui_entry::create_entry_component;
 use ui_settings::create_settings_component;
@@ -21,7 +21,7 @@ use std::path::PathBuf;
 /// # Arguments
 /// * `window_type` - The type of window being created
 /// * `captured_window_id` - The window ID for this window
-/// * `engine_state` - Shared engine state for cross-window communication
+/// * `engine_context` - Typed engine context for cross-window communication
 /// * `window` - GPUI window handle
 /// * `cx` - GPUI app context
 ///
@@ -30,30 +30,34 @@ use std::path::PathBuf;
 pub fn create_window_content(
     window_type: &Option<WindowRequest>,
     captured_window_id: u64,
-    engine_state: &EngineState,
+    engine_context: &EngineContext,
     window: &mut Window,
     cx: &mut App,
 ) -> Entity<ui::Root> {
+    profiling::profile_scope!("Window::CreateContent");
+
     match window_type {
         Some(WindowRequest::Entry) => {
-            create_entry_component(window, cx, engine_state)
+            create_entry_component(window, cx, engine_context, captured_window_id)
         }
         Some(WindowRequest::Settings) => {
-            create_settings_component(window, cx, engine_state)
+            create_settings_component(window, cx, engine_context)
         }
         Some(WindowRequest::About) => {
             create_about_window(window, cx)
         }
         Some(WindowRequest::Documentation) => {
-            // Get the current project path from engine state if available
-            let project_path = engine_state.get_metadata("current_project_path")
-                .and_then(|p| if p.is_empty() { None } else { Some(PathBuf::from(p)) });
+            // Get the current project path from engine context if available
+            let project_path = engine_context.project.read()
+                .as_ref()
+                .map(|p| p.path.clone());
 
             ui_documentation::create_documentation_window_with_project(window, cx, project_path)
         }
         Some(WindowRequest::ProjectSplash { project_path }) => {
-            // Store the current project path in engine state for other windows to access
-            engine_state.set_metadata("current_project_path".to_string(), project_path.clone());
+            // Store the current project path in engine context for other windows to access
+            let project_ctx = ProjectContext::new(PathBuf::from(project_path.clone()));
+            *engine_context.project.write() = Some(project_ctx);
 
             // Create loading screen for project loading
             create_loading_component(
@@ -64,8 +68,9 @@ pub fn create_window_content(
             )
         }
         Some(WindowRequest::ProjectEditor { project_path }) => {
-            // Store the current project path in engine state for other windows to access
-            engine_state.set_metadata("current_project_path".to_string(), project_path.clone());
+            // Store the current project path in engine context for other windows to access
+            let project_ctx = ProjectContext::new(PathBuf::from(project_path.clone()));
+            *engine_context.project.write() = Some(project_ctx);
 
             // Use the captured window_id to ensure consistency
             // Create the actual PulsarApp editor with the project
@@ -80,7 +85,7 @@ pub fn create_window_content(
         }
         Some(WindowRequest::CloseWindow { .. }) | None => {
             // Fallback to entry screen if window_type is None or CloseWindow
-            create_entry_component(window, cx, engine_state)
+            create_entry_component(window, cx, engine_context, captured_window_id)
         }
     }
 }

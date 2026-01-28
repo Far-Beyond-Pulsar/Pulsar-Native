@@ -25,12 +25,12 @@ pub fn handle_close_requested(
 
     // Clean up window-specific GPU renderer
     if let Some(window_id_u64) = app.window_id_map.get_id(&window_id) {
-        app.engine_state.remove_window_gpu_renderer(window_id_u64);
+        app.engine_context.renderers.unregister(window_id_u64);
     }
 
     app.window_id_map.remove(&window_id);
     app.windows.remove(&window_id);
-    app.engine_state.decrement_window_count();
+    *app.engine_context.window_count.lock() -= 1;
 
     // Exit application if no windows remain
     if app.windows.is_empty() {

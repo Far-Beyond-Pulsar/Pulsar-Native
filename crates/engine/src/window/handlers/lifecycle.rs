@@ -22,26 +22,25 @@ pub fn handle_resumed(
     app: &mut WinitGpuiApp,
     event_loop: &ActiveEventLoop,
 ) {
+    profiling::profile_scope!("Lifecycle::Resumed");
+
     // Only create main window if no windows exist
     if !app.windows.is_empty() {
         return;
     }
 
     // Check for URI-launched project
-    if let Some(engine_state) = engine_state::EngineState::global() {
-        if let Some(uri_path) = engine_state.get_metadata("uri_project_path") {
-            if !uri_path.is_empty() {
-                tracing::debug!("Opening project from URI: {}", uri_path);
+    if let Some(engine_context) = engine_state::EngineContext::global() {
+        let mut launch = engine_context.launch.write();
+        if let Some(uri_path) = launch.uri_project_path.take() {
+            tracing::debug!("Opening project from URI: {}", uri_path.display());
 
-                // Clear metadata (consume the value)
-                engine_state.set_metadata("uri_project_path".to_string(), String::new());
-
-                // Create project splash screen instead of entry
-                app.create_window(event_loop, WindowRequest::ProjectSplash {
-                    project_path: uri_path
-                });
-                return;
-            }
+            // Create project splash screen instead of entry
+            drop(launch); // Release lock before creating window
+            app.create_window(event_loop, WindowRequest::ProjectSplash {
+                project_path: uri_path.to_string_lossy().to_string()
+            });
+            return;
         }
     }
 
@@ -64,6 +63,8 @@ pub fn handle_about_to_wait(
     app: &mut WinitGpuiApp,
     event_loop: &ActiveEventLoop,
 ) {
+    profiling::profile_scope!("Lifecycle::AboutToWait");
+
     // LAZY CHECK: If GPUI windows need rendering, request redraw
     // This happens once per event loop iteration, not blocking
     for (_window_id, window_state) in &mut app.windows {
@@ -96,7 +97,7 @@ pub fn handle_about_to_wait(
                     if app.windows.remove(&window_id_native).is_some() {
                         tracing::debug!("✨ Closed window with ID: {:?}", window_id);
                         app.window_id_map.remove(&window_id_native);
-                        app.engine_state.decrement_window_count();
+                        *app.engine_context.window_count.lock() -= 1;
                     }
                 } else {
                     tracing::warn!("⚠️ Attempted to close unknown window ID: {}", window_id);
@@ -118,7 +119,7 @@ pub fn handle_about_to_wait(
 
         if should_initialize {
             // Initialize GPUI window (fonts, themes, keybindings, window content)
-            initialization::gpui::initialize_gpui_window(app, &window_id, &app.engine_state.clone());
+            initialization::gpui::initialize_gpui_window(app, &window_id, &app.engine_context.clone());
 
             // Initialize D3D11 rendering pipeline (Windows only)
             #[cfg(target_os = "windows")]

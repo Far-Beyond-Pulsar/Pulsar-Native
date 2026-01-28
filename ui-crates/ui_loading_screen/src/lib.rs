@@ -8,7 +8,7 @@ use ui::{ActiveTheme, Colorize, Root};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use engine_backend::services::rust_analyzer_manager::{RustAnalyzerManager, AnalyzerStatus, AnalyzerEvent};
-use engine_state::{EngineState, WindowRequest};
+use engine_state::{EngineContext, WindowRequest};
 use ui_entry::entry_screen::recent_projects::{RecentProjectsList, RecentProject};
 use directories::ProjectDirs;
 
@@ -154,12 +154,12 @@ impl LoadingScreen {
             // Update recent projects list
             update_recent_projects(&project_path);
 
-            if let Some(engine_state) = EngineState::global() {
-                engine_state.request_window(WindowRequest::ProjectEditor {
+            if let Some(engine_context) = EngineContext::global() {
+                engine_context.request_window(WindowRequest::ProjectEditor {
                     project_path: project_path.to_string_lossy().to_string(),
                 });
 
-                engine_state.request_window(WindowRequest::CloseWindow {
+                engine_context.request_window(WindowRequest::CloseWindow {
                     window_id: self.window_id,
                 });
             }
