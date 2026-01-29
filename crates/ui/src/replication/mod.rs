@@ -25,12 +25,18 @@
 //!     .render(cx)
 //! ```
 
+mod context;
+mod extensions;
+mod integration;
 mod mode;
 mod presence;
 mod state;
 mod sync;
 mod traits;
 
+pub use context::*;
+pub use extensions::*;
+pub use integration::*;
 pub use mode::*;
 pub use presence::*;
 pub use state::*;
@@ -42,4 +48,5 @@ use gpui::App;
 /// Initialize the replication system
 pub fn init(cx: &mut App) {
     ReplicationRegistry::init(cx);
+    SessionContext::init(cx);
 }

@@ -1,5 +1,5 @@
-use super::{ReplicationConfig, ReplicationMode};
-use gpui::{App, Context, Entity, Window};
+use super::{ReplicationConfig, ReplicationMode, ReplicationMessageBuilder, ReplicationRegistry, SessionContext};
+use gpui::{App, AppContext, Context, Entity, Window};
 use serde_json::Value;
 
 /// Trait for components that can replicate their state across users
@@ -67,6 +67,9 @@ pub trait Replicator: Sized {
         cx: &mut App,
     ) -> Result<bool, String> {
         let config = self.replication_config();
+        let session = SessionContext::global(cx);
+        let registry = ReplicationRegistry::global(cx);
+        let element_id = self.replication_id();
 
         // Check if we should accept updates based on mode
         match config.mode {
@@ -75,15 +78,50 @@ pub trait Replicator: Sized {
                 return Ok(false);
             }
             ReplicationMode::BroadcastOnly => {
-                // Only accept from host (peer_id "0" or first peer)
-                // TODO: Get actual host ID from session
-                if peer_id != "0" {
+                // Only accept from host
+                if let Some(host_id) = session.host_peer_id() {
+                    if peer_id != host_id {
+                        tracing::debug!(
+                            "Rejecting update from {} (not host) for element {}",
+                            peer_id,
+                            element_id
+                        );
+                        return Ok(false);
+                    }
+                } else {
+                    // No host set, reject
                     return Ok(false);
                 }
             }
             ReplicationMode::LockedEdit => {
-                // Only accept if we're not currently editing
-                // TODO: Check lock state
+                // Check if element is locked and who holds it
+                if let Some(elem_state) = registry.get_element_state(&element_id) {
+                    if let Some(lock_holder) = &elem_state.locked_by {
+                        // Only accept updates from the lock holder
+                        if lock_holder != peer_id {
+                            tracing::debug!(
+                                "Rejecting update from {} for locked element {} (held by {})",
+                                peer_id,
+                                element_id,
+                                lock_holder
+                            );
+                            return Ok(false);
+                        }
+                    }
+                }
+            }
+            ReplicationMode::RequestEdit => {
+                // Only accept updates from approved editors
+                if let Some(elem_state) = registry.get_element_state(&element_id) {
+                    if !elem_state.active_editors.contains(&peer_id.to_string()) {
+                        tracing::debug!(
+                            "Rejecting update from unapproved user {} for element {}",
+                            peer_id,
+                            element_id
+                        );
+                        return Ok(false);
+                    }
+                }
             }
             _ => {
                 // MultiEdit, Follow, Queued, Partitioned - accept updates
@@ -98,39 +136,94 @@ pub trait Replicator: Sized {
     /// Request edit permission (for RequestEdit mode)
     ///
     /// Returns true if permission was granted immediately, false if pending
-    fn request_edit_permission(&mut self, _window: &mut Window, _cx: &mut App) -> bool {
+    fn request_edit_permission(&mut self, _window: &mut Window, cx: &mut App) -> bool {
         let config = self.replication_config();
         if config.mode != ReplicationMode::RequestEdit {
             return true; // Not in request mode, allow immediately
         }
 
-        // TODO: Send permission request to host
-        // For now, auto-grant
-        tracing::warn!("RequestEdit permission not implemented, auto-granting");
-        true
+        let session = SessionContext::global(cx);
+        let registry = ReplicationRegistry::global(cx);
+        let element_id = self.replication_id();
+
+        // If we're the host, check with permission handler
+        if session.are_we_host() {
+            return session.request_permission(&element_id);
+        }
+
+        // Send permission request to host
+        if let Some(our_peer_id) = session.our_peer_id() {
+            let message = ReplicationMessageBuilder::request_permission(&element_id, &our_peer_id);
+            session.send_message(message);
+
+            // Mark as pending in registry
+            if let Some(mut elem_state) = registry.get_element_state(&element_id) {
+                elem_state.request_permission(&our_peer_id);
+            }
+
+            tracing::debug!("Sent permission request for element {}", element_id);
+        }
+
+        false // Permission pending
     }
 
     /// Check if the current user can edit this element
-    fn can_edit(&self, _cx: &App) -> bool {
+    fn can_edit(&self, cx: &App) -> bool {
         let config = self.replication_config();
+        let session = SessionContext::global(cx);
+        let registry = ReplicationRegistry::global(cx);
+        let element_id = self.replication_id();
+
+        // If not in a session, allow local editing
+        if !session.is_active() {
+            return true;
+        }
+
+        let our_peer_id = match session.our_peer_id() {
+            Some(id) => id,
+            None => return false,
+        };
 
         match config.mode {
             ReplicationMode::NoRep => true,
-            ReplicationMode::MultiEdit => true,
-            ReplicationMode::LockedEdit => {
-                // TODO: Check if we hold the lock
+            ReplicationMode::MultiEdit => {
+                // Check max concurrent editors if set
+                if let Some(elem_state) = registry.get_element_state(&element_id) {
+                    if let Some(max) = config.max_concurrent_editors {
+                        if elem_state.active_editors.len() >= max
+                            && !elem_state.active_editors.contains(&our_peer_id)
+                        {
+                            return false;
+                        }
+                    }
+                }
                 true
+            }
+            ReplicationMode::LockedEdit => {
+                // Check if we hold the lock or no one does
+                if let Some(elem_state) = registry.get_element_state(&element_id) {
+                    elem_state.locked_by.is_none()
+                        || elem_state.locked_by.as_ref() == Some(&our_peer_id)
+                } else {
+                    true // No state yet, allow
+                }
             }
             ReplicationMode::RequestEdit => {
-                // TODO: Check if we have permission
-                true
+                // Check if we have permission
+                if let Some(elem_state) = registry.get_element_state(&element_id) {
+                    elem_state.active_editors.contains(&our_peer_id)
+                } else {
+                    // No state yet, request permission
+                    false
+                }
             }
             ReplicationMode::BroadcastOnly => {
-                // TODO: Check if we're the host
-                false
+                // Only host can edit
+                session.are_we_host()
             }
             ReplicationMode::Follow => {
-                // TODO: Check if we're not in follow mode
+                // Can edit unless actively following someone
+                // (following state would be tracked separately)
                 true
             }
             ReplicationMode::QueuedEdit => true,
@@ -155,33 +248,65 @@ pub trait ReplicatorExt<T: Replicator> {
 
 impl<T: Replicator + 'static> ReplicatorExt<T> for Entity<T> {
     fn with_replication(self, mode: ReplicationMode, cx: &mut App) -> Self {
+        let element_id = self.read(cx).replication_id();
+        let config = self.read(cx).replication_config().clone();
+
         self.update(cx, |this, _cx| {
             this.set_replication_mode(mode);
         });
+
+        // Register with the registry
+        let registry = ReplicationRegistry::global(cx);
+        registry.register_element(element_id, config);
+
         self
     }
 
     fn sync_state(&self, cx: &mut App) {
-        let (id, state) = self.read(cx).replication_id().clone()
-            .and_then(|id| {
-                self.read(cx)
-                    .serialize_state(cx)
-                    .ok()
-                    .map(|state| (id, state))
-            })
-            .unwrap_or_else(|| {
-                tracing::warn!("Failed to serialize replicated state");
-                return;
-            });
+        let session = SessionContext::global(cx);
+        let registry = ReplicationRegistry::global(cx);
 
-        // TODO: Send state update via multiuser client
-        tracing::debug!("Syncing state for element {}: {:?}", id, state);
+        let element_id = self.read(cx).replication_id();
+        let state = match self.read(cx).serialize_state(cx) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!("Failed to serialize state for {}: {}", element_id, e);
+                return;
+            }
+        };
+
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+
+        // Update local registry
+        registry.update_element_state(&element_id, state.clone(), timestamp);
+
+        // Send to network if in a session
+        if session.is_active() {
+            if let Some(our_peer_id) = session.our_peer_id() {
+                let message = ReplicationMessageBuilder::state_update(
+                    element_id.clone(),
+                    state,
+                    our_peer_id,
+                );
+                session.send_message(message);
+
+                tracing::debug!("Synced state for element {}", element_id);
+            }
+        }
     }
 
     fn subscribe_to_replication(&self, cx: &mut App) {
-        // TODO: Subscribe to multiuser events for this element
-        let id = self.read(cx).replication_id();
-        tracing::debug!("Subscribed to replication for element {}", id);
+        let element_id = self.read(cx).replication_id();
+        let config = self.read(cx).replication_config().clone();
+
+        // Register with the registry
+        let registry = ReplicationRegistry::global(cx);
+        registry.register_element(element_id.clone(), config);
+
+        tracing::debug!("Subscribed to replication for element {}", element_id);
     }
 }
 

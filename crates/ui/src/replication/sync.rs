@@ -297,7 +297,18 @@ impl ReplicationMessageHandler {
                 peer_id,
                 element_id
             );
-            // TODO: Notify host/admins of pending request
+
+            // Emit notification for UI to handle
+            // The application layer should subscribe to state changes
+            // and show a notification to the host/admin
+            tracing::info!(
+                "Permission request pending for element {} from user {}",
+                element_id,
+                peer_id
+            );
+
+            // The registry's on_state_change callback can be used to notify the UI
+            // See SessionContext::set_permission_handler for the handler
         }
     }
 

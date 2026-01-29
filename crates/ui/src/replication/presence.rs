@@ -3,10 +3,16 @@ use gpui::{
     div, prelude::FluentBuilder, px, AnyElement, App, Div, InteractiveElement, IntoElement,
     ParentElement, RenderOnce, SharedString, Styled, Window,
 };
+use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+/// Default color for deserialization
+fn default_color() -> gpui::Hsla {
+    gpui::hsla(0.5, 0.7, 0.6, 1.0)
+}
+
 /// Represents a user's presence in the collaborative session
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserPresence {
     /// Unique identifier for the user
     pub peer_id: String,
@@ -15,6 +21,7 @@ pub struct UserPresence {
     pub display_name: String,
 
     /// User's assigned color for presence indicators
+    #[serde(skip, default = "default_color")]
     pub color: gpui::Hsla,
 
     /// Current panel/tab the user is viewing
@@ -273,6 +280,7 @@ impl RenderOnce for PresenceStack {
 
         h_flex()
             .items_center()
+            .gap_0p5() // Small gap between avatars
             .children(visible.enumerate().map(|(i, presence)| {
                 let pill = PresencePill::new(presence.clone());
                 let pill = match self.size {
@@ -281,14 +289,11 @@ impl RenderOnce for PresenceStack {
                     PresencePillSize::Large => pill.large(),
                 };
 
-                div()
-                    .when(i > 0, |this| this.neg_ml_1p5()) // Overlap
-                    .child(pill)
+                pill
             }))
             .when(self.show_count && overflow > 0, |this| {
                 this.child(
                     div()
-                        .neg_ml_1p5()
                         .flex()
                         .items_center()
                         .justify_center()
@@ -336,6 +341,8 @@ impl RenderOnce for TabPresenceIndicator {
         let primary_user = &self.presences[0];
         let color = primary_user.color;
 
+        // For now, just use the primary user's color
+        // TODO: Support gradients when GPUI adds gradient support
         div()
             .absolute()
             .top_0()
@@ -343,49 +350,6 @@ impl RenderOnce for TabPresenceIndicator {
             .right_0()
             .h(px(2.0))
             .bg(color)
-            .when(self.presences.len() > 1, |this| {
-                // Gradient if multiple users
-                this.bg(gpui::gradient(
-                    45.0,
-                    vec![
-                        color.into(),
-                        self.presences
-                            .get(1)
-                            .map(|u| u.color)
-                            .unwrap_or(color)
-                            .into(),
-                    ],
-                ))
-            })
-            .tooltip(move |_window, cx| {
-                // Tooltip showing all users
-                v_flex()
-                    .gap_1()
-                    .p_2()
-                    .children(
-                        self.presences
-                            .iter()
-                            .map(|p| {
-                                h_flex()
-                                    .gap_2()
-                                    .items_center()
-                                    .child(
-                                        div()
-                                            .size_2()
-                                            .rounded_full()
-                                            .bg(p.color),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .text_color(cx.theme().foreground)
-                                            .child(p.display_name.clone()),
-                                    )
-                            })
-                            .collect::<Vec<_>>(),
-                    )
-                    .into_any_element()
-            })
             .into_any_element()
     }
 }
@@ -425,7 +389,7 @@ impl RenderOnce for FieldPresenceIndicator {
             .border_1()
             .border_color(color)
             .when(self.is_locked, |this| {
-                this.child(Icon::new(IconName::Lock).size_3().color(color))
+                this.child(Icon::new(IconName::Lock).size_3().text_color(color))
             })
             .child(
                 div()
