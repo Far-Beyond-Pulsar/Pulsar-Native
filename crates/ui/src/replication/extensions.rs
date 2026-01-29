@@ -7,7 +7,7 @@ use super::{
     Replicator, ReplicationConfig, ReplicationMode, ReplicationRegistry, SessionContext,
     ReplicationMessageBuilder,
 };
-use crate::input::InputState;
+use crate::input::{InputState, RopeExt};
 use gpui::{App, Window};
 use serde_json::{json, Value};
 
@@ -34,10 +34,10 @@ use serde_json::{json, Value};
 /// ```
 pub trait InputStateReplicationExt {
     /// Enable replication for this input
-    fn enable_replication(&self, mode: ReplicationMode, cx: &App);
+    fn enable_replication(&self, mode: ReplicationMode, cx: &mut App);
 
     /// Sync state if replication is enabled
-    fn sync_if_replicated(&self, cx: &App);
+    fn sync_if_replicated(&self, cx: &mut App);
 
     /// Get the replication mode for this input
     fn replication_mode(&self, cx: &App) -> Option<ReplicationMode>;
@@ -46,11 +46,11 @@ pub trait InputStateReplicationExt {
     fn can_edit_replicated(&self, cx: &App) -> bool;
 
     /// Handle a remote state update for this input
-    fn apply_remote_state(&self, state: Value, window: &mut Window, cx: &App) -> Result<(), String>;
+    fn apply_remote_state(&self, state: Value, window: &mut Window, cx: &mut App) -> Result<(), String>;
 }
 
 impl InputStateReplicationExt for gpui::Entity<InputState> {
-    fn enable_replication(&self, mode: ReplicationMode, cx: &App) {
+    fn enable_replication(&self, mode: ReplicationMode, cx: &mut App) {
         let element_id = format!("input_{}", self.entity_id());
         let config = ReplicationConfig::new(mode)
             .with_debounce(100)
@@ -63,7 +63,7 @@ impl InputStateReplicationExt for gpui::Entity<InputState> {
         tracing::debug!("Enabled replication for input {:?}", self.entity_id());
     }
 
-    fn sync_if_replicated(&self, cx: &App) {
+    fn sync_if_replicated(&self, cx: &mut App) {
         let element_id = format!("input_{}", self.entity_id());
         let registry = ReplicationRegistry::global(cx);
 
@@ -153,104 +153,57 @@ impl InputStateReplicationExt for gpui::Entity<InputState> {
         }
     }
 
-    fn apply_remote_state(&self, state: Value, window: &mut Window, cx: &App) -> Result<(), String> {
+    fn apply_remote_state(&self, state: Value, window: &mut Window, cx: &mut App) -> Result<(), String> {
         let text = state
             .get("text")
             .and_then(|v| v.as_str())
             .ok_or("Missing text field")?;
 
-        let _cursor = state
+        let cursor = state
             .get("cursor")
             .and_then(|v| v.as_u64())
             .map(|v| v as usize);
 
-        // Note: This method requires mutable context to update InputState
-        // Callers should use this from within an update context where they have &mut AppContext
-        // For now, we'll mark this as needing refactoring
-        // TODO: Refactor to work with proper context types or remove this method
-        Err("apply_remote_state requires mutable context - use within update() closure".to_string())
+        // Update the input state
+        self.update(cx, |input_state, cx| {
+            input_state.set_value(text.to_string(), window, cx);
+
+            if let Some(cursor_pos) = cursor {
+                // Convert offset to Position
+                let position = input_state.text().offset_to_position(cursor_pos);
+                input_state.set_cursor_position(position, window, cx);
+            }
+        });
+
+        Ok(())
     }
 }
 
-/// Helper to create a replicated input with automatic syncing
+/// Create and configure a replicated input
 ///
-/// This is a convenience function that creates an input and sets up
-/// automatic state synchronization.
+/// This shows the pattern for creating a replicated input.
+/// You must call this from within a context that can create entities
+/// (like within a component's constructor or window callback).
 ///
 /// # Example
 ///
 /// ```ignore
-/// use ui::replication::{create_replicated_input, ReplicationMode};
+/// use ui::replication::{InputStateReplicationExt, ReplicationMode};
 ///
-/// let input = create_replicated_input(
-///     "script_name",
-///     ReplicationMode::LockedEdit,
-///     window,
-///     cx,
-/// );
+/// // Within a component or window context where you have &mut Context<Self>:
+/// let input = cx.new(|cx| InputState::new(window, cx));
 ///
-/// // Changes are automatically synced
+/// // Enable replication
+/// input.enable_replication(ReplicationMode::MultiEdit, cx);
+///
+/// // Now sync after changes:
 /// input.update(cx, |state, cx| {
 ///     state.set_value("new_value".to_string(), window, cx);
 /// });
+/// input.sync_if_replicated(cx);
 /// ```
-/// Note: This function needs to be called from a proper context where entity creation is available
-/// Typically this would be within a window context or component initialization
-///
-/// Example usage:
-/// ```ignore
-/// window.update(cx, |_, cx| {
-///     let input = cx.new(|cx| InputState::new(window, cx));
-///     input.enable_replication(ReplicationMode::MultiEdit, cx);
-///     input
-/// })
-/// ```
-#[allow(dead_code)]
-pub fn create_replicated_input(
-    element_id: impl Into<String>,
-    mode: ReplicationMode,
-) -> ReplicationConfig {
-    // Return just the config - caller must create the entity in their own context
-    ReplicationConfig::new(mode)
-        .with_debounce(100)
-        .with_presence(true)
-        .with_cursors(true)
-}
-
-/// Auto-sync helper that watches an input and syncs changes
-///
-/// This creates a subscription that automatically syncs the input's
-/// state whenever it changes.
-///
-/// # Example
-///
-/// ```ignore
-/// use ui::replication::auto_sync_input;
-///
-/// let input = cx.new(|cx| InputState::new(window, cx));
-/// input.enable_replication(ReplicationMode::MultiEdit, cx);
-///
-/// // Set up auto-sync
-/// let _subscription = auto_sync_input(&input, cx);
-///
-/// // Now changes are automatically synced
-/// ```
-pub fn auto_sync_input(
-    input: &gpui::Entity<InputState>,
-    cx: &App,
-) -> Option<gpui::Subscription> {
-    // Check if input is replicated
-    let element_id = format!("input_{}", input.entity_id());
-    let registry = ReplicationRegistry::global(cx);
-
-    if registry.get_element_state(&element_id).is_none() {
-        return None;
-    }
-
-    // Subscribe to input changes and sync
-    // Note: This would require InputState to emit events
-    // For now, caller should manually call sync_if_replicated after changes
-
-    tracing::debug!("Auto-sync enabled for input {:?}", input.entity_id());
-    None
+pub fn create_replicated_input_pattern() {
+    // This is just documentation - see the example above
+    // There's no way to create entities from arbitrary App contexts,
+    // you must use the pattern shown in the example
 }

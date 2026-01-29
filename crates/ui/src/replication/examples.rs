@@ -4,7 +4,7 @@
 //! You can use these as templates for your own components.
 
 use super::{Replicator, ReplicationConfig, ReplicationMode};
-use crate::input::InputState;
+use crate::input::{InputState, RopeExt};
 use gpui::{App, Window};
 use serde_json::{json, Value};
 
@@ -48,12 +48,15 @@ impl Replicator for InputState {
         unimplemented!("Add replication_config field to InputState")
     }
 
-    fn serialize_state(&self, cx: &App) -> Result<Value, String> {
+    fn serialize_state(&self, _cx: &App) -> Result<Value, String> {
         // Serialize the text content and cursor position
         Ok(json!({
-            "text": self.text(),
-            "cursor": self.cursor_position(),
-            "selection": self.selection_range(),
+            "text": self.text().to_string(),
+            "cursor": self.cursor(),
+            "selection": {
+                "start": self.selection_range().start,
+                "end": self.selection_range().end,
+            },
         }))
     }
 
@@ -78,7 +81,9 @@ impl Replicator for InputState {
         self.set_value(text.to_string(), window, cx);
 
         if let Some(cursor_pos) = cursor {
-            self.set_cursor_position(cursor_pos);
+            // Convert offset to Position
+            let position = self.text().offset_to_position(cursor_pos);
+            self.set_cursor_position(position, window, cx);
         }
 
         Ok(())
