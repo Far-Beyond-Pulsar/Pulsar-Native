@@ -43,6 +43,7 @@ pub mod checkbox;
 pub mod clipboard;
 pub mod code_editor; // Studio-quality virtualized code editor
 pub mod color_picker;
+pub mod replication; // Multi-user editing and state replication
 pub mod description_list;
 pub mod divider;
 pub mod dock;
@@ -141,6 +142,7 @@ pub fn translate(key: &str) -> String {
 pub fn init(cx: &mut App) {
     theme::init(cx);
     global_state::init(cx);
+    replication::init(cx);
     #[cfg(any(feature = "inspector", debug_assertions))]
     inspector::init(cx);
     root::init(cx);

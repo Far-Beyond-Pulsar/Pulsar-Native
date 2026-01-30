@@ -114,6 +114,12 @@ pub enum ClientMessage {
         data: Vec<u8>,
         is_last: bool,
     },
+    // UI replication messages for real-time collaborative editing
+    ReplicationUpdate {
+        session_id: String,
+        peer_id: String,
+        data: String, // serialized ReplicationMessage
+    },
     Ping,
 }
 
@@ -214,6 +220,12 @@ pub enum ServerMessage {
         offset: u64,
         data: Vec<u8>,
         is_last: bool,
+    },
+    // UI replication messages for real-time collaborative editing
+    ReplicationUpdate {
+        session_id: String,
+        from_peer_id: String,
+        data: String, // serialized ReplicationMessage
     },
     Pong,
     Error {

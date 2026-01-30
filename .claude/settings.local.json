@@ -29,7 +29,10 @@
       "Bash(cargo install:*)",
       "Bash(cargo run:*)",
       "Bash(done)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "Bash(test:*)",
+      "Bash(cargo tree:*)",
+      "Bash(wait)"
     ]
   }
 }

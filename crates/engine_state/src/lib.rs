@@ -40,6 +40,7 @@
 
 mod channels;
 mod discord;
+mod multiuser;
 
 // Typed systems (primary API)
 pub mod context;
@@ -47,6 +48,17 @@ pub mod renderers_typed;
 
 pub use channels::{WindowRequest, WindowRequestSender, WindowRequestReceiver, window_request_channel};
 pub use discord::DiscordPresence;
+
+// Re-export multiuser types and functions
+pub use multiuser::{
+    MultiuserContext, MultiuserStatus,
+    // Global access functions
+    set_multiuser_context, clear_multiuser_context, get_multiuser_context,
+    is_multiuser_active, are_we_host, our_peer_id, host_peer_id,
+    session_id, server_url, multiuser_status, set_multiuser_status,
+    add_participant, remove_participant, get_participants, participant_count,
+    sync_from_engine_context,
+};
 
 // Re-export typed systems as primary API
 pub use context::{EngineContext, WindowContext, ProjectContext, LaunchContext};

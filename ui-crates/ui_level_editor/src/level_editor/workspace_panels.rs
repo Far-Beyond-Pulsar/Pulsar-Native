@@ -2,7 +2,7 @@
 
 use gpui::*;
 use ui::{ActiveTheme, StyledExt, dock::{Panel, PanelEvent}, v_flex, input::{TextInput, InputState}};
-use super::ui::{WorldSettings, HierarchyPanel, PropertiesPanel, ViewportPanel, LevelEditorState, TransformSection, ObjectHeaderSection, MaterialSection};
+use super::ui::{WorldSettings, WorldSettingsReplicated, HierarchyPanel, PropertiesPanel, ViewportPanel, LevelEditorState, TransformSection, ObjectHeaderSection, MaterialSection};
 use std::sync::Arc;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -12,7 +12,7 @@ use engine_backend::GameThread;
 
 /// World Settings Panel (replaced Scene Browser)
 pub struct WorldSettingsPanel {
-    world_settings: WorldSettings,
+    pub(crate) world_settings: WorldSettingsReplicated,
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
     focus_handle: FocusHandle,
     /// Tracks which sections are collapsed (by section name)
@@ -20,7 +20,7 @@ pub struct WorldSettingsPanel {
 }
 
 impl WorldSettingsPanel {
-    pub fn new(state: Arc<parking_lot::RwLock<LevelEditorState>>, cx: &mut Context<Self>) -> Self {
+    pub fn new(state: Arc<parking_lot::RwLock<LevelEditorState>>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         // Default all sections to collapsed
         let mut collapsed_sections = HashSet::new();
         collapsed_sections.insert("Environment".to_string());
@@ -28,9 +28,9 @@ impl WorldSettingsPanel {
         collapsed_sections.insert("Fog & Atmosphere".to_string());
         collapsed_sections.insert("Physics".to_string());
         collapsed_sections.insert("Audio".to_string());
-        
+
         Self {
-            world_settings: WorldSettings::new(),
+            world_settings: WorldSettingsReplicated::new(window, cx),
             state,
             focus_handle: cx.focus_handle(),
             collapsed_sections,

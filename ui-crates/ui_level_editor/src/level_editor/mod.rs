@@ -17,8 +17,10 @@ mod ui;
 mod scene_database;
 mod gizmos;
 mod workspace_panels;
+mod world_settings_data;
 
 pub use ui::LevelEditorPanel;
 pub use scene_database::SceneDatabase;
 pub use gizmos::{GizmoState, GizmoType};
 pub use workspace_panels::*;
+pub use world_settings_data::*;

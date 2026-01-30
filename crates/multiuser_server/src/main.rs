@@ -54,8 +54,8 @@ async fn main() -> Result<()> {
     let _metrics = metrics::init(&config).context("Failed to initialize metrics")?;
     logging::log_status("📊", "Metrics", "READY", true);
 
-    // 7. Initialize persistence (DB + S3)
-    if config.database_url.is_some() || config.s3_bucket.is_some() {
+    // 7. Initialize persistence (DB + local storage)
+    if config.database_url.is_some() || config.storage_dir.is_some() {
         info!("💾 Initializing persistence layer...");
         let _persistence = PersistenceLayer::new((*config).clone())
             .await

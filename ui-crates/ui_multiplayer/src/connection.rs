@@ -92,6 +92,51 @@ impl MultiplayerWindow {
                                                 tracing::debug!("CREATE_SESSION: Project root at {:?}", project_root);
                                             }
 
+                                            // Initialize UI replication system
+                                            ui::replication::init(cx);
+
+                                            // Set up replication bridge
+                                            let integration = ui::replication::MultiuserIntegration::new(cx);
+                                            let host_peer_id = participants.first().cloned().unwrap_or_else(|| peer_id.clone());
+
+                                            // Set up message sender
+                                            let client_clone = client.clone();
+                                            let session_id_clone = session_id.clone();
+                                            let peer_id_clone = peer_id.clone();
+                                            integration.start_session(
+                                                peer_id.clone(),
+                                                host_peer_id,
+                                                move |replication_msg| {
+                                                    let client = client_clone.clone();
+                                                    let session_id = session_id_clone.clone();
+                                                    let peer_id = peer_id_clone.clone();
+                                                    if let Ok(data) = serde_json::to_string(&replication_msg) {
+                                                        tokio::spawn(async move {
+                                                            let client_guard = client.read().await;
+                                                            let _ = client_guard.send(ClientMessage::ReplicationUpdate {
+                                                                session_id,
+                                                                peer_id,
+                                                                data,
+                                                            }).await;
+                                                        });
+                                                    }
+                                                },
+                                                cx,
+                                            );
+
+                                            // Add user presence for all participants
+                                            for (i, participant_id) in participants.iter().enumerate() {
+                                                let color = Self::generate_user_color(participant_id);
+                                                integration.add_user(
+                                                    participant_id.clone(),
+                                                    format!("User {}", i + 1),
+                                                    color,
+                                                    cx,
+                                                );
+                                            }
+
+                                            tracing::debug!("CREATE_SESSION: Initialized replication bridge");
+
                                             cx.notify();
                                         }).ok();
                                     }).ok();
@@ -135,12 +180,28 @@ impl MultiplayerWindow {
                                                                     session.connected_users
                                                                 );
                                                                 session.connected_users.push(joined_peer_id.clone());
-                                                                // Update presence
-                                                                this.update_presence_from_participants(cx);
-                                                                cx.notify();
-                                                            } else {
-                                                                tracing::debug!("CREATE_SESSION: Peer {} already in list", joined_peer_id);
                                                             }
+                                                            let user_index = session.connected_users.len();
+                                                            // Session borrow dropped here
+
+                                                            if !this.active_session.as_ref().map_or(true, |s| s.connected_users.contains(&joined_peer_id)) {
+                                                                return;
+                                                            }
+
+                                                            // Update presence
+                                                                this.update_presence_from_participants(cx);
+                                                                // Add to replication system
+                                                                let integration = ui::replication::MultiuserIntegration::new(cx);
+                                                                let color = Self::generate_user_color(&joined_peer_id);
+                                                                integration.add_user(
+                                                                    joined_peer_id.clone(),
+                                                                    format!("User {}", user_index),
+                                                                    color,
+                                                                    cx,
+                                                                );
+                                                                cx.notify();
+                                                        } else {
+                                                            tracing::debug!("CREATE_SESSION: Peer {} already in list", joined_peer_id);
                                                         }
                                                     }).ok();
                                                 }).ok();
@@ -151,6 +212,9 @@ impl MultiplayerWindow {
                                                         if let Some(session) = &mut this.active_session {
                                                             session.connected_users.retain(|p| p != &left_peer_id);
                                                             this.user_presences.retain(|p| p.peer_id != left_peer_id);
+                                                            // Remove from replication system
+                                                            let integration = ui::replication::MultiuserIntegration::new(cx);
+                                                            integration.remove_user(&left_peer_id, cx);
                                                             cx.notify();
                                                         }
                                                     }).ok();
@@ -348,6 +412,44 @@ impl MultiplayerWindow {
                                                     }
                                                 }
                                             }
+                                            ServerMessage::ReplicationUpdate { from_peer_id, data, .. } => {
+                                                tracing::debug!("CREATE_SESSION: Received ReplicationUpdate from {}", from_peer_id);
+                                                // Handle replication message and get response
+                                                let response = cx.update(|cx| {
+                                                    if let Ok(rep_msg) = serde_json::from_str(&data) {
+                                                        let integration = ui::replication::MultiuserIntegration::new(cx);
+                                                        integration.handle_incoming_message(rep_msg, cx)
+                                                    } else {
+                                                        None
+                                                    }
+                                                }).ok().flatten();
+
+                                                // Send response if we got one
+                                                if let Some(response) = response {
+                                                    let session_id_result = cx.update(|cx| {
+                                                        this.update(cx, |this, _cx| {
+                                                            this.active_session.as_ref().map(|s| s.session_id.clone())
+                                                        }).ok()
+                                                    }).ok().flatten().flatten();
+
+                                                    let our_peer_id_result = cx.update(|cx| {
+                                                        this.update(cx, |this, _cx| {
+                                                            this.current_peer_id.clone()
+                                                        }).ok()
+                                                    }).ok().flatten().flatten();
+
+                                                    if let (Some(session_id), Some(our_peer_id)) = (session_id_result, our_peer_id_result) {
+                                                        if let Ok(response_data) = serde_json::to_string(&response) {
+                                                            let client_guard = client.read().await;
+                                                            let _ = client_guard.send(ClientMessage::ReplicationUpdate {
+                                                                session_id,
+                                                                peer_id: our_peer_id,
+                                                                data: response_data,
+                                                            }).await;
+                                                        }
+                                                    }
+                                                }
+                                            }
                                             _ => {}
                                         }
                                     }
@@ -469,6 +571,51 @@ impl MultiplayerWindow {
                                         tracing::debug!("JOIN_SESSION: Project root at {:?}", project_root);
                                     }
 
+                                    // Initialize UI replication system
+                                    ui::replication::init(cx);
+
+                                    // Set up replication bridge
+                                    let integration = ui::replication::MultiuserIntegration::new(cx);
+                                    let host_peer_id = participants.first().cloned().unwrap_or_else(|| peer_id.clone());
+
+                                    // Set up message sender
+                                    let client_clone = client.clone();
+                                    let session_id_clone = session_id.clone();
+                                    let peer_id_clone = peer_id.clone();
+                                    integration.start_session(
+                                        peer_id.clone(),
+                                        host_peer_id,
+                                        move |replication_msg| {
+                                            let client = client_clone.clone();
+                                            let session_id = session_id_clone.clone();
+                                            let peer_id = peer_id_clone.clone();
+                                            if let Ok(data) = serde_json::to_string(&replication_msg) {
+                                                tokio::spawn(async move {
+                                                    let client_guard = client.read().await;
+                                                    let _ = client_guard.send(ClientMessage::ReplicationUpdate {
+                                                        session_id,
+                                                        peer_id,
+                                                        data,
+                                                    }).await;
+                                                });
+                                            }
+                                        },
+                                        cx,
+                                    );
+
+                                    // Add user presence for all participants
+                                    for (i, participant_id) in participants.iter().enumerate() {
+                                        let color = Self::generate_user_color(participant_id);
+                                        integration.add_user(
+                                            participant_id.clone(),
+                                            format!("User {}", i + 1),
+                                            color,
+                                            cx,
+                                        );
+                                    }
+
+                                    tracing::debug!("JOIN_SESSION: Initialized replication bridge");
+
                                     cx.notify();
                                 }).ok();
                             }).ok();
@@ -531,7 +678,17 @@ impl MultiplayerWindow {
                                                             joined_peer_id,
                                                             session.connected_users
                                                         );
-                                                        session.connected_users.push(joined_peer_id);
+                                                        session.connected_users.push(joined_peer_id.clone());
+                                                        // Add to replication system
+                                                        let integration = ui::replication::MultiuserIntegration::new(cx);
+                                                        let color = Self::generate_user_color(&joined_peer_id);
+                                                        let user_index = session.connected_users.len();
+                                                        integration.add_user(
+                                                            joined_peer_id,
+                                                            format!("User {}", user_index),
+                                                            color,
+                                                            cx,
+                                                        );
                                                         cx.notify();
                                                     } else {
                                                         tracing::debug!("JOIN_SESSION: Peer {} already in list", joined_peer_id);
@@ -546,6 +703,9 @@ impl MultiplayerWindow {
                                                 if let Some(session) = &mut this.active_session {
                                                     session.connected_users.retain(|p| p != &left_peer_id);
                                                     this.user_presences.retain(|p| p.peer_id != left_peer_id);
+                                                    // Remove from replication system
+                                                    let integration = ui::replication::MultiuserIntegration::new(cx);
+                                                    integration.remove_user(&left_peer_id, cx);
                                                     cx.notify();
                                                 }
                                             }).ok();
@@ -956,6 +1116,44 @@ impl MultiplayerWindow {
                                                             is_last,
                                                         }).await;
                                                     }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    ServerMessage::ReplicationUpdate { from_peer_id, data, .. } => {
+                                        tracing::debug!("JOIN_SESSION: Received ReplicationUpdate from {}", from_peer_id);
+                                        // Handle replication message and get response
+                                        let response = cx.update(|cx| {
+                                            if let Ok(rep_msg) = serde_json::from_str(&data) {
+                                                let integration = ui::replication::MultiuserIntegration::new(cx);
+                                                integration.handle_incoming_message(rep_msg, cx)
+                                            } else {
+                                                None
+                                            }
+                                        }).ok().flatten();
+
+                                        // Send response if we got one
+                                        if let Some(response) = response {
+                                            let session_id_result = cx.update(|cx| {
+                                                this.update(cx, |this, _cx| {
+                                                    this.active_session.as_ref().map(|s| s.session_id.clone())
+                                                }).ok()
+                                            }).ok().flatten().flatten();
+
+                                            let our_peer_id_result = cx.update(|cx| {
+                                                this.update(cx, |this, _cx| {
+                                                    this.current_peer_id.clone()
+                                                }).ok()
+                                            }).ok().flatten().flatten();
+
+                                            if let (Some(session_id), Some(our_peer_id)) = (session_id_result, our_peer_id_result) {
+                                                if let Ok(response_data) = serde_json::to_string(&response) {
+                                                    let client_guard = client.read().await;
+                                                    let _ = client_guard.send(ClientMessage::ReplicationUpdate {
+                                                        session_id,
+                                                        peer_id: our_peer_id,
+                                                        data: response_data,
+                                                    }).await;
                                                 }
                                             }
                                         }

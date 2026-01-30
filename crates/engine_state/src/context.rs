@@ -120,6 +120,9 @@ pub struct EngineContext {
     /// Discord Rich Presence integration
     pub discord: Arc<RwLock<Option<DiscordPresence>>>,
 
+    /// Multiuser session context (if in a collaborative session)
+    pub multiuser: Arc<RwLock<Option<crate::multiuser::MultiuserContext>>>,
+
     /// Global type database for reflection
     pub type_database: Arc<RwLock<Option<Arc<TypeDatabase>>>>,
 
@@ -141,6 +144,7 @@ impl EngineContext {
             project: Arc::new(RwLock::new(None)),
             launch: Arc::new(RwLock::new(LaunchContext::new())),
             discord: Arc::new(RwLock::new(None)),
+            multiuser: Arc::new(RwLock::new(None)),
             type_database: Arc::new(RwLock::new(None)),
             window_sender: Arc::new(RwLock::new(None)),
             window_count: Arc::new(parking_lot::Mutex::new(0)),
@@ -230,6 +234,82 @@ impl EngineContext {
     /// Get global type database
     pub fn type_database(&self) -> Option<Arc<TypeDatabase>> {
         self.type_database.read().clone()
+    }
+
+    /// Set multiuser session context
+    ///
+    /// Call this when joining or creating a multiuser session.
+    /// This makes the session details available to all subsystems.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let multiuser_ctx = MultiuserContext::new(
+    ///     "ws://localhost:8080",
+    ///     "session-123",
+    ///     "peer-abc",
+    ///     "peer-abc"
+    /// ).with_status(MultiuserStatus::Connected);
+    ///
+    /// engine_context.set_multiuser(multiuser_ctx);
+    /// ```
+    pub fn set_multiuser(&self, context: crate::multiuser::MultiuserContext) {
+        *self.multiuser.write() = Some(context.clone());
+        // Also update the global static for backward compatibility
+        crate::multiuser::set_multiuser_context(context);
+    }
+
+    /// Clear multiuser session context
+    ///
+    /// Call this when disconnecting from a session.
+    pub fn clear_multiuser(&self) {
+        *self.multiuser.write() = None;
+        crate::multiuser::clear_multiuser_context();
+    }
+
+    /// Get multiuser session context (if active)
+    pub fn multiuser(&self) -> Option<crate::multiuser::MultiuserContext> {
+        self.multiuser.read().clone()
+    }
+
+    /// Check if currently in a multiuser session
+    pub fn is_multiuser_active(&self) -> bool {
+        self.multiuser.read().is_some()
+    }
+
+    /// Check if we're the host of the current session
+    pub fn are_we_multiuser_host(&self) -> bool {
+        self.multiuser.read()
+            .as_ref()
+            .map(|ctx| ctx.is_host)
+            .unwrap_or(false)
+    }
+
+    /// Update multiuser connection status
+    pub fn set_multiuser_status(&self, status: crate::multiuser::MultiuserStatus) {
+        if let Some(ctx) = self.multiuser.write().as_mut() {
+            ctx.set_status(status.clone());
+            // Sync to global static
+            crate::multiuser::set_multiuser_status(status);
+        }
+    }
+
+    /// Add a participant to the current multiuser session
+    pub fn add_multiuser_participant(&self, peer_id: impl Into<String>) {
+        let peer_id = peer_id.into();
+        if let Some(ctx) = self.multiuser.write().as_mut() {
+            ctx.add_participant(peer_id.clone());
+            // Sync to global static
+            crate::multiuser::add_participant(peer_id);
+        }
+    }
+
+    /// Remove a participant from the current multiuser session
+    pub fn remove_multiuser_participant(&self, peer_id: &str) {
+        if let Some(ctx) = self.multiuser.write().as_mut() {
+            ctx.remove_participant(peer_id);
+            // Sync to global static
+            crate::multiuser::remove_participant(peer_id);
+        }
     }
 
     /// Legacy metadata setter (for backward compatibility)

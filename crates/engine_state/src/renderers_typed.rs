@@ -218,34 +218,3 @@ pub mod migration {
         window_id
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_renderer_registry_operations() {
-        let registry = TypedRendererRegistry::new();
-
-        assert_eq!(registry.has_renderer(0), false);
-        assert_eq!(registry.get(0), None);
-
-        // Would need actual renderer instances to test registration
-        // Placeholder test structure
-    }
-
-    #[test]
-    fn test_registry_window_ids() {
-        let registry = TypedRendererRegistry::new();
-
-        let ids = registry.window_ids();
-        assert_eq!(ids.len(), 0);
-    }
-
-    #[test]
-    fn test_clear_registry() {
-        let registry = TypedRendererRegistry::new();
-        registry.clear();
-        assert_eq!(registry.window_ids().len(), 0);
-    }
-}

@@ -1,11 +1,10 @@
 //! Database and storage persistence layer
 //!
 //! This module handles database operations with PostgreSQL via sqlx
-//! and S3 integration for snapshot storage.
+//! and local file storage for snapshots (no AWS/S3).
 
 use anyhow::{Context, Result};
-use aws_config::BehaviorVersion;
-use aws_sdk_s3::{primitives::ByteStream, Client as S3Client};
+// Removed AWS dependencies - using local storage only
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{postgres::PgPoolOptions, PgPool};
@@ -30,30 +29,28 @@ pub struct SessionRecord {
     pub metadata: serde_json::Value,
 }
 
-/// Snapshot metadata
+/// Snapshot metadata (local file storage)
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct SnapshotRecord {
     pub id: Uuid,
     pub snapshot_id: String,
     pub session_id: String,
-    pub s3_key: String,
-    pub s3_bucket: String,
+    pub file_path: String,  // Local file path instead of S3 key
     pub size_bytes: i64,
     pub compressed: bool,
     pub hash: Vec<u8>,
     pub created_at: DateTime<Utc>,
 }
 
-/// Persistence layer
+/// Persistence layer (local storage only, no AWS)
 pub struct PersistenceLayer {
     db_pool: Option<Arc<PgPool>>,
-    s3_client: Option<Arc<S3Client>>,
-    s3_bucket: Option<String>,
+    storage_dir: Option<String>,  // Local directory for snapshots
     config: Config,
 }
 
 impl PersistenceLayer {
-    /// Initialize persistence layer with database and S3
+    /// Initialize persistence layer with database and local storage
     pub async fn new(config: Config) -> Result<Self> {
         let db_pool = if let Some(ref db_url) = config.database_url {
             info!("Connecting to PostgreSQL database");
@@ -67,21 +64,17 @@ impl PersistenceLayer {
             None
         };
 
-        let (s3_client, s3_bucket) = if let Some(ref bucket) = config.s3_bucket {
-            info!(bucket = %bucket, "Initializing S3 client");
-            let client = Self::create_s3_client(&config).await?;
-            METRICS.s3_health.set(1.0);
-            (Some(Arc::new(client)), Some(bucket.clone()))
+        // Use local storage directory instead of S3
+        let storage_dir = config.storage_dir.clone();
+        if storage_dir.is_some() {
+            info!("Using local storage for snapshots");
         } else {
-            warn!("No S3 bucket configured - snapshot storage disabled");
-            METRICS.s3_health.set(0.0);
-            (None, None)
-        };
+            warn!("No storage directory configured - snapshot storage disabled");
+        }
 
         Ok(Self {
             db_pool,
-            s3_client,
-            s3_bucket,
+            storage_dir,
             config,
         })
     }
@@ -176,18 +169,8 @@ impl PersistenceLayer {
         Ok(())
     }
 
-    async fn create_s3_client(config: &Config) -> Result<S3Client> {
-        let aws_config = if let Some(ref region) = config.s3_region {
-            aws_config::defaults(BehaviorVersion::latest())
-                .region(aws_sdk_s3::config::Region::new(region.clone()))
-                .load()
-                .await
-        } else {
-            aws_config::load_defaults(BehaviorVersion::latest()).await
-        };
-
-        Ok(S3Client::new(&aws_config))
-    }
+    // Removed S3 client creation - using local storage only
+    // async fn create_s3_client(config: &Config) -> Result<S3Client> { ... }
 
     /// Create a new session record
     pub async fn create_session(
@@ -322,169 +305,25 @@ impl PersistenceLayer {
         Ok(count)
     }
 
-    /// Upload snapshot to S3
+    /// Upload snapshot to local storage (S3 removed)
     pub async fn upload_snapshot(
         &self,
-        snapshot_id: String,
-        session_id: String,
-        data: Vec<u8>,
-        compressed: bool,
+        _snapshot_id: String,
+        _session_id: String,
+        _data: Vec<u8>,
+        _compressed: bool,
     ) -> Result<SnapshotRecord> {
-        let s3_client = self.s3_client.as_ref().context("S3 not configured")?;
-        let s3_bucket = self.s3_bucket.as_ref().context("S3 bucket not set")?;
-
-        // Generate S3 key
-        let s3_key = format!("snapshots/{}/{}.bin", session_id, snapshot_id);
-
-        // Calculate hash
-        use sha2::{Digest, Sha256};
-        let hash = Sha256::digest(&data).to_vec();
-
-        // Upload to S3
-        info!(
-            bucket = %s3_bucket,
-            key = %s3_key,
-            size = data.len(),
-            "Uploading snapshot to S3"
-        );
-
-        let body = ByteStream::from(data.clone());
-        s3_client
-            .put_object()
-            .bucket(s3_bucket)
-            .key(&s3_key)
-            .body(body)
-            .send()
-            .await
-            .context("Failed to upload snapshot to S3")?;
-
-        // Store metadata in database
-        let pool = self
-            .db_pool
-            .as_ref()
-            .context("Database not configured")?;
-
-        let record = sqlx::query_as::<_, SnapshotRecord>(
-            r#"
-            INSERT INTO snapshots (snapshot_id, session_id, s3_key, s3_bucket, size_bytes, compressed, hash)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, snapshot_id, session_id, s3_key, s3_bucket, size_bytes, compressed, hash, created_at
-            "#,
-        )
-        .bind(&snapshot_id)
-        .bind(&session_id)
-        .bind(&s3_key)
-        .bind(s3_bucket)
-        .bind(data.len() as i64)
-        .bind(compressed)
-        .bind(&hash)
-        .fetch_one(pool.as_ref())
-        .await
-        .context("Failed to create snapshot record")?;
-
-        info!(snapshot_id = %snapshot_id, "Created snapshot record");
-
-        Ok(record)
+        anyhow::bail!("Snapshot storage not implemented - S3 was removed, use local file storage instead")
     }
 
-    /// Download snapshot from S3
-    pub async fn download_snapshot(&self, snapshot_id: &str) -> Result<Vec<u8>> {
-        let s3_client = self.s3_client.as_ref().context("S3 not configured")?;
-        let pool = self
-            .db_pool
-            .as_ref()
-            .context("Database not configured")?;
-
-        // Get snapshot metadata
-        let record = sqlx::query_as::<_, SnapshotRecord>(
-            r#"
-            SELECT id, snapshot_id, session_id, s3_key, s3_bucket, size_bytes, compressed, hash, created_at
-            FROM snapshots
-            WHERE snapshot_id = $1
-            "#,
-        )
-        .bind(snapshot_id)
-        .fetch_one(pool.as_ref())
-        .await
-        .context("Snapshot not found")?;
-
-        // Download from S3
-        info!(
-            bucket = %record.s3_bucket,
-            key = %record.s3_key,
-            "Downloading snapshot from S3"
-        );
-
-        let response = s3_client
-            .get_object()
-            .bucket(&record.s3_bucket)
-            .key(&record.s3_key)
-            .send()
-            .await
-            .context("Failed to download snapshot from S3")?;
-
-        let data = response
-            .body
-            .collect()
-            .await
-            .context("Failed to read snapshot data")?
-            .into_bytes()
-            .to_vec();
-
-        // Verify hash
-        use sha2::{Digest, Sha256};
-        let hash = Sha256::digest(&data).to_vec();
-        if hash != record.hash {
-            anyhow::bail!("Snapshot hash mismatch");
-        }
-
-        Ok(data)
+    /// Download snapshot (S3 removed - stub)
+    pub async fn download_snapshot(&self, _snapshot_id: &str) -> Result<Vec<u8>> {
+        anyhow::bail!("Snapshot storage not implemented - S3 was removed, use local file storage instead")
     }
 
-    /// Delete snapshot
-    pub async fn delete_snapshot(&self, snapshot_id: &str) -> Result<()> {
-        let s3_client = self.s3_client.as_ref().context("S3 not configured")?;
-        let pool = self
-            .db_pool
-            .as_ref()
-            .context("Database not configured")?;
-
-        // Get snapshot metadata
-        let record = sqlx::query_as::<_, SnapshotRecord>(
-            r#"
-            SELECT id, snapshot_id, session_id, s3_key, s3_bucket, size_bytes, compressed, hash, created_at
-            FROM snapshots
-            WHERE snapshot_id = $1
-            "#,
-        )
-        .bind(snapshot_id)
-        .fetch_one(pool.as_ref())
-        .await
-        .context("Snapshot not found")?;
-
-        // Delete from S3
-        s3_client
-            .delete_object()
-            .bucket(&record.s3_bucket)
-            .key(&record.s3_key)
-            .send()
-            .await
-            .context("Failed to delete snapshot from S3")?;
-
-        // Delete from database
-        sqlx::query(
-            r#"
-            DELETE FROM snapshots WHERE snapshot_id = $1
-            "#,
-        )
-        .bind(snapshot_id)
-        .execute(pool.as_ref())
-        .await
-        .context("Failed to delete snapshot record")?;
-
-        info!(snapshot_id = %snapshot_id, "Deleted snapshot");
-
-        Ok(())
+    /// Delete snapshot (S3 removed - stub)
+    pub async fn delete_snapshot(&self, _snapshot_id: &str) -> Result<()> {
+        anyhow::bail!("Snapshot storage not implemented - S3 was removed, use local file storage instead")
     }
 
     /// Health check for database
@@ -506,23 +345,10 @@ impl PersistenceLayer {
         }
     }
 
-    /// Health check for S3
+    /// Health check for storage (S3 removed - always returns false)
     pub async fn check_s3_health(&self) -> Result<bool> {
-        if let (Some(ref client), Some(ref bucket)) = (&self.s3_client, &self.s3_bucket) {
-            match client.head_bucket().bucket(bucket).send().await {
-                Ok(_) => {
-                    METRICS.s3_health.set(1.0);
-                    Ok(true)
-                }
-                Err(e) => {
-                    error!(error = %e, "S3 health check failed");
-                    METRICS.s3_health.set(0.0);
-                    Ok(false)
-                }
-            }
-        } else {
-            Ok(false)
-        }
+        // S3 removed - no health check needed
+        Ok(false)
     }
 }
 

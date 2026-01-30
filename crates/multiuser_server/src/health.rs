@@ -1,4 +1,3 @@
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -53,10 +52,7 @@ impl HealthChecker {
             checks.push(self.check_database().await);
         }
 
-        // Check S3 connectivity
-        if self.config.s3_bucket.is_some() {
-            checks.push(self.check_s3().await);
-        }
+        // Storage check removed - using local storage only
 
         // Check TLS certificates validity
         if self.config.tls_cert_path.is_some() {
@@ -107,31 +103,6 @@ impl HealthChecker {
                 Some("Database connection healthy".to_string())
             } else {
                 Some("Database connection failed".to_string())
-            },
-            duration_ms,
-        }
-    }
-
-    /// Check S3 connectivity
-    async fn check_s3(&self) -> HealthCheck {
-        let start = SystemTime::now();
-        let name = "s3".to_string();
-
-        let status = if METRICS.s3_health.get() > 0.5 {
-            CheckStatus::Healthy
-        } else {
-            CheckStatus::Degraded
-        };
-
-        let duration_ms = start.elapsed().unwrap_or_default().as_millis() as u64;
-
-        HealthCheck {
-            name,
-            status: status.clone(),
-            message: if status == CheckStatus::Healthy {
-                Some("S3 connection healthy".to_string())
-            } else {
-                Some("S3 connection degraded".to_string())
             },
             duration_ms,
         }

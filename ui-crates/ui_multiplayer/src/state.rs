@@ -322,4 +322,22 @@ impl MultiplayerWindow {
         cx.notify();
     }
 
+    /// Generate a consistent color for a user based on their peer ID
+    pub(super) fn generate_user_color(peer_id: &str) -> Hsla {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = DefaultHasher::new();
+        peer_id.hash(&mut hasher);
+        let hash = hasher.finish();
+
+        // Generate a vibrant color from the hash
+        let hue = (hash % 360) as f32 / 360.0;
+        let saturation = 0.7;
+        let lightness = 0.6;
+        let alpha = 1.0;
+
+        hsla(hue, saturation, lightness, alpha)
+    }
+
 }

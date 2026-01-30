@@ -4,6 +4,7 @@
 mod state;
 mod panel;
 mod world_settings;
+mod world_settings_replicated;
 mod hierarchy;
 mod properties;
 mod viewport;
@@ -19,6 +20,7 @@ mod material_section;
 pub use state::*;
 pub use panel::LevelEditorPanel;
 pub use world_settings::WorldSettings;
+pub use world_settings_replicated::WorldSettingsReplicated;
 pub use hierarchy::HierarchyPanel;
 pub use properties::PropertiesPanel;
 pub use viewport::ViewportPanel;
