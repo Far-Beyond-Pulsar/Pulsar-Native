@@ -189,7 +189,7 @@ impl LevelEditorPanel {
             });
             let world_settings_panel = cx.new(|cx| {
                 use crate::level_editor::WorldSettingsPanel;
-                WorldSettingsPanel::new(shared_state.clone(), cx)
+                WorldSettingsPanel::new(shared_state.clone(), window, cx)
             });
 
             // Bottom right: tabs for Properties and World Settings

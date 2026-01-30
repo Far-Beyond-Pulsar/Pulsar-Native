@@ -42,11 +42,8 @@ pub struct Config {
     /// Database connection URL
     pub database_url: Option<String>,
 
-    /// S3 bucket for snapshots
-    pub s3_bucket: Option<String>,
-
-    /// S3 region
-    pub s3_region: Option<String>,
+    /// Local storage directory for snapshots (S3 removed)
+    pub storage_dir: Option<String>,
 
     /// Maximum concurrent sessions
     pub max_sessions: usize,
@@ -94,8 +91,7 @@ impl Default for Config {
             tls_cert_path: None,
             tls_key_path: None,
             database_url: None,
-            s3_bucket: None,
-            s3_region: None,
+            storage_dir: None,
             max_sessions: 10000,
             relay_bandwidth_limit: 10 * 1024 * 1024, // 10 MB/s
             nat_probe_timeout: Duration::from_secs(5),
@@ -137,13 +133,9 @@ pub struct Cli {
     #[arg(long, env = "PULSAR_DATABASE_URL")]
     pub database_url: Option<String>,
 
-    /// S3 bucket name
-    #[arg(long, env = "PULSAR_S3_BUCKET")]
-    pub s3_bucket: Option<String>,
-
-    /// S3 region
-    #[arg(long, env = "PULSAR_S3_REGION")]
-    pub s3_region: Option<String>,
+    /// Local storage directory for snapshots
+    #[arg(long, env = "PULSAR_STORAGE_DIR")]
+    pub storage_dir: Option<String>,
 
     /// Log level
     #[arg(long, env = "PULSAR_LOG_LEVEL", default_value = "info")]
@@ -199,11 +191,8 @@ impl Config {
         if let Some(database_url) = cli.database_url {
             config.database_url = Some(database_url);
         }
-        if let Some(s3_bucket) = cli.s3_bucket {
-            config.s3_bucket = Some(s3_bucket);
-        }
-        if let Some(s3_region) = cli.s3_region {
-            config.s3_region = Some(s3_region);
+        if let Some(storage_dir) = cli.storage_dir {
+            config.storage_dir = Some(storage_dir);
         }
         if let Some(jwt_secret) = cli.jwt_secret {
             config.jwt_secret = jwt_secret;
@@ -254,12 +243,7 @@ impl Config {
     }
 }
 
-// Add TOML support
-use serde::{Deserializer, de::DeserializeOwned};
-
-fn toml_from_str<T: DeserializeOwned>(s: &str) -> Result<T, toml::de::Error> {
-    toml::from_str(s)
-}
+// TOML parsing is handled inline in from_env() via toml::from_str
 
 // We need to add toml dependency
 #[cfg(test)]

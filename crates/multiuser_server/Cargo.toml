@@ -24,10 +24,11 @@ tower-http = { version = "0.5", features = ["trace", "cors", "timeout"] }
 
 # QUIC transport
 quinn = "0.11"
-rustls = "0.23"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rustls-pemfile = "2.1"
 rcgen = "0.13"
-rustls-post-quantum = "0.2"
+# Commented out post-quantum until aws-lc-sys Windows support improves
+# rustls-post-quantum = "0.2"
 
 # Networking
 socket2 = "0.5"
@@ -71,9 +72,7 @@ prometheus = "0.13"
 # Database
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "macros", "uuid", "chrono"] }
 
-# S3 Storage
-aws-config = "1.1"
-aws-sdk-s3 = "1.11"
+# No AWS - using local storage only
 
 # Config & CLI
 clap = { version = "4.5", features = ["derive", "env"] }
