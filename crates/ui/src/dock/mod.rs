@@ -36,6 +36,9 @@ pub enum DockEvent {
 
     /// The drag item drop event.
     DragDrop(AnyDrag),
+
+    /// A panel should be moved to a new window
+    MoveToNewWindow(Arc<dyn PanelView>, gpui::Point<Pixels>),
 }
 
 /// The main area of the dock.
@@ -960,8 +963,9 @@ impl DockArea {
                     PanelEvent::TabClosed(_) => {
                         // Do nothing for TabClosed
                     }
-                    PanelEvent::MoveToNewWindow(_, _) => {
-                        // This event will be handled by PulsarApp - do nothing here
+                    PanelEvent::MoveToNewWindow(panel, position) => {
+                        println!("[DOCK_AREA] Received MoveToNewWindow from TabPanel, creating popout window");
+                        Self::create_popout_window(panel.clone(), *position, cx);
                     }
                     PanelEvent::TabChanged { active_index: _ } => {
                         // Do nothing for TabChanged     
@@ -1021,7 +1025,114 @@ impl DockArea {
             .and_then(|dock| dock.read(cx).panel.left_top_tab_panel(cx))
             .map(|view| view.entity_id());
     }
+
+    /// Create a popout window with the given panel
+    fn create_popout_window(
+        panel: Arc<dyn PanelView>,
+        position: gpui::Point<Pixels>,
+        cx: &mut App,
+    ) {
+        use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
+
+        let window_size = size(px(800.), px(600.));
+        let title_bar_height = px(36.0);
+
+        let window_bounds = Bounds::new(
+            Point {
+                x: position.x - px(100.0),
+                y: position.y - title_bar_height - px(4.0),
+            },
+            window_size,
+        );
+
+        let window_options = WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(window_bounds)),
+            titlebar: Some(gpui::TitlebarOptions {
+                title: None,
+                appears_transparent: true,
+                traffic_light_position: None,
+            }),
+            window_min_size: Some(gpui::Size {
+                width: px(400.),
+                height: px(300.),
+            }),
+            kind: WindowKind::Normal,
+            is_resizable: true,
+            window_decorations: Some(gpui::WindowDecorations::Client),
+            ..Default::default()
+        };
+
+        println!("[DOCK_AREA] Creating popout window with options");
+
+        let _ = cx.open_window(window_options, move |window, cx| {
+            println!("[DOCK_AREA] Inside window creation callback");
+
+            // Create a minimal new dock area for this detached window
+            let new_dock_area = cx.new(|cx| DockArea::new("detached-dock", Some(1), window, cx));
+            let weak_new_dock = new_dock_area.downgrade();
+
+            // Create a tab panel with just the one panel
+            let new_tab_panel = cx.new(|cx| {
+                let channel = weak_new_dock.upgrade().map(|d| d.read(cx).channel).unwrap_or_default();
+                let mut tab_panel = TabPanel::new(None, weak_new_dock.clone(), channel, window, cx);
+                tab_panel.closable = true;
+                tab_panel
+            });
+
+            new_tab_panel.update(cx, |view, cx| {
+                view.add_panel(panel.clone(), window, cx);
+            });
+
+            // Set up the dock area with just this panel
+            new_dock_area.update(cx, |dock, cx| {
+                let dock_item = DockItem::Tabs {
+                    view: new_tab_panel,
+                    active_ix: 0,
+                    items: vec![panel.clone()],
+                };
+                dock.set_center(dock_item, window, cx);
+            });
+
+            println!("[DOCK_AREA] Popout window created successfully");
+            let popout_window = cx.new(|cx| PopoutDockWindow::new(new_dock_area, window, cx));
+            cx.new(|cx| crate::Root::new(popout_window.into(), window, cx))
+        });
+    }
 }
+
+/// Wrapper window for popped-out dock areas - includes a titlebar
+struct PopoutDockWindow {
+    dock_area: Entity<DockArea>,
+}
+
+impl PopoutDockWindow {
+    fn new(
+        dock_area: Entity<DockArea>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Self {
+        Self { dock_area }
+    }
+}
+
+impl Render for PopoutDockWindow {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        use crate::{v_flex, ActiveTheme, TitleBar};
+        let theme = cx.theme();
+
+        v_flex()
+            .size_full()
+            .bg(theme.background)
+            .child(TitleBar::new())
+            .child(
+                div()
+                    .flex_1()
+                    .overflow_hidden()
+                    .child(self.dock_area.clone())
+            )
+    }
+}
+
 impl EventEmitter<DockEvent> for DockArea {}
 impl Render for DockArea {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

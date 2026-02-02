@@ -179,7 +179,9 @@ impl PulsarApp {
         cx.subscribe_in(&rust_analyzer, window, event_handlers::on_analyzer_event).detach();
 
         // Subscribe to tab panel events
+        println!("[SUBSCRIPTION] Setting up subscription to center_tabs (ID: {:?}) for PanelEvent", center_tabs.entity_id());
         cx.subscribe_in(&center_tabs, window, event_handlers::on_tab_panel_event).detach();
+        println!("[SUBSCRIPTION] Subscription to center_tabs set up successfully");
 
         // Subscribe to entry screen events
         if let Some(screen) = &entry_screen {

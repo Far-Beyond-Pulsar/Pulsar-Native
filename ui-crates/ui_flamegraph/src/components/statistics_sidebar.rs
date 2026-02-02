@@ -33,47 +33,111 @@ pub fn render_statistics_sidebar(
         .top_0()
         .w(px(STATS_SIDEBAR_WIDTH))
         .h_full()
-        .bg(theme.popover)
+        .bg(theme.sidebar)
         .border_l_1()
-        .border_color(theme.border)
+        .border_color(theme.sidebar_border)
         .flex()
         .flex_col()
-        .p_4()
-        .gap_3()
         .child(
+            // Header section
             div()
-                .text_sm()
-                .font_weight(FontWeight::BOLD)
-                .text_color(theme.foreground)
-                .child(t!("Flamegraph.Statistics").to_string())
+                .px_4()
+                .py_3()
+                .bg(theme.sidebar_accent.opacity(0.3))
+                .border_b_1()
+                .border_color(theme.sidebar_border)
+                .child(
+                    div()
+                        .text_sm()
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(theme.sidebar_foreground)
+                        .child(t!("Flamegraph.Statistics").to_string())
+                )
         )
         .child(
+            // Session stats section
             div()
                 .flex()
                 .flex_col()
+                .px_4()
+                .py_3()
+                .gap_2p5()
+                .child(stat_row_improved(t!("Flamegraph.TotalSpans").to_string(), format!("{}", frame.spans.len()), theme))
+                .child(stat_row_improved(t!("Flamegraph.Duration").to_string(), format!("{:.2} ms", duration_ms), theme))
+                .child(stat_row_improved(t!("Flamegraph.MaxDepth").to_string(), format!("{}", frame.max_depth), theme))
+        )
+        .child(
+            // Divider
+            div()
+                .h(px(1.0))
+                .w_full()
+                .bg(theme.sidebar_border)
+        )
+        .child(
+            // Frame stats section
+            div()
+                .flex()
+                .flex_col()
+                .px_4()
+                .py_3()
+                .gap_2p5()
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(theme.sidebar_foreground.opacity(0.7))
+                        .child(t!("Flamegraph.FrameStats").to_string())
+                )
+                .child(stat_row_improved(t!("Flamegraph.Frames").to_string(), format!("{}", num_frames), theme))
+                .child(stat_row_improved(t!("Flamegraph.AvgFrame").to_string(), format!("{:.2} ms", avg_frame_time), theme))
+                .child(stat_row_improved(t!("Flamegraph.MinFrame").to_string(), format!("{:.2} ms", min_frame_time), theme))
+                .child(stat_row_improved(t!("Flamegraph.MaxFrame").to_string(), format!("{:.2} ms", max_frame_time), theme))
+        )
+        .child(
+            // Divider
+            div()
+                .h(px(1.0))
+                .w_full()
+                .bg(theme.sidebar_border)
+        )
+        .child(
+            // Threads section header
+            div()
+                .px_4()
+                .py_3()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(theme.sidebar_foreground.opacity(0.7))
+                                .child(t!("Flamegraph.Threads").to_string())
+                        )
+                        .child(
+                            div()
+                                .px_1p5()
+                                .py_0p5()
+                                .rounded(px(4.0))
+                                .bg(theme.sidebar_accent.opacity(0.2))
+                                .text_xs()
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(theme.sidebar_accent_foreground)
+                                .child(format!("{}", frame.threads.len()))
+                        )
+                )
+        )
+        .child(
+            // Threads list
+            div()
+                .flex()
+                .flex_col()
+                .px_4()
+                .pb_4()
                 .gap_2()
-                .child(stat_row(t!("Flamegraph.TotalSpans").to_string(), format!("{}", frame.spans.len()), theme.muted_foreground, theme.foreground))
-                .child(stat_row(t!("Flamegraph.Duration").to_string(), format!("{:.2} ms", duration_ms), theme.muted_foreground, theme.foreground))
-                .child(stat_row(t!("Flamegraph.Frames").to_string(), format!("{}", num_frames), theme.muted_foreground, theme.foreground))
-                .child(stat_row(t!("Flamegraph.AvgFrame").to_string(), format!("{:.2} ms", avg_frame_time), theme.muted_foreground, theme.foreground))
-                .child(stat_row(t!("Flamegraph.MinFrame").to_string(), format!("{:.2} ms", min_frame_time), theme.muted_foreground, theme.foreground))
-                .child(stat_row(t!("Flamegraph.MaxFrame").to_string(), format!("{:.2} ms", max_frame_time), theme.muted_foreground, theme.foreground))
-                .child(stat_row(t!("Flamegraph.Threads").to_string(), format!("{}", frame.threads.len()), theme.muted_foreground, theme.foreground))
-                .child(stat_row(t!("Flamegraph.MaxDepth").to_string(), format!("{}", frame.max_depth), theme.muted_foreground, theme.foreground))
-        )
-        .child(
-            div()
-                .mt_4()
-                .text_sm()
-                .font_weight(FontWeight::BOLD)
-                .text_color(theme.foreground)
-                .child(t!("Flamegraph.Threads").to_string())
-        )
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap_1()
                 .children(
                     frame.threads.values().take(10).map(|thread| {
                         let thread_color = get_thread_color(thread.id);
@@ -81,18 +145,22 @@ pub fn render_statistics_sidebar(
                         div()
                             .flex()
                             .items_center()
-                            .gap_2()
+                            .gap_2p5()
+                            .px_2()
+                            .py_1p5()
+                            .rounded(px(6.0))
+                            .hover(|style| style.bg(theme.sidebar_accent.opacity(0.1)))
                             .child(
                                 div()
-                                    .w(px(8.0))
-                                    .h(px(8.0))
+                                    .w(px(10.0))
+                                    .h(px(10.0))
                                     .bg(thread_color)
-                                    .rounded(px(2.0))
+                                    .rounded(px(3.0))
                             )
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(theme.foreground)
+                                    .text_color(theme.sidebar_foreground)
                                     .child(thread.name.clone())
                             )
                     })
@@ -101,7 +169,36 @@ pub fn render_statistics_sidebar(
     result
 }
 
-/// Helper function to create a statistics row
+/// Helper to render an improved stat row with better styling
+fn stat_row_improved(
+    label: String,
+    value: String,
+    theme: &ui::theme::Theme,
+) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .justify_between()
+        .px_2()
+        .py_1()
+        .rounded(px(4.0))
+        .hover(|style| style.bg(theme.sidebar_accent.opacity(0.05)))
+        .child(
+            div()
+                .text_xs()
+                .text_color(theme.sidebar_foreground.opacity(0.7))
+                .child(label)
+        )
+        .child(
+            div()
+                .text_xs()
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(theme.sidebar_foreground)
+                .child(value)
+        )
+}
+
+/// Helper function to create a statistics row (legacy)
 fn stat_row(label: impl Into<SharedString>, value: String, label_color: Hsla, value_color: Hsla) -> impl IntoElement {
     div()
         .flex()

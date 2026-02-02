@@ -104,7 +104,7 @@ actions!(
     ]
 );
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InputEvent {
     Change,
     PressEnter { secondary: bool },

@@ -91,11 +91,11 @@ pub fn log_config(config: &Config) {
         let sanitized = sanitize_connection_string(db_url);
         log_config_item("Database", &sanitized, "💾");
     }
-    
-    if let Some(bucket) = &config.s3_bucket {
-        log_config_item("S3 Bucket", bucket, "☁️");
+
+    if let Some(storage_dir) = &config.storage_dir {
+        log_config_item("Local Storage", storage_dir, "📁");
     }
-    
+
     if config.tls_cert_path.is_some() {
         log_config_item("TLS", "Enabled (custom cert)", "🔒");
     } else {

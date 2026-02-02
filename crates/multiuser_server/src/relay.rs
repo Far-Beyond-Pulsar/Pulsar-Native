@@ -159,11 +159,8 @@ impl RelayServer {
             (vec![cert_der], key_der.into())
         };
 
-        let provider = rustls::crypto::CryptoProvider {
-            cipher_suites: rustls::crypto::aws_lc_rs::default_provider().cipher_suites.clone(),
-            kx_groups: rustls_post_quantum::provider().kx_groups.clone(),
-            ..rustls::crypto::aws_lc_rs::default_provider()
-        };
+        // Use ring crypto provider (post-quantum disabled for Windows compatibility)
+        let provider = rustls::crypto::ring::default_provider();
 
         let crypto = rustls::ServerConfig::builder_with_provider(Arc::new(provider))
             .with_safe_default_protocol_versions()

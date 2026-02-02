@@ -10,9 +10,10 @@ use ui_type_debugger::TypeDebuggerWindow;
 use ui_multiplayer::MultiplayerWindow;
 
 use super::PulsarApp;
+use super::panel_window::PanelWindow;
 
 impl PulsarApp {
-    /// Create a detached window with a panel, sharing the rust analyzer
+    /// Create a detached window with a panel in a dedicated popup window
     pub(super) fn create_detached_window(
         &self,
         panel: Arc<dyn ui::dock::PanelView>,
@@ -20,6 +21,8 @@ impl PulsarApp {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        println!("[POPOUT] Creating detached window for panel at position: {:?}", position);
+
         let window_size = size(px(800.), px(600.));
         let window_bounds = Bounds::new(
             Point {
@@ -48,27 +51,20 @@ impl PulsarApp {
             ..Default::default()
         };
 
-        let project_path = self.state.project_path.clone();
-        let rust_analyzer = self.state.rust_analyzer.clone();
+        println!("[POPOUT] Opening window with options");
 
-        let _ = cx.open_window(window_options, move |window, cx| {
-            let app = cx.new(|cx| {
-                let app = Self::new_with_shared_analyzer(
-                    project_path.clone(),
-                    rust_analyzer.clone(),
-                    window,
-                    cx,
-                );
-
-                app.state.center_tabs.update(cx, |tabs, cx| {
-                    tabs.add_panel(panel.clone(), window, cx);
-                });
-
-                app
-            });
-
-            cx.new(|cx| Root::new(app.into(), window, cx))
+        // Create a dedicated panel window instead of embedding in full PulsarApp
+        let result = cx.open_window(window_options, move |window, cx| {
+            println!("[POPOUT] Inside window creation callback");
+            let panel_window = cx.new(|cx| PanelWindow::new(panel, window, cx));
+            println!("[POPOUT] PanelWindow created successfully");
+            cx.new(|cx| Root::new(panel_window.into(), window, cx))
         });
+
+        match result {
+            Ok(_) => println!("[POPOUT] Window opened successfully"),
+            Err(e) => println!("[POPOUT] Failed to open window: {:?}", e),
+        }
     }
 
     pub(super) fn toggle_drawer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {

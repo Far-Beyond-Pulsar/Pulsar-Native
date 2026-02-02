@@ -471,7 +471,4 @@ pub fn debug_asset_loading(
     
     let mesh_count = meshes.len();
     let image_count = images.len();
-    if mesh_count > 0 || image_count > 0 {
-        println!("[BEVY ASSETS] Loaded meshes: {}, images: {}", mesh_count, image_count);
-    }
 }

@@ -9,6 +9,24 @@ Flamegraph.Stop: "Stop"
 Flamegraph.Recording: "RECORDING"
 Flamegraph.OpenSession: "Open Session"
 
+# Empty State
+Flamegraph.NoDataLoaded: "No Profiling Data"
+Flamegraph.GetStarted: "Choose an option below to get started"
+Flamegraph.StartRecording: "Start Recording"
+Flamegraph.StartRecordingDesc: "Capture real-time profiling data from your running application"
+Flamegraph.OpenPreviousSession: "Open Previous Session"
+Flamegraph.OpenSessionDesc: "Browse and load previously saved profiling sessions"
+Flamegraph.RecordingInProgress: "Recording in Progress"
+Flamegraph.WaitingForData: "Waiting for profiling data to appear..."
+Flamegraph.RecordingActive: "Recording Active"
+Flamegraph.DataWillAppear: "Data will appear here once profiling events are captured"
+
+# Pro Tips
+Flamegraph.ProTips: "Pro Tips"
+Flamegraph.Tip1: "Use Ctrl+Scroll to zoom horizontally, Shift+Scroll for vertical panning"
+Flamegraph.Tip2: "Right-click and drag to pan around the flamegraph freely"
+Flamegraph.Tip3: "Click on the framerate graph to jump to specific timeframes"
+
 # Statistics Sidebar
 Flamegraph.Statistics: "Statistics"
 Flamegraph.TotalSpans: "Total Spans:"

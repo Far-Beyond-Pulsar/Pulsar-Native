@@ -6,6 +6,7 @@ pub mod event_handlers;
 mod tab_management;
 mod window_management;
 mod render;
+mod panel_window;
 
 use gpui::{App, AppContext, Context, DismissEvent, Focusable, Window};
 
