@@ -36,6 +36,9 @@ pub enum DockEvent {
 
     /// The drag item drop event.
     DragDrop(AnyDrag),
+
+    /// A panel should be moved to a new window
+    MoveToNewWindow(Arc<dyn PanelView>, gpui::Point<Pixels>),
 }
 
 /// The main area of the dock.
@@ -960,8 +963,9 @@ impl DockArea {
                     PanelEvent::TabClosed(_) => {
                         // Do nothing for TabClosed
                     }
-                    PanelEvent::MoveToNewWindow(_, _) => {
-                        // This event will be handled by PulsarApp - do nothing here
+                    PanelEvent::MoveToNewWindow(panel, position) => {
+                        println!("[DOCK_AREA] Received MoveToNewWindow from TabPanel, re-emitting as DockEvent");
+                        cx.emit(DockEvent::MoveToNewWindow(panel.clone(), *position));
                     }
                     PanelEvent::TabChanged { active_index: _ } => {
                         // Do nothing for TabChanged     

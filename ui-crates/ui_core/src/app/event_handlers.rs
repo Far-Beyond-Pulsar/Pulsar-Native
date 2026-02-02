@@ -592,8 +592,18 @@ pub fn on_tab_panel_event(
     window: &mut Window,
     cx: &mut Context<PulsarApp>,
 ) {
+    println!("[PANEL_EVENT] Received event: {:?}", match event {
+        PanelEvent::MoveToNewWindow(_, pos) => format!("MoveToNewWindow at {:?}", pos),
+        PanelEvent::TabClosed(id) => format!("TabClosed({:?})", id),
+        PanelEvent::TabChanged { active_index } => format!("TabChanged({})", active_index),
+        PanelEvent::ZoomIn => format!("ZoomIn"),
+        PanelEvent::ZoomOut => format!("ZoomOut"),
+        PanelEvent::LayoutChanged => format!("LayoutChanged"),
+    });
+
     match event {
         PanelEvent::MoveToNewWindow(panel, position) => {
+            println!("[PANEL_EVENT] Handling MoveToNewWindow event");
             app.create_detached_window(panel.clone(), *position, window, cx);
         }
         PanelEvent::TabClosed(entity_id) => {
@@ -612,7 +622,33 @@ pub fn on_tab_panel_event(
             // Update Discord presence when active tab changes
             app.update_discord_presence(cx);
         }
-        _ => {}
+        PanelEvent::ZoomIn | PanelEvent::ZoomOut | PanelEvent::LayoutChanged => {
+            // These events are handled by the dock system, do nothing here
+        }
+    }
+}
+
+pub fn on_dock_event(
+    app: &mut PulsarApp,
+    _dock: &Entity<ui::dock::DockArea>,
+    event: &ui::dock::DockEvent,
+    window: &mut Window,
+    cx: &mut Context<PulsarApp>,
+) {
+    println!("[DOCK_EVENT] Received event: {:?}", match event {
+        ui::dock::DockEvent::MoveToNewWindow(_, pos) => format!("MoveToNewWindow at {:?}", pos),
+        ui::dock::DockEvent::LayoutChanged => "LayoutChanged".to_string(),
+        ui::dock::DockEvent::DragDrop(_) => "DragDrop".to_string(),
+    });
+
+    match event {
+        ui::dock::DockEvent::MoveToNewWindow(panel, position) => {
+            println!("[DOCK_EVENT] Handling MoveToNewWindow event");
+            app.create_detached_window(panel.clone(), *position, window, cx);
+        }
+        ui::dock::DockEvent::LayoutChanged | ui::dock::DockEvent::DragDrop(_) => {
+            // These events are not relevant for popout functionality
+        }
     }
 }
 

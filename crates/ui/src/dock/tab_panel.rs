@@ -919,24 +919,25 @@ impl TabPanel {
                                     .ghost()
                                     .xsmall()
                                     .tooltip("Move to New Window")
-                                    .on_click(cx.listener(move |_, _, window, cx| {
+                                    .on_click(cx.listener(move |tab_panel, _, window, cx| {
                                         let panel_to_move = panel.clone();
-                                        let source_view = view.clone();
                                         let dock_area = dock.clone();
                                         let mouse_pos = window.mouse_position();
 
-                                        // Defer the operation to avoid updating TabPanel while it's already being updated
-                                        window.defer(cx, move |window, cx| {
-                                            // Emit event to request new window creation
-                                            // This will be handled by PulsarApp which can create a window with shared services
-                                            _ = source_view.update(cx, |tab_panel, cx| {
-                                                cx.emit(PanelEvent::MoveToNewWindow(panel_to_move.clone(), mouse_pos));
+                                        println!("[TAB_PANEL] Popout button clicked");
+                                        println!("[TAB_PANEL] TabPanel entity ID: {:?}", cx.entity_id());
+                                        println!("[TAB_PANEL] Dock area: {:?}", dock_area);
 
-                                                // Remove from current tab panel
-                                                tab_panel.detach_panel(panel_to_move.clone(), window, cx);
-                                                tab_panel.remove_self_if_empty(window, cx);
-                                            });
-                                        });
+                                        // Emit event FIRST, before deferring
+                                        println!("[TAB_PANEL] Emitting PanelEvent::MoveToNewWindow");
+                                        cx.emit(PanelEvent::MoveToNewWindow(panel_to_move.clone(), mouse_pos));
+
+                                        // Then detach panel immediately (not deferred)
+                                        // The window creation will happen asynchronously via the event
+                                        println!("[TAB_PANEL] Detaching panel from current tab panel");
+                                        tab_panel.detach_panel(panel_to_move, window, cx);
+                                        tab_panel.remove_self_if_empty(window, cx);
+                                        println!("[TAB_PANEL] Panel detached");
                                     }))
                             )
                         }).when(!is_level_editor, |this| {
