@@ -22,7 +22,7 @@ pub fn render_timeline_ruler(
     div()
         .h(px(TIMELINE_HEIGHT))
         .w_full()
-        .bg(theme.list_head)
+        .bg(theme.sidebar.opacity(0.3))
         .border_b_1()
         .border_color(theme.border)
         .child(
@@ -72,12 +72,12 @@ pub fn render_timeline_ruler(
                                 let x = time_to_x(current_time, &frame, viewport_width, &view_state);
 
                                 if x >= THREAD_LABEL_WIDTH && x <= viewport_width {
-                                    // Draw tick mark
+                                    // Draw main tick mark (taller)
                                     let tick_bounds = Bounds {
-                                        origin: point(bounds.origin.x + px(x), bounds.origin.y),
-                                        size: size(px(1.0), px(6.0)),
+                                        origin: point(bounds.origin.x + px(x), bounds.origin.y + px(TIMELINE_HEIGHT - 8.0)),
+                                        size: size(px(1.0), px(8.0)),
                                     };
-                                    window.paint_quad(fill(tick_bounds, hsla(0.0, 0.0, 0.6, 1.0)));
+                                    window.paint_quad(fill(tick_bounds, hsla(0.0, 0.0, 0.5, 0.6)));
 
                                     // Draw time label
                                     let time_ms = (current_time - frame.min_time_ns) as f64 / 1_000_000.0;
@@ -88,6 +88,27 @@ pub fn render_timeline_ruler(
                                 }
                             }
                             current_time += marker_interval_ns;
+                        }
+                        
+                        // Draw minor tick marks (between major markers)
+                        let minor_interval_ns = marker_interval_ns / 5;
+                        let first_minor = (visible_range_val.start / minor_interval_ns) * minor_interval_ns;
+                        let mut current_minor_time = first_minor;
+                        
+                        while current_minor_time <= visible_range_val.end {
+                            if current_minor_time >= frame.min_time_ns && current_minor_time % marker_interval_ns != 0 {
+                                let x = time_to_x(current_minor_time, &frame, viewport_width, &view_state);
+                                
+                                if x >= THREAD_LABEL_WIDTH && x <= viewport_width {
+                                    // Draw minor tick mark (shorter and more transparent)
+                                    let tick_bounds = Bounds {
+                                        origin: point(bounds.origin.x + px(x), bounds.origin.y + px(TIMELINE_HEIGHT - 4.0)),
+                                        size: size(px(1.0), px(4.0)),
+                                    };
+                                    window.paint_quad(fill(tick_bounds, hsla(0.0, 0.0, 0.5, 0.3)));
+                                }
+                            }
+                            current_minor_time += minor_interval_ns;
                         }
                     });
                 },
