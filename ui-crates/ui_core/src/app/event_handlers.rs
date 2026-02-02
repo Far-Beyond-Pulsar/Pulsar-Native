@@ -628,30 +628,6 @@ pub fn on_tab_panel_event(
     }
 }
 
-pub fn on_dock_event(
-    app: &mut PulsarApp,
-    _dock: &Entity<ui::dock::DockArea>,
-    event: &ui::dock::DockEvent,
-    window: &mut Window,
-    cx: &mut Context<PulsarApp>,
-) {
-    println!("[DOCK_EVENT] Received event: {:?}", match event {
-        ui::dock::DockEvent::MoveToNewWindow(_, pos) => format!("MoveToNewWindow at {:?}", pos),
-        ui::dock::DockEvent::LayoutChanged => "LayoutChanged".to_string(),
-        ui::dock::DockEvent::DragDrop(_) => "DragDrop".to_string(),
-    });
-
-    match event {
-        ui::dock::DockEvent::MoveToNewWindow(panel, position) => {
-            println!("[DOCK_EVENT] Handling MoveToNewWindow event");
-            app.create_detached_window(panel.clone(), *position, window, cx);
-        }
-        ui::dock::DockEvent::LayoutChanged | ui::dock::DockEvent::DragDrop(_) => {
-            // These events are not relevant for popout functionality
-        }
-    }
-}
-
 pub fn on_file_selected(
     app: &mut PulsarApp,
     _drawer: &Entity<FileManagerDrawer>,

@@ -964,8 +964,8 @@ impl DockArea {
                         // Do nothing for TabClosed
                     }
                     PanelEvent::MoveToNewWindow(panel, position) => {
-                        println!("[DOCK_AREA] Received MoveToNewWindow from TabPanel, re-emitting as DockEvent");
-                        cx.emit(DockEvent::MoveToNewWindow(panel.clone(), *position));
+                        println!("[DOCK_AREA] Received MoveToNewWindow from TabPanel, creating popout window");
+                        Self::create_popout_window(panel.clone(), *position, cx);
                     }
                     PanelEvent::TabChanged { active_index: _ } => {
                         // Do nothing for TabChanged     
@@ -1024,6 +1024,76 @@ impl DockArea {
             .as_ref()
             .and_then(|dock| dock.read(cx).panel.left_top_tab_panel(cx))
             .map(|view| view.entity_id());
+    }
+
+    /// Create a popout window with the given panel
+    fn create_popout_window(
+        panel: Arc<dyn PanelView>,
+        position: gpui::Point<Pixels>,
+        cx: &mut App,
+    ) {
+        use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
+
+        let window_size = size(px(800.), px(600.));
+        let title_bar_height = px(36.0);
+
+        let window_bounds = Bounds::new(
+            Point {
+                x: position.x - px(100.0),
+                y: position.y - title_bar_height - px(4.0),
+            },
+            window_size,
+        );
+
+        let window_options = WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(window_bounds)),
+            titlebar: None,
+            window_min_size: Some(gpui::Size {
+                width: px(400.),
+                height: px(300.),
+            }),
+            kind: WindowKind::Normal,
+            #[cfg(target_os = "linux")]
+            window_background: gpui::WindowBackgroundAppearance::Opaque,
+            #[cfg(target_os = "linux")]
+            window_decorations: Some(gpui::WindowDecorations::Client),
+            ..Default::default()
+        };
+
+        println!("[DOCK_AREA] Creating popout window with options");
+
+        let _ = cx.open_window(window_options, move |window, cx| {
+            println!("[DOCK_AREA] Inside window creation callback");
+
+            // Create a minimal new dock area for this detached window
+            let new_dock_area = cx.new(|cx| DockArea::new("detached-dock", Some(1), window, cx));
+            let weak_new_dock = new_dock_area.downgrade();
+
+            // Create a tab panel with just the one panel
+            let new_tab_panel = cx.new(|cx| {
+                let channel = weak_new_dock.upgrade().map(|d| d.read(cx).channel).unwrap_or_default();
+                let mut tab_panel = TabPanel::new(None, weak_new_dock.clone(), channel, window, cx);
+                tab_panel.closable = true;
+                tab_panel
+            });
+
+            new_tab_panel.update(cx, |view, cx| {
+                view.add_panel(panel.clone(), window, cx);
+            });
+
+            // Set up the dock area with just this panel
+            new_dock_area.update(cx, |dock, cx| {
+                let dock_item = DockItem::Tabs {
+                    view: new_tab_panel,
+                    active_ix: 0,
+                    items: vec![panel.clone()],
+                };
+                dock.set_center(dock_item, window, cx);
+            });
+
+            println!("[DOCK_AREA] Popout window created successfully");
+            cx.new(|cx| crate::Root::new(new_dock_area.into(), window, cx))
+        });
     }
 }
 impl EventEmitter<DockEvent> for DockArea {}

@@ -159,11 +159,6 @@ impl PulsarApp {
         cx.subscribe_in(&file_manager_drawer, window, event_handlers::on_popout_file_manager).detach();
         cx.subscribe_in(&problems_drawer, window, event_handlers::on_navigate_to_diagnostic).detach();
 
-        // Subscribe to dock area events for panel popouts
-        println!("[SUBSCRIPTION] Setting up subscription to dock_area (ID: {:?}) for DockEvent", dock_area.entity_id());
-        cx.subscribe_in(&dock_area, window, event_handlers::on_dock_event).detach();
-        println!("[SUBSCRIPTION] Subscription to dock_area set up successfully");
-
         // Create rust analyzer manager or use shared one
         let rust_analyzer = if let Some(shared_analyzer) = shared_rust_analyzer {
             shared_analyzer
