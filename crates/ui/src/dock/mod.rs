@@ -1047,15 +1047,17 @@ impl DockArea {
 
         let window_options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-            titlebar: None,
+            titlebar: Some(gpui::TitlebarOptions {
+                title: None,
+                appears_transparent: true,
+                traffic_light_position: None,
+            }),
             window_min_size: Some(gpui::Size {
                 width: px(400.),
                 height: px(300.),
             }),
             kind: WindowKind::Normal,
-            #[cfg(target_os = "linux")]
-            window_background: gpui::WindowBackgroundAppearance::Opaque,
-            #[cfg(target_os = "linux")]
+            is_resizable: true,
             window_decorations: Some(gpui::WindowDecorations::Client),
             ..Default::default()
         };
@@ -1092,10 +1094,45 @@ impl DockArea {
             });
 
             println!("[DOCK_AREA] Popout window created successfully");
-            cx.new(|cx| crate::Root::new(new_dock_area.into(), window, cx))
+            let popout_window = cx.new(|cx| PopoutDockWindow::new(new_dock_area, window, cx));
+            cx.new(|cx| crate::Root::new(popout_window.into(), window, cx))
         });
     }
 }
+
+/// Wrapper window for popped-out dock areas - includes a titlebar
+struct PopoutDockWindow {
+    dock_area: Entity<DockArea>,
+}
+
+impl PopoutDockWindow {
+    fn new(
+        dock_area: Entity<DockArea>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Self {
+        Self { dock_area }
+    }
+}
+
+impl Render for PopoutDockWindow {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        use crate::{v_flex, ActiveTheme, TitleBar};
+        let theme = cx.theme();
+
+        v_flex()
+            .size_full()
+            .bg(theme.background)
+            .child(TitleBar::new())
+            .child(
+                div()
+                    .flex_1()
+                    .overflow_hidden()
+                    .child(self.dock_area.clone())
+            )
+    }
+}
+
 impl EventEmitter<DockEvent> for DockArea {}
 impl Render for DockArea {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
