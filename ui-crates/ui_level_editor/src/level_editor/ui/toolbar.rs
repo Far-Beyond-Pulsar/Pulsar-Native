@@ -1,26 +1,22 @@
 use gpui::*;
 use ui::{
-    button::{Button, ButtonVariants as _, DropdownButton}, 
-    h_flex, v_flex, ActiveTheme, IconName, Selectable, Sizable,
-    popup_menu::PopupMenuExt,
+    button::{Button, ButtonVariants as _}, 
+    h_flex, ActiveTheme, IconName, Selectable, Sizable, Disableable,
 };
 use std::sync::Arc;
 use rust_i18n::t;
 
-use super::state::{LevelEditorState, TransformTool, MultiplayerMode, BuildConfig, TargetPlatform};
-
-// Temporary no-op action for dropdowns
-gpui::actions!(level_editor, [NoOpAction]);
-use crate::level_editor::scene_database::{ObjectType, MeshType, LightType};
+use super::state::{LevelEditorState, MultiplayerMode, BuildConfig, TargetPlatform};
 
 /// Toolbar - Game management and quick actions
 /// 
 /// This toolbar sits above the viewport and provides controls for:
 /// - Play/pause/stop simulation
-/// - Time scale controls
-/// - Multiplayer server management  
-/// - Build configuration and deployment
-/// - Performance profiling
+/// - Time scale controls (inline, not dropdown)
+/// - Multiplayer mode (cycles on click)
+/// - Build configuration (cycles on click)
+/// - Platform target (cycles on click)
+/// - Performance profiling toggle
 pub struct ToolbarPanel;
 
 impl ToolbarPanel {
@@ -32,23 +28,27 @@ impl ToolbarPanel {
     where
         V: EventEmitter<ui::dock::PanelEvent> + Render,
     {
+        let theme = cx.theme();
+        
         h_flex()
             .w_full()
-            .h(px(40.0))
-            .px_3()
-            .gap_2()
+            .h(px(44.0))
+            .px_4()
+            .gap_3()
             .items_center()
-            .bg(cx.theme().sidebar)
+            .bg(theme.sidebar.opacity(0.95))
             .border_b_1()
-            .border_color(cx.theme().border)
+            .border_color(theme.border)
             .child(self.render_playback_controls(state, state_arc.clone(), cx))
             .child(self.render_separator(cx))
-            .child(self.render_time_scale_dropdown(state, state_arc.clone(), cx))
+            .child(self.render_time_scale_control(state, state_arc.clone(), cx))
             .child(self.render_separator(cx))
-            .child(self.render_multiplayer_dropdown(state, state_arc.clone(), cx))
+            .child(self.render_multiplayer_control(state, state_arc.clone(), cx))
             .child(self.render_separator(cx))
-            .child(self.render_build_dropdown(state, state_arc.clone(), cx))
+            .child(self.render_build_controls(state, state_arc.clone(), cx))
             .child(div().flex_1())
+            .child(self.render_mode_indicator(state, cx))
+            .child(self.render_separator(cx))
             .child(self.render_profiling_button(state, state_arc.clone(), cx))
     }
 
@@ -69,7 +69,8 @@ impl ToolbarPanel {
         V: EventEmitter<ui::dock::PanelEvent> + Render,
     {
         h_flex()
-            .gap_1()
+            .gap_1p5()
+            .items_center()
             .child({
                 let state_clone = state_arc.clone();
                 if state.is_edit_mode() {
@@ -81,10 +82,10 @@ impl ToolbarPanel {
                         })
                         .into_any_element()
                 } else {
-                    Button::new("play_disabled")
+                    Button::new("play_active")
                         .icon(IconName::Play)
                         .tooltip(t!("LevelEditor.Toolbar.SimulationRunning"))
-                        .ghost()
+                        .selected(true)
                         .into_any_element()
                 }
             })
@@ -93,31 +94,24 @@ impl ToolbarPanel {
                     .icon(IconName::Pause)
                     .tooltip(t!("LevelEditor.Toolbar.PauseSimulation"))
                     .ghost()
+                    .disabled(state.is_edit_mode())
                     .on_click(move |_, _, _| {
                         // TODO: Implement pause
                     })
             })
             .child({
                 let state_clone = state_arc.clone();
-                if state.is_play_mode() {
-                    Button::new("stop")
-                        .icon(IconName::Close)
-                        .tooltip(t!("LevelEditor.Toolbar.StopSimulation"))
-                        .on_click(move |_, _, _| {
-                            state_clone.write().exit_play_mode();
-                        })
-                        .into_any_element()
-                } else {
-                    Button::new("stop_disabled")
-                        .icon(IconName::Close)
-                        .tooltip(t!("LevelEditor.Toolbar.NotPlaying"))
-                        .ghost()
-                        .into_any_element()
-                }
+                Button::new("stop")
+                    .icon(IconName::Square)
+                    .tooltip(t!("LevelEditor.Toolbar.StopSimulation"))
+                    .disabled(state.is_edit_mode())
+                    .on_click(move |_, _, _| {
+                        state_clone.write().exit_play_mode();
+                    })
             })
     }
 
-    fn render_time_scale_dropdown<V: 'static>(
+    fn render_time_scale_control<V: 'static>(
         &self,
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
@@ -126,29 +120,87 @@ impl ToolbarPanel {
     where
         V: EventEmitter<ui::dock::PanelEvent> + Render,
     {
+        let theme = cx.theme();
         let time_scale = state.game_time_scale;
-        let time_scale_label = format!("{}x", time_scale);
         
-        DropdownButton::new("time_scale_dropdown")
-            .button(
-                Button::new("time_scale_button")
-                    .label(&time_scale_label)
-                    .icon(IconName::Clock)
-                    .tooltip(t!("LevelEditor.Toolbar.TimeScale"))
+        h_flex()
+            .gap_2()
+            .items_center()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1p5()
+                    .child(
+                        ui::Icon::new(IconName::Clock)
+                            .size_4()
+                            .text_color(theme.muted_foreground)
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .child("Speed")
+                    )
             )
-            .popup_menu(move |menu, _window, _cx| {
-                menu
-                    .label(t!("LevelEditor.Toolbar.SelectTimeScale"))
-                    .separator()
-                    .menu_with_icon("0.25x", IconName::Clock, Box::new(NoOpAction))
-                    .menu_with_icon("0.5x", IconName::Clock, Box::new(NoOpAction))
-                    .menu_with_icon("1.0x (Normal)", IconName::Clock, Box::new(NoOpAction))
-                    .menu_with_icon("2.0x", IconName::Clock, Box::new(NoOpAction))
-                    .menu_with_icon("4.0x", IconName::Clock, Box::new(NoOpAction))
+            .child(
+                div()
+                    .px_2p5()
+                    .py_1()
+                    .rounded(px(4.0))
+                    .bg(theme.muted.opacity(0.1))
+                    .border_1()
+                    .border_color(theme.border)
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(if time_scale == 1.0 {
+                                theme.foreground
+                            } else {
+                                theme.accent
+                            })
+                            .child(format!("{:.2}x", time_scale))
+                    )
+            )
+            .child({
+                let state_clone = state_arc.clone();
+                Button::new("time_scale_decrease")
+                    .icon(IconName::Minus)
+                    .small()
+                    .ghost()
+                    .tooltip("Decrease speed")
+                    .on_click(move |_, _, _| {
+                        let mut state = state_clone.write();
+                        state.game_time_scale = (state.game_time_scale * 0.5).max(0.125);
+                    })
+            })
+            .child({
+                let state_clone = state_arc.clone();
+                Button::new("time_scale_increase")
+                    .icon(IconName::Plus)
+                    .small()
+                    .ghost()
+                    .tooltip("Increase speed")
+                    .on_click(move |_, _, _| {
+                        let mut state = state_clone.write();
+                        state.game_time_scale = (state.game_time_scale * 2.0).min(8.0);
+                    })
+            })
+            .child({
+                let state_clone = state_arc.clone();
+                Button::new("time_scale_reset")
+                    .icon(IconName::Refresh)
+                    .small()
+                    .ghost()
+                    .tooltip("Reset to 1.0x")
+                    .on_click(move |_, _, _| {
+                        state_clone.write().game_time_scale = 1.0;
+                    })
             })
     }
 
-    fn render_multiplayer_dropdown<V: 'static>(
+    fn render_multiplayer_control<V: 'static>(
         &self,
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
@@ -159,28 +211,36 @@ impl ToolbarPanel {
     {
         let mode_label = match state.multiplayer_mode {
             MultiplayerMode::Offline => "Offline",
-            MultiplayerMode::Host => "Hosting",
+            MultiplayerMode::Host => "Host",
             MultiplayerMode::Client => "Client",
         };
         
-        DropdownButton::new("multiplayer_dropdown")
-            .button(
-                Button::new("multiplayer_button")
-                    .label(mode_label)
-                    .icon(IconName::Network)
-                    .tooltip(t!("LevelEditor.Toolbar.MultiplayerMode"))
-            )
-            .popup_menu(move |menu, _window, _cx| {
-                menu
-                    .label(t!("LevelEditor.Toolbar.MultiplayerMode"))
-                    .separator()
-                    .menu_with_icon("Offline", IconName::PhoneDisabled, Box::new(NoOpAction))
-                    .menu_with_icon("Host Server", IconName::Server, Box::new(NoOpAction))
-                    .menu_with_icon("Connect as Client", IconName::Link, Box::new(NoOpAction))
+        let mode_icon = match state.multiplayer_mode {
+            MultiplayerMode::Offline => IconName::CircleX,
+            MultiplayerMode::Host => IconName::Server,
+            MultiplayerMode::Client => IconName::Network,
+        };
+        
+        Button::new("multiplayer_button")
+            .label(mode_label)
+            .icon(mode_icon)
+            .small()
+            .ghost()
+            .tooltip("Click to cycle multiplayer mode")
+            .on_click({
+                let state = state_arc.clone();
+                move |_, _, _| {
+                    let mut s = state.write();
+                    s.multiplayer_mode = match s.multiplayer_mode {
+                        MultiplayerMode::Offline => MultiplayerMode::Host,
+                        MultiplayerMode::Host => MultiplayerMode::Client,
+                        MultiplayerMode::Client => MultiplayerMode::Offline,
+                    };
+                }
             })
     }
 
-    fn render_build_dropdown<V: 'static>(
+    fn render_build_controls<V: 'static>(
         &self,
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
@@ -192,88 +252,115 @@ impl ToolbarPanel {
         let config_label = match state.build_config {
             BuildConfig::Debug => "Debug",
             BuildConfig::Release => "Release",
-            BuildConfig::Shipping => "Shipping",
+            BuildConfig::Shipping => "Ship",
         };
         
         let platform_label = match state.target_platform {
-            TargetPlatform::Windows => "Windows",
+            TargetPlatform::Windows => "Win",
             TargetPlatform::Linux => "Linux",
             TargetPlatform::MacOS => "macOS",
-            TargetPlatform::Web => "Web",
             TargetPlatform::Android => "Android",
             TargetPlatform::IOS => "iOS",
+            TargetPlatform::Web => "Web",
         };
         
         h_flex()
-            .gap_1()
+            .gap_1p5()
+            .items_center()
             .child(
-                DropdownButton::new("build_config_dropdown")
-                    .button(
-                        Button::new("build_config_button")
-                            .label(config_label)
-                            .tooltip(t!("LevelEditor.Toolbar.BuildConfiguration"))
-                    )
-                    .popup_menu(move |menu, _window, _cx| {
-                        menu
-                            .label(t!("LevelEditor.Toolbar.BuildConfiguration"))
-                            .separator()
-                            .menu_with_icon("Debug (Fast Compile)", IconName::Bug, Box::new(NoOpAction))
-                            .menu_with_icon("Release (Optimized)", IconName::Flash, Box::new(NoOpAction))
-                            .menu_with_icon("Shipping (Final)", IconName::Package, Box::new(NoOpAction))
+                Button::new("build_config_button")
+                    .label(config_label)
+                    .icon(IconName::Settings)
+                    .small()
+                    .ghost()
+                    .tooltip("Click to cycle build config")
+                    .on_click({
+                        let state = state_arc.clone();
+                        move |_, _, _| {
+                            let mut s = state.write();
+                            s.build_config = match s.build_config {
+                                BuildConfig::Debug => BuildConfig::Release,
+                                BuildConfig::Release => BuildConfig::Shipping,
+                                BuildConfig::Shipping => BuildConfig::Debug,
+                            };
+                        }
                     })
             )
             .child(
-                DropdownButton::new("platform_dropdown")
-                    .button(
-                        Button::new("platform_button")
-                            .label(platform_label)
-                            .tooltip(t!("LevelEditor.Toolbar.TargetPlatform"))
-                    )
-                    .popup_menu(move |menu, window, cx| {
-                        menu
-                            .label(t!("LevelEditor.Toolbar.TargetPlatform"))
-                            .separator()
-                            .submenu_with_icon(Some(ui::Icon::new(IconName::Computer)), "Windows", window, cx, |menu, _, _| {
-                                menu
-                                    .menu_with_icon("x86_64 (64-bit)", IconName::CPU, Box::new(NoOpAction))
-                                    .menu_with_icon("x86 (32-bit)", IconName::CPU, Box::new(NoOpAction))
-                                    .menu_with_icon("ARM64", IconName::CPU, Box::new(NoOpAction))
-                            })
-                            .submenu_with_icon(Some(ui::Icon::new(IconName::Linux)), "Linux", window, cx, |menu, _, _| {
-                                menu
-                                    .menu_with_icon("x86_64", IconName::CPU, Box::new(NoOpAction))
-                                    .menu_with_icon("x86", IconName::CPU, Box::new(NoOpAction))
-                                    .menu_with_icon("ARM64", IconName::CPU, Box::new(NoOpAction))
-                                    .menu_with_icon("ARMv7", IconName::CPU, Box::new(NoOpAction))
-                            })
-                            .submenu_with_icon(Some(ui::Icon::new(IconName::Apple)), "macOS", window, cx, |menu, _, _| {
-                                menu
-                                    .menu_with_icon("Apple Silicon (ARM64)", IconName::CPU, Box::new(NoOpAction))
-                                    .menu_with_icon("Intel (x86_64)", IconName::CPU, Box::new(NoOpAction))
-                                    .menu_with_icon("Universal", IconName::CPU, Box::new(NoOpAction))
-                            })
-                            .separator()
-                            .submenu_with_icon(Some(ui::Icon::new(IconName::Android)), "Android", window, cx, |menu, _, _| {
-                                menu
-                                    .menu_with_icon("ARM64-v8a", IconName::CPU, Box::new(NoOpAction))
-                                    .menu_with_icon("ARMv7", IconName::CPU, Box::new(NoOpAction))
-                                    .menu_with_icon("x86_64", IconName::CPU, Box::new(NoOpAction))
-                                    .menu_with_icon("x86", IconName::CPU, Box::new(NoOpAction))
-                            })
-                            .submenu_with_icon(Some(ui::Icon::new(IconName::Phone)), "iOS", window, cx, |menu, _, _| {
-                                menu
-                                    .menu_with_icon("ARM64 (Device)", IconName::CPU, Box::new(NoOpAction))
-                                    .menu_with_icon("ARM64 Simulator", IconName::CPU, Box::new(NoOpAction))
-                                    .menu_with_icon("Universal", IconName::CPU, Box::new(NoOpAction))
-                            })
+                Button::new("platform_button")
+                    .label(platform_label)
+                    .icon(IconName::ChevronRight)
+                    .small()
+                    .ghost()
+                    .tooltip("Click to cycle platform target")
+                    .on_click({
+                        let state = state_arc.clone();
+                        move |_, _, _| {
+                            let mut s = state.write();
+                            s.target_platform = match s.target_platform {
+                                TargetPlatform::Windows => TargetPlatform::Linux,
+                                TargetPlatform::Linux => TargetPlatform::MacOS,
+                                TargetPlatform::MacOS => TargetPlatform::Android,
+                                TargetPlatform::Android => TargetPlatform::IOS,
+                                TargetPlatform::IOS => TargetPlatform::Web,
+                                TargetPlatform::Web => TargetPlatform::Windows,
+                            };
+                        }
+                    })
+            )
+    }
+
+    fn render_mode_indicator<V: 'static>(
+        &self,
+        state: &LevelEditorState,
+        cx: &mut Context<V>,
+    ) -> impl IntoElement
+    where
+        V: EventEmitter<ui::dock::PanelEvent> + Render,
+    {
+        let theme = cx.theme();
+        
+        div()
+            .flex()
+            .items_center()
+            .gap_1p5()
+            .px_2p5()
+            .py_1()
+            .rounded(px(6.0))
+            .bg(if state.is_play_mode() {
+                theme.accent.opacity(0.15)
+            } else {
+                theme.muted.opacity(0.1)
+            })
+            .border_1()
+            .border_color(if state.is_play_mode() {
+                theme.accent.opacity(0.3)
+            } else {
+                theme.border
+            })
+            .child(
+                div()
+                    .size(px(6.0))
+                    .rounded(px(3.0))
+                    .bg(if state.is_play_mode() {
+                        gpui::green()
+                    } else {
+                        theme.muted_foreground
                     })
             )
             .child(
-                Button::new("build_deploy")
-                    .icon(IconName::Package)
-                    .tooltip(t!("LevelEditor.Toolbar.BuildDeploy"))
-                    .on_click(move |_, _, _| {
-                        // TODO: Trigger build
+                div()
+                    .text_xs()
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(if state.is_play_mode() {
+                        theme.accent
+                    } else {
+                        theme.foreground
+                    })
+                    .child(if state.is_play_mode() {
+                        "Playing"
+                    } else {
+                        "Editing"
                     })
             )
     }
