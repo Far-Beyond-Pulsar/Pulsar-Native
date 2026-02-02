@@ -25,7 +25,7 @@ pub fn render_hover_popup(
     let end_ms = (span.end_ns() - frame.min_time_ns) as f64 / 1_000_000.0;
     let thread_name = frame.threads.get(&span.thread_id).map(|t| t.name.clone()).unwrap_or_else(|| t!("Flamegraph.Unknown").to_string());
 
-    let popup_width = 280.0;
+    let popup_width = 300.0;
     let mouse_x = view_state.mouse_x;
     let mouse_y = view_state.mouse_y;
 
@@ -48,37 +48,87 @@ pub fn render_hover_popup(
             .top(px(popup_y))
             .w(px(popup_width))
             .bg(theme.popover)
-            .border_1()
-            .border_color(theme.border)
-            .rounded(px(4.0))
+            .border_2()
+            .border_color(theme.border.opacity(0.5))
+            .rounded(px(8.0))
             .shadow_lg()
-            .p_3()
             .flex()
             .flex_col()
-            .gap_2()
+            .overflow_hidden()
             .child(
+                // Header
                 div()
-                    .text_sm()
-                    .font_weight(FontWeight::BOLD)
-                    .text_color(theme.foreground)
-                    .child(span.name.clone())
+                    .px_4()
+                    .py_3()
+                    .bg(theme.accent.opacity(0.1))
+                    .border_b_1()
+                    .border_color(theme.border)
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(theme.foreground)
+                            .child(span.name.clone())
+                    )
             )
             .child(
+                // Content
                 div()
-                    .w_full()
-                    .h(px(1.0))
-                    .bg(theme.border)
+                    .px_4()
+                    .py_3()
+                    .flex()
+                    .flex_col()
+                    .gap_2p5()
+                    .child(popup_row_improved(t!("Flamegraph.Duration").to_string(), format!("{:.3} ms", duration_ms), theme, true))
+                    .child(popup_row_improved(t!("Flamegraph.Start").to_string(), format!("{:.3} ms", start_ms), theme, false))
+                    .child(popup_row_improved(t!("Flamegraph.End").to_string(), format!("{:.3} ms", end_ms), theme, false))
+                    .child(
+                        div()
+                            .h(px(1.0))
+                            .w_full()
+                            .bg(theme.border.opacity(0.3))
+                    )
+                    .child(popup_row_improved(t!("Flamegraph.Thread").to_string(), thread_name, theme, false))
+                    .child(popup_row_improved(t!("Flamegraph.Depth").to_string(), format!("{}", span.depth), theme, false))
             )
-            .child(popup_row(t!("Flamegraph.Duration").to_string(), format!("{:.3} ms", duration_ms), theme.muted_foreground, theme.foreground, true))
-            .child(popup_row(t!("Flamegraph.Start").to_string(), format!("{:.3} ms", start_ms), theme.muted_foreground, theme.foreground, false))
-            .child(popup_row(t!("Flamegraph.End").to_string(), format!("{:.3} ms", end_ms), theme.muted_foreground, theme.foreground, false))
-            .child(popup_row(t!("Flamegraph.Thread").to_string(), thread_name, theme.muted_foreground, theme.foreground, false))
-            .child(popup_row(t!("Flamegraph.Depth").to_string(), format!("{}", span.depth), theme.muted_foreground, theme.foreground, false))
     );
     result
 }
 
-/// Helper function to create a popup info row
+/// Helper function to create an improved popup info row
+fn popup_row_improved(label: String, value: String, theme: &ui::theme::Theme, bold_value: bool) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .justify_between()
+        .px_2()
+        .py_1()
+        .rounded(px(4.0))
+        .hover(|style| style.bg(theme.accent.opacity(0.05)))
+        .child(
+            div()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child(label)
+        )
+        .child(
+            if bold_value {
+                div()
+                    .text_xs()
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(theme.accent)
+                    .child(value)
+            } else {
+                div()
+                    .text_xs()
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(theme.foreground)
+                    .child(value)
+            }
+        )
+}
+
+/// Helper function to create a popup info row (legacy)
 fn popup_row(label: impl Into<SharedString>, value: String, label_color: Hsla, value_color: Hsla, bold_value: bool) -> impl IntoElement {
     let value_div = if bold_value {
         div()

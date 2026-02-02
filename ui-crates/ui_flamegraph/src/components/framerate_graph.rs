@@ -23,8 +23,8 @@ pub fn render_framerate_graph(
     div()
         .h(px(GRAPH_HEIGHT))
         .w_full()
-        .bg(theme.list)
-        .border_b_1()
+        .bg(theme.sidebar.opacity(0.5))
+        .border_b_2()
         .border_color(theme.border)
         .child(
             canvas(
