@@ -1,6 +1,6 @@
 use gpui::*;
 use rust_i18n::t;
-use ui::{TitleBar, v_flex, h_flex, ActiveTheme, StyledExt, button::Button, IconName};
+use ui::{TitleBar, v_flex, h_flex, ActiveTheme, StyledExt, button::Button, IconName, Icon};
 use crate::{FlamegraphView, TraceData, InstrumentationCollector};
 use std::sync::Arc;
 use gpui::prelude::FluentBuilder;
@@ -209,6 +209,7 @@ impl FlamegraphWindow {
 
     fn render_empty_state(&mut self, is_profiling: bool, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
+        let accent_color = theme.accent;
         
         v_flex()
             .size_full()
@@ -228,8 +229,7 @@ impl FlamegraphWindow {
                             .rounded(px(16.0))
                             .bg(theme.muted.opacity(0.1))
                             .child(
-                                svg()
-                                    .path("M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5")
+                                Icon::new(IconName::Activity)
                                     .size(px(48.0))
                                     .text_color(theme.muted_foreground.opacity(0.4))
                             )
@@ -290,13 +290,13 @@ impl FlamegraphWindow {
                                         .items_center()
                                         .justify_center()
                                         .size(px(56.0))
+                                        .flex_shrink_0()
                                         .rounded(px(10.0))
                                         .bg(gpui::red().opacity(0.15))
                                         .border_1()
                                         .border_color(gpui::red().opacity(0.2))
                                         .child(
-                                            svg()
-                                                .path("M8 5v14l11-7z")
+                                            Icon::new(IconName::Circle)
                                                 .size(px(28.0))
                                                 .text_color(gpui::red())
                                         )
@@ -345,15 +345,15 @@ impl FlamegraphWindow {
                                         .items_center()
                                         .justify_center()
                                         .size(px(56.0))
+                                        .flex_shrink_0()
                                         .rounded(px(10.0))
-                                        .bg(theme.accent.opacity(0.15))
+                                        .bg(accent_color.opacity(0.15))
                                         .border_1()
-                                        .border_color(theme.accent.opacity(0.2))
+                                        .border_color(accent_color.opacity(0.2))
                                         .child(
-                                            svg()
-                                                .path("M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z")
+                                            Icon::new(IconName::FolderOpen)
                                                 .size(px(28.0))
-                                                .text_color(theme.accent)
+                                                .text_color(accent_color)
                                         )
                                 )
                                 .child(
