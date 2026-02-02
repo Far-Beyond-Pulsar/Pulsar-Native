@@ -206,12 +206,186 @@ impl FlamegraphWindow {
             }
         }
     }
+
+    fn render_empty_state(&mut self, is_profiling: bool, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        
+        v_flex()
+            .size_full()
+            .items_center()
+            .justify_center()
+            .gap_8()
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .gap_6()
+                    .child(
+                        svg()
+                            .path("M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5")
+                            .size(px(80.0))
+                            .text_color(theme.muted_foreground.opacity(0.3))
+                    )
+                    .child(
+                        div()
+                            .text_2xl()
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(theme.foreground)
+                            .child(if is_profiling {
+                                t!("Flamegraph.RecordingInProgress").to_string()
+                            } else {
+                                t!("Flamegraph.NoDataLoaded").to_string()
+                            })
+                    )
+                    .child(
+                        div()
+                            .text_base()
+                            .text_color(theme.muted_foreground)
+                            .child(if is_profiling {
+                                t!("Flamegraph.WaitingForData").to_string()
+                            } else {
+                                t!("Flamegraph.GetStarted").to_string()
+                            })
+                    )
+            )
+            .when(!is_profiling, |this| {
+                this.child(
+                    v_flex()
+                        .gap_4()
+                        .w(px(400.0))
+                        .child(
+                            h_flex()
+                                .w_full()
+                                .p_4()
+                                .gap_4()
+                                .rounded(px(8.0))
+                                .bg(theme.popover)
+                                .border_1()
+                                .border_color(theme.border)
+                                .cursor_pointer()
+                                .hover(|style| style.bg(theme.accent.opacity(0.08)))
+                                .on_mouse_down(MouseButton::Left, cx.listener(|this, _event, _window, cx| {
+                                    this.start_profiling(cx);
+                                }))
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .size(px(48.0))
+                                        .rounded(px(6.0))
+                                        .bg(gpui::red().opacity(0.15))
+                                        .child(
+                                            svg()
+                                                .path("M5 3l14 9-14 9V3z")
+                                                .size(px(24.0))
+                                                .text_color(gpui::red())
+                                        )
+                                )
+                                .child(
+                                    v_flex()
+                                        .flex_1()
+                                        .gap_1()
+                                        .child(
+                                            div()
+                                                .text_base()
+                                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                .text_color(theme.foreground)
+                                                .child(t!("Flamegraph.Record").to_string())
+                                        )
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .text_color(theme.muted_foreground)
+                                                .child(t!("Flamegraph.StartRecordingDesc").to_string())
+                                        )
+                                )
+                        )
+                        .child(
+                            h_flex()
+                                .w_full()
+                                .p_4()
+                                .gap_4()
+                                .rounded(px(8.0))
+                                .bg(theme.popover)
+                                .border_1()
+                                .border_color(theme.border)
+                                .cursor_pointer()
+                                .hover(|style| style.bg(theme.accent.opacity(0.08)))
+                                .on_mouse_down(MouseButton::Left, cx.listener(|this, _event, _window, cx| {
+                                    this.open_database_picker(cx);
+                                }))
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .size(px(48.0))
+                                        .rounded(px(6.0))
+                                        .bg(theme.accent.opacity(0.15))
+                                        .child(
+                                            svg()
+                                                .path("M3 7v10c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2h-6L11 5H5c-1.1 0-2 .9-2 2z")
+                                                .size(px(24.0))
+                                                .text_color(theme.accent)
+                                        )
+                                )
+                                .child(
+                                    v_flex()
+                                        .flex_1()
+                                        .gap_1()
+                                        .child(
+                                            div()
+                                                .text_base()
+                                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                .text_color(theme.foreground)
+                                                .child(t!("Flamegraph.OpenSession").to_string())
+                                        )
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .text_color(theme.muted_foreground)
+                                                .child(t!("Flamegraph.OpenSessionDesc").to_string())
+                                        )
+                                )
+                        )
+                )
+            })
+            .when(is_profiling, |this| {
+                this.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_3()
+                        .px_6()
+                        .py_3()
+                        .rounded(px(8.0))
+                        .bg(gpui::red().opacity(0.1))
+                        .border_1()
+                        .border_color(gpui::red().opacity(0.3))
+                        .child(
+                            div()
+                                .size(px(12.0))
+                                .rounded(px(6.0))
+                                .bg(gpui::red())
+                        )
+                        .child(
+                            div()
+                                .text_base()
+                                .text_color(theme.foreground)
+                                .child(t!("Flamegraph.RecordingActive").to_string())
+                        )
+                )
+            })
+    }
 }
 
 impl Render for FlamegraphWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         let is_profiling = self.is_profiling;
+        let has_data = self.trace_data.get_frame().spans.len() > 0;
         
         v_flex()
             .size_full()
@@ -263,74 +437,57 @@ impl Render for FlamegraphWindow {
                                 )
                             })
                     )
-                    .child(
-                        h_flex()
-                            .gap_3()
-                            .items_center()
-                            .child(
-                                if !is_profiling {
-                                    Button::new("start-profiling")
-                                        .icon(IconName::Play)
-                                        .label(t!("Flamegraph.Record").to_string())
-                                        .on_click(cx.listener(|this, _event, _window, cx| {
-                                            this.start_profiling(cx);
-                                        }))
-                                        .into_any_element()
-                                } else {
-                                    h_flex()
-                                        .gap_3()
+                    .when(has_data && is_profiling, |this| {
+                        this.child(
+                            h_flex()
+                                .gap_3()
+                                .items_center()
+                                .child(
+                                    div()
+                                        .flex()
                                         .items_center()
+                                        .gap_2()
+                                        .px_3()
+                                        .py_1()
+                                        .rounded(px(6.0))
+                                        .bg(gpui::red().opacity(0.15))
+                                        .border_1()
+                                        .border_color(gpui::red().opacity(0.3))
                                         .child(
                                             div()
-                                                .flex()
-                                                .items_center()
-                                                .gap_2()
-                                                .px_3()
-                                                .py_1()
-                                                .rounded(px(6.0))
-                                                .bg(gpui::red().opacity(0.15))
-                                                .border_1()
-                                                .border_color(gpui::red().opacity(0.3))
-                                                .child(
-                                                    div()
-                                                        .size(px(8.0))
-                                                        .rounded(px(4.0))
-                                                        .bg(gpui::red())
-                                                )
-                                                .child(
-                                                    div()
-                                                        .text_size(px(12.0))
-                                                        .text_color(gpui::red())
-                                                        .font_weight(gpui::FontWeight::BOLD)
-                                                        .child(t!("Flamegraph.Recording").to_string())
-                                                )
+                                                .size(px(8.0))
+                                                .rounded(px(4.0))
+                                                .bg(gpui::red())
                                         )
                                         .child(
-                                            Button::new("stop-profiling")
-                                                .icon(IconName::Square)
-                                                .label(t!("Flamegraph.Stop").to_string())
-                                                .on_click(cx.listener(|this, _event, _window, cx| {
-                                                    this.stop_profiling(cx);
-                                                }))
+                                            div()
+                                                .text_size(px(12.0))
+                                                .text_color(gpui::red())
+                                                .font_weight(gpui::FontWeight::BOLD)
+                                                .child(t!("Flamegraph.Recording").to_string())
                                         )
-                                        .into_any_element()
-                                }
-                            )
-                            .child(
-                                Button::new("open-session")
-                                    .icon(IconName::FolderOpen)
-                                    .label(t!("Flamegraph.OpenSession").to_string())
-                                    .on_click(cx.listener(|this, _event, _window, cx| {
-                                        this.open_database_picker(cx);
-                                    }))
-                            )
-                    )
+                                )
+                                .child(
+                                    Button::new("stop-profiling")
+                                        .icon(IconName::Square)
+                                        .label(t!("Flamegraph.Stop").to_string())
+                                        .on_click(cx.listener(|this, _event, _window, cx| {
+                                            this.stop_profiling(cx);
+                                        }))
+                                )
+                        )
+                    })
             )
             .child(
                 div()
                     .flex_1()
                     .overflow_hidden()
-                    .child(self.view.clone())
+                    .when(!has_data, |this| {
+                        this.child(self.render_empty_state(is_profiling, cx))
+                    })
+                    .when(has_data, |this| {
+                        this.child(self.view.clone())
+                    })
             )
     }
 }

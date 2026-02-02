@@ -9,6 +9,15 @@ Flamegraph.Stop: "Stop"
 Flamegraph.Recording: "RECORDING"
 Flamegraph.OpenSession: "Open Session"
 
+# Empty State
+Flamegraph.NoDataLoaded: "No Profiling Data"
+Flamegraph.GetStarted: "Get started by recording a new session or opening an existing one"
+Flamegraph.StartRecordingDesc: "Start capturing real-time profiling data from your application"
+Flamegraph.OpenSessionDesc: "Load a previously saved profiling session from disk"
+Flamegraph.RecordingInProgress: "Recording in Progress"
+Flamegraph.WaitingForData: "Waiting for profiling data to appear..."
+Flamegraph.RecordingActive: "Recording active - data will appear shortly"
+
 # Statistics Sidebar
 Flamegraph.Statistics: "Statistics"
 Flamegraph.TotalSpans: "Total Spans:"
