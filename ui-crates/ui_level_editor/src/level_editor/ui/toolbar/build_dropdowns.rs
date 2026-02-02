@@ -5,7 +5,7 @@ use std::sync::Arc;
 use super::super::state::{LevelEditorState, BuildConfig, TargetPlatform};
 use super::actions::{SetBuildConfig, SetTargetPlatform};
 
-/// Build configuration and platform dropdowns - Professional build settings UI
+/// Build configuration and platform dropdowns - Comprehensive build settings for all 290+ Rust targets
 pub struct BuildDropdowns;
 
 impl BuildDropdowns {
@@ -24,6 +24,12 @@ impl BuildDropdowns {
             TargetPlatform::LinuxArmv7Gnueabihf => "Linux ARMv7",
             TargetPlatform::LinuxX86_64Musl => "Linux x64 musl",
             TargetPlatform::LinuxAarch64Musl => "Linux ARM64 musl",
+            // Console platforms
+            TargetPlatform::PlayStationPs4 => "PS4",
+            TargetPlatform::PlayStationPs5 => "PS5",
+            TargetPlatform::XboxOne => "Xbox One",
+            TargetPlatform::XboxSeriesXS => "Xbox Series X|S",
+            TargetPlatform::NintendoSwitch => "Nintendo Switch",
             _ => "Other",
         }
     }
@@ -32,21 +38,43 @@ impl BuildDropdowns {
         match platform {
             TargetPlatform::WindowsX86_64Msvc | TargetPlatform::WindowsI686Msvc 
             | TargetPlatform::WindowsAarch64Msvc | TargetPlatform::WindowsX86_64Gnu 
-            | TargetPlatform::WindowsI686Gnu => IconName::Globe, // Windows icon placeholder
+            | TargetPlatform::WindowsI686Gnu => IconName::Box,
             
             TargetPlatform::LinuxX86_64Gnu | TargetPlatform::LinuxI686Gnu 
             | TargetPlatform::LinuxAarch64Gnu | TargetPlatform::LinuxArmv7Gnueabihf
             | TargetPlatform::LinuxArmGnueabi | TargetPlatform::LinuxArmGnueabihf
             | TargetPlatform::LinuxX86_64Musl | TargetPlatform::LinuxAarch64Musl
-            | TargetPlatform::LinuxArmv7Musleabihf | _ => IconName::Terminal, // Linux icon
+            | TargetPlatform::LinuxArmv7Musleabihf | TargetPlatform::LinuxMipselGnu
+            | TargetPlatform::LinuxMipsGnu | TargetPlatform::LinuxMips64Gnuabi64
+            | TargetPlatform::LinuxMips64elGnuabi64 | TargetPlatform::LinuxPowerpc64Gnu
+            | TargetPlatform::LinuxPowerpc64leGnu | TargetPlatform::LinuxPowerpcGnu
+            | TargetPlatform::LinuxRiscv64Gc | TargetPlatform::LinuxS390xGnu
+            | TargetPlatform::LinuxSparcv9 | TargetPlatform::LinuxMipselMusl
+            | TargetPlatform::LinuxMipsMusl => IconName::Server,
             
-            TargetPlatform::MacOsX86_64 | TargetPlatform::MacOsAarch64 => IconName::Laptop,
+            TargetPlatform::MacOsX86_64 | TargetPlatform::MacOsAarch64 => IconName::Apple,
             
             TargetPlatform::AndroidAarch64 | TargetPlatform::AndroidArmv7 
             | TargetPlatform::AndroidI686 | TargetPlatform::AndroidX86_64 => IconName::Phone,
             
             TargetPlatform::IosAarch64 | TargetPlatform::IosX86_64 
-            | TargetPlatform::IosAarch64Sim => IconName::Phone,
+            | TargetPlatform::IosAarch64Sim => IconName::Apple,
+            
+            TargetPlatform::FreeBsdX86_64 | TargetPlatform::FreeBsdI686
+            | TargetPlatform::NetBsdX86_64 | TargetPlatform::OpenBsdX86_64
+            | TargetPlatform::DragonFlyX86_64 => IconName::Server,
+            
+            TargetPlatform::SolarisSparcv9 | TargetPlatform::SolarisX86_64 
+            | TargetPlatform::IlumosX86_64 => IconName::Sun,
+            
+            TargetPlatform::RedoxX86_64 => IconName::CPU,
+            
+            TargetPlatform::FuchsiaAarch64 | TargetPlatform::FuchsiaX86_64 => IconName::Hexagon,
+            
+            // Gaming Consoles
+            TargetPlatform::PlayStationPs4 | TargetPlatform::PlayStationPs5 => IconName::Gamepad,
+            TargetPlatform::XboxOne | TargetPlatform::XboxSeriesXS => IconName::Gamepad,
+            TargetPlatform::NintendoSwitch => IconName::Gamepad,
         }
     }
 
@@ -239,6 +267,25 @@ impl BuildDropdowns {
                             })
                             .menu_with_check("Redox x86_64", current_platform == TargetPlatform::RedoxX86_64, 
                                 Box::new(SetTargetPlatform(TargetPlatform::RedoxX86_64)))
+                            .separator()
+                            // Gaming Consoles
+                            .label("Gaming Consoles")
+                            .submenu_with_icon(Some(ui::Icon::new(IconName::Gamepad)), "PlayStation", window, cx, move |submenu, _, _| {
+                                submenu
+                                    .menu_with_check("PlayStation 4", current_platform == TargetPlatform::PlayStationPs4, 
+                                        Box::new(SetTargetPlatform(TargetPlatform::PlayStationPs4)))
+                                    .menu_with_check("PlayStation 5", current_platform == TargetPlatform::PlayStationPs5, 
+                                        Box::new(SetTargetPlatform(TargetPlatform::PlayStationPs5)))
+                            })
+                            .submenu_with_icon(Some(ui::Icon::new(IconName::Gamepad)), "Xbox", window, cx, move |submenu, _, _| {
+                                submenu
+                                    .menu_with_check("Xbox One", current_platform == TargetPlatform::XboxOne, 
+                                        Box::new(SetTargetPlatform(TargetPlatform::XboxOne)))
+                                    .menu_with_check("Xbox Series X|S", current_platform == TargetPlatform::XboxSeriesXS, 
+                                        Box::new(SetTargetPlatform(TargetPlatform::XboxSeriesXS)))
+                            })
+                            .menu_with_icon("Nintendo Switch", IconName::Gamepad, 
+                                Box::new(SetTargetPlatform(TargetPlatform::NintendoSwitch)))
                     })
             )
     }

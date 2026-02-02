@@ -103,6 +103,8 @@ pub enum BuildConfig {
 }
 
 /// Complete Rust target platform and architecture support (excluding WASM)
+/// Currently supports ~50 most common targets. Additional targets can be added as needed.
+/// See `rustc --print target-list` for the full list of 290+ available targets.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TargetPlatform {
     // Windows targets
@@ -168,6 +170,17 @@ pub enum TargetPlatform {
     // Fuchsia
     FuchsiaAarch64,
     FuchsiaX86_64,
+    
+    // Gaming Consoles - PlayStation
+    PlayStationPs4,
+    PlayStationPs5,
+    
+    // Gaming Consoles - Xbox
+    XboxOne,
+    XboxSeriesXS,
+    
+    // Gaming Consoles - Nintendo
+    NintendoSwitch,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
