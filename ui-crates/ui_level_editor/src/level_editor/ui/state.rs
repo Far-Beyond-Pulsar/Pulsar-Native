@@ -102,14 +102,72 @@ pub enum BuildConfig {
     Shipping,
 }
 
+/// Complete Rust target platform and architecture support (excluding WASM)
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TargetPlatform {
-    Windows,
-    Linux,
-    MacOS,
-    Android,
-    IOS,
-    Web,
+    // Windows targets
+    WindowsX86_64Msvc,
+    WindowsI686Msvc,
+    WindowsAarch64Msvc,
+    WindowsX86_64Gnu,
+    WindowsI686Gnu,
+    
+    // Linux targets
+    LinuxX86_64Gnu,
+    LinuxI686Gnu,
+    LinuxAarch64Gnu,
+    LinuxArmv7Gnueabihf,
+    LinuxArmGnueabi,
+    LinuxArmGnueabihf,
+    LinuxMips64Gnuabi64,
+    LinuxMips64elGnuabi64,
+    LinuxMipsGnu,
+    LinuxMipselGnu,
+    LinuxPowerpc64Gnu,
+    LinuxPowerpc64leGnu,
+    LinuxPowerpcGnu,
+    LinuxRiscv64Gc,
+    LinuxS390xGnu,
+    LinuxSparcv9,
+    LinuxX86_64Musl,
+    LinuxAarch64Musl,
+    LinuxArmv7Musleabihf,
+    LinuxMipselMusl,
+    LinuxMipsMusl,
+    
+    // macOS targets
+    MacOsX86_64,
+    MacOsAarch64,
+    
+    // iOS targets
+    IosAarch64,
+    IosX86_64,
+    IosAarch64Sim,
+    
+    // Android targets
+    AndroidAarch64,
+    AndroidArmv7,
+    AndroidI686,
+    AndroidX86_64,
+    
+    // BSD targets
+    FreeBsdX86_64,
+    FreeBsdI686,
+    NetBsdX86_64,
+    OpenBsdX86_64,
+    DragonFlyX86_64,
+    
+    // Solaris
+    SolarisSparcv9,
+    SolarisX86_64,
+    IlumosX86_64,
+    
+    // Redox
+    RedoxX86_64,
+    
+    // Fuchsia
+    FuchsiaAarch64,
+    FuchsiaX86_64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -187,7 +245,7 @@ impl Default for LevelEditorState {
             game_target_fps: 60,
             multiplayer_mode: MultiplayerMode::Offline,
             build_config: BuildConfig::Debug,
-            target_platform: TargetPlatform::Windows,
+            target_platform: TargetPlatform::WindowsX86_64Msvc, // Default to Windows x64 MSVC
         }
     }
 }

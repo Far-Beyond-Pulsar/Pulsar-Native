@@ -19,7 +19,7 @@ use std::cell::RefCell;
 
 use super::{
     LevelEditorState,
-    ViewportPanel, ToolbarPanel, CameraMode, TransformTool,
+    ViewportPanel, ToolbarPanel, CameraMode, TransformTool, toolbar,
 };
 use super::actions::*;
 use crate::level_editor::scene_database::{
@@ -343,6 +343,27 @@ impl LevelEditorPanel {
     fn on_scale_tool(&mut self, _: &ScaleTool, _: &mut Window, cx: &mut Context<Self>) {
         self.state.set_tool(TransformTool::Scale);
         self.sync_gizmo_to_bevy();
+        cx.notify();
+    }
+
+    // Toolbar action handlers
+    fn on_set_time_scale(&mut self, action: &toolbar::SetTimeScale, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.game_time_scale = action.0;
+        cx.notify();
+    }
+
+    fn on_set_multiplayer_mode(&mut self, action: &toolbar::SetMultiplayerMode, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.multiplayer_mode = action.0;
+        cx.notify();
+    }
+
+    fn on_set_build_config(&mut self, action: &toolbar::SetBuildConfig, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.build_config = action.0;
+        cx.notify();
+    }
+
+    fn on_set_target_platform(&mut self, action: &toolbar::SetTargetPlatform, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.target_platform = action.0;
         cx.notify();
     }
 
@@ -775,6 +796,11 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_move_tool))
             .on_action(cx.listener(Self::on_rotate_tool))
             .on_action(cx.listener(Self::on_scale_tool))
+            // Toolbar actions
+            .on_action(cx.listener(Self::on_set_time_scale))
+            .on_action(cx.listener(Self::on_set_multiplayer_mode))
+            .on_action(cx.listener(Self::on_set_build_config))
+            .on_action(cx.listener(Self::on_set_target_platform))
             // Object operations
             .on_action(cx.listener(Self::on_add_object))
             .on_action(cx.listener(Self::on_add_object_of_type))
