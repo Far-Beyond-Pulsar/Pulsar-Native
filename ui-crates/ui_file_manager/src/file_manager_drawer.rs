@@ -9,6 +9,7 @@ use ui::{
     input::{InputState, TextInput},
     resizable::{h_resizable, resizable_panel, ResizableState},
     menu::context_menu::ContextMenuExt,
+    hierarchical_tree::render_tree_folder,
     ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt,
 };
 
@@ -692,87 +693,35 @@ impl FileManagerDrawer {
     fn render_folder_node(&mut self, node: &FolderNode, depth: usize, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_selected = self.selected_folder.as_ref() == Some(&node.path);
         let path = node.path.clone();
-        let has_children = !node.children.is_empty();
         let expanded = node.expanded;
+        let folder_id = format!("folder-{}", path.display());
+        let icon = if expanded { IconName::FolderOpen } else { IconName::Folder };
+        let icon_color = cx.theme().accent;
 
         v_flex()
             .child(
-                h_flex()
-                    .pl(px((depth * 16) as f32))
-                    .pr_2()
-                    .py_1p5()
-                    .gap_1p5()
-                    .items_center()
-                    .rounded_md()
-                    .when(is_selected, |this| {
-                        this.bg(cx.theme().accent.opacity(0.15))
-                            .border_l_2()
-                            .border_color(cx.theme().accent)
-                    })
-                    .hover(|this| {
-                        this.bg(cx.theme().secondary.opacity(0.5))
-                    })
-                    .cursor_pointer()
-                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, _event, _window, cx| {
+                render_tree_folder(
+                    &folder_id,
+                    &node.name,
+                    icon,
+                    icon_color,
+                    depth,
+                    expanded,
+                    move |drawer: &mut Self, _event, _window, cx| {
                         drawer.handle_folder_select(path.clone(), cx);
-                    }))
-                    .child(
-                        if has_children {
-                            div()
-                                .w(px(16.0))
-                                .h(px(16.0))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .rounded_sm()
-                                .hover(|this| this.bg(cx.theme().muted.opacity(0.3)))
-                                .child(
-                                    Icon::new(if expanded { IconName::ChevronDown } else { IconName::ChevronRight })
-                                        .size_3()
-                                        .text_color(cx.theme().muted_foreground)
-                                )
-                                .into_any_element()
-                        } else {
-                            div()
-                                .w(px(16.0))
-                                .into_any_element()
-                        }
-                    )
-                    .child(
-                        div()
-                            .w(px(20.0))
-                            .h(px(20.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded_sm()
-                            .bg(if is_selected {
-                                cx.theme().accent.opacity(0.15)
-                            } else {
-                                cx.theme().accent.opacity(0.1)
-                            })
-                            .child(
-                                Icon::new(if expanded { IconName::FolderOpen } else { IconName::Folder })
-                                    .size_4()
-                                    .text_color(cx.theme().accent)
-                            )
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .text_sm()
-                            .font_weight(if is_selected {
-                                gpui::FontWeight::SEMIBOLD
-                            } else {
-                                gpui::FontWeight::NORMAL
-                            })
-                            .text_color(if is_selected {
-                                cx.theme().foreground
-                            } else {
-                                cx.theme().foreground.opacity(0.9)
-                            })
-                            .child(node.name.clone())
-                    )
+                    },
+                    cx,
+                )
+                .when(is_selected, |el| {
+                    // Wrap in a div to add selection styling
+                    div()
+                        .rounded_md()
+                        .bg(cx.theme().accent.opacity(0.15))
+                        .border_l_2()
+                        .border_color(cx.theme().accent)
+                        .child(el)
+                        .into_any_element()
+                })
             )
             .children(
                 if expanded {
