@@ -1,7 +1,10 @@
 use gpui::*;
 use rust_i18n::t;
-use ui::{TitleBar, v_flex, h_flex, ActiveTheme, StyledExt, button::Button, IconName, Icon};
-use crate::{FlamegraphView, TraceData, InstrumentationCollector};
+use ui::{
+    TitleBar, v_flex, h_flex, ActiveTheme, IconName, Icon,
+    resizable::{h_resizable, resizable_panel, ResizableState},
+};
+use crate::{FlamegraphView, TraceData, InstrumentationCollector, FlamegraphPanel, StatisticsPanel};
 use std::sync::Arc;
 use gpui::prelude::FluentBuilder;
 
@@ -12,21 +15,31 @@ pub struct FlamegraphWindow {
     is_profiling: bool,
     current_db_path: Option<std::path::PathBuf>,
     db_connection: Option<Arc<parking_lot::Mutex<rusqlite::Connection>>>,
+    flamegraph_panel: Option<Entity<FlamegraphPanel>>,
+    statistics_panel: Option<Entity<StatisticsPanel>>,
+    resizable_state: Entity<ResizableState>,
 }
 
 impl FlamegraphWindow {
-    pub fn new(trace_data: Arc<TraceData>, _window: &mut Window, cx: &mut App) -> Entity<Self> {
+    pub fn new(trace_data: Arc<TraceData>, window: &mut Window, cx: &mut App) -> Entity<Self> {
         // Clone the Arc so window and view share the same TraceData
         let view_trace_data = Arc::clone(&trace_data);
         let view = cx.new(move |_cx| FlamegraphView::new((*view_trace_data).clone()));
         
-        cx.new(|_cx| Self { 
-            view,
-            collector: None,
-            trace_data,
-            is_profiling: false,
-            current_db_path: None,
-            db_connection: None,
+        cx.new(|cx| {
+            let resizable_state = ResizableState::new(cx);
+            
+            Self { 
+                view,
+                collector: None,
+                trace_data,
+                is_profiling: false,
+                current_db_path: None,
+                db_connection: None,
+                flamegraph_panel: None,
+                statistics_panel: None,
+                resizable_state,
+            }
         })
     }
 
@@ -509,10 +522,17 @@ impl FlamegraphWindow {
 }
 
 impl Render for FlamegraphWindow {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_profiling = self.is_profiling;
         let has_data = self.trace_data.get_frame().spans.len() > 0;
+        
+        // Initialize panels on first render with data
+        if has_data && self.flamegraph_panel.is_none() {
+            self.flamegraph_panel = Some(cx.new(|cx| FlamegraphPanel::new(self.view.clone(), cx)));
+            self.statistics_panel = Some(cx.new(|cx| StatisticsPanel::new(self.trace_data.clone(), cx)));
+        }
+        
+        let theme = cx.theme();
         
         v_flex()
             .size_full()
@@ -617,7 +637,22 @@ impl Render for FlamegraphWindow {
                         this.child(self.render_empty_state(is_profiling, cx))
                     })
                     .when(has_data, |this| {
-                        this.child(self.view.clone())
+                        // Render panels in resizable layout
+                        this.child(
+                            h_resizable("flamegraph-resizable", self.resizable_state.clone())
+                                .child(
+                                    resizable_panel()
+                                        .child(self.view.clone())
+                                        .size(px(800.0))
+                                )
+                                .child(
+                                    resizable_panel()
+                                        .when_some(self.statistics_panel.clone(), |panel, stats| {
+                                            panel.child(stats)
+                                        })
+                                        .size(px(400.0))
+                                )
+                        )
                     })
             )
     }

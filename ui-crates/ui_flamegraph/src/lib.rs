@@ -8,6 +8,7 @@ rust_i18n::i18n!("locales", fallback = "en");
 mod flamegraph_view;
 mod trace_data;
 pub mod window;
+mod panels;
 
 // Core modules
 mod constants;
@@ -24,6 +25,7 @@ pub use flamegraph_view::FlamegraphView;
 pub use trace_data::{TraceData, TraceSpan, TraceFrame, ThreadInfo};
 pub use window::FlamegraphWindow;
 pub use profiler::{InstrumentationCollector, convert_profile_events_to_trace};
+pub use panels::{StatisticsPanel, FlamegraphPanel};
 
 /// Get current locale
 pub fn locale() -> String {
