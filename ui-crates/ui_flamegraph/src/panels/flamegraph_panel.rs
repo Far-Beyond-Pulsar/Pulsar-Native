@@ -45,6 +45,7 @@ impl Render for FlamegraphPanel {
         let theme = cx.theme();
         
         v_flex()
+            .id("flamegraph-panel")
             .size_full()
             .bg(theme.background)
             .child(self.view.clone())
