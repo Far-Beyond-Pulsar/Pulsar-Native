@@ -570,7 +570,7 @@ impl FileManagerDrawer {
                                     .child(
                                         Icon::new(IconName::Folder)
                                             .size_4()
-                                            .text_color(cx.theme().accent)
+                                            .text_color(cx.theme().foreground)
                                     )
                                     .child(
                                         div()
