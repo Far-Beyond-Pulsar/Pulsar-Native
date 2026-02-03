@@ -218,48 +218,71 @@ impl DocumentationWindow {
     ) -> impl IntoElement {
         h_flex()
             .w_full()
-            .h(px(44.0))
+            .h(px(48.0))
             .items_center()
-            .px_4()
-            .gap_1()
-            .bg(theme.sidebar.opacity(0.5))
+            .px_6()
+            .gap_2()
+            .bg(theme.sidebar.opacity(0.6))
             .border_b_1()
-            .border_color(theme.border.opacity(0.5))
+            .border_color(theme.border)
             .child(
-                Button::new("tab-engine")
-                    .label("Engine")
-                    .icon(IconName::Code)
-                    .xsmall()
-                    .when(current_category == DocCategory::Engine, |btn| btn.primary())
-                    .when(current_category != DocCategory::Engine, |btn| btn.ghost())
-                    .on_click(cx.listener(|this, _event, _window, cx| {
-                        this.current_category = DocCategory::Engine;
-                        cx.notify();
-                    }))
-            )
-            .child(
-                Button::new("tab-project")
-                    .label("Project")
-                    .icon(IconName::Folder)
-                    .xsmall()
-                    .when(current_category == DocCategory::Project, |btn| btn.primary())
-                    .when(current_category != DocCategory::Project, |btn| btn.ghost())
-                    .on_click(cx.listener(|this, _event, _window, cx| {
-                        this.current_category = DocCategory::Project;
-                        cx.notify();
-                    }))
-            )
-            .child(
-                Button::new("tab-manual")
-                    .label("Manual")
-                    .icon(IconName::BookOpen)
-                    .xsmall()
-                    .when(current_category == DocCategory::Manual, |btn| btn.primary())
-                    .when(current_category != DocCategory::Manual, |btn| btn.ghost())
-                    .on_click(cx.listener(|this, _event, _window, cx| {
-                        this.current_category = DocCategory::Manual;
-                        cx.notify();
-                    }))
+                // Grouped tab selector with pill background
+                h_flex()
+                    .gap_px()
+                    .p_px()
+                    .rounded_lg()
+                    .bg(theme.muted.opacity(0.3))
+                    .child(
+                        Button::new("tab-engine")
+                            .label("Engine API")
+                            .icon(IconName::Code)
+                            .small()
+                            .when(current_category == DocCategory::Engine, |btn| {
+                                btn.bg(theme.accent)
+                                    .text_color(theme.accent_foreground)
+                            })
+                            .when(current_category != DocCategory::Engine, |btn| {
+                                btn.ghost()
+                            })
+                            .on_click(cx.listener(|this, _event, _window, cx| {
+                                this.current_category = DocCategory::Engine;
+                                cx.notify();
+                            }))
+                    )
+                    .child(
+                        Button::new("tab-project")
+                            .label("Project API")
+                            .icon(IconName::Folder)
+                            .small()
+                            .when(current_category == DocCategory::Project, |btn| {
+                                btn.bg(theme.accent)
+                                    .text_color(theme.accent_foreground)
+                            })
+                            .when(current_category != DocCategory::Project, |btn| {
+                                btn.ghost()
+                            })
+                            .on_click(cx.listener(|this, _event, _window, cx| {
+                                this.current_category = DocCategory::Project;
+                                cx.notify();
+                            }))
+                    )
+                    .child(
+                        Button::new("tab-manual")
+                            .label("Documentation")
+                            .icon(IconName::BookOpen)
+                            .small()
+                            .when(current_category == DocCategory::Manual, |btn| {
+                                btn.bg(theme.accent)
+                                    .text_color(theme.accent_foreground)
+                            })
+                            .when(current_category != DocCategory::Manual, |btn| {
+                                btn.ghost()
+                            })
+                            .on_click(cx.listener(|this, _event, _window, cx| {
+                                this.current_category = DocCategory::Manual;
+                                cx.notify();
+                            }))
+                    )
             )
     }
 
@@ -276,12 +299,28 @@ impl DocumentationWindow {
                 DocCategory::Engine => self.engine_panel.render(
                     &self.engine_docs,
                     self.sidebar_resizable_state.clone(),
+                    |this: &mut Self, path, _window, cx| {
+                        this.engine_docs.toggle_expansion(path);
+                        cx.notify();
+                    },
+                    |this: &mut Self, path, _window, cx| {
+                        this.engine_docs.load_content(&path);
+                        cx.notify();
+                    },
                     window,
                     cx,
                 ).into_any_element(),
                 DocCategory::Project => self.project_panel.render(
                     &self.project_docs,
                     self.sidebar_resizable_state.clone(),
+                    |this: &mut Self, path, _window, cx| {
+                        this.project_docs.toggle_expansion(path);
+                        cx.notify();
+                    },
+                    |this: &mut Self, path, _window, cx| {
+                        this.project_docs.load_content(&path);
+                        cx.notify();
+                    },
                     window,
                     cx,
                 ).into_any_element(),

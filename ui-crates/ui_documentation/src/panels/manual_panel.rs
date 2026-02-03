@@ -76,19 +76,21 @@ impl ManualDocsPanel {
     where
         V: Render,
     {
+        let file_count = file_entries.len();
+        
         v_flex()
             .size_full()
-            .bg(theme.sidebar)
+            .bg(theme.sidebar.opacity(0.95))
             .border_r_1()
             .border_color(theme.border)
             .child(
                 h_flex()
                     .w_full()
-                    .h(px(44.0))
+                    .h(px(48.0))
                     .items_center()
                     .justify_between()
                     .px_4()
-                    .bg(theme.sidebar.opacity(0.8))
+                    .bg(theme.sidebar)
                     .border_b_1()
                     .border_color(theme.border)
                     .child(
@@ -98,7 +100,7 @@ impl ManualDocsPanel {
                             .child(
                                 Icon::new(IconName::BookOpen)
                                     .size_4()
-                                    .text_color(theme.accent)
+                                    .text_color(Hsla { h: 160.0, s: 0.7, l: 0.45, a: 1.0 })
                             )
                             .child(
                                 div()
@@ -107,12 +109,23 @@ impl ManualDocsPanel {
                                     .text_color(theme.foreground)
                                     .child("Files")
                             )
+                            .child(
+                                div()
+                                    .px_2()
+                                    .py(px(3.0))
+                                    .rounded(px(6.0))
+                                    .bg(theme.accent.opacity(0.12))
+                                    .text_xs()
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .text_color(theme.accent)
+                                    .child(format!("{}", file_count))
+                            )
                     )
                     .child(
                         Button::new("new-file")
                             .icon(IconName::Plus)
                             .ghost()
-                            .xsmall()
+                            .small()
                             .tooltip("New File")
                             .on_click(cx.listener(on_new_file))
                     )
@@ -152,19 +165,20 @@ impl ManualDocsPanel {
             .size_full()
             .bg(theme.background)
             .child(
+                // Modern toolbar with segmented control
                 h_flex()
                     .w_full()
-                    .h(px(44.0))
+                    .h(px(52.0))
                     .items_center()
                     .justify_between()
                     .px_4()
                     .gap_3()
                     .border_b_1()
                     .border_color(theme.border)
-                    .bg(theme.sidebar.opacity(0.3))
+                    .bg(theme.sidebar.opacity(0.5))
                     .child(
                         h_flex()
-                            .gap_2()
+                            .gap_3()
                             .items_center()
                             .when(has_selection, |this| {
                                 this.child(
@@ -176,7 +190,7 @@ impl ManualDocsPanel {
                             .child(
                                 div()
                                     .text_sm()
-                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(if has_selection {
                                         theme.foreground
                                     } else {
@@ -187,20 +201,24 @@ impl ManualDocsPanel {
                     )
                     .child(
                         h_flex()
-                            .gap_2()
+                            .gap_3()
                             .items_center()
                             .child(
+                                // Segmented control for view modes
                                 h_flex()
-                                    .gap_1()
-                                    .items_center()
-                                    .px_1()
-                                    .rounded(px(6.0))
+                                    .gap_px()
+                                    .p_px()
+                                    .rounded_lg()
                                     .bg(theme.muted.opacity(0.3))
                                     .child(
                                         Button::new("mode-editor")
                                             .label("Edit")
+                                            .icon(IconName::Code)
                                             .xsmall()
-                                            .when(state.view_mode == ViewMode::Editor, |btn| btn.primary())
+                                            .when(state.view_mode == ViewMode::Editor, |btn| {
+                                                btn.bg(theme.accent)
+                                                    .text_color(theme.accent_foreground)
+                                            })
                                             .when(state.view_mode != ViewMode::Editor, |btn| btn.ghost())
                                             .on_click(cx.listener(move |view, _event, window, cx| {
                                                 on_editor_mode(view, ViewMode::Editor, window, cx);
@@ -209,8 +227,12 @@ impl ManualDocsPanel {
                                     .child(
                                         Button::new("mode-preview")
                                             .label("Preview")
+                                            .icon(IconName::Eye)
                                             .xsmall()
-                                            .when(state.view_mode == ViewMode::Preview, |btn| btn.primary())
+                                            .when(state.view_mode == ViewMode::Preview, |btn| {
+                                                btn.bg(theme.accent)
+                                                    .text_color(theme.accent_foreground)
+                                            })
                                             .when(state.view_mode != ViewMode::Preview, |btn| btn.ghost())
                                             .on_click(cx.listener(move |view, _event, window, cx| {
                                                 on_preview_mode(view, ViewMode::Preview, window, cx);
@@ -219,13 +241,23 @@ impl ManualDocsPanel {
                                     .child(
                                         Button::new("mode-split")
                                             .label("Split")
+                                            .icon(IconName::SplitARea)
                                             .xsmall()
-                                            .when(state.view_mode == ViewMode::Split, |btn| btn.primary())
+                                            .when(state.view_mode == ViewMode::Split, |btn| {
+                                                btn.bg(theme.accent)
+                                                    .text_color(theme.accent_foreground)
+                                            })
                                             .when(state.view_mode != ViewMode::Split, |btn| btn.ghost())
                                             .on_click(cx.listener(move |view, _event, window, cx| {
                                                 on_split_mode(view, ViewMode::Split, window, cx);
                                             }))
                                     )
+                            )
+                            .child(
+                                div()
+                                    .h_6()
+                                    .w_px()
+                                    .bg(theme.border.opacity(0.4))
                             )
                             .child(
                                 Button::new("save-file")
@@ -398,9 +430,9 @@ impl ManualDocsPanel {
                 .text_color(if is_selected {
                     theme.accent_foreground
                 } else if entry.is_directory {
-                    theme.accent
+                    Hsla { h: 45.0, s: 0.8, l: 0.5, a: 1.0 }
                 } else {
-                    theme.accent.opacity(0.7)
+                    Hsla { h: 160.0, s: 0.7, l: 0.45, a: 1.0 }
                 })
             )
             .child(

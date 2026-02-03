@@ -16,25 +16,30 @@ impl EngineDocsPanel {
         Self
     }
 
-    pub fn render(
+    pub fn render<V: 'static>(
         &self,
         state: &EngineDocsState,
         sidebar_resizable: Entity<ResizableState>,
+        on_toggle_expansion: impl Fn(&mut V, String, &mut Window, &mut Context<V>) + 'static + Clone,
+        on_load_content: impl Fn(&mut V, String, &mut Window, &mut Context<V>) + 'static + Clone,
         window: &mut Window,
-        cx: &mut App,
-    ) -> impl IntoElement {
+        cx: &mut Context<V>,
+    ) -> impl IntoElement 
+    where
+        V: Render,
+    {
         let breadcrumb_parts = Self::render_breadcrumbs(state);
+        let markdown = state.markdown_content.clone();
         
+        let theme = cx.theme().clone();
+
         let visible_items: Vec<_> = state.flat_visible_items.iter()
             .map(|&idx| state.tree_items[idx].clone())
             .collect();
-        let markdown = state.markdown_content.clone();
         
-        let tree_nodes: Vec<_> = visible_items.iter().map(|node| {
-            Self::render_tree_node(node, state, cx)
+        let tree_nodes: Vec<AnyElement> = visible_items.iter().map(|node| {
+            Self::render_tree_node(node, state, on_toggle_expansion.clone(), on_load_content.clone(), cx)
         }).collect();
-        
-        let theme = cx.theme().clone();
 
         h_resizable("docs-horizontal", sidebar_resizable)
             .child(
@@ -55,18 +60,18 @@ impl EngineDocsPanel {
     ) -> impl IntoElement {
         v_flex()
             .size_full()
-            .bg(theme.sidebar)
+            .bg(theme.sidebar.opacity(0.95))
             .border_r_1()
             .border_color(theme.border)
             .child(
-                // Compact sidebar header
+                // Professional header with badge
                 h_flex()
                     .w_full()
-                    .h(px(44.0))
+                    .h(px(48.0))
                     .px_4()
                     .items_center()
                     .justify_between()
-                    .bg(theme.sidebar.opacity(0.8))
+                    .bg(theme.sidebar)
                     .border_b_1()
                     .border_color(theme.border)
                     .child(
@@ -76,7 +81,7 @@ impl EngineDocsPanel {
                             .child(
                                 Icon::new(IconName::Code)
                                     .size_4()
-                                    .text_color(theme.accent)
+                                    .text_color(Hsla { h: 200.0, s: 0.7, l: 0.55, a: 1.0 })
                             )
                             .child(
                                 div()
@@ -86,13 +91,24 @@ impl EngineDocsPanel {
                                     .child("API Reference")
                             )
                     )
+                    .child(
+                        div()
+                            .px_2()
+                            .py(px(3.0))
+                            .rounded(px(6.0))
+                            .bg(theme.accent.opacity(0.12))
+                            .text_xs()
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .text_color(theme.accent)
+                            .child(format!("{}", tree_nodes.len()))
+                    )
             )
             .child(
                 // Search bar
                 div()
                     .w_full()
                     .px_3()
-                    .py_2()
+                    .py_3()
                     .border_b_1()
                     .border_color(theme.border)
                     .child(
@@ -220,144 +236,140 @@ impl EngineDocsPanel {
         Some(parts)
     }
 
-    fn render_tree_node(node: &TreeNode, state: &EngineDocsState, cx: &mut App) -> AnyElement {
+    fn render_tree_node<V: 'static>(
+        node: &TreeNode,
+        state: &EngineDocsState,
+        on_toggle_expansion: impl Fn(&mut V, String, &mut Window, &mut Context<V>) + 'static + Clone,
+        on_load_content: impl Fn(&mut V, String, &mut Window, &mut Context<V>) + 'static + Clone,
+        cx: &mut Context<V>,
+    ) -> AnyElement 
+    where
+        V: Render,
+    {
         match node {
             TreeNode::Crate { name, depth, .. } => {
-                Self::render_crate_node(name, *depth, state, cx)
+                let is_expanded = state.expanded_paths.contains(name);
+                let crate_name = name.clone();
+                let indent = px(*depth as f32 * 16.0);
+                let id = SharedString::from(format!("crate-{}", name));
+                let theme = cx.theme();
+
+                div()
+                    .id(id)
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .h(px(32.0))
+                    .pl(indent + px(12.0))
+                    .pr_3()
+                    .mx_2()
+                    .rounded(px(6.0))
+                    .hover(|style| style.bg(theme.accent.opacity(0.1)))
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |view, _event, window, cx| {
+                        on_toggle_expansion(view, crate_name.clone(), window, cx);
+                    }))
+                    .child(
+                        Icon::new(if is_expanded { IconName::FolderOpen } else { IconName::Folder })
+                            .size_4()
+                            .text_color(Hsla { h: 45.0, s: 0.8, l: 0.5, a: 1.0 })
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(theme.foreground)
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(name.to_string())
+                    )
+                    .into_any_element()
             }
             TreeNode::Section { crate_name, section_name, count, depth } => {
-                Self::render_section_node(crate_name, section_name, *count, *depth, state, cx)
+                let section_path = format!("{}/{}", crate_name, section_name);
+                let is_expanded = state.expanded_paths.contains(&section_path);
+                let path_for_click = section_path.clone();
+                let indent = px(*depth as f32 * 16.0);
+                let id = SharedString::from(format!("section-{}-{}", crate_name, section_name));
+                let theme = cx.theme();
+
+                div()
+                    .id(id)
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .h(px(32.0))
+                    .pl(indent + px(12.0))
+                    .pr_3()
+                    .mx_2()
+                    .rounded(px(6.0))
+                    .hover(|style| style.bg(theme.accent.opacity(0.1)))
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |view, _event, window, cx| {
+                        on_toggle_expansion(view, path_for_click.clone(), window, cx);
+                    }))
+                    .child(
+                        Icon::new(if is_expanded { IconName::ChevronDown } else { IconName::ChevronRight })
+                            .size_3p5()
+                            .text_color(theme.muted_foreground)
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(theme.foreground)
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(format!("{} ({})", section_name, count))
+                    )
+                    .into_any_element()
             }
             TreeNode::Item { item_name, path, depth, .. } => {
-                Self::render_item_node(item_name, path, *depth, state, cx)
+                let is_selected = state.current_path.as_ref() == Some(&path.to_string());
+                let path_for_click = path.to_string();
+                let indent = px(*depth as f32 * 16.0);
+                let id = SharedString::from(format!("item-{}", path.replace('/', "-")));
+                let theme = cx.theme();
+
+                div()
+                    .id(id)
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .h(px(32.0))
+                    .pl(indent + px(20.0))
+                    .pr_3()
+                    .mx_2()
+                    .rounded(px(6.0))
+                    .when(is_selected, |style| {
+                        style
+                            .bg(theme.accent)
+                            .shadow_sm()
+                    })
+                    .when(!is_selected, |style| {
+                        style.hover(|style| style.bg(theme.accent.opacity(0.1)))
+                    })
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |view, _event, window, cx| {
+                        on_load_content(view, path_for_click.clone(), window, cx);
+                    }))
+                    .child(
+                        Icon::new(IconName::Code)
+                            .size_3p5()
+                            .text_color(if is_selected {
+                                theme.accent_foreground
+                            } else {
+                                Hsla { h: 200.0, s: 0.7, l: 0.55, a: 1.0 }
+                            })
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(if is_selected {
+                                theme.accent_foreground
+                            } else {
+                                theme.foreground
+                            })
+                            .child(item_name.to_string())
+                    )
+                    .into_any_element()
             }
         }
-    }
-
-    fn render_crate_node(name: &str, depth: usize, state: &EngineDocsState, cx: &mut App) -> AnyElement {
-        let is_expanded = state.expanded_paths.contains(name);
-        let indent = px(depth as f32 * 16.0);
-        let id = SharedString::from(format!("crate-{}", name));
-        let theme = cx.theme();
-
-        div()
-            .id(id)
-            .flex()
-            .items_center()
-            .gap_2()
-            .h(px(32.0))
-            .pl(indent + px(12.0))
-            .pr_3()
-            .mx_2()
-            .rounded(px(6.0))
-            .hover(|style| style.bg(theme.accent.opacity(0.1)))
-            .cursor_pointer()
-            .child(
-                Icon::new(if is_expanded { IconName::FolderOpen } else { IconName::Folder })
-                    .size_4()
-                    .text_color(theme.accent)
-            )
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(theme.foreground)
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(name.to_string())
-            )
-            .into_any_element()
-    }
-
-    fn render_section_node(
-        crate_name: &str,
-        section_name: &str,
-        count: usize,
-        depth: usize,
-        state: &EngineDocsState,
-        cx: &mut App,
-    ) -> AnyElement {
-        let section_path = format!("{}/{}", crate_name, section_name);
-        let is_expanded = state.expanded_paths.contains(&section_path);
-        let indent = px(depth as f32 * 16.0);
-        let id = SharedString::from(format!("section-{}-{}", crate_name, section_name));
-        let theme = cx.theme();
-
-        div()
-            .id(id)
-            .flex()
-            .items_center()
-            .gap_2()
-            .h(px(32.0))
-            .pl(indent + px(12.0))
-            .pr_3()
-            .mx_2()
-            .rounded(px(6.0))
-            .hover(|style| style.bg(theme.accent.opacity(0.1)))
-            .cursor_pointer()
-            .child(
-                Icon::new(if is_expanded { IconName::ChevronDown } else { IconName::ChevronRight })
-                    .size_3p5()
-                    .text_color(theme.muted_foreground)
-            )
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(theme.foreground)
-                    .font_weight(FontWeight::MEDIUM)
-                    .child(format!("{} ({})", section_name, count))
-            )
-            .into_any_element()
-    }
-
-    fn render_item_node(
-        item_name: &str,
-        path: &str,
-        depth: usize,
-        state: &EngineDocsState,
-        cx: &mut App,
-    ) -> AnyElement {
-        let is_selected = state.current_path.as_ref() == Some(&path.to_string());
-        let indent = px(depth as f32 * 16.0);
-        let id = SharedString::from(format!("item-{}", path.replace('/', "-")));
-        let theme = cx.theme();
-
-        div()
-            .id(id)
-            .flex()
-            .items_center()
-            .gap_2()
-            .h(px(32.0))
-            .pl(indent + px(20.0))
-            .pr_3()
-            .mx_2()
-            .rounded(px(6.0))
-            .when(is_selected, |style| {
-                style
-                    .bg(theme.accent)
-                    .shadow_sm()
-            })
-            .when(!is_selected, |style| {
-                style.hover(|style| style.bg(theme.accent.opacity(0.1)))
-            })
-            .cursor_pointer()
-            .child(
-                Icon::new(IconName::Code)
-                    .size_3p5()
-                    .text_color(if is_selected {
-                        theme.accent_foreground
-                    } else {
-                        theme.accent.opacity(0.7)
-                    })
-            )
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(if is_selected {
-                        theme.accent_foreground
-                    } else {
-                        theme.foreground
-                    })
-                    .child(item_name.to_string())
-            )
-            .into_any_element()
     }
 }
