@@ -1,7 +1,5 @@
 use gpui::{prelude::*, *};
-use ui::{
-    input::{InputState, TextInput},
-};
+use ui::input::InputState;
 use std::path::PathBuf;
 use std::collections::HashSet;
 

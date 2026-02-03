@@ -1,7 +1,5 @@
 use gpui::{prelude::*, *};
-use ui::{
-    input::{InputState, InputEvent, TextInput, TabSize},
-};
+use ui::input::{InputState, TabSize};
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::collections::HashSet;
@@ -36,6 +34,13 @@ pub struct ManualDocsState {
 }
 
 impl ManualDocsState {
+    pub fn file_entries(&self) -> Vec<FileEntry> {
+        self.visible_entries
+            .iter()
+            .map(|&idx| self.file_tree[idx].clone())
+            .collect()
+    }
+
     pub fn new(window: &mut Window, cx: &mut App, project_root: Option<PathBuf>) -> Self {
         let editor_input_state = cx.new(|cx| {
             // Create code editor for markdown editing

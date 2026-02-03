@@ -1,10 +1,5 @@
 use gpui::{prelude::*, *};
-use ui::{
-    h_flex, v_flex, IconName, Icon, StyledExt, ActiveTheme,
-    button::{Button, ButtonVariants as _},
-    input::{InputState, InputEvent, TextInput},
-    text::TextView,
-};
+use ui::input::InputState;
 use pulsar_docs::{get_doc_content, get_crate_index, list_crates, CrateIndex};
 use std::collections::HashSet;
 
