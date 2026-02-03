@@ -9,7 +9,6 @@ use ui::{
     input::{InputState, TextInput},
     resizable::{h_resizable, resizable_panel, ResizableState},
     menu::context_menu::ContextMenuExt,
-    hierarchical_tree::render_tree_folder,
     ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt,
 };
 
@@ -629,11 +628,17 @@ impl FileManagerDrawer {
             .child(
                 // Folder tree content - SCROLLABLE with enhanced empty state
                 div()
-                    .id("folder-tree-scroll")
                     .flex_1()
-                    .overflow_y_scroll()
+                    .overflow_hidden()
                     .when_some(self.folder_tree.clone(), |this, tree| {
-                        this.p_2().child(self.render_folder_node(&tree, 0, window, cx))
+                        this.child(
+                            v_flex()
+                                .size_full()
+                                .p_2()
+                                .gap_px()
+                                .scrollable(gpui::Axis::Vertical)
+                                .child(self.render_folder_node(&tree, 0, window, cx))
+                        )
                     })
                     .when(self.folder_tree.is_none(), |this| {
                         this.child(
@@ -693,35 +698,107 @@ impl FileManagerDrawer {
     fn render_folder_node(&mut self, node: &FolderNode, depth: usize, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_selected = self.selected_folder.as_ref() == Some(&node.path);
         let path = node.path.clone();
+        let path_for_expand = path.clone();
         let expanded = node.expanded;
+        let has_children = !node.children.is_empty();
         let folder_id = format!("folder-{}", path.display());
+        let indent = px(depth as f32 * 20.0 + 4.0);
         let icon = if expanded { IconName::FolderOpen } else { IconName::Folder };
-        let icon_color = cx.theme().accent;
+        let icon_color = ui::hierarchical_tree::tree_colors::FOLDER;
+
+        let text_color = if is_selected {
+            cx.theme().accent_foreground
+        } else {
+            cx.theme().foreground
+        };
+
+        let muted_color = if is_selected {
+            cx.theme().accent_foreground.opacity(0.7)
+        } else {
+            cx.theme().muted_foreground
+        };
+
+        let mut item_div = h_flex()
+            .id(SharedString::from(folder_id))
+            .w_full()
+            .items_center()
+            .gap_1()
+            .h_7()
+            .pl(indent)
+            .pr_2()
+            .rounded(px(4.0))
+            .cursor_pointer();
+
+        if is_selected {
+            item_div = item_div
+                .bg(cx.theme().accent)
+                .shadow_sm();
+        } else {
+            item_div = item_div.hover(|style| style.bg(cx.theme().muted.opacity(0.3)));
+        }
 
         v_flex()
+            .w_full()
             .child(
-                render_tree_folder(
-                    &folder_id,
-                    &node.name,
-                    icon,
-                    icon_color,
-                    depth,
-                    expanded,
-                    move |drawer: &mut Self, _event, _window, cx| {
+                item_div
+                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, _event: &MouseDownEvent, _window, cx| {
                         drawer.handle_folder_select(path.clone(), cx);
-                    },
-                    cx,
-                )
-                .when(is_selected, |el| {
-                    // Wrap in a div to add selection styling
-                    div()
-                        .rounded_md()
-                        .bg(cx.theme().accent.opacity(0.15))
-                        .border_l_2()
-                        .border_color(cx.theme().accent)
-                        .child(el)
-                        .into_any_element()
-                })
+                    }))
+                    .child(
+                        if has_children {
+                            let path_clone = path_for_expand.clone();
+                            div()
+                                .w_4()
+                                .h_4()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded(px(2.0))
+                                .cursor_pointer()
+                                .hover(|s| s.bg(cx.theme().muted.opacity(0.5)))
+                                .child(
+                                    Icon::new(if expanded { IconName::ChevronDown } else { IconName::ChevronRight })
+                                        .size(px(12.0))
+                                        .text_color(muted_color)
+                                )
+                                .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, _event: &MouseDownEvent, _window, cx| {
+                                    cx.stop_propagation();
+                                    if let Some(ref mut tree) = drawer.folder_tree {
+                                        tree.toggle_expanded(&path_clone);
+                                    }
+                                    cx.notify();
+                                }))
+                                .into_any_element()
+                        } else {
+                            div()
+                                .w_4()
+                                .into_any_element()
+                        }
+                    )
+                    .child(
+                        div()
+                            .w_5()
+                            .h_5()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(3.0))
+                            .bg(icon_color.opacity(0.15))
+                            .child(
+                                Icon::new(icon)
+                                    .size(px(14.0))
+                                    .text_color(if is_selected { text_color } else { icon_color })
+                            )
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_sm()
+                            .text_color(text_color)
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .child(node.name.clone())
+                    )
             )
             .children(
                 if expanded {
