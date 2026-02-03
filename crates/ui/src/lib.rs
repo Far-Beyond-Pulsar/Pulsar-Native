@@ -107,7 +107,7 @@ pub use icon::*;
 pub use kbd::*;
 pub use theme::*;
 pub use component::*;
-pub use hierarchical_tree::{hierarchical_tree_container, render_tree_item, HierarchicalTreeConfig, TreeEntry};
+pub use hierarchical_tree::{render_tree_folder, render_tree_category, render_tree_item, tree_colors};
 
 // Re-export engine types for UI crates
 pub use assets::Assets;

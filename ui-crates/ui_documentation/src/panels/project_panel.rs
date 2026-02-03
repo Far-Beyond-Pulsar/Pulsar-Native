@@ -6,6 +6,7 @@ use ui::{
     resizable::{h_resizable, resizable_panel, ResizableState},
     input::TextInput,
     scroll::ScrollbarAxis,
+    hierarchical_tree::{render_tree_category, render_tree_item, tree_colors},
 };
 use crate::project_docs::{ProjectDocsState, ProjectTreeNode};
 
@@ -79,7 +80,7 @@ impl ProjectDocsPanel {
                             .child(
                                 Icon::new(IconName::Folder)
                                     .size_4()
-                                    .text_color(Hsla { h: 280.0, s: 0.6, l: 0.6, a: 1.0 })
+                                    .text_color(tree_colors::CODE_PURPLE)
                             )
                             .child(
                                 div()
@@ -183,88 +184,34 @@ impl ProjectDocsPanel {
             ProjectTreeNode::Category { name, count, depth } => {
                 let is_expanded = state.expanded_paths.contains(name);
                 let category_name = name.clone();
-                let indent = px(*depth as f32 * 16.0);
-                let id = SharedString::from(format!("category-{}", name));
-                let theme = cx.theme();
 
-                div()
-                    .id(id)
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .h(px(32.0))
-                    .pl(indent + px(12.0))
-                    .pr_3()
-                    .mx_2()
-                    .rounded(px(6.0))
-                    .hover(|style| style.bg(theme.accent.opacity(0.1)))
-                    .cursor_pointer()
-                    .on_click(cx.listener(move |view, _event, window, cx| {
+                render_tree_category(
+                    &format!("category-{}", name),
+                    name,
+                    *count,
+                    *depth,
+                    is_expanded,
+                    move |view, _event, window, cx| {
                         on_toggle_expansion(view, category_name.clone(), window, cx);
-                    }))
-                    .child(
-                        Icon::new(if is_expanded { IconName::ChevronDown } else { IconName::ChevronRight })
-                            .size_3p5()
-                            .text_color(theme.muted_foreground)
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(theme.foreground)
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(format!("{} ({})", name, count))
-                    )
-                    .into_any_element()
+                    },
+                    cx,
+                )
             }
             ProjectTreeNode::Item { item_name, path, depth, .. } => {
                 let is_selected = state.current_path.as_ref() == Some(&path.to_string());
                 let path_for_click = path.to_string();
-                let indent = px(*depth as f32 * 16.0);
-                let id = SharedString::from(format!("project-item-{}", path.replace("::", "-")));
-                let theme = cx.theme();
 
-                div()
-                    .id(id)
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .h(px(32.0))
-                    .pl(indent + px(20.0))
-                    .pr_3()
-                    .mx_2()
-                    .rounded(px(6.0))
-                    .when(is_selected, |style| {
-                        style
-                            .bg(theme.accent)
-                            .shadow_sm()
-                    })
-                    .when(!is_selected, |style| {
-                        style.hover(|style| style.bg(theme.accent.opacity(0.1)))
-                    })
-                    .cursor_pointer()
-                    .on_click(cx.listener(move |view, _event, window, cx| {
+                render_tree_item(
+                    &format!("project-item-{}", path.replace("::", "-")),
+                    item_name,
+                    tree_colors::CODE_PURPLE,
+                    *depth,
+                    is_selected,
+                    move |view, _event, window, cx| {
                         on_load_content(view, path_for_click.clone(), window, cx);
-                    }))
-                    .child(
-                        Icon::new(IconName::Code)
-                            .size_3p5()
-                            .text_color(if is_selected {
-                                theme.accent_foreground
-                            } else {
-                                Hsla { h: 280.0, s: 0.6, l: 0.6, a: 1.0 }
-                            })
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(if is_selected {
-                                theme.accent_foreground
-                            } else {
-                                theme.foreground
-                            })
-                            .child(item_name.to_string())
-                    )
-                    .into_any_element()
+                    },
+                    cx,
+                )
             }
         }
     }

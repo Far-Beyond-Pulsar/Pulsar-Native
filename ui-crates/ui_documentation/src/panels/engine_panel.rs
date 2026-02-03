@@ -6,6 +6,7 @@ use ui::{
     resizable::{h_resizable, resizable_panel, ResizableState},
     input::TextInput,
     scroll::ScrollbarAxis,
+    hierarchical_tree::{render_tree_folder, render_tree_category, render_tree_item, tree_colors},
 };
 use crate::engine_docs::{EngineDocsState, TreeNode};
 
@@ -81,7 +82,7 @@ impl EngineDocsPanel {
                             .child(
                                 Icon::new(IconName::Code)
                                     .size_4()
-                                    .text_color(Hsla { h: 200.0, s: 0.7, l: 0.55, a: 1.0 })
+                                    .text_color(tree_colors::CODE_BLUE)
                             )
                             .child(
                                 div()
@@ -250,125 +251,52 @@ impl EngineDocsPanel {
             TreeNode::Crate { name, depth, .. } => {
                 let is_expanded = state.expanded_paths.contains(name);
                 let crate_name = name.clone();
-                let indent = px(*depth as f32 * 16.0);
-                let id = SharedString::from(format!("crate-{}", name));
-                let theme = cx.theme();
-
-                div()
-                    .id(id)
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .h(px(32.0))
-                    .pl(indent + px(12.0))
-                    .pr_3()
-                    .mx_2()
-                    .rounded(px(6.0))
-                    .hover(|style| style.bg(theme.accent.opacity(0.1)))
-                    .cursor_pointer()
-                    .on_click(cx.listener(move |view, _event, window, cx| {
+                
+                render_tree_folder(
+                    &format!("crate-{}", name),
+                    name,
+                    if is_expanded { IconName::FolderOpen } else { IconName::Folder },
+                    tree_colors::FOLDER,
+                    *depth,
+                    is_expanded,
+                    move |view, _event, window, cx| {
                         on_toggle_expansion(view, crate_name.clone(), window, cx);
-                    }))
-                    .child(
-                        Icon::new(if is_expanded { IconName::FolderOpen } else { IconName::Folder })
-                            .size_4()
-                            .text_color(Hsla { h: 45.0, s: 0.8, l: 0.5, a: 1.0 })
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(theme.foreground)
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(name.to_string())
-                    )
-                    .into_any_element()
+                    },
+                    cx,
+                )
             }
             TreeNode::Section { crate_name, section_name, count, depth } => {
                 let section_path = format!("{}/{}", crate_name, section_name);
                 let is_expanded = state.expanded_paths.contains(&section_path);
                 let path_for_click = section_path.clone();
-                let indent = px(*depth as f32 * 16.0);
-                let id = SharedString::from(format!("section-{}-{}", crate_name, section_name));
-                let theme = cx.theme();
 
-                div()
-                    .id(id)
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .h(px(32.0))
-                    .pl(indent + px(12.0))
-                    .pr_3()
-                    .mx_2()
-                    .rounded(px(6.0))
-                    .hover(|style| style.bg(theme.accent.opacity(0.1)))
-                    .cursor_pointer()
-                    .on_click(cx.listener(move |view, _event, window, cx| {
+                render_tree_category(
+                    &format!("section-{}-{}", crate_name, section_name),
+                    section_name,
+                    *count,
+                    *depth,
+                    is_expanded,
+                    move |view, _event, window, cx| {
                         on_toggle_expansion(view, path_for_click.clone(), window, cx);
-                    }))
-                    .child(
-                        Icon::new(if is_expanded { IconName::ChevronDown } else { IconName::ChevronRight })
-                            .size_3p5()
-                            .text_color(theme.muted_foreground)
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(theme.foreground)
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(format!("{} ({})", section_name, count))
-                    )
-                    .into_any_element()
+                    },
+                    cx,
+                )
             }
             TreeNode::Item { item_name, path, depth, .. } => {
                 let is_selected = state.current_path.as_ref() == Some(&path.to_string());
                 let path_for_click = path.to_string();
-                let indent = px(*depth as f32 * 16.0);
-                let id = SharedString::from(format!("item-{}", path.replace('/', "-")));
-                let theme = cx.theme();
 
-                div()
-                    .id(id)
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .h(px(32.0))
-                    .pl(indent + px(20.0))
-                    .pr_3()
-                    .mx_2()
-                    .rounded(px(6.0))
-                    .when(is_selected, |style| {
-                        style
-                            .bg(theme.accent)
-                            .shadow_sm()
-                    })
-                    .when(!is_selected, |style| {
-                        style.hover(|style| style.bg(theme.accent.opacity(0.1)))
-                    })
-                    .cursor_pointer()
-                    .on_click(cx.listener(move |view, _event, window, cx| {
+                render_tree_item(
+                    &format!("item-{}", path.replace('/', "-")),
+                    item_name,
+                    tree_colors::CODE_BLUE,
+                    *depth,
+                    is_selected,
+                    move |view, _event, window, cx| {
                         on_load_content(view, path_for_click.clone(), window, cx);
-                    }))
-                    .child(
-                        Icon::new(IconName::Code)
-                            .size_3p5()
-                            .text_color(if is_selected {
-                                theme.accent_foreground
-                            } else {
-                                Hsla { h: 200.0, s: 0.7, l: 0.55, a: 1.0 }
-                            })
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(if is_selected {
-                                theme.accent_foreground
-                            } else {
-                                theme.foreground
-                            })
-                            .child(item_name.to_string())
-                    )
-                    .into_any_element()
+                    },
+                    cx,
+                )
             }
         }
     }

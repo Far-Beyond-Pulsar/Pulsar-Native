@@ -7,6 +7,7 @@ use ui::{
     resizable::{h_resizable, resizable_panel, ResizableState},
     input::TextInput,
     scroll::ScrollbarAxis,
+    hierarchical_tree::tree_colors,
 };
 use crate::manual_docs::{ManualDocsState, FileEntry, ViewMode};
 
@@ -100,7 +101,7 @@ impl ManualDocsPanel {
                             .child(
                                 Icon::new(IconName::BookOpen)
                                     .size_4()
-                                    .text_color(Hsla { h: 160.0, s: 0.7, l: 0.45, a: 1.0 })
+                                    .text_color(tree_colors::DOC_TEAL)
                             )
                             .child(
                                 div()
@@ -430,9 +431,9 @@ impl ManualDocsPanel {
                 .text_color(if is_selected {
                     theme.accent_foreground
                 } else if entry.is_directory {
-                    Hsla { h: 45.0, s: 0.8, l: 0.5, a: 1.0 }
+                    tree_colors::FOLDER
                 } else {
-                    Hsla { h: 160.0, s: 0.7, l: 0.45, a: 1.0 }
+                    tree_colors::DOC_TEAL
                 })
             )
             .child(
