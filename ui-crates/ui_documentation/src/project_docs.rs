@@ -81,49 +81,13 @@ impl ProjectDocsState {
                 // Store full docs for later use
                 self.full_docs = Some(docs.clone());
 
-                // Build tree structure
+                // Build tree structure - add category followed by its items
                 if !docs.structs.is_empty() {
                     self.tree_items.push(ProjectTreeNode::Category {
                         name: "Structs".to_string(),
                         count: docs.structs.len(),
                         depth: 0,
                     });
-                }
-
-                if !docs.enums.is_empty() {
-                    self.tree_items.push(ProjectTreeNode::Category {
-                        name: "Enums".to_string(),
-                        count: docs.enums.len(),
-                        depth: 0,
-                    });
-                }
-
-                if !docs.traits.is_empty() {
-                    self.tree_items.push(ProjectTreeNode::Category {
-                        name: "Traits".to_string(),
-                        count: docs.traits.len(),
-                        depth: 0,
-                    });
-                }
-
-                if !docs.functions.is_empty() {
-                    self.tree_items.push(ProjectTreeNode::Category {
-                        name: "Functions".to_string(),
-                        count: docs.functions.len(),
-                        depth: 0,
-                    });
-                }
-
-                if !docs.constants.is_empty() {
-                    self.tree_items.push(ProjectTreeNode::Category {
-                        name: "Constants".to_string(),
-                        count: docs.constants.len(),
-                        depth: 0,
-                    });
-                }
-
-                // Add struct items
-                if self.expanded_paths.contains("Structs") {
                     for struct_doc in &docs.structs {
                         let path = if struct_doc.path.is_empty() {
                             struct_doc.name.clone()
@@ -139,8 +103,12 @@ impl ProjectDocsState {
                     }
                 }
 
-                // Add enum items
-                if self.expanded_paths.contains("Enums") {
+                if !docs.enums.is_empty() {
+                    self.tree_items.push(ProjectTreeNode::Category {
+                        name: "Enums".to_string(),
+                        count: docs.enums.len(),
+                        depth: 0,
+                    });
                     for enum_doc in &docs.enums {
                         let path = if enum_doc.path.is_empty() {
                             enum_doc.name.clone()
@@ -156,8 +124,12 @@ impl ProjectDocsState {
                     }
                 }
 
-                // Add trait items
-                if self.expanded_paths.contains("Traits") {
+                if !docs.traits.is_empty() {
+                    self.tree_items.push(ProjectTreeNode::Category {
+                        name: "Traits".to_string(),
+                        count: docs.traits.len(),
+                        depth: 0,
+                    });
                     for trait_doc in &docs.traits {
                         let path = if trait_doc.path.is_empty() {
                             trait_doc.name.clone()
@@ -173,8 +145,12 @@ impl ProjectDocsState {
                     }
                 }
 
-                // Add function items
-                if self.expanded_paths.contains("Functions") {
+                if !docs.functions.is_empty() {
+                    self.tree_items.push(ProjectTreeNode::Category {
+                        name: "Functions".to_string(),
+                        count: docs.functions.len(),
+                        depth: 0,
+                    });
                     for fn_doc in &docs.functions {
                         let path = if fn_doc.path.is_empty() {
                             fn_doc.name.clone()
@@ -190,8 +166,12 @@ impl ProjectDocsState {
                     }
                 }
 
-                // Add constant items
-                if self.expanded_paths.contains("Constants") {
+                if !docs.constants.is_empty() {
+                    self.tree_items.push(ProjectTreeNode::Category {
+                        name: "Constants".to_string(),
+                        count: docs.constants.len(),
+                        depth: 0,
+                    });
                     for const_doc in &docs.constants {
                         let path = if const_doc.path.is_empty() {
                             const_doc.name.clone()
@@ -224,37 +204,37 @@ impl ProjectDocsState {
 
     pub fn rebuild_visible_list(&mut self) {
         self.flat_visible_items.clear();
-        
-        let mut i = 0;
-        while i < self.tree_items.len() {
-            self.flat_visible_items.push(i);
-            
-            // Check if this is a category and if it's collapsed
-            if let ProjectTreeNode::Category { name, .. } = &self.tree_items[i] {
-                if !self.expanded_paths.contains(name) {
-                    // Skip all items under this collapsed category
-                    i += 1;
-                    while i < self.tree_items.len() {
-                        match &self.tree_items[i] {
-                            ProjectTreeNode::Category { depth, .. } if *depth == 0 => {
-                                // Found next top-level category, stop skipping
-                                break;
-                            }
-                            ProjectTreeNode::Item { depth, .. } if *depth == 0 => {
-                                // Found top-level item, stop skipping
-                                break;
-                            }
-                            _ => {
-                                // Still under the collapsed category, skip it
-                                i += 1;
-                            }
-                        }
+        let query = self.search_query.to_lowercase();
+        let is_searching = !query.is_empty();
+
+        for (idx, node) in self.tree_items.iter().enumerate() {
+            match node {
+                ProjectTreeNode::Category { name, .. } => {
+                    let matches = name.to_lowercase().contains(&query);
+                    if !is_searching || matches {
+                        self.flat_visible_items.push(idx);
                     }
-                    continue;
+                }
+                ProjectTreeNode::Item { category, item_name, .. } => {
+                    let matches = item_name.to_lowercase().contains(&query);
+                    let parent_expanded = self.expanded_paths.contains(category);
+
+                    if is_searching && matches {
+                        self.expanded_paths.insert(category.clone());
+                    }
+
+                    if (parent_expanded || (is_searching && matches)) && (!is_searching || matches) {
+                        self.flat_visible_items.push(idx);
+                    }
                 }
             }
-            
-            i += 1;
+        }
+
+        if is_searching && self.flat_visible_items.is_empty() {
+            self.markdown_content = format!(
+                "# No Results\n\nNo documentation found matching \"{}\".\n\nTry a different search term.",
+                self.search_query
+            );
         }
     }
 
@@ -264,10 +244,7 @@ impl ProjectDocsState {
         } else {
             self.expanded_paths.insert(path);
         }
-        // Reload to rebuild tree with new expansion state
-        if let Some(project_path) = self.project_root.clone() {
-            self.load_project_docs(&project_path);
-        }
+        self.rebuild_visible_list();
     }
 
     pub fn load_content(&mut self, path: &str) {

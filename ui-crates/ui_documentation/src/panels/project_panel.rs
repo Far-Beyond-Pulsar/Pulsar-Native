@@ -1,12 +1,12 @@
 use gpui::{prelude::*, *};
 use ui::{
-    ActiveTheme, Sizable, StyledExt,
+    ActiveTheme, StyledExt,
     h_flex, v_flex, IconName, Icon,
     text::TextView,
     resizable::{h_resizable, resizable_panel, ResizableState},
     input::TextInput,
     scroll::ScrollbarAxis,
-    hierarchical_tree::{render_tree_category, render_tree_item, tree_colors},
+    hierarchical_tree::{render_tree_folder, render_tree_item, tree_colors},
 };
 use crate::project_docs::{ProjectDocsState, ProjectTreeNode};
 
@@ -30,16 +30,16 @@ impl ProjectDocsPanel {
         V: Render,
     {
         let markdown = state.markdown_content.clone();
+        
+        let theme = cx.theme().clone();
 
         let visible_items: Vec<_> = state.flat_visible_items.iter()
             .map(|&idx| state.tree_items[idx].clone())
             .collect();
-
-        let tree_nodes: Vec<_> = visible_items.iter().map(|node| {
+        
+        let tree_nodes: Vec<AnyElement> = visible_items.iter().map(|node| {
             Self::render_tree_node(node, state, on_toggle_expansion.clone(), on_load_content.clone(), cx)
         }).collect();
-
-        let theme = cx.theme().clone();
 
         h_resizable("docs-horizontal", sidebar_resizable)
             .child(
@@ -64,6 +64,7 @@ impl ProjectDocsPanel {
             .border_r_1()
             .border_color(theme.border)
             .child(
+                // Professional header with badge
                 h_flex()
                     .w_full()
                     .h(px(48.0))
@@ -103,6 +104,7 @@ impl ProjectDocsPanel {
                     )
             )
             .child(
+                // Search bar
                 div()
                     .w_full()
                     .px_3()
@@ -122,6 +124,7 @@ impl ProjectDocsPanel {
                     )
             )
             .child(
+                // Tree items with scroll
                 div()
                     .flex_1()
                     .overflow_hidden()
@@ -181,14 +184,15 @@ impl ProjectDocsPanel {
         V: Render,
     {
         match node {
-            ProjectTreeNode::Category { name, count, depth } => {
+            ProjectTreeNode::Category { name, depth, .. } => {
                 let is_expanded = state.expanded_paths.contains(name);
                 let category_name = name.clone();
-
-                render_tree_category(
+                
+                render_tree_folder(
                     &format!("category-{}", name),
                     name,
-                    *count,
+                    if is_expanded { IconName::FolderOpen } else { IconName::Folder },
+                    tree_colors::CODE_PURPLE,
                     *depth,
                     is_expanded,
                     move |view, _event, window, cx| {

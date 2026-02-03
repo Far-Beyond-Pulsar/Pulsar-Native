@@ -85,7 +85,7 @@ pub mod tooltip;
 pub mod webview;
 pub mod workspace;
 
-use gpui::{App, SharedString};
+use gpui::{ App, SharedString };
 // re-export
 #[cfg(feature = "webview")]
 pub use wry;
@@ -95,19 +95,24 @@ pub use event::InteractiveElementExt;
 pub use index_path::IndexPath;
 #[cfg(any(feature = "inspector", debug_assertions))]
 pub use inspector::*;
-pub use menu::{context_menu, popup_menu};
-pub use root::{ContextModal, Root};
+pub use menu::{ context_menu, popup_menu };
+pub use root::{ ContextModal, Root };
 pub use styled::*;
 pub use time::*;
 pub use title_bar::*;
-pub use virtual_list::{h_virtual_list, v_virtual_list, VirtualList, VirtualListScrollHandle};
-pub use window_border::{window_border, window_paddings, WindowBorder};
+pub use virtual_list::{ h_virtual_list, v_virtual_list, VirtualList, VirtualListScrollHandle };
+pub use window_border::{ window_border, window_paddings, WindowBorder };
 
 pub use icon::*;
 pub use kbd::*;
 pub use theme::*;
 pub use component::*;
-pub use hierarchical_tree::{render_tree_folder, render_tree_category, render_tree_item, tree_colors};
+pub use hierarchical_tree::{
+    render_tree_folder,
+    render_tree_category,
+    render_tree_item,
+    tree_colors,
+};
 
 // Re-export engine types for UI crates
 pub use assets::Assets;
