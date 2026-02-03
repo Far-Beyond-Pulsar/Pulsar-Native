@@ -111,7 +111,7 @@ where
         .child(
             Icon::new(if is_expanded { IconName::ChevronDown } else { IconName::ChevronRight })
                 .size_3p5()
-                .text_color(theme.muted_foreground)
+                .text_color(theme.secondary_foreground)
         )
         .child(
             div()

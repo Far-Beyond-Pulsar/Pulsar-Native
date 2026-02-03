@@ -118,7 +118,7 @@ impl EngineDocsPanel {
                             .prefix(
                                 Icon::new(IconName::Search)
                                     .size_4()
-                                    .text_color(theme.muted_foreground)
+                                    .text_color(theme.secondary_foreground)
                             )
                             .appearance(true)
                             .bordered(true)
@@ -209,7 +209,7 @@ impl EngineDocsPanel {
                         crumbs = crumbs.child(
                             Icon::new(IconName::ChevronRight)
                                 .size_3()
-                                .text_color(theme.muted_foreground)
+                                .text_color(theme.secondary_foreground)
                         );
                     }
                     crumbs = crumbs.child(

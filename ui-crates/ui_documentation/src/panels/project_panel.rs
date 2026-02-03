@@ -117,7 +117,7 @@ impl ProjectDocsPanel {
                             .prefix(
                                 Icon::new(IconName::Search)
                                     .size_4()
-                                    .text_color(theme.muted_foreground)
+                                    .text_color(theme.secondary_foreground)
                             )
                             .appearance(true)
                             .bordered(true)
