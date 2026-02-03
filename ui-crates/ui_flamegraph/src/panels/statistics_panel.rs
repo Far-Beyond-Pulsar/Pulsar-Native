@@ -1,11 +1,11 @@
 use gpui::*;
-use rust_i18n::t;
 use ui::{
     v_flex, h_flex,
     ActiveTheme,
     dock::{Panel, PanelEvent},
     StyledExt,
 };
+use gpui::prelude::FluentBuilder;
 use crate::trace_data::TraceData;
 use std::sync::Arc;
 use std::collections::HashMap;
@@ -26,6 +26,8 @@ pub struct StatisticsPanel {
     sort_by: SortColumn,
     sort_ascending: bool,
     focus_handle: FocusHandle,
+    last_span_count: usize,
+    stats_dirty: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -44,11 +46,21 @@ impl StatisticsPanel {
             sort_by: SortColumn::TotalTime,
             sort_ascending: false,
             focus_handle: cx.focus_handle(),
+            last_span_count: 0,
+            stats_dirty: true,
         }
     }
 
     fn compute_statistics(&mut self) {
         let frame = self.trace_data.get_frame();
+        
+        // Only recompute if span count changed
+        if frame.spans.len() == self.last_span_count && !self.stats_dirty {
+            return;
+        }
+        
+        self.last_span_count = frame.spans.len();
+        self.stats_dirty = false;
         let mut function_map: HashMap<String, (usize, u64, u64, u64)> = HashMap::new();
 
         // Aggregate statistics by function name
@@ -102,6 +114,7 @@ impl StatisticsPanel {
             self.sort_by = column;
             self.sort_ascending = false;
         }
+        self.stats_dirty = true; // Mark for re-sort
         self.sort_statistics();
         cx.notify();
     }
@@ -239,12 +252,14 @@ impl Panel for StatisticsPanel {
 
 impl Render for StatisticsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
-        
-        // Recompute statistics on each render
+        // Only recompute if needed
         self.compute_statistics();
 
-        let item_count = self.stats.len();
+        // Limit to top 100 items for performance
+        let item_count = self.stats.len().min(100);
+        let total_count = self.stats.len();
+        
+        let theme = cx.theme();
         
         v_flex()
             .size_full()
@@ -261,5 +276,17 @@ impl Render for StatisticsPanel {
                         })
                     )
             )
+            .when(total_count > 100, |this| {
+                let theme = cx.theme();
+                this.child(
+                    div()
+                        .w_full()
+                        .px_3()
+                        .py_2()
+                        .text_xs()
+                        .text_color(theme.muted_foreground)
+                        .child(format!("Showing top 100 of {} functions", total_count))
+                )
+            })
     }
 }
