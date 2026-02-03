@@ -9,6 +9,7 @@ use ui::{
     scroll::ScrollbarAxis,
     hierarchical_tree::tree_colors,
 };
+use ui::render_tree_folder;
 use crate::manual_docs::{ManualDocsState, FileEntry, ViewMode};
 
 pub struct ManualDocsPanel;
@@ -398,9 +399,28 @@ impl ManualDocsPanel {
     where
         V: Render,
     {
-        let theme = cx.theme();
         let is_selected = state.selected_file.as_ref() == Some(&entry.path);
         let is_expanded = state.expanded_folders.contains(&entry.path);
+        
+        // Use render_tree_folder for directories
+        if entry.is_directory {
+            let icon = if is_expanded { IconName::FolderOpen } else { IconName::Folder };
+            return render_tree_folder(
+                &format!("doc-folder-{:#?}", entry.path),
+                &entry.name,
+                icon,
+                tree_colors::FOLDER,
+                entry.depth,
+                is_expanded,
+                |_view, _event, _window, _cx| {
+                    // Folder click handled elsewhere
+                },
+                cx,
+            );
+        }
+        
+        // For files, render custom since they have different styling needs
+        let theme = cx.theme();
         let indent = px(entry.depth as f32 * 16.0);
 
         div()
@@ -422,28 +442,18 @@ impl ManualDocsPanel {
             })
             .cursor_pointer()
             .child(
-                Icon::new(if entry.is_directory {
-                    if is_expanded { IconName::FolderOpen } else { IconName::Folder }
-                } else {
-                    IconName::BookOpen
-                })
-                .size_4()
-                .text_color(if is_selected {
-                    theme.accent_foreground
-                } else if entry.is_directory {
-                    tree_colors::FOLDER
-                } else {
-                    tree_colors::DOC_TEAL
-                })
+                Icon::new(IconName::BookOpen)
+                    .size_4()
+                    .text_color(if is_selected {
+                        theme.accent_foreground
+                    } else {
+                        tree_colors::DOC_TEAL
+                    })
             )
             .child(
                 div()
                     .text_sm()
-                    .font_weight(if entry.is_directory {
-                        gpui::FontWeight::MEDIUM
-                    } else {
-                        gpui::FontWeight::NORMAL
-                    })
+                    .font_weight(gpui::FontWeight::NORMAL)
                     .text_color(if is_selected {
                         theme.accent_foreground
                     } else {

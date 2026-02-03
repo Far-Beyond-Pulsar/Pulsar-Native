@@ -3,6 +3,7 @@ use ui::{
     button::{Button, ButtonVariants as _},
     context_menu::ContextMenuExt,
     h_flex, v_flex, scroll::ScrollbarAxis, ActiveTheme, Icon, IconName, Sizable, StyledExt,
+    hierarchical_tree::{render_tree_folder, tree_colors},
 };
 use std::sync::Arc;
 use rust_i18n::t;
@@ -454,13 +455,13 @@ impl HierarchyPanel {
 
     fn get_icon_color_for_type<V>(object_type: ObjectType, cx: &Context<V>) -> Hsla {
         match object_type {
-            ObjectType::Camera => Hsla { h: 200.0, s: 0.8, l: 0.5, a: 1.0 },  // Blue
-            ObjectType::Folder => Hsla { h: 45.0, s: 0.8, l: 0.5, a: 1.0 },   // Yellow/Orange
-            ObjectType::Light(_) => Hsla { h: 50.0, s: 0.9, l: 0.55, a: 1.0 }, // Yellow
-            ObjectType::Mesh(_) => Hsla { h: 280.0, s: 0.6, l: 0.6, a: 1.0 }, // Purple
+            ObjectType::Camera => tree_colors::CODE_BLUE,
+            ObjectType::Folder => tree_colors::FOLDER,
+            ObjectType::Light(_) => tree_colors::SPECIAL_YELLOW,
+            ObjectType::Mesh(_) => tree_colors::CODE_PURPLE,
             ObjectType::Empty => cx.theme().muted_foreground,
-            ObjectType::ParticleSystem => Hsla { h: 30.0, s: 0.9, l: 0.55, a: 1.0 }, // Orange
-            ObjectType::AudioSource => Hsla { h: 160.0, s: 0.7, l: 0.45, a: 1.0 },   // Teal/Green
+            ObjectType::ParticleSystem => tree_colors::EFFECT_ORANGE,
+            ObjectType::AudioSource => tree_colors::DOC_TEAL,
         }
     }
 }

@@ -226,8 +226,37 @@ impl ProjectDocsState {
 
     pub fn rebuild_visible_list(&mut self) {
         self.flat_visible_items.clear();
-        for (idx, _) in self.tree_items.iter().enumerate() {
-            self.flat_visible_items.push(idx);
+        
+        let mut i = 0;
+        while i < self.tree_items.len() {
+            self.flat_visible_items.push(i);
+            
+            // Check if this is a category and if it's collapsed
+            if let ProjectTreeNode::Category { name, .. } = &self.tree_items[i] {
+                if !self.expanded_paths.contains(name) {
+                    // Skip all items under this collapsed category
+                    i += 1;
+                    while i < self.tree_items.len() {
+                        match &self.tree_items[i] {
+                            ProjectTreeNode::Category { depth, .. } if *depth == 0 => {
+                                // Found next top-level category, stop skipping
+                                break;
+                            }
+                            ProjectTreeNode::Item { depth, .. } if *depth == 0 => {
+                                // Found top-level item, stop skipping
+                                break;
+                            }
+                            _ => {
+                                // Still under the collapsed category, skip it
+                                i += 1;
+                            }
+                        }
+                    }
+                    continue;
+                }
+            }
+            
+            i += 1;
         }
     }
 
