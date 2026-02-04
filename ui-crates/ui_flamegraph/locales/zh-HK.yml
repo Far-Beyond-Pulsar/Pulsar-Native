@@ -29,3 +29,8 @@ Flamegraph.Unknown: "未知"
 
 # Units
 Flamegraph.Milliseconds: "%{value} 毫秒"
+
+# Profiling Overlay
+Flamegraph.CollectingData: "正在收集性能數據..."
+Flamegraph.SpansCollected: "已收集調用數："
+Flamegraph.StopRecording: "停止錄製"

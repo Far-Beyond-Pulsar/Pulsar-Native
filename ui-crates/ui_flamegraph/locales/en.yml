@@ -47,3 +47,8 @@ Flamegraph.Unknown: "Unknown"
 
 # Units
 Flamegraph.Milliseconds: "%{value} ms"
+
+# Profiling Overlay
+Flamegraph.CollectingData: "Collecting Profiling Data..."
+Flamegraph.SpansCollected: "Spans Collected:"
+Flamegraph.StopRecording: "Stop Recording"

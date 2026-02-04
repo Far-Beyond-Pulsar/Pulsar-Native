@@ -29,3 +29,8 @@ Flamegraph.Unknown: "Unknoen (so confuz)"
 
 # Units
 Flamegraph.Milliseconds: "%{value} millisekndz"
+
+# Profiling Overlay
+Flamegraph.CollectingData: "COLLECTIN DAT PROFAILZ..."
+Flamegraph.SpansCollected: "SPANZ COLLECTD:"
+Flamegraph.StopRecording: "STAHP RECORDIN"

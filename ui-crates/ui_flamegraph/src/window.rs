@@ -2,6 +2,7 @@ use gpui::*;
 use rust_i18n::t;
 use ui::{
     TitleBar, v_flex, h_flex, ActiveTheme, IconName, Icon,
+    button::Button,
     resizable::{h_resizable, resizable_panel, ResizableState},
 };
 use crate::{FlamegraphView, TraceData, InstrumentationCollector, FlamegraphPanel, StatisticsPanel};
@@ -519,14 +520,121 @@ impl FlamegraphWindow {
                 )
             })
     }
+
+    fn render_profiling_overlay(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        let frame = self.trace_data.get_frame();
+        let span_count = frame.spans.len();
+        let thread_count = frame.threads.len();
+        
+        div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(theme.background.opacity(0.85))
+            .child(
+                v_flex()
+                    .gap_6()
+                    .items_center()
+                    .child(
+                        v_flex()
+                            .items_center()
+                            .gap_4()
+                            .px_8()
+                            .py_6()
+                            .rounded(px(16.0))
+                            .bg(theme.popover)
+                            .border_1()
+                            .border_color(theme.border)
+                            .shadow_xl()
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_3()
+                                    .px_4()
+                                    .py_2()
+                                    .rounded(px(8.0))
+                                    .bg(gpui::red().opacity(0.1))
+                                    .border_1()
+                                    .border_color(gpui::red().opacity(0.25))
+                                    .child(
+                                        div()
+                                            .size(px(10.0))
+                                            .rounded(px(5.0))
+                                            .bg(gpui::red())
+                                    )
+                                    .child(
+                                        div()
+                                            .text_lg()
+                                            .font_weight(gpui::FontWeight::BOLD)
+                                            .text_color(gpui::red())
+                                            .child(t!("Flamegraph.CollectingData").to_string())
+                                    )
+                            )
+                            .child(
+                                v_flex()
+                                    .gap_3()
+                                    .w(px(300.0))
+                                    .child(
+                                        h_flex()
+                                            .justify_between()
+                                            .child(
+                                                div()
+                                                    .text_base()
+                                                    .text_color(theme.muted_foreground)
+                                                    .child(t!("Flamegraph.SpansCollected").to_string())
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_base()
+                                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                    .text_color(theme.foreground)
+                                                    .child(format!("{}", span_count))
+                                            )
+                                    )
+                                    .child(
+                                        h_flex()
+                                            .justify_between()
+                                            .child(
+                                                div()
+                                                    .text_base()
+                                                    .text_color(theme.muted_foreground)
+                                                    .child(t!("Flamegraph.Threads").to_string())
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_base()
+                                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                    .text_color(theme.foreground)
+                                                    .child(format!("{}", thread_count))
+                                            )
+                                    )
+                            )
+                            .child(
+                                Button::new("stop-recording-btn")
+                                    .w_full()
+                                    .label(t!("Flamegraph.StopRecording").to_string())
+                                    .on_click(cx.listener(|this, _event, _window, cx| {
+                                        this.stop_profiling(cx);
+                                    }))
+                            )
+                    )
+            )
+    }
 }
 
 impl Render for FlamegraphWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_profiling = self.is_profiling;
-        let has_data = self.trace_data.get_frame().spans.len() > 0;
+        // Only show data when NOT profiling - during profiling, data is being collected but not displayed
+        let has_data = !is_profiling && self.trace_data.get_frame().spans.len() > 0;
         
-        // Initialize panels on first render with data
+        // Initialize panels on first render with data (when profiling stops)
         if has_data && self.flamegraph_panel.is_none() {
             self.flamegraph_panel = Some(cx.new(|cx| FlamegraphPanel::new(self.view.clone(), cx)));
             self.statistics_panel = Some(cx.new(|cx| StatisticsPanel::new(self.trace_data.clone(), cx)));
@@ -633,11 +741,17 @@ impl Render for FlamegraphWindow {
                 div()
                     .flex_1()
                     .overflow_hidden()
-                    .when(!has_data, |this| {
-                        this.child(self.render_empty_state(is_profiling, cx))
+                    .relative()
+                    .when(!has_data && !is_profiling, |this| {
+                        // Empty state - no data and not profiling
+                        this.child(self.render_empty_state(false, cx))
                     })
-                    .when(has_data, |this| {
-                        // Render panels in resizable layout
+                    .when(is_profiling, |this| {
+                        // Show overlay when profiling (whether or not there's data from previous sessions)
+                        this.child(self.render_profiling_overlay(cx))
+                    })
+                    .when(has_data && !is_profiling, |this| {
+                        // Show flamegraph viewer only when not profiling and data exists
                         this.child(
                             h_resizable("flamegraph-resizable", self.resizable_state.clone())
                                 .child(
