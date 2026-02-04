@@ -152,7 +152,7 @@ impl Render for FlamegraphView {
                             // Detect hovered span
                             // Mouse position is window-relative, need to account for timeline at top
                             // Using hardcoded value to verify it's being used
-                            let canvas_offset_y = 240.0; // TIMELINE_HEIGHT
+                            let canvas_offset_y = 225.0; // TIMELINE_HEIGHT
                             let canvas_y = current_y - canvas_offset_y;
 
                             // Copy view_state values before borrowing

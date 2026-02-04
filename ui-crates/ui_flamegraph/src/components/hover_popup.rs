@@ -36,9 +36,9 @@ pub fn render_hover_popup(
         mouse_x + 15.0
     };
 
-    // Mouse Y is already relative to the canvas div (where the popup is also rendered)
-    // So no offset needed - just position slightly below the cursor
-    let popup_y = mouse_y + 5.0 - 150.0;
+    // Position popup vertically - mouse_y is window-relative
+    // Need to subtract timeline height to get canvas-relative position
+    let popup_y = (mouse_y - 210.0 + 5.0).max(0.0);
 
     let render_start = std::time::Instant::now();
     let result = Some(
