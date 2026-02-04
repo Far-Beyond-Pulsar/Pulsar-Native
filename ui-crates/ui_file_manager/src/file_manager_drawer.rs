@@ -1508,6 +1508,12 @@ impl FileManagerDrawer {
         }
     }
 
+    fn cancel_rename(&mut self, cx: &mut Context<Self>) {
+        // Just cancel without saving
+        self.renaming_item = None;
+        cx.notify();
+    }
+
     fn refresh(&mut self, cx: &mut Context<Self>) {
         if let Some(ref project_path) = self.project_path {
             self.folder_tree = FolderNode::from_path(project_path);
@@ -1551,6 +1557,12 @@ impl Render for FileManagerDrawer {
             }))
             .on_action(cx.listener(|this, _action: &RenameItem, window, cx| {
                 this.handle_rename_item(window, cx);
+            }))
+            .on_action(cx.listener(|this, _action: &ui::input::Escape, _window, cx| {
+                // Cancel rename on Escape
+                if this.renaming_item.is_some() {
+                    this.cancel_rename(cx);
+                }
             }))
             .on_action(cx.listener(|this, _action: &DuplicateItem, _window, cx| {
                 this.handle_duplicate_item(cx);
