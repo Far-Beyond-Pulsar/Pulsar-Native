@@ -47,10 +47,10 @@ pub struct FileManagerDrawer {
 
     // Rename state
     renaming_item: Option<PathBuf>,
+    rename_input_state: Entity<InputState>,
 
     // Cached registered file types from plugin system
     registered_file_types: Vec<plugin_editor_api::FileTypeDefinition>,
-    rename_input_state: Entity<InputState>,
 
     // Search
     search_query: String,
@@ -69,23 +69,12 @@ impl FileManagerDrawer {
         let folder_search_state = cx.new(|cx| InputState::new(window, cx));
         let file_filter_state = cx.new(|cx| InputState::new(window, cx));
 
-        // Subscribe to rename input
+        // Simple rename subscription - only handle Enter
         cx.subscribe(
             &rename_input_state,
             |drawer, _input, event: &ui::input::InputEvent, cx| {
-                match event {
-                    ui::input::InputEvent::PressEnter { .. } => {
-                        if drawer.renaming_item.is_some() {
-                            drawer.commit_rename(cx);
-                        }
-                    }
-                    ui::input::InputEvent::Blur => {
-                        // Save on blur (click outside)
-                        if drawer.renaming_item.is_some() {
-                            drawer.commit_rename(cx);
-                        }
-                    }
-                    _ => {}
+                if let ui::input::InputEvent::PressEnter { .. } = event {
+                    drawer.commit_rename(cx);
                 }
             },
         )
@@ -247,18 +236,8 @@ impl FileManagerDrawer {
     }
 
     fn handle_rename_item(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        // Get the first selected item
-        if let Some(item) = self.selected_items.iter().next() {
-            self.renaming_item = Some(item.clone());
-
-            // Set the rename input to the current name
-            if let Some(name) = item.file_name() {
-                self.rename_input_state.update(cx, |input, cx| {
-                    input.replace_text_in_range(None, &name.to_string_lossy(), window, cx);
-                });
-            }
-
-            cx.notify();
+        if let Some(item) = self.selected_items.iter().next().cloned() {
+            self.start_rename(item, window, cx);
         }
     }
 
@@ -840,6 +819,12 @@ impl FileManagerDrawer {
                     .flex_1()
                     .p_4()
                     .overflow_y_scroll()
+                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(|drawer, _event, _window, cx| {
+                        // Commit rename if clicking on blank area
+                        if drawer.renaming_item.is_some() {
+                            drawer.commit_rename(cx);
+                        }
+                    }))
                     .context_menu(move |menu, _window, _cx| {
                         // Show folder context menu for blank area
                         if let Some(path) = selected_folder.clone() {
@@ -868,6 +853,7 @@ impl FileManagerDrawer {
 
     fn render_list_item(&mut self, item: &FileItem, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_selected = self.selected_items.contains(&item.path);
+        let is_renaming = self.renaming_item.as_ref() == Some(&item.path);
         let icon = get_icon_for_file_type(&item);
         let icon_color = get_icon_color_for_file_type(&item, cx.theme());
         let item_clone = item.clone();
@@ -916,16 +902,27 @@ impl FileManagerDrawer {
                     )
             )
             .child(
-                div()
-                    .flex_1()
-                    .text_sm()
-                    .font_weight(if is_selected {
-                        gpui::FontWeight::SEMIBOLD
-                    } else {
-                        gpui::FontWeight::NORMAL
-                    })
-                    .text_color(cx.theme().foreground)
-                    .child(item.name.clone())
+                if is_renaming {
+                    div()
+                        .flex_1()
+                        .child(
+                            TextInput::new(&self.rename_input_state)
+                                .w_full()
+                        )
+                        .into_any_element()
+                } else {
+                    div()
+                        .flex_1()
+                        .text_sm()
+                        .font_weight(if is_selected {
+                            gpui::FontWeight::SEMIBOLD
+                        } else {
+                            gpui::FontWeight::NORMAL
+                        })
+                        .text_color(cx.theme().foreground)
+                        .child(item.name.clone())
+                        .into_any_element()
+                }
             )
             .when(!item.is_folder, |this| {
                 this.child(
@@ -941,7 +938,10 @@ impl FileManagerDrawer {
                 )
             })
             .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
-                if event.click_count == 2 {
+                if is_renaming {
+                    // Stop propagation when renaming
+                    cx.stop_propagation();
+                } else if event.click_count == 2 {
                     drawer.handle_item_double_click(&item_clone3, cx);
                 } else {
                     drawer.handle_item_click(&item_clone, &event.modifiers, cx);
@@ -1294,7 +1294,10 @@ impl FileManagerDrawer {
                         }
                     )
                     .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
-                        if event.click_count == 2 {
+                        if is_renaming {
+                            // Stop propagation when renaming so parent doesn't commit
+                            cx.stop_propagation();
+                        } else if event.click_count == 2 {
                             drawer.handle_item_double_click(&item_clone3, cx);
                         } else {
                             drawer.handle_item_click(&item_clone, &event.modifiers, cx);
@@ -1455,61 +1458,77 @@ impl FileManagerDrawer {
     // ========================================================================
 
     fn commit_rename(&mut self, cx: &mut Context<Self>) {
-        if let Some(ref old_path) = self.renaming_item.clone() {
-            let new_name = self.rename_input_state.read(cx).text().to_string().trim().to_string();
-            
-            // Validate the new name
-            if new_name.is_empty() {
-                // Empty name - cancel rename
-                self.renaming_item = None;
-                cx.notify();
-                return;
-            }
-            
-            // Check if name actually changed
-            let old_name = old_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            if new_name == old_name {
-                // No change - just close rename
-                self.renaming_item = None;
-                cx.notify();
-                return;
-            }
-            
-            // Check for invalid characters
-            if new_name.contains(['/', '\\', ':', '*', '?', '"', '<', '>', '|']) {
-                tracing::error!("Invalid filename: contains illegal characters");
-                self.renaming_item = None;
-                cx.notify();
-                return;
-            }
-            
-            // Attempt rename
-            match self.operations.rename_item(old_path, &new_name) {
-                Ok(new_path) => {
-                    // Update state
-                    if self.selected_folder.as_ref() == Some(old_path) {
-                        self.selected_folder = Some(new_path.clone());
-                    }
-                    if self.selected_items.remove(old_path) {
-                        self.selected_items.insert(new_path);
-                    }
-                    // Refresh tree
-                    if let Some(ref project_path) = self.project_path {
-                        self.folder_tree = FolderNode::from_path(project_path);
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("Failed to rename {:?} to {}: {}", old_path, new_name, e);
-                }
-            }
-            
-            self.renaming_item = None;
+        let Some(old_path) = self.renaming_item.take() else {
+            return;
+        };
+
+        let new_name = self.rename_input_state.read(cx).text().to_string().trim().to_string();
+        
+        // Validate
+        if new_name.is_empty() {
             cx.notify();
+            return;
         }
+        
+        let old_name = old_path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("");
+            
+        if new_name == old_name {
+            cx.notify();
+            return;
+        }
+        
+        // Check for invalid characters
+        if new_name.contains(['/', '\\', ':', '*', '?', '"', '<', '>', '|']) {
+            tracing::error!("Invalid filename: {}", new_name);
+            cx.notify();
+            return;
+        }
+        
+        // Perform rename
+        match self.operations.rename_item(&old_path, &new_name) {
+            Ok(new_path) => {
+                // Update selections
+                if self.selected_folder.as_ref() == Some(&old_path) {
+                    self.selected_folder = Some(new_path.clone());
+                }
+                if self.selected_items.remove(&old_path) {
+                    self.selected_items.insert(new_path);
+                }
+                
+                // Refresh tree
+                if let Some(ref project_path) = self.project_path {
+                    self.folder_tree = FolderNode::from_path(project_path);
+                }
+            }
+            Err(e) => {
+                tracing::error!("Rename failed: {}", e);
+            }
+        }
+        
+        cx.notify();
+    }
+
+    fn start_rename(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        // Get the current name
+        let current_name = path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+        
+        // Set renaming state
+        self.renaming_item = Some(path);
+        
+        // Initialize the input with the current name
+        self.rename_input_state.update(cx, |state, cx| {
+            state.replace_text_in_range(None, &current_name, window, cx);
+        });
+        
+        cx.notify();
     }
 
     fn cancel_rename(&mut self, cx: &mut Context<Self>) {
-        // Just cancel without saving
         self.renaming_item = None;
         cx.notify();
     }
@@ -1559,9 +1578,10 @@ impl Render for FileManagerDrawer {
                 this.handle_rename_item(window, cx);
             }))
             .on_action(cx.listener(|this, _action: &ui::input::Escape, _window, cx| {
-                // Cancel rename on Escape
+                // Cancel rename on Escape - clear the input and close
                 if this.renaming_item.is_some() {
-                    this.cancel_rename(cx);
+                    this.renaming_item = None;
+                    cx.notify();
                 }
             }))
             .on_action(cx.listener(|this, _action: &DuplicateItem, _window, cx| {
