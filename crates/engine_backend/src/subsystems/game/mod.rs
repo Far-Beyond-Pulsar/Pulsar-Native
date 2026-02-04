@@ -96,7 +96,7 @@ impl Subsystem for ManagedGameThread {
                     profiling::profile_scope!("Game::Tick");
 
                     if !enabled.load(Ordering::Relaxed) {
-                        thread::sleep(Duration::from_millis(100));
+                        thread::sleep(Duration::from_millis(target_frame_time.as_millis().min(1) as u64));
                         continue;
                     }
 
