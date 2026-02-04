@@ -28,6 +28,12 @@ FileManager.Paste: "Paste"
 FileManager.OpenInFileManager: "Show in File Manager"
 FileManager.OpenTerminalHere: "Open Terminal Here"
 FileManager.Properties: "Properties"
+FileManager.ValidateAsset: "Validate Asset"
+FileManager.ToggleFavorite: "Toggle Favorite"
+FileManager.ToggleGitignore: "Toggle Gitignore"
+FileManager.ToggleHidden: "Toggle Hidden"
+FileManager.CheckMultiuserSync: "Check Multiuser Sync"
+FileManager.ShowHistory: "Show History"
 
 # View Modes
 FileManager.ListView: "List View"

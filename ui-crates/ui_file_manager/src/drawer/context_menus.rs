@@ -202,14 +202,14 @@ pub fn item_context_menu(
             .separator()
             .menu_with_icon(&t!("FileManager.Duplicate").to_string(), ui::Icon::new(ui::IconName::Copy), Box::new(DuplicateItem::default()))
             .separator()
-            .menu_with_icon(&t!("FileManager.Properties").to_string(), ui::Icon::new(ui::IconName::CircleCheck), Box::new(ValidateAsset::default()))
-            .menu_with_icon(&t!("FileManager.Properties").to_string(), ui::Icon::new(ui::IconName::Star), Box::new(ToggleFavorite::default()))
+            .menu_with_icon(&t!("FileManager.ValidateAsset").to_string(), ui::Icon::new(ui::IconName::CircleCheck), Box::new(ValidateAsset::default()))
+            .menu_with_icon(&t!("FileManager.ToggleFavorite").to_string(), ui::Icon::new(ui::IconName::Star), Box::new(ToggleFavorite::default()))
             .separator()
-            .menu_with_icon(&t!("FileManager.Properties").to_string(), ui::Icon::new(ui::IconName::Gitignore), Box::new(ToggleGitignore::default()))
-            .menu_with_icon(&t!("FileManager.Properties").to_string(), ui::Icon::new(ui::IconName::EyeOff), Box::new(ToggleHidden::default()))
+            .menu_with_icon(&t!("FileManager.ToggleGitignore").to_string(), ui::Icon::new(ui::IconName::Gitignore), Box::new(ToggleGitignore::default()))
+            .menu_with_icon(&t!("FileManager.ToggleHidden").to_string(), ui::Icon::new(ui::IconName::EyeOff), Box::new(ToggleHidden::default()))
             .separator()
-            .menu_with_icon(&t!("FileManager.Properties").to_string(), ui::Icon::new(ui::IconName::Globe), Box::new(CheckMultiuserSync::default()))
-            .menu_with_icon(&t!("FileManager.Properties").to_string(), ui::Icon::new(ui::IconName::Calendar), Box::new(ShowHistory::default()));
+            .menu_with_icon(&t!("FileManager.CheckMultiuserSync").to_string(), ui::Icon::new(ui::IconName::Globe), Box::new(CheckMultiuserSync::default()))
+            .menu_with_icon(&t!("FileManager.ShowHistory").to_string(), ui::Icon::new(ui::IconName::Calendar), Box::new(ShowHistory::default()));
 
         menu
     }
