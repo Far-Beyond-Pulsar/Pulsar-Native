@@ -4,12 +4,12 @@ use rust_i18n::t;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use ui::{
-    button::{Button, ButtonVariants as _},
+    button::{Button, ButtonGroup, ButtonVariants as _},
     h_flex, v_flex,
     input::{InputState, TextInput},
     resizable::{h_resizable, resizable_panel, ResizableState},
     menu::context_menu::ContextMenuExt,
-    ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt,
+    ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt, Selectable as _,
 };
 
 // Import from our modular structure
@@ -27,7 +27,7 @@ use crate::drawer::{
 // ============================================================================
 
 pub struct FileManagerDrawer {
-    project_path: Option<PathBuf>,
+    pub project_path: Option<PathBuf>,
     folder_tree: Option<FolderNode>,
     selected_folder: Option<PathBuf>,
     selected_items: HashSet<PathBuf>,
@@ -952,6 +952,8 @@ impl FileManagerDrawer {
     }
 
     fn render_combined_toolbar(&mut self, items: &[FileItem], window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let current_view_mode = self.view_mode;
+        
         h_flex()
             .w_full()
             .h(px(56.))
@@ -979,135 +981,129 @@ impl FileManagerDrawer {
                     .text_color(cx.theme().accent)
                     .child(t!("FileManager.Items", count => items.len()).to_string())
             )
-            // Lock button
+            // Divider
+            .child(ui::divider::Divider::vertical().h(px(24.)))
+            // View mode toggle group
             .child(
-                Button::new("lock")
-                    .icon(IconName::Lock)
+                ButtonGroup::new("view-mode-group")
+                    .child(
+                        Button::new("toggle-view")
+                            .icon(IconName::LayoutDashboard)
+                            .tooltip(t!("FileManager.GridView").to_string())
+                            .selected(current_view_mode == ViewMode::Grid)
+                    )
+                    .child(
+                        Button::new("toggle-list")
+                            .icon(IconName::List)
+                            .tooltip(t!("FileManager.ListView").to_string())
+                            .selected(current_view_mode == ViewMode::List)
+                    )
                     .ghost()
-                    .tooltip(t!("FileManager.Properties").to_string())
-                    .on_click(cx.listener(|_drawer, _event, _window, _cx| {
-                        // TODO: Implement lock functionality
-                    }))
-            )
-            // Layout buttons
-            .child(
-                Button::new("toggle-view")
-                    .icon(IconName::LayoutDashboard)
-                    .ghost()
-                    .tooltip(t!("FileManager.GridView").to_string())
-                    .on_click(cx.listener(|drawer, _event, _window, cx| {
-                        drawer.view_mode = ViewMode::Grid;
-                        cx.notify();
-                    }))
-            )
-            .child(
-                Button::new("toggle-list")
-                    .icon(IconName::List)
-                    .ghost()
-                    .tooltip(t!("FileManager.ListView").to_string())
-                    .on_click(cx.listener(|drawer, _event, _window, cx| {
-                        drawer.view_mode = ViewMode::List;
-                        cx.notify();
-                    }))
-            )
-            .child(
-                Button::new("split-view")
-                    .icon(IconName::HorizontalSplit)
-                    .ghost()
-                    .tooltip(t!("FileManager.ViewMode").to_string())
-                    .on_click(cx.listener(|_drawer, _event, _window, _cx| {
-                        // TODO: Implement split view
-                    }))
-            )
-            // File operations
-            .child(
-                Button::new("new-file")
-                    .icon(IconName::PagePlus)
-                    .ghost()
-                    .tooltip(t!("FileManager.NewFile").to_string())
-                    .on_click(cx.listener(|drawer, _event, _window, cx| {
-                        drawer.start_new_file(cx);
-                    }))
-            )
-            .child(
-                Button::new("new-folder")
-                    .icon(IconName::FolderPlus)
-                    .ghost()
-                    .tooltip(t!("FileManager.NewFolder").to_string())
-                    .on_click(cx.listener(|drawer, _event, _window, cx| {
-                        drawer.start_new_folder(cx);
-                    }))
-            )
-            // Refresh
-            .child(
-                Button::new("refresh")
-                    .icon(IconName::Refresh)
-                    .ghost()
-                    .tooltip(t!("FileManager.Refresh").to_string())
-                    .on_click(cx.listener(|drawer, _event, _window, cx| {
-                        if let Some(ref path) = drawer.project_path {
-                            drawer.folder_tree = FolderNode::from_path(path);
+                    .on_click(cx.listener(|drawer, selected: &Vec<usize>, _window, cx| {
+                        if selected.contains(&0) {
+                            drawer.view_mode = ViewMode::Grid;
+                        } else if selected.contains(&1) {
+                            drawer.view_mode = ViewMode::List;
                         }
                         cx.notify();
                     }))
             )
-            // Filter/search
+            // Divider
+            .child(ui::divider::Divider::vertical().h(px(24.)))
+            // File operations group
             .child(
-                Button::new("filter")
-                    .icon(IconName::Filter)
-                    .ghost()
-                    .tooltip(t!("FileManager.SortBy").to_string())
-                    .on_click(cx.listener(|_drawer, _event, _window, _cx| {
-                        // TODO: Implement filter
-                    }))
+                h_flex()
+                    .gap_1()
+                    .child(
+                        Button::new("new-file")
+                            .icon(IconName::PagePlus)
+                            .ghost()
+                            .tooltip(t!("FileManager.NewFile").to_string())
+                            .on_click(cx.listener(|drawer, _event, _window, cx| {
+                                drawer.start_new_file(cx);
+                            }))
+                    )
+                    .child(
+                        Button::new("new-folder")
+                            .icon(IconName::FolderPlus)
+                            .ghost()
+                            .tooltip(t!("FileManager.NewFolder").to_string())
+                            .on_click(cx.listener(|drawer, _event, _window, cx| {
+                                drawer.start_new_folder(cx);
+                            }))
+                    )
             )
-            // Show/hide
+            // Divider
+            .child(ui::divider::Divider::vertical().h(px(24.)))
+            // View options group
             .child(
-                Button::new("toggle-hidden")
-                    .icon(if self.show_hidden_files { IconName::EyeOff } else { IconName::Eye })
-                    .ghost()
-                    .tooltip(if self.show_hidden_files { 
-                        t!("FileManager.HideHidden").to_string() 
-                    } else { 
-                        t!("FileManager.ShowHidden").to_string() 
-                    })
-                    .on_click(cx.listener(|drawer, _event, _window, cx| {
-                        drawer.show_hidden_files = !drawer.show_hidden_files;
-                        cx.notify();
-                    }))
+                h_flex()
+                    .gap_1()
+                    .child(
+                        Button::new("toggle-hidden")
+                            .icon(if self.show_hidden_files { IconName::EyeOff } else { IconName::Eye })
+                            .ghost()
+                            .tooltip(if self.show_hidden_files { 
+                                t!("FileManager.HideHidden").to_string() 
+                            } else { 
+                                t!("FileManager.ShowHidden").to_string() 
+                            })
+                            .on_click(cx.listener(|drawer, _event, _window, cx| {
+                                drawer.show_hidden_files = !drawer.show_hidden_files;
+                                cx.notify();
+                            }))
+                    )
+                    .child(
+                        Button::new("refresh")
+                            .icon(IconName::Refresh)
+                            .ghost()
+                            .tooltip(t!("FileManager.Refresh").to_string())
+                            .on_click(cx.listener(|drawer, _event, _window, cx| {
+                                if let Some(ref path) = drawer.project_path {
+                                    drawer.folder_tree = FolderNode::from_path(path);
+                                }
+                                cx.notify();
+                            }))
+                    )
             )
-            // Open external
+            // Divider
+            .child(ui::divider::Divider::vertical().h(px(24.)))
+            // Actions group
             .child(
-                Button::new("external")
-                    .icon(IconName::ExternalLink)
-                    .ghost()
-                    .tooltip(t!("FileManager.OpenInFileManager").to_string())
-                    .on_click(cx.listener(|drawer, _event, _window, _cx| {
-                        if let Some(ref folder) = drawer.selected_folder {
-                            #[cfg(target_os = "windows")]
-                            let _ = std::process::Command::new("explorer")
-                                .arg(folder)
-                                .spawn();
-                            #[cfg(target_os = "macos")]
-                            let _ = std::process::Command::new("open")
-                                .arg(folder)
-                                .spawn();
-                            #[cfg(target_os = "linux")]
-                            let _ = std::process::Command::new("xdg-open")
-                                .arg(folder)
-                                .spawn();
-                        }
-                    }))
-            )
-            // More options
-            .child(
-                Button::new("more")
-                    .icon(IconName::Ellipsis)
-                    .ghost()
-                    .tooltip("More Options")
-                    .on_click(cx.listener(|_drawer, _event, _window, _cx| {
-                        // TODO: Implement more options menu
-                    }))
+                h_flex()
+                    .gap_1()
+                    .child(
+                        Button::new("external")
+                            .icon(IconName::ExternalLink)
+                            .ghost()
+                            .tooltip(t!("FileManager.OpenInFileManager").to_string())
+                            .on_click(cx.listener(|drawer, _event, _window, _cx| {
+                                if let Some(ref folder) = drawer.selected_folder {
+                                    #[cfg(target_os = "windows")]
+                                    let _ = std::process::Command::new("explorer")
+                                        .arg(folder)
+                                        .spawn();
+                                    #[cfg(target_os = "macos")]
+                                    let _ = std::process::Command::new("open")
+                                        .arg(folder)
+                                        .spawn();
+                                    #[cfg(target_os = "linux")]
+                                    let _ = std::process::Command::new("xdg-open")
+                                        .arg(folder)
+                                        .spawn();
+                                }
+                            }))
+                    )
+                    .child(
+                        Button::new("popout")
+                            .icon(IconName::ARrowUpRightSquare)
+                            .ghost()
+                            .tooltip("Pop Out to New Window")
+                            .on_click(cx.listener(|drawer, _event, window: &mut Window, cx| {
+                                let mouse_pos = window.mouse_position();
+                                cx.emit(PopoutFileManagerEvent { position: mouse_pos });
+                            }))
+                    )
             )
     }
 

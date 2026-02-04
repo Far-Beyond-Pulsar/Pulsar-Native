@@ -131,5 +131,5 @@ pub struct FileSelected {
 
 #[derive(Clone, Debug)]
 pub struct PopoutFileManagerEvent {
-    pub project_path: Option<PathBuf>,
+    pub position: Point<Pixels>,
 }

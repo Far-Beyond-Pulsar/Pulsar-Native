@@ -647,7 +647,7 @@ pub fn on_file_selected(
 
 pub fn on_popout_file_manager(
     app: &mut PulsarApp,
-    _drawer: &Entity<FileManagerDrawer>,
+    drawer: &Entity<FileManagerDrawer>,
     event: &PopoutFileManagerEvent,
     _window: &mut Window,
     cx: &mut Context<PulsarApp>,
@@ -655,18 +655,23 @@ pub fn on_popout_file_manager(
     use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
     use ui::Root;
 
-    let project_path = event.project_path.clone();
+    // Get project path from the drawer
+    let project_path = drawer.read(cx).project_path.clone();
+    
     app.state.drawer_open = false;
     cx.notify();
+
+    // Use mouse position from event for window placement
+    let window_origin = Point {
+        x: event.position.x - px(500.0), // Center window at mouse
+        y: event.position.y - px(350.0),
+    };
 
     // Open the file manager window
     let _ = cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds {
-                origin: Point {
-                    x: px(100.0),
-                    y: px(100.0),
-                },
+                origin: window_origin,
                 size: size(px(1000.0), px(700.0)),
             })),
             titlebar: Some(gpui::TitlebarOptions {
