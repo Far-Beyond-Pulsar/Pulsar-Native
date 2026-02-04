@@ -150,8 +150,9 @@ impl Render for FlamegraphView {
                             view.view_state.pan_y = view.view_state.drag_pan_start_y + delta_y;
                         } else {
                             // Detect hovered span
-                            // Account for the offset from titlebar, framerate graph and timeline at the top
-                            let canvas_offset_y = TITLE_BAR_HEIGHT + GRAPH_HEIGHT + TIMELINE_HEIGHT;
+                            // Mouse position is window-relative, need to account for timeline at top
+                            // Using hardcoded value to verify it's being used
+                            let canvas_offset_y = 240.0; // TIMELINE_HEIGHT
                             let canvas_y = current_y - canvas_offset_y;
 
                             // Copy view_state values before borrowing
