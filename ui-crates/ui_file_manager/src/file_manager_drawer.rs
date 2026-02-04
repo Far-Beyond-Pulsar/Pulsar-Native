@@ -933,9 +933,11 @@ impl FileManagerDrawer {
                 if is_renaming {
                     div()
                         .flex_1()
+                        .text_sm()
                         .child(
                             TextInput::new(&self.rename_input_state)
                                 .w_full()
+                                .xsmall()
                         )
                         .into_any_element()
                 } else {
@@ -1310,8 +1312,11 @@ impl FileManagerDrawer {
                         if is_renaming {
                             div()
                                 .w_full()
+                                .text_xs()
+                                .text_center()
                                 .child(
                                     TextInput::new(&self.rename_input_state)
+                                        .xsmall()
                                 )
                                 .into_any_element()
                         } else {
