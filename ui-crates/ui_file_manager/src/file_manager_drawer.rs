@@ -1520,9 +1520,15 @@ impl FileManagerDrawer {
         // Set renaming state
         self.renaming_item = Some(path);
         
-        // Initialize the input with the current name
+        // Clear and set the input text
         self.rename_input_state.update(cx, |state, cx| {
-            state.replace_text_in_range(None, &current_name, window, cx);
+            // First clear everything
+            let text_len = state.text().len();
+            if text_len > 0 {
+                state.replace_text_in_range(Some(0..text_len), "", window, cx);
+            }
+            // Then insert the current name
+            state.replace_text_in_range(Some(0..0), &current_name, window, cx);
         });
         
         cx.notify();
