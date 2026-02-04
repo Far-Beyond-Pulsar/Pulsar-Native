@@ -939,12 +939,19 @@ impl FileManagerDrawer {
             })
             .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
                 if is_renaming {
-                    // Stop propagation when renaming
+                    // Stop propagation when clicking the item being renamed
                     cx.stop_propagation();
-                } else if event.click_count == 2 {
-                    drawer.handle_item_double_click(&item_clone3, cx);
                 } else {
-                    drawer.handle_item_click(&item_clone, &event.modifiers, cx);
+                    // Commit any active rename before handling this item
+                    if drawer.renaming_item.is_some() {
+                        drawer.commit_rename(cx);
+                    }
+                    
+                    if event.click_count == 2 {
+                        drawer.handle_item_double_click(&item_clone3, cx);
+                    } else {
+                        drawer.handle_item_click(&item_clone, &event.modifiers, cx);
+                    }
                 }
             }))
             .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
@@ -1295,12 +1302,19 @@ impl FileManagerDrawer {
                     )
                     .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
                         if is_renaming {
-                            // Stop propagation when renaming so parent doesn't commit
+                            // Stop propagation when clicking the item being renamed
                             cx.stop_propagation();
-                        } else if event.click_count == 2 {
-                            drawer.handle_item_double_click(&item_clone3, cx);
                         } else {
-                            drawer.handle_item_click(&item_clone, &event.modifiers, cx);
+                            // Commit any active rename before handling this item
+                            if drawer.renaming_item.is_some() {
+                                drawer.commit_rename(cx);
+                            }
+                            
+                            if event.click_count == 2 {
+                                drawer.handle_item_double_click(&item_clone3, cx);
+                            } else {
+                                drawer.handle_item_click(&item_clone, &event.modifiers, cx);
+                            }
                         }
                     }))
                     .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
