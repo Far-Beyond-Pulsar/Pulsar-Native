@@ -15,6 +15,7 @@ pub mod tree;
 pub mod utils;
 pub mod operations;
 pub mod context_menus;
+pub mod fs_metadata;
 // pub mod content; // TODO: Fix lifetime issues in grid/list rendering
 
 // Re-export commonly used types
@@ -25,6 +26,7 @@ pub use types::{
 };
 pub use tree::FolderNode;
 pub use operations::FileOperations;
+pub use fs_metadata::FsMetadataManager;
 
 // Public API note:
 // The full FileManagerDrawer implementation is in the monolithic file_manager_drawer.rs

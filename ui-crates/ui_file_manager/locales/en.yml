@@ -34,6 +34,8 @@ FileManager.ToggleGitignore: "Toggle Gitignore"
 FileManager.ToggleHidden: "Toggle Hidden"
 FileManager.CheckMultiuserSync: "Check Multiuser Sync"
 FileManager.ShowHistory: "Show History"
+FileManager.SetColor: "Set Color"
+FileManager.ClearColor: "Clear Color"
 
 # View Modes
 FileManager.ListView: "List View"

@@ -177,7 +177,10 @@ pub fn item_context_menu(
     has_clipboard: bool,
     is_class: bool,
 ) -> impl Fn(ui::popup_menu::PopupMenu, &mut Window, &mut Context<ui::popup_menu::PopupMenu>) -> ui::popup_menu::PopupMenu + 'static {
-    move |menu, _window, _cx| {
+    // Clone path outside the closure for use in submenu
+    let path_for_submenu = path.clone();
+    
+    move |menu, window, cx| {
         let mut menu = menu;
 
         // Class-specific actions
@@ -204,7 +207,48 @@ pub fn item_context_menu(
             .separator()
             .menu_with_icon(&t!("FileManager.ValidateAsset").to_string(), ui::Icon::new(ui::IconName::CircleCheck), Box::new(ValidateAsset::default()))
             .menu_with_icon(&t!("FileManager.ToggleFavorite").to_string(), ui::Icon::new(ui::IconName::Star), Box::new(ToggleFavorite::default()))
-            .separator()
+            .separator();
+        
+        // Color override submenu
+        let submenu_path = path_for_submenu.clone();
+        menu = menu.submenu_with_icon(Some(ui::Icon::new(ui::IconName::Palette)), &t!("FileManager.SetColor").to_string(), window, cx, move |submenu, _window, _cx| {
+                submenu
+                    .menu(&t!("FileManager.ClearColor").to_string(), Box::new(SetColorOverride { 
+                        item_path: submenu_path.to_string_lossy().to_string(),
+                        color: None,
+                    }))
+                    .separator()
+                    .menu(&"🔴 Red".to_string(), Box::new(SetColorOverride {
+                        item_path: submenu_path.to_string_lossy().to_string(),
+                        color: Some(ColorData { r: 255, g: 80, b: 80 }),
+                    }))
+                    .menu(&"🟠 Orange".to_string(), Box::new(SetColorOverride {
+                        item_path: submenu_path.to_string_lossy().to_string(),
+                        color: Some(ColorData { r: 255, g: 160, b: 80 }),
+                    }))
+                    .menu(&"🟡 Yellow".to_string(), Box::new(SetColorOverride {
+                        item_path: submenu_path.to_string_lossy().to_string(),
+                        color: Some(ColorData { r: 255, g: 220, b: 80 }),
+                    }))
+                    .menu(&"🟢 Green".to_string(), Box::new(SetColorOverride {
+                        item_path: submenu_path.to_string_lossy().to_string(),
+                        color: Some(ColorData { r: 80, g: 200, b: 120 }),
+                    }))
+                    .menu(&"🔵 Blue".to_string(), Box::new(SetColorOverride {
+                        item_path: submenu_path.to_string_lossy().to_string(),
+                        color: Some(ColorData { r: 80, g: 160, b: 255 }),
+                    }))
+                    .menu(&"🟣 Purple".to_string(), Box::new(SetColorOverride {
+                        item_path: submenu_path.to_string_lossy().to_string(),
+                        color: Some(ColorData { r: 180, g: 100, b: 255 }),
+                    }))
+                    .menu(&"🟤 Pink".to_string(), Box::new(SetColorOverride {
+                        item_path: submenu_path.to_string_lossy().to_string(),
+                        color: Some(ColorData { r: 255, g: 120, b: 180 }),
+                    }))
+            });
+        
+        menu = menu
             .menu_with_icon(&t!("FileManager.ToggleGitignore").to_string(), ui::Icon::new(ui::IconName::Gitignore), Box::new(ToggleGitignore::default()))
             .menu_with_icon(&t!("FileManager.ToggleHidden").to_string(), ui::Icon::new(ui::IconName::EyeOff), Box::new(ToggleHidden::default()))
             .separator()

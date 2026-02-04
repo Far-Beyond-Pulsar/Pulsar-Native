@@ -20,6 +20,7 @@ use crate::drawer::{
     operations::FileOperations,
     utils::*,
     context_menus,
+    FsMetadataManager,
 };
 
 // ============================================================================
@@ -34,6 +35,9 @@ pub struct FileManagerDrawer {
 
     // File operations
     operations: FileOperations,
+    
+    // Metadata management
+    fs_metadata: FsMetadataManager,
 
     // Drag and drop
     drag_state: DragState,
@@ -104,6 +108,7 @@ impl FileManagerDrawer {
         .detach();
 
         let operations = FileOperations::new(project_path.clone());
+        let fs_metadata = FsMetadataManager::new();
 
         Self {
             folder_tree: project_path.as_ref().and_then(|p| FolderNode::from_path(p)),
@@ -111,6 +116,7 @@ impl FileManagerDrawer {
             selected_folder: project_path,
             selected_items: HashSet::new(),
             operations,
+            fs_metadata,
             drag_state: DragState::None,
             resizable_state,
             renaming_item: None,
@@ -497,6 +503,28 @@ impl FileManagerDrawer {
         tracing::info!("Check multiuser sync action triggered - not yet implemented");
     }
 
+    fn handle_set_color_override(&mut self, action: &SetColorOverride, cx: &mut Context<Self>) {
+        let item_path = if action.item_path.is_empty() {
+            // Use first selected item
+            self.selected_items.iter().next().cloned()
+        } else {
+            Some(PathBuf::from(&action.item_path))
+        };
+
+        if let Some(path) = item_path {
+            let color = action.color.as_ref().map(|c| {
+                let hex = ((c.r as u32) << 16) | ((c.g as u32) << 8) | (c.b as u32);
+                gpui::rgb(hex).into()
+            });
+
+            if let Err(e) = self.fs_metadata.set_color_override(&path, color) {
+                tracing::error!("Failed to set color override: {}", e);
+            } else {
+                cx.notify(); // Refresh UI
+            }
+        }
+    }
+
     pub fn set_project_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         tracing::debug!("[FILE_MANAGER] set_project_path called with: {:?}", path);
         tracing::debug!("[FILE_MANAGER] Path exists: {}", path.exists());
@@ -855,7 +883,7 @@ impl FileManagerDrawer {
         let is_selected = self.selected_items.contains(&item.path);
         let is_renaming = self.renaming_item.as_ref() == Some(&item.path);
         let icon = get_icon_for_file_type(&item);
-        let icon_color = get_icon_color_for_file_type(&item, cx.theme());
+        let icon_color = get_icon_color_for_file_type(&item, cx.theme(), &mut self.fs_metadata);
         let item_clone = item.clone();
         let item_clone2 = item.clone();
         let item_clone3 = item.clone(); // For double-click
@@ -1222,7 +1250,7 @@ impl FileManagerDrawer {
         let is_renaming = self.renaming_item.as_ref() == Some(&item.path);
         let path = item.path.clone();
         let icon = get_icon_for_file_type(&item);
-        let icon_color = get_icon_color_for_file_type(&item, cx.theme());
+        let icon_color = get_icon_color_for_file_type(&item, cx.theme(), &mut self.fs_metadata);
         let item_clone = item.clone();
         let item_clone2 = item.clone();
         let item_clone3 = item.clone(); // For double-click
@@ -1503,6 +1531,11 @@ impl FileManagerDrawer {
         // Perform rename
         match self.operations.rename_item(&old_path, &new_name) {
             Ok(new_path) => {
+                // Update metadata
+                if let Err(e) = self.fs_metadata.rename_file(&old_path, &new_path) {
+                    tracing::error!("Failed to update metadata for rename: {}", e);
+                }
+                
                 // Update selections
                 if self.selected_folder.as_ref() == Some(&old_path) {
                     self.selected_folder = Some(new_path.clone());
@@ -1639,6 +1672,9 @@ impl Render for FileManagerDrawer {
             }))
             .on_action(cx.listener(|this, action: &CheckMultiuserSync, _window, cx| {
                 this.handle_check_multiuser_sync(action, cx);
+            }))
+            .on_action(cx.listener(|this, action: &SetColorOverride, _window, cx| {
+                this.handle_set_color_override(action, cx);
             }))
             .child(self.render_content(window, cx))
     }

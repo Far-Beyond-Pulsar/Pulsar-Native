@@ -165,3 +165,18 @@ pub struct CheckMultiuserSync {
     #[serde(default)]
     pub item_path: String,
 }
+
+#[derive(Action, Clone, Debug, PartialEq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager)]
+pub struct SetColorOverride {
+    #[serde(default)]
+    pub item_path: String,
+    pub color: Option<ColorData>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+pub struct ColorData {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+}

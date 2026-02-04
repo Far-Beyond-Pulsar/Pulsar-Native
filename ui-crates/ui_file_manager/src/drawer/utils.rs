@@ -1,5 +1,6 @@
 use ui::IconName;
 use super::types::FileItem;
+use super::fs_metadata::FsMetadataManager;
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -31,7 +32,13 @@ pub fn format_modified_time(time: Option<std::time::SystemTime>) -> String {
     .unwrap_or_else(|| "Unknown".to_string())
 }
 
-pub fn get_icon_color_for_file_type(item: &FileItem, theme: &ui::Theme) -> gpui::Hsla {
+pub fn get_icon_color_for_file_type(item: &FileItem, theme: &ui::Theme, fs_metadata: &mut FsMetadataManager) -> gpui::Hsla {
+    // Check for color override first
+    if let Some(override_color) = fs_metadata.get_color_override(&item.path) {
+        return override_color;
+    }
+    
+    // Fall back to file type color or theme default
     item.file_type_def.as_ref()
         .map(|def| def.color)
         .unwrap_or(theme.muted_foreground)
