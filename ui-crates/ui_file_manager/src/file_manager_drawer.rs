@@ -73,10 +73,19 @@ impl FileManagerDrawer {
         cx.subscribe(
             &rename_input_state,
             |drawer, _input, event: &ui::input::InputEvent, cx| {
-                if let ui::input::InputEvent::PressEnter { .. } = event {
-                    if drawer.renaming_item.is_some() {
-                        drawer.commit_rename(cx);
+                match event {
+                    ui::input::InputEvent::PressEnter { .. } => {
+                        if drawer.renaming_item.is_some() {
+                            drawer.commit_rename(cx);
+                        }
                     }
+                    ui::input::InputEvent::Blur => {
+                        // Save on blur (click outside)
+                        if drawer.renaming_item.is_some() {
+                            drawer.commit_rename(cx);
+                        }
+                    }
+                    _ => {}
                 }
             },
         )
@@ -863,6 +872,7 @@ impl FileManagerDrawer {
         let icon_color = get_icon_color_for_file_type(&item, cx.theme());
         let item_clone = item.clone();
         let item_clone2 = item.clone();
+        let item_clone3 = item.clone(); // For double-click
         let item_path = item.path.clone();
         let has_clipboard = self.clipboard.is_some();
         let is_class = item.is_class();
@@ -930,8 +940,12 @@ impl FileManagerDrawer {
                         .child(format_file_size(item.size))
                 )
             })
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, _event: &MouseDownEvent, _window: &mut Window, cx| {
-                drawer.handle_item_click(&item_clone, &_event.modifiers, cx);
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
+                if event.click_count == 2 {
+                    drawer.handle_item_double_click(&item_clone3, cx);
+                } else {
+                    drawer.handle_item_click(&item_clone, &event.modifiers, cx);
+                }
             }))
             .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
                 // Select item on right-click if not already selected (without changing folder view)
@@ -1204,6 +1218,7 @@ impl FileManagerDrawer {
         let icon_color = get_icon_color_for_file_type(&item, cx.theme());
         let item_clone = item.clone();
         let item_clone2 = item.clone();
+        let item_clone3 = item.clone(); // For double-click
         let item_path = item.path.clone();
         let has_clipboard = self.clipboard.is_some();
         let is_class = item.is_class();
@@ -1279,7 +1294,11 @@ impl FileManagerDrawer {
                         }
                     )
                     .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
-                        drawer.handle_item_click(&item_clone, &event.modifiers, cx);
+                        if event.click_count == 2 {
+                            drawer.handle_item_double_click(&item_clone3, cx);
+                        } else {
+                            drawer.handle_item_click(&item_clone, &event.modifiers, cx);
+                        }
                     }))
                     .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
                         // Select item on right-click if not already selected (without changing folder view)
@@ -1301,6 +1320,7 @@ impl FileManagerDrawer {
     }
 
     fn handle_item_click(&mut self, item: &FileItem, modifiers: &Modifiers, cx: &mut Context<Self>) {
+        // Single click just selects items
         if modifiers.control || modifiers.platform {
             if self.selected_items.contains(&item.path) {
                 self.selected_items.remove(&item.path);
@@ -1310,17 +1330,21 @@ impl FileManagerDrawer {
         } else {
             self.selected_items.clear();
             self.selected_items.insert(item.path.clone());
-            
-            if item.is_folder {
-                self.selected_folder = Some(item.path.clone());
-            } else {
-                cx.emit(FileSelected {
-                    path: item.path.clone(),
-                    file_type_def: item.file_type_def.clone(),
-                });
-            }
         }
         
+        cx.notify();
+    }
+
+    fn handle_item_double_click(&mut self, item: &FileItem, cx: &mut Context<Self>) {
+        // Double click opens folders or files
+        if item.is_folder {
+            self.selected_folder = Some(item.path.clone());
+        } else {
+            cx.emit(FileSelected {
+                path: item.path.clone(),
+                file_type_def: item.file_type_def.clone(),
+            });
+        }
         cx.notify();
     }
 
@@ -1433,8 +1457,35 @@ impl FileManagerDrawer {
     fn commit_rename(&mut self, cx: &mut Context<Self>) {
         if let Some(ref old_path) = self.renaming_item.clone() {
             let new_name = self.rename_input_state.read(cx).text().to_string().trim().to_string();
-            if !new_name.is_empty() {
-                if let Ok(new_path) = self.operations.rename_item(old_path, &new_name) {
+            
+            // Validate the new name
+            if new_name.is_empty() {
+                // Empty name - cancel rename
+                self.renaming_item = None;
+                cx.notify();
+                return;
+            }
+            
+            // Check if name actually changed
+            let old_name = old_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if new_name == old_name {
+                // No change - just close rename
+                self.renaming_item = None;
+                cx.notify();
+                return;
+            }
+            
+            // Check for invalid characters
+            if new_name.contains(['/', '\\', ':', '*', '?', '"', '<', '>', '|']) {
+                tracing::error!("Invalid filename: contains illegal characters");
+                self.renaming_item = None;
+                cx.notify();
+                return;
+            }
+            
+            // Attempt rename
+            match self.operations.rename_item(old_path, &new_name) {
+                Ok(new_path) => {
                     // Update state
                     if self.selected_folder.as_ref() == Some(old_path) {
                         self.selected_folder = Some(new_path.clone());
@@ -1447,7 +1498,11 @@ impl FileManagerDrawer {
                         self.folder_tree = FolderNode::from_path(project_path);
                     }
                 }
+                Err(e) => {
+                    tracing::error!("Failed to rename {:?} to {}: {}", old_path, new_name, e);
+                }
             }
+            
             self.renaming_item = None;
             cx.notify();
         }
