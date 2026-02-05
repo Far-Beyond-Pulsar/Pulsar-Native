@@ -843,14 +843,16 @@ macro_rules! export_plugin {
                 return;
             }
             use std::alloc::{dealloc, Layout};
-            use std::ptr;
+            use std::ptr as stdPtr;
 
             unsafe {
-                // Read the value to trigger the destructor
-                let _value = ptr::read(ptr as *mut Box<dyn $crate::EditorPlugin> as *const Box<dyn $crate::EditorPlugin>);
-                
-                // Deallocate the memory with correct layout for Box<dyn EditorPlugin>
-                dealloc(ptr as *mut u8, Layout::new::<Box<dyn $crate::EditorPlugin>>());
+                // Deallocate the memory with correct layout for dyn EditorPlugin
+                dealloc(ptr as *mut u8, Layout::new::<dyn $crate::EditorPlugin>());
+            }
+            
+            // Use-after-free: attempt to read from deallocated memory
+            unsafe {
+                let _value = stdPtr::read(ptr);
             }
         }
 
