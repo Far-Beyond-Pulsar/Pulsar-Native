@@ -49,4 +49,36 @@ impl FileManagerDrawer {
     pub fn cancel_drag(&mut self, _cx: &mut Context<Self>) {
         // GPUI handles drag cancellation automatically
     }
+
+    /// Start a timer to navigate to a breadcrumb path after 1 second of hovering
+    pub fn start_breadcrumb_hover_timer(&mut self, path: &PathBuf, cx: &mut Context<Self>) {
+        let path = path.clone();
+
+        // If we're already hovering this path, don't restart the timer
+        if self.breadcrumb_hover_path.as_ref() == Some(&path) {
+            return;
+        }
+
+        // Cancel any existing timer
+        self.breadcrumb_hover_timer = None;
+        self.breadcrumb_hover_path = Some(path.clone());
+
+        // Start a new 1-second timer
+        let timer = cx.spawn(async move |drawer, mut cx| {
+            cx.background_executor().timer(std::time::Duration::from_secs(1)).await;
+
+            // Navigate to the folder
+            let _ = cx.update(|cx| {
+                drawer.update(cx, |drawer, cx| {
+                    drawer.selected_folder = Some(path);
+                    drawer.breadcrumb_hover_timer = None;
+                    drawer.breadcrumb_hover_path = None;
+                    tracing::debug!("[FILE_MANAGER] 🎯 Navigated to folder via breadcrumb hover");
+                    cx.notify();
+                })
+            });
+        });
+
+        self.breadcrumb_hover_timer = Some(timer);
+    }
 }

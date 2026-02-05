@@ -208,6 +208,7 @@ impl FileManagerDrawer {
                     }
 
                     let path_clone = path.clone();
+                    let path_for_hover = path.clone();
                     elements.push(
                         div()
                             .text_sm()
@@ -222,6 +223,23 @@ impl FileManagerDrawer {
                             .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, _event: &MouseDownEvent, _window: &mut Window, cx| {
                                 drawer.selected_folder = Some(path_clone.clone());
                                 cx.notify();
+                            }))
+                            // Add drag-over support for navigation
+                            .drag_over::<DraggedFile>(|style, _, _, cx| {
+                                style
+                                    .bg(cx.theme().accent.opacity(0.3))
+                                    .border_1()
+                                    .border_color(cx.theme().accent)
+                            })
+                            .on_drop(cx.listener(move |drawer, drag: &DraggedFile, _window, cx| {
+                                // Don't actually drop here, just trigger the navigation if timer completed
+                                // The actual drop will be handled by the folder below
+                                tracing::debug!("[FILE_MANAGER] Drop on breadcrumb - navigation already handled by hover");
+                            }))
+                            .on_mouse_move(cx.listener(move |drawer, _event: &MouseMoveEvent, _window, cx| {
+                                // Check if we're currently dragging something
+                                // Start hover timer when moving over breadcrumb during drag
+                                drawer.start_breadcrumb_hover_timer(&path_for_hover, cx);
                             }))
                             .into_any_element()
                     );

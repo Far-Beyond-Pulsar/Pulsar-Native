@@ -50,6 +50,8 @@ impl FileManagerDrawer {
             operations,
             fs_metadata,
             drag_state: DragState::None,
+            breadcrumb_hover_timer: None,
+            breadcrumb_hover_path: None,
             resizable_state,
             renaming_item: None,
             rename_input_state,

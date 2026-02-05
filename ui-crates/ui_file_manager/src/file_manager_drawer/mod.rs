@@ -41,6 +41,8 @@ pub struct FileManagerDrawer {
 
     // Drag and drop
     drag_state: DragState,
+    breadcrumb_hover_timer: Option<gpui::Task<()>>,
+    breadcrumb_hover_path: Option<PathBuf>,
 
     // UI state
     resizable_state: Entity<ResizableState>,
