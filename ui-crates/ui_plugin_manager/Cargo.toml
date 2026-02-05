@@ -1,0 +1,23 @@
+[package]
+name = "ui_plugin_manager"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# UI framework
+gpui.workspace = true
+ui.workspace = true
+
+# UI crates
+ui_common.workspace = true
+
+# Engine
+engine_state.workspace = true
+plugin_manager.workspace = true
+plugin_editor_api.workspace = true
+
+# Utilities
+anyhow = "1.0"
+tracing.workspace = true
+parking_lot = "0.12"

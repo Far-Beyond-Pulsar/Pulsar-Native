@@ -8,6 +8,7 @@ use ui_problems::ProblemsWindow;
 use ui_flamegraph::{FlamegraphWindow, TraceData};
 use ui_type_debugger::TypeDebuggerWindow;
 use ui_multiplayer::MultiplayerWindow;
+use ui_plugin_manager::PluginManagerWindow;
 
 use super::PulsarApp;
 use super::panel_window::PanelWindow;
@@ -167,6 +168,41 @@ impl PulsarApp {
             move |window, cx| {
                 let multiplayer_window = cx.new(|cx| MultiplayerWindow::new(project_path, window, cx));
                 cx.new(|cx| Root::new(multiplayer_window.into(), window, cx))
+            },
+        );
+    }
+
+    pub(super) fn toggle_plugin_manager(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let plugin_manager_ptr = &mut self.state.plugin_manager as *mut plugin_manager::PluginManager;
+
+        let _ = cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds {
+                    origin: Point {
+                        x: px(250.0),
+                        y: px(250.0),
+                    },
+                    size: size(px(600.0), px(500.0)),
+                })),
+                titlebar: Some(gpui::TitlebarOptions {
+                    title: None,
+                    appears_transparent: true,
+                    traffic_light_position: None,
+                }),
+                kind: WindowKind::Normal,
+                is_resizable: true,
+                window_decorations: Some(gpui::WindowDecorations::Client),
+                window_min_size: Some(gpui::Size {
+                    width: px(450.),
+                    height: px(400.),
+                }),
+                ..Default::default()
+            },
+            move |window, cx| {
+                let plugin_manager_window = cx.new(|cx| unsafe {
+                    PluginManagerWindow::new(&mut *plugin_manager_ptr, window, cx)
+                });
+                cx.new(|cx| Root::new(plugin_manager_window.into(), window, cx))
             },
         );
     }

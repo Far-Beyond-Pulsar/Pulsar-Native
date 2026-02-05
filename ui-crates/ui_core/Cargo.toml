@@ -21,6 +21,7 @@ ui_type_debugger.workspace = true
 ui_file_manager.workspace = true
 ui_loading_screen.workspace = true
 ui_project_launcher.workspace = true
+ui_plugin_manager.workspace = true
 
 
 # Engine

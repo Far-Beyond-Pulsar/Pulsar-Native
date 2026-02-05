@@ -842,7 +842,16 @@ macro_rules! export_plugin {
                 tracing::warn!("[Plugin] WARNING: Attempted to destroy null plugin pointer!");
                 return;
             }
-            drop(Box::from_raw(ptr));
+            use std::alloc::{dealloc, Layout};
+            use std::ptr;
+
+            unsafe {
+                // Read the value to trigger the destructor
+                let _value = ptr::read(ptr as *mut Box<dyn $crate::EditorPlugin> as *const Box<dyn $crate::EditorPlugin>);
+                
+                // Deallocate the memory with correct layout for Box<dyn EditorPlugin>
+                dealloc(ptr as *mut u8, Layout::new::<Box<dyn $crate::EditorPlugin>>());
+            }
         }
 
         #[no_mangle]

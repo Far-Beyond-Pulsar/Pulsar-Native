@@ -14598,6 +14598,7 @@ dependencies = [
  "ui_level_editor",
  "ui_loading_screen",
  "ui_multiplayer",
+ "ui_plugin_manager",
  "ui_problems",
  "ui_project_launcher",
  "ui_settings",
@@ -14744,6 +14745,21 @@ dependencies = [
  "ui",
  "ui_common",
  "uuid",
+]
+
+[[package]]
+name = "ui_plugin_manager"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "engine_state",
+ "gpui",
+ "parking_lot",
+ "plugin_editor_api",
+ "plugin_manager",
+ "tracing",
+ "ui",
+ "ui_common",
 ]
 
 [[package]]

@@ -212,6 +212,22 @@ impl PulsarApp {
                                     })),
                             )
                             .child(
+                                Button::new("toggle-plugin-manager")
+                                    .ghost()
+                                    .icon(
+                                        Icon::new(IconName::Puzzle)
+                                            .size(px(16.))
+                                            .text_color(cx.theme().muted_foreground)
+                                    )
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(4.))
+                                    .tooltip(t!("StatusBar.PluginManager").to_string())
+                                    .on_click(cx.listener(|app, _, window, cx| {
+                                        app.toggle_plugin_manager(window, cx);
+                                    })),
+                            )
+                            .child(
                                 Button::new("toggle-flamegraph")
                                     .ghost()
                                     .icon(
