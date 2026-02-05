@@ -7,8 +7,9 @@ use plugin_manager::PluginManager;
 use ui::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex,
-    ActiveTheme as _, Icon, IconName, StyledExt,
+    ActiveTheme as _, Icon, IconName, StyledExt, TitleBar,
 };
+use ui::Sizable;
 
 /// Plugin Manager Window - Shows loaded plugins with unload functionality
 pub struct PluginManagerWindow {
@@ -76,37 +77,36 @@ impl Render for PluginManagerWindow {
             .size_full()
             .bg(cx.theme().background)
             .child(
-                // Header
-                h_flex()
-                    .w_full()
-                    .px_6()
-                    .py_4()
-                    .items_center()
-                    .gap_3()
-                    .border_b_1()
-                    .border_color(cx.theme().border)
-                    .bg(cx.theme().sidebar)
+                // Custom titlebar
+                TitleBar::new()
                     .child(
-                        Icon::new(IconName::Puzzle)
-                            .size(px(24.))
-                            .text_color(cx.theme().primary)
-                    )
-                    .child(
-                        div()
-                            .text_lg()
-                            .font_bold()
-                            .text_color(cx.theme().foreground)
-                            .child("Plugin Manager")
-                    )
-                    .child(div().flex_1())  // Spacer
-                    .child(
-                        Button::new("refresh-plugins")
-                            .icon(IconName::Refresh)
-                            .ghost()
-                            .tooltip("Refresh Plugin List")
-                            .on_click(cx.listener(|this, _, _window, cx| {
-                                this.refresh(cx);
-                            }))
+                        h_flex()
+                            .w_full()
+                            .items_center()
+                            .gap_3()
+                            .child(
+                                Icon::new(IconName::Puzzle)
+                                    .size(px(16.))
+                                    .text_color(cx.theme().primary)
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_semibold()
+                                    .text_color(cx.theme().foreground)
+                                    .child("Plugin Manager")
+                            )
+                            .child(div().flex_1())  // Spacer
+                            .child(
+                                Button::new("refresh-plugins")
+                                    .icon(IconName::Refresh)
+                                    .ghost()
+                                    .xsmall()
+                                    .tooltip("Refresh Plugin List")
+                                    .on_click(cx.listener(|this, _, _window, cx| {
+                                        this.refresh(cx);
+                                    }))
+                            )
                     )
             )
             .child(
