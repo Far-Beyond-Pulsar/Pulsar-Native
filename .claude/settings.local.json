@@ -32,7 +32,9 @@
       "Bash(rg:*)",
       "Bash(test:*)",
       "Bash(cargo tree:*)",
-      "Bash(wait)"
+      "Bash(wait)",
+      "Bash(for f in constructors.rs action_handlers.rs render.rs render_toolbar.rs render_tree.rs render_content.rs item_management.rs event_handlers.rs rename_operations.rs)",
+      "Bash(do sed -i '/^use /d' \"$f\")"
     ]
   }
 }
