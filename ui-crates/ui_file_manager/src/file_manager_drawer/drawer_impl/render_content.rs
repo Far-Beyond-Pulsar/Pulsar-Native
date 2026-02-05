@@ -26,6 +26,53 @@ impl FileManagerDrawer {
         let is_class = item.is_class();
         let is_folder = item.is_folder;
 
+        // Create drag data for this item
+        let drag_paths = if is_selected {
+            self.selected_items.iter().cloned().collect()
+        } else {
+            vec![item.path.clone()]
+        };
+
+        let drag_data = DraggedFile {
+            paths: drag_paths,
+            is_folder: item.is_folder,
+            drag_start_position: None,
+        };
+
+        let item_for_drop = item.clone();
+
+        let mut content = v_flex()
+            .id(SharedString::from(format!("grid-item-{}", item.name)))
+            .w_full()
+            .h_full()
+            .p_3()
+            .gap_2()
+            .items_center()
+            .justify_center();
+
+        // Add drag functionality
+        content = content.on_drag(drag_data, move |drag, position, _, cx| {
+            let mut drag_with_pos = drag.clone();
+            drag_with_pos.drag_start_position = Some(position);
+            cx.stop_propagation();
+            cx.new(|_| drag_with_pos)
+        });
+
+        // Add drop functionality if this is a folder
+        if is_folder {
+            content = content
+                .drag_over::<DraggedFile>(|style, _, _, cx| {
+                    style
+                        .bg(cx.theme().accent.opacity(0.2))
+                        .border_2()
+                        .border_color(cx.theme().accent)
+                        .rounded_lg()
+                })
+                .on_drop(cx.listener(move |drawer, drag: &DraggedFile, _window, cx| {
+                    drawer.handle_drop_on_folder_new(&item_for_drop.path, &drag.paths, cx);
+                }));
+        }
+
         div()
             .w(px(100.0))
             .h(px(110.0))
@@ -47,15 +94,7 @@ impl FileManagerDrawer {
                     .border_color(cx.theme().accent.opacity(0.7))
                     .shadow_lg()
             })
-            .child(
-                v_flex()
-                    .id(SharedString::from(format!("grid-item-{}", item.name)))
-                    .w_full()
-                    .h_full()
-                    .p_3()
-                    .gap_2()
-                    .items_center()
-                    .justify_center()
+            .child(content
                     .child(
                         div()
                             .size(px(48.0))
@@ -154,9 +193,24 @@ impl FileManagerDrawer {
         let item_path = item.path.clone();
         let has_clipboard = self.clipboard.is_some();
         let is_class = item.is_class();
-        let _is_folder = item.is_folder;
+        let is_folder = item.is_folder;
 
-        h_flex()
+        // Create drag data for this item
+        let drag_paths = if is_selected {
+            self.selected_items.iter().cloned().collect()
+        } else {
+            vec![item.path.clone()]
+        };
+
+        let drag_data = DraggedFile {
+            paths: drag_paths,
+            is_folder: item.is_folder,
+            drag_start_position: None,
+        };
+
+        let item_for_drop = item.clone();
+
+        let mut list_item = h_flex()
             .id(SharedString::from(format!("list-item-{}", item.name)))
             .w_full()
             .h(px(36.))
@@ -166,18 +220,44 @@ impl FileManagerDrawer {
             .items_center()
             .rounded_md()
             .border_1()
-            .border_color(gpui::transparent_black())
+            .cursor_pointer()
             .when(is_selected, |this| {
                 this.bg(cx.theme().accent.opacity(0.1))
                     .border_color(cx.theme().accent.opacity(0.3))
                     .border_l_2()
                     .border_color(cx.theme().accent)
             })
+            .when(!is_selected, |this| {
+                this.border_color(gpui::transparent_black())
+            })
             .hover(|this| {
                 this.bg(cx.theme().secondary.opacity(0.5))
                     .border_color(cx.theme().accent.opacity(0.2))
-            })
-            .cursor_pointer()
+            });
+
+        // Add drag functionality
+        list_item = list_item.on_drag(drag_data, move |drag, position, _, cx| {
+            let mut drag_with_pos = drag.clone();
+            drag_with_pos.drag_start_position = Some(position);
+            cx.stop_propagation();
+            cx.new(|_| drag_with_pos)
+        });
+
+        // Add drop functionality if this is a folder
+        if is_folder {
+            list_item = list_item
+                .drag_over::<DraggedFile>(|style, _, _, cx| {
+                    style
+                        .bg(cx.theme().accent.opacity(0.2))
+                        .border_2()
+                        .border_color(cx.theme().accent)
+                })
+                .on_drop(cx.listener(move |drawer, drag: &DraggedFile, _window, cx| {
+                    drawer.handle_drop_on_folder_new(&item_for_drop.path, &drag.paths, cx);
+                }));
+        }
+
+        list_item
             .child(
                 div()
                     .w(px(24.0))

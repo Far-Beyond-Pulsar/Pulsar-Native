@@ -21,7 +21,7 @@ pub mod fs_metadata;
 // Re-export commonly used types
 pub use actions::*;
 pub use types::{
-    ViewMode, SortBy, SortOrder, DragState,
+    ViewMode, SortBy, SortOrder, DragState, DraggedFile,
     FileItem, FileSelected, PopoutFileManagerEvent,
 };
 pub use tree::FolderNode;

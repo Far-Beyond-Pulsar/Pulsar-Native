@@ -80,6 +80,7 @@ include!("drawer_impl/render_content.rs");
 include!("drawer_impl/item_management.rs");
 include!("drawer_impl/event_handlers.rs");
 include!("drawer_impl/rename_operations.rs");
+include!("drawer_impl/drag_drop_handlers.rs");
 
 // ============================================================================
 // CUSTOM EVENTS FOR INTERNAL USE
@@ -123,6 +124,8 @@ impl Render for FileManagerDrawer {
                     this.renaming_item = None;
                     cx.notify();
                 }
+                // Cancel drag on Escape
+                this.cancel_drag(cx);
             }))
             .on_action(cx.listener(|this, _action: &DuplicateItem, _window, cx| {
                 this.handle_duplicate_item(cx);

@@ -1,5 +1,6 @@
 use gpui::*;
 use std::path::{Path, PathBuf};
+use ui::ActiveTheme;
 
 // ============================================================================
 // ENUMS - View modes, sort options, drag state
@@ -33,6 +34,41 @@ pub enum DragState {
         is_folder: bool,
         drag_offset: Point<Pixels>,
     },
+}
+
+// Drag data for file items
+#[derive(Clone, Debug)]
+pub struct DraggedFile {
+    pub paths: Vec<PathBuf>,
+    pub is_folder: bool,
+    pub drag_start_position: Option<Point<Pixels>>,
+}
+
+impl gpui::Render for DraggedFile {
+    fn render(&mut self, _window: &mut gpui::Window, cx: &mut gpui::Context<Self>) -> impl gpui::IntoElement {
+        use gpui::prelude::*;
+
+        let count = self.paths.len();
+        let label = if count == 1 {
+            self.paths[0]
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("file")
+                .to_string()
+        } else {
+            format!("{} items", count)
+        };
+
+        gpui::div()
+            .px_3()
+            .py_1p5()
+            .rounded(px(6.0))
+            .bg(cx.theme().primary)
+            .text_color(cx.theme().primary_foreground)
+            .text_sm()
+            .shadow_lg()
+            .child(label)
+    }
 }
 
 // ============================================================================
