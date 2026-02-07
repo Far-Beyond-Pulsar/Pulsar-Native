@@ -10,6 +10,9 @@ license = "MIT"
 # Core Blueprint compiler (from PBGC repo)
 pbgc = { path = "../../../PBGC" }
 
+# Also need direct access to Graphy for traits
+graphy = { git = "https://github.com/Far-Beyond-Pulsar/Graphy", rev = "0cd1d0c0e8420757f98c480ab9c4ab28e2f63ae0" }
+
 # Pulsar standard library
 pulsar_std = { path = "../pulsar_std" }
 
@@ -18,3 +21,6 @@ tracing = "0.1"
 
 # Error handling
 thiserror = "1.0"
+
+[dev-dependencies]
+tracing-subscriber = "0.3"

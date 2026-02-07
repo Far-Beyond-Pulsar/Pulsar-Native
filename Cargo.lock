@@ -2397,10 +2397,12 @@ dependencies = [
 name = "blueprint_compiler"
 version = "0.1.0"
 dependencies = [
+ "graphy",
  "pbgc",
  "pulsar_std",
  "thiserror 1.0.69",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
