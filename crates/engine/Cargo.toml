@@ -3,7 +3,7 @@ edition = "2021"
 name = "pulsar_engine"
 description = "A modern high-performance game engine written in Rust"
 publish = false
-version = "0.1.102"
+version = "0.1.103"
 
 [[bin]]
 name = "pulsar_engine"
