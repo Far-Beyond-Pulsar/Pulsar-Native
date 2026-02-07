@@ -2,7 +2,10 @@
 
 // Engine core types (used by UI components)
 pub mod assets;
-pub mod compiler;
+
+// Use the new blueprint_compiler instead of the old embedded compiler
+pub use blueprint_compiler as compiler;
+
 pub mod diagnostics;
 pub mod graph;
 pub mod settings;

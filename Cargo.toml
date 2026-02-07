@@ -53,6 +53,7 @@ sum_tree       = { git = "https://github.com/tristanpoland/zed", rev = "2047043a
 ui = { path = "crates/ui" }
 gpui-component-macros = { path = "crates/macros" }
 pulsar_std = { path = "crates/pulsar_std" }
+blueprint_compiler = { path = "crates/blueprint_compiler" }
 
 engine_backend = { path = "crates/engine_backend" }
 engine_state   = { path = "crates/engine_state" }

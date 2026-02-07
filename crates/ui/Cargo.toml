@@ -146,6 +146,7 @@ rust-embed = { version = "6", features = ["interpolate-folder-path", "include-ex
 prettyplease = "0.2"
 directories = "5"
 pulsar_std = { path = "../pulsar_std" }
+blueprint_compiler = { path = "../blueprint_compiler" }
 
 # Windows DirectX for shared texture opening (zero-copy DX12<->DX11)
 [target.'cfg(windows)'.dependencies]

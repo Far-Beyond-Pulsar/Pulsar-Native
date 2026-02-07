@@ -1,0 +1,20 @@
+[package]
+name = "blueprint_compiler"
+version = "0.1.0"
+edition = "2021"
+authors = ["Pulsar Team"]
+description = "Blueprint graph compiler for Pulsar - integrates PBGC with the engine"
+license = "MIT"
+
+[dependencies]
+# Core Blueprint compiler (from PBGC repo)
+pbgc = { path = "../../../PBGC" }
+
+# Pulsar standard library
+pulsar_std = { path = "../pulsar_std" }
+
+# Logging
+tracing = "0.1"
+
+# Error handling
+thiserror = "1.0"

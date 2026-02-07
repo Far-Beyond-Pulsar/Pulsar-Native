@@ -2394,6 +2394,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "blueprint_compiler"
+version = "0.1.0"
+dependencies = [
+ "pbgc",
+ "pulsar_std",
+ "thiserror 1.0.69",
+ "tracing",
+]
+
+[[package]]
 name = "borsh"
 version = "1.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5683,6 +5693,20 @@ dependencies = [
  "quote",
  "syn 2.0.110",
  "workspace-hack",
+]
+
+[[package]]
+name = "graphy"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=0cd1d0c0e8420757f98c480ab9c4ab28e2f63ae0#0cd1d0c0e8420757f98c480ab9c4ab28e2f63ae0"
+dependencies = [
+ "quote",
+ "rayon",
+ "serde",
+ "serde_json",
+ "syn 2.0.110",
+ "thiserror 1.0.69",
+ "tracing",
 ]
 
 [[package]]
@@ -9221,6 +9245,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf9027960355bf3afff9841918474a81a5f972ac6d226d518060bba758b5ad57"
 dependencies = [
  "rustc_version",
+]
+
+[[package]]
+name = "pbgc"
+version = "0.1.0"
+dependencies = [
+ "graphy",
+ "pulsar_std",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tracing",
 ]
 
 [[package]]
@@ -14458,6 +14494,7 @@ version = "0.1.0"
 dependencies = [
  "aho-corasick",
  "anyhow",
+ "blueprint_compiler",
  "bytemuck",
  "chrono",
  "directories 5.0.1",
