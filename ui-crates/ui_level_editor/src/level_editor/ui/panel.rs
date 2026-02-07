@@ -79,30 +79,41 @@ impl LevelEditorPanel {
         let viewport = cx.new(|cx| BevyViewport::new(1600, 900, cx));
         let viewport_state = viewport.read(cx).shared_state();
         
-        // Create game thread but DON'T start it yet (editor starts in Edit mode)
-        let game_thread = Arc::new(GameThread::new(240.0));
+        // Get the central GameThread from the global EngineBackend
+        let game_thread = if let Some(backend) = engine_backend::EngineBackend::global() {
+            let backend_guard = backend.read();
+            backend_guard.game_thread()
+                .expect("GameThread not initialized in EngineBackend")
+                .clone()
+        } else {
+            panic!("EngineBackend not initialized! Cannot create level editor viewport.");
+        };
+
+        // CRITICAL: Start disabled for Edit mode (editor starts in Edit, not Play)
+        game_thread.set_enabled(false);
+
+        // Get game state reference (needed for renderer integration)
         let _game_state = game_thread.get_state();
-        game_thread.set_enabled(false); // CRITICAL: Start disabled for Edit mode
-        game_thread.start(); // Thread runs but does nothing while disabled
         
         // Create GPU render engine WITHOUT game thread link initially (Edit mode)
         let gpu_engine = Arc::new(Mutex::new(GpuRenderer::new(1600, 900))); // No game state initially
         let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
 
-        // Store GPU renderer in global EngineState using a marker that the render loop will pick up
+        // Store GPU renderer in global EngineContext using a marker that the render loop will pick up
         // The render loop will associate it with the correct window when it first renders
-        if let Some(engine_state) = engine_state::EngineState::global() {
+        if let Some(engine_context) = engine_state::EngineContext::global() {
             if let Some(wid) = window_id {
                 // We have the actual window ID - register directly!
-                engine_state.set_window_gpu_renderer(wid, gpu_engine.clone());
+                let handle = engine_state::TypedRendererHandle::bevy(wid, gpu_engine.clone());
+                engine_context.renderers.register(wid, handle);
             } else {
                 // Fallback: Use a sentinel value (0) to mark this renderer as pending association with a window
                 // The main render loop will detect windows with viewports and claim this renderer
-                engine_state.set_window_gpu_renderer(0, gpu_engine.clone());
-                engine_state.set_metadata("has_pending_viewport_renderer".to_string(), "true".to_string());
+                let handle = engine_state::TypedRendererHandle::bevy(0, gpu_engine.clone());
+                engine_context.renderers.register(0, handle);
             }
         } else {
-            tracing::debug!("[LEVEL-EDITOR] ❌ ERROR: No global EngineState found!");
+            tracing::debug!("[LEVEL-EDITOR] ❌ ERROR: No global EngineContext found!");
         }
 
         // Viewport stays transparent - Bevy renders directly to winit back buffer BEHIND GPUI

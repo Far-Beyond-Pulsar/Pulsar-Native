@@ -3,7 +3,7 @@ edition = "2021"
 name = "pulsar_engine"
 description = "A modern high-performance game engine written in Rust"
 publish = false
-version = "0.1.91"
+version = "0.1.92"
 
 [[bin]]
 name = "pulsar_engine"
@@ -16,6 +16,7 @@ gpui.workspace = true
 ui = { workspace = true, features = ["tree-sitter-languages"] }
 winit.workspace = true
 raw-window-handle.workspace = true
+thiserror = "2.0"
 
 # Engine crates
 engine_backend.workspace = true

@@ -146,11 +146,13 @@ LevelEditor.Properties.Default: "По умолчанию"
 LevelEditor.Properties.Static: "Статический"
 LevelEditor.Properties.Navigation: "Навигация"
 LevelEditor.Properties.Components: "Компоненты"
+
 LevelEditor.Properties.Position: "Позиция"
 LevelEditor.Properties.Rotation: "Поворот"
 LevelEditor.Properties.Scale: "Масштаб"
 LevelEditor.Properties.MeshRenderer: "MeshRenderer"
 LevelEditor.Properties.BuiltIn: "Встроенное"
+
 LevelEditor.Properties.Rendering: "Рендеринг"
 LevelEditor.Properties.RenderQueue: "Очередь рендера"
 LevelEditor.Properties.Opaque: "Непрозрачное (2000)"

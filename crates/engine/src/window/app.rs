@@ -11,7 +11,7 @@
 //! │   (ApplicationHandler for Winit)            │
 //! ├─────────────────────────────────────────────┤
 //! │ windows: HashMap<WindowId, WindowState>     │
-//! │ engine_state: EngineState                   │
+//! │ engine_context: EngineContext               │
 //! │ window_request_rx: Receiver<WindowRequest>  │
 //! └─────────────────────────────────────────────┘
 //!          │
@@ -55,7 +55,7 @@ use ui_about::create_about_window;
 use ui_documentation::create_documentation_window;
 use ui_common::menu::{AboutApp, ShowDocumentation};
 use crate::window::{convert_modifiers, convert_mouse_button, WindowState, WindowIdMap};
-use engine_state::{EngineState, WindowRequest};
+use engine_state::{EngineContext, WindowRequest};
 use gpui::*;
 use raw_window_handle::HasWindowHandle;
 use ui::Root;
@@ -96,7 +96,7 @@ use windows::{
 /// ## Fields
 ///
 /// - `windows` - Map of WindowId to WindowState for all active windows
-/// - `engine_state` - Shared engine state for cross-window communication
+/// - `engine_context` - Typed engine context for cross-window communication
 /// - `window_request_rx` - Channel for receiving window creation requests
 /// - `pending_window_requests` - Queue of requests to process on next frame
 ///
@@ -104,7 +104,7 @@ use windows::{
 /// the `window` module while remaining private to external code.
 pub struct WinitGpuiApp {
     pub(crate) windows: HashMap<WindowId, WindowState>,
-    pub(crate) engine_state: EngineState,
+    pub(crate) engine_context: EngineContext,
     pub(crate) window_request_rx: Receiver<WindowRequest>,
     pub(crate) pending_window_requests: Vec<WindowRequest>,
     /// Safe mapping between WindowId and u64 (avoids unsafe transmute)
@@ -112,18 +112,18 @@ pub struct WinitGpuiApp {
 }
 
 impl WinitGpuiApp {
-    /// Create a new application handler
+    /// Create a new application handler with EngineContext
     ///
     /// # Arguments
-    /// * `engine_state` - Shared engine state
+    /// * `engine_context` - Typed engine context
     /// * `window_request_rx` - Channel for receiving window creation requests
     ///
     /// # Returns
     /// New WinitGpuiApp ready to be run
-    pub fn new(engine_state: EngineState, window_request_rx: Receiver<WindowRequest>) -> Self {
+    pub fn new(engine_context: EngineContext, window_request_rx: Receiver<WindowRequest>) -> Self {
         Self {
             windows: HashMap::new(),
-            engine_state,
+            engine_context,
             window_request_rx,
             pending_window_requests: Vec::new(),
             window_id_map: WindowIdMap::new(),
@@ -140,6 +140,8 @@ impl WinitGpuiApp {
     ///
     /// **Note**: This method is `pub(crate)` to allow access from lifecycle handlers
     pub(crate) fn create_window(&mut self, event_loop: &ActiveEventLoop, request: WindowRequest) {
+        profiling::profile_scope!("Window::Create");
+
         let (title, size) = match &request {
             WindowRequest::Entry => ("Pulsar Engine", (1280.0, 720.0)),
             WindowRequest::Settings => ("Settings", (800.0, 600.0)),
@@ -150,7 +152,7 @@ impl WinitGpuiApp {
             WindowRequest::CloseWindow { .. } => return, // Handled elsewhere
         };
 
-        tracing::debug!("≡ƒ¬ƒ [CREATE-WINDOW] Creating new window: {} (type: {:?})", title, request);
+        tracing::debug!("🪟 [CREATE-WINDOW] Creating new window: {} (type: {:?})", title, request);
 
         let mut window_attributes = WinitWindow::default_attributes()
             .with_title(title)
@@ -173,9 +175,10 @@ impl WinitGpuiApp {
         window_state.window_type = Some(request);
 
         self.windows.insert(window_id, window_state);
-        self.engine_state.increment_window_count();
+        *self.engine_context.window_count.lock() += 1;
+        let count = *self.engine_context.window_count.lock();
 
-        tracing::debug!("Γ£à Window created: {} (total windows: {})", title, self.engine_state.window_count());
+        tracing::debug!("Γ£à Window created: {} (total windows: {})", title, count);
     }
 }
 

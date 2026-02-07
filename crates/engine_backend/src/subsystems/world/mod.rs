@@ -27,6 +27,10 @@ use PebbleVault::SpatialObject;
 use super::classes::actor::Actor;
 use uuid::Uuid;
 
+// NOTE: World cannot implement the Subsystem trait due to PebbleVault::VaultManager
+// not implementing Send + Sync (it contains Box<dyn PersistenceBackend> without bounds).
+// This is a limitation of the PebbleVault crate.
+
 pub struct World {
     // World data and methods
     vault: pebble::VaultManager<Actor>,

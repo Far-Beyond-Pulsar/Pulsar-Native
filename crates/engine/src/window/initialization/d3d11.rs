@@ -48,6 +48,8 @@ pub unsafe fn initialize_d3d11_pipeline(
     app: &mut WinitGpuiApp,
     window_id: &WindowId,
 ) {
+    profiling::profile_scope!("Window::InitD3D11");
+
     let window_state = app.windows.get_mut(window_id).expect("Window state must exist");
     let winit_window = window_state.winit_window.clone();
     let size = winit_window.inner_size();
