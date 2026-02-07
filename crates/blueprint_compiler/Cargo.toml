@@ -8,7 +8,7 @@ license = "MIT"
 
 [dependencies]
 # Core Blueprint compiler (from PBGC repo)
-pbgc = { path = "../../../PBGC" }
+pbgc = { git = "https://github.com/Far-Beyond-Pulsar/PBGC", rev = "b6daebf20d9c55ec1b7ebf58957fecbbaa330e7b" }
 
 # Also need direct access to Graphy for traits
 graphy = { git = "https://github.com/Far-Beyond-Pulsar/Graphy", rev = "0cd1d0c0e8420757f98c480ab9c4ab28e2f63ae0" }

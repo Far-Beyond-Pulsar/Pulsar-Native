@@ -2399,7 +2399,7 @@ version = "0.1.0"
 dependencies = [
  "graphy",
  "pbgc",
- "pulsar_std",
+ "pulsar_std 0.1.0",
  "thiserror 1.0.69",
  "tracing",
  "tracing-subscriber",
@@ -9254,7 +9254,7 @@ name = "pbgc"
 version = "0.1.0"
 dependencies = [
  "graphy",
- "pulsar_std",
+ "pulsar_std 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=812db780cb2b4d7b3882d6fda3d4a4ab076ae4ba)",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -10218,7 +10218,7 @@ dependencies = [
  "portable-pty",
  "prettyplease",
  "profiling 0.1.0",
- "pulsar_std",
+ "pulsar_std 0.1.0",
  "quote",
  "raw-window-handle 0.6.2",
  "regex",
@@ -10279,11 +10279,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_macros"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=812db780cb2b4d7b3882d6fda3d4a4ab076ae4ba#812db780cb2b4d7b3882d6fda3d4a4ab076ae4ba"
+dependencies = [
+ "linkme",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.110",
+]
+
+[[package]]
 name = "pulsar_std"
 version = "0.1.0"
 dependencies = [
  "linkme",
- "pulsar_macros",
+ "pulsar_macros 0.1.0",
+ "rand 0.9.2",
+ "rlua",
+ "tracing",
+]
+
+[[package]]
+name = "pulsar_std"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=812db780cb2b4d7b3882d6fda3d4a4ab076ae4ba#812db780cb2b4d7b3882d6fda3d4a4ab076ae4ba"
+dependencies = [
+ "linkme",
+ "pulsar_macros 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=812db780cb2b4d7b3882d6fda3d4a4ab076ae4ba)",
  "rand 0.9.2",
  "rlua",
  "tracing",
@@ -14522,7 +14545,7 @@ dependencies = [
  "pollster 0.4.0",
  "prettyplease",
  "proc-macro2",
- "pulsar_std",
+ "pulsar_std 0.1.0",
  "quote",
  "raw-window-handle 0.6.2",
  "regex",
