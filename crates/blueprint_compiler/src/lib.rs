@@ -207,7 +207,7 @@ mod tests {
         ));
         
         print_msg.properties.insert(
-            "message".to_string(),
+            "print_2_message".to_string(),
             PropertyValue::String("Calculation complete!".to_string())
         );
         
