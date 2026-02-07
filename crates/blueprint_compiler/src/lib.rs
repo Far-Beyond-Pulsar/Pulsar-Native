@@ -134,9 +134,9 @@ mod tests {
             Pin::new("add_1_result", "result", DataType::Typed(pbgc::TypeInfo::new("i64")), PinType::Output)
         ));
         
-        // Set constant values
-        add_node.properties.insert("a".to_string(), PropertyValue::Number(5.0));
-        add_node.properties.insert("b".to_string(), PropertyValue::Number(10.0));
+        // Set constant values - properties must be keyed by pin ID, not parameter name
+        add_node.properties.insert("add_1_a".to_string(), PropertyValue::Number(5.0));
+        add_node.properties.insert("add_1_b".to_string(), PropertyValue::Number(10.0));
         
         // ==========================================
         // Node 3: multiply - Multiply result by 2
@@ -160,8 +160,8 @@ mod tests {
             Pin::new("multiply_1_result", "result", DataType::Typed(pbgc::TypeInfo::new("i64")), PinType::Output)
         ));
         
-        // Constant multiplier
-        multiply_node.properties.insert("b".to_string(), PropertyValue::Number(2.0));
+        // Constant multiplier - must use pin ID
+        multiply_node.properties.insert("multiply_1_b".to_string(), PropertyValue::Number(2.0));
         
         // ==========================================
         // Node 4: print_number - Print the result
