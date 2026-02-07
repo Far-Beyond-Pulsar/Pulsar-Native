@@ -110,15 +110,15 @@ mod tests {
         ));
         
         // ==========================================
-        // Node 2: add_i64 - Add two numbers (5 + 10)
+        // Node 2: add - Add two numbers (5 + 10)
         // ==========================================
         let mut add_node = NodeInstance::new(
             "add_1",
-            "add_i64",
+            "add",
             Position { x: 300.0, y: 150.0 }
         );
         
-        // Input pins for add_i64
+        // Input pins for add
         add_node.inputs.push(PinInstance::new(
             "add_1_a",
             Pin::new("add_1_a", "a", DataType::Typed(pbgc::TypeInfo::new("i64")), PinType::Input)
@@ -128,7 +128,7 @@ mod tests {
             Pin::new("add_1_b", "b", DataType::Typed(pbgc::TypeInfo::new("i64")), PinType::Input)
         ));
         
-        // Output pin for add_i64
+        // Output pin for add
         add_node.outputs.push(PinInstance::new(
             "add_1_result",
             Pin::new("add_1_result", "result", DataType::Typed(pbgc::TypeInfo::new("i64")), PinType::Output)
@@ -139,11 +139,11 @@ mod tests {
         add_node.properties.insert("b".to_string(), PropertyValue::Number(10.0));
         
         // ==========================================
-        // Node 3: multiply_i64 - Multiply result by 2
+        // Node 3: multiply - Multiply result by 2
         // ==========================================
         let mut multiply_node = NodeInstance::new(
             "multiply_1",
-            "multiply_i64",
+            "multiply",
             Position { x: 500.0, y: 150.0 }
         );
         
