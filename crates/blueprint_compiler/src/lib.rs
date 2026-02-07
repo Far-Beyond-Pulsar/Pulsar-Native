@@ -85,104 +85,206 @@ mod tests {
     }
 
     #[test]
-    fn test_headless_blueprint_compilation() {
+    fn test_complex_blueprint_compilation() {
         // Initialize tracing for test output
         let _ = tracing_subscriber::fmt()
             .with_test_writer()
             .try_init();
 
-        // Create a simple test graph programmatically
-        let mut graph = GraphDescription::new("test_blueprint");
+        println!("\n=== Building Complex Test Blueprint ===");
         
-        // Add a begin_play event node (lowercase!)
+        // Create a more complex graph with math and control flow
+        let mut graph = GraphDescription::new("complex_test_blueprint");
+        
+        // ==========================================
+        // Node 1: begin_play event (entry point)
+        // ==========================================
         let mut begin_play = NodeInstance::new(
             "begin_play_1",
-            "begin_play",  // <-- Fixed: lowercase
-            Position { x: 100.0, y: 100.0 }
+            "begin_play",
+            Position { x: 100.0, y: 200.0 }
         );
-        
-        // Add the Body execution output pin
         begin_play.outputs.push(PinInstance::new(
             "begin_play_1_Body",
             Pin::new("begin_play_1_Body", "Body", DataType::Execution, PinType::Output)
         ));
         
-        // Add a print_string node (not just "print")
-        let mut print_node = NodeInstance::new(
-            "print_1",
-            "print_string",  // <-- Fixed: use print_string
-            Position { x: 300.0, y: 100.0 }
+        // ==========================================
+        // Node 2: add_i64 - Add two numbers (5 + 10)
+        // ==========================================
+        let mut add_node = NodeInstance::new(
+            "add_1",
+            "add_i64",
+            Position { x: 300.0, y: 150.0 }
         );
         
-        // Add exec input pin
+        // Input pins for add_i64
+        add_node.inputs.push(PinInstance::new(
+            "add_1_a",
+            Pin::new("add_1_a", "a", DataType::Typed(pbgc::TypeInfo::new("i64")), PinType::Input)
+        ));
+        add_node.inputs.push(PinInstance::new(
+            "add_1_b",
+            Pin::new("add_1_b", "b", DataType::Typed(pbgc::TypeInfo::new("i64")), PinType::Input)
+        ));
+        
+        // Output pin for add_i64
+        add_node.outputs.push(PinInstance::new(
+            "add_1_result",
+            Pin::new("add_1_result", "result", DataType::Typed(pbgc::TypeInfo::new("i64")), PinType::Output)
+        ));
+        
+        // Set constant values
+        add_node.properties.insert("a".to_string(), PropertyValue::Number(5.0));
+        add_node.properties.insert("b".to_string(), PropertyValue::Number(10.0));
+        
+        // ==========================================
+        // Node 3: multiply_i64 - Multiply result by 2
+        // ==========================================
+        let mut multiply_node = NodeInstance::new(
+            "multiply_1",
+            "multiply_i64",
+            Position { x: 500.0, y: 150.0 }
+        );
+        
+        multiply_node.inputs.push(PinInstance::new(
+            "multiply_1_a",
+            Pin::new("multiply_1_a", "a", DataType::Typed(pbgc::TypeInfo::new("i64")), PinType::Input)
+        ));
+        multiply_node.inputs.push(PinInstance::new(
+            "multiply_1_b",
+            Pin::new("multiply_1_b", "b", DataType::Typed(pbgc::TypeInfo::new("i64")), PinType::Input)
+        ));
+        multiply_node.outputs.push(PinInstance::new(
+            "multiply_1_result",
+            Pin::new("multiply_1_result", "result", DataType::Typed(pbgc::TypeInfo::new("i64")), PinType::Output)
+        ));
+        
+        // Constant multiplier
+        multiply_node.properties.insert("b".to_string(), PropertyValue::Number(2.0));
+        
+        // ==========================================
+        // Node 4: print_number - Print the result
+        // ==========================================
+        let mut print_node = NodeInstance::new(
+            "print_1",
+            "print_number",
+            Position { x: 700.0, y: 200.0 }
+        );
+        
+        // Execution pins
         print_node.inputs.push(PinInstance::new(
             "print_1_exec",
             Pin::new("print_1_exec", "exec", DataType::Execution, PinType::Input)
         ));
-        
-        // Add message input pin with default value
-        print_node.inputs.push(PinInstance::new(
-            "print_1_message",
-            Pin::new("print_1_message", "message", DataType::Typed(pbgc::TypeInfo::new("&str")), PinType::Input)
+        print_node.outputs.push(PinInstance::new(
+            "print_1_exec_out",
+            Pin::new("print_1_exec_out", "exec", DataType::Execution, PinType::Output)
         ));
-        print_node.properties.insert(
+        
+        // Data input pin
+        print_node.inputs.push(PinInstance::new(
+            "print_1_value",
+            Pin::new("print_1_value", "value", DataType::Typed(pbgc::TypeInfo::new("f64")), PinType::Input)
+        ));
+        
+        // ==========================================
+        // Node 5: print_string - Print completion message
+        // ==========================================
+        let mut print_msg = NodeInstance::new(
+            "print_2",
+            "print_string",
+            Position { x: 900.0, y: 200.0 }
+        );
+        
+        print_msg.inputs.push(PinInstance::new(
+            "print_2_exec",
+            Pin::new("print_2_exec", "exec", DataType::Execution, PinType::Input)
+        ));
+        print_msg.inputs.push(PinInstance::new(
+            "print_2_message",
+            Pin::new("print_2_message", "message", DataType::Typed(pbgc::TypeInfo::new("&str")), PinType::Input)
+        ));
+        
+        print_msg.properties.insert(
             "message".to_string(),
-            PropertyValue::String("Hello from Blueprint!".to_string())
+            PropertyValue::String("Calculation complete!".to_string())
         );
         
+        // ==========================================
+        // Add all nodes to graph
+        // ==========================================
         graph.add_node(begin_play);
+        graph.add_node(add_node);
+        graph.add_node(multiply_node);
         graph.add_node(print_node);
+        graph.add_node(print_msg);
         
-        // Connect begin_play's Body output to print_string's exec input
-        let connection = Connection::new(
-            "begin_play_1",
-            "begin_play_1_Body",
-            "print_1",
-            "print_1_exec",
+        // ==========================================
+        // Connect the graph
+        // ==========================================
+        
+        // Execution flow: begin_play -> print_number -> print_string
+        graph.add_connection(Connection::new(
+            "begin_play_1", "begin_play_1_Body",
+            "print_1", "print_1_exec",
             ConnectionType::Execution,
-        );
+        ));
         
-        graph.add_connection(connection);
+        graph.add_connection(Connection::new(
+            "print_1", "print_1_exec_out",
+            "print_2", "print_2_exec",
+            ConnectionType::Execution,
+        ));
         
+        // Data flow: add -> multiply -> print
+        graph.add_connection(Connection::new(
+            "add_1", "add_1_result",
+            "multiply_1", "multiply_1_a",
+            ConnectionType::Data,
+        ));
+        
+        graph.add_connection(Connection::new(
+            "multiply_1", "multiply_1_result",
+            "print_1", "print_1_value",
+            ConnectionType::Data,
+        ));
+        
+        println!("Graph created with {} nodes and {} connections", 
+            graph.nodes.len(), graph.connections.len());
+        
+        // ==========================================
         // Compile the graph
-        println!("\n=== Compiling Test Blueprint ===");
+        // ==========================================
+        println!("\n=== Compiling Complex Blueprint ===");
         let result = compile_blueprint(&graph);
         
         match result {
             Ok(rust_code) => {
-                println!("\n=== Compilation Successful! ===");
+                println!("\n✅ === Compilation Successful! ===");
                 println!("Generated {} bytes of Rust code", rust_code.len());
-                println!("\n=== Generated Code Preview (first 1000 chars) ===");
-                println!("{}", &rust_code.chars().take(1000).collect::<String>());
+                
+                println!("\n=== Generated Code ===");
+                println!("{}", rust_code);
+                println!("=== End of Generated Code ===\n");
                 
                 // Verify the code contains expected elements
+                assert!(rust_code.len() > 100, "Generated code should be substantial");
                 assert!(rust_code.contains("begin_play") || rust_code.contains("fn main"), 
-                    "Should contain begin_play or main function");
-                
-                // The generated code might be empty if nodes don't match - that's okay for this test
-                println!("\n=== Test Passed! Blueprint compiled successfully ===");
-                println!("Note: Generated code may be minimal if node metadata doesn't match perfectly");
+                    "Should contain event function");
                 
                 // Write full output to file
-                if let Ok(test_dir) = std::env::var("CARGO_TARGET_DIR") {
-                    let output_path = format!("{}/test_blueprint_output.rs", test_dir);
-                    if let Err(e) = std::fs::write(&output_path, &rust_code) {
-                        println!("Note: Could not write to {}: {}", output_path, e);
-                    } else {
-                        println!("\n=== Full output written to: {} ===", output_path);
-                    }
+                let output_path = "../../target/complex_blueprint_output.rs";
+                if let Err(e) = std::fs::write(output_path, &rust_code) {
+                    println!("Note: Could not write to {}: {}", output_path, e);
                 } else {
-                    // Fallback to target directory
-                    let output_path = "../../target/test_blueprint_output.rs";
-                    if let Err(e) = std::fs::write(output_path, &rust_code) {
-                        println!("Note: Could not write to {}: {}", output_path, e);
-                    } else {
-                        println!("\n=== Full output written to: {} ===", output_path);
-                    }
+                    println!("✅ Full output written to: {}", output_path);
                 }
+                
+                println!("\n✅ Test Passed! Complex Blueprint compiled successfully");
             }
             Err(e) => {
-                panic!("Blueprint compilation failed: {}", e);
+                panic!("❌ Complex Blueprint compilation failed: {}", e);
             }
         }
     }
