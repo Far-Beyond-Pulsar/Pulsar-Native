@@ -10210,6 +10210,7 @@ dependencies = [
  "git2",
  "gpui",
  "hound",
+ "image",
  "itertools 0.14.0",
  "lewton",
  "libc",

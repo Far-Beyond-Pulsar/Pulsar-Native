@@ -17,6 +17,7 @@ ui = { workspace = true, features = ["tree-sitter-languages"] }
 winit.workspace = true
 raw-window-handle.workspace = true
 thiserror = "2.0"
+image = "0.25"  # For loading window icon
 
 # Engine crates
 engine_backend.workspace = true

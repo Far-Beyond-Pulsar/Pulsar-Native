@@ -146,5 +146,11 @@ pub fn initialize_gpui_window(
     let window_state = app.windows.get_mut(window_id).expect("Window state must exist");
     window_state.gpui_window = Some(gpui_window);
 
+    // Re-apply window icon after GPUI initialization (GPUI may reset it)
+    if let Some(icon) = load_window_icon() {
+        window_state.winit_window.set_window_icon(Some(icon));
+        tracing::debug!("🎨 Window icon set after GPUI initialization");
+    }
+
     tracing::debug!("✨ GPUI window opened successfully!\n");
 }

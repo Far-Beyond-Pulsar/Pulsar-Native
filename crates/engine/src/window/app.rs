@@ -161,6 +161,11 @@ impl WinitGpuiApp {
             .with_decorations(false) // Use custom titlebar instead of OS decorations
             .with_resizable(true); // Enable resize for borderless window
 
+        // Set window icon from embedded assets
+        if let Some(icon) = load_window_icon() {
+            window_attributes = window_attributes.with_window_icon(Some(icon));
+        }
+
         // Splash window positioning (centered by default)
         // Position::Automatic doesn't exist in winit, windows are centered by default
 
@@ -202,4 +207,26 @@ impl ApplicationHandler for WinitGpuiApp {
         // Delegate to lifecycle handler
         crate::window::handlers::lifecycle::handle_about_to_wait(self, event_loop);
     }
+}
+
+/// Load the window icon from embedded assets
+///
+/// Attempts to load the logo_sqrkl.png from embedded assets and convert
+/// it to a winit Icon. Returns None if loading fails.
+fn load_window_icon() -> Option<winit::window::Icon> {
+    use crate::assets::Assets;
+    
+    // Try to load the icon from embedded assets
+    let icon_data = Assets::get("images/logo_sqrkl.png")?;
+    
+    // Decode the PNG using the image crate
+    let img = image::load_from_memory(&icon_data.data)
+        .ok()?
+        .into_rgba8();
+    
+    let (width, height) = img.dimensions();
+    let rgba = img.into_raw();
+    
+    // Create winit Icon
+    winit::window::Icon::from_rgba(rgba, width, height).ok()
 }
