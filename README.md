@@ -8,7 +8,7 @@
 
 <p align="center">
   <!-- Replace src with your logo -->
-  <img src="https://via.placeholder.com/600x200?text=Pulsar+Engine+Logo" alt="Pulsar Engine Logo (Coming soon)" width="600" />
+  <img src="https://github.com/user-attachments/assets/b8ec0edd-3de9-4b62-8a4e-f1817a9a32aa" alt="Pulsar Engine Logo (Coming soon)" width="200" />
 </p>
 
 <h1 align="center">Pulsar Engine</h1>
