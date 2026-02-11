@@ -4,6 +4,9 @@ rustflags = ["-C", "link-arg=/STACK:8000000"]
 [build]
 jobs = 2
 
+[alias]
+set-logo = "run --manifest-path tools/set-logo/Cargo.toml --"
+
 [env]
 # Fix aws-lc-sys build on Windows - use pregenerated sources to avoid C11 compilation issues
 AWS_LC_SYS_NO_PREFIX = "1"

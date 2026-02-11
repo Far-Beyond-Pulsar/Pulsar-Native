@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Pulsar Engine
+Comment=A modern high-performance game engine
+Exec=/usr/local/bin/pulsar_engine
+Icon=/usr/share/pixmaps/pulsar.png
+Terminal=false
+Categories=Development;IDE;
+Keywords=game;engine;development;
