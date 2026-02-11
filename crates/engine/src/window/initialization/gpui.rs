@@ -8,6 +8,7 @@ use winit::window::WindowId;
 use raw_window_handle::HasWindowHandle;
 use crate::assets::Assets;
 use crate::OpenSettings;
+use crate::window::app::load_window_icon;
 use ui_core::ToggleCommandPalette;
 use ui_common::menu::{AboutApp, ShowDocumentation};
 use engine_state::{EngineContext, WindowRequest};

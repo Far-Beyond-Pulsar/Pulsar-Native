@@ -213,7 +213,7 @@ impl ApplicationHandler for WinitGpuiApp {
 ///
 /// Attempts to load the logo_sqrkl.png from embedded assets and convert
 /// it to a winit Icon. Returns None if loading fails.
-fn load_window_icon() -> Option<winit::window::Icon> {
+pub(crate) fn load_window_icon() -> Option<winit::window::Icon> {
     use crate::assets::Assets;
     
     // Try to load the icon from embedded assets
