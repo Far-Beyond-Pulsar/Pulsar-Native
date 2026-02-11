@@ -69,9 +69,10 @@ impl Render for AboutWindow {
                                     .justify_center()
                                     .shadow_lg()
                                     .child(
-                                        Icon::new(IconName::Settings)
-                                            .size(px(60.0))
-                                            .text_color(theme.accent)
+                                        img("images/logo_sqrkl.png")
+                                            .w(px(100.0))
+                                            .h(px(100.0))
+                                            .object_fit(gpui::ObjectFit::Contain)
                                     )
                             )
                             // Title and version

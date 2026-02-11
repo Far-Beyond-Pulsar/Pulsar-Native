@@ -373,15 +373,8 @@ impl PluginManager {
             for button in statusbar_buttons {
                 tracing::debug!("    - Button: {} at {:?}", button.id, button.position);
 
-                // CRITICAL: Deep clone the button to allocate all data in main app's heap
-                // The button data from the plugin is allocated in the plugin's heap, which
-                // will become invalid when the plugin is unloaded. By cloning here (in the
-                // main app's context), we ensure all String data is allocated in the main
-                // app's heap.
-                let cloned_button = button.clone();
-
                 // Store with plugin ID for tracking and cleanup
-                self.statusbar_buttons.push((plugin_id.clone(), cloned_button));
+                self.statusbar_buttons.push((plugin_id.clone(), button));
             }
 
             // Sort buttons by priority within their position groups
