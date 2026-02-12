@@ -32,75 +32,27 @@ profiling = { path = "../profiling" }
 ui_core.workspace = true
 ui_common.workspace = true
 ui_entry.workspace = true
-ui_level_editor.workspace = true
 # ui_daw_editor.workspace = true
 ui_settings.workspace = true
-ui_multiplayer.workspace = true
-ui_problems.workspace = true
-ui_file_manager.workspace = true
 ui_loading_screen.workspace = true
 ui_about.workspace = true
 ui_documentation.workspace = true
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-schemars = "1.0"
-uuid = { version = "1.0", features = ["v4"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 rust-embed = { version = "6", features = ["interpolate-folder-path", "include-exclude"] }
-flume = "0.11"
 tokio = { version = "1", features = ["full"] }
 windows.workspace = true
-tron = "2.1.0"
-dashmap = "6.1.0"
-regex = "1.10"
 chrono = { version = "0.4", features = ["serde"] }
-sha2 = "0.10"
-walkdir = "2.4"
-smol.workspace = true
-rfd = "0.15"
-git2 = "0.19"
 directories = "5"
 toml = "0.8"
 parking_lot = "0.12"
 sysuri.workspace = true
 urlencoding.workspace = true
-open = "5"
-lsp-types.workspace = true
-ropey.workspace = true
 dotenv = "0.15"
-
-# New compiler dependencies
-syn = { version = "2.0", features = ["full", "parsing", "extra-traits", "visit", "visit-mut"] }
-quote = "1.0"
-prettyplease = "0.2"
 pulsar_std = { path = "../pulsar_std" }
-
-# DAW audio dependencies
-cpal = { version = "0.15", default-features = false }
-
-hound = "3.5"
-lewton = "0.10"
-claxon = "0.4"
-symphonia = { version = "0.5", features = ["mp3", "wav", "flac", "vorbis"] }  # Modern audio decoder
-crossbeam = "0.8.4"  # Concurrency utilities
-wgpu = "0.20"      # GPU compute and rendering
-bytemuck = { version = "1.14", features = ["derive"] }
-ron = "0.8"
-futures = "0.3"    # Async primitives for GPUI compatibility
-portable-pty = "0.8"  # PTY support for terminal emulator
-which = "6"  # Find executables in PATH
-alacritty_terminal = { git = "https://github.com/zed-industries/alacritty.git", branch = "add-hush-login-flag" }  # Professional terminal emulator
-itertools.workspace = true  # Iterator utilities
-libc = "0.2"  # Low-level system calls for PTY
-device_query = "2.1"  # Raw keyboard/mouse input polling - bypasses GPUI for viewport controls
-winapi = { version = "0.3", features = ["winuser"] }  # Windows API for keyboard hook to suppress WASD events
-sysinfo = "0.30"  # System information
-reqwest = { version = "0.12", features = ["json"] }  # HTTP client (existing, used for GitHub API)
-async-tungstenite = { version = "0.23", features = ["tokio-runtime"] }  # WebSocket client
-url = "2.5"  # URL parsing
 tracing-appender = "0.2.4"
-flamegraph = "0.6.10"
 
 [build-dependencies]
 winresource = "0.1"

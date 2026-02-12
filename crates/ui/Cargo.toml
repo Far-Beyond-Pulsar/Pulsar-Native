@@ -47,10 +47,6 @@ tree-sitter-languages = [
 ]
 
 [dependencies]
-# For wgpu window integration and async
-raw-window-handle = "0.6"
-winit = "0.29"
-bytemuck = { version = "1.14", features = ["derive"] }
 gpui.workspace = true
 sum_tree.workspace = true
 gpui_macros.workspace = true
@@ -74,17 +70,12 @@ paste = "1"
 regex = "1"
 unicode-segmentation = "1.12.0"
 uuid = "1.10"
-futures = "0.3"
-pollster = "0.4.0"
 parking_lot = "0.12"
 lazy_static = "1.4"
 
 # Chart
 num-traits = "0.2"
 rust_decimal = { version = "1.37.0", optional = true }
-
-# 3D rendering
-glam = "0.27"
 
 # Markdown Parser
 markdown = "1.0.0"
@@ -95,9 +86,6 @@ markup5ever_rcdom = "0.3.0"
 
 # Calendar
 chrono = "0.4.38"
-
-# Image processing
-image = "0.25"
 
 
 # Code Editor
@@ -137,13 +125,8 @@ enum-iterator = "2.3.0"
 
 # Engine type dependencies (from copied modules)
 toml = "0.8"
-syn = { version = "2.0", features = ["full", "parsing", "extra-traits", "visit", "visit-mut"] }
-quote = "1.0"
-proc-macro2 = "1.0"
 rust-embed = { version = "6", features = ["interpolate-folder-path", "include-exclude"] }
-prettyplease = "0.2"
 directories = "5"
-pulsar_std = { path = "../pulsar_std" }
 blueprint_compiler = { path = "../blueprint_compiler" }
 
 # Windows DirectX for shared texture opening (zero-copy DX12<->DX11)

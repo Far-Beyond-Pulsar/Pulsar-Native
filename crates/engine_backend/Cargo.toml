@@ -17,18 +17,12 @@ workspace = true
 [dependencies]
 PebbleVault = "0.7.0"
 serde = { version = "1.0", features = ["derive"] }
-ron = "0.8"
 uuid = { version = "1.4", features = ["v4"] }
 tokio = { version = "1", features = ["full"] }
 rapier3d.workspace = true
-nalgebra = { version = "0.32", features = ["serde-serialize"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "2.0"
 dashmap = "6.1.0"
-
-# Engine state for global project path
-engine_state = { path = "../engine_state" }
 
 # Profiling - instrumentation-based
 profiling = { path = "../profiling" }
@@ -51,15 +45,10 @@ helio-feature-procedural-shadows.workspace = true
 helio-feature-bloom.workspace = true
 helio-feature-billboards.workspace = true
 blade-graphics.workspace = true
-blade-macros.workspace = true
 glam.workspace = true
 
 wgpu = "27.0.0"
 wgpu-hal = "27.0.0"
-wgpu-types = "27.0.0"
-wgpu-profiler = "0.25.0"
-image = "0.25"
-bytemuck = { version = "1.14", features = ["derive"] }
 crossbeam-channel = "0.5"
 futures = "0.3"
 parking_lot = "0.12"
@@ -69,7 +58,6 @@ serde_json = "1.0"
 
 # Networking dependencies
 async-tungstenite = { version = "0.23", features = ["tokio-runtime"] }
-url = "2.5"
 git2 = "0.19"
 sha2 = "0.10"
 walkdir = "2.4"

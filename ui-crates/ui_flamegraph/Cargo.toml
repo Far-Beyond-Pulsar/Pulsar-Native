@@ -9,19 +9,12 @@ publish = false
 gpui.workspace = true
 ui.workspace = true
 
-# UI crates
-ui_common.workspace = true
-
 # Profiling - instrumentation-based (Unreal Insights style)
 profiling = { path = "../../crates/profiling" }
 parking_lot = "0.12"
 rusqlite = { version = "0.32", features = ["bundled"] }
 engine_state = { path = "../../crates/engine_state" }
-
-# Utilities
-anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-tracing = "0.1.44"
 rand = "0.8"
 rfd = "0.9"
 rust-i18n.workspace = true

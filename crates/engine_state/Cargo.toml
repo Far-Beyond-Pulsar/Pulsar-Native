@@ -12,13 +12,6 @@ type_db.workspace = true
 dashmap = "6.1.0"
 parking_lot = "0.12"
 
-# Serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-
-# Async
-tokio = { version = "1", features = ["sync", "rt"] }
-
 # Error handling
 anyhow = "1.0"
 

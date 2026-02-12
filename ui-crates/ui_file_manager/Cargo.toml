@@ -20,10 +20,6 @@ tracing.workspace = true
 # Plugin system
 plugin_editor_api = { path = "../../crates/plugin_editor_api" }
 
-# File system
-walkdir = "2.4"
-notify.workspace = true
-
 # Utilities
 anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }

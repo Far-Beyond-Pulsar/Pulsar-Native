@@ -11,11 +11,6 @@ ui.workspace = true
 
 # UI crates
 ui_common.workspace = true
-# Engine (problems doesn't need engine deps)
-
-# Utilities
-anyhow = "1.0"
-serde = { version = "1.0", features = ["derive"] }
 tracing = "0.1.44"
 similar = "2.6"
 rust-i18n.workspace = true

@@ -16,15 +16,10 @@ ui_common.workspace = true
 engine_state.workspace = true
 engine_backend.workspace = true
 profiling.workspace = true
-
-# Utilities
-anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-uuid = { version = "1.0", features = ["v4", "serde"] }
 parking_lot = "0.12"
 tracing.workspace = true
-itertools.workspace = true
 chrono = { version = "0.4", features = ["serde"] }
 schemars = "1.0"
 device_query = "4.0.1"
