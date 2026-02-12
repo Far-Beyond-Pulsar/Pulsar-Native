@@ -127,7 +127,7 @@ impl GpuRenderer {
         let handle_array = handles.as_ref()?;
         
         let read_idx = textures.read_index.load(std::sync::atomic::Ordering::Relaxed);
-        let handle = handle_array[read_idx];
+        let handle = handle_array[read_idx].clone();
         
         tracing::debug!("[GPU-RENDERER] Returning DXGI handle[{}]: {:?}", read_idx, handle);
         Some(handle)

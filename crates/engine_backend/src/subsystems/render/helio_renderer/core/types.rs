@@ -2,6 +2,8 @@
 //! These match BevyRenderer's API but use glam instead of Bevy types
 
 use glam::Vec3;
+use std::sync::{Arc, Mutex};
+use gpui::GpuTextureHandle;
 
 /// Rendering metrics
 #[derive(Debug, Clone, Default)]
