@@ -17,10 +17,6 @@ AWS_LC_SYS_CMAKE_BUILDER = "0"
 AWS_LC_SYS_C_STD = "c11"
 CMAKE_C_STANDARD = "11"
 
-# Windows-specific environment variables
-[target.x86_64-pc-windows-msvc.env]
-CFLAGS = "/std:c11"
-CMAKE_C_FLAGS = "/std:c11"
 
 # macOS-specific environment variables
 [target.aarch64-apple-darwin.env]
