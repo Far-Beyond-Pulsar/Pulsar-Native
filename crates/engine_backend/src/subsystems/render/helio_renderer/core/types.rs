@@ -92,9 +92,9 @@ impl CameraInput {
             pan_delta_y: 0.0,
             zoom_delta: 0.0,
             move_speed: 10.0,          // Units per second
-            pan_speed: 50.0,           // Pan sensitivity
-            zoom_speed: 50.0,          // Zoom sensitivity
-            look_sensitivity: 0.15,    // Mouse look sensitivity
+            pan_speed: 5.0,            // Pan sensitivity (reduced)
+            zoom_speed: 20.0,          // Zoom sensitivity (reduced)
+            look_sensitivity: 1.0,     // Mouse look base sensitivity
             boost: false,
             orbit_mode: false,
             orbit_distance: 10.0,
