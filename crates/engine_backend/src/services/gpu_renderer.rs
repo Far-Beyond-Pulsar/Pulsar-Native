@@ -118,9 +118,19 @@ impl GpuRenderer {
     /// TRUE ZERO-COPY: Get native GPU texture handle for immediate-mode rendering
     /// NO buffers, NO copies - just a raw pointer for GPUI to display!
     pub fn get_native_texture_handle(&self) -> Option<crate::subsystems::render::NativeTextureHandle> {
-        // TODO: Implement for Helio once DXGI shared textures are working
-        // For now return None
-        None
+        let renderer = self.helio_renderer.as_ref()?;
+        let shared_textures = renderer.shared_textures.lock().ok()?;
+        let textures = shared_textures.as_ref()?;
+        
+        // Get the read handle from the double-buffered array
+        let handles = textures.native_handles.lock().ok()?;
+        let handle_array = handles.as_ref()?;
+        
+        let read_idx = textures.read_index.load(std::sync::atomic::Ordering::Relaxed);
+        let handle = handle_array[read_idx];
+        
+        tracing::debug!("[GPU-RENDERER] Returning DXGI handle[{}]: {:?}", read_idx, handle);
+        Some(handle)
     }
 
     /// DEPRECATED: Use get_native_texture_handle() + immediate mode instead!

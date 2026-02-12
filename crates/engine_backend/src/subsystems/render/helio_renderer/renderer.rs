@@ -98,7 +98,7 @@ impl HelioRenderer {
     fn run_helio_renderer(
         width: u32,
         height: u32,
-        _shared_textures: Arc<Mutex<Option<SharedGpuTextures>>>,
+        shared_textures: Arc<Mutex<Option<SharedGpuTextures>>>,
         camera_input: Arc<Mutex<CameraInput>>,
         metrics: Arc<Mutex<RenderMetrics>>,
         gpu_profiler: Arc<Mutex<GpuProfilerData>>,
@@ -108,26 +108,94 @@ impl HelioRenderer {
         _game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
     ) {
         profiling::profile_scope!("HelioRenderer::Run");
-        tracing::info!("[HELIO] 🚀 Starting headless renderer {}x{}", width, height);
+        tracing::info!("[HELIO] 🚀 Step 1/10: Starting headless renderer {}x{}", width, height);
 
         // Initialize blade-graphics context (headless)
+        tracing::info!("[HELIO] 🚀 Step 2/10: Initializing blade-graphics context...");
         let context = Arc::new(unsafe {
-            blade_graphics::Context::init(blade_graphics::ContextDesc {
+            match blade_graphics::Context::init(blade_graphics::ContextDesc {
                 presentation: false, // Headless - we'll handle presentation via DXGI
                 validation: cfg!(debug_assertions),
                 timing: false,
                 capture: false,
                 overlay: false,
                 device_id: 0,
-            })
-            .expect("Failed to initialize blade-graphics context")
+            }) {
+                Ok(ctx) => {
+                    tracing::info!("[HELIO] ✅ Step 2/10: blade-graphics context initialized!");
+                    ctx
+                }
+                Err(e) => {
+                    tracing::error!("[HELIO] ❌ FATAL: Failed to initialize blade-graphics: {:?}", e);
+                    panic!("Cannot continue without graphics context");
+                }
+            }
         });
 
+        // Create DXGI shared textures
+        tracing::info!("[HELIO] 🚀 Step 3/10: Creating DXGI shared textures...");
+        #[cfg(target_os = "windows")]
+        let helio_shared_textures = match super::dxgi_textures::HelioSharedTextures::new(&context) {
+            Ok(textures) => {
+                tracing::info!("[HELIO] ✅ Step 3/10: DXGI shared textures created successfully!");
+                
+                // Store in shared state for GPUI access
+                if let Ok(mut lock) = shared_textures.lock() {
+                    *lock = Some(textures.to_shared_gpu_textures());
+                    tracing::info!("[HELIO] ✅ Shared textures stored for GPUI access");
+                } else {
+                    tracing::error!("[HELIO] ❌ Failed to lock shared_textures mutex");
+                }
+                
+                Some(textures)
+            }
+            Err(e) => {
+                tracing::error!("[HELIO] ❌ Failed to create DXGI shared textures: {}", e);
+                tracing::warn!("[HELIO] Continuing without texture sharing - viewport won't display");
+                None
+            }
+        };
+
+        #[cfg(not(target_os = "windows"))]
+        let helio_shared_textures: Option<()> = None;
+
         // Create test meshes
+        tracing::info!("[HELIO] 🚀 Step 4/10: Creating meshes...");
         let cube_mesh = MeshBuffer::from_mesh(&context, "cube", &create_cube_mesh(1.0));
         let sphere_mesh = MeshBuffer::from_mesh(&context, "sphere", &create_sphere_mesh(0.5, 32, 32));
+        tracing::info!("[HELIO] ✅ Step 4/10: Test meshes created");
+
+        // Create TextureManager (required by Helio features)
+        tracing::info!("[HELIO] 🚀 Step 5/10: Creating TextureManager...");
+        let texture_manager = Arc::new(TextureManager::new(context.clone()));
+        tracing::info!("[HELIO] ✅ Step 5/10: TextureManager created");
+
+        // Initialize features properly
+        tracing::info!("[HELIO] 🚀 Step 6/10: Initializing rendering features...");
+        let mut base_geometry = BaseGeometry::new();
+        base_geometry.set_texture_manager(texture_manager.clone());
+        let base_shader = base_geometry.shader_template().to_string();
+
+        let mut shadows = ProceduralShadows::new().with_ambient(0.15);
+        shadows.set_texture_manager(texture_manager.clone());
+        
+        let mut billboards = BillboardFeature::new();
+        billboards.set_texture_manager(texture_manager.clone());
+
+        // Build feature registry
+        let registry = FeatureRegistry::builder()
+            .with_feature(base_geometry)
+            .with_feature(BasicLighting::new())
+            .with_feature(BasicMaterials::new())
+            .with_feature(shadows)
+            .with_feature(Bloom::new())
+            .with_feature(billboards)
+            .build();
+        
+        tracing::info!("[HELIO] ✅ Step 6/10: Feature registry built with 6 features");
 
         // Create gizmo meshes
+        tracing::info!("[HELIO] 🚀 Step 7/10: Creating gizmo meshes...");
         let arrow_mesh = MeshBuffer::from_mesh(
             &context,
             "gizmo_arrow",
@@ -138,61 +206,56 @@ impl HelioRenderer {
             "gizmo_torus",
             &super::gizmos::create_torus_mesh(1.0, 0.05, 32, 16),
         );
+        tracing::info!("[HELIO] ✅ Step 7/10: Gizmo meshes created");
 
-        // Setup texture manager (optional for now)
-        let texture_manager = Arc::new(TextureManager::new(context.clone()));
+        // Use shared textures if available, otherwise create regular render target
+        tracing::info!("[HELIO] 🚀 Step 8/10: Setting up render targets...");
+        #[cfg(target_os = "windows")]
+        let use_shared_textures = helio_shared_textures.is_some();
+        
+        #[cfg(not(target_os = "windows"))]
+        let use_shared_textures = false;
 
-        // Setup rendering features
-        let mut base_geometry = BaseGeometry::new();
-        base_geometry.set_texture_manager(texture_manager.clone());
-        let base_shader = base_geometry.shader_template().to_string();
+        let fallback_render_target = if !use_shared_textures {
+            tracing::warn!("[HELIO] Using fallback render target (no DXGI sharing)");
+            Some(context.create_texture(blade_graphics::TextureDesc {
+                name: "helio_render_target",
+                format: blade_graphics::TextureFormat::Bgra8UnormSrgb,
+                size: blade_graphics::Extent {
+                    width,
+                    height,
+                    depth: 1,
+                },
+                dimension: blade_graphics::TextureDimension::D2,
+                array_layer_count: 1,
+                mip_level_count: 1,
+                sample_count: 1,
+                usage: blade_graphics::TextureUsage::TARGET | blade_graphics::TextureUsage::RESOURCE,
+                external: None,
+            }))
+        } else {
+            tracing::info!("[HELIO] Using DXGI shared textures for rendering");
+            None
+        };
+        tracing::info!("[HELIO] ✅ Step 8/10: Render targets configured");
 
-        let mut shadows = ProceduralShadows::new().with_ambient(0.2);
-        shadows.set_texture_manager(texture_manager.clone());
-
-        let mut billboards = BillboardFeature::new();
-        billboards.set_texture_manager(texture_manager.clone());
-
-        let registry = FeatureRegistry::builder()
-            .with_feature(base_geometry)
-            .with_feature(BasicLighting::new())
-            .with_feature(BasicMaterials::new())
-            .with_feature(shadows)
-            .with_feature(Bloom::new())
-            .with_feature(billboards)
-            .build();
-
-        // Create offscreen render target (we'll replace this with DXGI shared texture later)
-        let render_target = context.create_texture(blade_graphics::TextureDesc {
-            name: "helio_render_target",
-            format: blade_graphics::TextureFormat::Rgba8Unorm,
-            size: blade_graphics::Extent {
-                width,
-                height,
-                depth: 1,
-            },
-            dimension: blade_graphics::TextureDimension::D2,
-            array_layer_count: 1,
-            mip_level_count: 1,
-            sample_count: 1,
-            usage: blade_graphics::TextureUsage::TARGET | blade_graphics::TextureUsage::RESOURCE,
-            external: None,
-        });
-
+        tracing::info!("[HELIO] 🚀 Step 9/10: Creating FeatureRenderer...");
         let mut renderer = FeatureRenderer::new(
             context.clone(),
-            blade_graphics::TextureFormat::Rgba8Unorm,
+            blade_graphics::TextureFormat::Bgra8UnormSrgb,
             width,
             height,
             registry,
             &base_shader,
-        )
-        .expect("Failed to create FeatureRenderer");
+        ).expect("Failed to create FeatureRenderer");
+        tracing::info!("[HELIO] ✅ Step 9/10: FeatureRenderer created");
 
+        tracing::info!("[HELIO] 🚀 Step 10/10: Creating command encoder...");
         let mut command_encoder = context.create_command_encoder(blade_graphics::CommandEncoderDesc {
             name: "helio_main",
             buffer_count: 2,
         });
+        tracing::info!("[HELIO] ✅ Step 10/10: Command encoder created");
 
         // Camera setup
         let mut camera = FpsCamera::new(Vec3::new(0.0, 5.0, 15.0));
@@ -202,7 +265,7 @@ impl HelioRenderer {
         let mut last_frame_time = Instant::now();
         let mut frame_count: u64 = 0;
 
-        tracing::info!("[HELIO] ✅ Renderer initialized, entering render loop");
+        tracing::info!("[HELIO] ✅✅✅ ALL INITIALIZATION COMPLETE - ENTERING RENDER LOOP ✅✅✅");
 
         // Main render loop
         while !shutdown.load(Ordering::Relaxed) {
@@ -211,6 +274,11 @@ impl HelioRenderer {
             let now = Instant::now();
             let delta_time = (now - last_frame_time).as_secs_f32();
             last_frame_time = now;
+            
+            // Debug log every 60 frames
+            if frame_count % 60 == 0 {
+                tracing::debug!("[HELIO] Frame {} - FPS: {:.1}", frame_count, 1.0 / delta_time);
+            }
 
             // Update camera from input
             if let Ok(input) = camera_input.lock() {
@@ -219,6 +287,17 @@ impl HelioRenderer {
             }
 
             // Start frame
+            #[cfg(target_os = "windows")]
+            let render_target = if let Some(ref shared_tex) = helio_shared_textures {
+                // Use current write buffer from shared textures
+                shared_tex.get_write_texture()
+            } else {
+                fallback_render_target.unwrap()
+            };
+            
+            #[cfg(not(target_os = "windows"))]
+            let render_target = fallback_render_target.unwrap();
+            
             command_encoder.start();
             command_encoder.init_texture(render_target);
 
@@ -354,6 +433,17 @@ impl HelioRenderer {
             // Submit and wait (for now - in real implementation we'd handle DXGI sync differently)
             let sync_point = context.submit(&mut command_encoder);
             context.wait_for(&sync_point, !0);
+
+            // Swap buffers for double-buffering
+            #[cfg(target_os = "windows")]
+            if let Some(ref shared_tex) = helio_shared_textures {
+                shared_tex.swap_buffers();
+                
+                // Debug log occasionally
+                if frame_count % 120 == 0 {
+                    tracing::debug!("[HELIO] Buffer swapped, frame {}", frame_count);
+                }
+            }
 
             frame_count += 1;
 

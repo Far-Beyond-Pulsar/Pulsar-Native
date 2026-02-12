@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, AtomicU64, Ordering};
 
 use super::core::SharedGpuTextures;
+use super::dxgi_unsafe;
 use crate::subsystems::render::NativeTextureHandle;
 
 pub const RENDER_WIDTH: u32 = 1600;
@@ -20,21 +21,38 @@ pub struct HelioSharedTextures {
     pub write_index: Arc<AtomicUsize>,
     pub read_index: Arc<AtomicUsize>,
     pub frame_number: Arc<AtomicU64>,
+    /// Keep the D3D12 device alive for shared textures
+    _d3d12_device: Option<windows::Win32::Graphics::Direct3D12::ID3D12Device>,
+    /// Keep the D3D12 resources alive
+    _d3d12_resources: Vec<windows::Win32::Graphics::Direct3D12::ID3D12Resource>,
 }
 
 #[cfg(target_os = "windows")]
 impl HelioSharedTextures {
     /// Create double-buffered DXGI shared textures for Helio/GPUI interop
     pub fn new(context: &Arc<gpu::Context>) -> Result<Self, String> {
-        use windows::Win32::Graphics::Direct3D12::*;
-        use windows::Win32::Graphics::Dxgi::Common::*;
-        use windows::Win32::Foundation::*;
-        
         tracing::info!("[HELIO-DXGI] Creating DXGI shared textures {}x{}", RENDER_WIDTH, RENDER_HEIGHT);
 
-        // For now, create regular textures
-        // TODO: Access raw D3D12 device from blade-graphics to create shared resources
-        // This is a temporary implementation that creates non-shared textures
+        // Create standalone D3D12 device for shared texture creation
+        let (shared_handles, d3d12_resources, d3d12_device) = dxgi_unsafe::create_shared_textures_workaround(
+            RENDER_WIDTH,
+            RENDER_HEIGHT,
+        )?;
+
+        tracing::info!("[HELIO-DXGI] ✅ Created {} DXGI shared handles", shared_handles.len());
+
+        // Store handles for GPUI compositor
+        let handle_values: Vec<usize> = shared_handles.iter()
+            .map(|h| dxgi_unsafe::handle_to_usize(*h))
+            .collect();
+        
+        crate::subsystems::render::native_texture::store_shared_handles(handle_values.clone());
+        tracing::info!("[HELIO-DXGI] Stored handles: 0x{:X}, 0x{:X}", handle_values[0], handle_values[1]);
+
+        // Import shared handles into Vulkan using external memory
+        // ExternalMemorySource::Win32(Some(handle)) imports a Win32 NT handle
+        // This is the CORRECT way - pass the shared HANDLE, not the resource pointer!
+        tracing::info!("[HELIO-DXGI] Importing shared NT handles into Vulkan textures...");
         
         let texture_0 = context.create_texture(gpu::TextureDesc {
             name: "helio_shared_0",
@@ -49,7 +67,7 @@ impl HelioSharedTextures {
             mip_level_count: 1,
             sample_count: 1,
             usage: gpu::TextureUsage::TARGET | gpu::TextureUsage::RESOURCE,
-            external: None,
+            external: Some(gpu::ExternalMemorySource::Win32(Some(handle_values[0] as isize))),
         });
         
         let texture_1 = context.create_texture(gpu::TextureDesc {
@@ -65,16 +83,15 @@ impl HelioSharedTextures {
             mip_level_count: 1,
             sample_count: 1,
             usage: gpu::TextureUsage::TARGET | gpu::TextureUsage::RESOURCE,
-            external: None,
+            external: Some(gpu::ExternalMemorySource::Win32(Some(handle_values[1] as isize))),
         });
 
-        // For now, create placeholder handles
-        // TODO: Extract actual D3D12 resource handles once blade-graphics exposes them
-        let handle_0 = NativeTextureHandle::D3D11(0);
-        let handle_1 = NativeTextureHandle::D3D11(0);
+        // Convert Windows HANDLE values to NativeTextureHandle
+        let handle_0 = NativeTextureHandle::D3D11(handle_values[0]);
+        let handle_1 = NativeTextureHandle::D3D11(handle_values[1]);
 
-        tracing::warn!("[HELIO-DXGI] ⚠️ Using placeholder handles - DXGI sharing not yet fully implemented");
-        tracing::info!("[HELIO-DXGI] Textures created, waiting for blade-graphics D3D12 resource access API");
+        tracing::info!("[HELIO-DXGI] ✅ Imported shared NT handles into Vulkan!");
+        tracing::info!("[HELIO-DXGI] TRUE zero-copy: Vulkan renders → D3D12 shared memory ← D3D11 GPUI reads");
 
         Ok(Self {
             textures: [texture_0, texture_1],
@@ -82,6 +99,8 @@ impl HelioSharedTextures {
             write_index: Arc::new(AtomicUsize::new(0)),
             read_index: Arc::new(AtomicUsize::new(1)),
             frame_number: Arc::new(AtomicU64::new(0)),
+            _d3d12_device: Some(d3d12_device),
+            _d3d12_resources: d3d12_resources,
         })
     }
 
