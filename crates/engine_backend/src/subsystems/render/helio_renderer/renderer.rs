@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, atomic::{AtomicBool, AtomicU64, AtomicUsize, Orderin
 use std::time::{Duration, Instant};
 use glam::{Vec3, Mat4};
 
-use helio_core::{create_cube_mesh, create_sphere_mesh, MeshBuffer, TextureManager};
+use helio_core::{create_cube_mesh, create_sphere_mesh, create_plane_mesh, MeshBuffer, TextureManager};
 use helio_render::{FpsCamera, FeatureRenderer, TransformUniforms};
 use helio_features::FeatureRegistry;
 use helio_feature_base_geometry::BaseGeometry;
@@ -163,7 +163,7 @@ impl HelioRenderer {
         tracing::info!("[HELIO] 🚀 Step 4/10: Creating meshes...");
         let cube_mesh = MeshBuffer::from_mesh(&context, "cube", &create_cube_mesh(1.0));
         let sphere_mesh = MeshBuffer::from_mesh(&context, "sphere", &create_sphere_mesh(0.5, 32, 32));
-        let plane_mesh = MeshBuffer::from_mesh(&context, "plane", &helio_core::create_plane_mesh(20.0, 20.0));
+        let plane_mesh = MeshBuffer::from_mesh(&context, "plane", &create_plane_mesh(20.0, 20.0));
         tracing::info!("[HELIO] ✅ Step 4/10: Test meshes created");
 
         // Create TextureManager and load spotlight billboard texture
@@ -185,13 +185,13 @@ impl HelioRenderer {
         let texture_manager = Arc::new(texture_manager);
         tracing::info!("[HELIO] ✅ Step 5/10: TextureManager created");
 
-        // Initialize features properly with IMPRESSIVE LIGHTING SETUP
+        // Initialize features with game scene lighting
         tracing::info!("[HELIO] 🚀 Step 6/10: Initializing rendering features...");
         let mut base_geometry = BaseGeometry::new();
         base_geometry.set_texture_manager(texture_manager.clone());
         let base_shader = base_geometry.shader_template().to_string();
 
-        // Multi-light setup from lighting_showcase.rs
+        // Setup shadow system with dynamic animated lights (like lighting showcase mode 1)
         let mut shadows = ProceduralShadows::new().with_ambient(0.05);
         shadows.set_texture_manager(texture_manager.clone());
         
@@ -201,41 +201,52 @@ impl HelioRenderer {
             tracing::info!("[HELIO] ✅ Spotlight billboard icon configured");
         }
         
-        // Red spotlight from above
+        // Initial lights will be updated every frame in render loop
+        // RGB Multi-Light Dance - Multiple colored lights with overlapping shadows
         shadows.add_light(helio_feature_procedural_shadows::LightConfig {
             light_type: helio_feature_procedural_shadows::LightType::Spot {
                 inner_angle: 25.0_f32.to_radians(),
                 outer_angle: 40.0_f32.to_radians(),
             },
-            position: Vec3::new(0.0, 8.0, 0.0),
+            position: Vec3::new(0.0, 7.0, 0.0),
             direction: Vec3::new(0.0, -1.0, 0.0),
             intensity: 1.5,
-            color: Vec3::new(1.0, 0.2, 0.2), // Red
+            color: Vec3::new(1.0, 0.1, 0.1), // Red
             attenuation_radius: 12.0,
             attenuation_falloff: 2.0,
-        }).expect("Failed to add red spotlight");
+        }).expect("Failed to add red light");
         
-        // Green point light
         shadows.add_light(helio_feature_procedural_shadows::LightConfig {
             light_type: helio_feature_procedural_shadows::LightType::Point,
             position: Vec3::new(-4.0, 3.0, -4.0),
             direction: Vec3::new(0.0, -1.0, 0.0),
-            intensity: 1.2,
-            color: Vec3::new(0.2, 1.0, 0.2), // Green
+            intensity: 1.3,
+            color: Vec3::new(0.1, 1.0, 0.1), // Green
             attenuation_radius: 10.0,
             attenuation_falloff: 2.5,
-        }).expect("Failed to add green point light");
+        }).expect("Failed to add green light");
         
-        // Blue point light
         shadows.add_light(helio_feature_procedural_shadows::LightConfig {
             light_type: helio_feature_procedural_shadows::LightType::Point,
-            position: Vec3::new(4.0, 3.0, -4.0),
+            position: Vec3::new(4.0, 4.0, 4.0),
             direction: Vec3::new(0.0, -1.0, 0.0),
-            intensity: 1.2,
-            color: Vec3::new(0.2, 0.2, 1.0), // Blue
+            intensity: 1.3,
+            color: Vec3::new(0.1, 0.1, 1.0), // Blue
             attenuation_radius: 10.0,
             attenuation_falloff: 2.5,
-        }).expect("Failed to add blue point light");
+        }).expect("Failed to add blue light");
+        
+        shadows.add_light(helio_feature_procedural_shadows::LightConfig {
+            light_type: helio_feature_procedural_shadows::LightType::Point,
+            position: Vec3::new(0.0, 2.0, 0.0),
+            direction: Vec3::new(0.0, -1.0, 0.0),
+            intensity: 0.8,
+            color: Vec3::new(0.3, 1.0, 1.0), // Cyan
+            attenuation_radius: 6.0,
+            attenuation_falloff: 3.0,
+        }).expect("Failed to add cyan light");
+        
+        tracing::info!("[HELIO] ✅ Added 4 animated RGB lights (will update positions every frame)");
         
         let mut billboards = BillboardFeature::new();
         billboards.set_texture_manager(texture_manager.clone());
@@ -250,7 +261,7 @@ impl HelioRenderer {
             .with_feature(billboards)
             .build();
         
-        tracing::info!("[HELIO] ✅ Step 6/10: Feature registry built with 6 features + 3 colored lights!");
+        tracing::info!("[HELIO] ✅ Step 6/10: Feature registry built with 4 animated RGB lights!");
 
         // Create gizmo meshes
         tracing::info!("[HELIO] 🚀 Step 7/10: Creating gizmo meshes...");
@@ -373,6 +384,72 @@ impl HelioRenderer {
                     input.zoom_delta = 0.0; // Clear after applying
                 }
             }
+            
+            // === UPDATE DYNAMIC LIGHTS (RGB Multi-Light Dance) ===
+            {
+                profiling::profile_scope!("Update Lights");
+                if let Some(shadows_feature) = renderer.registry_mut()
+                    .get_feature_as_mut::<ProceduralShadows>("procedural_shadows") 
+                {
+                    shadows_feature.clear_lights();
+                    
+                    let time = (now - start_time).as_secs_f32();
+                    
+                    // Red spotlight (circling)
+                    let r_angle = time * 0.8;
+                    let _ = shadows_feature.add_light(helio_feature_procedural_shadows::LightConfig {
+                        light_type: helio_feature_procedural_shadows::LightType::Spot {
+                            inner_angle: 25.0_f32.to_radians(),
+                            outer_angle: 40.0_f32.to_radians(),
+                        },
+                        position: Vec3::new(r_angle.cos() * 3.0, 7.0, r_angle.sin() * 3.0),
+                        direction: Vec3::new(0.0, -1.0, 0.0),
+                        intensity: 1.5,
+                        color: Vec3::new(1.0, 0.1, 0.1),
+                        attenuation_radius: 12.0,
+                        attenuation_falloff: 2.0,
+                    });
+                    
+                    // Green point light (circling opposite)
+                    let g_angle = time * 1.2 + 2.0;
+                    let _ = shadows_feature.add_light(helio_feature_procedural_shadows::LightConfig {
+                        light_type: helio_feature_procedural_shadows::LightType::Point,
+                        position: Vec3::new(g_angle.cos() * 5.0, 3.0, g_angle.sin() * 5.0),
+                        direction: Vec3::new(0.0, -1.0, 0.0),
+                        intensity: 1.3,
+                        color: Vec3::new(0.1, 1.0, 0.1),
+                        attenuation_radius: 10.0,
+                        attenuation_falloff: 2.5,
+                    });
+                    
+                    // Blue point light (different speed)
+                    let b_angle = time * 1.0 + 4.0;
+                    let _ = shadows_feature.add_light(helio_feature_procedural_shadows::LightConfig {
+                        light_type: helio_feature_procedural_shadows::LightType::Point,
+                        position: Vec3::new(b_angle.cos() * 4.0, 4.0, b_angle.sin() * 4.0),
+                        direction: Vec3::new(0.0, -1.0, 0.0),
+                        intensity: 1.3,
+                        color: Vec3::new(0.1, 0.1, 1.0),
+                        attenuation_radius: 10.0,
+                        attenuation_falloff: 2.5,
+                    });
+                    
+                    // Cyan point light (fast orbiting center)
+                    let _ = shadows_feature.add_light(helio_feature_procedural_shadows::LightConfig {
+                        light_type: helio_feature_procedural_shadows::LightType::Point,
+                        position: Vec3::new(
+                            (time * 1.5).cos() * 2.0,
+                            2.0,
+                            (time * 1.5).sin() * 2.0,
+                        ),
+                        direction: Vec3::new(0.0, -1.0, 0.0),
+                        intensity: 0.8,
+                        color: Vec3::new(0.3, 1.0, 1.0),
+                        attenuation_radius: 6.0,
+                        attenuation_falloff: 3.0,
+                    });
+                }
+            }
 
             // Start frame
             #[cfg(target_os = "windows")]
@@ -392,43 +469,65 @@ impl HelioRenderer {
             let aspect = width as f32 / height as f32;
             let camera_uniforms = camera.build_camera_uniforms(60.0, aspect);
 
-            // Build scene meshes from GameState (if available)
-            let mut meshes = Vec::new();
-            
-            // LIGHTING SHOWCASE SCENE - impressive demo objects
+            // === LIGHTING SHOWCASE SCENE - EXACT COPY ===
             // Ground plane
-            let ground_transform = Mat4::from_translation(Vec3::new(0.0, 0.0, 0.0));
-            meshes.push((TransformUniforms::from_matrix(ground_transform), &plane_mesh));
-            
-            // Center spotlight target - large cube
-            let center_transform = Mat4::from_translation(Vec3::new(0.0, 0.5, 0.0));
-            meshes.push((TransformUniforms::from_matrix(center_transform), &cube_mesh));
-            
-            // Left sphere (under green light)
-            let left_sphere = Mat4::from_translation(Vec3::new(-3.0, 0.5, -3.0));
-            meshes.push((TransformUniforms::from_matrix(left_sphere), &sphere_mesh));
-            
-            // Right sphere (under blue light)
-            let right_sphere = Mat4::from_translation(Vec3::new(3.0, 0.5, -3.0));
-            meshes.push((TransformUniforms::from_matrix(right_sphere), &sphere_mesh));
-            
-            // Floating cubes circle
-            let time = (now - start_time).as_secs_f32();
-            for i in 0..6 {
-                let angle = (i as f32 * std::f32::consts::PI * 2.0 / 6.0) + time * 0.5;
-                let radius = 5.0;
-                let x = angle.cos() * radius;
-                let z = angle.sin() * radius;
-                let y = 1.5 + (time * 2.0 + i as f32).sin() * 0.5;
-                
-                let translation = Mat4::from_translation(Vec3::new(x, y, z));
-                let rotation = Mat4::from_rotation_y(time + i as f32);
-                let scale = Mat4::from_scale(Vec3::splat(0.5));
-                
-                meshes.push((TransformUniforms::from_matrix(translation * rotation * scale), &cube_mesh));
+            let ground = Mat4::from_translation(Vec3::new(0.0, -0.1, 0.0))
+                * Mat4::from_scale(Vec3::new(1.5, 1.0, 1.5));
+            let mut meshes = vec![(TransformUniforms::from_matrix(ground), &plane_mesh)];
+
+            let elapsed = (now - start_time).as_secs_f32();
+
+            // Central rotating pillar of spheres
+            for i in 0..5 {
+                let height = i as f32 * 1.5;
+                let angle = elapsed * 0.5 + i as f32 * 0.6;
+                let radius = 2.0 + (elapsed * 0.3 + i as f32).sin() * 0.5;
+                let t = Mat4::from_translation(Vec3::new(
+                    angle.cos() * radius,
+                    height + 1.0,
+                    angle.sin() * radius,
+                )) * Mat4::from_scale(Vec3::splat(
+                    0.8 + (elapsed * 2.0 + i as f32).sin().abs() * 0.3,
+                ));
+                meshes.push((TransformUniforms::from_matrix(t), &sphere_mesh));
             }
-            
-            // Load objects from GameState if available
+
+            // Orbiting cubes
+            for i in 0..8 {
+                let orbit_angle = elapsed * 0.8 + (i as f32 / 8.0) * std::f32::consts::TAU;
+                let height = 2.0 + (elapsed * 1.5 + i as f32).sin() * 2.0;
+                let rs = 1.0 + i as f32 * 0.2;
+                let t = Mat4::from_translation(Vec3::new(
+                    orbit_angle.cos() * 6.0,
+                    height,
+                    orbit_angle.sin() * 6.0,
+                )) * Mat4::from_rotation_y(elapsed * rs)
+                    * Mat4::from_rotation_x(elapsed * rs * 0.7)
+                    * Mat4::from_scale(Vec3::splat(0.6));
+                meshes.push((TransformUniforms::from_matrix(t), &cube_mesh));
+            }
+
+            // Dancing spheres on the ground
+            for i in 0..12 {
+                let dance_angle = (i as f32 / 12.0) * std::f32::consts::TAU;
+                let bob_phase = elapsed * 2.0 + i as f32 * 0.5;
+                let radius = 8.0 + (elapsed * 0.6).sin() * 1.0;
+                let t = Mat4::from_translation(Vec3::new(
+                    dance_angle.cos() * radius,
+                    bob_phase.sin().abs() * 2.0 + 0.5,
+                    dance_angle.sin() * radius,
+                )) * Mat4::from_scale(Vec3::splat(0.5));
+                meshes.push((TransformUniforms::from_matrix(t), &sphere_mesh));
+            }
+
+            // Static objects for shadow reference
+            let cube1 = Mat4::from_translation(Vec3::new(-4.0, 0.5, -4.0));
+            meshes.push((TransformUniforms::from_matrix(cube1), &cube_mesh));
+
+            let cube2 = Mat4::from_translation(Vec3::new(4.0, 0.5, -4.0));
+            meshes.push((TransformUniforms::from_matrix(cube2), &cube_mesh));
+
+            // Add editor-placed objects from GameState if available
             if let Some(ref game_state_arc) = _game_thread_state {
                 if let Ok(game_state) = game_state_arc.lock() {
                     for obj in &game_state.objects {
@@ -436,7 +535,6 @@ impl HelioRenderer {
                             continue;
                         }
                         
-                        // Convert GameObject to transform matrix
                         let translation = Mat4::from_translation(Vec3::new(
                             obj.position[0],
                             obj.position[1],
@@ -453,34 +551,10 @@ impl HelioRenderer {
                             obj.scale[2],
                         ));
                         
-                        let transform = translation * rotation * scale;
-                        
-                        // Use sphere mesh for GameState objects
-                        meshes.push((TransformUniforms::from_matrix(transform), &sphere_mesh));
+                        let transform_uniforms = TransformUniforms::from_matrix(translation * rotation * scale);
+                        meshes.push((transform_uniforms, &sphere_mesh));
                     }
                 }
-            }
-            
-            // Add ground plane
-            let ground_transform = Mat4::from_translation(Vec3::new(0.0, -1.0, 0.0))
-                * Mat4::from_scale(Vec3::new(10.0, 0.1, 10.0));
-            meshes.push((TransformUniforms::from_matrix(ground_transform), &cube_mesh));
-
-            // If no objects in scene, add demo objects
-            if meshes.len() <= 1 {
-                let elapsed = (now - start_time).as_secs_f32();
-                
-                // Rotating sphere
-                let sphere_transform = Mat4::from_translation(Vec3::new(
-                    (elapsed * 0.5).sin() * 3.0,
-                    2.0,
-                    (elapsed * 0.5).cos() * 3.0,
-                )) * Mat4::from_rotation_y(elapsed);
-                meshes.push((TransformUniforms::from_matrix(sphere_transform), &sphere_mesh));
-                
-                // Static cube
-                let cube_transform = Mat4::from_translation(Vec3::new(-3.0, 1.5, 0.0));
-                meshes.push((TransformUniforms::from_matrix(cube_transform), &cube_mesh));
             }
 
             // Render gizmos if object is selected

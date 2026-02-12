@@ -14,6 +14,9 @@ pub mod core;
 // Gizmo generation and rendering
 pub mod gizmos;
 
+// Scene building system
+pub mod scene_builder;
+
 // DXGI shared texture management
 #[cfg(target_os = "windows")]
 pub mod dxgi_textures;
