@@ -324,9 +324,11 @@ unsafe fn render_bevy_layer(window_state: &mut crate::window::WindowState, conte
     let Some(gpu_renderer_arc) = window_state.helio_renderer.clone() else { return };
     let Ok(gpu_renderer) = gpu_renderer_arc.lock() else { return };
     let Some(ref helio_renderer_inst) = gpu_renderer.helio_renderer else { return };
-    let Some(native_handle) = helio_renderer_inst.get_current_native_handle() else { return };
+    let Some(gpu_handle) = helio_renderer_inst.get_current_native_handle() else { return };
 
-    let NativeTextureHandle::D3D11(handle_ptr) = native_handle else { return };
+    // GpuTextureHandle stores the handle as an isize internally
+    // We need to access it - for now, assume it's in the native_handle field
+    let handle_ptr = gpu_handle.native_handle as usize;
 
     let mut bevy_texture_local: Option<ID3D11Texture2D> = None;
     let device = window_state.d3d_device.as_ref().unwrap();
