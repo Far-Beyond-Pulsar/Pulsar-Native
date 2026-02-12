@@ -102,8 +102,8 @@ impl CameraInput {
             focus_point: Vec3::ZERO,
             viewport_x: 0.0,
             viewport_y: 0.0,
-            viewport_width: 1600.0,
-            viewport_height: 900.0,
+            viewport_width: 2560.0,
+            viewport_height: 1440.0,
             needs_resize: false,
         }
     }
