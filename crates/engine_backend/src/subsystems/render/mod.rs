@@ -1,12 +1,10 @@
 // Rendering subsystem for Pulsar Engine Backend
 
-pub mod bevy_renderer;
 pub mod helio_renderer;
 pub mod zero_copy_buffer;
 pub mod native_texture;
 pub mod dxgi_shared_texture;
 
-pub use bevy_renderer::BevyRenderer;
 pub use helio_renderer::{HelioRenderer, CameraInput, RenderMetrics, GpuProfilerData};
 pub use zero_copy_buffer::{ZeroCopyFrameBuffer, PersistentMappedBuffer};
 pub use native_texture::{NativeTextureHandle, SharedTextureInfo, TextureFormat};

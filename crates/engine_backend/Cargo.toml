@@ -40,19 +40,6 @@ lsp-types.workspace = true
 ropey.workspace = true
 flume = "0.11"
 
-# Rendering dependencies
-bevy = { version = "0.17.2", default-features = false, features = [
-    "bevy_render",
-    "bevy_core_pipeline",
-    "bevy_asset",
-    "bevy_winit",
-    "bevy_pbr",
-    "bevy_gltf",
-    "x11",
-    "wayland",
-] }
-bevy_obj = "0.17"
-
 # Helio rendering (blade-graphics alternative)
 helio-core.workspace = true
 helio-render.workspace = true
@@ -77,7 +64,7 @@ crossbeam-channel = "0.5"
 futures = "0.3"
 parking_lot = "0.12"
 anyhow = "1.0"
-horizon = { git = "https://github.com/Far-Beyond-Dev/Horizon", rev = "b11774f548d50e183b9a452369cda6877fc0abe4" }
+# horizon = { git = "https://github.com/Far-Beyond-Dev/Horizon", rev = "b11774f548d50e183b9a452369cda6877fc0abe4" }
 serde_json = "1.0"
 
 # Networking dependencies

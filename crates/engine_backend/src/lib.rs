@@ -15,7 +15,7 @@ pub use tokio;
 pub use subsystems::physics::PhysicsEngine;
 pub use subsystems::game::{GameThread, ManagedGameThread, GameState, GameObject};
 pub use subsystems::world::World;
-pub use subsystems::render::{WgpuRenderer, BevyRenderer, Framebuffer as RenderFramebuffer};
+pub use subsystems::render::{WgpuRenderer, Framebuffer as RenderFramebuffer};
 pub use subsystems::framework::{SubsystemRegistry, SubsystemContext, Subsystem, SubsystemError};
 pub use services::{GpuRenderer, GlobalRustAnalyzerCompletionProvider, RustAnalyzerManager};
 pub use std::sync::Arc;
