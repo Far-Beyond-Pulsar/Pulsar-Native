@@ -163,6 +163,7 @@ impl HelioRenderer {
         tracing::info!("[HELIO] 🚀 Step 4/10: Creating meshes...");
         let cube_mesh = MeshBuffer::from_mesh(&context, "cube", &create_cube_mesh(1.0));
         let sphere_mesh = MeshBuffer::from_mesh(&context, "sphere", &create_sphere_mesh(0.5, 32, 32));
+        let plane_mesh = MeshBuffer::from_mesh(&context, "plane", &helio_core::create_plane_mesh(20.0, 20.0));
         tracing::info!("[HELIO] ✅ Step 4/10: Test meshes created");
 
         // Create TextureManager (required by Helio features)
@@ -170,14 +171,51 @@ impl HelioRenderer {
         let texture_manager = Arc::new(TextureManager::new(context.clone()));
         tracing::info!("[HELIO] ✅ Step 5/10: TextureManager created");
 
-        // Initialize features properly
+        // Initialize features properly with IMPRESSIVE LIGHTING SETUP
         tracing::info!("[HELIO] 🚀 Step 6/10: Initializing rendering features...");
         let mut base_geometry = BaseGeometry::new();
         base_geometry.set_texture_manager(texture_manager.clone());
         let base_shader = base_geometry.shader_template().to_string();
 
-        let mut shadows = ProceduralShadows::new().with_ambient(0.15);
+        // Multi-light setup from lighting_showcase.rs
+        let mut shadows = ProceduralShadows::new().with_ambient(0.05);
         shadows.set_texture_manager(texture_manager.clone());
+        
+        // Red spotlight from above
+        shadows.add_light(helio_feature_procedural_shadows::LightConfig {
+            light_type: helio_feature_procedural_shadows::LightType::Spot {
+                inner_angle: 25.0_f32.to_radians(),
+                outer_angle: 40.0_f32.to_radians(),
+            },
+            position: Vec3::new(0.0, 8.0, 0.0),
+            direction: Vec3::new(0.0, -1.0, 0.0),
+            intensity: 1.5,
+            color: Vec3::new(1.0, 0.2, 0.2), // Red
+            attenuation_radius: 12.0,
+            attenuation_falloff: 2.0,
+        }).expect("Failed to add red spotlight");
+        
+        // Green point light
+        shadows.add_light(helio_feature_procedural_shadows::LightConfig {
+            light_type: helio_feature_procedural_shadows::LightType::Point,
+            position: Vec3::new(-4.0, 3.0, -4.0),
+            direction: Vec3::new(0.0, -1.0, 0.0),
+            intensity: 1.2,
+            color: Vec3::new(0.2, 1.0, 0.2), // Green
+            attenuation_radius: 10.0,
+            attenuation_falloff: 2.5,
+        }).expect("Failed to add green point light");
+        
+        // Blue point light
+        shadows.add_light(helio_feature_procedural_shadows::LightConfig {
+            light_type: helio_feature_procedural_shadows::LightType::Point,
+            position: Vec3::new(4.0, 3.0, -4.0),
+            direction: Vec3::new(0.0, -1.0, 0.0),
+            intensity: 1.2,
+            color: Vec3::new(0.2, 0.2, 1.0), // Blue
+            attenuation_radius: 10.0,
+            attenuation_falloff: 2.5,
+        }).expect("Failed to add blue point light");
         
         let mut billboards = BillboardFeature::new();
         billboards.set_texture_manager(texture_manager.clone());
@@ -192,7 +230,7 @@ impl HelioRenderer {
             .with_feature(billboards)
             .build();
         
-        tracing::info!("[HELIO] ✅ Step 6/10: Feature registry built with 6 features");
+        tracing::info!("[HELIO] ✅ Step 6/10: Feature registry built with 6 features + 3 colored lights!");
 
         // Create gizmo meshes
         tracing::info!("[HELIO] 🚀 Step 7/10: Creating gizmo meshes...");
@@ -307,6 +345,39 @@ impl HelioRenderer {
             // Build scene meshes from GameState (if available)
             let mut meshes = Vec::new();
             
+            // LIGHTING SHOWCASE SCENE - impressive demo objects
+            // Ground plane
+            let ground_transform = Mat4::from_translation(Vec3::new(0.0, 0.0, 0.0));
+            meshes.push((TransformUniforms::from_matrix(ground_transform), &plane_mesh));
+            
+            // Center spotlight target - large cube
+            let center_transform = Mat4::from_translation(Vec3::new(0.0, 0.5, 0.0));
+            meshes.push((TransformUniforms::from_matrix(center_transform), &cube_mesh));
+            
+            // Left sphere (under green light)
+            let left_sphere = Mat4::from_translation(Vec3::new(-3.0, 0.5, -3.0));
+            meshes.push((TransformUniforms::from_matrix(left_sphere), &sphere_mesh));
+            
+            // Right sphere (under blue light)
+            let right_sphere = Mat4::from_translation(Vec3::new(3.0, 0.5, -3.0));
+            meshes.push((TransformUniforms::from_matrix(right_sphere), &sphere_mesh));
+            
+            // Floating cubes circle
+            let time = (now - start_time).as_secs_f32();
+            for i in 0..6 {
+                let angle = (i as f32 * std::f32::consts::PI * 2.0 / 6.0) + time * 0.5;
+                let radius = 5.0;
+                let x = angle.cos() * radius;
+                let z = angle.sin() * radius;
+                let y = 1.5 + (time * 2.0 + i as f32).sin() * 0.5;
+                
+                let translation = Mat4::from_translation(Vec3::new(x, y, z));
+                let rotation = Mat4::from_rotation_y(time + i as f32);
+                let scale = Mat4::from_scale(Vec3::splat(0.5));
+                
+                meshes.push((TransformUniforms::from_matrix(translation * rotation * scale), &cube_mesh));
+            }
+            
             // Load objects from GameState if available
             if let Some(ref game_state_arc) = _game_thread_state {
                 if let Ok(game_state) = game_state_arc.lock() {
@@ -334,8 +405,8 @@ impl HelioRenderer {
                         
                         let transform = translation * rotation * scale;
                         
-                        // Use cube mesh for now (TODO: load actual meshes)
-                        meshes.push((TransformUniforms::from_matrix(transform), &cube_mesh));
+                        // Use sphere mesh for GameState objects
+                        meshes.push((TransformUniforms::from_matrix(transform), &sphere_mesh));
                     }
                 }
             }
