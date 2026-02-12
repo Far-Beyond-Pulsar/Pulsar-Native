@@ -1,4 +1,4 @@
-//! Stub gizmo types for compatibility
+//! Gizmo stub types for compatibility
 //! Gizmos are removed but these types are kept to prevent breakage
 
 use glam::{Vec2, Vec3};
@@ -22,14 +22,21 @@ pub enum BevyGizmoAxis {
 #[derive(Debug, Clone, Default)]
 pub struct GizmoStateResource {
     pub gizmo_type: BevyGizmoType,
-    pub selected_object_id: Option<u64>,
-    pub target_position: [f32; 3],
+    pub selected_object_id: Option<String>,
+    pub target_position: Vec3,
+    pub enabled: bool,
+    pub updated_object_id: Option<String>,
+    pub updated_transform: Option<Vec3>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct ViewportMouseInput {
     pub position: Vec2,
+    pub mouse_pos: Vec2,
+    pub mouse_delta: Vec2,
     pub left_button: bool,
+    pub left_clicked: bool,
+    pub left_down: bool,
     pub right_button: bool,
 }
 
