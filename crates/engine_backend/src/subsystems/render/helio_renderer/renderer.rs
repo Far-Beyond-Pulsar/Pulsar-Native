@@ -581,8 +581,9 @@ impl HelioRenderer {
                 gp.frame_count = frame_count;
             }
 
-            // Target ~60 FPS for now
-            std::thread::sleep(Duration::from_millis(16));
+            // No sleep - run at full display refresh rate!
+            // GPUI can read from the shared texture whenever it wants,
+            // we just keep rendering as fast as possible.
         }
 
         tracing::info!("[HELIO] 🛑 Render thread shutting down");
