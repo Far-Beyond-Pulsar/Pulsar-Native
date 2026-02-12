@@ -11,6 +11,13 @@
 // Core data structures
 pub mod core;
 
+// Gizmo generation and rendering
+pub mod gizmos;
+
+// DXGI shared texture management
+#[cfg(target_os = "windows")]
+pub mod dxgi_textures;
+
 // Main renderer implementation
 pub mod renderer;
 

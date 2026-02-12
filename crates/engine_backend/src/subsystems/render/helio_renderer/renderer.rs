@@ -127,6 +127,18 @@ impl HelioRenderer {
         let cube_mesh = MeshBuffer::from_mesh(&context, "cube", &create_cube_mesh(1.0));
         let sphere_mesh = MeshBuffer::from_mesh(&context, "sphere", &create_sphere_mesh(0.5, 32, 32));
 
+        // Create gizmo meshes
+        let arrow_mesh = MeshBuffer::from_mesh(
+            &context,
+            "gizmo_arrow",
+            &super::gizmos::create_arrow_mesh(1.0, 0.05, 0.1, 0.3),
+        );
+        let torus_mesh = MeshBuffer::from_mesh(
+            &context,
+            "gizmo_torus",
+            &super::gizmos::create_torus_mesh(1.0, 0.05, 32, 16),
+        );
+
         // Setup texture manager (optional for now)
         let texture_manager = Arc::new(TextureManager::new(context.clone()));
 
@@ -213,22 +225,113 @@ impl HelioRenderer {
             let aspect = width as f32 / height as f32;
             let camera_uniforms = camera.build_camera_uniforms(60.0, aspect);
 
-            // Create test scene (cube and sphere)
+            // Build scene meshes from GameState (if available)
             let mut meshes = Vec::new();
             
-            // Ground cube
+            // Load objects from GameState if available
+            if let Some(ref game_state_arc) = _game_thread_state {
+                if let Ok(game_state) = game_state_arc.lock() {
+                    for obj in &game_state.objects {
+                        if !obj.active {
+                            continue;
+                        }
+                        
+                        // Convert GameObject to transform matrix
+                        let translation = Mat4::from_translation(Vec3::new(
+                            obj.position[0],
+                            obj.position[1],
+                            obj.position[2],
+                        ));
+                        
+                        let rotation = Mat4::from_rotation_y(obj.rotation[1])
+                            * Mat4::from_rotation_x(obj.rotation[0])
+                            * Mat4::from_rotation_z(obj.rotation[2]);
+                        
+                        let scale = Mat4::from_scale(Vec3::new(
+                            obj.scale[0],
+                            obj.scale[1],
+                            obj.scale[2],
+                        ));
+                        
+                        let transform = translation * rotation * scale;
+                        
+                        // Use cube mesh for now (TODO: load actual meshes)
+                        meshes.push((TransformUniforms::from_matrix(transform), &cube_mesh));
+                    }
+                }
+            }
+            
+            // Add ground plane
             let ground_transform = Mat4::from_translation(Vec3::new(0.0, -1.0, 0.0))
                 * Mat4::from_scale(Vec3::new(10.0, 0.1, 10.0));
             meshes.push((TransformUniforms::from_matrix(ground_transform), &cube_mesh));
 
-            // Rotating sphere
-            let elapsed = (now - start_time).as_secs_f32();
-            let sphere_transform = Mat4::from_translation(Vec3::new(
-                (elapsed * 0.5).sin() * 3.0,
-                2.0,
-                (elapsed * 0.5).cos() * 3.0,
-            )) * Mat4::from_rotation_y(elapsed);
-            meshes.push((TransformUniforms::from_matrix(sphere_transform), &sphere_mesh));
+            // If no objects in scene, add demo objects
+            if meshes.len() <= 1 {
+                let elapsed = (now - start_time).as_secs_f32();
+                
+                // Rotating sphere
+                let sphere_transform = Mat4::from_translation(Vec3::new(
+                    (elapsed * 0.5).sin() * 3.0,
+                    2.0,
+                    (elapsed * 0.5).cos() * 3.0,
+                )) * Mat4::from_rotation_y(elapsed);
+                meshes.push((TransformUniforms::from_matrix(sphere_transform), &sphere_mesh));
+                
+                // Static cube
+                let cube_transform = Mat4::from_translation(Vec3::new(-3.0, 1.5, 0.0));
+                meshes.push((TransformUniforms::from_matrix(cube_transform), &cube_mesh));
+            }
+
+            // Render gizmos if object is selected
+            if let Ok(gizmo_state_lock) = _gizmo_state.lock() {
+                if gizmo_state_lock.selected_object_id.is_some() {
+                    // Get gizmo target position (selected object position)
+                    let gizmo_position = Vec3::new(
+                        gizmo_state_lock.target_position[0],
+                        gizmo_state_lock.target_position[1],
+                        gizmo_state_lock.target_position[2],
+                    );
+                    
+                    let gizmo_scale = 0.5; // Scale down gizmo size
+                    
+                    use super::gizmos::{GizmoType, GizmoAxis, create_gizmo_arrow_transform, create_gizmo_torus_transform};
+                    use crate::subsystems::render::bevy_renderer::BevyGizmoType;
+                    
+                    match gizmo_state_lock.gizmo_type {
+                        BevyGizmoType::Translate => {
+                            // Render 3 arrows for X, Y, Z
+                            for axis in [GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z] {
+                                let transform = create_gizmo_arrow_transform(gizmo_position, axis, gizmo_scale);
+                                meshes.push((TransformUniforms::from_matrix(transform), &arrow_mesh));
+                            }
+                        }
+                        BevyGizmoType::Rotate => {
+                            // Render 3 toruses for X, Y, Z
+                            for axis in [GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z] {
+                                let transform = create_gizmo_torus_transform(gizmo_position, axis, gizmo_scale);
+                                meshes.push((TransformUniforms::from_matrix(transform), &torus_mesh));
+                            }
+                        }
+                        BevyGizmoType::Scale => {
+                            // Render 3 cubes for X, Y, Z scale handles
+                            for axis in [GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z] {
+                                let offset = match axis {
+                                    GizmoAxis::X => Vec3::new(1.0, 0.0, 0.0),
+                                    GizmoAxis::Y => Vec3::new(0.0, 1.0, 0.0),
+                                    GizmoAxis::Z => Vec3::new(0.0, 0.0, 1.0),
+                                    _ => Vec3::ZERO,
+                                } * gizmo_scale;
+                                
+                                let transform = Mat4::from_translation(gizmo_position + offset)
+                                    * Mat4::from_scale(Vec3::splat(0.2 * gizmo_scale));
+                                meshes.push((TransformUniforms::from_matrix(transform), &cube_mesh));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
 
             // Render scene
             let render_target_view = context.create_texture_view(
