@@ -14123,8 +14123,3 @@ dependencies = [
  "syn 2.0.115",
  "winnow",
 ]
-
-[[patch.unused]]
-name = "font-kit"
-version = "0.14.3"
-source = "git+https://github.com/servo/font-kit?branch=main#868f28a2c60d36092be66e4d83db001267c9d6b4"
