@@ -1100,40 +1100,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "blade-graphics"
-version = "0.7.0"
-source = "git+https://github.com/tristanpoland/blade#d85bd14a78ed7729abc298906e87332257674a02"
-dependencies = [
- "ash",
- "ash-window",
- "bitflags 2.10.0",
- "bytemuck",
- "codespan-reporting",
- "glow",
- "gpu-alloc",
- "gpu-alloc-ash",
- "hidden-trait",
- "js-sys",
- "khronos-egl",
- "libloading",
- "log",
- "mint",
- "naga 27.0.3",
- "objc2 0.6.3",
- "objc2-app-kit 0.3.2",
- "objc2-core-foundation",
- "objc2-foundation 0.3.2",
- "objc2-metal 0.3.2",
- "objc2-quartz-core 0.3.2",
- "objc2-ui-kit 0.3.2",
- "once_cell",
- "raw-window-handle 0.6.2",
- "slab",
- "wasm-bindgen",
- "web-sys",
-]
-
-[[package]]
 name = "blade-macros"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2699,7 +2665,7 @@ dependencies = [
  "anyhow",
  "ash",
  "async-tungstenite",
- "blade-graphics 0.7.0 (git+https://github.com/tristanpoland/blade)",
+ "blade-graphics 0.7.0 (git+https://github.com/tristanpoland/blade?rev=d85bd14a78ed7729abc298906e87332257674a02)",
  "crossbeam-channel",
  "dashmap 6.1.0",
  "flume",
