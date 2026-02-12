@@ -319,26 +319,22 @@ impl HelioRenderer {
             }
 
             // Update camera from input
-            if let Ok(input) = camera_input.lock() {
+            if let Ok(mut input) = camera_input.lock() {
                 // Apply movement with speed modifiers
                 let speed_multiplier = if input.boost { 3.0 } else { 1.0 };
                 let effective_speed = input.move_speed * speed_multiplier;
                 
                 camera.move_speed = effective_speed;
+                camera.look_speed = input.look_sensitivity;
                 
                 // WASD movement
                 camera.update_movement(input.forward, input.right, input.up, delta_time);
                 
-                // Mouse look (right-click drag)
-                // Note: Deltas are already cleared by the viewport's take_mouse_delta()
+                // Mouse look - Use Helio's handle_mouse_delta method directly
                 if input.mouse_delta_x.abs() > 0.001 || input.mouse_delta_y.abs() > 0.001 {
-                    // Apply rotation directly - viewport already scales appropriately
-                    let sensitivity = 0.002; // Radians per pixel
-                    camera.yaw += input.mouse_delta_x * sensitivity;
-                    camera.pitch -= input.mouse_delta_y * sensitivity; // Invert Y
-                    
-                    // Clamp pitch
-                    camera.pitch = camera.pitch.clamp(-89.0_f32.to_radians(), 89.0_f32.to_radians());
+                    camera.handle_mouse_delta(input.mouse_delta_x, input.mouse_delta_y);
+                    input.mouse_delta_x = 0.0; // Clear after applying
+                    input.mouse_delta_y = 0.0;
                 }
                 
                 // Middle-mouse pan
@@ -347,14 +343,16 @@ impl HelioRenderer {
                     let right_offset = camera.right() * input.pan_delta_x * pan_speed;
                     let up_offset = Vec3::Y * -input.pan_delta_y * pan_speed;
                     camera.position += right_offset + up_offset;
+                    input.pan_delta_x = 0.0; // Clear after applying
+                    input.pan_delta_y = 0.0;
                 }
                 
                 // Scroll wheel zoom
                 if input.zoom_delta.abs() > 0.001 {
                     camera.position += camera.forward() * input.zoom_delta * 0.5;
+                    input.zoom_delta = 0.0; // Clear after applying
                 }
             }
-            // NOTE: Don't clear deltas here - viewport's take_mouse_delta() already does that!
 
             // Start frame
             #[cfg(target_os = "windows")]

@@ -267,6 +267,22 @@ impl ViewportPanel {
                             let dy = point.y - locked_screen_y;
 
                             if dx != 0 || dy != 0 {
+                                // Send deltas DIRECTLY to renderer - zero latency path!
+                                if let Ok(engine) = gpu_engine_clone.try_lock() {
+                                    if let Some(ref helio_renderer) = engine.helio_renderer {
+                                        if let Ok(mut input) = helio_renderer.camera_input.try_lock() {
+                                            if is_rotating {
+                                                input.mouse_delta_x = dx as f32;
+                                                input.mouse_delta_y = dy as f32;
+                                            } else if is_panning {
+                                                input.pan_delta_x = dx as f32;
+                                                input.pan_delta_y = dy as f32;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Also update atomics for UI feedback (optional)
                                 if is_rotating {
                                     input_state.set_mouse_delta(dx as f32, dy as f32);
                                 } else if is_panning {
@@ -353,6 +369,8 @@ impl ViewportPanel {
     }
 
     /// Send input state to GPU.
+    /// NOTE: Mouse/pan deltas are now sent DIRECTLY from input thread for zero latency!
+    /// This only handles WASD keys and zoom which don't need instant response.
     fn send_input_to_gpu(
         &self,
         gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
@@ -361,21 +379,18 @@ impl ViewportPanel {
         if let Ok(engine) = gpu_engine.try_lock() {
             if let Some(ref helio_renderer) = engine.helio_renderer {
                 if let Ok(mut input) = helio_renderer.camera_input.try_lock() {
+                    // Update WASD keys and settings (these don't need instant response)
                     input.forward = self.input_state.get_forward() as f32;
                     input.right = self.input_state.get_right() as f32;
                     input.up = self.input_state.get_up() as f32;
                     input.boost = self.input_state.get_boost();
-
-                    let (dx, dy) = self.input_state.take_mouse_delta();
-                    input.mouse_delta_x = dx;
-                    input.mouse_delta_y = dy;
-
-                    let (px, py) = self.input_state.take_pan_delta();
-                    input.pan_delta_x = px;
-                    input.pan_delta_y = py;
-
-                    input.zoom_delta = self.input_state.take_zoom_delta();
                     input.move_speed = self.input_state.get_move_speed();
+
+                    // Zoom is also handled here since scroll events go through GPUI
+                    input.zoom_delta = self.input_state.take_zoom_delta();
+
+                    // NOTE: mouse_delta and pan_delta are now written DIRECTLY by input thread!
+                    // We don't touch them here to avoid race conditions and latency.
                 }
             }
         }
