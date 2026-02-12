@@ -83,6 +83,21 @@ ui_plugin_manager  = { path = "ui-crates/ui_plugin_manager" }
 plugin_editor_api = { path = "crates/plugin_editor_api" }
 plugin_manager    = { path = "crates/plugin_manager" }
 
+# ---------- Helio Renderer (blade-graphics based) ----------
+helio-core                       = { path = "../Helio/crates/helio-core" }
+helio-render                     = { path = "../Helio/crates/helio-render" }
+helio-features                   = { path = "../Helio/crates/helio-features" }
+helio-feature-base-geometry      = { path = "../Helio/crates/helio-feature-base-geometry" }
+helio-feature-lighting           = { path = "../Helio/crates/helio-feature-lighting" }
+helio-feature-materials          = { path = "../Helio/crates/helio-feature-materials" }
+helio-feature-procedural-shadows = { path = "../Helio/crates/helio-feature-procedural-shadows" }
+helio-feature-bloom              = { path = "../Helio/crates/helio-feature-bloom" }
+helio-feature-billboards         = { path = "../Helio/crates/helio-feature-billboards" }
+
+blade-graphics = { git = "https://github.com/kvark/blade" }
+blade-macros   = { git = "https://github.com/kvark/blade" }
+glam = { version = "0.29", features = ["bytemuck"] }
+
 # ---------- Third-party ----------
 anyhow = "1.0.100"
 log = "0.4.29"

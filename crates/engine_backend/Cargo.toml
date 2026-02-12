@@ -52,6 +52,21 @@ bevy = { version = "0.17.2", default-features = false, features = [
     "wayland",
 ] }
 bevy_obj = "0.17"
+
+# Helio rendering (blade-graphics alternative)
+helio-core.workspace = true
+helio-render.workspace = true
+helio-features.workspace = true
+helio-feature-base-geometry.workspace = true
+helio-feature-lighting.workspace = true
+helio-feature-materials.workspace = true
+helio-feature-procedural-shadows.workspace = true
+helio-feature-bloom.workspace = true
+helio-feature-billboards.workspace = true
+blade-graphics.workspace = true
+blade-macros.workspace = true
+glam.workspace = true
+
 wgpu = "26"
 wgpu-hal = "26"
 wgpu-types = "26"
