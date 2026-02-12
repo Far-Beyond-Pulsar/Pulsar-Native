@@ -319,7 +319,7 @@ unsafe fn compose_frame(window_state: &mut crate::window::WindowState, should_re
 
 #[cfg(target_os = "windows")]
 unsafe fn render_bevy_layer(window_state: &mut crate::window::WindowState, context: &ID3D11DeviceContext) {
-    use engine_backend::subsystems::render::NativeTextureHandle;
+    use gpui::GpuTextureHandle;
 
     let Some(gpu_renderer_arc) = window_state.helio_renderer.clone() else { return };
     let Ok(gpu_renderer) = gpu_renderer_arc.lock() else { return };

@@ -757,20 +757,9 @@ impl Render for LevelEditorPanel {
                 
                 // TRANSFORM SYNC: Poll for transform updates from Bevy (e.g., from gizmo dragging)
                 if let Ok(bevy_gizmo) = helio_renderer.gizmo_state.try_lock() {
-                    if let Some(ref updated_id) = bevy_gizmo.updated_object_id {
-                        if let Some(ref updated_transform) = bevy_gizmo.updated_transform {
-                            
-                            // Convert Bevy's SharedTransform to our Transform type
-                            let new_transform = crate::level_editor::scene_database::Transform {
-                                position: updated_transform.position,
-                                rotation: [0.0, 0.0, 0.0], // Euler angles - TODO: convert quaternion
-                                scale: updated_transform.scale,
-                            };
-                            
-                            // Update scene database
-                            self.shared_state.read().scene_database.update_transform(updated_id, new_transform);
-                            cx.notify(); // Trigger UI update
-                        }
+                    // Handle transform updates from gizmo (disabled - gizmos removed)
+                    if let Some(ref _updated_id) = bevy_gizmo.updated_object_id {
+                        // Gizmo interaction is disabled
                     }
                 }
             }
