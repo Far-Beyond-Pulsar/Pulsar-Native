@@ -86,7 +86,8 @@ impl NativeTextureHandle {
                 let resource = dx12_texture.raw_resource();
                 
                 if let Some(hal_device) = _device.wgpu_device().as_hal::<Dx12>() {
-                    let d3d12_device: &windows::Win32::Graphics::Direct3D12::ID3D12Device = hal_device.raw_device();
+                    use windows::Win32::Graphics::Direct3D12::ID3D12Device;
+                    let d3d12_device: &ID3D12Device = hal_device.raw_device();
                     
                     unsafe {
                         // Try to create shared handle

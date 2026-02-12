@@ -94,8 +94,8 @@ helio-feature-procedural-shadows = { git = "https://github.com/Far-Beyond-Pulsar
 helio-feature-bloom              = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="13b2d0d3f2e062a6ce34bf4bac95e00685600725"}
 helio-feature-billboards         = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="13b2d0d3f2e062a6ce34bf4bac95e00685600725"}
 
-blade-graphics = { git = "https://github.com/kvark/blade", rev = "d7e0bf8d4369033e51b85c400d3635c4c93a59bf"}
-blade-macros   = { git = "https://github.com/kvark/blade", rev = "d7e0bf8d4369033e51b85c400d3635c4c93a59bf"}
+blade-graphics = { git = "https://github.com/kvark/blade"}
+blade-macros   = { git = "https://github.com/kvark/blade"}
 glam = { version = "0.29", features = ["bytemuck"] }
 
 # ---------- Third-party ----------

@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicUsize, AtomicU64, Ordering};
 
 use super::core::SharedGpuTextures;
 use super::dxgi_unsafe;
-use crate::subsystems::render::NativeTextureHandle;
+use gpui::GpuTextureHandle;
 
 pub const RENDER_WIDTH: u32 = 1600;
 pub const RENDER_HEIGHT: u32 = 900;
@@ -17,7 +17,7 @@ pub const RENDER_HEIGHT: u32 = 900;
 #[cfg(target_os = "windows")]
 pub struct HelioSharedTextures {
     pub textures: [gpu::Texture; 2],
-    pub native_handles: [NativeTextureHandle; 2],
+    pub native_handles: [GpuTextureHandle; 2],
     pub write_index: Arc<AtomicUsize>,
     pub read_index: Arc<AtomicUsize>,
     pub frame_number: Arc<AtomicU64>,
@@ -46,8 +46,9 @@ impl HelioSharedTextures {
             .map(|h| dxgi_unsafe::handle_to_usize(*h))
             .collect();
         
-        crate::subsystems::render::native_texture::store_shared_handles(handle_values.clone());
-        tracing::info!("[HELIO-DXGI] Stored handles: 0x{:X}, 0x{:X}", handle_values[0], handle_values[1]);
+        // Store handles for GPUI compositor (disabled - native_texture module removed)
+        // crate::subsystems::render::native_texture::store_shared_handles(handle_values.clone());
+        tracing::info!("[HELIO-DXGI] Shared handles: 0x{:X}, 0x{:X}", handle_values[0], handle_values[1]);
 
         // Import shared handles into Vulkan using external memory
         // ExternalMemorySource::Win32(Some(handle)) imports a Win32 NT handle
@@ -86,9 +87,9 @@ impl HelioSharedTextures {
             external: Some(gpu::ExternalMemorySource::Win32(Some(handle_values[1] as isize))),
         });
 
-        // Convert Windows HANDLE values to NativeTextureHandle
-        let handle_0 = NativeTextureHandle::D3D11(handle_values[0]);
-        let handle_1 = NativeTextureHandle::D3D11(handle_values[1]);
+        // Create GpuTextureHandle wrappers for GPUI
+        let handle_0 = GpuTextureHandle::new(handle_values[0] as isize, RENDER_WIDTH, RENDER_HEIGHT);
+        let handle_1 = GpuTextureHandle::new(handle_values[1] as isize, RENDER_WIDTH, RENDER_HEIGHT);
 
         tracing::info!("[HELIO-DXGI] ✅ Imported shared NT handles into Vulkan!");
         tracing::info!("[HELIO-DXGI] TRUE zero-copy: Vulkan renders → D3D12 shared memory ← D3D11 GPUI reads");
@@ -128,7 +129,7 @@ impl HelioSharedTextures {
     }
 
     /// Get native handle for current read buffer (for GPUI display)
-    pub fn get_current_native_handle(&self) -> NativeTextureHandle {
+    pub fn get_current_native_handle(&self) -> GpuTextureHandle {
         let idx = self.read_index.load(Ordering::Acquire);
         self.native_handles[idx].clone()
     }

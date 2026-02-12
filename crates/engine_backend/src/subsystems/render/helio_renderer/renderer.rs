@@ -16,12 +16,8 @@ use helio_feature_bloom::Bloom;
 use helio_feature_billboards::BillboardFeature;
 
 use super::core::{CameraInput, RenderMetrics, GpuProfilerData, SharedGpuTextures};
-
-// Import gizmo types from bevy_renderer (we'll reuse these for now)
-pub use crate::subsystems::render::bevy_renderer::gizmos::rendering::{
-    GizmoType as BevyGizmoType, GizmoAxis as BevyGizmoAxis, GizmoStateResource,
-};
-pub use crate::subsystems::render::bevy_renderer::interaction::viewport::{
+use super::gizmo_types::{
+    BevyGizmoType, BevyGizmoAxis, GizmoStateResource,
     ViewportMouseInput, GizmoInteractionState, ActiveRaycastTask, RaycastResult,
 };
 
@@ -161,14 +157,14 @@ impl HelioRenderer {
 
         // Create test meshes
         tracing::info!("[HELIO] 🚀 Step 4/10: Creating meshes...");
-        let cube_mesh = MeshBuffer::from_mesh(&context, "cube", &create_cube_mesh(1.0));
-        let sphere_mesh = MeshBuffer::from_mesh(&context, "sphere", &create_sphere_mesh(0.5, 32, 32));
-        let plane_mesh = MeshBuffer::from_mesh(&context, "plane", &create_plane_mesh(20.0, 20.0));
+        let cube_mesh = MeshBuffer::from_mesh(&*context, "cube", &create_cube_mesh(1.0));
+        let sphere_mesh = MeshBuffer::from_mesh(&*context, "sphere", &create_sphere_mesh(0.5, 32, 32));
+        let plane_mesh = MeshBuffer::from_mesh(&*context, "plane", &create_plane_mesh(20.0, 20.0));
         tracing::info!("[HELIO] ✅ Step 4/10: Test meshes created");
 
         // Create TextureManager and load spotlight billboard texture
         tracing::info!("[HELIO] 🚀 Step 5/10: Creating TextureManager and loading textures...");
-        let mut texture_manager = TextureManager::new(context.clone());
+        let mut texture_manager = TextureManager::new(Arc::clone(&context));
         
         // Load spotlight.png for light billboards
         let spotlight_texture_id = match texture_manager.load_png("assets/editor_assets/spotlight.png") {
@@ -255,12 +251,12 @@ impl HelioRenderer {
         // Create gizmo meshes
         tracing::info!("[HELIO] 🚀 Step 7/10: Creating gizmo meshes...");
         let arrow_mesh = MeshBuffer::from_mesh(
-            &context,
+            &*context,
             "gizmo_arrow",
             &super::gizmos::create_arrow_mesh(1.0, 0.05, 0.1, 0.3),
         );
         let torus_mesh = MeshBuffer::from_mesh(
-            &context,
+            &*context,
             "gizmo_torus",
             &super::gizmos::create_torus_mesh(1.0, 0.05, 32, 16),
         );
@@ -299,7 +295,7 @@ impl HelioRenderer {
 
         tracing::info!("[HELIO] 🚀 Step 9/10: Creating FeatureRenderer...");
         let mut renderer = FeatureRenderer::new(
-            context.clone(),
+            Arc::clone(&context),
             blade_graphics::TextureFormat::Bgra8UnormSrgb,
             width,
             height,
@@ -570,8 +566,9 @@ impl HelioRenderer {
                     
                     let gizmo_scale = 0.5; // Scale down gizmo size
                     
+                    // Gizmo rendering disabled
+                    /*
                     use super::gizmos::{GizmoType, GizmoAxis, create_gizmo_arrow_transform, create_gizmo_torus_transform};
-                    use crate::subsystems::render::bevy_renderer::BevyGizmoType;
                     
                     match gizmo_state_lock.gizmo_type {
                         BevyGizmoType::Translate => {
@@ -605,6 +602,7 @@ impl HelioRenderer {
                         }
                         _ => {}
                     }
+                    */
                 }
             }
 
@@ -686,7 +684,7 @@ impl HelioRenderer {
         0
     }
 
-    pub fn get_current_native_handle(&self) -> Option<crate::subsystems::render::NativeTextureHandle> {
+    pub fn get_current_native_handle(&self) -> Option<gpui::GpuTextureHandle> {
         // Get the current readable texture handle for DXGI sharing
         if let Ok(lock) = self.shared_textures.lock() {
             if let Some(ref textures) = *lock {

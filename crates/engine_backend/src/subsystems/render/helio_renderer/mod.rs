@@ -11,7 +11,10 @@
 // Core data structures
 pub mod core;
 
-// Gizmo generation and rendering
+// Gizmo stub types
+pub mod gizmo_types;
+
+// Gizmo generation (disabled)
 pub mod gizmos;
 
 // Scene building system
@@ -36,14 +39,12 @@ pub mod helio_d3d12_ext;
 // Main renderer implementation
 pub mod renderer;
 
-// Re-export public API (matches bevy_renderer exports)
-pub use core::{
-    RenderMetrics, GpuProfilerData, DiagnosticMetric, CameraInput, SharedGpuTextures,
-};
+// Re-export public API
+pub use core::{CameraInput, RenderMetrics, GpuProfilerData, DiagnosticMetric, SharedGpuTextures};
 pub use renderer::HelioRenderer;
 
-// Re-export gizmo types from bevy_renderer (temporary - will implement Helio gizmos later)
-pub use crate::subsystems::render::bevy_renderer::{
+// Re-export gizmo stub types
+pub use gizmo_types::{
     BevyGizmoType, BevyGizmoAxis, GizmoStateResource,
     ViewportMouseInput, GizmoInteractionState, ActiveRaycastTask, RaycastResult,
 };

@@ -1,11 +1,10 @@
 use rapier3d::prelude::*;
-use bevy::prelude::Vec3;
 use std::sync::{Arc, Mutex};
 use crate::subsystems::framework::{Subsystem, SubsystemContext, SubsystemError, SubsystemId, subsystem_ids};
 
 pub struct PhysicsEngine {
-    // Gravity as Vec3 for compatibility with PhysicsPipeline::step
-    gravity: Vec3,
+    // Gravity as rapier3d::math::Vector (which is an alias for Vec3)
+    gravity: rapier3d::math::Vector,
     integration_parameters: IntegrationParameters,
     physics_pipeline: Arc<Mutex<PhysicsPipeline>>,
     island_manager: Arc<Mutex<IslandManager>>,
@@ -29,7 +28,7 @@ impl PhysicsEngine {
         let collider_set = ColliderSet::new();
 
         /* Create other structures necessary for the simulation. */
-        let gravity = Vec3::new(0.0, -9.81, 0.0);
+        let gravity = rapier3d::math::Vector::new(0.0, -9.81, 0.0);
         let integration_parameters = IntegrationParameters::default();
         let physics_pipeline = PhysicsPipeline::new();
         let island_manager = IslandManager::new();

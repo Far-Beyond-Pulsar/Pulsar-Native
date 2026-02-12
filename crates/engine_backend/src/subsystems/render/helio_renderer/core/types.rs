@@ -116,7 +116,7 @@ impl CameraInput {
 pub struct SharedGpuTextures {
     // We'll store blade_graphics::Texture handles here
     // For now, use placeholder type that we'll fill in during DXGI integration
-    pub native_handles: std::sync::Arc<std::sync::Mutex<Option<[crate::subsystems::render::NativeTextureHandle; 2]>>>,
+    pub native_handles: Arc<Mutex<Option<[GpuTextureHandle; 2]>>>,
     pub write_index: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     pub read_index: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     pub frame_number: std::sync::Arc<std::sync::atomic::AtomicU64>,
