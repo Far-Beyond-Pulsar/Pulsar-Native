@@ -80,7 +80,7 @@ ui_type_debugger   = { path = "ui-crates/ui_type_debugger" }
 ui_plugin_manager  = { path = "ui-crates/ui_plugin_manager" }
 
 # ---------- Plugin System ----------
-plugin_editor_api = { path = "crates/plugin_editor_api" }
+plugin_editor_api = { path = "crates/plugin_editor_api"}
 plugin_manager    = { path = "crates/plugin_manager" }
 
 # ---------- Helio Renderer (blade-graphics based) ----------
@@ -94,11 +94,12 @@ helio-feature-procedural-shadows = { git = "https://github.com/Far-Beyond-Pulsar
 helio-feature-bloom              = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="13b2d0d3f2e062a6ce34bf4bac95e00685600725"}
 helio-feature-billboards         = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="13b2d0d3f2e062a6ce34bf4bac95e00685600725"}
 
-blade-graphics = { git = "https://github.com/kvark/blade" }
-blade-macros   = { git = "https://github.com/kvark/blade" }
+blade-graphics = { git = "https://github.com/kvark/blade", rev = "d7e0bf8d4369033e51b85c400d3635c4c93a59bf"}
+blade-macros   = { git = "https://github.com/kvark/blade", rev = "d7e0bf8d4369033e51b85c400d3635c4c93a59bf"}
 glam = { version = "0.29", features = ["bytemuck"] }
 
 # ---------- Third-party ----------
+wgpu = "0.20.1"
 anyhow = "1.0.100"
 log = "0.4.29"
 serde = { version = "1.0.228", features = ["derive"] }

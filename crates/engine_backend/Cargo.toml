@@ -54,10 +54,10 @@ blade-graphics.workspace = true
 blade-macros.workspace = true
 glam.workspace = true
 
-wgpu = "26"
-wgpu-hal = "26"
-wgpu-types = "26"
-wgpu-profiler = "0.19"
+wgpu = "27.0.0"
+wgpu-hal = "27.0.0"
+wgpu-types = "27.0.0"
+wgpu-profiler = "0.25.0"
 image = "0.25"
 bytemuck = { version = "1.14", features = ["derive"] }
 crossbeam-channel = "0.5"

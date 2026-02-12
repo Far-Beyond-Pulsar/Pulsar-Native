@@ -50,7 +50,6 @@ tree-sitter-languages = [
 # For wgpu window integration and async
 raw-window-handle = "0.6"
 winit = "0.29"
-# For wgpu vertex buffer
 bytemuck = { version = "1.14", features = ["derive"] }
 gpui.workspace = true
 sum_tree.workspace = true
@@ -85,7 +84,6 @@ num-traits = "0.2"
 rust_decimal = { version = "1.37.0", optional = true }
 
 # 3D rendering
-wgpu = "0.20"
 glam = "0.27"
 
 # Markdown Parser
