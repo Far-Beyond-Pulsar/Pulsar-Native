@@ -166,9 +166,23 @@ impl HelioRenderer {
         let plane_mesh = MeshBuffer::from_mesh(&context, "plane", &helio_core::create_plane_mesh(20.0, 20.0));
         tracing::info!("[HELIO] ✅ Step 4/10: Test meshes created");
 
-        // Create TextureManager (required by Helio features)
-        tracing::info!("[HELIO] 🚀 Step 5/10: Creating TextureManager...");
-        let texture_manager = Arc::new(TextureManager::new(context.clone()));
+        // Create TextureManager and load spotlight billboard texture
+        tracing::info!("[HELIO] 🚀 Step 5/10: Creating TextureManager and loading textures...");
+        let mut texture_manager = TextureManager::new(context.clone());
+        
+        // Load spotlight.png for light billboards
+        let spotlight_texture_id = match texture_manager.load_png("assets/editor_assets/spotlight.png") {
+            Ok(id) => {
+                tracing::info!("[HELIO] ✅ Loaded spotlight.png for light billboards");
+                Some(id)
+            }
+            Err(e) => {
+                tracing::warn!("[HELIO] ⚠️ Failed to load spotlight.png: {} - light billboards will not be visible", e);
+                None
+            }
+        };
+        
+        let texture_manager = Arc::new(texture_manager);
         tracing::info!("[HELIO] ✅ Step 5/10: TextureManager created");
 
         // Initialize features properly with IMPRESSIVE LIGHTING SETUP
@@ -180,6 +194,12 @@ impl HelioRenderer {
         // Multi-light setup from lighting_showcase.rs
         let mut shadows = ProceduralShadows::new().with_ambient(0.05);
         shadows.set_texture_manager(texture_manager.clone());
+        
+        // Configure spotlight billboard icon
+        if let Some(texture_id) = spotlight_texture_id {
+            shadows.set_spotlight_icon(texture_id);
+            tracing::info!("[HELIO] ✅ Spotlight billboard icon configured");
+        }
         
         // Red spotlight from above
         shadows.add_light(helio_feature_procedural_shadows::LightConfig {
