@@ -91,10 +91,10 @@ impl CameraInput {
             pan_delta_x: 0.0,
             pan_delta_y: 0.0,
             zoom_delta: 0.0,
-            move_speed: 60.0,
-            pan_speed: 0.01,
-            zoom_speed: 1.5,
-            look_sensitivity: 0.6,
+            move_speed: 10.0,          // Units per second
+            pan_speed: 50.0,           // Pan sensitivity
+            zoom_speed: 50.0,          // Zoom sensitivity
+            look_sensitivity: 0.15,    // Mouse look sensitivity
             boost: false,
             orbit_mode: false,
             orbit_distance: 10.0,
@@ -106,6 +106,7 @@ impl CameraInput {
         }
     }
 }
+
 
 /// Shared GPU textures for double-buffered rendering
 /// Uses blade-graphics textures instead of Bevy Image handles

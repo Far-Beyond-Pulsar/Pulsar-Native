@@ -319,9 +319,51 @@ impl HelioRenderer {
             }
 
             // Update camera from input
-            if let Ok(input) = camera_input.lock() {
+            if let Ok(mut input) = camera_input.lock() {
+                // Apply movement with speed modifiers
+                let speed_multiplier = if input.boost { 3.0 } else { 1.0 };
+                let effective_speed = input.move_speed * speed_multiplier;
+                
+                camera.move_speed = effective_speed;
+                camera.look_speed = input.look_sensitivity;
+                
+                // WASD movement
                 camera.update_movement(input.forward, input.right, input.up, delta_time);
-                // TODO: Apply mouse delta for rotation
+                
+                // Mouse look (right-click drag)
+                if input.mouse_delta_x.abs() > 0.001 || input.mouse_delta_y.abs() > 0.001 {
+                    camera.handle_mouse_delta(input.mouse_delta_x, input.mouse_delta_y);
+                }
+                
+                // Middle-mouse pan
+                if input.pan_delta_x.abs() > 0.001 || input.pan_delta_y.abs() > 0.001 {
+                    let pan_speed = input.pan_speed * delta_time;
+                    let right_offset = camera.right() * input.pan_delta_x * pan_speed;
+                    let up_offset = Vec3::Y * input.pan_delta_y * pan_speed;
+                    camera.position += right_offset + up_offset;
+                }
+                
+                // Scroll wheel zoom
+                if input.zoom_delta.abs() > 0.001 {
+                    let zoom_amount = input.zoom_delta * input.zoom_speed * delta_time;
+                    camera.position += camera.forward() * zoom_amount;
+                }
+                
+                // Orbit mode (Alt+drag)
+                if input.orbit_mode {
+                    // TODO: Implement orbit camera mode
+                    // For now, just rotate around focus point
+                    if input.mouse_delta_x.abs() > 0.001 || input.mouse_delta_y.abs() > 0.001 {
+                        camera.handle_mouse_delta(input.mouse_delta_x, input.mouse_delta_y);
+                    }
+                }
+                
+                // Clear deltas for next frame
+                input.mouse_delta_x = 0.0;
+                input.mouse_delta_y = 0.0;
+                input.pan_delta_x = 0.0;
+                input.pan_delta_y = 0.0;
+                input.zoom_delta = 0.0;
             }
 
             // Start frame
