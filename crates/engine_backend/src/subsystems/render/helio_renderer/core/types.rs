@@ -78,6 +78,7 @@ pub struct CameraInput {
     pub viewport_y: f32,
     pub viewport_width: f32,
     pub viewport_height: f32,
+    pub needs_resize: bool,
 }
 
 impl CameraInput {
@@ -103,6 +104,7 @@ impl CameraInput {
             viewport_y: 0.0,
             viewport_width: 1600.0,
             viewport_height: 900.0,
+            needs_resize: false,
         }
     }
 }
