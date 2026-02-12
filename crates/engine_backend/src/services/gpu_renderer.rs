@@ -1,7 +1,7 @@
-// OPTIMIZED: Wrapper around the backend Bevy renderer with zero-copy improvements
-// Now uses BGRA8UnormSrgb format (matches Bevy's pipeline) and Arc-based sharing for 3x performance improvement
+// OPTIMIZED: Wrapper around the Helio renderer (blade-graphics)
+// Migrated from Bevy to Helio for better performance and control
 
-use crate::subsystems::render::{BevyRenderer, RenderMetrics};
+use crate::subsystems::render::{HelioRenderer, RenderMetrics};
 use std::sync::{Arc, Mutex, Once};
 use std::time::Instant;
 
@@ -27,16 +27,14 @@ fn get_runtime() -> &'static tokio::runtime::Runtime {
     }
 }
 
-/// OPTIMIZED GPU Renderer - uses new zero-copy backend
+/// OPTIMIZED GPU Renderer - uses Helio with blade-graphics
 /// 
-/// Key improvements:
-/// - BGRA8UnormSrgb format (matches Bevy's pipeline requirements)
-/// - Arc<Vec<u8>> for frame sharing (cheap pointer copy)
-/// - Optimized memory copy with unsafe ptr ops
-/// - Performance metrics tracking
+/// Migrated from Bevy to Helio for:
+/// - Better performance with blade-graphics
+/// - More direct control over rendering pipeline
+/// - Simplified architecture
 pub struct GpuRenderer {
-    pub bevy_renderer: Option<BevyRenderer>,
-    // NO temp_framebuffer! Render DIRECTLY to output!
+    pub helio_renderer: Option<HelioRenderer>,
     render_width: u32,
     render_height: u32,
     display_width: u32,
@@ -59,35 +57,33 @@ impl GpuRenderer {
         let width = display_width;
         let height = display_height;
         
-        tracing::debug!("[GPU-RENDERER] 🚀 Initializing OPTIMIZED Bevy renderer at {}x{}", width, height);
-        tracing::debug!("[GPU-RENDERER] Format: BGRA8UnormSrgb (Bevy pipeline compatible)");
+        tracing::info!("[GPU-RENDERER] 🚀 Initializing Helio renderer (blade-graphics) at {}x{}", width, height);
         
         let runtime = get_runtime();
-        let game_state_for_bevy = game_thread_state.clone();
-        let bevy_renderer = runtime.block_on(async move {
-            tracing::debug!("[GPU-RENDERER] Creating optimized renderer asynchronously...");
+        let game_state_for_renderer = game_thread_state.clone();
+        let helio_renderer = runtime.block_on(async move {
+            tracing::debug!("[GPU-RENDERER] Creating Helio renderer asynchronously...");
             match tokio::time::timeout(
                 tokio::time::Duration::from_secs(10),
-                BevyRenderer::new_with_game_thread(width, height, game_state_for_bevy)
+                HelioRenderer::new_with_game_thread(width, height, game_state_for_renderer)
             ).await {
                 Ok(renderer) => {
-                    tracing::debug!("[GPU-RENDERER] ✅ Optimized renderer created successfully!");
+                    tracing::info!("[GPU-RENDERER] ✅ Helio renderer created successfully!");
                     Some(renderer)
                 }
                 Err(_) => {
-                    tracing::debug!("[GPU-RENDERER] ⚠️  Renderer creation timed out! Using fallback.");
+                    tracing::error!("[GPU-RENDERER] ⚠️  Helio renderer creation timed out!");
                     None
                 }
             }
         });
 
-        if bevy_renderer.is_none() {
-            tracing::debug!("[GPU-RENDERER] Using CPU fallback rendering");
+        if helio_renderer.is_none() {
+            tracing::error!("[GPU-RENDERER] Failed to create Helio renderer!");
         }
 
         Self {
-            bevy_renderer,
-            // NO temp_framebuffer!
+            helio_renderer,
             render_width: width,
             render_height: height,
             display_width,
@@ -105,15 +101,15 @@ impl GpuRenderer {
         // Viewport should call get_native_texture_handle() and use GPUI's immediate mode
         // This method is just a stub for compatibility
 
-        if let Some(ref renderer) = self.bevy_renderer {
+        if let Some(ref renderer) = self.helio_renderer {
             // Print metrics periodically
             if self.last_metrics_print.elapsed().as_secs() >= 5 {
                 let metrics = renderer.get_metrics();
                 let fps = self.get_fps();
-                tracing::debug!("\n[GPU-RENDERER] 🚀 IMMEDIATE MODE - NO COPIES:");
-                tracing::debug!("  Bevy frames rendered: {}", metrics.frames_rendered);
-                tracing::debug!("  Bevy FPS: {:.1}", metrics.bevy_fps);
-                tracing::debug!("  🔥 TRUE ZERO-COPY - Direct GPU texture display!");
+                tracing::info!("\n[GPU-RENDERER] 🚀 Helio Renderer Stats:");
+                tracing::info!("  Frames rendered: {}", metrics.frames_rendered);
+                tracing::info!("  FPS: {:.1}", metrics.fps);
+                tracing::info!("  Frame time: {:.2}ms", metrics.frame_time_ms);
                 self.last_metrics_print = Instant::now();
             }
         }
@@ -122,7 +118,9 @@ impl GpuRenderer {
     /// TRUE ZERO-COPY: Get native GPU texture handle for immediate-mode rendering
     /// NO buffers, NO copies - just a raw pointer for GPUI to display!
     pub fn get_native_texture_handle(&self) -> Option<crate::subsystems::render::NativeTextureHandle> {
-        self.bevy_renderer.as_ref()?.get_current_native_handle()
+        // TODO: Implement for Helio once DXGI shared textures are working
+        // For now return None
+        None
     }
 
     /// DEPRECATED: Use get_native_texture_handle() + immediate mode instead!
@@ -199,11 +197,11 @@ impl GpuRenderer {
         }
     }
     
-    /// Get Bevy renderer FPS (actual render engine frame rate)
-    pub fn get_bevy_fps(&self) -> f32 {
-        if let Some(ref renderer) = self.bevy_renderer {
+    /// Get Helio renderer FPS (actual render engine frame rate)
+    pub fn get_helio_fps(&self) -> f32 {
+        if let Some(ref renderer) = self.helio_renderer {
             let metrics = renderer.get_metrics();
-            metrics.bevy_fps as f32
+            metrics.fps
         } else {
             0.0
         }
@@ -211,16 +209,12 @@ impl GpuRenderer {
     
     /// Get comprehensive render metrics
     pub fn get_render_metrics(&self) -> Option<RenderMetrics> {
-        if let Some(ref renderer) = self.bevy_renderer {
-            Some(renderer.get_metrics())
-        } else {
-            None
-        }
+        self.helio_renderer.as_ref().map(|r| r.get_metrics())
     }
     
     /// Get pipeline time in microseconds
     pub fn get_pipeline_time_us(&self) -> u64 {
-        if let Some(ref renderer) = self.bevy_renderer {
+        if let Some(ref renderer) = self.helio_renderer {
             renderer.get_metrics().pipeline_time_us as u64
         } else {
             0
@@ -229,7 +223,7 @@ impl GpuRenderer {
     
     /// Get GPU time in microseconds
     pub fn get_gpu_time_us(&self) -> u64 {
-        if let Some(ref renderer) = self.bevy_renderer {
+        if let Some(ref renderer) = self.helio_renderer {
             renderer.get_metrics().gpu_time_us as u64
         } else {
             0
@@ -238,27 +232,25 @@ impl GpuRenderer {
     
     /// Get CPU time in microseconds
     pub fn get_cpu_time_us(&self) -> u64 {
-        if let Some(ref renderer) = self.bevy_renderer {
+        if let Some(ref renderer) = self.helio_renderer {
             renderer.get_metrics().cpu_time_us as u64
         } else {
             0
         }
     }
     
-    /// Get detailed GPU pipeline profiling data (like Unreal's "stat gpu")
-    /// Shows actual measured timings for each render pass
+    /// Get detailed GPU pipeline profiling data
     pub fn get_gpu_profiler_data(&self) -> Option<crate::subsystems::render::GpuProfilerData> {
-        if let Some(ref renderer) = self.bevy_renderer {
-            renderer.get_gpu_profiler_data()
-        } else {
-            None
-        }
+        self.helio_renderer.as_ref().map(|r| r.get_gpu_profiler_data())
     }
 
     /// Update camera input for Unreal-style controls
     pub fn update_camera_input(&mut self, input: crate::subsystems::render::CameraInput) {
-        if let Some(ref mut renderer) = self.bevy_renderer {
-            renderer.update_camera_input(input);
+        if let Some(ref renderer) = self.helio_renderer {
+            // Update camera input in shared state
+            if let Ok(mut camera_input) = renderer.camera_input.lock() {
+                *camera_input = input;
+            }
         }
     }
 
@@ -268,14 +260,11 @@ impl GpuRenderer {
             self.render_height = display_height;
             self.display_width = display_width;
             self.display_height = display_height;
-            // NO temp_framebuffer to resize!
             
-            tracing::debug!("[GPU-RENDERER] Resizing to {}x{}", display_width, display_height);
+            tracing::info!("[GPU-RENDERER] Resizing to {}x{}", display_width, display_height);
             
-            // Recreate Bevy renderer at new resolution
-            if let Some(ref mut renderer) = self.bevy_renderer {
-                renderer.resize(display_width, display_height);
-            }
+            // TODO: Implement resize for Helio renderer
+            // Need to recreate render targets at new resolution
         }
     }
 }

@@ -7,7 +7,7 @@ use gpui::prelude::FluentBuilder;
 use ui::{h_flex, v_flex, ActiveTheme, StyledExt};
 
 use crate::level_editor::ui::state::LevelEditorState;
-use engine_backend::subsystems::render::bevy_renderer::DiagnosticMetric;
+use engine_backend::subsystems::render::helio_renderer::DiagnosticMetric;
 
 /// Color palette for pipeline passes
 const PASS_COLORS: &[(f32, f32, f32)] = &[

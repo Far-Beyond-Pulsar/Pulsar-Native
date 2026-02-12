@@ -29,7 +29,7 @@
 //! │  - shaders, buffers                    │
 //! │                                        │
 //! │ 3D Rendering:                          │
-//! │  - bevy_renderer (optional)            │
+//! │  - helio_renderer (optional)            │
 //! └────────────────────────────────────────┘
 //! ```
 //!
@@ -175,7 +175,7 @@ pub struct WindowState {
     // ===== 3D Rendering =====
 
     /// Bevy renderer for this window (if it has a 3D viewport)
-    pub bevy_renderer: Option<Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>>,
+    pub helio_renderer: Option<Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>>,
 }
 
 impl WindowState {
@@ -243,7 +243,7 @@ impl WindowState {
             bevy_srv: None,
 
             // Bevy renderer
-            bevy_renderer: None,
+            helio_renderer: None,
         }
     }
 }

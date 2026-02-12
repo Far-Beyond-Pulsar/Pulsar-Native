@@ -286,12 +286,12 @@ impl LevelEditorPanel {
     // Helper method to sync GPUI gizmo state to Bevy's shared resource
     fn sync_gizmo_to_bevy(&mut self) {
         if let Ok(engine) = self.gpu_engine.try_lock() {
-            if let Some(ref bevy_renderer) = engine.bevy_renderer {
-                if let Ok(mut bevy_gizmo) = bevy_renderer.gizmo_state.try_lock() {
+            if let Some(ref helio_renderer) = engine.helio_renderer {
+                if let Ok(mut bevy_gizmo) = helio_renderer.gizmo_state.try_lock() {
                     let gpui_gizmo = self.state.gizmo_state.read();
 
                     // Map GPUI GizmoType to Bevy GizmoType
-                    use engine_backend::subsystems::render::bevy_renderer::BevyGizmoType;
+                    use engine_backend::subsystems::render::helio_renderer::BevyGizmoType;
                     use crate::level_editor::GizmoType;
                     bevy_gizmo.gizmo_type = match gpui_gizmo.gizmo_type {
                         GizmoType::None => BevyGizmoType::None,
@@ -727,13 +727,13 @@ impl Render for LevelEditorPanel {
         // Sync viewport buffer index with Bevy's read index each frame
         // ALSO sync selection state from Bevy back to GPUI
         if let Ok(engine_guard) = self.gpu_engine.try_lock() {
-            if let Some(ref bevy_renderer) = engine_guard.bevy_renderer {
-                let read_idx = bevy_renderer.get_read_index();
+            if let Some(ref helio_renderer) = engine_guard.helio_renderer {
+                let read_idx = helio_renderer.get_read_index();
                 let mut state = self.viewport_state.write();
                 state.set_active_buffer(read_idx);
 
                 // BIDIRECTIONAL SYNC: Poll Bevy's gizmo state for selection changes
-                if let Ok(bevy_gizmo) = bevy_renderer.gizmo_state.try_lock() {
+                if let Ok(bevy_gizmo) = helio_renderer.gizmo_state.try_lock() {
                     let bevy_selected_id = bevy_gizmo.selected_object_id.clone();
                     drop(bevy_gizmo); // Release lock immediately
                     
@@ -756,7 +756,7 @@ impl Render for LevelEditorPanel {
                 }
                 
                 // TRANSFORM SYNC: Poll for transform updates from Bevy (e.g., from gizmo dragging)
-                if let Ok(bevy_gizmo) = bevy_renderer.gizmo_state.try_lock() {
+                if let Ok(bevy_gizmo) = helio_renderer.gizmo_state.try_lock() {
                     if let Some(ref updated_id) = bevy_gizmo.updated_object_id {
                         if let Some(ref updated_transform) = bevy_gizmo.updated_transform {
                             

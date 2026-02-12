@@ -285,6 +285,31 @@ impl HelioRenderer {
     pub fn get_gpu_profiler_data(&self) -> GpuProfilerData {
         self.gpu_profiler.lock().unwrap().clone()
     }
+
+    pub fn get_read_index(&self) -> usize {
+        // Read from shared textures' read_index (GPUI reads from this buffer)
+        if let Ok(lock) = self.shared_textures.lock() {
+            if let Some(ref textures) = *lock {
+                return textures.read_index.load(std::sync::atomic::Ordering::Acquire);
+            }
+        }
+        0
+    }
+
+    pub fn get_current_native_handle(&self) -> Option<crate::subsystems::render::NativeTextureHandle> {
+        // Get the current readable texture handle for DXGI sharing
+        if let Ok(lock) = self.shared_textures.lock() {
+            if let Some(ref textures) = *lock {
+                let read_idx = textures.read_index.load(std::sync::atomic::Ordering::Acquire);
+                if let Ok(handles_lock) = textures.native_handles.lock() {
+                    if let Some(ref handles) = *handles_lock {
+                        return Some(handles[read_idx].clone());
+                    }
+                }
+            }
+        }
+        None
+    }
 }
 
 impl Drop for HelioRenderer {

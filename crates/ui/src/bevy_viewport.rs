@@ -188,11 +188,11 @@ impl Render for BevyViewport {
 /// 
 /// // Start Bevy renderer in background thread:
 /// std::thread::spawn(move || {
-///     let bevy_renderer = BevyRenderer::new(1600, 900).await;
+///     let helio_renderer = BevyRenderer::new(1600, 900).await;
 ///     
 ///     // Get the shared texture handles (platform-specific)
 ///     #[cfg(target_os = "windows")]
-///     let (handle0, handle1) = bevy_renderer.get_shared_nt_handles();
+///     let (handle0, handle1) = helio_renderer.get_shared_nt_handles();
 ///     
 ///     // Initialize the viewport with these handles
 ///     viewport_state.write().initialize_shared_textures(
@@ -201,7 +201,7 @@ impl Render for BevyViewport {
 ///     
 ///     // Main render loop
 ///     loop {
-///         bevy_renderer.render_frame();
+///         helio_renderer.render_frame();
 ///         viewport_state.read().swap_buffers();
 ///         std::thread::sleep(Duration::from_millis(16)); // ~60 FPS
 ///     }

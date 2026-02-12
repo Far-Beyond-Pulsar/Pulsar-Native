@@ -192,8 +192,8 @@ impl ViewportPanel {
 
                     // Clear GPU input
                     if let Ok(engine) = gpu_engine_clone.try_lock() {
-                        if let Some(ref bevy_renderer) = engine.bevy_renderer {
-                            if let Ok(mut input) = bevy_renderer.camera_input.try_lock() {
+                        if let Some(ref helio_renderer) = engine.helio_renderer {
+                            if let Ok(mut input) = helio_renderer.camera_input.try_lock() {
                                 input.forward = 0.0;
                                 input.right = 0.0;
                                 input.up = 0.0;
@@ -359,8 +359,8 @@ impl ViewportPanel {
         state: &LevelEditorState,
     ) {
         if let Ok(engine) = gpu_engine.try_lock() {
-            if let Some(ref bevy_renderer) = engine.bevy_renderer {
-                if let Ok(mut input) = bevy_renderer.camera_input.try_lock() {
+            if let Some(ref helio_renderer) = engine.helio_renderer {
+                if let Ok(mut input) = helio_renderer.camera_input.try_lock() {
                     input.forward = self.input_state.get_forward() as f32;
                     input.right = self.input_state.get_right() as f32;
                     input.up = self.input_state.get_up() as f32;
@@ -401,7 +401,7 @@ impl ViewportPanel {
         // Get performance data
         let (ui_fps, bevy_fps, pipeline_us) = if let Ok(engine) = gpu_engine.try_lock() {
             let ui_fps = engine.get_fps() as f64;
-            let bevy_fps = engine.get_bevy_fps() as f64;
+            let bevy_fps = engine.get_helio_fps() as f64;
             let pipeline = engine.get_pipeline_time_us();
             (ui_fps, bevy_fps, pipeline)
         } else {
@@ -477,8 +477,8 @@ impl ViewportPanel {
 
                     // Update Bevy camera viewport to match GPUI viewport bounds
                     if let Ok(engine) = gpu_engine_clone.try_lock() {
-                        if let Some(ref bevy_renderer) = engine.bevy_renderer {
-                            if let Ok(mut camera_input) = bevy_renderer.camera_input.try_lock() {
+                        if let Some(ref helio_renderer) = engine.helio_renderer {
+                            if let Ok(mut camera_input) = helio_renderer.camera_input.try_lock() {
                                 camera_input.viewport_x = min_x;
                                 camera_input.viewport_y = min_y;
                                 camera_input.viewport_width = max_x - min_x;
@@ -587,8 +587,8 @@ impl ViewportPanel {
                     drop(last_pos);
 
                     if let Ok(engine) = gpu_engine_move.try_lock() {
-                        if let Some(ref bevy_renderer) = engine.bevy_renderer {
-                            let mut mouse_input = bevy_renderer.viewport_mouse_input.lock();
+                        if let Some(ref helio_renderer) = engine.helio_renderer {
+                            let mut mouse_input = helio_renderer.viewport_mouse_input.lock();
                             mouse_input.mouse_pos.x = normalized_x;
                             mouse_input.mouse_pos.y = normalized_y;
                             mouse_input.mouse_delta.x = delta_x;
@@ -699,7 +699,7 @@ impl ViewportPanel {
                     };
 
                     if let Ok(engine) = gpu_engine_click.try_lock() {
-                        if let Some(ref bevy_renderer) = engine.bevy_renderer {
+                        if let Some(ref helio_renderer) = engine.helio_renderer {
                             // The Bevy renderer draws to the full window (e.g. 1920x1080)
                             // while the GPUI viewport is just a "hole" in the UI that shows it
                             // We need to map from the click position within the GPUI viewport bounds
@@ -714,7 +714,7 @@ impl ViewportPanel {
                                 normalized_x, normalized_y
                             );
                             
-                            let mut mouse_input = bevy_renderer.viewport_mouse_input.lock();
+                            let mut mouse_input = helio_renderer.viewport_mouse_input.lock();
                             mouse_input.left_clicked = true;
                             mouse_input.left_down = true;
                             mouse_input.mouse_pos.x = normalized_x;
@@ -738,8 +738,8 @@ impl ViewportPanel {
                     drop(state);
 
                     if let Ok(engine) = gpu_engine_up.try_lock() {
-                        if let Some(ref bevy_renderer) = engine.bevy_renderer {
-                            let mut mouse_input = bevy_renderer.viewport_mouse_input.lock();
+                        if let Some(ref helio_renderer) = engine.helio_renderer {
+                            let mut mouse_input = helio_renderer.viewport_mouse_input.lock();
                             mouse_input.left_clicked = false;
                             mouse_input.left_down = false;
                         }

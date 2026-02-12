@@ -64,7 +64,7 @@ pub unsafe fn handle_redraw(app: &mut WinitGpuiApp, window_id: WindowId) {
     // Claim Bevy renderer first (needs mutable app reference)
     {
         profiling::profile_scope!("Render::ClaimBevy");
-        claim_bevy_renderer(app, &window_id);
+        claim_helio_renderer(app, &window_id);
     }
 
     // Now get window state mutably
@@ -116,7 +116,7 @@ pub unsafe fn handle_redraw(app: &mut WinitGpuiApp, window_id: WindowId) {
     }
 
     // Request continuous redraws if we have a Bevy renderer
-    if window_state.bevy_renderer.is_some() {
+    if window_state.helio_renderer.is_some() {
         window_state.winit_window.request_redraw();
     }
 }
@@ -207,10 +207,10 @@ unsafe fn initialize_shared_texture(window_state: &mut crate::window::WindowStat
 }
 
 #[cfg(target_os = "windows")]
-unsafe fn claim_bevy_renderer(app: &mut WinitGpuiApp, window_id: &WindowId) {
+unsafe fn claim_helio_renderer(app: &mut WinitGpuiApp, window_id: &WindowId) {
     let window_state = app.windows.get_mut(window_id).unwrap();
 
-    if window_state.bevy_renderer.is_none() {
+    if window_state.helio_renderer.is_none() {
         let Some(window_id_u64) = app.window_id_map.get_id(window_id) else {
             tracing::warn!("⚠️ Window ID not registered for Bevy renderer claim");
             return;
@@ -218,16 +218,16 @@ unsafe fn claim_bevy_renderer(app: &mut WinitGpuiApp, window_id: &WindowId) {
 
         // Try to get renderer for this window
         if let Some(handle) = app.engine_context.renderers.get(window_id_u64) {
-            if let Some(bevy_renderer) = handle.as_bevy::<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>() {
-                window_state.bevy_renderer = Some(bevy_renderer.clone());
+            if let Some(helio_renderer) = handle.as_bevy::<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>() {
+                window_state.helio_renderer = Some(helio_renderer.clone());
             }
         } else if let Some(handle) = app.engine_context.renderers.get(0) {
             // Claim renderer from window ID 0 (pending renderer)
-            if let Some(bevy_renderer) = handle.as_bevy::<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>() {
-                let new_handle = engine_state::TypedRendererHandle::bevy(window_id_u64, bevy_renderer.clone());
+            if let Some(helio_renderer) = handle.as_bevy::<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>() {
+                let new_handle = engine_state::TypedRendererHandle::bevy(window_id_u64, helio_renderer.clone());
                 app.engine_context.renderers.register(window_id_u64, new_handle);
                 app.engine_context.renderers.unregister(0);
-                window_state.bevy_renderer = Some(bevy_renderer.clone());
+                window_state.helio_renderer = Some(helio_renderer.clone());
             }
         }
     }
@@ -321,10 +321,10 @@ unsafe fn compose_frame(window_state: &mut crate::window::WindowState, should_re
 unsafe fn render_bevy_layer(window_state: &mut crate::window::WindowState, context: &ID3D11DeviceContext) {
     use engine_backend::subsystems::render::NativeTextureHandle;
 
-    let Some(gpu_renderer_arc) = window_state.bevy_renderer.clone() else { return };
+    let Some(gpu_renderer_arc) = window_state.helio_renderer.clone() else { return };
     let Ok(gpu_renderer) = gpu_renderer_arc.lock() else { return };
-    let Some(ref bevy_renderer_inst) = gpu_renderer.bevy_renderer else { return };
-    let Some(native_handle) = bevy_renderer_inst.get_current_native_handle() else { return };
+    let Some(ref helio_renderer_inst) = gpu_renderer.helio_renderer else { return };
+    let Some(native_handle) = helio_renderer_inst.get_current_native_handle() else { return };
 
     let NativeTextureHandle::D3D11(handle_ptr) = native_handle else { return };
 
