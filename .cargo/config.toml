@@ -7,14 +7,28 @@ jobs = 2
 [alias]
 set-logo = "run --manifest-path tools/set-logo/Cargo.toml --"
 
+# Global environment for all platforms
 [env]
-# Fix aws-lc-sys build on Windows - use pregenerated sources to avoid C11 compilation issues
+# Fix aws-lc-sys build - use pregenerated sources to avoid C11 compilation issues
 AWS_LC_SYS_NO_PREFIX = "1"
 # Try forcing non-CMake builder
 AWS_LC_SYS_CMAKE_BUILDER = "0"
 # Set C standard
 AWS_LC_SYS_C_STD = "c11"
-# Set CFLAGS for MSVC
-CFLAGS = "/std:c11"
 CMAKE_C_STANDARD = "11"
+
+# Windows-specific environment variables
+[target.x86_64-pc-windows-msvc.env]
+CFLAGS = "/std:c11"
 CMAKE_C_FLAGS = "/std:c11"
+
+# macOS-specific environment variables
+[target.aarch64-apple-darwin.env]
+CFLAGS = "-std=c11"
+CMAKE_C_FLAGS = "-std=c11"
+PKG_CONFIG_PATH = "/opt/homebrew/lib/pkgconfig:/opt/homebrew/opt/zlib/lib/pkgconfig:/usr/local/lib/pkgconfig"
+
+[target.x86_64-apple-darwin.env]
+CFLAGS = "-std=c11"
+CMAKE_C_FLAGS = "-std=c11"
+PKG_CONFIG_PATH = "/opt/homebrew/lib/pkgconfig:/opt/homebrew/opt/zlib/lib/pkgconfig:/usr/local/lib/pkgconfig"
