@@ -191,8 +191,8 @@ impl HelioRenderer {
         base_geometry.set_texture_manager(texture_manager.clone());
         let base_shader = base_geometry.shader_template().to_string();
 
-        // Setup shadow system with dynamic animated lights (like lighting showcase mode 1)
-        let mut shadows = ProceduralShadows::new().with_ambient(0.05);
+        // Setup shadow system EXACTLY like lighting showcase
+        let mut shadows = ProceduralShadows::new().with_ambient(0.0); // NO ambient light!
         shadows.set_texture_manager(texture_manager.clone());
         
         // Configure spotlight billboard icon
@@ -201,52 +201,41 @@ impl HelioRenderer {
             tracing::info!("[HELIO] ✅ Spotlight billboard icon configured");
         }
         
-        // Initial lights will be updated every frame in render loop
-        // RGB Multi-Light Dance - Multiple colored lights with overlapping shadows
+        // Initial static lights (will be replaced by animated lights in loop)
         shadows.add_light(helio_feature_procedural_shadows::LightConfig {
             light_type: helio_feature_procedural_shadows::LightType::Spot {
                 inner_angle: 25.0_f32.to_radians(),
                 outer_angle: 40.0_f32.to_radians(),
             },
-            position: Vec3::new(0.0, 7.0, 0.0),
+            position: Vec3::new(0.0, 8.0, 0.0),
             direction: Vec3::new(0.0, -1.0, 0.0),
             intensity: 1.5,
-            color: Vec3::new(1.0, 0.1, 0.1), // Red
+            color: Vec3::new(1.0, 0.2, 0.2),
             attenuation_radius: 12.0,
             attenuation_falloff: 2.0,
-        }).expect("Failed to add red light");
+        }).expect("Failed to add light");
         
         shadows.add_light(helio_feature_procedural_shadows::LightConfig {
             light_type: helio_feature_procedural_shadows::LightType::Point,
             position: Vec3::new(-4.0, 3.0, -4.0),
             direction: Vec3::new(0.0, -1.0, 0.0),
-            intensity: 1.3,
-            color: Vec3::new(0.1, 1.0, 0.1), // Green
+            intensity: 1.2,
+            color: Vec3::new(0.2, 1.0, 0.2),
             attenuation_radius: 10.0,
             attenuation_falloff: 2.5,
-        }).expect("Failed to add green light");
+        }).expect("Failed to add light");
         
         shadows.add_light(helio_feature_procedural_shadows::LightConfig {
             light_type: helio_feature_procedural_shadows::LightType::Point,
-            position: Vec3::new(4.0, 4.0, 4.0),
+            position: Vec3::new(4.0, 3.0, -4.0),
             direction: Vec3::new(0.0, -1.0, 0.0),
-            intensity: 1.3,
-            color: Vec3::new(0.1, 0.1, 1.0), // Blue
+            intensity: 1.2,
+            color: Vec3::new(0.2, 0.2, 1.0),
             attenuation_radius: 10.0,
             attenuation_falloff: 2.5,
-        }).expect("Failed to add blue light");
+        }).expect("Failed to add light");
         
-        shadows.add_light(helio_feature_procedural_shadows::LightConfig {
-            light_type: helio_feature_procedural_shadows::LightType::Point,
-            position: Vec3::new(0.0, 2.0, 0.0),
-            direction: Vec3::new(0.0, -1.0, 0.0),
-            intensity: 0.8,
-            color: Vec3::new(0.3, 1.0, 1.0), // Cyan
-            attenuation_radius: 6.0,
-            attenuation_falloff: 3.0,
-        }).expect("Failed to add cyan light");
-        
-        tracing::info!("[HELIO] ✅ Added 4 animated RGB lights (will update positions every frame)");
+        tracing::info!("[HELIO] ✅ Shadow system configured with ambient=0.0 (pure black)");
         
         let mut billboards = BillboardFeature::new();
         billboards.set_texture_manager(texture_manager.clone());
@@ -510,22 +499,34 @@ impl HelioRenderer {
             // Dancing spheres on the ground
             for i in 0..12 {
                 let dance_angle = (i as f32 / 12.0) * std::f32::consts::TAU;
-                let bob_phase = elapsed * 2.0 + i as f32 * 0.5;
-                let radius = 8.0 + (elapsed * 0.6).sin() * 1.0;
+                let dance_radius = 4.0 + (elapsed * 0.5).sin() * 1.0;
+                let bounce = ((elapsed * 3.0 + i as f32).sin().abs() * 2.0 + 0.5).max(0.5);
                 let t = Mat4::from_translation(Vec3::new(
-                    dance_angle.cos() * radius,
-                    bob_phase.sin().abs() * 2.0 + 0.5,
-                    dance_angle.sin() * radius,
-                )) * Mat4::from_scale(Vec3::splat(0.5));
+                    dance_angle.cos() * dance_radius,
+                    bounce,
+                    dance_angle.sin() * dance_radius,
+                )) * Mat4::from_scale(Vec3::splat(
+                    0.4 + (elapsed + i as f32).cos().abs() * 0.2,
+                ));
                 meshes.push((TransformUniforms::from_matrix(t), &sphere_mesh));
             }
 
-            // Static objects for shadow reference
-            let cube1 = Mat4::from_translation(Vec3::new(-4.0, 0.5, -4.0));
-            meshes.push((TransformUniforms::from_matrix(cube1), &cube_mesh));
-
-            let cube2 = Mat4::from_translation(Vec3::new(4.0, 0.5, -4.0));
-            meshes.push((TransformUniforms::from_matrix(cube2), &cube_mesh));
+            // Spinning double helix of cubes
+            for i in 0..16 {
+                let helix_height = i as f32 * 0.6;
+                let a1 = elapsed * 2.0 + i as f32 * 0.4;
+                let a2 = a1 + std::f32::consts::PI;
+                let hr = 2.5;
+                for a in [a1, a2] {
+                    let t = Mat4::from_translation(Vec3::new(
+                        a.cos() * hr,
+                        helix_height + 0.5,
+                        a.sin() * hr,
+                    )) * Mat4::from_rotation_y(elapsed * 3.0)
+                        * Mat4::from_scale(Vec3::splat(0.3));
+                    meshes.push((TransformUniforms::from_matrix(t), &cube_mesh));
+                }
+            }
 
             // Add editor-placed objects from GameState if available
             if let Some(ref game_state_arc) = _game_thread_state {
