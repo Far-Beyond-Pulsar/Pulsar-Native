@@ -108,7 +108,6 @@ impl SettingsScreen {
                             )
                     )
             )
-            .render(cx)
     }
 
     fn render_ui_scale_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -133,7 +132,6 @@ impl SettingsScreen {
                             
                     )
             )
-            .render(cx)
     }
 
     fn render_color_scheme_info_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -185,6 +183,5 @@ impl SettingsScreen {
                             )
                     )
             )
-            .render(cx)
     }
 }

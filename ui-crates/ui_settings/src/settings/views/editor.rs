@@ -101,7 +101,6 @@ impl SettingsScreen {
                             
                     )
             )
-            .render(cx)
     }
 
     fn render_editor_behavior_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -173,7 +172,6 @@ impl SettingsScreen {
                             
                     )
             )
-            .render(cx)
     }
 
     fn render_code_formatting_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -225,6 +223,5 @@ impl SettingsScreen {
                             )
                     )
             )
-            .render(cx)
     }
 }

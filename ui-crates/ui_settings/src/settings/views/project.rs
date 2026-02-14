@@ -71,7 +71,6 @@ impl SettingsScreen {
                             
                     )
             )
-            .render(cx)
     }
 
     fn render_auto_save_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -179,7 +178,6 @@ impl SettingsScreen {
                             )
                     )
             )
-            .render(cx)
     }
 
     fn render_backup_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -264,6 +262,5 @@ impl SettingsScreen {
                         )
                     })
             )
-            .render(cx)
     }
 }

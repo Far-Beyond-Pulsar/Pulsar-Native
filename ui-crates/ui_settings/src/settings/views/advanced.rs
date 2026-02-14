@@ -149,7 +149,6 @@ impl SettingsScreen {
                             )
                     )
             )
-            .render(cx)
     }
 
     fn render_debugging_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -280,7 +279,6 @@ impl SettingsScreen {
                         )
                     })
             )
-            .render(cx)
     }
 
     fn render_extensions_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -342,6 +340,5 @@ impl SettingsScreen {
                             )
                     )
             )
-            .render(cx)
     }
 }
