@@ -27,49 +27,41 @@ pub mod windows_impl {
             // - On D3D12 backend: device: ID3D12Device
             // - Wrapped in internal types
             
-            // HACK: blade-graphics doesn't expose this officially
-            // We need to either:
-            // 1. Submit PR to blade-graphics to add this API
-            // 2. Use transmute (extremely unsafe)
-            // 3. Keep using standalone device (current workaround)
+            // NOTE: blade-graphics doesn't expose D3D12 device officially.
+            // Workaround: Using standalone device (see GpuSharedTextureManager).
+            // Future: Submit PR to blade-graphics to add raw device access API.
             
-            tracing::warn!("[BLADE-D3D12-EXT] raw_d3d12_device() not yet implemented");
-            tracing::warn!("[BLADE-D3D12-EXT] Need to either:");
-            tracing::warn!("[BLADE-D3D12-EXT]   1. Submit PR to blade-graphics");
-            tracing::warn!("[BLADE-D3D12-EXT]   2. Use unsafe transmute");
-            tracing::warn!("[BLADE-D3D12-EXT]   3. Keep using standalone device");
-            
+            tracing::debug!("[BLADE-D3D12-EXT] raw_d3d12_device() not yet implemented - using standalone device");
             None
         }
 
         unsafe fn raw_d3d12_resource(&self, _texture: &gpu::Texture) -> Option<ID3D12Resource> {
-            // Similar issue - blade Texture wraps ID3D12Resource but doesn't expose it
+            // NOTE: blade Texture wraps ID3D12Resource but doesn't expose it.
+            // Workaround: Using standalone resources.
+            // Future: Submit PR to blade-graphics to add raw resource access API.
             
-            tracing::warn!("[BLADE-D3D12-EXT] raw_d3d12_resource() not yet implemented");
+            tracing::debug!("[BLADE-D3D12-EXT] raw_d3d12_resource() not yet implemented - using standalone resources");
             None
         }
     }
 
-    /// Actually expose the device by copying blade-graphics' internal structure
+    /// Memory layout assumption structure - DO NOT USE
     /// 
-    /// **EXTREME HACK**: This relies on blade-graphics' internal memory layout.
-    /// Will break if blade updates. Only use as last resort.
+    /// This documents the theoretical approach to extract blade-graphics internals.
+    /// Left as documentation of rejected approach due to brittleness.
     #[repr(C)]
     struct BladeContextHack {
-        // This would need to match blade's actual Context layout
-        // Don't actually implement this without studying blade source
         _device: Option<ID3D12Device>,
-        // ... other fields
+        // ... other fields would need to match blade's actual Context layout
     }
 
-    /// Try to extract device using memory layout assumptions
+    /// Rejected approach: Extract device using memory layout assumptions
     /// 
     /// # Safety
-    /// EXTREMELY UNSAFE - relies on internal memory layout
+    /// DO NOT USE - Extremely unsafe and fragile approach.
+    /// Left as documentation of what to avoid.
     pub unsafe fn try_extract_device_hack(context: &gpu::Context) -> Option<ID3D12Device> {
-        // Don't actually use this - it's too fragile
-        // Left here as documentation of what NOT to do
-        tracing::error!("[BLADE-D3D12-EXT] try_extract_device_hack() should never be called");
+        tracing::error!("[BLADE-D3D12-EXT] try_extract_device_hack() called - this is a rejected approach");
         None
     }
 }

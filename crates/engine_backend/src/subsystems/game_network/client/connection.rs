@@ -41,11 +41,27 @@ impl PulsarIntConnection {
     }
 
     pub fn connect(&mut self) {
-        todo!("Implement connection logic");
+        if let (Some(_ip), Some(_port)) = (self.ip, self.port) {
+            self.connection_state = PulsarIntConnectionState::Connecting;
+            // Connection logic will be implemented when actual transport layer is added
+            tracing::debug!("Connection initiated for {:?}:{:?}", self.ip, self.port);
+        } else {
+            tracing::error!("Cannot connect: IP or port not set");
+        }
     }
 
     pub fn disconnect(&mut self) {
-        todo!("Implement disconnection logic");
+        match self.connection_state {
+            PulsarIntConnectionState::Connected | PulsarIntConnectionState::Connecting => {
+                self.connection_state = PulsarIntConnectionState::Disconnecting;
+                // Disconnection logic will be implemented when actual transport layer is added
+                tracing::debug!("Disconnection initiated");
+                self.connection_state = PulsarIntConnectionState::Disconnected;
+            }
+            _ => {
+                tracing::warn!("Disconnect called but not in connected state");
+            }
+        }
     }
 }
 

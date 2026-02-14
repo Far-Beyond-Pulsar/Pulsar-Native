@@ -538,11 +538,7 @@ impl DockArea {
         cx.notify();
     }
 
-    // FIXME: Remove this method after 2025-01-01
-    #[deprecated(note = "Use `set_center` instead")]
-    pub fn set_root(&mut self, item: DockItem, window: &mut Window, cx: &mut Context<Self>) {
-        self.set_center(item, window, cx);
-    }
+
 
     /// The the DockItem as the center of the dock area.
     ///

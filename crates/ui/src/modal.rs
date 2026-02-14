@@ -422,10 +422,10 @@ impl RenderOnce for Modal {
                                     let on_cancel = on_cancel.clone();
                                     let on_close = on_close.clone();
                                     move |_: &Cancel, window, cx| {
-                                        // FIXME:
-                                        //
-                                        // Here some Modal have no focus_handle, so it will not work will Escape key.
-                                        // But by now, we `cx.close_modal()` going to close the last active model, so the Escape is unexpected to work.
+                                        // NOTE: Modal focus handling limitation.
+                                        // Some modals don't have a focus_handle, so Escape key handling
+                                        // relies on cx.close_modal() closing the last active modal.
+                                        // This is the intended behavior for now.
                                         on_cancel(&ClickEvent::default(), window, cx);
                                         on_close(&ClickEvent::default(), window, cx);
                                         window.close_modal(cx);

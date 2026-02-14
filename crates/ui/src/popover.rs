@@ -238,10 +238,10 @@ impl<M: ManagedView> Element for Popover<M> {
     ) -> (gpui::LayoutId, Self::RequestLayoutState) {
         let mut style = Style::default();
 
-        // FIXME: Remove this and find a better way to handle this.
-        // Apply trigger style, for support w_full for trigger.
-        //
-        // If remove this, the trigger will not support w_full.
+        // NOTE: Temporary workaround for trigger width support.
+        // Apply trigger style to enable w_full and other width modifiers on the trigger element.
+        // This bypasses the normal layout system but is necessary until GPUI supports
+        // propagating layout hints from child to parent more elegantly.
         if let Some(trigger_style) = self.trigger_style.clone() {
             if let Some(width) = trigger_style.size.width {
                 style.size.width = width;
