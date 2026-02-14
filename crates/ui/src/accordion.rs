@@ -300,3 +300,125 @@ impl RenderOnce for AccordionItem {
         )
     }
 }
+
+/// A simple collapsible section component for property panels and settings.
+///
+/// This is a simplified version of AccordionItem for use in contexts where
+/// you want a single collapsible section without the full Accordion container.
+///
+/// # Example
+///
+/// ```ignore
+/// CollapsibleSection::new("Section Title")
+///     .icon(IconName::Settings)
+///     .open(is_collapsed)
+///     .on_toggle(cx.listener(|this, _, _, cx| this.toggle_section(cx)))
+///     .child(div().child("Content here"))
+/// ```
+#[derive(IntoElement)]
+pub struct CollapsibleSection {
+    title: SharedString,
+    icon: Option<IconName>,
+    is_open: bool,
+    content: AnyElement,
+    on_toggle: Option<Arc<dyn Fn(&gpui::MouseDownEvent, &mut Window, &mut App)>>,
+}
+
+impl CollapsibleSection {
+    pub fn new(title: impl Into<SharedString>) -> Self {
+        Self {
+            title: title.into(),
+            icon: None,
+            is_open: false,
+            content: div().into_any_element(),
+            on_toggle: None,
+        }
+    }
+
+    pub fn icon(mut self, icon: IconName) -> Self {
+        self.icon = Some(icon);
+        self
+    }
+
+    pub fn open(mut self, is_open: bool) -> Self {
+        self.is_open = is_open;
+        self
+    }
+
+    pub fn on_toggle(
+        mut self,
+        on_toggle: impl Fn(&gpui::MouseDownEvent, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_toggle = Some(Arc::new(on_toggle));
+        self
+    }
+}
+
+impl ParentElement for CollapsibleSection {
+    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
+        let mut content_div = div();
+        content_div.extend(elements);
+        self.content = content_div.into_any_element();
+    }
+}
+
+impl RenderOnce for CollapsibleSection {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        use crate::ActiveTheme as _;
+        use gpui::{InteractiveElement as _, MouseButton};
+
+        let theme = cx.theme();
+
+        v_flex()
+            .w_full()
+            .rounded(gpui::px(8.0))
+            .border_1()
+            .border_color(theme.border)
+            .overflow_hidden()
+            .child(
+                h_flex()
+                    .w_full()
+                    .px_3()
+                    .py_2()
+                    .gap_2()
+                    .items_center()
+                    .bg(theme.sidebar)
+                    .cursor_pointer()
+                    .hover(|s| {
+                        s.bg(gpui::hsla(
+                            theme.sidebar.h,
+                            theme.sidebar.s,
+                            theme.sidebar.l,
+                            0.8,
+                        ))
+                    })
+                    .when_some(self.on_toggle, |this, on_toggle| {
+                        this.on_mouse_down(MouseButton::Left, move |event, window, cx| {
+                            on_toggle(event, window, cx);
+                        })
+                    })
+                    .child(
+                        Icon::new(if self.is_open {
+                            IconName::ChevronDown
+                        } else {
+                            IconName::ChevronRight
+                        })
+                        .xsmall()
+                        .text_color(theme.muted_foreground),
+                    )
+                    .when_some(self.icon, |this, icon| {
+                        this.child(Icon::new(icon).xsmall().text_color(theme.muted_foreground))
+                    })
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .text_color(theme.foreground)
+                            .child(self.title),
+                    ),
+            )
+            .when(self.is_open, |this| {
+                this.child(div().w_full().p_3().bg(theme.background).child(self.content))
+            })
+    }
+}

@@ -476,3 +476,175 @@ impl RenderOnce for Form {
             )
     }
 }
+
+/// A beautiful setting card component
+#[derive(IntoElement)]
+pub struct SettingCard {
+    title: SharedString,
+    description: Option<SharedString>,
+    icon: Option<crate::IconName>,
+    children: Vec<AnyElement>,
+}
+
+impl SettingCard {
+    pub fn new(title: impl Into<SharedString>) -> Self {
+        Self {
+            title: title.into(),
+            description: None,
+            icon: None,
+            children: Vec::new(),
+        }
+    }
+
+    pub fn description(mut self, desc: impl Into<SharedString>) -> Self {
+        self.description = Some(desc.into());
+        self
+    }
+
+    pub fn icon(mut self, icon: crate::IconName) -> Self {
+        self.icon = Some(icon);
+        self
+    }
+}
+
+impl ParentElement for SettingCard {
+    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
+        self.children.extend(elements);
+    }
+}
+
+impl RenderOnce for SettingCard {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        use crate::{ActiveTheme as _, Icon};
+
+        let theme = cx.theme();
+
+        v_flex()
+            .w_full()
+            .gap_4()
+            .p_5()
+            .bg(theme.sidebar)
+            .border_1()
+            .border_color(theme.border)
+            .rounded_lg()
+            .shadow_sm()
+            .child(
+                h_flex()
+                    .items_start()
+                    .gap_3()
+                    .when_some(self.icon, |this, icon| {
+                        this.child(
+                            div()
+                                .flex_shrink_0()
+                                .w(px(36.0))
+                                .h(px(36.0))
+                                .rounded_md()
+                                .bg(gpui::hsla(
+                                    theme.primary.h,
+                                    theme.primary.s,
+                                    theme.primary.l,
+                                    0.15,
+                                ))
+                                .border_1()
+                                .border_color(gpui::hsla(
+                                    theme.primary.h,
+                                    theme.primary.s,
+                                    theme.primary.l,
+                                    0.3,
+                                ))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .child(Icon::new(icon).size(px(18.0)).text_color(theme.primary)),
+                        )
+                    })
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_base()
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(theme.foreground)
+                                    .child(self.title),
+                            )
+                            .when_some(self.description, |this, desc| {
+                                this.child(
+                                    div()
+                                        .text_xs()
+                                        .line_height(Rems(1.4))
+                                        .text_color(theme.muted_foreground)
+                                        .child(desc),
+                                )
+                            }),
+                    ),
+            )
+            .children(self.children)
+    }
+}
+
+/// A setting row with label, description, and control
+#[derive(IntoElement)]
+pub struct SettingRow {
+    label: SharedString,
+    description: Option<SharedString>,
+    control: Option<AnyElement>,
+}
+
+impl SettingRow {
+    pub fn new(label: impl Into<SharedString>) -> Self {
+        Self {
+            label: label.into(),
+            description: None,
+            control: None,
+        }
+    }
+
+    pub fn description(mut self, desc: impl Into<SharedString>) -> Self {
+        self.description = Some(desc.into());
+        self
+    }
+
+    pub fn control(mut self, control: impl IntoElement) -> Self {
+        self.control = Some(control.into_any_element());
+        self
+    }
+}
+
+impl RenderOnce for SettingRow {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        use crate::ActiveTheme as _;
+
+        let theme = cx.theme();
+
+        h_flex()
+            .w_full()
+            .items_center()
+            .justify_between()
+            .gap_4()
+            .child(
+                v_flex()
+                    .flex_1()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .text_color(theme.foreground)
+                            .child(self.label),
+                    )
+                    .when_some(self.description, |this, desc| {
+                        this.child(
+                            div()
+                                .text_xs()
+                                .text_color(theme.muted_foreground)
+                                .child(desc),
+                        )
+                    }),
+            )
+            .when_some(self.control, |this, control| {
+                this.child(div().flex_shrink_0().child(control))
+            })
+    }
+}

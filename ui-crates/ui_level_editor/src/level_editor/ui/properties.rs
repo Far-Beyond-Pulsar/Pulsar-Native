@@ -3,7 +3,7 @@ use ui::{
     button::{Button, ButtonVariants as _},
     h_flex, v_flex, scroll::ScrollbarAxis, ActiveTheme, Sizable, StyledExt,
     input::{TextInput, InputState},
-    IconName,
+    IconName, CollapsibleSection,
 };
 use std::sync::Arc;
 use std::collections::HashSet;
@@ -302,59 +302,15 @@ impl PropertiesPanel {
         cx: &mut Context<PropertiesPanelWrapper>
     ) -> impl IntoElement {
         let section_name = title.to_string();
-        let chevron_icon = if is_collapsed { IconName::ChevronRight } else { IconName::ChevronDown };
-        let section_id = SharedString::from(format!("props-section-{}", title));
+        let title_str = title.to_string();
         
-        v_flex()
-            .w_full()
-            .rounded(px(8.0))
-            .border_1()
-            .border_color(cx.theme().border)
-            .overflow_hidden()
-            .child(
-                // Section header - clickable to toggle
-                h_flex()
-                    .id(section_id)
-                    .w_full()
-                    .px_3()
-                    .py_2()
-                    .gap_2()
-                    .items_center()
-                    .bg(cx.theme().sidebar)
-                    .when(!is_collapsed, |this| this.border_b_1().border_color(cx.theme().border))
-                    .cursor_pointer()
-                    .hover(|s| s.bg(cx.theme().sidebar.opacity(0.8)))
-                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _event, _window, cx| {
-                        this.toggle_section(section_name.clone(), cx);
-                    }))
-                    .child(
-                        ui::Icon::new(chevron_icon)
-                            .size(px(14.0))
-                            .text_color(cx.theme().foreground)
-                    )
-                    .child(
-                        ui::Icon::new(icon)
-                            .size(px(14.0))
-                            .text_color(cx.theme().foreground)
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(cx.theme().foreground)
-                            .child(title.to_string())
-                    )
-            )
-            .when(!is_collapsed, |this| {
-                this.child(
-                    // Section content - only shown when not collapsed
-                    div()
-                        .w_full()
-                        .p_3()
-                        .bg(cx.theme().background)
-                        .child(content)
-                )
-            })
+        CollapsibleSection::new(title_str)
+            .icon(icon)
+            .open(!is_collapsed)
+            .on_toggle(cx.listener(move |this, _event, _window, cx| {
+                this.toggle_section(section_name.clone(), cx);
+            }))
+            .child(content)
     }
 
     fn render_object_type_section(object: &super::state::SceneObject, collapsed_sections: &HashSet<String>, cx: &mut Context<PropertiesPanelWrapper>) -> impl IntoElement {

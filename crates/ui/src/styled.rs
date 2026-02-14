@@ -199,6 +199,36 @@ pub trait StyledExt: Styled + Sized {
             .rounded(cx.theme().radius)
     }
 
+    /// Apply default background color from theme
+    #[inline]
+    fn bg_default(self, cx: &App) -> Self {
+        self.bg(cx.theme().background)
+    }
+
+    /// Apply default text color from theme
+    #[inline]
+    fn text_default(self, cx: &App) -> Self {
+        self.text_color(cx.theme().foreground)
+    }
+
+    /// Apply default border color from theme
+    #[inline]
+    fn border_default(self, cx: &App) -> Self {
+        self.border_color(cx.theme().border)
+    }
+
+    /// Apply muted text color from theme
+    #[inline]
+    fn text_muted(self, cx: &App) -> Self {
+        self.text_color(cx.theme().muted_foreground)
+    }
+
+    /// Apply sidebar background color from theme
+    #[inline]
+    fn bg_sidebar(self, cx: &App) -> Self {
+        self.bg(cx.theme().sidebar)
+    }
+
     /// Set corner radii for the element.
     fn corner_radii(self, radius: Corners<Pixels>) -> Self {
         self.rounded_tl(radius.top_left)

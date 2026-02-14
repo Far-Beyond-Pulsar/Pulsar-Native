@@ -30,6 +30,7 @@ pub mod gpu_mem_tracker; // GPU memory allocation tracker for debugging VRAM lea
 pub mod dx11_shared_opener; // DX11 opener for DX12 shared handles (zero-copy bridge)
 mod virtual_list;
 mod window_border;
+mod window_wrapper;
 pub mod component; // Component-based UI architecture
 
 pub(crate) mod actions;
@@ -105,11 +106,16 @@ pub use time::*;
 pub use title_bar::*;
 pub use virtual_list::{ h_virtual_list, v_virtual_list, VirtualList, VirtualListScrollHandle };
 pub use window_border::{ window_border, window_paddings, WindowBorder };
+pub use window_wrapper::{ drawer_window, drawer_window_entity, drawer_window_view };
+
+// Re-export common form components
+pub use form::{ SettingCard, SettingRow };
 
 pub use icon::*;
 pub use kbd::*;
 pub use theme::*;
 pub use component::*;
+pub use accordion::{Accordion, AccordionItem, CollapsibleSection};
 pub use hierarchical_tree::{
     render_tree_folder,
     render_tree_category,

@@ -2,9 +2,7 @@
 //! Similar to the drawer but in a separate window
 
 use gpui::*;
-use ui::{
-    v_flex, ActiveTheme as _, TitleBar,
-};
+use ui::drawer_window_entity;
 use ui_common::translate;
 
 use crate::{FileManagerDrawer, FileSelected};
@@ -49,17 +47,6 @@ impl EventEmitter<FileSelected> for FileManagerWindow {}
 
 impl Render for FileManagerWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
-
-        v_flex()
-            .size_full()
-            .bg(theme.background)
-            .child(TitleBar::new().child(translate("Window.Title.FileManager")))
-            .child(
-                div()
-                    .flex_1()
-                    .overflow_hidden()
-                    .child(self.file_manager.clone())
-            )
+        drawer_window_entity("Window.Title.FileManager", self.file_manager.clone(), cx)
     }
 }
