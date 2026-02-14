@@ -14,13 +14,14 @@ The script uses GitHub's official Models API to analyze commit messages and gene
 
 ### Authentication
 
-The script uses the default `GITHUB_TOKEN` provided by GitHub Actions. The workflow is configured with `models: read` permission to access the GitHub Models API. No additional setup is required!
+The script requires a Personal Access Token (PAT) with GitHub Copilot access. Set up:
 
-If you want to use a custom PAT (for rate limits or specific models), it needs the `models:read` permission:
 1. Go to GitHub Settings → Developer Settings → Personal Access Tokens (Fine-grained)
-2. Create a token with `models:read` permission
-3. Add it as a repository secret named `GH_MODELS_TOKEN`
-4. Update the workflow to use `${{ secrets.GH_MODELS_TOKEN }}` instead of `${{ secrets.GITHUB_TOKEN }}`
+2. Create a token with the `models` scope (read permission)
+3. Add it as a repository secret named `CI_COPILOT_TOKEN` at:
+   `Settings → Secrets and variables → Actions → New repository secret`
+
+**Note:** Your GitHub account must have an active Copilot subscription (Pro, Pro+, Business, or Enterprise) to use the Models API.
 
 ### Model Selection
 
