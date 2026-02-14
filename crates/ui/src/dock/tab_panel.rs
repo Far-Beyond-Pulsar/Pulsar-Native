@@ -1,4 +1,6 @@
 use std::sync::Arc;
+use std::rc::Rc;
+use std::cell::RefCell;
 
 use gpui::{
     div, prelude::FluentBuilder, px, relative, rems, size, App, AppContext, Bounds, Context, Corner,
@@ -11,9 +13,10 @@ use rust_i18n::t;
 
 use crate::{
     button::{Button, ButtonVariants as _},
-    context_menu::ContextMenu,
+    context_menu::{ContextMenu, ContextMenuExt},
     dock::PanelInfo,
     h_flex,
+    menu::popup_menu::PopupMenuItem,
     popup_menu::{PopupMenu, PopupMenuExt},
     tab::{Tab, TabBar},
     v_flex, ActiveTheme, AxisExt, IconName, Placement, Selectable, Sizable,
@@ -389,6 +392,90 @@ impl TabPanel {
         cx.emit(PanelEvent::TabClosed(entity_id));
         cx.emit(PanelEvent::ZoomOut);
         cx.emit(PanelEvent::LayoutChanged);
+    }
+
+    /// Close all tabs except the specified one
+    pub fn close_other_tabs(
+        &mut self,
+        keep_index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if keep_index >= self.panels.len() {
+            return;
+        }
+
+        let panels_to_remove: Vec<_> = self.panels.iter()
+            .enumerate()
+            .filter(|(i, p)| *i != keep_index && p.closable(cx))
+            .map(|(_, p)| p.clone())
+            .collect();
+
+        for panel in panels_to_remove {
+            self.remove_panel(panel, window, cx);
+        }
+    }
+
+    /// Close all tabs to the left of the specified index
+    pub fn close_tabs_to_left(
+        &mut self,
+        from_index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if from_index == 0 || from_index >= self.panels.len() {
+            return;
+        }
+
+        let panels_to_remove: Vec<_> = self.panels.iter()
+            .take(from_index)
+            .filter(|p| p.closable(cx))
+            .cloned()
+            .collect();
+
+        for panel in panels_to_remove {
+            self.remove_panel(panel, window, cx);
+        }
+    }
+
+    /// Close all tabs to the right of the specified index
+    pub fn close_tabs_to_right(
+        &mut self,
+        from_index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if from_index >= self.panels.len() {
+            return;
+        }
+
+        let panels_to_remove: Vec<_> = self.panels.iter()
+            .skip(from_index + 1)
+            .filter(|p| p.closable(cx))
+            .cloned()
+            .collect();
+
+        for panel in panels_to_remove {
+            self.remove_panel(panel, window, cx);
+        }
+    }
+
+    /// Close all tabs that are saved (don't have unsaved changes)
+    pub fn close_all_saved_tabs(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Currently closes all closable tabs
+        // TODO: In the future, check for "modified" state and only close unmodified panels
+        let panels_to_remove: Vec<_> = self.panels.iter()
+            .filter(|p| p.closable(cx))
+            .cloned()
+            .collect();
+
+        for panel in panels_to_remove {
+            self.remove_panel(panel, window, cx);
+        }
     }
 
     fn detach_panel(
@@ -794,7 +881,7 @@ impl TabPanel {
 
         let tabs_count = self.panels.len();
 
-        TabBar::new("tab-bar")
+        let tab_bar = TabBar::new("tab-bar")
             .tab_item_top_offset(-px(1.))
             .track_scroll(&self.tab_bar_scroll_handle)
             .when(
@@ -974,6 +1061,7 @@ impl TabPanel {
                     .when(state.droppable, |this| {
                         let channel = state.channel;
                         let view_entity = view.clone();
+                        let view_for_drop = view.clone();
                         this.drag_over::<DragPanel>(move |this, drag, window, cx| {
                             // Only show drop visual if same channel
                             if drag.channel == channel {
@@ -991,7 +1079,7 @@ impl TabPanel {
                             move |this, drag: &DragPanel, window, cx| {
                                 this.will_split_placement = None;
 
-                                let ix = if drag.tab_panel == view {
+                                let ix = if drag.tab_panel == view_for_drop {
                                     Some(tabs_count - 1)
                                 } else {
                                     None
@@ -1022,7 +1110,79 @@ impl TabPanel {
                         .child(self.render_toolbar(state, window, cx))
                         .when_some(right_dock_button, |this, btn| this.child(btn)),
                 )
-            })
+            });
+
+        // Wrap TabBar with context menu
+        let view_for_menu = view.clone();
+        let panels_for_menu: Vec<_> = self.panels.iter().cloned().collect();
+        
+        // Use a transparent overlay div with context menu
+        div()
+            .id("tab-bar-container")
+            .relative()
+            .child(tab_bar)
+            .child(
+                // Invisible overlay to capture right-clicks
+                div()
+                    .id("tab-context-overlay")
+                    .absolute()
+                    .inset_0()
+                    .context_menu(move |menu, _window, cx| {
+                        let view = view_for_menu.clone();
+                        let total_tabs = panels_for_menu.len();
+                        
+                        let mut result = menu;
+                        
+                        result.menu_items.push(PopupMenuItem::Item {
+                            icon: None,
+                            label: "Close All Saved".into(),
+                            disabled: total_tabs == 0,
+                            action: None,
+                            is_link: false,
+                            handler: Some(Rc::new(move |window, cx| {
+                                let _ = view.update(cx, |view, cx| {
+                                    view.close_all_saved_tabs(window, cx);
+                                });
+                            })),
+                        });
+                        
+                        if total_tabs > 1 {
+                            let view = view_for_menu.clone();
+                            
+                            result.menu_items.push(PopupMenuItem::Separator);
+                            
+                            result.menu_items.push(PopupMenuItem::Item {
+                                icon: None,
+                                label: "Close Others".into(),
+                                disabled: false,
+                                action: None,
+                                is_link: false,
+                                handler: Some(Rc::new(move |window, cx| {
+                                    let _ = view.update(cx, |view, cx| {
+                                        view.close_other_tabs(0, window, cx);
+                                    });
+                                })),
+                            });
+                            
+                            let view = view_for_menu.clone();
+                            
+                            result.menu_items.push(PopupMenuItem::Item {
+                                icon: None,
+                                label: "Close to the Right".into(),
+                                disabled: false,
+                                action: None,
+                                is_link: false,
+                                handler: Some(Rc::new(move |window, cx| {
+                                    let _ = view.update(cx, |view, cx| {
+                                        view.close_tabs_to_right(0, window, cx);
+                                    });
+                                })),
+                            });
+                        }
+                        
+                        result
+                    })
+            )
             .into_any_element()
     }
 
