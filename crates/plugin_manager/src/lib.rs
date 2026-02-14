@@ -135,6 +135,9 @@ struct LoadedPlugin {
 pub struct PluginManager {
     /// All loaded plugins, indexed by plugin ID
     plugins: HashMap<PluginId, LoadedPlugin>,
+    
+    /// WASM plugin host (shared across all WASM plugins)
+    wasm_host: Arc<OnceCell<WasmPluginHost>>,
 
     /// Registry of all file types
     file_type_registry: FileTypeRegistry,
@@ -166,6 +169,7 @@ impl PluginManager {
     pub fn new() -> Self {
         Self {
             plugins: HashMap::new(),
+            wasm_host: Arc::new(OnceCell::new()),
             file_type_registry: FileTypeRegistry::new(),
             editor_registry: EditorRegistry::new(),
             builtin_registry: BuiltinEditorRegistry::new(),
@@ -254,14 +258,24 @@ impl PluginManager {
     ///
     /// # Safety
     ///
-    /// This function loads and executes code from a dynamic library. The library
-    /// must be compiled with the same Rust version and for the same engine version
-    /// as the current build.
+    /// This function loads and executes code from a dynamic library or WASM module.
+    /// For DLL plugins: The library must be compiled with the same Rust version and
+    /// for the same engine version as the current build.
+    /// For WASM plugins: Uses wasmtime sandboxing for memory safety.
     pub fn load_plugin(&mut self, path: impl AsRef<Path>, cx: &gpui::App) -> Result<PluginId, PluginManagerError> {
         let path = path.as_ref();
 
         tracing::debug!("Loading plugin from: {:?}", path);
 
+        // Detect if this is a WASM plugin or DLL plugin
+        let extension = path.extension().and_then(|s| s.to_str());
+        
+        if extension == Some("wasm") {
+            // Load as WASM plugin
+            return self.load_wasm_plugin(path, cx);
+        }
+
+        // Load as DLL plugin (existing code)
         // Load the library
         let library = unsafe {
             Library::new(path).map_err(|e| PluginManagerError::LibraryLoadError {
@@ -429,6 +443,65 @@ impl PluginManager {
         };
 
         self.plugins.insert(plugin_id.clone(), loaded_plugin);
+
+        Ok(plugin_id)
+    }
+
+    /// Load a WASM plugin from a file
+    fn load_wasm_plugin(&mut self, path: impl AsRef<Path>, _cx: &gpui::App) -> Result<PluginId, PluginManagerError> {
+        let path = path.as_ref();
+
+        tracing::info!("Loading WASM plugin from: {:?}", path);
+
+        // Get or create the WASM host
+        let host = self.wasm_host.get_or_init(|| {
+            tracing::debug!("Initializing WASM runtime");
+            WasmPluginHost::new().expect("Failed to initialize WASM runtime")
+        });
+
+        // Load the WASM plugin
+        let wasm_plugin = futures::executor::block_on(async {
+            host.load_plugin(path).await
+        }).map_err(|e| PluginManagerError::LibraryLoadError {
+            path: path.to_path_buf(),
+            message: format!("WASM loading failed: {}", e),
+        })?;
+
+        let metadata = wasm_plugin.metadata();
+        let plugin_id = metadata.id.clone();
+
+        tracing::info!("Loaded WASM plugin: {} v{}", metadata.name, metadata.version);
+
+        // Register file types
+        let file_types = futures::executor::block_on(async {
+            wasm_plugin.file_types().await
+        }).map_err(|e| PluginManagerError::LibraryLoadError {
+            path: path.to_path_buf(),
+            message: format!("Failed to get file types: {}", e),
+        })?;
+
+        for ft in file_types {
+            tracing::debug!("  Registering file type: {} ({})", ft.display_name, ft.extension);
+            self.file_type_registry.register(ft, plugin_id.clone());
+        }
+
+        // Register editors
+        let editors = futures::executor::block_on(async {
+            wasm_plugin.editors().await
+        }).map_err(|e| PluginManagerError::LibraryLoadError {
+            path: path.to_path_buf(),
+            message: format!("Failed to get editors: {}", e),
+        })?;
+
+        for editor in editors {
+            tracing::debug!("  Registering editor: {}", editor.display_name);
+            self.editor_registry.register(editor, plugin_id.clone());
+        }
+
+        // Note: WASM plugins are stored in the WasmPluginHost, not in the plugins HashMap
+        // This is because they have different lifecycle management
+
+        tracing::info!("✓ WASM plugin {} registered successfully", plugin_id);
 
         Ok(plugin_id)
     }
