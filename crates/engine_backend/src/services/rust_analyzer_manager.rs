@@ -1565,23 +1565,6 @@ impl RustAnalyzerManager {
         
         self.send_request_async("codeAction/resolve", action.clone())
     }
-    
-    /// Parse a single text edit from JSON
-    fn parse_text_edit(text_edit: &Value, file_path: &str) -> Option<ui::diagnostics::TextEdit> {
-        let range = text_edit.get("range")?;
-        let new_text = text_edit.get("newText").and_then(|t| t.as_str())?;
-        let start = range.get("start")?;
-        let end = range.get("end")?;
-        
-        Some(ui::diagnostics::TextEdit {
-            file_path: file_path.to_string(),
-            start_line: start.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as usize + 1,
-            start_column: start.get("character").and_then(|c| c.as_u64()).unwrap_or(0) as usize + 1,
-            end_line: end.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as usize + 1,
-            end_column: end.get("character").and_then(|c| c.as_u64()).unwrap_or(0) as usize + 1,
-            new_text: new_text.to_string(),
-        })
-    }
 }
 
 impl Drop for RustAnalyzerManager {
