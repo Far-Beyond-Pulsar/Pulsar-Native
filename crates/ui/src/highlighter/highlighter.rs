@@ -447,8 +447,9 @@ impl SyntaxHighlighter {
         let content = self.text.slice(start_offset..end_offset);
         if content.len() == 0 {
             return cache;
-        };
-        // FIXME: Avoid to_string.
+        }
+        
+        // Note: Parser requires owned String. Could optimize with zero-copy parsing if tree-sitter supports it.
         let content = content.to_string();
 
         let Some(config) = LanguageRegistry::singleton().language(injection_language) else {

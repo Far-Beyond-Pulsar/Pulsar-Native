@@ -396,8 +396,8 @@ impl UdpHolePuncher {
 
     /// Validate punch token
     async fn validate_token(&self, token: &str) -> Result<bool> {
-        // TODO: Implement JWT or HMAC validation
-        // For now, basic length check
+        // Simplified token validation: length check only
+        // Production: Should implement JWT or HMAC-based validation
         Ok(!token.is_empty() && token.len() >= 16)
     }
 

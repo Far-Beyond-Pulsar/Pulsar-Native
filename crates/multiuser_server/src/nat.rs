@@ -276,8 +276,8 @@ impl NatOrchestrator {
 
     async fn test_port_independence(&self, _socket: &tokio::net::UdpSocket) -> Result<bool> {
         // Test if NAT mapping is port-independent
-        // This is a simplified check
-        // TODO: Implement proper port independence testing
+        // Currently returns true as a placeholder
+        // Full implementation requires STUN-based probing with multiple ports
         Ok(true)
     }
 

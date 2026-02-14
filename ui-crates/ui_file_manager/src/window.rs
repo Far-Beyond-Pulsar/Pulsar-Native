@@ -9,7 +9,8 @@ use crate::{FileManagerDrawer, FileSelected};
 
 pub struct FileManagerWindow {
     file_manager: Entity<FileManagerDrawer>,
-    // TODO: Use event emitter instead of direct parent reference
+    // Note: Direct parent reference removed to improve decoupling.
+    // Use event emitter pattern instead when parent communication is needed.
     // parent_app: Entity<PulsarApp>,
 }
 

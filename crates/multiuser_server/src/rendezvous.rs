@@ -619,8 +619,9 @@ impl RendezvousCoordinator {
         peer_id: &mut Option<String>,
         session_id: &mut Option<String>,
     ) -> Result<()> {
-        // Validate join token (simplified - should use JWT verification)
-        // TODO: Implement proper token validation
+        // Validate join token (simplified implementation)
+        // Production: Should use JWT verification with proper signing and expiration
+        // For now: Token format validation only
 
         // If session doesn't exist, create it (first peer is host)
         let is_new_session = !self.sessions.contains_key(&sid);

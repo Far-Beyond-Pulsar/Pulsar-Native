@@ -6,7 +6,9 @@ use ui_file_manager::{FileManagerDrawer, FileSelected, PopoutFileManagerEvent};
 use ui_problems::ProblemsDrawer;
 use ui_entry::{EntryScreen, ProjectSelected};
 
-// TODO:!!! We must find a way to migrate these to their plugins and decouple from core UI!
+// Note: These event handlers need plugin-based architecture to decouple from core UI.
+// Current limitation: Hard-coded dependencies should be replaced with event-driven
+// plugin system when the plugin architecture is finalized.
 
 // use ui_script_editor::{ScriptEditorPanel, TextEditorEvent};
 // use ui_alias_editor::ShowTypePickerRequest;

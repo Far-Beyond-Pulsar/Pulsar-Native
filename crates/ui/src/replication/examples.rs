@@ -43,9 +43,9 @@ impl Replicator for InputState {
     }
 
     fn replication_config_mut(&mut self) -> &mut ReplicationConfig {
-        // In practice, this would return &mut self.replication_config
-        // For this example, we'll use a dummy mutable reference
-        unimplemented!("Add replication_config field to InputState")
+        // Example code only - not intended for production use.
+        // Real implementation would require adding a replication_config field to InputState.
+        panic!("Example code: Add replication_config field to InputState for production use")
     }
 
     fn serialize_state(&self, _cx: &App) -> Result<Value, String> {

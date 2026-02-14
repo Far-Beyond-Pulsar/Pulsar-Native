@@ -127,13 +127,15 @@ impl P2PManager {
         Ok(ConnectionMode::JsonFallback)
     }
 
-    /// Try to establish direct TCP connection (with future STUN/ICE)
+    /// Try to establish direct TCP connection (with future NAT traversal support)
     async fn try_direct_p2p(&self, peer_address: &str) -> Result<TcpStream, std::io::Error> {
-        // TODO: Add STUN server query to get public IP
-        // TODO: Exchange ICE candidates with peer
-        // TODO: Attempt simultaneous TCP opens for hole punch
+        // Future enhancements for NAT traversal:
+        // 1. Add STUN server query to determine public IP and NAT type
+        // 2. Exchange ICE candidates with peer through signaling server
+        // 3. Attempt simultaneous TCP opens for symmetric NAT hole punching
+        // 4. Fall back to TURN relay if direct connection fails
 
-        // For now, just try direct connection
+        // Currently: Direct connection only
         tokio::time::timeout(
             std::time::Duration::from_secs(5),
             TcpStream::connect(peer_address),

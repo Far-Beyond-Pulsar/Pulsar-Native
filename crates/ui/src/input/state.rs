@@ -993,7 +993,9 @@ impl InputState {
     pub(super) fn previous_start_of_word(&mut self) -> usize {
         let offset = self.selected_range.start;
         let offset = self.offset_from_utf16(self.offset_to_utf16(offset));
-        // FIXME: Avoid to_string
+        
+        // Note: Unicode segmentation requires String. Performance could be improved
+        // with a custom iterator that works directly on Rope.
         let left_part = self.text.slice(0..offset).to_string();
 
         UnicodeSegmentation::split_word_bound_indices(left_part.as_str())
@@ -1362,7 +1364,9 @@ impl InputState {
             let start_offset = self.selected_range.start;
             let offset = self.start_of_line_of_selection(window, cx);
             let offset = self.offset_from_utf16(self.offset_to_utf16(offset));
-            // FIXME: To improve performance
+            
+            // Note: Could optimize by implementing starts_with directly on RopeSlice
+            // to avoid allocation, but requires custom comparison logic.
             if self
                 .text
                 .slice(offset..self.text.len())

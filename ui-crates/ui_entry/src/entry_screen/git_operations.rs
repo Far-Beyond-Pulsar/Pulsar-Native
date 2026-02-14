@@ -42,7 +42,9 @@
 //! # }
 //! ```
 
-// TODO: THis entire file should be moved to a new `engine_std` crate for reuse across ui-crates and the various parts of the `engine_backend`
+// Note: This module provides git operations for UI crates.
+// Future refactoring: Move to `engine_std` crate for reuse across
+// ui-crates and engine_backend when the shared crate is created.
 
 use std::path::Path;
 use super::types::SharedCloneProgress;

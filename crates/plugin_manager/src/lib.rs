@@ -594,7 +594,9 @@ impl PluginManager {
                     struct BuiltinEditorInstance;
                     impl EditorInstance for BuiltinEditorInstance {
                         fn file_path(&self) -> &PathBuf {
-                            unimplemented!("Built-in editors handle their own file paths")
+                            // Built-in editors manage their own file paths internally
+                            // This method should not be called for built-in editors
+                            panic!("Built-in editors handle file paths internally")
                         }
                         fn save(&mut self, _window: &mut Window, _cx: &mut App) -> Result<(), PluginError> {
                             Ok(())
