@@ -112,10 +112,12 @@ impl PulsarApp {
             )
         };
 
-        let center_tabs = if let DockItem::Tabs { view, .. } = &center_dock_item {
-            view.clone()
-        } else {
-            panic!("Expected tabs dock item");
+        let center_tabs = match &center_dock_item {
+            DockItem::Tabs { view, .. } => view.clone(),
+            _ => {
+                tracing::error!("Expected Tabs dock item for center, got different type");
+                panic!("Invalid dock configuration: center must be Tabs type");
+            }
         };
 
         dock_area.update(cx, |dock, cx| {

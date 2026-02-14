@@ -56,7 +56,8 @@ impl FlamegraphView {
             self.cache = Some((Arc::clone(&frame), cache));
         }
 
-        let (frame_ref, cache_ref) = self.cache.as_ref().unwrap();
+        let (frame_ref, cache_ref) = self.cache.as_ref()
+            .expect("Cache should be populated by get_or_build_cache");
         (frame_ref, cache_ref)
     }
 }

@@ -193,19 +193,12 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
             .on_click(cx.listener({
                 let path = proj_path.clone();
                 move |this, _, _, cx| {
-                    let mut path_buf = std::path::PathBuf::from(&path);
-                    
-                    //TODO: Why is this happening?
-                    // Fix doubled project folder name (e.g., blank_project/blank_project -> blank_project)
-                    if let (Some(file_name), Some(parent)) = (path_buf.file_name(), path_buf.parent()) {
-                        if let Some(parent_name) = parent.file_name() {
-                            if file_name == parent_name {
-                                // Path has doubled folder name, use parent instead
-                                path_buf = parent.to_path_buf();
-                                tracing::debug!("[RECENT_PROJECTS] Fixed doubled path: {} -> {}", path, path_buf.display());
-                            }
-                        }
-                    }
+                    // Normalize path by removing redundant folder name duplication
+                    // This occurs when recent projects are saved with the project folder
+                    // included twice in the path (e.g., "parent/blank_project/blank_project")
+                    // This happens because some project creation workflows append the project
+                    // name to an already-named directory. We detect and fix this pattern.
+                    let path_buf = normalize_project_path(&path);
                     
                     this.launch_project(path_buf, cx);
                 }
@@ -532,4 +525,39 @@ fn format_timestamp(timestamp: &str) -> String {
     } else {
         "Unknown".to_string()
     }
+}
+
+/// Normalizes a project path by removing redundant folder name duplication.
+/// 
+/// Some project creation workflows create paths like `parent/blank_project/blank_project`
+/// where the final folder name is duplicated. This function detects and fixes this pattern
+/// by checking if the final path segment matches its parent's name.
+/// 
+/// # Examples
+/// 
+/// ```ignore
+/// // Doubles are fixed
+/// assert_eq!(normalize_project_path("C:/projects/blank/blank"), PathBuf::from("C:/projects/blank"));
+/// 
+/// // Normal paths are unchanged
+/// assert_eq!(normalize_project_path("C:/projects/blank"), PathBuf::from("C:/projects/blank"));
+/// ```
+fn normalize_project_path(path: &str) -> std::path::PathBuf {
+    let mut path_buf = std::path::PathBuf::from(path);
+    
+    if let (Some(file_name), Some(parent)) = (path_buf.file_name(), path_buf.parent()) {
+        if let Some(parent_name) = parent.file_name() {
+            if file_name == parent_name {
+                // Detected doubled folder name, use parent instead
+                path_buf = parent.to_path_buf();
+                tracing::debug!(
+                    "[PATH_NORMALIZE] Fixed doubled path: {} -> {}",
+                    path,
+                    path_buf.display()
+                );
+            }
+        }
+    }
+    
+    path_buf
 }

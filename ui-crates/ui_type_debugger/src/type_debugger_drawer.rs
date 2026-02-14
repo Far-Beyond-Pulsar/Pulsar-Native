@@ -523,19 +523,19 @@ impl TypeDebuggerDrawer {
                                     .child(type_info.display_name.clone())
                             )
                             // Description
-                            .when(type_info.description.is_some(), |container| {
+                            .when_some(type_info.description.as_ref(), |container, desc| {
                                 container.child(
                                     div()
                                         .w_full()
                                         .text_xs()
                                         .text_color(cx.theme().muted_foreground)
                                         .line_height(rems(1.4))
-                                        .child(type_info.description.as_ref().unwrap().clone())
+                                        .child(desc.clone())
                                 )
                             })
                             // File path
-                            .when(type_info.file_path.is_some(), |container| {
-                                let display_path = self.get_display_path(type_info.file_path.as_ref().unwrap());
+                            .when_some(type_info.file_path.as_ref(), |container, file_path| {
+                                let display_path = self.get_display_path(file_path);
                                 container.child(
                                     div()
                                         .w_full()

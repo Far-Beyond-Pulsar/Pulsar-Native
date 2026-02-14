@@ -80,13 +80,17 @@ impl LevelEditorPanel {
         let viewport_state = viewport.read(cx).shared_state();
         
         // Get the central GameThread from the global EngineBackend
-        let game_thread = if let Some(backend) = engine_backend::EngineBackend::global() {
-            let backend_guard = backend.read();
-            backend_guard.game_thread()
-                .expect("GameThread not initialized in EngineBackend")
-                .clone()
-        } else {
-            panic!("EngineBackend not initialized! Cannot create level editor viewport.");
+        let game_thread = match engine_backend::EngineBackend::global() {
+            Some(backend) => {
+                let backend_guard = backend.read();
+                backend_guard.game_thread()
+                    .expect("GameThread not initialized in EngineBackend - engine failed to initialize properly")
+                    .clone()
+            }
+            None => {
+                tracing::error!("EngineBackend not initialized when creating level editor");
+                panic!("EngineBackend must be initialized before creating LevelEditorPanel. This is a critical engine initialization failure.");
+            }
         };
 
         // CRITICAL: Start disabled for Edit mode (editor starts in Edit, not Play)
