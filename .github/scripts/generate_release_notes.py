@@ -37,18 +37,18 @@ def build_prompt(repo_owner, repo_name, version, commits_json):
 Commits since last release:
 {commits_text}
 
-Please analyze these commits and categorize the changes into sections. Use these sections in this order:
-- **Highlights**: 2 to 5 most important user-facing changes
-- **Breaking Changes**: Any breaking changes (see special rules below)
-- **Features**: New functionality or capabilities
-- **Improvements**: Enhancements to existing features
-- **Bug Fixes**: Corrections to defects
-- **Performance**: Speed, memory, or efficiency improvements
-- **Security**: Vulnerability fixes or security hardening
-- **Plugin API**: Changes that affect plugin authors, even if not breaking
-- **Documentation**: Documentation updates
-- **Developer Experience**: Tooling, build system, CI, scripts, tests, or internal workflows
-- **Internal**: Refactoring, dependencies, code cleanup
+Please analyze these commits and categorize the changes into sections. Use these sections in this order and include the emoji in the H2 heading:
+- **✨ Highlights**: 2 to 5 most important user-facing changes
+- **⚠️ Breaking Changes**: Any breaking changes (see special rules below)
+- **🚀 Features**: New functionality or capabilities
+- **🛠️ Improvements**: Enhancements to existing features
+- **🐛 Bug Fixes**: Corrections to defects
+- **⚡ Performance**: Speed, memory, or efficiency improvements
+- **🔒 Security**: Vulnerability fixes or security hardening
+- **🧩 Plugin API**: Changes that affect plugin authors, even if not breaking
+- **📚 Documentation**: Documentation updates
+- **🧰 Developer Experience**: Tooling, build system, CI, scripts, tests, or internal workflows
+- **🧹 Internal**: Refactoring, dependencies, code cleanup
 
 Breaking changes rules:
 - If any change is a breaking change to the plugins API, include a GitHub CAUTION callout under the **Breaking Changes** section.
@@ -63,7 +63,9 @@ Formatting rules (strict):
 - Use '-' bullet points only, no nested lists.
 - Each bullet: short sentence, sentence case, ends with a period.
 - Each bullet MUST end with a commit reference in the form `abc1234` linked to the commit URL.
-- Use full commit URLs: https://github.com/Far-Beyond-Pulsar/Pulsar-Native/commit/<sha>.
+- Use full commit URLs: https://github.com/{repo_owner}/{repo_name}/commit/<sha>.
+- Each bullet MUST include GitHub mentions for everyone involved in the commit (author and any co-authors).
+- Use @username mentions when available; otherwise include the provided name as plain text.
 - No trailing whitespace.
 
 General guidelines:
