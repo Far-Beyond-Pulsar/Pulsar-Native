@@ -37,21 +37,40 @@ def build_prompt(repo_owner, repo_name, version, commits_json):
 Commits since last release:
 {commits_text}
 
-Please analyze these commits and categorize the changes into sections. Use these sections:
+Please analyze these commits and categorize the changes into sections. Use these sections in this order:
+- **Highlights**: 2 to 5 most important user-facing changes
+- **Breaking Changes**: Any breaking changes (see special rules below)
 - **Features**: New functionality or capabilities
-- **Improvements**: Enhancements to existing features  
+- **Improvements**: Enhancements to existing features
 - **Bug Fixes**: Corrections to defects
+- **Performance**: Speed, memory, or efficiency improvements
+- **Security**: Vulnerability fixes or security hardening
+- **Plugin API**: Changes that affect plugin authors, even if not breaking
 - **Documentation**: Documentation updates
-- **Internal**: Refactoring, dependencies, CI/CD, build changes, etc.
+- **Developer Experience**: Tooling, build system, CI, scripts, tests, or internal workflows
+- **Internal**: Refactoring, dependencies, code cleanup
 
-Guidelines:
-- Use bullet points for each change
-- Keep descriptions concise but informative
-- Do NOT include commit SHAs
-- If a category has no items, omit that section entirely
-- Merge similar commits into single entries when appropriate
-- Focus on user-facing changes for Features, Improvements, and Bug Fixes
-- Place technical/infrastructure changes in Internal
+Breaking changes rules:
+- If any change is a breaking change to the plugins API, include a GitHub CAUTION callout under the **Breaking Changes** section.
+- Use the exact format:
+> [!CAUTION]
+> Breaking change: <short description>
+- If there are multiple breaking changes, include multiple callouts.
+
+Formatting rules (strict):
+- Use GitHub Markdown with H2 headings (e.g. "## Features").
+- One blank line between sections, and one blank line between a heading and its list.
+- Use '-' bullet points only, no nested lists.
+- Each bullet: short sentence, sentence case, ends with a period.
+- Each bullet MUST end with a commit reference in the form `abc1234` linked to the commit URL.
+- Use full commit URLs: https://github.com/Far-Beyond-Pulsar/Pulsar-Native/commit/<sha>.
+- No trailing whitespace.
+
+General guidelines:
+- If a section has no items, omit that section entirely.
+- Merge similar commits into single entries when appropriate.
+- Focus on user-facing changes for Highlights, Features, Improvements, Bug Fixes.
+- Place technical/infrastructure changes in Developer Experience or Internal.
 
 Return ONLY the markdown content without code fences or explanations/anecdotes."""
 
