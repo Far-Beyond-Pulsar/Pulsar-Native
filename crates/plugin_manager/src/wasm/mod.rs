@@ -86,7 +86,7 @@ impl WasmPluginHost {
 
         let mut store = Store::new(&self.engine, state);
         
-        let (bindings, _instance) =
+        let bindings =
             PulsarPlugin::instantiate_async(&mut store, &component, &self.linker)
                 .await
                 .context("Failed to instantiate WASM plugin")?;
