@@ -14,7 +14,7 @@ The script uses GitHub's official Models API to analyze commit messages and gene
 
 ### Authentication
 
-The script uses the default `GITHUB_TOKEN` provided by GitHub Actions, which automatically has the necessary permissions. No additional setup is required!
+The script uses the default `GITHUB_TOKEN` provided by GitHub Actions. The workflow is configured with `models: read` permission to access the GitHub Models API. No additional setup is required!
 
 If you want to use a custom PAT (for rate limits or specific models), it needs the `models:read` permission:
 1. Go to GitHub Settings → Developer Settings → Personal Access Tokens (Fine-grained)

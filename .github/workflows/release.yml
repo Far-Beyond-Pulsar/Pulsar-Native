@@ -49,6 +49,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      models: read
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
