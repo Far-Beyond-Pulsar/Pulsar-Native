@@ -1,0 +1,86 @@
+// WIT interface for Pulsar editor plugins
+// Production version matching our existing EditorPlugin API
+
+package pulsar:editor;
+
+interface types {
+    // Core types
+    record plugin-id {
+        value: string,
+    }
+    
+    record plugin-metadata {
+        id: plugin-id,
+        name: string,
+        version: string,
+        author: string,
+        description: string,
+    }
+    
+    record file-type-id {
+        value: string,
+    }
+    
+    record editor-id {
+        value: string,
+    }
+    
+    record file-type-definition {
+        id: file-type-id,
+        extension: string,
+        display-name: string,
+        icon: string,
+        color: u32,
+        categories: list<string>,
+    }
+    
+    record editor-metadata {
+        id: editor-id,
+        display-name: string,
+        supported-file-types: list<file-type-id>,
+    }
+    
+    record panel-data {
+        // Serialized panel state
+        json: string,
+    }
+}
+
+interface host {
+    use types.{panel-data};
+    
+    // Host functions callable from plugin
+    log-debug: func(message: string);
+    log-info: func(message: string);
+    log-warn: func(message: string);
+    log-error: func(message: string);
+    
+    // File operations
+    read-file: func(path: string) -> result<string, string>;
+    write-file: func(path: string, content: string) -> result<_, string>;
+    file-exists: func(path: string) -> bool;
+}
+
+interface plugin {
+    use types.{plugin-metadata, file-type-definition, editor-metadata, editor-id, file-type-id, panel-data};
+    
+    // Plugin lifecycle
+    metadata: func() -> plugin-metadata;
+    file-types: func() -> list<file-type-definition>;
+    editors: func() -> list<editor-metadata>;
+    on-load: func();
+    on-unload: func();
+    
+    // Editor operations
+    create-editor: func(editor-id: editor-id, file-path: string) -> result<string, string>;
+    save-editor: func(instance-id: string) -> result<_, string>;
+    reload-editor: func(instance-id: string) -> result<_, string>;
+    is-dirty: func(instance-id: string) -> bool;
+    get-file-path: func(instance-id: string) -> string;
+    render-editor: func(instance-id: string) -> panel-data;
+}
+
+world pulsar-plugin {
+    export plugin;
+    import host;
+}

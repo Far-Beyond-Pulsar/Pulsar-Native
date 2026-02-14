@@ -83,6 +83,12 @@ ui_plugin_manager  = { path = "ui-crates/ui_plugin_manager" }
 plugin_editor_api = { path = "crates/plugin_editor_api"}
 plugin_manager    = { path = "crates/plugin_manager" }
 
+# ---------- WASM Runtime ----------
+wasmtime = "27.0"
+wasmtime-wasi = "27.0"
+wasmparser = "0.224"
+
+
 # ---------- Helio Renderer (blade-graphics based) ----------
 helio-core                       = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="f7eee35e85b9997422d48e324c07b6857b611185"}
 helio-render                     = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="f7eee35e85b9997422d48e324c07b6857b611185"}

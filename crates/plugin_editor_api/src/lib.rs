@@ -1,8 +1,44 @@
 //! # Pulsar Editor Plugin API
 //!
-//! This crate defines the core API for creating editor plugins that can be dynamically
-//! loaded by the Pulsar engine. Plugins are compiled as dynamic libraries (.dll/.so/.dylib)
-//! and loaded from the `plugins/editor/` directory at runtime.
+//! This crate defines the core API for creating editor plugins that can be loaded
+//! by the Pulsar engine. Plugins can be built as:
+//!
+//! - **WebAssembly** (recommended): Sandboxed, safe, cross-platform
+//! - **Dynamic libraries** (legacy): Native performance, for built-in editors only
+//!
+//! ## WebAssembly Plugins (Recommended)
+//!
+//! WASM plugins are the modern, safe way to extend Pulsar:
+//!
+//! ```toml
+//! [lib]
+//! crate-type = ["cdylib"]
+//!
+//! [dependencies]
+//! pulsar_plugin_api = "0.1"
+//! ```
+//!
+//! ```rust,ignore
+//! use pulsar_plugin_api::*;
+//!
+//! struct MyEditorPlugin {
+//!     // plugin state
+//! }
+//!
+//! impl EditorPlugin for MyEditorPlugin {
+//!     fn metadata(&self) -> PluginMetadata { ... }
+//!     // implement trait methods
+//! }
+//!
+//! // Register plugin for WASM
+//! register_plugin!(MyEditorPlugin);
+//! ```
+//!
+//! Build with:
+//! ```bash
+//! rustup target add wasm32-wasip2
+//! cargo build --target wasm32-wasip2 --release
+//! ```
 //!
 //! ## Safety and Versioning
 //!

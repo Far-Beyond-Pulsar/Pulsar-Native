@@ -6,11 +6,19 @@ edition = "2021"
 [dependencies]
 plugin_editor_api = { path = "../plugin_editor_api" }
 
-# Dynamic library loading
+# Dynamic library loading (legacy DLL support)
 libloading = "0.8"
 serde_json = "1.0"
 tracing = { workspace = true }
 once_cell = "1.19"
+
+# WASM runtime - full component model support
+wasmtime = { workspace = true, features = ["component-model", "async"] }
+wasmtime-wasi = { workspace = true }
+wasmparser = { workspace = true }
+anyhow = { workspace = true }
+futures = "0.3"
+async-trait = "0.1"
 
 # UI dependencies
 gpui = { workspace = true }
@@ -19,5 +27,9 @@ ui = { workspace = true }
 # File system operations
 walkdir = "2.4"
 
+[build-dependencies]
+anyhow = "1.0"
+
 [dev-dependencies]
 env_logger = "0.11"
+

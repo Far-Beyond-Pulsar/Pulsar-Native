@@ -71,9 +71,11 @@ use once_cell::sync::OnceCell;
 
 mod registry;
 pub mod builtin;
+pub mod wasm;
 
 pub use registry::{EditorRegistry, FileTypeRegistry};
 pub use builtin::{BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext};
+pub use wasm::{WasmPluginHost, WasmPlugin};
 
 // ============================================================================
 // Global Plugin Manager
