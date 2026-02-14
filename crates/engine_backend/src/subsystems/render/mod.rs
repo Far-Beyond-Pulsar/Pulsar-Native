@@ -1,15 +1,14 @@
 // Rendering subsystem for Pulsar Engine Backend
 
 pub mod helio_renderer;
-// Obsolete bevy-dependent files (commented out during bevy removal):
-// pub mod zero_copy_buffer;
-// pub mod native_texture;
 pub mod dxgi_shared_texture;
+pub mod handle_utils;
+// pub mod native_texture; // Obsolete - depends on bevy which is removed
 
 pub use helio_renderer::{HelioRenderer, CameraInput, RenderMetrics, GpuProfilerData};
-// pub use zero_copy_buffer::{ZeroCopyFrameBuffer, PersistentMappedBuffer};
-// pub use native_texture::{NativeTextureHandle, SharedTextureInfo, TextureFormat};
 pub use dxgi_shared_texture::*;
+pub use handle_utils::{handle_to_usize, usize_to_handle};
+// pub use native_texture::{NativeTextureHandle, SharedTextureInfo, TextureFormat};
 
 // Stub for compatibility
 pub struct WgpuRenderer;

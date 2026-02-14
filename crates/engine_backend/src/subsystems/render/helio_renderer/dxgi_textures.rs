@@ -43,7 +43,7 @@ impl HelioSharedTextures {
 
         // Store handles for GPUI compositor
         let handle_values: Vec<usize> = shared_handles.iter()
-            .map(|h| dxgi_unsafe::handle_to_usize(*h))
+            .map(|h| crate::subsystems::render::handle_utils::handle_to_usize(*h))
             .collect();
         
         // Store handles for GPUI compositor (disabled - native_texture module removed)

@@ -6,7 +6,8 @@
 use gpui::*;
 use winit::keyboard::ModifiersState;
 use winit::window::WindowId;
-use crate::window::{WinitGpuiApp, ToGpuiModifiers};
+use crate::window::WinitGpuiApp;
+use super::conversion::ToGpuiModifiers;
 
 /// Handle keyboard modifier state changes
 ///

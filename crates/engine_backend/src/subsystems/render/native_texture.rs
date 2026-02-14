@@ -13,6 +13,7 @@ use bevy::render::{
     renderer::RenderDevice,
 };
 use anyhow::{Context, Result};
+use crate::subsystems::render::handle_utils::{handle_to_usize, usize_to_handle};
 
 #[cfg(target_os = "windows")]
 use std::sync::OnceLock;

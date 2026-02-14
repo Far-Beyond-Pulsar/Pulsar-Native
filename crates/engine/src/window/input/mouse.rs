@@ -6,78 +6,9 @@
 use gpui::*;
 use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, MouseButton as WinitMouseButton, MouseScrollDelta};
-use winit::window::{WindowId, ResizeDirection, CursorIcon};
-use crate::window::{WinitGpuiApp, ToGpuiMouseButton};
-
-// Constants for window manipulation (in logical pixels, will be scaled)
-const TITLEBAR_HEIGHT_LOGICAL: f64 = 34.0;  // Match TitleBar::TITLE_BAR_HEIGHT
-const RESIZE_BORDER: f64 = 8.0;     // Size of resize grip area in physical pixels
-const WINDOW_CONTROLS_WIDTH_LOGICAL: f64 = 138.0;  // Width of min/max/close buttons (3 * 46px) in logical pixels
-
-/// Determine if a position is in the titlebar drag area
-/// All parameters should be in physical pixels
-fn is_in_titlebar_drag_area(x: f64, y: f64, window_width: f64, scale_factor: f64, is_maximized: bool) -> bool {
-    if is_maximized {
-        return false;  // Can't drag maximized windows
-    }
-
-    let titlebar_height_physical = TITLEBAR_HEIGHT_LOGICAL * scale_factor;
-    let controls_width_physical = WINDOW_CONTROLS_WIDTH_LOGICAL * scale_factor;
-
-    // In titlebar height
-    if y > titlebar_height_physical {
-        return false;
-    }
-
-    // Not in window controls area (right side)
-    if x > window_width - controls_width_physical {
-        return false;
-    }
-
-    true
-}
-
-/// Determine resize direction based on cursor position
-fn get_resize_direction(x: f64, y: f64, window_width: f64, window_height: f64, is_maximized: bool) -> Option<ResizeDirection> {
-    if is_maximized {
-        return None;  // Can't resize maximized windows
-    }
-
-    let on_left = x < RESIZE_BORDER;
-    let on_right = x > window_width - RESIZE_BORDER;
-    let on_top = y < RESIZE_BORDER;
-    let on_bottom = y > window_height - RESIZE_BORDER;
-
-    // Corners take priority
-    if on_top && on_left {
-        return Some(ResizeDirection::NorthWest);
-    }
-    if on_top && on_right {
-        return Some(ResizeDirection::NorthEast);
-    }
-    if on_bottom && on_left {
-        return Some(ResizeDirection::SouthWest);
-    }
-    if on_bottom && on_right {
-        return Some(ResizeDirection::SouthEast);
-    }
-
-    // Edges
-    if on_top {
-        return Some(ResizeDirection::North);
-    }
-    if on_bottom {
-        return Some(ResizeDirection::South);
-    }
-    if on_left {
-        return Some(ResizeDirection::West);
-    }
-    if on_right {
-        return Some(ResizeDirection::East);
-    }
-
-    None
-}
+use winit::window::{WindowId, CursorIcon, ResizeDirection};
+use crate::window::WinitGpuiApp;
+use super::conversion::{ToGpuiMouseButton, is_in_titlebar_drag_area, get_resize_direction};
 
 /// Handle cursor movement events
 ///

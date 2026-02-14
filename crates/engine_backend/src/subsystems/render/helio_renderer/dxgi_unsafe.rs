@@ -5,6 +5,8 @@
 //!
 //! ⚠️ WARNING: This module contains unsafe code that depends on blade-graphics internals.
 //! It may break if blade-graphics is updated.
+//!
+//! For handle conversion utilities, see `crate::subsystems::render::handle_utils`.
 
 #[cfg(target_os = "windows")]
 use windows::Win32::Graphics::Direct3D12::*;
@@ -16,6 +18,7 @@ use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Direct3D::*;
 
 use blade_graphics as gpu;
+use crate::subsystems::render::handle_utils::{handle_to_usize, usize_to_handle};
 
 /// Attempt to extract raw D3D12 device from blade-graphics Context
 /// 
@@ -153,25 +156,7 @@ pub fn create_shared_textures_workaround(
     }
 }
 
-/// Get handle value as usize for storage
-#[cfg(target_os = "windows")]
-pub fn handle_to_usize(handle: HANDLE) -> usize {
-    handle.0 as usize
-}
-
-/// Convert usize back to HANDLE
-#[cfg(target_os = "windows")]
-pub fn usize_to_handle(value: usize) -> HANDLE {
-    HANDLE(value as *mut core::ffi::c_void)
-}
-
 #[cfg(not(target_os = "windows"))]
 pub fn create_shared_textures_workaround(_width: u32, _height: u32) -> std::result::Result<(Vec<usize>, ()), String> {
     Err("DXGI shared textures only supported on Windows".to_string())
 }
-
-#[cfg(not(target_os = "windows"))]
-pub fn handle_to_usize(handle: usize) -> usize { handle }
-
-#[cfg(not(target_os = "windows"))]
-pub fn usize_to_handle(value: usize) -> usize { value }

@@ -54,7 +54,7 @@ use ui_loading_screen::create_loading_component;
 use ui_about::create_about_window;
 use ui_documentation::create_documentation_window;
 use ui_common::menu::{AboutApp, ShowDocumentation};
-use crate::window::{convert_modifiers, convert_mouse_button, WindowState, WindowIdMap};
+use crate::window::{WindowState, WindowIdMap, ToGpuiModifiers, ToGpuiMouseButton};
 use engine_state::{EngineContext, WindowRequest};
 use gpui::*;
 use raw_window_handle::HasWindowHandle;

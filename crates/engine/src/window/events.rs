@@ -1,14 +1,14 @@
 //! Event Handling Utilities
 //!
-//! This module provides utilities for converting and processing events from Winit to GPUI,
-//! including mouse/keyboard input conversion, motion smoothing, and click detection.
+//! This module provides utilities for processing events from Winit to GPUI,
+//! including motion smoothing and click detection.
 //!
 //! ## Components
 //!
-//! - `convert_mouse_button()` - Converts Winit mouse buttons to GPUI format
-//! - `convert_modifiers()` - Converts Winit keyboard modifiers to GPUI format
 //! - `SimpleClickState` - Tracks clicks for double-click detection
 //! - `MotionSmoother` - Smooths mouse movement with interpolation
+//!
+//! For type conversion utilities, see `crate::window::input::conversion`.
 //!
 //! ## Motion Smoothing
 //!
@@ -25,74 +25,9 @@
 use gpui::*;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
-use winit::event::MouseButton as WinitMouseButton;
 
-/// Extension trait for converting Winit MouseButton to GPUI MouseButton
-///
-/// Provides idiomatic `.to_gpui()` method for type conversion.
-pub trait ToGpuiMouseButton {
-    fn to_gpui(self) -> MouseButton;
-}
-
-impl ToGpuiMouseButton for WinitMouseButton {
-    fn to_gpui(self) -> MouseButton {
-        match self {
-            WinitMouseButton::Left => MouseButton::Left,
-            WinitMouseButton::Right => MouseButton::Right,
-            WinitMouseButton::Middle => MouseButton::Middle,
-            WinitMouseButton::Back => MouseButton::Navigate(NavigationDirection::Back),
-            WinitMouseButton::Forward => MouseButton::Navigate(NavigationDirection::Forward),
-            WinitMouseButton::Other(_) => MouseButton::Left, // Fallback to left for unknown buttons
-        }
-    }
-}
-
-/// Extension trait for converting Winit modifiers to GPUI modifiers
-///
-/// Provides idiomatic `.to_gpui()` method for type conversion.
-pub trait ToGpuiModifiers {
-    fn to_gpui(&self) -> Modifiers;
-}
-
-impl ToGpuiModifiers for winit::keyboard::ModifiersState {
-    fn to_gpui(&self) -> Modifiers {
-        Modifiers {
-            control: self.control_key(),
-            alt: self.alt_key(),
-            shift: self.shift_key(),
-            platform: self.super_key(), // Windows key on Windows, Command on Mac
-            function: false,            // Winit doesn't track function key separately
-        }
-    }
-}
-
-/// Convert Winit MouseButton to GPUI MouseButton
-///
-/// # Arguments
-/// * `button` - Winit mouse button to convert
-///
-/// # Returns
-/// Equivalent GPUI mouse button
-///
-/// # Note
-/// Consider using the extension trait method `button.to_gpui()` for more idiomatic code.
-pub fn convert_mouse_button(button: WinitMouseButton) -> MouseButton {
-    button.to_gpui()
-}
-
-/// Convert Winit keyboard modifiers to GPUI modifiers
-///
-/// # Arguments
-/// * `winit_mods` - Winit modifier state
-///
-/// # Returns
-/// GPUI Modifiers struct
-///
-/// # Note
-/// Consider using the extension trait method `winit_mods.to_gpui()` for more idiomatic code.
-pub fn convert_modifiers(winit_mods: &winit::keyboard::ModifiersState) -> Modifiers {
-    winit_mods.to_gpui()
-}
+// Re-export conversion utilities from the conversion module
+pub use super::input::conversion::{ToGpuiMouseButton, ToGpuiModifiers};
 
 /// Simple click state tracking for double-click detection
 ///
