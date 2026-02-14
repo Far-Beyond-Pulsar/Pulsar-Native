@@ -59,6 +59,7 @@ pub mod app;
 pub mod d3d11;
 pub mod events;
 pub mod state;
+pub mod window_config;
 
 // New modular structure
 pub mod handlers;

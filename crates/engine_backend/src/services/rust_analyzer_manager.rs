@@ -1113,12 +1113,7 @@ impl RustAnalyzerManager {
 
     /// Convert a file path to a URI
     fn path_to_uri(&self, path: &PathBuf) -> String {
-        let path_str = path.to_string_lossy().replace("\\", "/");
-        if path_str.starts_with("C:/") || path_str.starts_with("c:/") {
-            format!("file:///{}", path_str)
-        } else {
-            format!("file://{}", path_str)
-        }
+        super::path_utils::path_to_uri(path)
     }
 
     /// Send a notification to rust-analyzer

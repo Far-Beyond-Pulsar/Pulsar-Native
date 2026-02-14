@@ -55,6 +55,7 @@ use ui_about::create_about_window;
 use ui_documentation::create_documentation_window;
 use ui_common::menu::{AboutApp, ShowDocumentation};
 use crate::window::{WindowState, WindowIdMap, ToGpuiModifiers, ToGpuiMouseButton};
+use crate::window::window_config;
 use engine_state::{EngineContext, WindowRequest};
 use gpui::*;
 use raw_window_handle::HasWindowHandle;
@@ -142,21 +143,15 @@ impl WinitGpuiApp {
     pub(crate) fn create_window(&mut self, event_loop: &ActiveEventLoop, request: WindowRequest) {
         profiling::profile_scope!("Window::Create");
 
-        let (title, size) = match &request {
-            WindowRequest::Entry => ("Pulsar Engine", (1280.0, 720.0)),
-            WindowRequest::Settings => ("Settings", (800.0, 600.0)),
-            WindowRequest::About => ("About Pulsar Engine", (600.0, 900.0)),
-            WindowRequest::Documentation => ("Documentation", (1400.0, 900.0)),
-            WindowRequest::ProjectEditor { .. } => ("Pulsar Engine - Project Editor", (1920.0, 1080.0)),
-            WindowRequest::ProjectSplash { .. } => ("Loading Project...", (960.0, 540.0)),
-            WindowRequest::CloseWindow { .. } => return, // Handled elsewhere
+        let Some(config) = window_config::WindowConfig::for_request(&request) else {
+            return; // CloseWindow handled elsewhere
         };
 
-        tracing::debug!("🪟 [CREATE-WINDOW] Creating new window: {} (type: {:?})", title, request);
+        tracing::debug!("🪟 [CREATE-WINDOW] Creating new window: {} (type: {:?})", config.title, request);
 
         let mut window_attributes = WinitWindow::default_attributes()
-            .with_title(title)
-            .with_inner_size(winit::dpi::LogicalSize::new(size.0, size.1))
+            .with_title(config.title)
+            .with_inner_size(winit::dpi::LogicalSize::new(config.width, config.height))
             .with_transparent(false)
             .with_decorations(false) // Use custom titlebar instead of OS decorations
             .with_resizable(true); // Enable resize for borderless window
@@ -183,7 +178,7 @@ impl WinitGpuiApp {
         *self.engine_context.window_count.lock() += 1;
         let count = *self.engine_context.window_count.lock();
 
-        tracing::debug!("Γ£à Window created: {} (total windows: {})", title, count);
+        tracing::debug!("Window created: {} (total windows: {})", config.title, count);
     }
 }
 

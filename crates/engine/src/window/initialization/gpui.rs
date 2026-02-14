@@ -16,6 +16,30 @@ use crate::window::{WinitGpuiApp, WindowState};
 use crate::window::initialization::window_content;
 use std::sync::Arc;
 
+/// Macro to register window request actions with less boilerplate
+/// 
+/// Eliminates repetitive context cloning for action handlers.
+/// 
+/// # Example
+/// ```ignore
+/// register_window_actions!(gpui_app, engine_context, {
+///     OpenSettings => WindowRequest::Settings,
+///     AboutApp => WindowRequest::About,
+/// });
+/// ```
+macro_rules! register_window_actions {
+    ($app:expr, $ctx:expr, { $($action:ty => $request:expr),+ $(,)? }) => {
+        $(
+            {
+                let ctx = $ctx.clone();
+                $app.on_action(move |_: &$action, _app_cx| {
+                    ctx.request_window($request);
+                });
+            }
+        )+
+    };
+}
+
 /// Initialize a GPUI window with full setup
 ///
 /// This function performs the complete GPUI initialization sequence:
@@ -98,22 +122,11 @@ pub fn initialize_gpui_window(
             // Blueprint editor keybindings handled by plugin
         ]);
 
-        let engine_context = engine_context_for_actions.clone();
-        gpui_app.on_action(move |_: &OpenSettings, _app_cx| {
-            tracing::debug!("⚙️ Settings window requested - creating new window!");
-            engine_context.request_window(WindowRequest::Settings);
-        });
-
-        let engine_context = engine_context_for_actions.clone();
-        gpui_app.on_action(move |_: &AboutApp, _app_cx| {
-            tracing::debug!("ℹ️ About window requested - creating new window!");
-            engine_context.request_window(WindowRequest::About);
-        });
-
-        let engine_context = engine_context_for_actions.clone();
-        gpui_app.on_action(move |_: &ShowDocumentation, _app_cx| {
-            tracing::debug!("📖 Documentation window requested - creating new window!");
-            engine_context.request_window(WindowRequest::Documentation);
+        // Register action handlers using macro - eliminates repetitive cloning
+        register_window_actions!(gpui_app, engine_context_for_actions, {
+            OpenSettings => WindowRequest::Settings,
+            AboutApp => WindowRequest::About,
+            ShowDocumentation => WindowRequest::Documentation,
         });
 
         gpui_app.activate(true);
