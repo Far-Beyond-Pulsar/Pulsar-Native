@@ -8,11 +8,11 @@ mod tiles;
 
 use anyhow::Result;
 use gpui::{
-    actions, canvas, div, prelude::FluentBuilder, AnyElement, AnyView, App, AppContext, Axis,
+    actions, canvas, div, prelude::FluentBuilder, AnyElement, AnyView, AnyWindowHandle, App, AppContext, Axis,
     Bounds, Context, Edges, Entity, EntityId, EventEmitter, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, Render, SharedString, Styled, Subscription, WeakEntity, Window,
 };
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 pub use dock::*;
 pub use panel::*;
@@ -20,6 +20,17 @@ pub use stack_panel::*;
 pub use state::*;
 pub use tab_panel::*;
 pub use tiles::*;
+
+/// Information about where a panel was popped out from
+#[derive(Clone)]
+pub struct PanelSource {
+    /// The TabPanel the panel came from
+    pub tab_panel: WeakEntity<TabPanel>,
+    /// The parent window handle
+    pub parent_window: AnyWindowHandle,
+    /// The index position in the original tab panel (for restoring order)
+    pub tab_index: Option<usize>,
+}
 
 pub(crate) fn init(cx: &mut App) {
     PanelRegistry::init(cx);
@@ -963,9 +974,23 @@ impl DockArea {
                     PanelEvent::TabClosed(_) => {
                         // Do nothing for TabClosed
                     }
-                    PanelEvent::MoveToNewWindow(panel, position) => {
-                        println!("[DOCK_AREA] Received MoveToNewWindow from TabPanel, creating popout window");
-                        Self::create_popout_window(panel.clone(), *position, cx);
+                    PanelEvent::MoveToNewWindow { panel, position, source_tab_panel, source_index } => {
+                        println!("[DOCK_AREA] Received MoveToNewWindow from TabPanel");
+                        println!("[DOCK_AREA] Source index: {}", source_index);
+                        let parent_window_handle = window.window_handle();
+                        
+                        let source = PanelSource {
+                            tab_panel: source_tab_panel.clone(),
+                            parent_window: parent_window_handle.into(),
+                            tab_index: Some(*source_index),
+                        };
+                        
+                        Self::create_popout_window(
+                            panel.clone(), 
+                            *position, 
+                            Some(source),
+                            cx
+                        );
                     }
                     PanelEvent::TabChanged { active_index: _ } => {
                         // Do nothing for TabChanged     
@@ -1030,6 +1055,7 @@ impl DockArea {
     fn create_popout_window(
         panel: Arc<dyn PanelView>,
         position: gpui::Point<Pixels>,
+        source: Option<PanelSource>,
         cx: &mut App,
     ) {
         use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
@@ -1094,7 +1120,13 @@ impl DockArea {
             });
 
             println!("[DOCK_AREA] Popout window created successfully");
-            let popout_window = cx.new(|cx| PopoutDockWindow::new(new_dock_area, window, cx));
+            let popout_window = cx.new(|cx| PopoutDockWindow::new(
+                new_dock_area, 
+                panel.clone(),
+                source,
+                window, 
+                cx
+            ));
             cx.new(|cx| crate::Root::new(popout_window.into(), window, cx))
         });
     }
@@ -1103,15 +1135,23 @@ impl DockArea {
 /// Wrapper window for popped-out dock areas - includes a titlebar
 struct PopoutDockWindow {
     dock_area: Entity<DockArea>,
+    original_panel: Arc<dyn PanelView>,
+    source: Option<PanelSource>,
 }
 
 impl PopoutDockWindow {
     fn new(
         dock_area: Entity<DockArea>,
+        original_panel: Arc<dyn PanelView>,
+        source: Option<PanelSource>,
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Self {
-        Self { dock_area }
+        Self { 
+            dock_area,
+            original_panel,
+            source,
+        }
     }
 }
 
@@ -1119,11 +1159,49 @@ impl Render for PopoutDockWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         use crate::{v_flex, ActiveTheme, TitleBar};
         let theme = cx.theme();
+        
+        let panel = self.original_panel.clone();
+        let source = self.source.clone();
+
+        let mut title_bar = TitleBar::new();
+        
+        // Add close handler to restore panel to its original location
+        if let Some(source_info) = source {
+            title_bar = title_bar.on_close_window(move |_, window, cx| {
+                println!("[POPOUT] Close button clicked, restoring panel to original location");
+                
+                let panel_to_restore = panel.clone();
+                let tab_index = source_info.tab_index;
+                
+                let _ = cx.update_window(source_info.parent_window, |_root, window, cx| {
+                    if let Some(source_tab_panel) = source_info.tab_panel.upgrade() {
+                        cx.update_entity(&source_tab_panel, |tab_panel, cx| {
+                            println!("[POPOUT] Adding panel back to original tab panel at index {:?}", tab_index);
+                            
+                            if let Some(idx) = tab_index {
+                                // Restore to the specific index
+                                tab_panel.insert_panel_at(panel_to_restore.clone(), idx, window, cx);
+                            } else {
+                                // Add at the end
+                                tab_panel.add_panel(panel_to_restore.clone(), window, cx);
+                            }
+                        });
+                    } else {
+                        println!("[POPOUT] Warning: source tab panel was dropped, cannot restore");
+                    }
+                });
+                
+                // Close this window
+                window.remove_window();
+            });
+        } else {
+            println!("[POPOUT] Warning: no source information available for restoration");
+        }
 
         v_flex()
             .size_full()
             .bg(theme.background)
-            .child(TitleBar::new())
+            .child(title_bar)
             .child(
                 div()
                     .flex_1()

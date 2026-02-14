@@ -43,12 +43,12 @@ impl TitleBar {
     }
 
     /// Add custom for close window event, default is None, then click X button will call `window.remove_window()`.
-    /// Linux only, this will do nothing on other platforms.
+    /// Works on Linux and Windows.
     pub fn on_close_window(
         mut self,
         f: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     ) -> Self {
-        if cfg!(target_os = "linux") {
+        if cfg!(target_os = "linux") || cfg!(target_os = "windows") {
             self.on_close_window = Some(Rc::new(Box::new(f)));
         }
         self

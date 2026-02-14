@@ -355,7 +355,7 @@ impl TabPanel {
         cx.notify();
     }
 
-    fn insert_panel_at(
+    pub fn insert_panel_at(
         &mut self,
         panel: Arc<dyn PanelView>,
         ix: usize,
@@ -923,14 +923,21 @@ impl TabPanel {
                                         let panel_to_move = panel.clone();
                                         let dock_area = dock.clone();
                                         let mouse_pos = window.mouse_position();
+                                        let panel_index = ix;
 
                                         println!("[TAB_PANEL] Popout button clicked");
                                         println!("[TAB_PANEL] TabPanel entity ID: {:?}", cx.entity_id());
+                                        println!("[TAB_PANEL] Panel index: {}", panel_index);
                                         println!("[TAB_PANEL] Dock area: {:?}", dock_area);
 
-                                        // Emit event FIRST, before deferring
-                                        println!("[TAB_PANEL] Emitting PanelEvent::MoveToNewWindow");
-                                        cx.emit(PanelEvent::MoveToNewWindow(panel_to_move.clone(), mouse_pos));
+                                        // Emit event with source information
+                                        println!("[TAB_PANEL] Emitting PanelEvent::MoveToNewWindow with source info");
+                                        cx.emit(PanelEvent::MoveToNewWindow {
+                                            panel: panel_to_move.clone(),
+                                            position: mouse_pos,
+                                            source_tab_panel: cx.entity().downgrade(),
+                                            source_index: panel_index,
+                                        });
 
                                         // Then detach panel immediately (not deferred)
                                         // The window creation will happen asynchronously via the event

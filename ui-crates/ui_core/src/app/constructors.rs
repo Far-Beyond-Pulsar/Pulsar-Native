@@ -252,6 +252,7 @@ impl PulsarApp {
                 command_palette_view: None,
                 // active_type_picker_editor: None, // Migrated to plugins
                 focus_handle: cx.focus_handle(),
+                popped_out_panels: Vec::new(),
             },
         };
 

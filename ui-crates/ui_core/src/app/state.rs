@@ -1,8 +1,9 @@
 //! Application state structure
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use gpui::{Entity, FocusHandle};
-use ui::dock::{DockArea, TabPanel};
+use ui::dock::{DockArea, TabPanel, PanelView};
 use ui_file_manager::FileManagerDrawer;
 use ui_problems::ProblemsDrawer;
 // use ui_level_editor::LevelEditorPanel;
@@ -68,4 +69,7 @@ pub struct AppState {
 
     // Focus management
     pub focus_handle: FocusHandle,
+
+    // Popped out panels tracking (panel, source tab panel)
+    pub popped_out_panels: Vec<Arc<dyn PanelView>>,
 }

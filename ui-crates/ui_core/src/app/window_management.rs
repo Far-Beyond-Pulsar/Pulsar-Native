@@ -16,13 +16,16 @@ use super::panel_window::PanelWindow;
 impl PulsarApp {
     /// Create a detached window with a panel in a dedicated popup window
     pub(super) fn create_detached_window(
-        &self,
+        &mut self,
         panel: Arc<dyn ui::dock::PanelView>,
         position: gpui::Point<gpui::Pixels>,
-        _window: &mut Window,
+        parent_window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         println!("[POPOUT] Creating detached window for panel at position: {:?}", position);
+
+        // Track the panel so we can restore it when the window closes
+        self.state.popped_out_panels.push(panel.clone());
 
         let window_size = size(px(800.), px(600.));
         let window_bounds = Bounds::new(
@@ -54,10 +57,21 @@ impl PulsarApp {
 
         println!("[POPOUT] Opening window with options");
 
+        // Store reference to the center tabs and parent window handle for restoration
+        let center_tabs = self.state.center_tabs.clone();
+        let panel_for_popout = panel.clone();
+        let parent_window_handle = parent_window.window_handle();
+
         // Create a dedicated panel window instead of embedding in full PulsarApp
         let result = cx.open_window(window_options, move |window, cx| {
             println!("[POPOUT] Inside window creation callback");
-            let panel_window = cx.new(|cx| PanelWindow::new(panel, window, cx));
+            let panel_window = cx.new(|cx| PanelWindow::new(
+                panel_for_popout, 
+                center_tabs, 
+                parent_window_handle.into(),
+                window, 
+                cx
+            ));
             println!("[POPOUT] PanelWindow created successfully");
             cx.new(|cx| Root::new(panel_window.into(), window, cx))
         });

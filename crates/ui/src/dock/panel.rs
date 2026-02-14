@@ -16,8 +16,13 @@ pub enum PanelEvent {
     LayoutChanged,
     TabClosed(EntityId),
     /// Request to move a panel to a new window
-    /// Contains the panel to move and the desired window position
-    MoveToNewWindow(Arc<dyn PanelView>, gpui::Point<gpui::Pixels>),
+    /// Contains the panel to move, desired window position, source tab panel, and original index
+    MoveToNewWindow {
+        panel: Arc<dyn PanelView>,
+        position: gpui::Point<gpui::Pixels>,
+        source_tab_panel: WeakEntity<super::TabPanel>,
+        source_index: usize,
+    },
     /// Tab changed - fired when active tab is switched
     TabChanged { active_index: usize },
 }
