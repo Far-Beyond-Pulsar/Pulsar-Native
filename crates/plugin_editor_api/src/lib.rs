@@ -79,17 +79,17 @@ use serde::{Deserialize, Serialize};
 pub struct EditorLogger;
 
 impl EditorLogger {
-    pub fn info(&self, msg: &str) {
+    pub fn info(&self, _msg: &str) {
         // Placeholder for tracing::info! or similar
         // tracing::info!("{}", msg);
     }
-    pub fn warn(&self, msg: &str) {
+    pub fn warn(&self, _msg: &str) {
         // Placeholder for tracing::warn! or similar
     }
-    pub fn error(&self, msg: &str) {
+    pub fn error(&self, _msg: &str) {
         // Placeholder for tracing::error! or similar
     }
-    pub fn debug(&self, msg: &str) {
+    pub fn debug(&self, _msg: &str) {
         // Placeholder for tracing::debug! or similar
     }
 }

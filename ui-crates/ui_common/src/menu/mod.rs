@@ -44,7 +44,7 @@ use ui::{
     TitleBar,
 };
 
-use ui::{ themes::ThemeSwitcher, OpenSettings };
+use ui::themes::ThemeSwitcher;
 
 // Define UI preference actions
 #[derive(gpui::Action, Clone, PartialEq, Eq, serde::Deserialize)]

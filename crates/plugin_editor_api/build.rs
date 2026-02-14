@@ -1,5 +1,4 @@
 use std::process::Command;
-use tracing;
 
 fn main() {
     // Get the rustc version
