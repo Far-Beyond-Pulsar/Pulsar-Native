@@ -3,8 +3,16 @@ use serde::{Deserialize, Serialize};
 
 pub mod project_parser;
 
+// RustEmbed scans the doc folder at compile time
+// If this hangs, the target/doc folder might be missing or have issues
 #[derive(RustEmbed)]
 #[folder = "$CARGO_MANIFEST_DIR/../../target/doc"]
+#[prefix = ""] 
+// Only include json and md files to avoid scanning everything
+#[include = "*.json"]
+#[include = "*.md"]
+#[include = "**/*.json"]
+#[include = "**/*.md"]
 pub struct DocAssets;
 
 /// JSON index structures matching the build script

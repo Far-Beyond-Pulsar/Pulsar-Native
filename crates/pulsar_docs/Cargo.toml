@@ -3,6 +3,14 @@ name = "pulsar_docs"
 version = "0.1.0"
 edition = "2024"
 
+# Don't document this crate to prevent recursive build issues
+[package.metadata.docs.rs]
+skip = true
+
+[lib]
+# Skip this crate when running cargo doc
+doc = false
+
 [dependencies]
 rust-embed = { version = "6", features = ["interpolate-folder-path"] }
 serde = { version = "1.0", features = ["derive"] }

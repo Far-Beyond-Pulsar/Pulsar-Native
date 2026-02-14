@@ -75,7 +75,10 @@ pub fn discover_crates(workspace_root: &Path) -> Result<Vec<CrateInfo>, Box<dyn 
             if let Ok(expanded) = expand_glob(workspace_root, &member_path) {
                 for dir in expanded {
                     if let Ok(crate_info) = parse_crate_info(&dir) {
-                        crates.push(crate_info);
+                        // Skip pulsar_docs to avoid documenting itself
+                        if crate_info.name != "pulsar_docs" {
+                            crates.push(crate_info);
+                        }
                     }
                 }
             }
@@ -84,7 +87,10 @@ pub fn discover_crates(workspace_root: &Path) -> Result<Vec<CrateInfo>, Box<dyn 
         
         // Parse this crate
         if let Ok(crate_info) = parse_crate_info(&member_dir) {
-            crates.push(crate_info);
+            // Skip pulsar_docs to avoid documenting itself
+            if crate_info.name != "pulsar_docs" {
+                crates.push(crate_info);
+            }
         }
     }
     
