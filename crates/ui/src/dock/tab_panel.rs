@@ -1146,7 +1146,8 @@ impl TabPanel {
                         // Close
                         if can_close {
                             let view = view.clone();
-                            let panel = panels_for_menu[tab_index].clone();
+                            let clicked_idx = clicked_index_ref.clone();
+                            let panels = panels_for_menu.clone();
                             result.menu_items.push(PopupMenuItem::Item {
                                 icon: None,
                                 label: "Close".into(),
@@ -1154,9 +1155,12 @@ impl TabPanel {
                                 action: None,
                                 is_link: false,
                                 handler: Some(Rc::new(move |window, cx| {
-                                    let _ = view.update(cx, |view, cx| {
-                                        view.remove_panel(panel.clone(), window, cx);
-                                    });
+                                    let idx = clicked_idx.borrow().unwrap_or(0);
+                                    if let Some(panel) = panels.get(idx) {
+                                        let _ = view.update(cx, |view, cx| {
+                                            view.remove_panel(panel.clone(), window, cx);
+                                        });
+                                    }
                                 })),
                             });
                         }
