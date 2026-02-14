@@ -53,6 +53,67 @@ jobs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Get previous version tag
+        id: get_prev_tag
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname | grep -v "v${{ needs.check-version.outputs.version }}" | head -n 1)
+          if [ -z "$PREV_TAG" ]; then
+            echo "prev_tag=" >> $GITHUB_OUTPUT
+          else
+            echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get commits since last release
+        id: get_commits
+        run: |
+          if [ -z "${{ steps.get_prev_tag.outputs.prev_tag }}" ]; then
+            COMMITS=$(git log --format='{"sha":"%H","message":"%s","author":"%an"}' | jq -s '.')
+          else
+            COMMITS=$(git log ${{ steps.get_prev_tag.outputs.prev_tag }}..HEAD --format='{"sha":"%H","message":"%s","author":"%an"}' | jq -s '.')
+          fi
+          echo "commits<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests
+
+      - name: Generate release notes with GitHub Models
+        id: generate_notes
+        run: |
+          NOTES=$(python .github/scripts/generate_release_notes.py \
+            --github-token "${{ secrets.GITHUB_TOKEN }}" \
+            --repo-owner "${{ github.repository_owner }}" \
+            --repo-name "${{ github.event.repository.name }}" \
+            --version "${{ needs.check-version.outputs.version }}" \
+            --commits '${{ steps.get_commits.outputs.commits }}')
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Generate fallback release notes
+        if: steps.generate_notes.outcome != 'success'
+        id: fallback_notes
+        run: |
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo "## What's Changed" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          if [ -z "${{ steps.get_prev_tag.outputs.prev_tag }}" ]; then
+            git log --format='* %s (%h)' >> $GITHUB_OUTPUT
+          else
+            git log ${{ steps.get_prev_tag.outputs.prev_tag }}..HEAD --format='* %s (%h)' >> $GITHUB_OUTPUT
+          fi
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create Release
         id: create_release
@@ -62,6 +123,7 @@ jobs:
         with:
           tag_name: v${{ needs.check-version.outputs.version }}
           name: Release v${{ needs.check-version.outputs.version }}
+          body: ${{ steps.generate_notes.outcome == 'success' && steps.generate_notes.outputs.notes || steps.fallback_notes.outputs.notes }}
           draft: false
           prerelease: false
 

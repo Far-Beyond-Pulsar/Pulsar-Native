@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""
+Generate structured release notes using GitHub Models API.
+Uses official GitHub Models API with PAT authentication.
+"""
+
+import requests
+import json
+import argparse
+import sys
+
+def get_args():
+    """Parse and return command-line arguments."""
+    parser = argparse.ArgumentParser(description="Generate structured release notes with GitHub Models API.")
+    parser.add_argument("--github-token", required=True, help="GitHub PAT with models:read permission.")
+    parser.add_argument("--repo-owner", required=True, help="Repository owner.")
+    parser.add_argument("--repo-name", required=True, help="Repository name.")
+    parser.add_argument("--version", required=True, help="Current version being released.")
+    parser.add_argument("--commits", required=True, help="JSON array of commits with sha, message, and author.")
+    parser.add_argument("--model", default="gpt-4o", help="Model to use (default: gpt-4o).")
+    return parser.parse_args()
+
+def build_prompt(repo_owner, repo_name, version, commits_json):
+    """Build the prompt for generating release notes."""
+    commits = json.loads(commits_json)
+    
+    if not commits:
+        return None
+    
+    commits_text = "\n".join([
+        f"- {commit['message']} (by {commit['author']})"
+        for commit in commits
+    ])
+    
+    return f"""Generate structured release notes for version {version} of {repo_owner}/{repo_name}.
+
+Commits since last release:
+{commits_text}
+
+Please analyze these commits and categorize the changes into sections. Use these sections:
+- **Features**: New functionality or capabilities
+- **Improvements**: Enhancements to existing features  
+- **Bug Fixes**: Corrections to defects
+- **Documentation**: Documentation updates
+- **Internal**: Refactoring, dependencies, CI/CD, build changes, etc.
+
+Guidelines:
+- Use bullet points for each change
+- Keep descriptions concise but informative
+- Do NOT include commit SHAs
+- If a category has no items, omit that section entirely
+- Merge similar commits into single entries when appropriate
+- Focus on user-facing changes for Features, Improvements, and Bug Fixes
+- Place technical/infrastructure changes in Internal
+
+Return ONLY the markdown content without code fences or explanations/anecdotes."""
+
+def generate_release_notes(github_token, model, prompt):
+    """Call GitHub Models API to generate release notes."""
+    headers = {
+        "Authorization": f"Bearer {github_token}",
+        "Accept": "application/vnd.github+json",
+        "Content-Type": "application/json"
+    }
+    
+    data = {
+        "model": model,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.3,
+        "max_tokens": 2000
+    }
+    
+    response = requests.post(
+        "https://models.github.ai/inference/chat/completions",
+        headers=headers,
+        json=data,
+        timeout=30
+    )
+    
+    if response.status_code != 200:
+        raise Exception(f"GitHub Models API request failed. Status: {response.status_code}, Response: {response.text}")
+    
+    result = response.json()
+    return result['choices'][0]['message']['content'].strip()
+
+def main():
+    args = get_args()
+    
+    try:
+        prompt = build_prompt(
+            repo_owner=args.repo_owner,
+            repo_name=args.repo_name,
+            version=args.version,
+            commits_json=args.commits
+        )
+        
+        if not prompt:
+            print("## What's Changed\n\nNo commits found since last release.", file=sys.stderr)
+            sys.exit(1)
+        
+        release_notes = generate_release_notes(
+            github_token=args.github_token,
+            model=args.model,
+            prompt=prompt
+        )
+        
+        # Output the release notes
+        print(release_notes)
+        
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
