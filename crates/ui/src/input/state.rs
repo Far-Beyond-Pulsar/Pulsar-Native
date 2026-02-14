@@ -361,18 +361,15 @@ impl InputState {
     /// Helper function to check if a RopeSlice starts with a given string pattern
     /// This avoids allocating when checking prefixes
     fn rope_starts_with(rope: ropey::RopeSlice, pattern: &str) -> bool {
-        if rope.len_bytes() < pattern.len() {
-            return false;
-        }
-        
+        // Compare character by character without allocation
         let mut rope_chars = rope.chars();
         let mut pattern_chars = pattern.chars();
         
         loop {
             match (rope_chars.next(), pattern_chars.next()) {
                 (Some(r), Some(p)) if r == p => continue,
-                (_, None) => return true,
-                _ => return false,
+                (_, None) => return true,  // Pattern exhausted, match found
+                _ => return false,  // Mismatch or rope exhausted first
             }
         }
     }

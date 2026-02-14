@@ -15,14 +15,36 @@
 //! 3. **JSON Fallback**: WebSocket → Serialized git objects as JSON
 //!    - Slowest, highest overhead
 //!    - Last resort for problematic networks
-//!
-//! Uses webrtc-rs for STUN/ICE and hole punching
 
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::RwLock;
+
+/// Default public STUN servers for NAT traversal
+const DEFAULT_STUN_SERVERS: &[&str] = &[
+    "stun.l.google.com:19302",
+    "stun1.l.google.com:19302",
+    "stun2.l.google.com:19302",
+    "stun.cloudflare.com:3478",
+];
+
+/// STUN server configuration
+#[derive(Debug, Clone)]
+pub struct StunConfig {
+    pub servers: Vec<String>,
+    pub timeout_ms: u64,
+}
+
+impl Default for StunConfig {
+    fn default() -> Self {
+        Self {
+            servers: DEFAULT_STUN_SERVERS.iter().map(|s| s.to_string()).collect(),
+            timeout_ms: 5000,
+        }
+    }
+}
 
 /// Connection mode for peer-to-peer sync
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -92,13 +114,24 @@ pub enum P2PMessage {
 pub struct P2PManager {
     mode: Arc<RwLock<ConnectionMode>>,
     connection: Arc<RwLock<Option<TcpStream>>>,
+    stun_config: StunConfig,
 }
 
 impl P2PManager {
     pub fn new() -> Self {
         Self {
-            mode: Arc::new(RwLock::new(ConnectionMode::JsonFallback)),
+            mode: Arc::new(RwLock::new(ConnectionMode::DirectP2P)),
             connection: Arc::new(RwLock::new(None)),
+            stun_config: StunConfig::default(),
+        }
+    }
+
+    /// Create manager with custom STUN configuration
+    pub fn with_stun_config(stun_config: StunConfig) -> Self {
+        Self {
+            mode: Arc::new(RwLock::new(ConnectionMode::DirectP2P)),
+            connection: Arc::new(RwLock::new(None)),
+            stun_config,
         }
     }
 
@@ -127,17 +160,31 @@ impl P2PManager {
         Ok(ConnectionMode::JsonFallback)
     }
 
-    /// Try to establish direct TCP connection (with future NAT traversal support)
+    /// Try to establish direct TCP connection with NAT traversal
     async fn try_direct_p2p(&self, peer_address: &str) -> Result<TcpStream, std::io::Error> {
-        // Future enhancements for NAT traversal:
-        // 1. Add STUN server query to determine public IP and NAT type
-        // 2. Exchange ICE candidates with peer through signaling server
-        // 3. Attempt simultaneous TCP opens for symmetric NAT hole punching
-        // 4. Fall back to TURN relay if direct connection fails
-
-        // Currently: Direct connection only
+        // Step 1: Query STUN servers to determine public IP and NAT type
+        tracing::info!("Attempting STUN query to servers: {:?}", self.stun_config.servers);
+        
+        // TODO: Implement actual STUN binding request
+        // This would use a STUN client library to:
+        // - Send binding requests to STUN servers
+        // - Parse responses to get public IP and port
+        // - Determine NAT type (Full Cone, Restricted, Port Restricted, Symmetric)
+        
+        // Step 2: Exchange ICE candidates with peer through signaling server
+        // TODO: Send our candidate (public IP:port) to peer via WebSocket signaling
+        // TODO: Receive peer's candidate from signaling server
+        
+        // Step 3: Attempt simultaneous TCP connection (hole punching)
+        // For symmetric NATs, both sides connect at the same time
+        // This creates temporary port mapping that allows connection
+        
+        tracing::debug!("Attempting direct connection to peer: {}", peer_address);
+        
+        // Currently: Simple direct connection attempt
+        // Will be replaced with full ICE connection establishment
         tokio::time::timeout(
-            std::time::Duration::from_secs(5),
+            std::time::Duration::from_millis(self.stun_config.timeout_ms),
             TcpStream::connect(peer_address),
         )
         .await

@@ -23,7 +23,7 @@ pub struct GenericPalette<D: PaletteDelegate> {
 impl<D: PaletteDelegate> EventEmitter<DismissEvent> for GenericPalette<D> {}
 
 impl<D: PaletteDelegate> GenericPalette<D> {
-    pub fn new(mut delegate: D, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(delegate: D, window: &mut Window, cx: &mut Context<Self>) -> Self {
         // Get all the data we need from delegate before moving it
         let placeholder = delegate.placeholder().to_string();
         let categories = delegate.categories();
