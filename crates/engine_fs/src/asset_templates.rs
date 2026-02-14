@@ -4,183 +4,117 @@
 
 use serde_json::json;
 
-/// All possible asset types that can be created
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AssetKind {
+/// Metadata for an asset kind
+struct AssetMetadata {
+    extension: &'static str,
+    directory: &'static str,
+    display_name: &'static str,
+    icon: &'static str,
+    description: &'static str,
+}
+
+macro_rules! define_asset_kinds {
+    (
+        $(
+            $variant:ident {
+                ext: $ext:expr,
+                dir: $dir:expr,
+                name: $name:expr,
+                icon: $icon:expr,
+                desc: $desc:expr
+                $(,)?
+            }
+        ),* $(,)?
+    ) => {
+        /// All possible asset types that can be created
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum AssetKind {
+            $($variant,)*
+        }
+
+        impl AssetKind {
+            fn metadata(&self) -> &'static AssetMetadata {
+                match self {
+                    $(
+                        AssetKind::$variant => &AssetMetadata {
+                            extension: $ext,
+                            directory: $dir,
+                            display_name: $name,
+                            icon: $icon,
+                            description: $desc,
+                        },
+                    )*
+                }
+            }
+        }
+    };
+}
+
+define_asset_kinds! {
     // Type System
-    TypeAlias,
-    Struct,
-    Enum,
-    Trait,
+    TypeAlias { ext: "alias.json", dir: "types/aliases", name: "Type Alias", icon: "🔗", desc: "Create a reusable type definition" },
+    Struct { ext: "struct.json", dir: "types/structs", name: "Struct", icon: "📦", desc: "Create a data structure" },
+    Enum { ext: "enum.json", dir: "types/enums", name: "Enum", icon: "🎯", desc: "Create an enumeration type" },
+    Trait { ext: "trait.json", dir: "types/traits", name: "Trait", icon: "🔧", desc: "Create a trait interface" },
     
     // Blueprint System
-    Blueprint,
-    BlueprintClass,
-    BlueprintFunction,
+    Blueprint { ext: "blueprint.json", dir: "blueprints", name: "Blueprint", icon: "🔷", desc: "Create a visual script" },
+    BlueprintClass { ext: "bpclass.json", dir: "blueprints/classes", name: "Blueprint Class", icon: "📘", desc: "Create a blueprint class" },
+    BlueprintFunction { ext: "bpfunc.json", dir: "blueprints/functions", name: "Blueprint Function", icon: "⚡", desc: "Create a blueprint function" },
     
     // Scripts
-    RustScript,
-    LuaScript,
+    RustScript { ext: "rs", dir: "scripts/rust", name: "Rust Script", icon: "🦀", desc: "Create a Rust code file" },
+    LuaScript { ext: "lua", dir: "scripts/lua", name: "Lua Script", icon: "🌙", desc: "Create a Lua script" },
     
     // Scenes
-    Scene,
-    Prefab,
+    Scene { ext: "scene.json", dir: "scenes", name: "Scene", icon: "🎬", desc: "Create a scene" },
+    Prefab { ext: "prefab.json", dir: "prefabs", name: "Prefab", icon: "🎁", desc: "Create a reusable prefab" },
     
     // Materials & Shaders
-    Material,
-    Shader,
+    Material { ext: "mat.json", dir: "materials", name: "Material", icon: "🎨", desc: "Create a material definition" },
+    Shader { ext: "shader.wgsl", dir: "shaders", name: "Shader", icon: "✨", desc: "Create a WGSL shader" },
     
     // Audio
-    AudioSource,
-    AudioMixer,
+    AudioSource { ext: "audio.json", dir: "audio/sources", name: "Audio Source", icon: "🔊", desc: "Create an audio source" },
+    AudioMixer { ext: "mixer.json", dir: "audio/mixers", name: "Audio Mixer", icon: "🎚️", desc: "Create an audio mixer" },
     
     // UI
-    UILayout,
-    UITheme,
+    UILayout { ext: "ui.json", dir: "ui/layouts", name: "UI Layout", icon: "📐", desc: "Create a UI layout" },
+    UITheme { ext: "theme.json", dir: "ui/themes", name: "UI Theme", icon: "🎭", desc: "Create a UI theme" },
     
     // Data
-    DataTable,
-    JsonData,
+    DataTable { ext: "table.db", dir: "data/tables", name: "Data Table", icon: "📊", desc: "Create a data table" },
+    JsonData { ext: "json", dir: "data", name: "JSON Data", icon: "📄", desc: "Create a JSON data file" },
     
     // Config
-    ProjectConfig,
-    EditorConfig,
+    ProjectConfig { ext: "project.toml", dir: "config", name: "Project Config", icon: "⚙️", desc: "Create project configuration" },
+    EditorConfig { ext: "editor.toml", dir: "config", name: "Editor Config", icon: "🛠️", desc: "Create editor configuration" },
 }
 
 impl AssetKind {
     /// Get the file extension for this asset type
     pub fn extension(&self) -> &'static str {
-        match self {
-            AssetKind::TypeAlias => "alias.json",
-            AssetKind::Struct => "struct.json",
-            AssetKind::Enum => "enum.json",
-            AssetKind::Trait => "trait.json",
-            AssetKind::Blueprint => "blueprint.json",
-            AssetKind::BlueprintClass => "bpclass.json",
-            AssetKind::BlueprintFunction => "bpfunc.json",
-            AssetKind::RustScript => "rs",
-            AssetKind::LuaScript => "lua",
-            AssetKind::Scene => "scene.json",
-            AssetKind::Prefab => "prefab.json",
-            AssetKind::Material => "mat.json",
-            AssetKind::Shader => "shader.wgsl",
-            AssetKind::AudioSource => "audio.json",
-            AssetKind::AudioMixer => "mixer.json",
-            AssetKind::UILayout => "ui.json",
-            AssetKind::UITheme => "theme.json",
-            AssetKind::DataTable => "table.db",
-            AssetKind::JsonData => "json",
-            AssetKind::ProjectConfig => "project.toml",
-            AssetKind::EditorConfig => "editor.toml",
-        }
+        self.metadata().extension
     }
     
     /// Get the default subdirectory for this asset type
     pub fn default_directory(&self) -> &'static str {
-        match self {
-            AssetKind::TypeAlias => "types/aliases",
-            AssetKind::Struct => "types/structs",
-            AssetKind::Enum => "types/enums",
-            AssetKind::Trait => "types/traits",
-            AssetKind::Blueprint => "blueprints",
-            AssetKind::BlueprintClass => "blueprints/classes",
-            AssetKind::BlueprintFunction => "blueprints/functions",
-            AssetKind::RustScript => "scripts/rust",
-            AssetKind::LuaScript => "scripts/lua",
-            AssetKind::Scene => "scenes",
-            AssetKind::Prefab => "prefabs",
-            AssetKind::Material => "materials",
-            AssetKind::Shader => "shaders",
-            AssetKind::AudioSource => "audio/sources",
-            AssetKind::AudioMixer => "audio/mixers",
-            AssetKind::UILayout => "ui/layouts",
-            AssetKind::UITheme => "ui/themes",
-            AssetKind::DataTable => "data/tables",
-            AssetKind::JsonData => "data",
-            AssetKind::ProjectConfig => "config",
-            AssetKind::EditorConfig => "config",
-        }
+        self.metadata().directory
     }
     
     /// Get display name for UI
     pub fn display_name(&self) -> &'static str {
-        match self {
-            AssetKind::TypeAlias => "Type Alias",
-            AssetKind::Struct => "Struct",
-            AssetKind::Enum => "Enum",
-            AssetKind::Trait => "Trait",
-            AssetKind::Blueprint => "Blueprint",
-            AssetKind::BlueprintClass => "Blueprint Class",
-            AssetKind::BlueprintFunction => "Blueprint Function",
-            AssetKind::RustScript => "Rust Script",
-            AssetKind::LuaScript => "Lua Script",
-            AssetKind::Scene => "Scene",
-            AssetKind::Prefab => "Prefab",
-            AssetKind::Material => "Material",
-            AssetKind::Shader => "Shader",
-            AssetKind::AudioSource => "Audio Source",
-            AssetKind::AudioMixer => "Audio Mixer",
-            AssetKind::UILayout => "UI Layout",
-            AssetKind::UITheme => "UI Theme",
-            AssetKind::DataTable => "Data Table",
-            AssetKind::JsonData => "JSON Data",
-            AssetKind::ProjectConfig => "Project Config",
-            AssetKind::EditorConfig => "Editor Config",
-        }
+        self.metadata().display_name
     }
     
     /// Get icon for UI
     pub fn icon(&self) -> &'static str {
-        match self {
-            AssetKind::TypeAlias => "🔗",
-            AssetKind::Struct => "📦",
-            AssetKind::Enum => "🎯",
-            AssetKind::Trait => "🔧",
-            AssetKind::Blueprint => "🔷",
-            AssetKind::BlueprintClass => "📘",
-            AssetKind::BlueprintFunction => "⚡",
-            AssetKind::RustScript => "🦀",
-            AssetKind::LuaScript => "🌙",
-            AssetKind::Scene => "🎬",
-            AssetKind::Prefab => "🎁",
-            AssetKind::Material => "🎨",
-            AssetKind::Shader => "✨",
-            AssetKind::AudioSource => "🔊",
-            AssetKind::AudioMixer => "🎚️",
-            AssetKind::UILayout => "📐",
-            AssetKind::UITheme => "🎭",
-            AssetKind::DataTable => "📊",
-            AssetKind::JsonData => "📄",
-            AssetKind::ProjectConfig => "⚙️",
-            AssetKind::EditorConfig => "🛠️",
-        }
+        self.metadata().icon
     }
     
     /// Get description for UI
     pub fn description(&self) -> &'static str {
-        match self {
-            AssetKind::TypeAlias => "Create a reusable type definition",
-            AssetKind::Struct => "Create a data structure",
-            AssetKind::Enum => "Create an enumeration type",
-            AssetKind::Trait => "Create a trait interface",
-            AssetKind::Blueprint => "Create a visual script",
-            AssetKind::BlueprintClass => "Create a blueprint class",
-            AssetKind::BlueprintFunction => "Create a blueprint function",
-            AssetKind::RustScript => "Create a Rust code file",
-            AssetKind::LuaScript => "Create a Lua script",
-            AssetKind::Scene => "Create a scene",
-            AssetKind::Prefab => "Create a reusable prefab",
-            AssetKind::Material => "Create a material definition",
-            AssetKind::Shader => "Create a WGSL shader",
-            AssetKind::AudioSource => "Create an audio source",
-            AssetKind::AudioMixer => "Create an audio mixer",
-            AssetKind::UILayout => "Create a UI layout",
-            AssetKind::UITheme => "Create a UI theme",
-            AssetKind::DataTable => "Create a data table",
-            AssetKind::JsonData => "Create a JSON data file",
-            AssetKind::ProjectConfig => "Create project configuration",
-            AssetKind::EditorConfig => "Create editor configuration",
-        }
+        self.metadata().description
     }
     
     /// Generate a blank template for this asset type
