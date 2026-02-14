@@ -46,7 +46,7 @@ impl SettingsScreen {
                                     cx
                                 )
                             )
-                            .render(cx)
+                            
                     )
                     .child(
                         div()
@@ -206,7 +206,7 @@ impl SettingsScreen {
                                             }))
                                     )
                             )
-                            .render(cx)
+                            
                     )
                     .child(
                         div()
@@ -250,7 +250,7 @@ impl SettingsScreen {
                                             }))
                                     )
                             )
-                            .render(cx)
+                            
                     )
                     .when(experimental_features, |this| {
                         let warning_color = hsla(0.05, 0.8, 0.5, 1.0); // Orange warning color

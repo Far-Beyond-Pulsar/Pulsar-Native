@@ -81,7 +81,7 @@ impl SettingsScreen {
                                             }))
                                     )
                             )
-                            .render(cx)
+                            
                     )
                     .child(
                         div()
@@ -130,7 +130,7 @@ impl SettingsScreen {
                             .control(
                                 render_value_display("1.0x (Default)", cx)
                             )
-                            .render(cx)
+                            
                     )
             )
             .render(cx)

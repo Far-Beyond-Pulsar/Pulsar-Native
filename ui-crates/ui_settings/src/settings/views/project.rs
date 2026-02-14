@@ -68,7 +68,7 @@ impl SettingsScreen {
                                             }))
                                     )
                             )
-                            .render(cx)
+                            
                     )
             )
             .render(cx)
@@ -133,7 +133,7 @@ impl SettingsScreen {
                                             }))
                                     )
                             )
-                            .render(cx)
+                            
                     )
                     .when(auto_save_enabled, |this| {
                         this.child(
@@ -151,7 +151,7 @@ impl SettingsScreen {
                                         cx
                                     )
                                 )
-                                .render(cx)
+                                
                         )
                     })
                     .child(
@@ -235,7 +235,7 @@ impl SettingsScreen {
                                             }))
                                     )
                             )
-                            .render(cx)
+                            
                     )
                     .when(backups_enabled, |this| {
                         this.child(

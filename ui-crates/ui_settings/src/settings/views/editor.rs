@@ -54,7 +54,7 @@ impl SettingsScreen {
                                             }))
                                     )
                             )
-                            .render(cx)
+                            
                     )
                     .child(
                         div()
@@ -98,7 +98,7 @@ impl SettingsScreen {
                                             }))
                                     )
                             )
-                            .render(cx)
+                            
                     )
             )
             .render(cx)
@@ -156,7 +156,7 @@ impl SettingsScreen {
                                             }))
                                     )
                             )
-                            .render(cx)
+                            
                     )
                     .child(
                         div()
@@ -170,7 +170,7 @@ impl SettingsScreen {
                             .control(
                                 render_value_display("4 spaces", cx)
                             )
-                            .render(cx)
+                            
                     )
             )
             .render(cx)
