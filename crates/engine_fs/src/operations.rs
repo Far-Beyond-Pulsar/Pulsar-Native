@@ -5,7 +5,8 @@
 use anyhow::{Result, Context};
 use std::path::PathBuf;
 use std::sync::Arc;
-use type_db::{TypeDatabase, TypeKind};
+use type_db::TypeDatabase;
+use plugin_editor_api::FileTypeId;
 
 /// Handles asset file operations
 pub struct AssetOperations {
@@ -47,10 +48,11 @@ impl AssetOperations {
             .context("Failed to write alias file")?;
 
         // Register in type database
+        let file_type = FileTypeId::new("alias");
         if let Err(e) = self.type_database.register_with_path(
             name.to_string(),
             file_path.clone(),
-            TypeKind::Alias,
+            file_type,
             None,
             Some(format!("Type alias: {}", name)),
             None,
@@ -80,10 +82,11 @@ impl AssetOperations {
             .context("Failed to write alias file")?;
 
         // Update in type database
+        let file_type = FileTypeId::new("alias");
         if let Err(e) = self.type_database.register_with_path(
             asset.name.clone(),
             file_path.clone(),
-            TypeKind::Alias,
+            file_type,
             None,
             Some(format!("Type alias: {}", asset.name)),
             None,
@@ -115,10 +118,11 @@ impl AssetOperations {
             .context("Invalid alias JSON")?;
 
         // Register in type database
+        let file_type = FileTypeId::new("alias");
         if let Err(e) = self.type_database.register_with_path(
             asset.name.clone(),
             file_path.clone(),
-            TypeKind::Alias,
+            file_type,
             None,
             Some(format!("Type alias: {}", asset.name)),
             None,
@@ -144,10 +148,11 @@ impl AssetOperations {
         let asset: ui_types_common::AliasAsset = serde_json::from_str(&content)
             .context("Invalid alias JSON")?;
 
+        let file_type = FileTypeId::new("alias");
         if let Err(e) = self.type_database.register_with_path(
             asset.name.clone(),
             new_path.clone(),
-            TypeKind::Alias,
+            file_type,
             None,
             Some(format!("Type alias: {}", asset.name)),
             None,
@@ -215,20 +220,20 @@ impl AssetOperations {
             .unwrap_or("unknown")
             .to_string();
 
-        let type_kind = match kind {
-            AssetKind::TypeAlias => TypeKind::Alias,
-            AssetKind::Struct => TypeKind::Struct,
-            AssetKind::Enum => TypeKind::Enum,
-            AssetKind::Trait => TypeKind::Trait,
+        let file_type_id = match kind {
+            AssetKind::TypeAlias => FileTypeId::new("alias"),
+            AssetKind::Struct => FileTypeId::new("struct"),
+            AssetKind::Enum => FileTypeId::new("enum"),
+            AssetKind::Trait => FileTypeId::new("trait"),
             _ => return Ok(()), // Other asset types don't need indexing yet
         };
 
         if let Err(e) = self.type_database.register_with_path(
             name.clone(),
             file_path.clone(),
-            type_kind,
+            file_type_id.clone(),
             None,
-            Some(format!("{:?}: {}", type_kind, name)),
+            Some(format!("{:?}: {}", file_type_id, name)),
             None,
         ) {
             tracing::warn!("Failed to register type '{}': {:?}", name, e);
@@ -263,38 +268,28 @@ impl AssetOperations {
         std::fs::rename(old_path, new_path)
             .context("Failed to move asset file")?;
 
-        // Re-register at new location
-        // Auto-detect type from extension
-        if let Some(ext) = new_path.extension() {
-            let ext_str = ext.to_string_lossy();
-            let name = new_path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("unknown")
-                .to_string();
+        // Re-register at new location using registry
+        if let Some(plugin_manager) = plugin_manager::global() {
+            if let Ok(pm) = plugin_manager.read() {
+                if let Some(file_type_id) = pm.file_type_registry().get_file_type_for_path(new_path) {
+                    if let Some(file_type_def) = pm.file_type_registry().get_file_type(&file_type_id) {
+                        let name = new_path
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("unknown")
+                            .to_string();
 
-            let type_kind = if ext_str.contains("alias") {
-                Some(TypeKind::Alias)
-            } else if ext_str.contains("struct") {
-                Some(TypeKind::Struct)
-            } else if ext_str.contains("enum") {
-                Some(TypeKind::Enum)
-            } else if ext_str.contains("trait") {
-                Some(TypeKind::Trait)
-            } else {
-                None
-            };
-
-            if let Some(kind) = type_kind {
-                if let Err(e) = self.type_database.register_with_path(
-                    name.clone(),
-                    new_path.clone(),
-                    kind,
-                    None,
-                    Some(format!("{:?}: {}", kind, name)),
-                    None,
-                ) {
-                    tracing::warn!("Failed to register renamed type '{}': {:?}", name, e);
+                        if let Err(e) = self.type_database.register_with_path(
+                            name.clone(),
+                            new_path.clone(),
+                            file_type_id,
+                            None,
+                            Some(format!("{}: {}", file_type_def.display_name, name)),
+                            None,
+                        ) {
+                            tracing::warn!("Failed to register renamed type '{}': {:?}", name, e);
+                        }
+                    }
                 }
             }
         }

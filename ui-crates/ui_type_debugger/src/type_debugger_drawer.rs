@@ -8,12 +8,13 @@ use ui::{
     h_flex, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _,
     input::{InputState, TextInput},
     scroll::ScrollbarAxis,
-    popup_menu::{PopupMenu, PopupMenuExt},
+    popup_menu::PopupMenuExt,
 };
 use ui::StyledExt;
 use std::path::PathBuf;
 use std::collections::HashMap;
-use type_db::{TypeInfo, TypeKind};
+use type_db::TypeInfo;
+use plugin_editor_api::FileTypeId;
 
 // Define actions for filter menu
 actions!(type_debugger_drawer, [FilterAll, FilterAliases, FilterStructs, FilterEnums, FilterTraits]);
@@ -31,7 +32,7 @@ pub struct TypeDebuggerDrawer {
     focus_handle: FocusHandle,
     // Store types locally for UI display
     types: Vec<TypeInfo>,
-    filtered_kind: Option<TypeKind>,
+    filtered_kind: Option<FileTypeId>,
     selected_index: Option<usize>,
     search_query: String,
     group_by_kind: bool,
@@ -106,7 +107,7 @@ impl TypeDebuggerDrawer {
 
         // Filter by kind
         if let Some(kind) = &self.filtered_kind {
-            filtered.retain(|t| &t.type_kind == kind);
+            filtered.retain(|t| &t.file_type_id == kind);
         }
 
         // Filter by search query
@@ -123,13 +124,13 @@ impl TypeDebuggerDrawer {
         filtered
     }
 
-    fn get_grouped_types(&self) -> HashMap<TypeKind, Vec<TypeInfo>> {
+    fn get_grouped_types(&self) -> HashMap<FileTypeId, Vec<TypeInfo>> {
         let types = self.get_filtered_types();
-        let mut grouped: HashMap<TypeKind, Vec<TypeInfo>> = HashMap::new();
+        let mut grouped: HashMap<FileTypeId, Vec<TypeInfo>> = HashMap::new();
 
         for type_info in types {
             grouped
-                .entry(type_info.type_kind.clone())
+                .entry(type_info.file_type_id.clone())
                 .or_insert_with(Vec::new)
                 .push(type_info);
         }
@@ -137,15 +138,15 @@ impl TypeDebuggerDrawer {
         grouped
     }
 
-    pub fn count_by_kind(&self, kind: TypeKind) -> usize {
-        self.types.iter().filter(|t| t.type_kind == kind).count()
+    pub fn count_by_kind(&self, kind: &FileTypeId) -> usize {
+        self.types.iter().filter(|t| &t.file_type_id == kind).count()
     }
 
     pub fn total_count(&self) -> usize {
         self.types.len()
     }
 
-    fn set_filter(&mut self, kind: Option<TypeKind>, cx: &mut Context<Self>) {
+    fn set_filter(&mut self, kind: Option<FileTypeId>, cx: &mut Context<Self>) {
         self.filtered_kind = kind;
         self.selected_index = None;
         cx.notify();
@@ -175,19 +176,19 @@ impl TypeDebuggerDrawer {
     }
 
     fn on_filter_aliases(&mut self, _: &FilterAliases, _: &mut Window, cx: &mut Context<Self>) {
-        self.set_filter(Some(TypeKind::Alias), cx);
+        self.set_filter(Some(FileTypeId::new("alias")), cx);
     }
 
     fn on_filter_structs(&mut self, _: &FilterStructs, _: &mut Window, cx: &mut Context<Self>) {
-        self.set_filter(Some(TypeKind::Struct), cx);
+        self.set_filter(Some(FileTypeId::new("struct")), cx);
     }
 
     fn on_filter_enums(&mut self, _: &FilterEnums, _: &mut Window, cx: &mut Context<Self>) {
-        self.set_filter(Some(TypeKind::Enum), cx);
+        self.set_filter(Some(FileTypeId::new("enum")), cx);
     }
 
     fn on_filter_traits(&mut self, _: &FilterTraits, _: &mut Window, cx: &mut Context<Self>) {
-        self.set_filter(Some(TypeKind::Trait), cx);
+        self.set_filter(Some(FileTypeId::new("trait")), cx);
     }
 
     fn render_header(
@@ -201,10 +202,13 @@ impl TypeDebuggerDrawer {
     ) -> impl IntoElement {
         let current_filter_label = match &self.filtered_kind {
             None => format!("All Types ({})", total_count),
-            Some(TypeKind::Alias) => format!("Aliases ({})", alias_count),
-            Some(TypeKind::Struct) => format!("Structs ({})", struct_count),
-            Some(TypeKind::Enum) => format!("Enums ({})", enum_count),
-            Some(TypeKind::Trait) => format!("Traits ({})", trait_count),
+            Some(kind) => match kind.as_str() {
+                "alias" => format!("Aliases ({})", alias_count),
+                "struct" => format!("Structs ({})", struct_count),
+                "enum" => format!("Enums ({})", enum_count),
+                "trait" => format!("Traits ({})", trait_count),
+                _ => format!("{} ({})", Self::kind_label(kind), total_count),
+            }
         };
 
         v_flex()
@@ -239,28 +243,28 @@ impl TypeDebuggerDrawer {
                                     .items_center()
                                     .when(alias_count > 0, |this| {
                                         this.child(self.render_type_badge(
-                                            TypeKind::Alias,
+                                            &FileTypeId::new("alias"),
                                             alias_count,
                                             cx
                                         ))
                                     })
                                     .when(struct_count > 0, |this| {
                                         this.child(self.render_type_badge(
-                                            TypeKind::Struct,
+                                            &FileTypeId::new("struct"),
                                             struct_count,
                                             cx
                                         ))
                                     })
                                     .when(enum_count > 0, |this| {
                                         this.child(self.render_type_badge(
-                                            TypeKind::Enum,
+                                            &FileTypeId::new("enum"),
                                             enum_count,
                                             cx
                                         ))
                                     })
                                     .when(trait_count > 0, |this| {
                                         this.child(self.render_type_badge(
-                                            TypeKind::Trait,
+                                            &FileTypeId::new("trait"),
                                             trait_count,
                                             cx
                                         ))
@@ -324,10 +328,10 @@ impl TypeDebuggerDrawer {
                     // Filter dropdown button using proper PopupMenu
                     .child({
                         let is_all_selected = self.filtered_kind.is_none();
-                        let is_aliases_selected = self.filtered_kind == Some(TypeKind::Alias);
-                        let is_structs_selected = self.filtered_kind == Some(TypeKind::Struct);
-                        let is_enums_selected = self.filtered_kind == Some(TypeKind::Enum);
-                        let is_traits_selected = self.filtered_kind == Some(TypeKind::Trait);
+                        let is_aliases_selected = self.filtered_kind.as_ref().map(|k| k.as_str()) == Some("alias");
+                        let is_structs_selected = self.filtered_kind.as_ref().map(|k| k.as_str()) == Some("struct");
+                        let is_enums_selected = self.filtered_kind.as_ref().map(|k| k.as_str()) == Some("enum");
+                        let is_traits_selected = self.filtered_kind.as_ref().map(|k| k.as_str()) == Some("trait");
 
                         Button::new("filter-dropdown")
                             .ghost()
@@ -348,7 +352,7 @@ impl TypeDebuggerDrawer {
 
     fn render_type_badge(
         &self,
-        kind: TypeKind,
+        kind: &FileTypeId,
         count: usize,
         cx: &App,
     ) -> impl IntoElement {
@@ -358,11 +362,11 @@ impl TypeDebuggerDrawer {
             .px_2()
             .py_0p5()
             .rounded_md()
-            .bg(self.kind_color(&kind, cx).opacity(0.15))
+            .bg(self.kind_color(kind, cx).opacity(0.15))
             .child(
-                self.kind_icon(&kind)
+                self.kind_icon(kind)
                     .size_3()
-                    .text_color(self.kind_color(&kind, cx))
+                    .text_color(self.kind_color(kind, cx))
             )
             .child(
                 div()
@@ -487,16 +491,16 @@ impl TypeDebuggerDrawer {
                                             .gap_1p5()
                                             .items_center()
                                             .child(
-                                                self.kind_icon(&type_info.type_kind)
+                                                self.kind_icon(&type_info.file_type_id)
                                                     .size_4()
-                                                    .text_color(self.kind_color(&type_info.type_kind, cx))
+                                                    .text_color(self.kind_color(&type_info.file_type_id, cx))
                                             )
                                             .child(
                                                 div()
                                                     .text_xs()
                                                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                                                    .text_color(self.kind_color(&type_info.type_kind, cx))
-                                                    .child(Self::kind_label(&type_info.type_kind))
+                                                    .text_color(self.kind_color(&type_info.file_type_id, cx))
+                                                    .child(Self::kind_label(&type_info.file_type_id))
                                             )
                                     )
                                     .child(
@@ -565,31 +569,34 @@ impl TypeDebuggerDrawer {
             )
     }
 
-    fn kind_icon(&self, kind: &TypeKind) -> Icon {
-        let icon_name = match kind {
-            TypeKind::Alias => IconName::Link,
-            TypeKind::Struct => IconName::Box,
-            TypeKind::Enum => IconName::List,
-            TypeKind::Trait => IconName::Code,
+    fn kind_icon(&self, kind: &FileTypeId) -> Icon {
+        let icon_name = match kind.as_str() {
+            "alias" => IconName::Link,
+            "struct" => IconName::Box,
+            "enum" => IconName::List,
+            "trait" => IconName::Code,
+            _ => IconName::Page,
         };
         Icon::new(icon_name)
     }
 
-    fn kind_color(&self, kind: &TypeKind, _cx: &App) -> Hsla {
-        match kind {
-            TypeKind::Alias => gpui::rgb(0x607D8B).into(),   // Blue Gray (matches FileType::AliasType)
-            TypeKind::Struct => gpui::rgb(0x00BCD4).into(),  // Cyan (matches FileType::StructType)
-            TypeKind::Enum => gpui::rgb(0x673AB7).into(),    // Deep Purple (matches FileType::EnumType)
-            TypeKind::Trait => gpui::rgb(0x3F51B5).into(),   // Indigo (matches FileType::TraitType)
+    fn kind_color(&self, kind: &FileTypeId, _cx: &App) -> Hsla {
+        match kind.as_str() {
+            "alias" => gpui::rgb(0x607D8B).into(),   // Blue Gray
+            "struct" => gpui::rgb(0x00BCD4).into(),  // Cyan
+            "enum" => gpui::rgb(0x673AB7).into(),    // Deep Purple
+            "trait" => gpui::rgb(0x3F51B5).into(),   // Indigo
+            _ => gpui::rgb(0x9E9E9E).into(),         // Gray for unknown types
         }
     }
 
-    fn kind_label(kind: &TypeKind) -> &'static str {
-        match kind {
-            TypeKind::Alias => "Aliases",
-            TypeKind::Struct => "Structs",
-            TypeKind::Enum => "Enums",
-            TypeKind::Trait => "Traits",
+    fn kind_label(kind: &FileTypeId) -> String {
+        match kind.as_str() {
+            "alias" => "Aliases".to_string(),
+            "struct" => "Structs".to_string(),
+            "enum" => "Enums".to_string(),
+            "trait" => "Traits".to_string(),
+            _ => format!("{}s", kind.as_str()),
         }
     }
 
@@ -637,7 +644,14 @@ impl TypeDebuggerDrawer {
                     .children({
                         let mut groups = Vec::new();
                         // Order: Aliases, Structs, Enums, Traits
-                        for kind in [TypeKind::Alias, TypeKind::Struct, TypeKind::Enum, TypeKind::Trait] {
+                        let ordered_kinds = vec![
+                            FileTypeId::new("alias"),
+                            FileTypeId::new("struct"),
+                            FileTypeId::new("enum"),
+                            FileTypeId::new("trait"),
+                        ];
+                        
+                        for kind in ordered_kinds {
                             if let Some(types) = grouped.get(&kind) {
                                 if !types.is_empty() {
                                     let kind_clone = kind.clone();
@@ -709,10 +723,10 @@ impl Render for TypeDebuggerDrawer {
             self.search_query = current_input_value;
         }
 
-        let alias_count = self.count_by_kind(TypeKind::Alias);
-        let struct_count = self.count_by_kind(TypeKind::Struct);
-        let enum_count = self.count_by_kind(TypeKind::Enum);
-        let trait_count = self.count_by_kind(TypeKind::Trait);
+        let alias_count = self.count_by_kind(&FileTypeId::new("alias"));
+        let struct_count = self.count_by_kind(&FileTypeId::new("struct"));
+        let enum_count = self.count_by_kind(&FileTypeId::new("enum"));
+        let trait_count = self.count_by_kind(&FileTypeId::new("trait"));
         let total_count = self.total_count();
 
         let filtered_types = self.get_filtered_types();

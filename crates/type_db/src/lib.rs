@@ -8,33 +8,25 @@
 //! - Case-insensitive and fuzzy search
 //! - Thread-safe with concurrent access (using DashMap)
 //! - Simple API for integration
+//! - Integrated with plugin file type registry
 //!
 //! ## Example
 //! ```rust
-//! use type_db::{TypeDatabase, TypeKind};
+//! use type_db::TypeDatabase;
+//! use plugin_editor_api::FileTypeId;
+//! 
 //! let mut db = TypeDatabase::new();
-//! let id = db.register_simple("Vector3", TypeKind::Struct);
+//! let file_type = FileTypeId::new("struct");
+//! let id = db.register_simple("Vector3", file_type);
 //! let found = db.get(id);
 //! assert!(found.is_some());
 //! ```
 
 use dashmap::DashMap;
+use plugin_editor_api::FileTypeId;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
-
-/// Categorizes different kinds of types in the database.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TypeKind {
-    /// Type alias
-    Alias,
-    /// Struct definition
-    Struct,
-    /// Enum definition
-    Enum,
-    /// Trait definition
-    Trait,
-}
 
 /// Represents a runtime type created by the user in the engine.
 ///
@@ -52,8 +44,8 @@ pub struct TypeInfo {
     pub description: Option<String>,
     /// File path where this type is defined
     pub file_path: Option<PathBuf>,
-    /// Kind of type (Struct, Enum, Trait, Alias)
-    pub type_kind: TypeKind,
+    /// File type ID from the plugin registry (e.g., "struct", "enum", "trait", "alias")
+    pub file_type_id: FileTypeId,
     /// Display name for UI (may differ from name)
     pub display_name: String,
     /// AST representation for type aliases (optional, serialized as JSON string)
@@ -70,10 +62,12 @@ pub struct TypeInfo {
 ///
 /// # Example
 /// ```rust
-/// use type_db::{TypeDatabase, TypeKind};
+/// use type_db::TypeDatabase;
+/// use plugin_editor_api::FileTypeId;
 ///
 /// let mut db = TypeDatabase::new();
-/// let id = db.register_simple("Vector3", TypeKind::Struct);
+/// let file_type = FileTypeId::new("struct");
+/// let id = db.register_simple("Vector3", file_type);
 /// let found = db.get(id);
 /// assert!(found.is_some());
 /// ```
@@ -120,7 +114,7 @@ impl TypeDatabase {
     /// * `category` - Optional category for grouping types.
     /// * `description` - Optional description for documentation/UI.
     /// * `file_path` - Optional file path where the type is defined.
-    /// * `type_kind` - The kind of type (Struct, Enum, Trait, Alias).
+    /// * `file_type_id` - The file type ID from the plugin registry (e.g., "struct", "enum").
     /// * `display_name` - Optional display name for UI (defaults to name if None).
     /// * `ast` - Optional AST representation (serialized as JSON string).
     /// * `last_modified` - Optional last modified timestamp.
@@ -130,10 +124,12 @@ impl TypeDatabase {
     ///
     /// # Example
     /// ```rust
-    /// use type_db::{TypeDatabase, TypeKind};
+    /// use type_db::TypeDatabase;
+    /// use plugin_editor_api::FileTypeId;
     ///
     /// let mut db = TypeDatabase::new();
-    /// let id = db.register("Vector3", Some("Math".to_string()), None, None, TypeKind::Struct, None, None, None);
+    /// let file_type = FileTypeId::new("struct");
+    /// let id = db.register("Vector3", Some("Math".to_string()), None, None, file_type, None, None, None);
     /// ```
     pub fn register(
         &self,
@@ -141,7 +137,7 @@ impl TypeDatabase {
         category: Option<String>,
         description: Option<String>,
         file_path: Option<PathBuf>,
-        type_kind: TypeKind,
+        file_type_id: FileTypeId,
         display_name: Option<String>,
         ast: Option<String>,
         last_modified: Option<SystemTime>,
@@ -157,7 +153,7 @@ impl TypeDatabase {
             category: category.clone(),
             description,
             file_path: file_path.clone(),
-            type_kind,
+            file_type_id,
             display_name,
             ast,
             last_modified,
@@ -190,20 +186,22 @@ impl TypeDatabase {
     ///
     /// # Arguments
     /// * `name` - The display name of the type.
-    /// * `type_kind` - The kind of type (Struct, Enum, Trait, Alias).
+    /// * `file_type_id` - The file type ID from the plugin registry.
     ///
     /// # Returns
     /// The unique ID assigned to the new type.
     ///
     /// # Example
     /// ```rust
-    /// use type_db::{TypeDatabase, TypeKind};
+    /// use type_db::TypeDatabase;
+    /// use plugin_editor_api::FileTypeId;
     ///
     /// let mut db = TypeDatabase::new();
-    /// let id = db.register_simple("MyStruct", TypeKind::Struct);
+    /// let file_type = FileTypeId::new("struct");
+    /// let id = db.register_simple("MyStruct", file_type);
     /// ```
-    pub fn register_simple(&self, name: impl Into<String>, type_kind: TypeKind) -> u64 {
-        self.register(name, None, None, None, type_kind, None, None, None)
+    pub fn register_simple(&self, name: impl Into<String>, file_type_id: FileTypeId) -> u64 {
+        self.register(name, None, None, None, file_type_id, None, None, None)
     }
 
     /// Registers a type with file path (common case for engine_fs).
@@ -213,7 +211,7 @@ impl TypeDatabase {
     /// # Arguments
     /// * `name` - The display name of the type.
     /// * `file_path` - File path where the type is defined.
-    /// * `type_kind` - The kind of type (Struct, Enum, Trait, Alias).
+    /// * `file_type_id` - The file type ID from the plugin registry.
     /// * `display_name` - Optional display name for UI.
     /// * `description` - Optional description.
     /// * `ast` - Optional AST representation (serialized as JSON string).
@@ -223,18 +221,20 @@ impl TypeDatabase {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use type_db::{TypeDatabase, TypeKind};
+    /// use type_db::TypeDatabase;
+    /// use plugin_editor_api::FileTypeId;
     /// use std::path::PathBuf;
     ///
     /// let mut db = TypeDatabase::new();
     /// let path = PathBuf::from("/path/to/file.rs");
-    /// let id = db.register_with_path("MyType", path, TypeKind::Struct, None, None, None).unwrap();
+    /// let file_type = FileTypeId::new("struct");
+    /// let id = db.register_with_path("MyType", path, file_type, None, None, None).unwrap();
     /// ```
     pub fn register_with_path(
         &self,
         name: impl Into<String>,
         file_path: PathBuf,
-        type_kind: TypeKind,
+        file_type_id: FileTypeId,
         display_name: Option<String>,
         description: Option<String>,
         ast: Option<String>,
@@ -249,7 +249,7 @@ impl TypeDatabase {
             None,
             description,
             Some(file_path),
-            type_kind,
+            file_type_id,
             display_name,
             ast,
             last_modified,
@@ -266,10 +266,11 @@ impl TypeDatabase {
     ///
     /// # Example
     /// ```rust
-    /// use type_db::{TypeDatabase, TypeKind};
+    /// use type_db::TypeDatabase;
+    /// use plugin_editor_api::FileTypeId;
     ///
     /// let mut db = TypeDatabase::new();
-    /// let id = db.register_simple("Foo", TypeKind::Struct);
+    /// let id = db.register_simple("Foo", FileTypeId::new("struct"));
     /// let removed = db.unregister(id);
     /// assert!(removed.is_some());
     /// ```
@@ -308,12 +309,13 @@ impl TypeDatabase {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use type_db::{TypeDatabase, TypeKind};
+    /// use type_db::TypeDatabase;
+    /// use plugin_editor_api::FileTypeId;
     /// use std::path::PathBuf;
     ///
     /// let mut db = TypeDatabase::new();
     /// let path = PathBuf::from("/test/file.rs");
-    /// let id = db.register_with_path("TestType", path.clone(), TypeKind::Struct, None, None, None).unwrap();
+    /// let id = db.register_with_path("TestType", path.clone(), FileTypeId::new("struct"), None, None, None).unwrap();
     /// let found = db.get_by_path(&path);
     /// assert!(found.is_some());
     /// ```
@@ -333,12 +335,13 @@ impl TypeDatabase {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use type_db::{TypeDatabase, TypeKind};
+    /// use type_db::TypeDatabase;
+    /// use plugin_editor_api::FileTypeId;
     /// use std::path::PathBuf;
     ///
     /// let mut db = TypeDatabase::new();
     /// let path = PathBuf::from("/test/file.rs");
-    /// db.register_with_path("TestType", path.clone(), TypeKind::Struct, None, None, None).unwrap();
+    /// db.register_with_path("TestType", path.clone(), FileTypeId::new("struct"), None, None, None).unwrap();
     /// let removed = db.unregister_by_path(&path);
     /// assert!(removed.is_some());
     /// ```
@@ -353,51 +356,57 @@ impl TypeDatabase {
     /// Gets all types of a specific kind.
     ///
     /// # Arguments
-    /// * `kind` - The type kind to filter by.
+    /// * `file_type_id` - The file type ID to filter by.
     ///
     /// # Returns
-    /// A vector of all `TypeInfo` matching the specified kind.
+    /// A vector of all `TypeInfo` matching the specified file type.
     ///
     /// # Example
     /// ```rust
-    /// use type_db::{TypeDatabase, TypeKind};
+    /// use type_db::TypeDatabase;
+    /// use plugin_editor_api::FileTypeId;
     ///
     /// let mut db = TypeDatabase::new();
-    /// db.register_simple("Struct1", TypeKind::Struct);
-    /// db.register_simple("Struct2", TypeKind::Struct);
-    /// db.register_simple("Enum1", TypeKind::Enum);
+    /// let struct_type = FileTypeId::new("struct");
+    /// db.register_simple("Struct1", struct_type.clone());
+    /// db.register_simple("Struct2", struct_type.clone());
+    /// 
+    /// let enum_type = FileTypeId::new("enum");
+    /// db.register_simple("Enum1", enum_type);
     ///
-    /// let structs = db.get_by_kind(TypeKind::Struct);
+    /// let structs = db.get_by_file_type(&struct_type);
     /// assert_eq!(structs.len(), 2);
     /// ```
-    pub fn get_by_kind(&self, kind: TypeKind) -> Vec<TypeInfo> {
+    pub fn get_by_file_type(&self, file_type_id: &FileTypeId) -> Vec<TypeInfo> {
         self.types
             .iter()
-            .filter(|t| t.type_kind == kind)
+            .filter(|t| &t.file_type_id == file_type_id)
             .map(|t| t.clone())
             .collect()
     }
 
-    /// Gets the count of types of a specific kind.
+    /// Gets the count of types of a specific file type.
     ///
     /// # Arguments
-    /// * `kind` - The type kind to count.
+    /// * `file_type_id` - The file type ID to count.
     ///
     /// # Returns
-    /// The number of types matching the specified kind.
+    /// The number of types matching the specified file type.
     ///
     /// # Example
     /// ```rust
-    /// use type_db::{TypeDatabase, TypeKind};
+    /// use type_db::TypeDatabase;
+    /// use plugin_editor_api::FileTypeId;
     ///
     /// let mut db = TypeDatabase::new();
-    /// db.register_simple("Struct1", TypeKind::Struct);
-    /// db.register_simple("Struct2", TypeKind::Struct);
+    /// let struct_type = FileTypeId::new("struct");
+    /// db.register_simple("Struct1", struct_type.clone());
+    /// db.register_simple("Struct2", struct_type.clone());
     ///
-    /// assert_eq!(db.count_by_kind(TypeKind::Struct), 2);
+    /// assert_eq!(db.count_by_file_type(&struct_type), 2);
     /// ```
-    pub fn count_by_kind(&self, kind: TypeKind) -> usize {
-        self.types.iter().filter(|t| t.type_kind == kind).count()
+    pub fn count_by_file_type(&self, file_type_id: &FileTypeId) -> usize {
+        self.types.iter().filter(|t| &t.file_type_id == file_type_id).count()
     }
 
     /// Gets a type by its unique ID.

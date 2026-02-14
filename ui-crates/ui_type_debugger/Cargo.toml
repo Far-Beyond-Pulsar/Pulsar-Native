@@ -14,4 +14,5 @@ ui_common.workspace = true
 
 # Engine dependencies
 type_db.workspace = true
+plugin_editor_api.workspace = true
 rust-i18n.workspace = true

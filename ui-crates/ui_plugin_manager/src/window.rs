@@ -13,9 +13,6 @@ use ui::Sizable;
 
 /// Plugin Manager Window - Shows loaded plugins with unload functionality
 pub struct PluginManagerWindow {
-    /// Reference to the plugin manager (shared with main app)
-    plugin_manager: *mut PluginManager,
-
     /// Cached list of plugins for display
     plugins: Vec<PluginMetadata>,
 
@@ -24,17 +21,23 @@ pub struct PluginManagerWindow {
 }
 
 impl PluginManagerWindow {
-    /// Create a new plugin manager window
-    pub fn new(plugin_manager: &mut PluginManager, _window: &mut Window, cx: &mut Context<Self>) -> Self {
-        // Load initial plugin list
-        let plugins = plugin_manager
-            .get_plugins()
-            .into_iter()
-            .cloned()
-            .collect();
+    /// Create a new plugin manager window using the global plugin manager
+    pub fn new_global(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // Load initial plugin list from global
+        let plugins = if let Some(pm_lock) = plugin_manager::global() {
+            if let Ok(pm) = pm_lock.read() {
+                pm.get_plugins()
+                    .into_iter()
+                    .cloned()
+                    .collect()
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
 
         Self {
-            plugin_manager: plugin_manager as *mut PluginManager,
             plugins,
             focus_handle: cx.focus_handle(),
         }
@@ -42,27 +45,30 @@ impl PluginManagerWindow {
 
     /// Refresh the plugin list
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
-        unsafe {
-            self.plugins = (*self.plugin_manager)
-                .get_plugins()
-                .into_iter()
-                .cloned()
-                .collect();
+        if let Some(pm_lock) = plugin_manager::global() {
+            if let Ok(pm) = pm_lock.read() {
+                self.plugins = pm.get_plugins()
+                    .into_iter()
+                    .cloned()
+                    .collect();
+            }
         }
         cx.notify();
     }
 
     /// Unload a plugin by ID
     fn unload_plugin(&mut self, plugin_id: &PluginId, cx: &mut Context<Self>) {
-        unsafe {
-            match (*self.plugin_manager).unload_plugin(plugin_id) {
-                Ok(_) => {
-                    tracing::info!("✅ Plugin unloaded successfully: {}", plugin_id);
-                    // Refresh the list
-                    self.refresh(cx);
-                }
-                Err(e) => {
-                    tracing::error!("❌ Failed to unload plugin: {:?}", e);
+        if let Some(pm_lock) = plugin_manager::global() {
+            if let Ok(mut pm) = pm_lock.write() {
+                match pm.unload_plugin(plugin_id) {
+                    Ok(_) => {
+                        tracing::info!("✅ Plugin unloaded successfully: {}", plugin_id);
+                        // Refresh the list
+                        self.refresh(cx);
+                    }
+                    Err(e) => {
+                        tracing::error!("❌ Failed to unload plugin: {:?}", e);
+                    }
                 }
             }
         }

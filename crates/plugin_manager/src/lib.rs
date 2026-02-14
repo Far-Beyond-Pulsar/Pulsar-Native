@@ -66,13 +66,34 @@ use plugin_editor_api::*;
 use ui::dock::PanelView;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
+use once_cell::sync::OnceCell;
 
 mod registry;
 pub mod builtin;
 
 pub use registry::{EditorRegistry, FileTypeRegistry};
 pub use builtin::{BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext};
+
+// ============================================================================
+// Global Plugin Manager
+// ============================================================================
+
+/// Global plugin manager instance
+static GLOBAL_PLUGIN_MANAGER: OnceCell<RwLock<PluginManager>> = OnceCell::new();
+
+/// Initialize the global plugin manager
+/// This should be called once at application startup
+pub fn initialize_global(manager: PluginManager) {
+    if GLOBAL_PLUGIN_MANAGER.set(RwLock::new(manager)).is_err() {
+        tracing::warn!("Global plugin manager already initialized");
+    }
+}
+
+/// Get a read-only reference to the global plugin manager
+pub fn global() -> Option<&'static RwLock<PluginManager>> {
+    GLOBAL_PLUGIN_MANAGER.get()
+}
 
 // ============================================================================
 // Plugin Container
@@ -132,6 +153,11 @@ pub struct PluginManager {
     /// Stored with plugin ownership tracking for proper cleanup
     statusbar_buttons: Vec<(PluginId, StatusbarButtonDefinition)>,
 }
+
+// SAFETY: PluginManager contains raw pointers but manages their lifecycle carefully.
+// All plugin operations are synchronized through the RwLock wrapper.
+unsafe impl Send for PluginManager {}
+unsafe impl Sync for PluginManager {}
 
 impl PluginManager {
     /// Create a new plugin manager.

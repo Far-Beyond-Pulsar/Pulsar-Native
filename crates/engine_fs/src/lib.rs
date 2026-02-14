@@ -91,41 +91,28 @@ impl EngineFs {
         Ok(())
     }
 
-    /// Register a single asset file
+    /// Register a single asset file using the plugin registry
     fn register_asset(&self, path: PathBuf) -> Result<()> {
-        use type_db::TypeKind;
-
-        // Check if it's a JSON file
-        if let Some(extension) = path.extension() {
-            if extension == "json" {
-                // Get the filename (e.g., "struct.json", "enum.json", "trait.json", "alias.json")
-                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                    // Get the parent folder name as the type name (e.g., "GameState", "Drawable")
-                    let type_name = path.parent()
-                        .and_then(|p| p.file_name())
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("unknown")
-                        .to_string();
-
-                    let type_kind = match file_name {
-                        "struct.json" => Some(TypeKind::Struct),
-                        "enum.json" => Some(TypeKind::Enum),
-                        "trait.json" => Some(TypeKind::Trait),
-                        _ if file_name.contains("alias") => {
-                            // Handle alias.json or *.alias.json
-                            self.operations.register_type_alias(&path)?;
-                            return Ok(());
-                        }
-                        _ => None,
-                    };
-
-                    if let Some(kind) = type_kind {
+        // Use the global registry to determine file type
+        if let Some(plugin_manager) = plugin_manager::global() {
+            if let Ok(pm) = plugin_manager.read() {
+                if let Some(file_type_id) = pm.file_type_registry().get_file_type_for_path(&path) {
+                    if let Some(file_type_def) = pm.file_type_registry().get_file_type(&file_type_id) {
+                        // Get the type name from the parent folder or file stem
+                        let type_name = path.parent()
+                            .and_then(|p| p.file_name())
+                            .and_then(|n| n.to_str())
+                            .or_else(|| path.file_stem().and_then(|n| n.to_str()))
+                            .unwrap_or("unknown")
+                            .to_string();
+                        
+                        // Register with FileTypeId from registry
                         if let Err(e) = self.type_database.register_with_path(
                             type_name.clone(),
                             path.clone(),
-                            kind,
+                            file_type_id,
                             None,
-                            Some(format!("{:?}: {}", kind, type_name)),
+                            Some(format!("{}: {}", file_type_def.display_name, type_name)),
                             None,
                         ) {
                             tracing::warn!("Failed to register type '{}': {:?}", type_name, e);
@@ -134,19 +121,21 @@ impl EngineFs {
                 }
             }
         }
+
         Ok(())
     }
 
     /// Start file system watching for automatic updates
+    /// Note: Currently only watches for file removals. Rescan project to detect new/modified files.
     pub fn start_watching(&self) -> Result<()> {
-        let fs_watcher = watchers::start_watcher(
+        watchers::start_watcher(
             self.project_root.clone(),
             self.type_database.clone(),
         )?;
 
         println!("Started filesystem watcher for project at {:?}", self.project_root);
 
-        Ok(fs_watcher)
+        Ok(())
     }
 }
 

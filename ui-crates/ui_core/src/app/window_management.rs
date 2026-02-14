@@ -187,8 +187,6 @@ impl PulsarApp {
     }
 
     pub(super) fn toggle_plugin_manager(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        let plugin_manager_ptr = &mut self.state.plugin_manager as *mut plugin_manager::PluginManager;
-
         let _ = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds {
@@ -213,8 +211,9 @@ impl PulsarApp {
                 ..Default::default()
             },
             move |window, cx| {
-                let plugin_manager_window = cx.new(|cx| unsafe {
-                    PluginManagerWindow::new(&mut *plugin_manager_ptr, window, cx)
+                // PluginManager is now globally accessible
+                let plugin_manager_window = cx.new(|cx| {
+                    PluginManagerWindow::new_global(window, cx)
                 });
                 cx.new(|cx| Root::new(plugin_manager_window.into(), window, cx))
             },

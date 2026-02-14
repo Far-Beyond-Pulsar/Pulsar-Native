@@ -219,6 +219,10 @@ impl PulsarApp {
             }
         }
 
+        // Initialize global plugin manager
+        tracing::debug!("🌍 Initializing global plugin manager");
+        plugin_manager::initialize_global(plugin_manager);
+
         let mut app = Self {
             state: crate::app::state::AppState {
                 dock_area,
@@ -239,7 +243,6 @@ impl PulsarApp {
                 // trait_editors: Vec::new(),
                 // alias_editors: Vec::new(),
                 next_tab_id: 1,
-                plugin_manager,
                 rust_analyzer,
                 analyzer_status_text: "Idle".to_string(),
                 analyzer_detail_message: String::new(),
@@ -257,12 +260,19 @@ impl PulsarApp {
         };
 
         // Update file manager drawer with registered file types from plugin manager
-        let file_types: Vec<plugin_editor_api::FileTypeDefinition> = app.state.plugin_manager
-            .file_type_registry()
-            .get_all_file_types()
-            .into_iter()
-            .cloned()
-            .collect();
+        let file_types: Vec<plugin_editor_api::FileTypeDefinition> = if let Some(pm_lock) = plugin_manager::global() {
+            if let Ok(pm) = pm_lock.read() {
+                pm.file_type_registry()
+                    .get_all_file_types()
+                    .into_iter()
+                    .cloned()
+                    .collect()
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
 
         app.state.file_manager_drawer.update(cx, |drawer, cx| {
             drawer.update_file_types(file_types);

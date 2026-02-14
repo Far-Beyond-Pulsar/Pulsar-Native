@@ -11,7 +11,6 @@ use ui_problems::ProblemsDrawer;
 use ui_type_debugger::TypeDebuggerDrawer;
 use ui_entry::EntryScreen;
 use ui_common::command_palette::{GenericPalette, Palette, PaletteId, PaletteViewDelegate};
-use plugin_manager::PluginManager;
 use engine_backend::services::rust_analyzer_manager::RustAnalyzerManager;
 
 /// Core application state
@@ -43,8 +42,7 @@ pub struct AppState {
     // Tab management
     pub next_tab_id: usize,
 
-    // Plugin system
-    pub plugin_manager: PluginManager,
+    // Note: PluginManager is now globally accessible via plugin_manager::global()
 
     // Rust Analyzer
     pub rust_analyzer: Entity<RustAnalyzerManager>,

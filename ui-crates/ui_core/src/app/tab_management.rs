@@ -17,18 +17,22 @@ impl PulsarApp {
         tracing::debug!("Opening path: {:?}", path);
         
         // Update plugin manager with current project root
-        self.state.plugin_manager.set_project_root(self.state.project_path.clone());
-        
-        // Let the plugin system handle everything - no match statements needed!
-        match self.state.plugin_manager.create_editor_for_file(&path, window, cx) {
-            Ok((panel, _editor_instance)) => {
-                tracing::debug!("Successfully created editor for: {:?}", path);
-                self.state.center_tabs.update(cx, |tabs, cx| {
-                    tabs.add_panel(panel, window, cx);
-                });
-            }
-            Err(e) => {
-                tracing::error!("Failed to open file {:?}: {}", path, e);
+        if let Some(pm_lock) = plugin_manager::global() {
+            if let Ok(mut pm) = pm_lock.write() {
+                pm.set_project_root(self.state.project_path.clone());
+                
+                // Let the plugin system handle everything - no match statements needed!
+                match pm.create_editor_for_file(&path, window, cx) {
+                    Ok((panel, _editor_instance)) => {
+                        tracing::debug!("Successfully created editor for: {:?}", path);
+                        self.state.center_tabs.update(cx, |tabs, cx| {
+                            tabs.add_panel(panel, window, cx);
+                        });
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to open file {:?}: {}", path, e);
+                    }
+                }
             }
         }
     }

@@ -2708,6 +2708,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "notify",
+ "plugin_editor_api",
+ "plugin_manager",
  "profiling 0.1.0",
  "serde_json",
  "tempfile",
@@ -7160,6 +7162,7 @@ dependencies = [
  "env_logger",
  "gpui",
  "libloading",
+ "once_cell",
  "plugin_editor_api",
  "serde_json",
  "tracing",
@@ -11246,6 +11249,7 @@ name = "type_db"
 version = "0.1.0"
 dependencies = [
  "dashmap 5.5.3",
+ "plugin_editor_api",
 ]
 
 [[package]]
@@ -11562,6 +11566,7 @@ name = "ui_type_debugger"
 version = "0.1.0"
 dependencies = [
  "gpui",
+ "plugin_editor_api",
  "rust-i18n",
  "type_db",
  "ui",

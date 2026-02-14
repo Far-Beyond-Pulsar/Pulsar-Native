@@ -378,7 +378,15 @@ impl PulsarApp {
     
     /// Render statusbar buttons registered by plugins
     fn render_plugin_statusbar_buttons(&self, position: StatusbarPosition, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        let buttons = self.state.plugin_manager.get_statusbar_buttons_for_position(position);
+        let buttons = if let Some(pm_lock) = plugin_manager::global() {
+            if let Ok(pm) = pm_lock.read() {
+                pm.get_statusbar_buttons_for_position(position).into_iter().cloned().collect()
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
         
         buttons
             .into_iter()
@@ -444,28 +452,36 @@ impl PulsarApp {
                             let path = file_path.clone().unwrap_or_else(|| PathBuf::new());
                             
                             // Find which plugin owns this editor
-                            let plugin_id: Option<plugin_editor_api::PluginId> = app.state.plugin_manager.find_plugin_for_editor(&editor_id);
-                            
-                            if let Some(plugin_id) = plugin_id {
-                                match app.state.plugin_manager.create_editor(
-                                    &plugin_id,
-                                    &editor_id,
-                                    path,
-                                    window,
-                                    cx
-                                ) {
-                                    Ok((panel, _editor_instance)) => {
-                                        app.state.center_tabs.update(cx, |tabs, cx| {
-                                            tabs.add_panel(panel, window, cx);
-                                        });
-                                        tracing::info!("Successfully opened editor {:?}", editor_id);
+                            if let Some(pm_lock) = plugin_manager::global() {
+                                let plugin_id: Option<plugin_editor_api::PluginId> = if let Ok(pm) = pm_lock.read() {
+                                    pm.find_plugin_for_editor(&editor_id)
+                                } else {
+                                    None
+                                };
+                                
+                                if let Some(plugin_id) = plugin_id {
+                                    if let Ok(mut pm) = pm_lock.write() {
+                                        match pm.create_editor(
+                                            &plugin_id,
+                                            &editor_id,
+                                            path,
+                                            window,
+                                            cx
+                                        ) {
+                                            Ok((panel, _editor_instance)) => {
+                                                app.state.center_tabs.update(cx, |tabs, cx| {
+                                                    tabs.add_panel(panel, window, cx);
+                                                });
+                                                tracing::info!("Successfully opened editor {:?}", editor_id);
+                                            }
+                                            Err(e) => {
+                                                tracing::error!("Failed to open editor {:?}: {:?}", editor_id, e);
+                                            }
+                                        }
                                     }
-                                    Err(e) => {
-                                        tracing::error!("Failed to open editor {:?}: {:?}", editor_id, e);
-                                    }
+                                } else {
+                                    tracing::error!("No plugin found for editor {:?}", editor_id);
                                 }
-                            } else {
-                                tracing::error!("No plugin found for editor {:?}", editor_id);
                             }
                         }))
                     }
