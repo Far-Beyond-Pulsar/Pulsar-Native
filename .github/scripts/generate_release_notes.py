@@ -62,7 +62,7 @@ Formatting rules (strict):
 - One blank line between sections, and one blank line between a heading and its list.
 - Use '-' bullet points only, no nested lists.
 - Each bullet: short sentence, sentence case, ends with a period.
-- Each bullet MUST end with a commit reference in the form `abc1234` linked to the commit URL.
+- Each bullet MUST end with a the full SHA of the commit it came from linked to the commit URL.
 - Use full commit URLs: https://github.com/{repo_owner}/{repo_name}/commit/<sha>.
 - Each bullet MUST include GitHub mentions for everyone involved in the commit (author and any co-authors).
 - Use @username mentions when available; otherwise include the provided name as plain text.
