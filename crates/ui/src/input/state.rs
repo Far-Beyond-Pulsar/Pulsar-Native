@@ -358,6 +358,25 @@ pub struct InputState {
 impl EventEmitter<InputEvent> for InputState {}
 
 impl InputState {
+    /// Helper function to check if a RopeSlice starts with a given string pattern
+    /// This avoids allocating when checking prefixes
+    fn rope_starts_with(rope: ropey::RopeSlice, pattern: &str) -> bool {
+        if rope.len_bytes() < pattern.len() {
+            return false;
+        }
+        
+        let mut rope_chars = rope.chars();
+        let mut pattern_chars = pattern.chars();
+        
+        loop {
+            match (rope_chars.next(), pattern_chars.next()) {
+                (Some(r), Some(p)) if r == p => continue,
+                (_, None) => return true,
+                _ => return false,
+            }
+        }
+    }
+
     /// Create a Input state with default [`InputMode::SingleLine`] mode.
     ///
     /// See also: [`Self::multi_line`], [`Self::auto_grow`] to set other mode.
@@ -1365,14 +1384,11 @@ impl InputState {
             let offset = self.start_of_line_of_selection(window, cx);
             let offset = self.offset_from_utf16(self.offset_to_utf16(offset));
             
-            // Note: Could optimize by implementing starts_with directly on RopeSlice
-            // to avoid allocation, but requires custom comparison logic.
-            if self
-                .text
-                .slice(offset..self.text.len())
-                .to_string()
-                .starts_with(tab_indent.as_ref())
-            {
+            // Optimized: Check prefix without allocating a String
+            if Self::rope_starts_with(
+                self.text.slice(offset..self.text.len()),
+                tab_indent.as_ref()
+            ) {
                 self.replace_text_in_range_silent(
                     Some(self.range_to_utf16(&(offset..offset + tab_indent.len()))),
                     "",

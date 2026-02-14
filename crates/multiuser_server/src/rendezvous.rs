@@ -13,6 +13,7 @@ use axum::{
 };
 use dashmap::DashMap;
 use futures_util::{SinkExt, StreamExt};
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -326,15 +327,61 @@ impl RendezvousSession {
 pub struct RendezvousCoordinator {
     config: Config,
     sessions: Arc<DashMap<String, Arc<RendezvousSession>>>,
+    jwt_encoding_key: EncodingKey,
+    jwt_decoding_key: DecodingKey,
+}
+
+/// JWT Claims structure for session tokens
+#[derive(Debug, Serialize, Deserialize)]
+struct TokenClaims {
+    sub: String,      // Subject (peer_id)
+    session: String,  // Session ID
+    exp: usize,       // Expiration time
+    iat: usize,       // Issued at
 }
 
 impl RendezvousCoordinator {
     /// Create a new rendezvous coordinator
     pub fn new(config: Config) -> Self {
+        let jwt_secret = config.jwt_secret.as_bytes();
         Self {
+            jwt_encoding_key: EncodingKey::from_secret(jwt_secret),
+            jwt_decoding_key: DecodingKey::from_secret(jwt_secret),
             config,
             sessions: Arc::new(DashMap::new()),
         }
+    }
+
+    /// Validate JWT token
+    fn validate_jwt_token(&self, token: &str) -> Result<TokenClaims> {
+        let mut validation = Validation::new(Algorithm::HS256);
+        validation.validate_exp = true;
+        
+        let token_data = decode::<TokenClaims>(
+            token,
+            &self.jwt_decoding_key,
+            &validation,
+        )
+        .context("Failed to decode JWT token")?;
+        
+        Ok(token_data.claims)
+    }
+
+    /// Generate JWT token for a peer joining a session
+    pub fn generate_join_token(&self, peer_id: &str, session_id: &str, ttl_secs: u64) -> Result<String> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)?
+            .as_secs() as usize;
+        
+        let claims = TokenClaims {
+            sub: peer_id.to_string(),
+            session: session_id.to_string(),
+            iat: now,
+            exp: now + ttl_secs as usize,
+        };
+        
+        encode(&Header::default(), &claims, &self.jwt_encoding_key)
+            .context("Failed to encode JWT token")
     }
 
     /// Create a new rendezvous session
@@ -619,9 +666,15 @@ impl RendezvousCoordinator {
         peer_id: &mut Option<String>,
         session_id: &mut Option<String>,
     ) -> Result<()> {
-        // Validate join token (simplified implementation)
-        // Production: Should use JWT verification with proper signing and expiration
-        // For now: Token format validation only
+        // Validate JWT token
+        if let Err(e) = self.validate_jwt_token(&_join_token) {
+            error!(error = %e, "Invalid join token");
+            tx.send(ServerMessage::Error {
+                message: "Invalid join token".to_string(),
+            })
+            .await?;
+            return Err(e);
+        }
 
         // If session doesn't exist, create it (first peer is host)
         let is_new_session = !self.sessions.contains_key(&sid);
