@@ -12,14 +12,7 @@ use gpui::{
 use rust_i18n::t;
 
 use crate::{
-    button::{Button, ButtonVariants as _},
-    context_menu::{ContextMenu, ContextMenuExt},
-    dock::PanelInfo,
-    h_flex,
-    menu::popup_menu::PopupMenuItem,
-    popup_menu::{PopupMenu, PopupMenuExt},
-    tab::{Tab, TabBar},
-    v_flex, ActiveTheme, AxisExt, IconName, Placement, Selectable, Sizable,
+    ActiveTheme, AxisExt, IconName, PixelsExt, Placement, Selectable, Sizable, button::{Button, ButtonVariants as _}, context_menu::{ContextMenu, ContextMenuExt}, dock::PanelInfo, h_flex, menu::popup_menu::PopupMenuItem, popup_menu::{PopupMenu, PopupMenuExt}, tab::{Tab, TabBar}, v_flex
 };
 
 use super::{
@@ -880,6 +873,9 @@ impl TabPanel {
         }
 
         let tabs_count = self.panels.len();
+        
+        // Shared state to track which tab was right-clicked
+        let clicked_tab_index = Rc::new(RefCell::new(None::<usize>));
 
         let tab_bar = TabBar::new("tab-bar")
             .tab_item_top_offset(-px(1.))
@@ -944,6 +940,13 @@ impl TabPanel {
                                         dock_area.toggle_dock(DockPlacement::Bottom, window, cx);
                                     });
                                 }
+                            }
+                        }))
+                        .on_mouse_down(gpui::MouseButton::Right, cx.listener({
+                            let clicked_index = clicked_tab_index.clone();
+                            move |_view, _event: &gpui::MouseDownEvent, _window, cx| {
+                                // Store which tab was right-clicked
+                                *clicked_index.borrow_mut() = Some(ix);
                             }
                         }))
                         .when(state.draggable, |this| {
@@ -1112,7 +1115,7 @@ impl TabPanel {
                 )
             });
 
-        // Wrap TabBar with context menu
+        // Wrap TabBar with context menu overlay
         let view_for_menu = view.clone();
         let panels_for_menu: Vec<_> = self.panels.iter().cloned().collect();
         
@@ -1122,7 +1125,7 @@ impl TabPanel {
             .relative()
             .child(tab_bar)
             .child(
-                // Invisible overlay to capture right-clicks
+                // Invisible overlay to show context menu (tab click detection is on each tab now)
                 div()
                     .id("tab-context-overlay")
                     .absolute()
@@ -1130,9 +1133,97 @@ impl TabPanel {
                     .context_menu(move |menu, _window, cx| {
                         let view = view_for_menu.clone();
                         let total_tabs = panels_for_menu.len();
+                        let clicked_index_ref = clicked_tab_index.clone();
+                        let tab_index = clicked_index_ref.borrow().unwrap_or(0);
+                        
+                        // Check if clicked tab is closable
+                        let can_close = panels_for_menu.get(tab_index)
+                            .map(|p| p.closable(cx) && p.panel_name(cx) != "Level Editor")
+                            .unwrap_or(false);
                         
                         let mut result = menu;
                         
+                        // Close
+                        if can_close {
+                            let view = view.clone();
+                            let panel = panels_for_menu[tab_index].clone();
+                            result.menu_items.push(PopupMenuItem::Item {
+                                icon: None,
+                                label: "Close".into(),
+                                disabled: false,
+                                action: None,
+                                is_link: false,
+                                handler: Some(Rc::new(move |window, cx| {
+                                    let _ = view.update(cx, |view, cx| {
+                                        view.remove_panel(panel.clone(), window, cx);
+                                    });
+                                })),
+                            });
+                        }
+                        
+                        // Close Others
+                        if can_close && total_tabs > 1 {
+                            let view = view_for_menu.clone();
+                            let clicked_idx = clicked_index_ref.clone();
+                            result.menu_items.push(PopupMenuItem::Item {
+                                icon: None,
+                                label: "Close Others".into(),
+                                disabled: false,
+                                action: None,
+                                is_link: false,
+                                handler: Some(Rc::new(move |window, cx| {
+                                    let idx = clicked_idx.borrow().unwrap_or(0);
+                                    let _ = view.update(cx, |view, cx| {
+                                        view.close_other_tabs(idx, window, cx);
+                                    });
+                                })),
+                            });
+                        }
+                        
+                        // Close to the Left
+                        if can_close && tab_index > 0 {
+                            let view = view_for_menu.clone();
+                            let clicked_idx = clicked_index_ref.clone();
+                            result.menu_items.push(PopupMenuItem::Item {
+                                icon: None,
+                                label: "Close to the Left".into(),
+                                disabled: false,
+                                action: None,
+                                is_link: false,
+                                handler: Some(Rc::new(move |window, cx| {
+                                    let idx = clicked_idx.borrow().unwrap_or(0);
+                                    let _ = view.update(cx, |view, cx| {
+                                        view.close_tabs_to_left(idx, window, cx);
+                                    });
+                                })),
+                            });
+                        }
+                        
+                        // Close to the Right
+                        if can_close && tab_index < total_tabs.saturating_sub(1) {
+                            let view = view_for_menu.clone();
+                            let clicked_idx = clicked_index_ref.clone();
+                            result.menu_items.push(PopupMenuItem::Item {
+                                icon: None,
+                                label: "Close to the Right".into(),
+                                disabled: false,
+                                action: None,
+                                is_link: false,
+                                handler: Some(Rc::new(move |window, cx| {
+                                    let idx = clicked_idx.borrow().unwrap_or(0);
+                                    let _ = view.update(cx, |view, cx| {
+                                        view.close_tabs_to_right(idx, window, cx);
+                                    });
+                                })),
+                            });
+                        }
+                        
+                        // Separator
+                        if can_close {
+                            result.menu_items.push(PopupMenuItem::Separator);
+                        }
+                        
+                        // Close All Saved
                         result.menu_items.push(PopupMenuItem::Item {
                             icon: None,
                             label: "Close All Saved".into(),
@@ -1145,40 +1236,6 @@ impl TabPanel {
                                 });
                             })),
                         });
-                        
-                        if total_tabs > 1 {
-                            let view = view_for_menu.clone();
-                            
-                            result.menu_items.push(PopupMenuItem::Separator);
-                            
-                            result.menu_items.push(PopupMenuItem::Item {
-                                icon: None,
-                                label: "Close Others".into(),
-                                disabled: false,
-                                action: None,
-                                is_link: false,
-                                handler: Some(Rc::new(move |window, cx| {
-                                    let _ = view.update(cx, |view, cx| {
-                                        view.close_other_tabs(0, window, cx);
-                                    });
-                                })),
-                            });
-                            
-                            let view = view_for_menu.clone();
-                            
-                            result.menu_items.push(PopupMenuItem::Item {
-                                icon: None,
-                                label: "Close to the Right".into(),
-                                disabled: false,
-                                action: None,
-                                is_link: false,
-                                handler: Some(Rc::new(move |window, cx| {
-                                    let _ = view.update(cx, |view, cx| {
-                                        view.close_tabs_to_right(0, window, cx);
-                                    });
-                                })),
-                            });
-                        }
                         
                         result
                     })
