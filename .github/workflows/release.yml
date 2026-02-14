@@ -90,7 +90,6 @@ jobs:
 
       - name: Generate release notes with GitHub Models
         id: generate_notes
-        if: ${{ secrets.CI_COPILOT_TOKEN != '' }}
         run: |
           NOTES=$(python .github/scripts/generate_release_notes.py \
             --github-token "${{ secrets.CI_COPILOT_TOKEN }}" \
@@ -104,7 +103,7 @@ jobs:
         continue-on-error: true
 
       - name: Generate fallback release notes
-        if: ${{ secrets.CI_COPILOT_TOKEN == '' || steps.generate_notes.outcome != 'success' }}
+        if: ${{ steps.generate_notes.outcome != 'success' }}
         id: fallback_notes
         run: |
           echo "notes<<EOF" >> $GITHUB_OUTPUT
@@ -125,7 +124,7 @@ jobs:
         with:
           tag_name: v${{ needs.check-version.outputs.version }}
           name: Release v${{ needs.check-version.outputs.version }}
-          body: ${{ (secrets.CI_COPILOT_TOKEN != '' && steps.generate_notes.outcome == 'success' && steps.generate_notes.outputs.notes) || steps.fallback_notes.outputs.notes }}
+          body: ${{ steps.generate_notes.outcome == 'success' && steps.generate_notes.outputs.notes || steps.fallback_notes.outputs.notes }}
           draft: false
           prerelease: false
 
