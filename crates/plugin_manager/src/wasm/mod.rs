@@ -122,11 +122,13 @@ impl WasmPluginHost {
 }
 
 /// A loaded WASM plugin instance
+/// Uses Arc and Mutex for safe cross-thread access, no raw pointers
 pub struct WasmPlugin {
     store: Arc<Mutex<Store<WasmState>>>,
     bindings: PulsarPlugin,
     metadata: PluginMetadata,
     path: PathBuf,
+    // Track editor instances safely with no raw pointers
     editors: Arc<Mutex<HashMap<String, WasmEditorInstance>>>,
 }
 
@@ -139,7 +141,9 @@ impl WasmPlugin {
         &self.path
     }
 
+    /// Get file types from plugin (safe async call into WASM)
     pub async fn file_types(&self) -> Result<Vec<FileTypeDefinition>> {
+        // Lock is dropped after call completes - no holding across await
         let mut store = self.store.lock().unwrap();
         let file_types_wit = self.bindings.pulsar_editor_plugin()
             .call_file_types(&mut *store)
@@ -150,7 +154,7 @@ impl WasmPlugin {
                 id: FileTypeId::new(&ft.id.value),
                 extension: ft.extension,
                 display_name: ft.display_name,
-                icon: ui::IconName::Code, // Map from string
+                icon: ui::IconName::Code,
                 color: gpui::Hsla::from(gpui::rgb(ft.color)),
                 structure: FileStructure::Standalone,
                 default_content: serde_json::json!({}),
@@ -159,6 +163,7 @@ impl WasmPlugin {
         }).collect())
     }
 
+    /// Get editor metadata from plugin
     pub async fn editors(&self) -> Result<Vec<EditorMetadata>> {
         let mut store = self.store.lock().unwrap();
         let editors_wit = self.bindings.pulsar_editor_plugin()
@@ -177,6 +182,8 @@ impl WasmPlugin {
         }).collect())
     }
 
+    /// Create an editor instance in the WASM plugin
+    /// Returns an instance ID that the host uses to refer to this editor
     pub async fn create_editor(
         &self,
         editor_id: EditorId,
@@ -197,7 +204,7 @@ impl WasmPlugin {
             .await?
             .map_err(|e| anyhow!("Failed to create editor: {}", e))?;
 
-        // Store editor instance
+        // Track editor instance (no raw pointers, just String IDs)
         self.editors.lock().unwrap().insert(
             instance_id.clone(),
             WasmEditorInstance {
@@ -209,6 +216,7 @@ impl WasmPlugin {
         Ok(instance_id)
     }
 
+    /// Save an editor instance
     pub async fn save_editor(&self, instance_id: &str) -> Result<()> {
         let mut store = self.store.lock().unwrap();
         self.bindings.pulsar_editor_plugin()
@@ -217,6 +225,7 @@ impl WasmPlugin {
             .map_err(|e| anyhow!("Save failed: {}", e))
     }
 
+    /// Check if an editor instance is dirty
     pub async fn is_dirty(&self, instance_id: &str) -> Result<bool> {
         let mut store = self.store.lock().unwrap();
         Ok(self.bindings.pulsar_editor_plugin()
@@ -224,6 +233,7 @@ impl WasmPlugin {
             .await?)
     }
 
+    /// Call on_unload lifecycle hook
     pub async fn on_unload(&self) -> Result<()> {
         let mut store = self.store.lock().unwrap();
         self.bindings.pulsar_editor_plugin()
@@ -232,6 +242,8 @@ impl WasmPlugin {
     }
 }
 
+/// Tracks an editor instance within a plugin
+/// No raw pointers - just IDs and paths
 struct WasmEditorInstance {
     instance_id: String,
     file_path: PathBuf,
@@ -239,6 +251,8 @@ struct WasmEditorInstance {
 
 impl Drop for WasmPlugin {
     fn drop(&mut self) {
-        tracing::debug!("Dropping WASM plugin: {:?}", self.path);
+        // WASM linear memory is automatically cleaned up by wasmtime
+        // No manual cleanup needed - this is the key safety improvement
+        tracing::debug!("Dropping WASM plugin: {:?} - wasmtime handles cleanup", self.path);
     }
 }

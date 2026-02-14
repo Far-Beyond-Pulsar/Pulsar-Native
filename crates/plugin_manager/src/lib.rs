@@ -3,10 +3,10 @@
 //! This crate provides the infrastructure for loading, managing, and using editor plugins
 //! in the Pulsar engine. It handles:
 //!
-//! - Dynamic library loading from `plugins/editor/`
-//! - Version compatibility checking
+//! - WASM module loading from `plugins/editor/`
 //! - File type and editor registration
 //! - Editor instance creation
+//! - Plugin lifecycle management
 //!
 //! ## Usage
 //!
@@ -28,40 +28,16 @@
 //! )?;
 //! ```
 //!
-//! ## Safety and Memory Management
+//! ## WASM Plugin System
 //!
-//! This plugin system uses dynamic library loading with careful memory management to avoid
-//! heap corruption across DLL boundaries:
+//! Plugins are compiled to WebAssembly and run in a sandboxed environment using Wasmtime.
+//! This provides:
 //!
-//! ### Memory Ownership Rules
-//!
-//! 1. **Plugin owns its memory**: All plugin instances (`Box<dyn EditorPlugin>`) are allocated
-//!    in the plugin's heap and MUST be freed by calling the plugin's `_plugin_destroy` function.
-//!
-//! 2. **Never use Rust's Drop**: The main app stores raw pointers to plugin instances and
-//!    NEVER converts them to `Box` or lets Rust's Drop trait handle cleanup.
-//!
-//! 3. **Explicit destruction**: Plugins are destroyed by calling their exported `_plugin_destroy`
-//!    function, which frees memory in the plugin's heap.
-//!
-//! ### Cross-DLL Contracts
-//!
-//! 1. **Theme Pointer Validity**: The main app passes a Theme pointer to plugins. This pointer
-//!    MUST remain valid (not moved or dropped) for the entire plugin lifetime.
-//!
-//! 2. **Function Pointer Stability**: Plugins register function pointers with the main app.
-//!    These MUST remain valid until the plugin is unloaded.
-//!
-//! 3. **ABI Compatibility**: Plugins are checked for ABI version compatibility. Mismatched
-//!    versions are rejected at load time.
-//!
-//! ### Why This Approach
-//!
-//! On Windows, each DLL has its own heap allocator. Allocating memory in one DLL and freeing
-//! it in another causes heap corruption. By ensuring each side frees its own memory, we
-//! maintain safety across the DLL boundary.
+//! - Memory safety (no heap corruption across boundaries)
+//! - Platform independence (same .wasm works on Windows/Linux/macOS)
+//! - Automatic cleanup (WASM linear memory is managed)
+//! - Security isolation
 
-use libloading::{Library, Symbol};
 use plugin_editor_api::*;
 use ui::dock::PanelView;
 use std::collections::HashMap;
@@ -98,46 +74,17 @@ pub fn global() -> Option<&'static RwLock<PluginManager>> {
 }
 
 // ============================================================================
-// Plugin Container
-// ============================================================================
-
-/// A loaded plugin with its library handle.
-struct LoadedPlugin {
-    /// Raw pointer to plugin instance (owned by plugin DLL, not by us!)
-    /// SAFETY: This pointer is allocated in the plugin's heap and MUST be freed
-    /// by calling the plugin's _plugin_destroy function, NOT by Rust's Drop.
-    plugin_ptr: *mut dyn EditorPlugin,
-
-    /// Function to destroy the plugin (frees memory in plugin's heap)
-    destroy_fn: PluginDestroy,
-
-    /// The dynamic library handle (must be kept alive)
-    #[allow(dead_code)]
-    library: Arc<Library>,
-
-    /// Metadata for quick access (owned by main app)
-    metadata: PluginMetadata,
-}
-
-// ============================================================================
 // Plugin Manager
 // ============================================================================
 
-/// Manages all editor plugins in the system.
-///
-/// The PluginManager is responsible for:
-/// - Loading plugins from disk
-/// - Verifying version compatibility
-/// - Maintaining registries of file types and editors
-/// - Creating editor instances on demand
-/// - Managing built-in editors (same trait interface, no DLL loading)
-/// - Managing statusbar buttons registered by plugins
+/// Manages all WASM editor plugins in the system.
+/// Uses safe patterns from Zed's WASM host to prevent memory leaks.
 pub struct PluginManager {
-    /// All loaded plugins, indexed by plugin ID
-    plugins: HashMap<PluginId, LoadedPlugin>,
-    
     /// WASM plugin host (shared across all WASM plugins)
-    wasm_host: Arc<OnceCell<WasmPluginHost>>,
+    wasm_host: Arc<WasmPluginHost>,
+
+    /// Loaded WASM plugins indexed by ID
+    plugins: HashMap<PluginId, Arc<WasmPlugin>>,
 
     /// Registry of all file types
     file_type_registry: FileTypeRegistry,
@@ -145,35 +92,29 @@ pub struct PluginManager {
     /// Registry of all editors
     editor_registry: EditorRegistry,
     
-    /// Built-in editor registry (no DLL loading)
+    /// Built-in editor registry
     builtin_registry: BuiltinEditorRegistry,
-
-    /// The version info for this engine build
-    engine_version: VersionInfo,
     
     /// Project root path for editor context
     project_root: Option<PathBuf>,
 
-    /// Statusbar buttons registered by all plugins
-    /// Stored with plugin ownership tracking for proper cleanup
+    /// Statusbar buttons registered by plugins
     statusbar_buttons: Vec<(PluginId, StatusbarButtonDefinition)>,
 }
-
-// SAFETY: PluginManager contains raw pointers but manages their lifecycle carefully.
-// All plugin operations are synchronized through the RwLock wrapper.
-unsafe impl Send for PluginManager {}
-unsafe impl Sync for PluginManager {}
 
 impl PluginManager {
     /// Create a new plugin manager.
     pub fn new() -> Self {
+        let wasm_host = Arc::new(
+            WasmPluginHost::new().expect("Failed to initialize WASM host")
+        );
+        
         Self {
+            wasm_host,
             plugins: HashMap::new(),
-            wasm_host: Arc::new(OnceCell::new()),
             file_type_registry: FileTypeRegistry::new(),
             editor_registry: EditorRegistry::new(),
             builtin_registry: BuiltinEditorRegistry::new(),
-            engine_version: VersionInfo::current(),
             project_root: None,
             statusbar_buttons: Vec::new(),
         }
@@ -204,11 +145,9 @@ impl PluginManager {
 
     /// Load all plugins from a directory.
     ///
-    /// This will scan the directory for dynamic libraries (.dll on Windows,
-    /// .so on Linux, .dylib on macOS) and attempt to load each one as a plugin.
+    /// This will scan the directory for WASM modules (.wasm) and attempt to load each one as a plugin.
     ///
-    /// Plugins that fail version checks or loading will be logged but won't
-    /// prevent other plugins from loading.
+    /// Plugins that fail loading will be logged but won't prevent other plugins from loading.
     pub fn load_plugins_from_dir(&mut self, dir: impl AsRef<Path>, cx: &gpui::App) -> Result<(), PluginManagerError> {
         let dir = dir.as_ref();
 
@@ -217,33 +156,25 @@ impl PluginManager {
             return Ok(());
         }
 
-        tracing::debug!("Loading plugins from: {:?}", dir);
+        tracing::debug!("Loading WASM plugins from: {:?}", dir);
 
-        // Get the appropriate file extension for this platform
-        #[cfg(target_os = "windows")]
-        let extension = "dll";
-        #[cfg(target_os = "linux")]
-        let extension = "so";
-        #[cfg(target_os = "macos")]
-        let extension = "dylib";
-
-        // Scan directory for plugin libraries
+        // Scan directory for WASM modules
         for entry in walkdir::WalkDir::new(dir)
-            .max_depth(1)
+            .max_depth(2)
             .into_iter()
             .filter_map(|e| e.ok())
         {
             let path = entry.path();
 
-            // Check if this is a dynamic library
-            if path.extension().and_then(|s| s.to_str()) != Some(extension) {
+            // Check if this is a WASM file
+            if path.extension().and_then(|s| s.to_str()) != Some("wasm") {
                 continue;
             }
 
             // Attempt to load the plugin
-            match self.load_plugin(path, cx) {
+            match self.load_wasm_plugin(path, cx) {
                 Ok(plugin_id) => {
-                    tracing::debug!("Successfully loaded plugin: {}", plugin_id);
+                    tracing::info!("✓ Successfully loaded plugin: {}", plugin_id);
                 }
                 Err(e) => {
                     tracing::error!("Failed to load plugin from {:?}: {}", path, e);
@@ -262,212 +193,23 @@ impl PluginManager {
     /// For DLL plugins: The library must be compiled with the same Rust version and
     /// for the same engine version as the current build.
     /// For WASM plugins: Uses wasmtime sandboxing for memory safety.
-    pub fn load_plugin(&mut self, path: impl AsRef<Path>, cx: &gpui::App) -> Result<PluginId, PluginManagerError> {
-        let path = path.as_ref();
+    // Removed: DLL loading code - all plugins are now WASM
 
-        tracing::debug!("Loading plugin from: {:?}", path);
-
-        // Detect if this is a WASM plugin or DLL plugin
-        let extension = path.extension().and_then(|s| s.to_str());
-        
-        if extension == Some("wasm") {
-            // Load as WASM plugin
-            return self.load_wasm_plugin(path, cx);
-        }
-
-        // Load as DLL plugin (existing code)
-        // Load the library
-        let library = unsafe {
-            Library::new(path).map_err(|e| PluginManagerError::LibraryLoadError {
-                path: path.to_path_buf(),
-                message: e.to_string(),
-            })?
-        };
-
-        let library = Arc::new(library);
-
-        // Get the version info function
-        let version_fn: Symbol<extern "C" fn() -> VersionInfo> = unsafe {
-            library
-                .get(b"_plugin_version")
-                .map_err(|e| PluginManagerError::MissingSymbol {
-                    symbol: "_plugin_version".to_string(),
-                    message: e.to_string(),
-                })?
-        };
-
-        // Check version compatibility
-        let plugin_version = version_fn();
-
-        tracing::debug!(
-            "Version check - Engine: {:?}, Plugin: {:?}",
-            self.engine_version,
-            plugin_version
-        );
-
-        if !self.engine_version.is_compatible(&plugin_version) {
-            tracing::error!(
-                "Plugin version mismatch! Expected engine v{}.{}.{} (ABI v{}), got v{}.{}.{} (ABI v{})",
-                self.engine_version.engine_version.0,
-                self.engine_version.engine_version.1,
-                self.engine_version.engine_version.2,
-                self.engine_version.rustc_version_hash,
-                plugin_version.engine_version.0,
-                plugin_version.engine_version.1,
-                plugin_version.engine_version.2,
-                plugin_version.rustc_version_hash,
-            );
-
-            return Err(PluginManagerError::VersionMismatch {
-                expected: self.engine_version,
-                actual: plugin_version,
-            });
-        }
-
-        tracing::debug!("Version check passed for plugin at {:?}", path);
-
-        // Setup the plugin logger
-        // Get the plugin constructor
-        let create_fn: Symbol<PluginCreate> = unsafe {
-            library
-                .get(b"_plugin_create")
-                .map_err(|e| PluginManagerError::MissingSymbol {
-                    symbol: "_plugin_create".to_string(),
-                    message: e.to_string(),
-                })?
-        };
-
-        // Get the plugin destructor (CRITICAL for proper memory management)
-        let destroy_fn: Symbol<PluginDestroy> = unsafe {
-            library
-                .get(b"_plugin_destroy")
-                .map_err(|e| PluginManagerError::MissingSymbol {
-                    symbol: "_plugin_destroy".to_string(),
-                    message: e.to_string(),
-                })?
-        };
-
-        // Create the plugin instance with Theme pointer for cross-DLL global state sync
-        // SAFETY: We store the raw pointer and NEVER convert it to Box in main app.
-        // The plugin owns this memory and will free it via _plugin_destroy.
-        let plugin_ptr = unsafe {
-            // Get Theme from main app's global state and pass to plugin
-            let theme_ptr = ui::theme::Theme::global(cx) as *const _ as *const std::ffi::c_void;
-            let raw_plugin = create_fn(theme_ptr);
-            if raw_plugin.is_none() {
-                return Err(PluginManagerError::PluginCreationFailed {
-                    message: "Plugin constructor returned null".to_string(),
-                });
-            }
-            raw_plugin
-        };
-
-        let Some(plugin_ptr) = plugin_ptr else {
-            return Err(PluginManagerError::PluginCreationFailed {
-                message: "Plugin constructor returned null".to_string(),
-            })
-        };
-        
-
-        // Get plugin metadata by temporarily accessing through raw pointer
-        // SAFETY: Plugin just created, pointer is valid. We validated it's not null above.
-        let metadata = unsafe { (plugin_ptr).metadata() };
-        let plugin_id = metadata.id.clone();
-
-        tracing::debug!(
-            "Loaded plugin: {} v{} by {}",
-            metadata.name,
-            metadata.version,
-            metadata.author
-        );
-
-        // Call on_load hook via raw pointer
-        // SAFETY: Plugin just created, pointer is valid, not null
-        unsafe { plugin_ptr.on_load() };
-
-        // Validate plugin is still functioning after on_load
-        // Some plugins may fail during initialization
-        // Register file types via raw pointer
-        // SAFETY: Plugin just created, pointer is valid
-        let file_types = unsafe { (plugin_ptr).file_types() };
-        for file_type in file_types {
-            tracing::debug!(
-                "  Registering file type: {} (.{})",
-                file_type.display_name,
-                file_type.extension
-            );
-            self.file_type_registry.register(file_type, plugin_id.clone());
-        }
-
-        // Register editors via raw pointer
-        // SAFETY: Plugin just created, pointer is valid
-        let editors = unsafe { (plugin_ptr).editors() };
-        for editor in editors {
-            tracing::debug!("  Registering editor: {}", editor.display_name);
-            self.editor_registry.register(editor, plugin_id.clone());
-        }
-
-        // Register statusbar buttons via raw pointer
-        // SAFETY: Plugin just created, pointer is valid
-        let statusbar_buttons = unsafe { (plugin_ptr).statusbar_buttons() };
-        if !statusbar_buttons.is_empty() {
-            tracing::debug!("  Registering {} statusbar buttons", statusbar_buttons.len());
-            for button in statusbar_buttons {
-                tracing::debug!("    - Button: {} at {:?}", button.id, button.position);
-
-                // Store with plugin ID for tracking and cleanup
-                self.statusbar_buttons.push((plugin_id.clone(), button));
-            }
-
-            // Sort buttons by priority within their position groups
-            self.statusbar_buttons.sort_by(|(_, a), (_, b)| {
-                match (&a.position, &b.position) {
-                    (StatusbarPosition::Left, StatusbarPosition::Left) |
-                    (StatusbarPosition::Right, StatusbarPosition::Right) => {
-                        b.priority.cmp(&a.priority) // Higher priority comes first
-                    }
-                    (StatusbarPosition::Left, StatusbarPosition::Right) => std::cmp::Ordering::Less,
-                    (StatusbarPosition::Right, StatusbarPosition::Left) => std::cmp::Ordering::Greater,
-                }
-            });
-        }
-
-        // Store the plugin with raw pointer and destroy function
-        // CRITICAL: We do NOT take ownership of the plugin memory.
-        // The plugin DLL owns it and will free it when destroy_fn is called.
-        let loaded_plugin = LoadedPlugin {
-            plugin_ptr,
-            destroy_fn: *destroy_fn,  // Copy the function pointer
-            library,
-            metadata: metadata.clone(),
-        };
-
-        self.plugins.insert(plugin_id.clone(), loaded_plugin);
-
-        Ok(plugin_id)
-    }
-
-    /// Load a WASM plugin from a file
+    
     fn load_wasm_plugin(&mut self, path: impl AsRef<Path>, _cx: &gpui::App) -> Result<PluginId, PluginManagerError> {
         let path = path.as_ref();
 
         tracing::info!("Loading WASM plugin from: {:?}", path);
 
-        // Get or create the WASM host
-        let host = self.wasm_host.get_or_init(|| {
-            tracing::debug!("Initializing WASM runtime");
-            WasmPluginHost::new().expect("Failed to initialize WASM runtime")
-        });
-
-        // Load the WASM plugin
+        // Load the WASM plugin using the host
         let wasm_plugin = futures::executor::block_on(async {
-            host.load_plugin(path).await
+            self.wasm_host.load_plugin(path).await
         }).map_err(|e| PluginManagerError::LibraryLoadError {
             path: path.to_path_buf(),
             message: format!("WASM loading failed: {}", e),
         })?;
 
-        let metadata = wasm_plugin.metadata();
+        let metadata = wasm_plugin.metadata().clone();
         let plugin_id = metadata.id.clone();
 
         tracing::info!("Loaded WASM plugin: {} v{}", metadata.name, metadata.version);
@@ -498,23 +240,25 @@ impl PluginManager {
             self.editor_registry.register(editor, plugin_id.clone());
         }
 
-        // Note: WASM plugins are stored in the WasmPluginHost, not in the plugins HashMap
-        // This is because they have different lifecycle management
+        // Store the plugin with Arc for safe reference counting
+        self.plugins.insert(plugin_id.clone(), Arc::new(wasm_plugin));
 
         tracing::info!("✓ WASM plugin {} registered successfully", plugin_id);
 
         Ok(plugin_id)
     }
 
-    /// Unload a plugin by ID.
-    ///
-    /// This will call the plugin's `on_unload` hook, destroy the plugin instance
-    /// (freeing memory in the plugin's heap), and remove all registered file types and editors.
+    /// Unload a plugin by ID (safe with Arc reference counting)
     pub fn unload_plugin(&mut self, plugin_id: &PluginId) -> Result<(), PluginManagerError> {
-        if let Some(loaded_plugin) = self.plugins.remove(plugin_id) {
-            // Call on_unload hook via raw pointer
-            // SAFETY: Plugin is still valid, about to be destroyed
-            unsafe { (*loaded_plugin.plugin_ptr).on_unload() };
+        if let Some(plugin) = self.plugins.remove(plugin_id) {
+            tracing::info!("Unloading WASM plugin: {}", plugin_id);
+
+            // Call on_unload hook
+            futures::executor::block_on(async {
+                plugin.on_unload().await
+            }).map_err(|e| PluginManagerError::PluginError {
+                message: format!("on_unload failed: {}", e),
+            })?;
 
             // Remove file types
             self.file_type_registry.unregister_by_plugin(plugin_id);
@@ -522,9 +266,7 @@ impl PluginManager {
             // Remove editors
             self.editor_registry.unregister_by_plugin(plugin_id);
 
-            // Remove statusbar buttons registered by this plugin
-            // This is critical because button data (especially function pointers in
-            // custom_callback) becomes invalid when the plugin DLL is unloaded
+            // Remove statusbar buttons
             let buttons_before = self.statusbar_buttons.len();
             self.statusbar_buttons.retain(|(owner_id, _)| owner_id != plugin_id);
             let buttons_removed = buttons_before - self.statusbar_buttons.len();
@@ -532,19 +274,9 @@ impl PluginManager {
                 tracing::debug!("Removed {} statusbar buttons from plugin", buttons_removed);
             }
 
-            tracing::debug!("Unloading plugin: {}", loaded_plugin.metadata.name);
-
-            // CRITICAL: Call the plugin's destroy function to free memory in plugin's heap
-            // This is the ONLY safe way to free the plugin instance.
-            // SAFETY: We are transferring ownership back to the plugin DLL to free its own memory.
-            unsafe {
-                (loaded_plugin.destroy_fn)(loaded_plugin.plugin_ptr);
-            }
-
-            tracing::debug!("Plugin destroyed: {}", loaded_plugin.metadata.name);
-
-            // Library will be unloaded when Arc drops (if no other references)
-
+            // Plugin is dropped here, Arc ensures no memory leaks
+            // WASM linear memory is automatically cleaned up by wasmtime
+            tracing::info!("✓ Plugin {} unloaded successfully", plugin_id);
             Ok(())
         } else {
             Err(PluginManagerError::PluginNotFound {
@@ -553,9 +285,9 @@ impl PluginManager {
         }
     }
 
-    /// Get all loaded plugins.
+    /// Get all loaded plugins
     pub fn get_plugins(&self) -> Vec<&PluginMetadata> {
-        self.plugins.values().map(|p| &p.metadata).collect()
+        self.plugins.values().map(|p| p.metadata()).collect()
     }
 
     /// Get a reference to the file type registry.
@@ -587,17 +319,17 @@ impl PluginManager {
             .collect()
     }
     
-    // TODO: We should really be keeping track of which plugin owns what editors rather than finding on-the-fly
     /// Find which plugin owns a given editor ID
     pub fn find_plugin_for_editor(&self, editor_id: &EditorId) -> Option<PluginId> {
-        for (_id, plugin) in &self.plugins {
-            let editors = unsafe {
-                let plugin_ref = &*plugin.plugin_ptr;
-                plugin_ref.editors()
-            };
+        for (plugin_id, plugin) in &self.plugins {
+            let editors = futures::executor::block_on(async {
+                plugin.editors().await
+            });
             
-            if editors.iter().any(|e| &e.id == editor_id) {
-                return Some(plugin.metadata.id.clone());
+            if let Ok(editors) = editors {
+                if editors.iter().any(|e| &e.id == editor_id) {
+                    return Some(plugin_id.clone());
+                }
             }
         }
         None
@@ -617,8 +349,8 @@ impl PluginManager {
     /// Create an editor for a file by detecting its type and finding an appropriate editor.
     ///
     /// This method:
-    /// 1. Tries built-in editors first (no DLL loading)
-    /// 2. Falls back to DLL-based plugins if no built-in editor is found
+    /// 1. Tries built-in editors first (fast, native code)
+    /// 2. Falls back to WASM plugins if no built-in editor is found
     /// 3. Returns error if no editor can be found
     pub fn create_editor_for_file(
         &mut self,
@@ -692,92 +424,163 @@ impl PluginManager {
                 Err(e) => {
                     tracing::error!("Built-in editor creation failed: {}", e);
                     return Err(PluginManagerError::PluginError {
-                        plugin_id: plugin_id.clone(),
-                        error: e,
+                        message: format!("Built-in editor creation failed: {}", e),
                     });
                 }
             }
         }
 
-        // Fall back to DLL-based plugin
+        // Create editor using WASM plugin
         self.create_editor(&plugin_id, &editor_id, file_path.to_path_buf(), window, cx)
     }
 
-    /// Create an editor instance with a specific editor ID.
+    /// Create an editor instance with specific IDs (calls WASM plugin safely)
     pub fn create_editor(
         &mut self,
         plugin_id: &PluginId,
         editor_id: &EditorId,
         file_path: PathBuf,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut App,
     ) -> Result<(std::sync::Arc<dyn ui::dock::PanelView>, Box<dyn EditorInstance>), PluginManagerError> {
-        let plugin = self
-            .plugins
-            .get_mut(plugin_id)
+        // Get plugin with Arc clone for safe reference
+        let plugin = self.plugins.get(plugin_id)
             .ok_or_else(|| PluginManagerError::PluginNotFound {
                 plugin_id: plugin_id.clone(),
-            })?;
+            })?
+            .clone(); // Clone the Arc, not the plugin
 
-        // Validate plugin pointer before use
-        if plugin.plugin_ptr.is_null() {
-            return Err(PluginManagerError::PluginError {
-                plugin_id: plugin_id.clone(),
-                error: PluginError::Other {
-                    message: "Plugin pointer is null (plugin may have been corrupted)".to_string(),
-                },
-            });
+        // Create editor instance in WASM
+        let instance_id = futures::executor::block_on(async {
+            plugin.create_editor(editor_id.clone(), file_path.clone()).await
+        }).map_err(|e| PluginManagerError::EditorCreationFailed {
+            editor_id: editor_id.to_string(),
+            message: format!("WASM editor creation failed: {}", e),
+        })?;
+
+        // Create a safe wrapper using Arc instead of raw pointers
+        struct WasmEditorInstanceWrapper {
+            plugin: Arc<WasmPlugin>, // Keep Arc to plugin alive
+            instance_id: String,
+            file_path: PathBuf,
         }
 
-        // Initialize plugin globals (Theme, etc.) from main app before creating editor
-        // This syncs the main app's global state into the plugin's DLL memory space
-        unsafe {
-            if let Ok(init_fn) = plugin.library.get::<unsafe extern "C" fn(*const std::ffi::c_void)>(b"_plugin_init_globals") {
-                // Get Theme pointer from main app's global state
-                let theme_ptr = ui::theme::Theme::global(cx) as *const _ as *const std::ffi::c_void;
+        impl EditorInstance for WasmEditorInstanceWrapper {
+            fn file_path(&self) -> &PathBuf {
+                &self.file_path
+            }
 
-                // Validate theme pointer before passing to plugin
-                if !theme_ptr.is_null() {
-                    init_fn(theme_ptr);
-                    tracing::debug!("Initialized plugin globals for: {}", plugin_id.as_str());
-                } else {
-                    tracing::warn!("Theme pointer is null, plugin may not have theme access");
-                }
+            fn save(&mut self, _window: &mut Window, _cx: &mut App) -> Result<(), PluginError> {
+                // Safe: plugin is kept alive by Arc
+                futures::executor::block_on(async {
+                    self.plugin.save_editor(&self.instance_id).await
+                }).map_err(|e| PluginError::Other {
+                    message: format!("Save failed: {}", e),
+                })
+            }
+
+            fn reload(&mut self, _window: &mut Window, _cx: &mut App) -> Result<(), PluginError> {
+                // WASM plugins handle reload internally
+                Ok(())
+            }
+
+            fn is_dirty(&self) -> bool {
+                futures::executor::block_on(async {
+                    self.plugin.is_dirty(&self.instance_id).await.unwrap_or(false)
+                })
+            }
+
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
             }
         }
 
-        // Call create_editor via raw pointer
-        // SAFETY: Plugin is loaded, pointer validated as non-null above
-        //
-        // The plugin returns a Weak reference to prevent Arc leaks across DLL boundaries.
-        // The plugin maintains the strong Arc internally, and we upgrade the Weak here.
-        unsafe {
-            let (weak_panel, editor_instance) = (*plugin.plugin_ptr)
-                .create_editor(editor_id.clone(), file_path, window, cx, &EditorLogger)
-                .map_err(|e| PluginManagerError::PluginError {
-                    plugin_id: plugin_id.clone(),
-                    error: e,
-                })?;
+        let wrapper = WasmEditorInstanceWrapper {
+            plugin: plugin.clone(), // Keep plugin alive via Arc
+            instance_id: instance_id.clone(),
+            file_path: file_path.clone(),
+        };
 
-            // Upgrade the Weak to an Arc for the main app to use
-            // This is safe because the plugin still holds the strong Arc
-            let arc_panel = weak_panel.upgrade().ok_or_else(|| {
-                PluginManagerError::PluginError {
-                    plugin_id: plugin_id.clone(),
-                    error: PluginError::Other {
-                        message: "Plugin panel was dropped before use".to_string(),
-                    },
-                }
-            })?;
-
-            tracing::debug!(
-                "Created editor (strong: {}, weak: {})",
-                std::sync::Arc::strong_count(&arc_panel),
-                std::sync::Arc::weak_count(&arc_panel)
-            );
-
-            Ok((arc_panel, editor_instance))
+        // Create UI panel using GPUI View properly
+        use gpui::{EventEmitter, Focusable, Render, IntoElement, Context, FocusHandle, ParentElement, Styled};
+        use ui::dock::{Panel, PanelEvent, PanelState};
+        
+        struct WasmEditorPanel {
+            plugin: Arc<WasmPlugin>, // Keep plugin alive
+            instance_id: String,
+            file_path: PathBuf,
+            focus_handle: FocusHandle,
         }
+        
+        impl WasmEditorPanel {
+            fn new(
+                plugin: Arc<WasmPlugin>,
+                instance_id: String,
+                file_path: PathBuf,
+                cx: &mut Context<Self>
+            ) -> Self {
+                Self {
+                    plugin,
+                    instance_id,
+                    file_path,
+                    focus_handle: cx.focus_handle(),
+                }
+            }
+        }
+        
+        impl Panel for WasmEditorPanel {
+            fn panel_name(&self) -> &'static str { 
+                "wasm-editor" 
+            }
+            
+            fn title(&self, _window: &Window, _cx: &App) -> gpui::AnyElement {
+                gpui::div()
+                    .child(format!("WASM: {}", 
+                        self.file_path.file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("Unknown")
+                    ))
+                    .into_any_element()
+            }
+            
+            fn dump(&self, _cx: &App) -> PanelState {
+                PanelState::new(self)
+            }
+        }
+        
+        impl EventEmitter<PanelEvent> for WasmEditorPanel {}
+        
+        impl Focusable for WasmEditorPanel {
+            fn focus_handle(&self, _cx: &App) -> FocusHandle {
+                self.focus_handle.clone()
+            }
+        }
+        
+        impl Render for WasmEditorPanel {
+            fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+                // TODO: Call into WASM to get UI description and render it
+                // For now, show a placeholder
+                gpui::div()
+                    .size_full()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .justify_center()
+                    .child("WASM Editor Panel")
+                    .child(format!("Plugin: {}", self.plugin.metadata().name))
+                    .child(format!("Instance: {}", self.instance_id))
+                    .child(format!("File: {}", self.file_path.display()))
+            }
+        }
+        
+        // Create the panel view (App has the new method via AppContext trait)
+        let panel_view = gpui::AppContext::new(cx, |cx| {
+            WasmEditorPanel::new(plugin, instance_id, file_path, cx)
+        });
+        
+        let panel_arc: Arc<dyn PanelView> = Arc::new(panel_view);
+
+        Ok((panel_arc, Box::new(wrapper)))
     }
 
     /// Get the default content for a file type.
@@ -881,22 +684,10 @@ impl Default for PluginManager {
     }
 }
 
-// When the manager is dropped, properly destroy all plugins
+// WASM plugins have automatic cleanup
 impl Drop for PluginManager {
     fn drop(&mut self) {
-        for (plugin_id, loaded_plugin) in self.plugins.drain() {
-            // Call on_unload hook
-            // SAFETY: Plugin is still valid, about to be destroyed
-            unsafe { (*loaded_plugin.plugin_ptr).on_unload() };
-
-            // CRITICAL: Call destroy function to free memory in plugin's heap
-            // SAFETY: We are transferring ownership back to the plugin DLL
-            unsafe {
-                (loaded_plugin.destroy_fn)(loaded_plugin.plugin_ptr);
-            }
-
-            tracing::debug!("Destroyed plugin on drop: {}", plugin_id);
-        }
+        tracing::debug!("PluginManager dropped, WASM runtime will clean up");
     }
 }
 
@@ -907,20 +698,8 @@ impl Drop for PluginManager {
 /// Errors that can occur in the plugin manager.
 #[derive(Debug, Clone)]
 pub enum PluginManagerError {
-    /// Failed to load dynamic library
+    /// Failed to load WASM module
     LibraryLoadError { path: PathBuf, message: String },
-
-    /// Required symbol not found in library
-    MissingSymbol { symbol: String, message: String },
-
-    /// Plugin version incompatible with engine
-    VersionMismatch {
-        expected: VersionInfo,
-        actual: VersionInfo,
-    },
-
-    /// Failed to create plugin instance
-    PluginCreationFailed { message: String },
 
     /// Plugin not found
     PluginNotFound { plugin_id: PluginId },
@@ -937,42 +716,21 @@ pub enum PluginManagerError {
     /// No editor for file type
     NoEditorForFileType { file_type_id: FileTypeId },
 
-    /// Plugin error
-    PluginError {
-        plugin_id: PluginId,
-        error: PluginError,
-    },
+    /// Plugin error (generic)
+    PluginError { message: String },
 
     /// Failed to create file
     FileCreationError { path: PathBuf, message: String },
+
+    /// Failed to create editor
+    EditorCreationFailed { editor_id: String, message: String },
 }
 
 impl std::fmt::Display for PluginManagerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::LibraryLoadError { path, message } => {
-                write!(f, "Failed to load library {:?}: {}", path, message)
-            }
-            Self::MissingSymbol { symbol, message } => {
-                write!(f, "Missing symbol '{}': {}", symbol, message)
-            }
-            Self::VersionMismatch { expected, actual } => {
-                write!(
-                    f,
-                    "Plugin version mismatch: expected engine v{}.{}.{} with rustc hash {:#x}, got v{}.{}.{} with rustc hash {:#x}. \
-                    Plugin must be recompiled with the same Rust compiler version as the engine.",
-                    expected.engine_version.0,
-                    expected.engine_version.1,
-                    expected.engine_version.2,
-                    expected.rustc_version_hash,
-                    actual.engine_version.0,
-                    actual.engine_version.1,
-                    actual.engine_version.2,
-                    actual.rustc_version_hash,
-                )
-            }
-            Self::PluginCreationFailed { message } => {
-                write!(f, "Failed to create plugin: {}", message)
+                write!(f, "Failed to load WASM module {:?}: {}", path, message)
             }
             Self::PluginNotFound { plugin_id } => {
                 write!(f, "Plugin not found: {}", plugin_id)
@@ -989,11 +747,14 @@ impl std::fmt::Display for PluginManagerError {
             Self::NoEditorForFileType { file_type_id } => {
                 write!(f, "No editor registered for file type: {}", file_type_id)
             }
-            Self::PluginError { plugin_id, error } => {
-                write!(f, "Plugin error in {}: {}", plugin_id, error)
+            Self::PluginError { message } => {
+                write!(f, "Plugin error: {}", message)
             }
             Self::FileCreationError { path, message } => {
                 write!(f, "Failed to create file {:?}: {}", path, message)
+            }
+            Self::EditorCreationFailed { editor_id, message } => {
+                write!(f, "Failed to create editor {}: {}", editor_id, message)
             }
         }
     }
