@@ -2802,6 +2802,7 @@ dependencies = [
  "tokio",
  "tracing",
  "ui",
+ "ui_gen_macros",
  "uuid",
  "walkdir",
  "wgpu",
@@ -11906,6 +11907,15 @@ dependencies = [
  "rust-i18n",
  "serde",
  "ui",
+]
+
+[[package]]
+name = "ui_gen_macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.115",
 ]
 
 [[package]]

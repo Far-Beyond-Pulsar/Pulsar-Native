@@ -53,7 +53,23 @@ pub enum MeshType {
     Custom,
 }
 
+/// Field type information for UI generation
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FieldTypeInfo {
+    F32,
+    F64,
+    I32,
+    I64,
+    U32,
+    U64,
+    Bool,
+    String,
+    F32Array(usize),
+    Other(&'static str),
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[ui_gen_macros::generate_field_metadata]
 pub enum Component {
     Material {
         id: String,

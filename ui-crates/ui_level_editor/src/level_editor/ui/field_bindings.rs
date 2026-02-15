@@ -247,6 +247,131 @@ impl FieldBinding for BoolFieldBinding {
 }
 
 // ============================================================================
+// Color Field Binding ([f32; 4] - RGBA)
+// ============================================================================
+
+/// Binding for a color field (RGBA)
+pub struct ColorFieldBinding {
+    getter: Arc<dyn Fn(&SceneObjectData) -> [f32; 4] + Send + Sync>,
+    setter: Arc<dyn Fn(&mut SceneObjectData, [f32; 4]) + Send + Sync>,
+}
+
+impl ColorFieldBinding {
+    pub fn new<G, S>(getter: G, setter: S) -> Self
+    where
+        G: Fn(&SceneObjectData) -> [f32; 4] + Send + Sync + 'static,
+        S: Fn(&mut SceneObjectData, [f32; 4]) + Send + Sync + 'static,
+    {
+        Self {
+            getter: Arc::new(getter),
+            setter: Arc::new(setter),
+        }
+    }
+}
+
+impl FieldBinding for ColorFieldBinding {
+    type Value = [f32; 4];
+
+    fn get(&self, object_id: &ObjectId, db: &SceneDatabase) -> Option<[f32; 4]> {
+        db.get_object(object_id).map(|obj| (self.getter)(&obj))
+    }
+
+    fn set(&self, object_id: &ObjectId, value: [f32; 4], db: &SceneDatabase) -> bool {
+        if let Some(mut obj) = db.get_object(object_id) {
+            (self.setter)(&mut obj, value);
+            db.update_object(obj)
+        } else {
+            false
+        }
+    }
+
+    fn to_string(&self, value: &[f32; 4]) -> String {
+        format!("rgba({:.3}, {:.3}, {:.3}, {:.3})", value[0], value[1], value[2], value[3])
+    }
+
+    fn from_string(&self, s: &str) -> Result<[f32; 4], String> {
+        let s = s.trim();
+
+        // Try parsing "rgba(r, g, b, a)" format
+        if s.starts_with("rgba(") && s.ends_with(')') {
+            let inner = &s[5..s.len()-1];
+            let parts: Vec<&str> = inner.split(',').collect();
+
+            if parts.len() == 4 {
+                let r = parts[0].trim().parse::<f32>().map_err(|_| format!("Invalid R value"))?;
+                let g = parts[1].trim().parse::<f32>().map_err(|_| format!("Invalid G value"))?;
+                let b = parts[2].trim().parse::<f32>().map_err(|_| format!("Invalid B value"))?;
+                let a = parts[3].trim().parse::<f32>().map_err(|_| format!("Invalid A value"))?;
+                return Ok([r, g, b, a]);
+            }
+        }
+
+        Err(format!("Invalid color format. Expected rgba(r, g, b, a)"))
+    }
+}
+
+// ============================================================================
+// Enum Field Binding
+// ============================================================================
+
+/// Binding for an enum/dropdown field
+pub struct EnumFieldBinding {
+    getter: Arc<dyn Fn(&SceneObjectData) -> usize + Send + Sync>,
+    setter: Arc<dyn Fn(&mut SceneObjectData, usize) + Send + Sync>,
+    variants: Vec<String>,
+}
+
+impl EnumFieldBinding {
+    pub fn new<G, S>(variants: Vec<String>, getter: G, setter: S) -> Self
+    where
+        G: Fn(&SceneObjectData) -> usize + Send + Sync + 'static,
+        S: Fn(&mut SceneObjectData, usize) + Send + Sync + 'static,
+    {
+        Self {
+            getter: Arc::new(getter),
+            setter: Arc::new(setter),
+            variants,
+        }
+    }
+    
+    pub fn variants(&self) -> &[String] {
+        &self.variants
+    }
+}
+
+impl FieldBinding for EnumFieldBinding {
+    type Value = usize;
+
+    fn get(&self, object_id: &ObjectId, db: &SceneDatabase) -> Option<usize> {
+        db.get_object(object_id).map(|obj| (self.getter)(&obj))
+    }
+
+    fn set(&self, object_id: &ObjectId, value: usize, db: &SceneDatabase) -> bool {
+        if value >= self.variants.len() {
+            return false;
+        }
+        
+        if let Some(mut obj) = db.get_object(object_id) {
+            (self.setter)(&mut obj, value);
+            db.update_object(obj)
+        } else {
+            false
+        }
+    }
+
+    fn to_string(&self, value: &usize) -> String {
+        self.variants.get(*value).cloned().unwrap_or_else(|| "Unknown".to_string())
+    }
+
+    fn from_string(&self, s: &str) -> Result<usize, String> {
+        self.variants
+            .iter()
+            .position(|v| v == s)
+            .ok_or_else(|| format!("Invalid variant: {}", s))
+    }
+}
+
+// ============================================================================
 // Declarative Macros for Easy Binding Creation
 // ============================================================================
 

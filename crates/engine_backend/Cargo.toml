@@ -15,6 +15,7 @@ tempfile = "3.8"
 workspace = true
 
 [dependencies]
+ui_gen_macros = { path = "../ui_gen_macros" }
 PebbleVault = "0.7.0"
 serde = { version = "1.0", features = ["derive"] }
 uuid = { version = "1.4", features = ["v4"] }
