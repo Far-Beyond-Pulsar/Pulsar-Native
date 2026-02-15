@@ -2,15 +2,21 @@
 
 use gpui::{prelude::*, *};
 use ui::{h_flex, v_flex, ActiveTheme, Sizable, StyledExt};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::level_editor::scene_database::SceneDatabase;
 use engine_backend::scene::ComponentFieldMetadata;
+
+/// Type for custom field renderer functions
+pub type CustomFieldRenderer = Arc<dyn Fn(&str, *const (), &Context<ComponentFieldsSection>) -> AnyElement + Send + Sync>;
 
 /// Dynamic section that renders component fields based on trait-based registry
 pub struct ComponentFieldsSection {
     component_index: usize,
     object_id: String,
     scene_db: SceneDatabase,
+    custom_renderers: HashMap<String, CustomFieldRenderer>,
 }
 
 impl ComponentFieldsSection {
@@ -25,7 +31,23 @@ impl ComponentFieldsSection {
             component_index,
             object_id,
             scene_db,
+            custom_renderers: HashMap::new(),
         }
+    }
+    
+    /// Register a custom renderer for a specific type
+    /// 
+    /// # Example
+    /// ```ignore
+    /// section.register_custom_renderer("MyCustomType", Arc::new(|label, value_ptr, cx| {
+    ///     // SAFETY: Caller must ensure value_ptr is valid and points to MyCustomType
+    ///     let value = unsafe { &*(value_ptr as *const MyCustomType) };
+    ///     // Return custom GPUI UI here
+    ///     div().child(format!("Custom: {}", value)).into_any_element()
+    /// }));
+    /// ```
+    pub fn register_custom_renderer(&mut self, ui_key: impl Into<String>, renderer: CustomFieldRenderer) {
+        self.custom_renderers.insert(ui_key.into(), renderer);
     }
 }
 
@@ -76,8 +98,50 @@ impl ComponentFieldsSection {
             ComponentFieldMetadata::Color { name, value } => {
                 self.render_color_field(name, **value, cx).into_any_element()
             },
+            ComponentFieldMetadata::Custom { name, type_name, ui_key, value_ptr } => {
+                self.render_custom_field(name, type_name, ui_key, *value_ptr, cx).into_any_element()
+            },
             _ => div().into_any_element(),
         }
+    }
+    
+    fn render_custom_field(
+        &self, 
+        label: &'static str, 
+        type_name: &'static str,
+        ui_key: &'static str,
+        value_ptr: *const (),
+        cx: &Context<Self>
+    ) -> impl IntoElement {
+        // Check if there's a custom renderer registered for this ui_key
+        if let Some(renderer) = self.custom_renderers.get(ui_key) {
+            return renderer(label, value_ptr, cx);
+        }
+        
+        // Fallback: placeholder for custom UI rendering
+        v_flex()
+            .w_full()
+            .gap_2()
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(format!("{} (custom: {})", label, type_name))
+            )
+            .child(
+                div()
+                    .w_full()
+                    .h_7()
+                    .items_center()
+                    .rounded(px(4.0))
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .px_3()
+                    .text_sm()
+                    .text_color(cx.theme().foreground)
+                    .child(format!("Custom UI: {} (no renderer registered)", ui_key))
+            )
+            .into_any_element()
     }
     
     fn render_f32_field(&self, label: &'static str, value: f32, cx: &Context<Self>) -> impl IntoElement {

@@ -191,6 +191,14 @@ pub enum ComponentFieldMetadata<'a> {
     String { name: &'static str, value: &'a String },
     Vec3 { name: &'static str, value: &'a [f32; 3] },
     Color { name: &'static str, value: &'a [f32; 4] },
+    /// Custom field type - requires special rendering in UI layer
+    /// The ui_key is used to look up the custom renderer
+    Custom {
+        name: &'static str,
+        type_name: &'static str,
+        ui_key: &'static str,
+        value_ptr: *const (),  // Type-erased pointer to the value
+    },
 }
 
 impl<'a> ComponentFieldMetadata<'a> {
@@ -201,6 +209,7 @@ impl<'a> ComponentFieldMetadata<'a> {
             ComponentFieldMetadata::String { name, .. } => name,
             ComponentFieldMetadata::Vec3 { name, .. } => name,
             ComponentFieldMetadata::Color { name, .. } => name,
+            ComponentFieldMetadata::Custom { name, .. } => name,
         }
     }
 }

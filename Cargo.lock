@@ -11877,6 +11877,10 @@ dependencies = [
 [[package]]
 name = "ui_field_registry"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "ui_gen_macros",
+]
 
 [[package]]
 name = "ui_file_manager"
@@ -11917,6 +11921,7 @@ dependencies = [
 name = "ui_gen_macros"
 version = "0.1.0"
 dependencies = [
+ "darling",
  "proc-macro2",
  "quote",
  "syn 2.0.115",

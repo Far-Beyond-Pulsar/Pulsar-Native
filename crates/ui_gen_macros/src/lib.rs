@@ -3,9 +3,197 @@
 //! This crate provides procedural macros that analyze Rust types at compile time
 //! and generate field metadata that can be used to create data-driven UIs.
 
+use darling::FromField;
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, DeriveInput, Data, Fields, Type};
+
+// ─── CompositeField Derive Macro ─────────────────────────────────────────────
+
+/// Field attributes for customizing rendering
+#[derive(Debug, FromField)]
+#[darling(attributes(field))]
+struct FieldAttrs {
+    ident: Option<syn::Ident>,
+    ty: syn::Type,
+    
+    #[darling(default)]
+    label: Option<String>,
+    
+    #[darling(default)]
+    color: Option<String>,
+}
+
+/// Derive CompositeField trait implementation
+///
+/// # Example
+/// ```rust
+/// #[derive(CompositeField)]
+/// pub struct Vec3 {
+///     #[field(label = "X", color = "red")]
+///     pub x: f32,
+///     #[field(label = "Y", color = "green")]
+///     pub y: f32,
+///     #[field(label = "Z", color = "blue")]
+///     pub z: f32,
+/// }
+/// ```
+#[proc_macro_derive(CompositeField, attributes(field))]
+pub fn derive_composite_field(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = &input.ident;
+    
+    let fields = match &input.data {
+        Data::Struct(data) => match &data.fields {
+            Fields::Named(fields) => &fields.named,
+            _ => panic!("CompositeField only works on structs with named fields"),
+        },
+        _ => panic!("CompositeField can only be derived for structs"),
+    };
+    
+    let mut get_f32_arms = vec![];
+    let mut set_f32_arms = vec![];
+    let mut get_bool_arms = vec![];
+    let mut set_bool_arms = vec![];
+    let mut get_string_arms = vec![];
+    let mut set_string_arms = vec![];
+    let mut descriptors = vec![];
+    
+    for field in fields {
+        let field_attrs = match FieldAttrs::from_field(field) {
+            Ok(attrs) => attrs,
+            Err(e) => {
+                return TokenStream::from(e.write_errors());
+            }
+        };
+        
+        let field_name = field_attrs.ident.as_ref().unwrap();
+        let field_name_str = field_name.to_string();
+        let field_type = &field_attrs.ty;
+        
+        // Determine label (default to capitalized field name)
+        let label = field_attrs.label.unwrap_or_else(|| {
+            let name = field_name_str.clone();
+            let mut c = name.chars();
+            match c.next() {
+                None => String::new(),
+                Some(f) => f.to_uppercase().chain(c).collect(),
+            }
+        });
+        
+        // Parse color hint
+        let color_hint = if let Some(color_str) = field_attrs.color {
+            match color_str.as_str() {
+                "red" => quote! { Some([1.0, 0.3, 0.3]) },
+                "green" => quote! { Some([0.3, 1.0, 0.3]) },
+                "blue" => quote! { Some([0.3, 0.5, 1.0]) },
+                _ => quote! { None },
+            }
+        } else {
+            quote! { None }
+        };
+        
+        // Check field type and generate appropriate accessor
+        let type_str = quote!(#field_type).to_string();
+        
+        if type_str.contains("f32") {
+            get_f32_arms.push(quote! {
+                #field_name_str => Some(self.#field_name),
+            });
+            set_f32_arms.push(quote! {
+                #field_name_str => self.#field_name = value,
+            });
+            descriptors.push(quote! {
+                crate::SubFieldDescriptor::f32(#field_name_str, #label)
+                    .with_color_opt(#color_hint)
+            });
+        } else if type_str.contains("bool") {
+            get_bool_arms.push(quote! {
+                #field_name_str => Some(self.#field_name),
+            });
+            set_bool_arms.push(quote! {
+                #field_name_str => self.#field_name = value,
+            });
+            descriptors.push(quote! {
+                crate::SubFieldDescriptor::bool(#field_name_str, #label)
+                    .with_color_opt(#color_hint)
+            });
+        } else if type_str.contains("String") {
+            get_string_arms.push(quote! {
+                #field_name_str => Some(self.#field_name.clone()),
+            });
+            set_string_arms.push(quote! {
+                #field_name_str => self.#field_name = value,
+            });
+            descriptors.push(quote! {
+                crate::SubFieldDescriptor::string(#field_name_str, #label)
+                    .with_color_opt(#color_hint)
+            });
+        }
+    }
+    
+    let expanded = quote! {
+        impl crate::FieldRenderer for #name {
+            fn type_name(&self) -> &'static str {
+                stringify!(#name)
+            }
+            
+            fn representation(&self) -> crate::FieldRepresentation {
+                crate::FieldRepresentation::Composite(vec![
+                    #(#descriptors),*
+                ])
+            }
+        }
+        
+        impl crate::CompositeField for #name {
+            fn get_field_f32(&self, field_name: &str) -> Option<f32> {
+                match field_name {
+                    #(#get_f32_arms)*
+                    _ => None,
+                }
+            }
+            
+            fn set_field_f32(&mut self, field_name: &str, value: f32) {
+                match field_name {
+                    #(#set_f32_arms)*
+                    _ => {},
+                }
+            }
+            
+            fn get_field_bool(&self, field_name: &str) -> Option<bool> {
+                match field_name {
+                    #(#get_bool_arms)*
+                    _ => None,
+                }
+            }
+            
+            fn set_field_bool(&mut self, field_name: &str, value: bool) {
+                match field_name {
+                    #(#set_bool_arms)*
+                    _ => {},
+                }
+            }
+            
+            fn get_field_string(&self, field_name: &str) -> Option<String> {
+                match field_name {
+                    #(#get_string_arms)*
+                    _ => None,
+                }
+            }
+            
+            fn set_field_string(&mut self, field_name: &str, value: String) {
+                match field_name {
+                    #(#set_string_arms)*
+                    _ => {},
+                }
+            }
+        }
+    };
+    
+    TokenStream::from(expanded)
+}
+
+// ─── Component Field Metadata (Legacy) ───────────────────────────────────────
 
 /// Generate field metadata for enum variants
 ///
