@@ -8,12 +8,10 @@
 //! - [`window`] - Main window implementation and UI rendering
 //! - [`task`] - Task types and status tracking
 //! - [`checks`] - Platform-specific dependency checks
-//! - [`installer`] - Automated dependency installation
-//! - [`scripts`] - Embedded setup scripts
+//! - [`installer`] - Rust installation via local rustup fork
 
 mod checks;
 mod installer;
-mod scripts;
 mod task;
 mod window;
 

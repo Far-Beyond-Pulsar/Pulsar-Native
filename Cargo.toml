@@ -98,6 +98,11 @@ blade-graphics = { git = "https://github.com/tristanpoland/blade", rev = "d85bd1
 blade-macros   = { git = "https://github.com/tristanpoland/blade", rev = "d85bd14a78ed7729abc298906e87332257674a02"}
 glam = { version = "0.29", features = ["bytemuck"] }
 
+# ---------- Installer ----------
+# Local rustup fork used as a library to drive platform-native Rust installation.
+# curl-backend disabled: reqwest-native-tls is sufficient and avoids the curl C dep.
+rustup = { git = "https://github.com/tristanpoland/rustup", default-features = false, features = ["reqwest-native-tls"] }
+
 # ---------- Third-party ----------
 wgpu = "0.20.1"
 anyhow = "1.0.100"

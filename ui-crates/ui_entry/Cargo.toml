@@ -5,6 +5,9 @@ edition = "2021"
 publish = false
 
 [dependencies]
+# Rust installer - drives platform-native rustup installation as a library
+rustup.workspace = true
+
 # UI framework
 gpui.workspace = true
 ui.workspace = true
