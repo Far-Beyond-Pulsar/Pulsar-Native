@@ -9,7 +9,7 @@ use ui::{
     button::{Button, ButtonVariants as _},
     checkbox::Checkbox,
     h_flex, v_flex,
-    input::{InputEvent, InputState, NumberInput, TextInput},
+    input::{InputEvent, InputState, NumberInput, TextInput, NumberInputEvent, StepAction},
     ActiveTheme, IconName, Sizable, StyledExt,
 };
 use std::sync::Arc;
@@ -29,6 +29,7 @@ pub struct F32BoundField {
     object_id: String,
     scene_db: SceneDatabase,
     _subscription: Subscription,
+    _step_subscription: Subscription,
 }
 
 impl F32BoundField {
@@ -61,8 +62,8 @@ impl F32BoundField {
             window,
             move |this, _state, event: &InputEvent, window, cx| {
                 match event {
-                    InputEvent::Change | InputEvent::Blur => {
-                        // Parse input text and update scene database
+                    InputEvent::Change => {
+                        // Parse and update on every keystroke, but don't reformat yet
                         this.input.update(cx, |state, _cx| {
                             let text = state.text().to_string();
                             if let Ok(value) = this.binding.from_string(&text) {
@@ -73,7 +74,52 @@ impl F32BoundField {
                             }
                         });
                     }
+                    InputEvent::Blur => {
+                        // On blur, parse, update, and reformat to canonical form
+                        this.input.update(cx, |state, cx| {
+                            let text = state.text().to_string();
+                            if let Ok(value) = this.binding.from_string(&text) {
+                                if this.binding.validate(&value).is_ok() {
+                                    // Update scene database
+                                    this.binding.set(&this.object_id, value, &this.scene_db);
+                                    // Reformat to canonical display
+                                    let formatted = this.binding.to_string(&value);
+                                    state.set_value(&formatted, window, cx);
+                                }
+                            }
+                        });
+                    }
                     _ => {}
+                }
+            },
+        );
+
+        // Subscribe to step events (increment/decrement buttons)
+        let step_subscription = cx.subscribe_in(
+            &input,
+            window,
+            move |this, _state, event: &NumberInputEvent, window, cx| {
+                match event {
+                    NumberInputEvent::Step(action) => {
+                        this.input.update(cx, |state, cx| {
+                            let text = state.text().to_string();
+                            if let Ok(mut value) = this.binding.from_string(&text) {
+                                // Increment or decrement by 0.1
+                                match action {
+                                    StepAction::Increment => value += 0.1,
+                                    StepAction::Decrement => value -= 0.1,
+                                }
+                                
+                                if this.binding.validate(&value).is_ok() {
+                                    // Update scene database
+                                    this.binding.set(&this.object_id, value, &this.scene_db);
+                                    // Update display
+                                    let formatted = this.binding.to_string(&value);
+                                    state.set_value(&formatted, window, cx);
+                                }
+                            }
+                        });
+                    }
                 }
             },
         );
@@ -85,6 +131,7 @@ impl F32BoundField {
             object_id,
             scene_db,
             _subscription: subscription,
+            _step_subscription: step_subscription,
         }
     }
 
@@ -160,12 +207,28 @@ impl StringBoundField {
             window,
             move |this, _state, event: &InputEvent, window, cx| {
                 match event {
-                    InputEvent::Change | InputEvent::Blur => {
+                    InputEvent::Change => {
+                        // Update on keystroke without reformatting
                         this.input.update(cx, |state, _cx| {
                             let text = state.text().to_string();
                             if let Ok(value) = this.binding.from_string(&text) {
                                 if this.binding.validate(&value).is_ok() {
                                     this.binding.set(&this.object_id, value, &this.scene_db);
+                                }
+                            }
+                        });
+                    }
+                    InputEvent::Blur => {
+                        // On blur, update and reformat
+                        this.input.update(cx, |state, cx| {
+                            let text = state.text().to_string();
+                            if let Ok(value) = this.binding.from_string(&text) {
+                                if this.binding.validate(&value).is_ok() {
+                                    // Reformat BEFORE updating (so we can use value after)
+                                    let formatted = this.binding.to_string(&value);
+                                    this.binding.set(&this.object_id, value, &this.scene_db);
+                                    // Update display with canonical form (e.g., trim whitespace)
+                                    state.set_value(&formatted, window, cx);
                                 }
                             }
                         });

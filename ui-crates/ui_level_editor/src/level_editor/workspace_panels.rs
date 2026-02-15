@@ -277,18 +277,11 @@ impl Render for PropertiesPanelWrapper {
                 self.material_section = None;
                 self.current_object_id = None;
             }
-        } else {
-            // Same object selected - refresh all sections in case data changed (undo/redo, gizmo, etc.)
-            if let Some(ref section) = self.object_header_section {
-                section.update(cx, |sec, cx| sec.refresh(window, cx));
-            }
-            if let Some(ref section) = self.transform_section {
-                section.update(cx, |sec, cx| sec.refresh(window, cx));
-            }
-            if let Some(ref section) = self.material_section {
-                section.update(cx, |sec, cx| sec.refresh(window, cx));
-            }
         }
+        // NOTE: Removed the refresh() calls that were running every render frame.
+        // The bound fields automatically subscribe to InputEvents and sync changes.
+        // External changes (undo/redo, gizmo moves) should explicitly call refresh()
+        // when those events occur, not on every render.
 
         drop(state);
 
