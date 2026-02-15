@@ -205,6 +205,18 @@ impl LevelEditorPanel {
                 WorldSettingsPanel::new(shared_state.clone(), window, cx)
             });
 
+            // Wire up cross-panel notification: whenever the hierarchy is notified (e.g.
+            // after a selection click), the properties panel is also notified so it
+            // re-reads the selected object and updates its sections.
+            {
+                let hierarchy_for_observe = hierarchy_panel.clone();
+                properties_panel.update(cx, |_, cx| {
+                    cx.observe(&hierarchy_for_observe, |_, _, cx| {
+                        cx.notify();
+                    }).detach();
+                });
+            }
+
             // Bottom right: tabs for Properties and World Settings
             let bottom_tabs = DockItem::tabs(
                 vec![
