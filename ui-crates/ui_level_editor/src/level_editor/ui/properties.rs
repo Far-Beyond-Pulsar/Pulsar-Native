@@ -30,7 +30,7 @@ impl PropertiesPanel {
         collapsed_sections: &HashSet<String>,
         object_header_section: &Option<Entity<super::ObjectHeaderSection>>,
         transform_section: &Option<Entity<super::TransformSection>>,
-        material_section: &Option<Entity<super::MaterialSection>>,
+        component_sections: &Vec<Entity<super::ComponentFieldsSection>>,
         window: &mut Window,
         cx: &mut Context<PropertiesPanelWrapper>
     ) -> impl IntoElement {
@@ -65,8 +65,8 @@ impl PropertiesPanel {
                                         flex = flex.child(section.clone());
                                     }
 
-                                    // Render new MaterialSection if available (new binding system)
-                                    if let Some(ref section) = material_section {
+                                    // Render component sections dynamically
+                                    for section in component_sections {
                                         flex = flex.child(section.clone());
                                     }
 

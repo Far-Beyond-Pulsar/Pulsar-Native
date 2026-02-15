@@ -170,8 +170,8 @@ impl Render for F32BoundField {
 /// A UI component that binds a TextInput to a String field in scene data
 pub struct StringBoundField {
     binding: Arc<StringFieldBinding>,
-    input: Entity<InputState>,
-    label: String,
+    pub input: Entity<InputState>,
+    pub label: String,
     object_id: String,
     scene_db: SceneDatabase,
     _subscription: Subscription,

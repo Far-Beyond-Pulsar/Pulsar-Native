@@ -16,6 +16,7 @@ mod bound_field;
 mod transform_section;
 mod object_header_section;
 mod material_section;
+mod component_fields_section;
 
 pub use state::*;
 pub use panel::LevelEditorPanel;
@@ -31,3 +32,4 @@ pub use bound_field::*;
 pub use transform_section::TransformSection;
 pub use object_header_section::ObjectHeaderSection;
 pub use material_section::MaterialSection;
+pub use component_fields_section::ComponentFieldsSection;

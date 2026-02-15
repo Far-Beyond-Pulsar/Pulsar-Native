@@ -2,7 +2,7 @@
 
 use gpui::*;
 use ui::{ActiveTheme, StyledExt, dock::{Panel, PanelEvent}, v_flex, input::{TextInput, InputState}};
-use super::ui::{WorldSettings, WorldSettingsReplicated, HierarchyPanel, PropertiesPanel, ViewportPanel, LevelEditorState, TransformSection, ObjectHeaderSection, MaterialSection};
+use super::ui::{WorldSettings, WorldSettingsReplicated, HierarchyPanel, PropertiesPanel, ViewportPanel, LevelEditorState, TransformSection, ObjectHeaderSection, ComponentFieldsSection};
 use std::sync::Arc;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -134,7 +134,7 @@ pub struct PropertiesPanelWrapper {
     // New field binding system
     object_header_section: Option<Entity<ObjectHeaderSection>>,
     transform_section: Option<Entity<TransformSection>>,
-    material_section: Option<Entity<MaterialSection>>,
+    component_sections: Vec<Entity<ComponentFieldsSection>>,
     current_object_id: Option<String>,
     // DEPRECATED: Old manual property editing (will be removed)
     editing_property: Option<String>,
@@ -166,7 +166,7 @@ impl PropertiesPanelWrapper {
             focus_handle: cx.focus_handle(),
             object_header_section: None,
             transform_section: None,
-            material_section: None,
+            component_sections: Vec::new(),
             current_object_id: None,
             editing_property: None,
             property_input,
@@ -264,17 +264,29 @@ impl Render for PropertiesPanelWrapper {
                     TransformSection::new(object_id_clone.clone(), scene_db.clone(), window, cx)
                 }));
 
-                // Material section (only if object has material component)
-                self.material_section = Some(cx.new(|cx| {
-                    MaterialSection::new(object_id_clone, scene_db, window, cx)
-                }));
+                // Component sections - create one for each component
+                self.component_sections.clear();
+                if let Some(obj) = scene_db.get_object(&object_id_clone) {
+                    for (index, _component) in obj.components.iter().enumerate() {
+                        let section = cx.new(|cx| {
+                            ComponentFieldsSection::new(
+                                index,
+                                object_id_clone.clone(),
+                                scene_db.clone(),
+                                window,
+                                cx,
+                            )
+                        });
+                        self.component_sections.push(section);
+                    }
+                }
 
                 self.current_object_id = Some(object_id.clone());
             } else {
                 // No selection - clear all sections
                 self.object_header_section = None;
                 self.transform_section = None;
-                self.material_section = None;
+                self.component_sections.clear();
                 self.current_object_id = None;
             }
         }
@@ -296,7 +308,7 @@ impl Render for PropertiesPanelWrapper {
                 &collapsed_sections,
                 &self.object_header_section,
                 &self.transform_section,
-                &self.material_section,
+                &self.component_sections,
                 window,
                 cx
             ))
