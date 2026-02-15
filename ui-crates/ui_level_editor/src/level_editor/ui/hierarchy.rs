@@ -34,7 +34,9 @@ impl HierarchyPanel {
 
         let state_arc_for_esc = state_arc.clone();
         let object_count = state.scene_database.get_root_objects().len();
-
+        let selected = state.selected_object();
+        
+        
         v_flex()
             .size_full()
             .bg(cx.theme().background)
@@ -43,8 +45,7 @@ impl HierarchyPanel {
                 if event.keystroke.key.as_str() == "escape" {
                     let mut state = state_arc_for_esc.write();
                     if !matches!(state.hierarchy_drag_state, HierarchyDragState::None) {
-                        tracing::debug!("[HIERARCHY] ❌ Drag cancelled");
-                        state.hierarchy_drag_state = HierarchyDragState::None;
+                                                state.hierarchy_drag_state = HierarchyDragState::None;
                         cx.notify();
                     }
                 }
@@ -190,8 +191,7 @@ impl HierarchyPanel {
                                             let dragged_id = dragged_id.clone();
                                             let success = state_write.scene_database.reparent_object(&dragged_id, None);
                                             if success {
-                                                tracing::debug!("[HIERARCHY] 🏠 Made '{}' a root-level object", dragged_id);
-                                            }
+                                                                                            }
                                             state_write.hierarchy_drag_state = HierarchyDragState::None;
                                         }
                                     })
@@ -293,8 +293,7 @@ impl HierarchyPanel {
                         if dragged_id != target_id {
                             let success = state_write.scene_database.reparent_object(&dragged_id, Some(target_id.clone()));
                             if success {
-                                tracing::debug!("[HIERARCHY] 🎯 Reparented '{}' as child of '{}'", dragged_id, target_id);
-                                // Expand the target to show the new child
+                                                                // Expand the target to show the new child
                                 state_write.expanded_objects.insert(target_id);
                             }
                         }
@@ -327,12 +326,11 @@ impl HierarchyPanel {
                 item_div
                     .on_click(cx.listener(move |_view, _event, _window, cx| {
                         // Select on click — write to the shared SceneDb atomically
-                        state_clone_for_click.write().select_object(Some(object_id_for_click.clone()));
-                        tracing::debug!("[HIERARCHY] 🎯 Selected object: '{}'", object_id_for_click);
-
+                                                state_clone_for_click.write().select_object(Some(object_id_for_click.clone()));
+                        
                         // Notify the hierarchy wrapper so GPUI re-renders and observer triggers props panel update
                         cx.notify();
-                    }))
+                                            }))
                     .on_mouse_down(MouseButton::Left, cx.listener(move |_view, event: &MouseDownEvent, _window, cx| {
                         // Start drag operation if shift is held
                         if event.modifiers.shift {
@@ -343,8 +341,7 @@ impl HierarchyPanel {
                                 object_id: object_id_for_drag.clone(),
                                 original_parent: parent,
                             };
-                            tracing::debug!("[HIERARCHY] 🖱️ Started dragging '{}'", object_id_for_drag);
-                            cx.notify();
+                                                        cx.notify();
                         }
                     }))
                     // Expand/collapse arrow for items with children

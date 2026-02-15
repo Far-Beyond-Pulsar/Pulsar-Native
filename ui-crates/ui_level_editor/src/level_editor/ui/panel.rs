@@ -121,16 +121,13 @@ impl LevelEditorPanel {
                 engine_context.renderers.register(0, handle);
             }
         } else {
-            tracing::debug!("[LEVEL-EDITOR] ❌ ERROR: No global EngineContext found!");
-        }
+                    }
 
         // Viewport stays transparent - Bevy renders directly to winit back buffer BEHIND GPUI
         // No texture initialization needed in GPUI - all handled in main.rs rendering loop
-        tracing::debug!("[LEVEL-EDITOR] 📺 Viewport configured as transparent (Bevy renders to back buffer)");
-
         
-        tracing::debug!("[LEVEL-EDITOR] Modular level editor initialized");
-
+        
+        
         // Build the level editor state with the default scene populated into the shared SceneDb.
         // The renderer and all panels now read/write the same Arc<SceneDb>.
         let state = LevelEditorState::new_with_scene_db(scene_db);
@@ -208,10 +205,10 @@ impl LevelEditorPanel {
                 let hierarchy_for_observe = hierarchy_panel.clone();
                 properties_panel.update(cx, |_, cx| {
                     cx.observe(&hierarchy_for_observe, |_, _, cx| {
-                        cx.notify();
+                                                cx.notify();
                     }).detach();
                 });
-            }
+                            }
 
             // Bottom right: tabs for Properties and World Settings
             let bottom_tabs = DockItem::tabs(
@@ -602,38 +599,32 @@ impl LevelEditorPanel {
         if let Some(ref path) = self.shared_state.read().current_scene {
             match self.shared_state.read().scene_database.save_to_file(path) {
                 Ok(_) => {
-                    tracing::debug!("[LEVEL-EDITOR] 💾 Scene saved: {:?}", path);
-                    self.shared_state.write().has_unsaved_changes = false;
+                                        self.shared_state.write().has_unsaved_changes = false;
                     cx.notify();
                 }
                 Err(e) => {
-                    tracing::debug!("[LEVEL-EDITOR] ❌ Failed to save scene: {}", e);
-                }
+                                    }
             }
         }
     }
     
     fn on_save_scene_as(&mut self, _: &SaveSceneAs, _window: &mut Window, cx: &mut Context<Self>) {
         // TODO: Implement async file dialog
-        tracing::debug!("[LEVEL-EDITOR] 💾 Save Scene As - TODO");
-        if let Some(ref path) = self.shared_state.read().current_scene {
+                if let Some(ref path) = self.shared_state.read().current_scene {
             match self.shared_state.read().scene_database.save_to_file(path) {
                 Ok(_) => {
-                    tracing::debug!("[LEVEL-EDITOR] 💾 Scene saved: {:?}", path);
-                    self.shared_state.write().has_unsaved_changes = false;
+                                        self.shared_state.write().has_unsaved_changes = false;
                     cx.notify();
                 }
                 Err(e) => {
-                    tracing::debug!("[LEVEL-EDITOR] ❌ Failed to save scene: {}", e);
-                }
+                                    }
             }
         }
     }
     
     fn on_open_scene(&mut self, _: &OpenScene, _window: &mut Window, cx: &mut Context<Self>) {
         // TODO: Implement async file dialog
-        tracing::debug!("[LEVEL-EDITOR] 📂 Open Scene - TODO");
-        cx.notify();
+                cx.notify();
     }
     
     fn on_new_scene(&mut self, _: &NewScene, _: &mut Window, cx: &mut Context<Self>) {
@@ -650,8 +641,7 @@ impl LevelEditorPanel {
         // Re-add default objects
         self.shared_state.write().scene_database = crate::level_editor::SceneDatabase::with_default_scene();
         
-        tracing::debug!("[LEVEL-EDITOR] 📄 New scene created");
-        cx.notify();
+                cx.notify();
     }
 
     fn on_toggle_snapping(&mut self, _: &ToggleSnapping, _: &mut Window, cx: &mut Context<Self>) {
@@ -761,27 +751,33 @@ impl Render for LevelEditorPanel {
                 state.set_active_buffer(read_idx);
 
                 // BIDIRECTIONAL SYNC: Poll Bevy's gizmo state for selection changes
+                // DISABLED: Gizmo interaction is currently disabled, and this was causing
+                // Bevy's None selection to override GPUI selections on every frame
+                /*
                 if let Ok(bevy_gizmo) = helio_renderer.gizmo_state.try_lock() {
                     let bevy_selected_id = bevy_gizmo.selected_object_id.clone();
+                    let bevy_updated_flag = bevy_gizmo.updated_object_id.clone(); // Check if Bevy made a change
                     drop(bevy_gizmo); // Release lock immediately
                     
-                    // Check if Bevy's selection differs from GPUI's
-                    let gpui_selected_id = self.shared_state.read().selected_object();
-                    
-                    if bevy_selected_id != gpui_selected_id {
-                        // Bevy has a different selection - sync to GPUI!
-                        if let Some(ref new_id) = bevy_selected_id {
-                            tracing::debug!("[LEVEL-EDITOR] 🔄 Syncing selection from Bevy: {}", new_id);
-                            self.shared_state.write().select_object(Some(new_id.clone()));
-                            cx.notify(); // Trigger UI update
-                        } else {
-                            // Bevy deselected
-                            tracing::debug!("[LEVEL-EDITOR] 🔄 Syncing deselection from Bevy");
-                            self.shared_state.write().select_object(None);
-                            cx.notify();
+                    // Only sync FROM Bevy if Bevy actually updated something
+                    // This prevents overwriting GPUI-initiated selections
+                    if bevy_updated_flag.is_some() {
+                        let gpui_selected_id = self.shared_state.read().selected_object();
+                        
+                        if bevy_selected_id != gpui_selected_id {
+                            // Bevy has a different selection - sync to GPUI!
+                            if let Some(ref new_id) = bevy_selected_id {
+                                                                self.shared_state.write().select_object(Some(new_id.clone()));
+                                cx.notify(); // Trigger UI update
+                            } else {
+                                // Bevy deselected
+                                                                self.shared_state.write().select_object(None);
+                                cx.notify();
+                            }
                         }
                     }
                 }
+                */
                 
                 // TRANSFORM SYNC: Poll for transform updates from Bevy (e.g., from gizmo dragging)
                 if let Ok(bevy_gizmo) = helio_renderer.gizmo_state.try_lock() {

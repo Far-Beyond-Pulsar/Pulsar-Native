@@ -447,8 +447,7 @@ impl SceneDatabase {
         };
         let json = serde_json::to_string_pretty(&scene_file).map_err(|e| format!("serialize: {e}"))?;
         fs::write(&path, json).map_err(|e| format!("write: {e}"))?;
-        tracing::debug!("[SCENE-DB] 💾 Saved to {:?}", path.as_ref());
-        Ok(())
+                Ok(())
     }
 
     /// Load scene from JSON, clearing current content first.
@@ -461,8 +460,7 @@ impl SceneDatabase {
             let snap = obj.into_snapshot();
             self.db.add_object(snap, parent);
         }
-        tracing::debug!("[SCENE-DB] 📂 Loaded from {:?}", path.as_ref());
-        Ok(())
+                Ok(())
     }
 }
 

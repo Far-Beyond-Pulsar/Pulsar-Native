@@ -283,8 +283,7 @@ impl LevelEditorState {
 
     /// Enter play mode - snapshot scene and start game thread
     pub fn enter_play_mode(&mut self) {
-        tracing::debug!("[EDITOR] 🎮 Entering PLAY mode");
-        
+                
         // Save snapshot of current scene state for restoration
         let objects = self.scene_database.get_all_objects();
         self.scene_snapshot = Some(Arc::new(parking_lot::RwLock::new(objects)));
@@ -296,13 +295,11 @@ impl LevelEditorState {
         let mut gizmo = self.gizmo_state.write();
         gizmo.set_gizmo_type(GizmoType::None);
         
-        tracing::debug!("[EDITOR] ✅ Play mode active - game thread will start");
-    }
+            }
 
     /// Exit play mode - restore scene state and stop game thread
     pub fn exit_play_mode(&mut self) {
-        tracing::debug!("[EDITOR] 🛑 Exiting PLAY mode");
-        
+                
         // Restore scene from snapshot
         if let Some(ref snapshot) = self.scene_snapshot {
             let objects = snapshot.read().clone();
@@ -315,8 +312,7 @@ impl LevelEditorState {
                 self.scene_database.add_object(obj, None);
             }
             
-            tracing::debug!("[EDITOR] ✅ Scene restored from snapshot");
-        }
+                    }
         
         // Switch back to edit mode
         self.editor_mode = EditorMode::Edit;
@@ -335,8 +331,7 @@ impl LevelEditorState {
         // Clear snapshot
         self.scene_snapshot = None;
         
-        tracing::debug!("[EDITOR] ✅ Edit mode active");
-    }
+            }
 
     /// Check if in edit mode
     pub fn is_edit_mode(&self) -> bool {
@@ -350,7 +345,8 @@ impl LevelEditorState {
 
     /// Get selected object ID
     pub fn selected_object(&self) -> Option<String> {
-        self.scene_database.get_selected_object_id()
+        let result = self.scene_database.get_selected_object_id();
+                result
     }
 
     /// Get all scene objects for hierarchy display
@@ -364,14 +360,9 @@ impl LevelEditorState {
 
         // Update gizmo target
         let mut gizmo = self.gizmo_state.write();
-        gizmo.target_object_id = object_id.clone();
-
-        if let Some(ref id) = object_id {
-            tracing::debug!("[STATE] 🎯 Selected object: '{}', gizmo will follow", id);
-        } else {
-            tracing::debug!("[STATE] 🚫 Deselected object, gizmo hidden");
-        }
+        gizmo.target_object_id = object_id;
     }
+
 
     /// Get selected object data
     pub fn get_selected_object(&self) -> Option<SceneObject> {
@@ -397,8 +388,7 @@ impl LevelEditorState {
         let mut gizmo = self.gizmo_state.write();
         gizmo.set_gizmo_type(gizmo_type);
 
-        tracing::debug!("[STATE] 🎯 Tool changed to {:?}, gizmo type: {:?}", tool, gizmo_type);
-    }
+            }
 
     /// Set camera mode
     pub fn set_camera_mode(&mut self, mode: CameraMode) {
