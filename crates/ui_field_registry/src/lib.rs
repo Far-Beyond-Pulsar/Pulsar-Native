@@ -29,12 +29,77 @@ pub trait FieldRenderer: Any {
     }
 }
 
+/// Trait for composite types that expose indexed sub-fields
+pub trait CompositeFieldAccessor {
+    /// Get the value at the given index
+    fn get_component(&self, index: usize) -> Option<f32>;
+    
+    /// Set the value at the given index
+    fn set_component(&mut self, index: usize, value: f32);
+    
+    /// Get the number of components
+    fn component_count(&self) -> usize;
+}
+
+/// Implement CompositeFieldAccessor for Vec3
+impl CompositeFieldAccessor for Vec3 {
+    fn get_component(&self, index: usize) -> Option<f32> {
+        self.get(index).copied()
+    }
+    
+    fn set_component(&mut self, index: usize, value: f32) {
+        if index < 3 {
+            self[index] = value;
+        }
+    }
+    
+    fn component_count(&self) -> usize {
+        3
+    }
+}
+
+/// Implement CompositeFieldAccessor for Color
+impl CompositeFieldAccessor for Color {
+    fn get_component(&self, index: usize) -> Option<f32> {
+        self.get(index).copied()
+    }
+    
+    fn set_component(&mut self, index: usize, value: f32) {
+        if index < 4 {
+            self[index] = value;
+        }
+    }
+    
+    fn component_count(&self) -> usize {
+        4
+    }
+}
+
 /// Descriptor for a sub-field in a composite type
 #[derive(Clone, Debug)]
 pub struct SubFieldDescriptor {
     pub name: &'static str,
     pub label: &'static str,
     pub color_hint: Option<[f32; 3]>, // RGB color hint for styling (e.g., X=red, Y=green, Z=blue)
+    pub index: usize, // Index into the composite type (e.g., 0 for X, 1 for Y, 2 for Z)
+}
+
+impl SubFieldDescriptor {
+    /// Create a new sub-field descriptor
+    pub fn new(name: &'static str, label: &'static str, index: usize) -> Self {
+        Self {
+            name,
+            label,
+            color_hint: None,
+            index,
+        }
+    }
+    
+    /// Set the color hint for this sub-field
+    pub fn with_color(mut self, color: [f32; 3]) -> Self {
+        self.color_hint = Some(color);
+        self
+    }
 }
 
 // ─── Primitive implementations ───────────────────────────────────────────────
@@ -69,21 +134,12 @@ impl FieldRenderer for Vec3 {
     
     fn representation(&self) -> FieldRepresentation {
         FieldRepresentation::Composite(vec![
-            SubFieldDescriptor {
-                name: "x",
-                label: "X",
-                color_hint: Some([1.0, 0.3, 0.3]),
-            },
-            SubFieldDescriptor {
-                name: "y",
-                label: "Y",
-                color_hint: Some([0.3, 1.0, 0.3]),
-            },
-            SubFieldDescriptor {
-                name: "z",
-                label: "Z",
-                color_hint: Some([0.3, 0.5, 1.0]),
-            },
+            SubFieldDescriptor::new("x", "X", 0)
+                .with_color([1.0, 0.3, 0.3]),
+            SubFieldDescriptor::new("y", "Y", 1)
+                .with_color([0.3, 1.0, 0.3]),
+            SubFieldDescriptor::new("z", "Z", 2)
+                .with_color([0.3, 0.5, 1.0]),
         ])
     }
 }
@@ -98,26 +154,13 @@ impl FieldRenderer for Color {
     
     fn representation(&self) -> FieldRepresentation {
         FieldRepresentation::Composite(vec![
-            SubFieldDescriptor {
-                name: "r",
-                label: "R",
-                color_hint: Some([1.0, 0.3, 0.3]),
-            },
-            SubFieldDescriptor {
-                name: "g",
-                label: "G",
-                color_hint: Some([0.3, 1.0, 0.3]),
-            },
-            SubFieldDescriptor {
-                name: "b",
-                label: "B",
-                color_hint: Some([0.3, 0.5, 1.0]),
-            },
-            SubFieldDescriptor {
-                name: "a",
-                label: "A",
-                color_hint: None,
-            },
+            SubFieldDescriptor::new("r", "R", 0)
+                .with_color([1.0, 0.3, 0.3]),
+            SubFieldDescriptor::new("g", "G", 1)
+                .with_color([0.3, 1.0, 0.3]),
+            SubFieldDescriptor::new("b", "B", 2)
+                .with_color([0.3, 0.5, 1.0]),
+            SubFieldDescriptor::new("a", "A", 3),
         ])
     }
 }
