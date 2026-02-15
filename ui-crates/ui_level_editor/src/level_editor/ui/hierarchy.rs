@@ -265,6 +265,8 @@ impl HierarchyPanel {
 
         let state_clone_for_click = state_arc.clone();
         let object_id_for_click = object_id.clone();
+        let state_clone_for_drag = state_arc.clone();
+        let object_id_for_drag = object_id.clone();
         let state_clone_for_drop = state_arc.clone();
         let object_id_for_drop = object_id.clone();
         let state_clone_for_expand = state_arc.clone();
@@ -323,24 +325,27 @@ impl HierarchyPanel {
 
         container.child(
                 item_div
-                    .on_mouse_down(MouseButton::Left, cx.listener(move |_view, event: &MouseDownEvent, _window, cx| {
+                    .on_click(cx.listener(move |_view, _event, _window, cx| {
                         // Select on click — write to the shared SceneDb atomically
                         state_clone_for_click.write().select_object(Some(object_id_for_click.clone()));
+                        tracing::debug!("[HIERARCHY] 🎯 Selected object: '{}'", object_id_for_click);
 
-                        // Start drag operation (only if shift is held to differentiate from click)
+                        // Notify the hierarchy wrapper so GPUI re-renders and observer triggers props panel update
+                        cx.notify();
+                    }))
+                    .on_mouse_down(MouseButton::Left, cx.listener(move |_view, event: &MouseDownEvent, _window, cx| {
+                        // Start drag operation if shift is held
                         if event.modifiers.shift {
-                            let mut state_write = state_clone_for_click.write();
-                            let parent = state_write.scene_database.get_object(&object_id_for_click)
+                            let mut state_write = state_clone_for_drag.write();
+                            let parent = state_write.scene_database.get_object(&object_id_for_drag)
                                 .and_then(|obj| obj.parent.clone());
                             state_write.hierarchy_drag_state = HierarchyDragState::DraggingObject {
-                                object_id: object_id_for_click.clone(),
+                                object_id: object_id_for_drag.clone(),
                                 original_parent: parent,
                             };
-                            tracing::debug!("[HIERARCHY] 🖱️ Started dragging '{}'", object_id_for_click);
+                            tracing::debug!("[HIERARCHY] 🖱️ Started dragging '{}'", object_id_for_drag);
+                            cx.notify();
                         }
-
-                        // Notify the hierarchy entity so GPUI re-renders the selection highlight
-                        cx.notify();
                     }))
                     // Expand/collapse arrow for items with children
                     .child(
