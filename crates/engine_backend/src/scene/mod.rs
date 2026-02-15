@@ -69,7 +69,6 @@ pub enum FieldTypeInfo {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[ui_gen_macros::generate_field_metadata]
 pub enum Component {
     Material {
         id: String,
@@ -87,6 +86,123 @@ pub enum Component {
         mass: f32,
         kinematic: bool,
     },
+}
+
+impl Component {
+    /// Get field metadata for this component variant
+    pub fn get_field_metadata(&self) -> Vec<ComponentFieldMetadata> {
+        match self {
+            Component::Material { id, color, metallic, roughness } => vec![
+                ComponentFieldMetadata::String { name: "id", value: id },
+                ComponentFieldMetadata::Color { name: "color", value: color },
+                ComponentFieldMetadata::F32 { name: "metallic", value: metallic },
+                ComponentFieldMetadata::F32 { name: "roughness", value: roughness },
+            ],
+            Component::Script { path } => vec![
+                ComponentFieldMetadata::String { name: "path", value: path },
+            ],
+            Component::Collider { shape } => vec![
+                // TODO: Handle nested enums like ColliderShape
+            ],
+            Component::RigidBody { mass, kinematic } => vec![
+                ComponentFieldMetadata::F32 { name: "mass", value: mass },
+                ComponentFieldMetadata::Bool { name: "kinematic", value: kinematic },
+            ],
+        }
+    }
+    
+    /// Get a field value by name and type
+    pub fn get_field_f32(&self, field_name: &str) -> Option<f32> {
+        match (self, field_name) {
+            (Component::Material { metallic, .. }, "metallic") => Some(*metallic),
+            (Component::Material { roughness, .. }, "roughness") => Some(*roughness),
+            (Component::RigidBody { mass, .. }, "mass") => Some(*mass),
+            _ => None,
+        }
+    }
+    
+    pub fn set_field_f32(&mut self, field_name: &str, value: f32) {
+        match (self, field_name) {
+            (Component::Material { metallic, .. }, "metallic") => *metallic = value,
+            (Component::Material { roughness, .. }, "roughness") => *roughness = value,
+            (Component::RigidBody { mass, .. }, "mass") => *mass = value,
+            _ => {},
+        }
+    }
+    
+    pub fn get_field_bool(&self, field_name: &str) -> Option<bool> {
+        match (self, field_name) {
+            (Component::RigidBody { kinematic, .. }, "kinematic") => Some(*kinematic),
+            _ => None,
+        }
+    }
+    
+    pub fn set_field_bool(&mut self, field_name: &str, value: bool) {
+        match (self, field_name) {
+            (Component::RigidBody { kinematic, .. }, "kinematic") => *kinematic = value,
+            _ => {},
+        }
+    }
+    
+    pub fn get_field_string(&self, field_name: &str) -> Option<String> {
+        match (self, field_name) {
+            (Component::Material { id, .. }, "id") => Some(id.clone()),
+            (Component::Script { path }, "path") => Some(path.clone()),
+            _ => None,
+        }
+    }
+    
+    pub fn set_field_string(&mut self, field_name: &str, value: String) {
+        match (self, field_name) {
+            (Component::Material { id, .. }, "id") => *id = value,
+            (Component::Script { path }, "path") => *path = value,
+            _ => {},
+        }
+    }
+    
+    pub fn get_field_color_component(&self, field_name: &str, index: usize) -> Option<f32> {
+        match (self, field_name) {
+            (Component::Material { color, .. }, "color") if index < 4 => Some(color[index]),
+            _ => None,
+        }
+    }
+    
+    pub fn set_field_color_component(&mut self, field_name: &str, index: usize, value: f32) {
+        match (self, field_name) {
+            (Component::Material { color, .. }, "color") if index < 4 => color[index] = value,
+            _ => {},
+        }
+    }
+    
+    pub fn variant_name(&self) -> &'static str {
+        match self {
+            Component::Material { .. } => "Material",
+            Component::Script { .. } => "Script",
+            Component::Collider { .. } => "Collider",
+            Component::RigidBody { .. } => "RigidBody",
+        }
+    }
+}
+
+/// Metadata for a component field - describes type and provides a reference
+pub enum ComponentFieldMetadata<'a> {
+    F32 { name: &'static str, value: &'a f32 },
+    Bool { name: &'static str, value: &'a bool },
+    String { name: &'static str, value: &'a String },
+    Vec3 { name: &'static str, value: &'a [f32; 3] },
+    Color { name: &'static str, value: &'a [f32; 4] },
+}
+
+impl<'a> ComponentFieldMetadata<'a> {
+    pub fn name(&self) -> &'static str {
+        match self {
+            ComponentFieldMetadata::F32 { name, .. } => name,
+            ComponentFieldMetadata::Bool { name, .. } => name,
+            ComponentFieldMetadata::String { name, .. } => name,
+            ComponentFieldMetadata::Vec3 { name, .. } => name,
+            ComponentFieldMetadata::Color { name, .. } => name,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

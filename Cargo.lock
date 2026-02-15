@@ -11875,6 +11875,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "ui_field_registry"
+version = "0.1.0"
+
+[[package]]
 name = "ui_file_manager"
 version = "0.1.0"
 dependencies = [
