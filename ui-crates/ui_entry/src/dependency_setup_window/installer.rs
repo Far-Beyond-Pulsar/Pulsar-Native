@@ -1,26 +1,23 @@
 //! Rust installer backed by the local rustup fork.
 //!
-//! Instead of writing placeholder shell scripts, this module delegates directly
-//! to `rustup::installer::install_rust_blocking`, which runs the same platform-
-//! native install flow as `rustup-init -y`. The call is made on a dedicated OS
-//! thread so that the tokio runtime rustup spins up internally cannot conflict
-//! with GPUI's executor.
+//! This module delegates to `rustup::installer::install_rust_blocking`, which
+//! runs the same platform-native install flow as `rustup-init -y`.
+//!
+//! Threading note: this function is intentionally synchronous and blocking.
+//! Callers must run it on a background thread — in GPUI that means wrapping
+//! the call in `cx.background_executor().spawn(async { run_setup_script() })`.
+//! Do NOT call it directly inside a `cx.spawn` closure.
 
-/// Runs the rustup-based Rust installation unattended.
+/// Installs Rust via the rustup library unattended.
 ///
-/// Spawns a dedicated thread (required because `install_rust_blocking`
-/// constructs its own tokio multi-thread runtime). PATH modification is
-/// enabled so `~/.cargo/bin` is wired up after install.
+/// Blocks the calling thread until installation completes or fails.
+/// PATH modification is enabled so `~/.cargo/bin` is wired up.
 ///
-/// Returns `true` on success, `false` if installation failed for any reason.
+/// Returns `true` on success.
 pub fn run_setup_script() -> bool {
-    let handle = std::thread::spawn(|| {
-        rustup::installer::install_rust_blocking(
-            /* no_prompt      */ true,
-            /* no_modify_path */ false,
-        )
-        .is_ok()
-    });
-
-    handle.join().unwrap_or(false)
+    rustup::installer::install_rust_blocking(
+        /* no_prompt      */ true,
+        /* no_modify_path */ false,
+    )
+    .is_ok()
 }

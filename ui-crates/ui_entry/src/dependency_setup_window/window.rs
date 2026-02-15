@@ -248,7 +248,12 @@ impl DependencySetupWindow {
                 }
             });
 
-            let install_ok = run_setup_script();
+            // Run the blocking install on GPUI's background executor so we
+            // don't freeze the UI thread or conflict with GPUI's own executor.
+            let install_ok = cx
+                .background_executor()
+                .spawn(async { run_setup_script() })
+                .await;
 
             cx.update(|cx| {
                 if let Some(view) = view.upgrade() {
