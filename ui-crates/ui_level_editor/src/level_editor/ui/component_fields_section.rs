@@ -15,11 +15,11 @@ use super::field_bindings::{F32FieldBinding, BoolFieldBinding, StringFieldBindin
 
 /// Enum to hold different field entity types
 enum FieldEntity {
-    F32 { entity: Entity<F32BoundField>, label: String },
-    Bool { entity: Entity<BoolBoundField>, label: String },
-    String { entity: Entity<StringBoundField>, label: String },
-    Vec3 { entities: [Entity<F32BoundField>; 3], label: String },
-    Color { entities: [Entity<F32BoundField>; 4], label: String },
+    F32(Entity<F32BoundField>),
+    Bool(Entity<BoolBoundField>),
+    String(Entity<StringBoundField>),
+    Vec3([Entity<F32BoundField>; 3]),
+    Color([Entity<F32BoundField>; 4]),
 }
 
 /// Dynamic section that renders component fields based on introspected metadata
@@ -29,7 +29,7 @@ pub struct ComponentFieldsSection {
     scene_db: SceneDatabase,
     variant_name: String,
     // Store field entities to avoid recreating on every render
-    fields: Vec<(String, FieldEntity)>,
+    fields: Vec<FieldEntity>,
 }
 
 impl ComponentFieldsSection {
@@ -50,9 +50,9 @@ impl ComponentFieldsSection {
             .unwrap_or_else(|| ("Component".to_string(), vec![]));
         
         // Create field entities once during construction
-        let fields: Vec<(String, FieldEntity)> = field_metadata.iter()
+        let fields: Vec<FieldEntity> = field_metadata.iter()
             .map(|&(field_name, field_type)| {
-                let entity = Self::create_field_entity_wrapped(
+                Self::create_field_entity_wrapped(
                     field_name,
                     field_type,
                     component_index,
@@ -60,8 +60,7 @@ impl ComponentFieldsSection {
                     &scene_db,
                     window,
                     cx,
-                );
-                (field_name.to_string(), entity)
+                )
             })
             .collect();
         
@@ -102,7 +101,7 @@ impl ComponentFieldsSection {
                         cx,
                     )
                 });
-                FieldEntity::F32 { entity: field, label: field_name.to_string() }
+                FieldEntity::F32(field)
             },
             
             FieldTypeInfo::Bool => {
@@ -123,7 +122,7 @@ impl ComponentFieldsSection {
                         cx,
                     )
                 });
-                FieldEntity::Bool { entity: field, label: field_name.to_string() }
+                FieldEntity::Bool(field)
             },
             
             FieldTypeInfo::String => {
@@ -144,12 +143,12 @@ impl ComponentFieldsSection {
                         cx,
                     )
                 });
-                FieldEntity::String { entity: field, label: field_name.to_string() }
+                FieldEntity::String(field)
             },
             
             FieldTypeInfo::F32Array(3) => {
                 let labels = ["X", "Y", "Z"];
-                let fields: Vec<_> = (0..3).map(|i| {
+                let entities: [Entity<F32BoundField>; 3] = std::array::from_fn(|i| {
                     cx.new(|cx| {
                         F32BoundField::new(
                             F32FieldBinding::new(
@@ -167,13 +166,13 @@ impl ComponentFieldsSection {
                             cx,
                         )
                     })
-                }).collect();
-                FieldEntity::Vec3 { entities: [fields[0].clone(), fields[1].clone(), fields[2].clone()], label: field_name.to_string() }
+                });
+                FieldEntity::Vec3(entities)
             },
             
             FieldTypeInfo::F32Array(4) => {
                 let labels = ["R", "G", "B", "A"];
-                let fields: Vec<_> = (0..4).map(|i| {
+                let entities: [Entity<F32BoundField>; 4] = std::array::from_fn(|i| {
                     cx.new(|cx| {
                         F32BoundField::new(
                             F32FieldBinding::new(
@@ -191,8 +190,8 @@ impl ComponentFieldsSection {
                             cx,
                         )
                     })
-                }).collect();
-                FieldEntity::Color { entities: [fields[0].clone(), fields[1].clone(), fields[2].clone(), fields[3].clone()], label: field_name.to_string() }
+                });
+                FieldEntity::Color(entities)
             },
             
             _ => {
@@ -210,9 +209,206 @@ impl ComponentFieldsSection {
                         cx,
                     )
                 });
-                FieldEntity::F32 { entity: field, label: format!("{}: unsupported", field_name) }
+                FieldEntity::F32(field)
             }
         }
+    }
+    
+    fn render_f32_field(entity: &Entity<F32BoundField>, cx: &Context<Self>) -> impl IntoElement {
+        let input = entity.read(cx).input.clone();
+        let label = entity.read(cx).label.clone();
+        v_flex()
+            .w_full()
+            .gap_2()
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(label)
+            )
+            .child(
+                h_flex()
+                    .w_full()
+                    .h_7()
+                    .items_center()
+                    .rounded(px(4.0))
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .px_2()
+                    .child(
+                        ui::input::NumberInput::new(&input)
+                            .appearance(false)
+                            .xsmall()
+                    )
+            )
+    }
+    
+    fn render_string_field(entity: &Entity<StringBoundField>, cx: &Context<Self>) -> impl IntoElement {
+        let input = entity.read(cx).input.clone();
+        let label = entity.read(cx).label.clone();
+        v_flex()
+            .w_full()
+            .gap_2()
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(label)
+            )
+            .child(
+                h_flex()
+                    .w_full()
+                    .h_7()
+                    .items_center()
+                    .rounded(px(4.0))
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .px_2()
+                    .child(
+                        ui::input::TextInput::new(&input)
+                            .appearance(false)
+                            .xsmall()
+                    )
+            )
+    }
+    
+    fn render_vec3_field(entities: &[Entity<F32BoundField>; 3], cx: &Context<Self>) -> impl IntoElement {
+        let colors = [
+            Hsla { h: 0.0, s: 0.8, l: 0.5, a: 1.0 },   // Red
+            Hsla { h: 120.0, s: 0.8, l: 0.4, a: 1.0 }, // Green
+            Hsla { h: 220.0, s: 0.8, l: 0.55, a: 1.0 }, // Blue
+        ];
+        
+        let first_label = entities[0].read(cx).label.clone();
+        // Extract field name from first entity's parent (assumes pattern like "size")
+        let field_name = if first_label == "X" || first_label == "Y" || first_label == "Z" {
+            "Vec3" // Generic name if we can't determine
+        } else {
+            "Vec3"
+        };
+        
+        let fields: Vec<_> = entities.iter().enumerate().map(|(i, entity)| {
+            let input = entity.read(cx).input.clone();
+            let axis_label = entity.read(cx).label.clone();
+            h_flex()
+                .flex_1()
+                .h_7()
+                .items_center()
+                .rounded(px(4.0))
+                .border_1()
+                .border_color(cx.theme().border)
+                .overflow_hidden()
+                .child(
+                    div()
+                        .w_6()
+                        .h_full()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(colors[i].opacity(0.2))
+                        .border_r_1()
+                        .border_color(cx.theme().border)
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_weight(FontWeight::BOLD)
+                                .text_color(colors[i])
+                                .child(axis_label)
+                        )
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .h_full()
+                        .child(
+                            ui::input::NumberInput::new(&input)
+                                .appearance(false)
+                                .xsmall()
+                        )
+                )
+        }).collect();
+        
+        v_flex()
+            .w_full()
+            .gap_2()
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(field_name)
+            )
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap_2()
+                    .children(fields)
+            )
+    }
+    
+    fn render_color_field(entities: &[Entity<F32BoundField>; 4], cx: &Context<Self>) -> impl IntoElement {
+        let colors = [
+            Hsla { h: 0.0, s: 0.8, l: 0.5, a: 1.0 },   // Red
+            Hsla { h: 120.0, s: 0.8, l: 0.4, a: 1.0 }, // Green
+            Hsla { h: 220.0, s: 0.8, l: 0.55, a: 1.0 }, // Blue
+            Hsla { h: 0.0, s: 0.0, l: 0.5, a: 1.0 },   // Gray for Alpha
+        ];
+        
+        let fields: Vec<_> = entities.iter().enumerate().map(|(i, entity)| {
+            let input = entity.read(cx).input.clone();
+            let channel_label = entity.read(cx).label.clone();
+            h_flex()
+                .flex_1()
+                .h_7()
+                .items_center()
+                .rounded(px(4.0))
+                .border_1()
+                .border_color(cx.theme().border)
+                .overflow_hidden()
+                .child(
+                    div()
+                        .w_6()
+                        .h_full()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(colors[i].opacity(0.2))
+                        .border_r_1()
+                        .border_color(cx.theme().border)
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_weight(FontWeight::BOLD)
+                                .text_color(colors[i])
+                                .child(channel_label)
+                        )
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .h_full()
+                        .child(
+                            ui::input::NumberInput::new(&input)
+                                .appearance(false)
+                                .xsmall()
+                        )
+                )
+        }).collect();
+        
+        v_flex()
+            .w_full()
+            .gap_2()
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("Color")
+            )
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap_2()
+                    .children(fields)
+            )
     }
     
     fn create_vec3_field(
@@ -613,217 +809,15 @@ impl Render for ComponentFieldsSection {
                     .child(self.variant_name.clone())
             );
         
-        // Render the stored field entities with styling
-        for (_name, field) in &self.fields {
-            match field {
-                FieldEntity::F32 { entity, label } => {
-                    let input = entity.read(cx).input.clone();
-                    section = section.child(
-                        v_flex()
-                            .w_full()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(label.clone())
-                            )
-                            .child(
-                                h_flex()
-                                    .w_full()
-                                    .h_7()
-                                    .items_center()
-                                    .rounded(px(4.0))
-                                    .border_1()
-                                    .border_color(cx.theme().border)
-                                    .px_2()
-                                    .child(
-                                        ui::input::NumberInput::new(&input)
-                                            .appearance(false)
-                                            .xsmall()
-                                    )
-                            )
-                    );
-                },
-                FieldEntity::Bool { entity, label: _ } => {
-                    section = section.child(
-                        v_flex()
-                            .w_full()
-                            .gap_2()
-                            .child(
-                                h_flex()
-                                    .w_full()
-                                    .items_center()
-                                    .gap_2()
-                                    .child(entity.clone())
-                            )
-                    );
-                },
-                FieldEntity::String { entity, label } => {
-                    let input = entity.read(cx).input.clone();
-                    section = section.child(
-                        v_flex()
-                            .w_full()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(label.clone())
-                            )
-                            .child(
-                                h_flex()
-                                    .w_full()
-                                    .h_7()
-                                    .items_center()
-                                    .rounded(px(4.0))
-                                    .border_1()
-                                    .border_color(cx.theme().border)
-                                    .px_2()
-                                    .child(
-                                        ui::input::TextInput::new(&input)
-                                            .appearance(false)
-                                            .xsmall()
-                                    )
-                            )
-                    );
-                },
-                FieldEntity::Vec3 { entities, label } => {
-                    let colors = [
-                        Hsla { h: 0.0, s: 0.8, l: 0.5, a: 1.0 },   // Red
-                        Hsla { h: 120.0, s: 0.8, l: 0.4, a: 1.0 }, // Green
-                        Hsla { h: 220.0, s: 0.8, l: 0.55, a: 1.0 }, // Blue
-                    ];
-                    let mut fields = Vec::new();
-                    for (i, entity) in entities.iter().enumerate() {
-                        let input = entity.read(cx).input.clone();
-                        let axis_label = entity.read(cx).label.clone();
-                        fields.push(
-                            h_flex()
-                                .flex_1()
-                                .h_7()
-                                .items_center()
-                                .rounded(px(4.0))
-                                .border_1()
-                                .border_color(cx.theme().border)
-                                .overflow_hidden()
-                                .child(
-                                    div()
-                                        .w_6()
-                                        .h_full()
-                                        .flex()
-                                        .items_center()
-                                        .justify_center()
-                                        .bg(colors[i].opacity(0.2))
-                                        .border_r_1()
-                                        .border_color(cx.theme().border)
-                                        .child(
-                                            div()
-                                                .text_xs()
-                                                .font_weight(FontWeight::BOLD)
-                                                .text_color(colors[i])
-                                                .child(axis_label)
-                                        )
-                                )
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .h_full()
-                                        .child(
-                                            ui::input::NumberInput::new(&input)
-                                                .appearance(false)
-                                                .xsmall()
-                                        )
-                                )
-                        );
-                    }
-                    section = section.child(
-                        v_flex()
-                            .w_full()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(label.clone())
-                            )
-                            .child(
-                                h_flex()
-                                    .w_full()
-                                    .gap_2()
-                                    .children(fields)
-                            )
-                    );
-                },
-                FieldEntity::Color { entities, label } => {
-                    let colors = [
-                        Hsla { h: 0.0, s: 0.8, l: 0.5, a: 1.0 },   // Red
-                        Hsla { h: 120.0, s: 0.8, l: 0.4, a: 1.0 }, // Green
-                        Hsla { h: 220.0, s: 0.8, l: 0.55, a: 1.0 }, // Blue
-                        Hsla { h: 0.0, s: 0.0, l: 0.5, a: 1.0 },   // Gray for Alpha
-                    ];
-                    let mut fields = Vec::new();
-                    for (i, entity) in entities.iter().enumerate() {
-                        let input = entity.read(cx).input.clone();
-                        let channel_label = entity.read(cx).label.clone();
-                        fields.push(
-                            h_flex()
-                                .flex_1()
-                                .h_7()
-                                .items_center()
-                                .rounded(px(4.0))
-                                .border_1()
-                                .border_color(cx.theme().border)
-                                .overflow_hidden()
-                                .child(
-                                    div()
-                                        .w_6()
-                                        .h_full()
-                                        .flex()
-                                        .items_center()
-                                        .justify_center()
-                                        .bg(colors[i].opacity(0.2))
-                                        .border_r_1()
-                                        .border_color(cx.theme().border)
-                                        .child(
-                                            div()
-                                                .text_xs()
-                                                .font_weight(FontWeight::BOLD)
-                                                .text_color(colors[i])
-                                                .child(channel_label)
-                                        )
-                                )
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .h_full()
-                                        .child(
-                                            ui::input::NumberInput::new(&input)
-                                                .appearance(false)
-                                                .xsmall()
-                                        )
-                                )
-                        );
-                    }
-                    section = section.child(
-                        v_flex()
-                            .w_full()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(label.clone())
-                            )
-                            .child(
-                                h_flex()
-                                    .w_full()
-                                    .gap_2()
-                                    .children(fields)
-                            )
-                    );
-                },
-            }
+        // Render each field using helper methods
+        for field in &self.fields {
+            section = section.child(match field {
+                FieldEntity::F32(entity) => Self::render_f32_field(entity, cx).into_any_element(),
+                FieldEntity::Bool(entity) => entity.clone().into_any_element(),
+                FieldEntity::String(entity) => Self::render_string_field(entity, cx).into_any_element(),
+                FieldEntity::Vec3(entities) => Self::render_vec3_field(entities, cx).into_any_element(),
+                FieldEntity::Color(entities) => Self::render_color_field(entities, cx).into_any_element(),
+            });
         }
         
         section
