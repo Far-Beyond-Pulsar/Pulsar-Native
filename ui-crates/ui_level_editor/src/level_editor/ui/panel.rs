@@ -22,8 +22,9 @@ use super::{
     ViewportPanel, ToolbarPanel, CameraMode, TransformTool, toolbar,
 };
 use super::actions::*;
+use engine_backend::scene::SceneDb;
 use crate::level_editor::scene_database::{
-    SceneObjectData, ObjectType, Transform, MeshType, LightType,
+    SceneDatabase, SceneObjectData, ObjectType, LightType, MeshType, Transform,
 };
 
 /// Main Level Editor Panel - Orchestrates all sub-components
@@ -99,8 +100,14 @@ impl LevelEditorPanel {
         // Get game state reference (needed for renderer integration)
         let _game_state = game_thread.get_state();
         
-        // Create GPU render engine WITHOUT game thread link initially (Edit mode)
-        let gpu_engine = Arc::new(Mutex::new(GpuRenderer::new(1600, 900))); // No game state initially
+        // Create the shared scene database FIRST so both the renderer and the UI
+        // panels hold the same Arc. All reads/writes go to the same atomic storage.
+        let scene_db = Arc::new(SceneDb::new());
+
+        // Create GPU render engine sharing the scene_db Arc
+        let gpu_engine = Arc::new(Mutex::new(
+            GpuRenderer::new_with_scene_db(1600, 900, scene_db.clone(), None)
+        ));
         let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
 
         // Store GPU renderer in global EngineContext using a marker that the render loop will pick up
@@ -127,12 +134,14 @@ impl LevelEditorPanel {
         
         tracing::debug!("[LEVEL-EDITOR] Modular level editor initialized");
 
-        let state = LevelEditorState::new();
-        
+        // Build the level editor state with the default scene populated into the shared SceneDb.
+        // The renderer and all panels now read/write the same Arc<SceneDb>.
+        let state = LevelEditorState::new_with_scene_db(scene_db);
+
         Self {
             focus_handle: cx.focus_handle(),
-            state: LevelEditorState::new(), // Will be moved to shared_state
-            fps_graph_is_line: Rc::new(RefCell::new(true)),  // Default to line graph
+            state: state.clone(),
+            fps_graph_is_line: Rc::new(RefCell::new(true)),
             toolbar: ToolbarPanel::new(),
             viewport,
             viewport_state,

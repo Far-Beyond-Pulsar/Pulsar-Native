@@ -29,19 +29,23 @@ pub struct HelioRenderer {
     pub gpu_profiler: Arc<Mutex<GpuProfilerData>>,
     pub gizmo_state: Arc<Mutex<GizmoStateResource>>,
     pub viewport_mouse_input: Arc<parking_lot::Mutex<ViewportMouseInput>>,
+    /// Shared scene database - the renderer reads from this directly each frame.
+    /// The same Arc is held by all UI panels; writes are immediately visible to the renderer.
+    pub scene_db: Arc<crate::scene::SceneDb>,
     shutdown: Arc<AtomicBool>,
     _render_thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl HelioRenderer {
     pub async fn new(width: u32, height: u32) -> Self {
-        Self::new_with_game_thread(width, height, None).await
+        Self::new_with_game_thread(width, height, None, Arc::new(crate::scene::SceneDb::new())).await
     }
 
     pub async fn new_with_game_thread(
         width: u32,
         height: u32,
         game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
+        scene_db: Arc<crate::scene::SceneDb>,
     ) -> Self {
         let shared_textures = Arc::new(Mutex::new(None));
         let camera_input = Arc::new(Mutex::new(CameraInput::new()));
@@ -57,6 +61,7 @@ impl HelioRenderer {
         let gpu_profiler_clone = gpu_profiler.clone();
         let gizmo_state_clone = gizmo_state.clone();
         let viewport_mouse_input_clone = viewport_mouse_input.clone();
+        let scene_db_clone = scene_db.clone();
         let shutdown_clone = shutdown.clone();
         let game_thread_clone = game_thread_state.clone();
 
@@ -73,6 +78,7 @@ impl HelioRenderer {
                     gpu_profiler_clone,
                     gizmo_state_clone,
                     viewport_mouse_input_clone,
+                    scene_db_clone,
                     shutdown_clone,
                     game_thread_clone,
                 );
@@ -86,6 +92,7 @@ impl HelioRenderer {
             gpu_profiler,
             gizmo_state,
             viewport_mouse_input,
+            scene_db,
             shutdown,
             _render_thread: Some(render_thread),
         }
@@ -100,6 +107,7 @@ impl HelioRenderer {
         gpu_profiler: Arc<Mutex<GpuProfilerData>>,
         _gizmo_state: Arc<Mutex<GizmoStateResource>>,
         _viewport_mouse_input: Arc<parking_lot::Mutex<ViewportMouseInput>>,
+        scene_db: Arc<crate::scene::SceneDb>,
         shutdown: Arc<AtomicBool>,
         _game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
     ) {
@@ -454,105 +462,37 @@ impl HelioRenderer {
             let aspect = width as f32 / height as f32;
             let camera_uniforms = camera.build_camera_uniforms(60.0, aspect);
 
-            // === LIGHTING SHOWCASE SCENE - EXACT COPY ===
-            // Ground plane
-            let ground = Mat4::from_translation(Vec3::new(0.0, -0.1, 0.0))
-                * Mat4::from_scale(Vec3::new(1.5, 1.0, 1.5));
+            // === SCENE DATABASE - render what's actually in the scene ===
+            // Ground plane (always present for orientation)
+            let ground = Mat4::from_translation(Vec3::new(0.0, -0.01, 0.0))
+                * Mat4::from_scale(Vec3::new(20.0, 1.0, 20.0));
             let mut meshes = vec![(TransformUniforms::from_matrix(ground), &plane_mesh)];
 
-            let elapsed = (now - start_time).as_secs_f32();
-
-            // Central rotating pillar of spheres
-            for i in 0..5 {
-                let height = i as f32 * 1.5;
-                let angle = elapsed * 0.5 + i as f32 * 0.6;
-                let radius = 2.0 + (elapsed * 0.3 + i as f32).sin() * 0.5;
-                let t = Mat4::from_translation(Vec3::new(
-                    angle.cos() * radius,
-                    height + 1.0,
-                    angle.sin() * radius,
-                )) * Mat4::from_scale(Vec3::splat(
-                    0.8 + (elapsed * 2.0 + i as f32).sin().abs() * 0.3,
-                ));
-                meshes.push((TransformUniforms::from_matrix(t), &sphere_mesh));
-            }
-
-            // Orbiting cubes
-            for i in 0..8 {
-                let orbit_angle = elapsed * 0.8 + (i as f32 / 8.0) * std::f32::consts::TAU;
-                let height = 2.0 + (elapsed * 1.5 + i as f32).sin() * 2.0;
-                let rs = 1.0 + i as f32 * 0.2;
-                let t = Mat4::from_translation(Vec3::new(
-                    orbit_angle.cos() * 6.0,
-                    height,
-                    orbit_angle.sin() * 6.0,
-                )) * Mat4::from_rotation_y(elapsed * rs)
-                    * Mat4::from_rotation_x(elapsed * rs * 0.7)
-                    * Mat4::from_scale(Vec3::splat(0.6));
-                meshes.push((TransformUniforms::from_matrix(t), &cube_mesh));
-            }
-
-            // Dancing spheres on the ground
-            for i in 0..12 {
-                let dance_angle = (i as f32 / 12.0) * std::f32::consts::TAU;
-                let dance_radius = 4.0 + (elapsed * 0.5).sin() * 1.0;
-                let bounce = ((elapsed * 3.0 + i as f32).sin().abs() * 2.0 + 0.5).max(0.5);
-                let t = Mat4::from_translation(Vec3::new(
-                    dance_angle.cos() * dance_radius,
-                    bounce,
-                    dance_angle.sin() * dance_radius,
-                )) * Mat4::from_scale(Vec3::splat(
-                    0.4 + (elapsed + i as f32).cos().abs() * 0.2,
-                ));
-                meshes.push((TransformUniforms::from_matrix(t), &sphere_mesh));
-            }
-
-            // Spinning double helix of cubes
-            for i in 0..16 {
-                let helix_height = i as f32 * 0.6;
-                let a1 = elapsed * 2.0 + i as f32 * 0.4;
-                let a2 = a1 + std::f32::consts::PI;
-                let hr = 2.5;
-                for a in [a1, a2] {
-                    let t = Mat4::from_translation(Vec3::new(
-                        a.cos() * hr,
-                        helix_height + 0.5,
-                        a.sin() * hr,
-                    )) * Mat4::from_rotation_y(elapsed * 3.0)
-                        * Mat4::from_scale(Vec3::splat(0.3));
-                    meshes.push((TransformUniforms::from_matrix(t), &cube_mesh));
+            // Read all scene objects lock-free via DashMap + atomic transforms
+            scene_db.for_each_entry(|entry| {
+                use crate::scene::{ObjectType, MeshType};
+                if !entry.is_visible() {
+                    return;
                 }
-            }
-
-            // Add editor-placed objects from GameState if available
-            if let Some(ref game_state_arc) = _game_thread_state {
-                if let Ok(game_state) = game_state_arc.lock() {
-                    for obj in &game_state.objects {
-                        if !obj.active {
-                            continue;
-                        }
-                        
-                        let translation = Mat4::from_translation(Vec3::new(
-                            obj.position[0],
-                            obj.position[1],
-                            obj.position[2],
-                        ));
-                        
-                        let rotation = Mat4::from_rotation_y(obj.rotation[1])
-                            * Mat4::from_rotation_x(obj.rotation[0])
-                            * Mat4::from_rotation_z(obj.rotation[2]);
-                        
-                        let scale = Mat4::from_scale(Vec3::new(
-                            obj.scale[0],
-                            obj.scale[1],
-                            obj.scale[2],
-                        ));
-                        
-                        let transform_uniforms = TransformUniforms::from_matrix(translation * rotation * scale);
-                        meshes.push((transform_uniforms, &sphere_mesh));
+                let mat = entry.to_mat4();
+                let tu = TransformUniforms::from_matrix(mat);
+                match entry.object_type {
+                    ObjectType::Mesh(MeshType::Cube) => {
+                        meshes.push((tu, &cube_mesh));
                     }
+                    ObjectType::Mesh(MeshType::Sphere) => {
+                        meshes.push((tu, &sphere_mesh));
+                    }
+                    ObjectType::Mesh(MeshType::Plane) => {
+                        meshes.push((tu, &plane_mesh));
+                    }
+                    // Cylinder falls back to cube for now; Camera/Light/Empty etc. not rendered as meshes
+                    ObjectType::Mesh(MeshType::Cylinder) | ObjectType::Mesh(MeshType::Custom) => {
+                        meshes.push((tu, &cube_mesh));
+                    }
+                    _ => {}
                 }
-            }
+            });
 
             // Render gizmos if object is selected
             if let Ok(gizmo_state_lock) = _gizmo_state.lock() {

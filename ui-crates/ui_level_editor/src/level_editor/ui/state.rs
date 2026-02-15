@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 // Import our scene database and gizmo systems
 use crate::level_editor::{SceneDatabase, GizmoState, GizmoType};
+use crate::level_editor::scene_database::SceneDb;
 
 /// Editor mode - Edit or Play
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -266,6 +267,18 @@ impl Default for LevelEditorState {
 impl LevelEditorState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Create a `LevelEditorState` that shares the given `SceneDb` Arc with the renderer.
+    /// The default scene objects are populated into the shared database.
+    pub fn new_with_scene_db(scene_db: Arc<SceneDb>) -> Self {
+        let scene_database = SceneDatabase::with_default_scene_on(scene_db);
+        let mut gizmo_state = GizmoState::new();
+        gizmo_state.set_gizmo_type(GizmoType::Translate);
+        Self {
+            scene_database,
+            ..Self::default()
+        }
     }
 
     /// Enter play mode - snapshot scene and start game thread

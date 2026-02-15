@@ -10,6 +10,7 @@
 pub mod subsystems;
 pub mod gpu_interop;
 pub mod services;
+pub mod scene;
 
 pub use tokio;
 pub use subsystems::physics::PhysicsEngine;

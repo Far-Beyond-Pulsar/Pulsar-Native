@@ -2,6 +2,7 @@
 // Migrated from Bevy to Helio for better performance and control
 
 use crate::subsystems::render::{HelioRenderer, RenderMetrics};
+use crate::scene::SceneDb;
 use std::sync::{Arc, Mutex, Once};
 use std::time::Instant;
 
@@ -28,7 +29,7 @@ fn get_runtime() -> &'static tokio::runtime::Runtime {
 }
 
 /// OPTIMIZED GPU Renderer - uses Helio with blade-graphics
-/// 
+///
 /// Migrated from Bevy to Helio for:
 /// - Better performance with blade-graphics
 /// - More direct control over rendering pipeline
@@ -45,27 +46,41 @@ pub struct GpuRenderer {
 }
 
 impl GpuRenderer {
+    /// Create with a new empty SceneDb. Callers that want to share the db should use
+    /// `new_with_scene_db` instead.
     pub fn new(display_width: u32, display_height: u32) -> Self {
-        Self::new_with_game_thread(display_width, display_height, None)
+        Self::new_with_scene_db(display_width, display_height, Arc::new(SceneDb::new()), None)
     }
 
     pub fn new_with_game_thread(
-        display_width: u32, 
+        display_width: u32,
         display_height: u32,
+        game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
+    ) -> Self {
+        Self::new_with_scene_db(display_width, display_height, Arc::new(SceneDb::new()), game_thread_state)
+    }
+
+    /// Create the renderer sharing an existing SceneDb Arc. Pass the same Arc to the
+    /// UI SceneDatabase so both sides read/write the same live data.
+    pub fn new_with_scene_db(
+        display_width: u32,
+        display_height: u32,
+        scene_db: Arc<SceneDb>,
         game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
     ) -> Self {
         let width = display_width;
         let height = display_height;
-        
+
         tracing::info!("[GPU-RENDERER] 🚀 Initializing Helio renderer (blade-graphics) at {}x{}", width, height);
-        
+
         let runtime = get_runtime();
         let game_state_for_renderer = game_thread_state.clone();
+        let scene_db_clone = scene_db.clone();
         let helio_renderer = runtime.block_on(async move {
             tracing::debug!("[GPU-RENDERER] Creating Helio renderer asynchronously...");
             match tokio::time::timeout(
                 tokio::time::Duration::from_secs(10),
-                HelioRenderer::new_with_game_thread(width, height, game_state_for_renderer)
+                HelioRenderer::new_with_game_thread(width, height, game_state_for_renderer, scene_db_clone)
             ).await {
                 Ok(renderer) => {
                     tracing::info!("[GPU-RENDERER] ✅ Helio renderer created successfully!");

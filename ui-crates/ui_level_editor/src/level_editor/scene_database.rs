@@ -1,882 +1,31 @@
-//! Scene Database - In-memory scene management system
-//! 
-//! This module provides a centralized, thread-safe scene database that manages
-//! all objects in the level editor. It handles:
-//! - Object creation, deletion, modification
-//! - Hierarchical relationships (parent/child)
-//! - Transform management
-//! - Object selection state
-//! - Undo/Redo history
-//! - Syncing with the Bevy renderer
+//! Scene Database - wraps the engine_backend atomic SceneDb.
+//!
+//! The `SceneDatabase` is the UI-layer wrapper that adds undo/redo history
+//! and JSON save/load on top of the lock-free `engine_backend::scene::SceneDb`.
+//!
+//! The renderer holds the SAME `Arc<SceneDb>` directly and reads from it
+//! every frame without ever acquiring a lock — transforms are stored as atomics.
 
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
 use std::path::Path;
+use std::sync::Arc;
 use std::fs;
 use serde::{Deserialize, Serialize};
 
-pub type ObjectId = String;
+// Re-export the shared types from engine_backend so downstream code
+// that imports from this module still compiles unchanged.
+pub use engine_backend::scene::{
+    ObjectId, ObjectType, LightType, MeshType, Component, ColliderShape,
+    SceneDb, SceneObjectSnapshot,
+};
 
-/// The central scene database - thread-safe and shared across the editor
-#[derive(Clone)]
-pub struct SceneDatabase {
-    inner: Arc<RwLock<SceneDatabaseInner>>,
-}
+// ─── Transform (kept for backwards compat with existing UI code) ──────────────
 
-struct SceneDatabaseInner {
-    /// All objects in the scene, indexed by ID
-    objects: HashMap<ObjectId, SceneObjectData>,
-    /// Root-level object IDs (objects with no parent)
-    root_objects: Vec<ObjectId>,
-    /// Currently selected object ID
-    selected_object: Option<ObjectId>,
-    /// Undo/redo history
-    history: UndoHistory,
-    /// Counter for generating unique IDs
-    next_id: u64,
-}
-
-/// Full scene object data stored in the database
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SceneObjectData {
-    pub id: ObjectId,
-    pub name: String,
-    pub object_type: ObjectType,
-    pub transform: Transform,
-    pub parent: Option<ObjectId>,
-    pub children: Vec<ObjectId>,
-    pub visible: bool,
-    pub locked: bool,
-    /// Component data (materials, scripts, etc.)
-    pub components: Vec<Component>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ObjectType {
-    Empty,
-    Folder,
-    Camera,
-    Light(LightType),
-    Mesh(MeshType),
-    ParticleSystem,
-    AudioSource,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum LightType {
-    Directional,
-    Point,
-    Spot,
-    Area,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum MeshType {
-    Cube,
-    Sphere,
-    Cylinder,
-    Plane,
-    Custom,
-}
-
+/// Per-object transform. Euler angles in degrees.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Transform {
     pub position: [f32; 3],
-    pub rotation: [f32; 3],  // Euler angles in degrees
+    pub rotation: [f32; 3],
     pub scale: [f32; 3],
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum Component {
-    Material {
-        id: String,
-        color: [f32; 4],
-        metallic: f32,
-        roughness: f32,
-    },
-    Script {
-        path: String,
-    },
-    Collider {
-        shape: ColliderShape,
-    },
-    RigidBody {
-        mass: f32,
-        kinematic: bool,
-    },
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ColliderShape {
-    Box { size: [f32; 3] },
-    Sphere { radius: f32 },
-    Capsule { radius: f32, height: f32 },
-}
-
-/// Undo/Redo history management
-struct UndoHistory {
-    undo_stack: Vec<SceneCommand>,
-    redo_stack: Vec<SceneCommand>,
-    max_history: usize,
-}
-
-#[derive(Clone, Debug)]
-enum SceneCommand {
-    AddObject {
-        object: SceneObjectData,
-    },
-    RemoveObject {
-        object: SceneObjectData,
-    },
-    ModifyObject {
-        old_object: SceneObjectData,
-        new_object: SceneObjectData,
-    },
-    ModifyTransform {
-        object_id: ObjectId,
-        old_transform: Transform,
-        new_transform: Transform,
-    },
-}
-
-impl SceneDatabase {
-    pub fn new() -> Self {
-        Self {
-            inner: Arc::new(RwLock::new(SceneDatabaseInner {
-                objects: HashMap::new(),
-                root_objects: Vec::new(),
-                selected_object: None,
-                history: UndoHistory {
-                    undo_stack: Vec::new(),
-                    redo_stack: Vec::new(),
-                    max_history: 100,
-                },
-                next_id: 1,
-            })),
-        }
-    }
-
-    /// Create a new scene database with default objects
-    pub fn with_default_scene() -> Self {
-        let db = Self::new();
-        
-        // Add default camera
-        db.add_object(SceneObjectData {
-            id: "main_camera".to_string(),
-            name: "Main Camera".to_string(),
-            object_type: ObjectType::Camera,
-            transform: Transform {
-                position: [-3.0, 3.0, 6.0],
-                rotation: [0.0, 0.0, 0.0],
-                scale: [1.0, 1.0, 1.0],
-            },
-            parent: None,
-            children: Vec::new(),
-            visible: true,
-            locked: false,
-            components: Vec::new(),
-        }, None);
-
-        // Add directional light
-        db.add_object(SceneObjectData {
-            id: "directional_light".to_string(),
-            name: "Directional Light".to_string(),
-            object_type: ObjectType::Light(LightType::Directional),
-            transform: Transform {
-                position: [4.0, 8.0, 4.0],
-                rotation: [-45.0, 45.0, 0.0],
-                scale: [1.0, 1.0, 1.0],
-            },
-            parent: None,
-            children: Vec::new(),
-            visible: true,
-            locked: false,
-            components: Vec::new(),
-        }, None);
-
-        // === GEOMETRY FOLDER with nested objects ===
-        db.add_object(SceneObjectData {
-            id: "geometry_folder".to_string(),
-            name: "Geometry".to_string(),
-            object_type: ObjectType::Folder,
-            transform: Transform::default(),
-            parent: None,
-            children: Vec::new(),
-            visible: true,
-            locked: false,
-            components: Vec::new(),
-        }, None);
-
-        // Add red cube under Geometry folder
-        db.add_object(SceneObjectData {
-            id: "cube_red".to_string(),
-            name: "Red Cube".to_string(),
-            object_type: ObjectType::Mesh(MeshType::Cube),
-            transform: Transform {
-                position: [-2.0, 1.0, 0.0],
-                rotation: [0.0, 0.0, 0.0],
-                scale: [2.0, 2.0, 2.0],
-            },
-            parent: None,
-            children: Vec::new(),
-            visible: true,
-            locked: false,
-            components: vec![Component::Material {
-                id: "red_metal".to_string(),
-                color: [0.9, 0.2, 0.2, 1.0],
-                metallic: 0.8,
-                roughness: 0.3,
-            }],
-        }, Some("geometry_folder".to_string()));
-
-        // === SPHERES FOLDER (nested inside Geometry) ===
-        db.add_object(SceneObjectData {
-            id: "spheres_folder".to_string(),
-            name: "Spheres".to_string(),
-            object_type: ObjectType::Folder,
-            transform: Transform::default(),
-            parent: None,
-            children: Vec::new(),
-            visible: true,
-            locked: false,
-            components: Vec::new(),
-        }, Some("geometry_folder".to_string()));
-
-        // Add blue sphere under Spheres folder (2 levels deep)
-        db.add_object(SceneObjectData {
-            id: "sphere_blue".to_string(),
-            name: "Blue Sphere".to_string(),
-            object_type: ObjectType::Mesh(MeshType::Sphere),
-            transform: Transform {
-                position: [2.0, 1.0, 0.0],
-                rotation: [0.0, 0.0, 0.0],
-                scale: [1.0, 1.0, 1.0],
-            },
-            parent: None,
-            children: Vec::new(),
-            visible: true,
-            locked: false,
-            components: vec![Component::Material {
-                id: "blue_metal".to_string(),
-                color: [0.2, 0.5, 0.9, 1.0],
-                metallic: 0.9,
-                roughness: 0.1,
-            }],
-        }, Some("spheres_folder".to_string()));
-
-        // Add gold sphere under Spheres folder (2 levels deep)
-        db.add_object(SceneObjectData {
-            id: "sphere_gold".to_string(),
-            name: "Gold Sphere".to_string(),
-            object_type: ObjectType::Mesh(MeshType::Sphere),
-            transform: Transform {
-                position: [0.0, 3.0, 0.0],
-                rotation: [0.0, 0.0, 0.0],
-                scale: [1.0, 1.0, 1.0],
-            },
-            parent: None,
-            children: Vec::new(),
-            visible: true,
-            locked: false,
-            components: vec![Component::Material {
-                id: "gold_metal".to_string(),
-                color: [1.0, 0.843, 0.0, 1.0],
-                metallic: 0.95,
-                roughness: 0.2,
-            }],
-        }, Some("spheres_folder".to_string()));
-
-        // Add green sphere under Spheres folder
-        db.add_object(SceneObjectData {
-            id: "sphere_green".to_string(),
-            name: "Green Sphere".to_string(),
-            object_type: ObjectType::Mesh(MeshType::Sphere),
-            transform: Transform {
-                position: [4.0, 1.5, 2.0],
-                rotation: [0.0, 0.0, 0.0],
-                scale: [0.8, 0.8, 0.8],
-            },
-            parent: None,
-            children: Vec::new(),
-            visible: true,
-            locked: false,
-            components: vec![Component::Material {
-                id: "green_metal".to_string(),
-                color: [0.2, 0.8, 0.3, 1.0],
-                metallic: 0.7,
-                roughness: 0.4,
-            }],
-        }, Some("spheres_folder".to_string()));
-
-        // === LIGHTS FOLDER ===
-        db.add_object(SceneObjectData {
-            id: "lights_folder".to_string(),
-            name: "Lights".to_string(),
-            object_type: ObjectType::Folder,
-            transform: Transform::default(),
-            parent: None,
-            children: Vec::new(),
-            visible: true,
-            locked: false,
-            components: Vec::new(),
-        }, None);
-
-        // Add point light under Lights folder
-        db.add_object(SceneObjectData {
-            id: "point_light_1".to_string(),
-            name: "Point Light".to_string(),
-            object_type: ObjectType::Light(LightType::Point),
-            transform: Transform {
-                position: [0.0, 5.0, 0.0],
-                rotation: [0.0, 0.0, 0.0],
-                scale: [1.0, 1.0, 1.0],
-            },
-            parent: None,
-            children: Vec::new(),
-            visible: true,
-            locked: false,
-            components: Vec::new(),
-        }, Some("lights_folder".to_string()));
-
-        // Add spot light under Lights folder
-        db.add_object(SceneObjectData {
-            id: "spot_light_1".to_string(),
-            name: "Spot Light".to_string(),
-            object_type: ObjectType::Light(LightType::Spot),
-            transform: Transform {
-                position: [-5.0, 6.0, 3.0],
-                rotation: [-30.0, 45.0, 0.0],
-                scale: [1.0, 1.0, 1.0],
-            },
-            parent: None,
-            children: Vec::new(),
-            visible: true,
-            locked: false,
-            components: Vec::new(),
-        }, Some("lights_folder".to_string()));
-
-        // === AUDIO FOLDER ===
-        db.add_object(SceneObjectData {
-            id: "audio_folder".to_string(),
-            name: "Audio".to_string(),
-            object_type: ObjectType::Folder,
-            transform: Transform::default(),
-            parent: None,
-            children: Vec::new(),
-            visible: true,
-            locked: false,
-            components: Vec::new(),
-        }, None);
-
-        // Add ambient sound under Audio folder
-        db.add_object(SceneObjectData {
-            id: "ambient_audio".to_string(),
-            name: "Ambient Sound".to_string(),
-            object_type: ObjectType::AudioSource,
-            transform: Transform {
-                position: [0.0, 2.0, 0.0],
-                rotation: [0.0, 0.0, 0.0],
-                scale: [1.0, 1.0, 1.0],
-            },
-            parent: None,
-            children: Vec::new(),
-            visible: true,
-            locked: false,
-            components: Vec::new(),
-        }, Some("audio_folder".to_string()));
-
-        // === EFFECTS FOLDER ===
-        db.add_object(SceneObjectData {
-            id: "effects_folder".to_string(),
-            name: "Effects".to_string(),
-            object_type: ObjectType::Folder,
-            transform: Transform::default(),
-            parent: None,
-            children: Vec::new(),
-            visible: true,
-            locked: false,
-            components: Vec::new(),
-        }, None);
-
-        // Add particle system under Effects folder
-        db.add_object(SceneObjectData {
-            id: "particles_fire".to_string(),
-            name: "Fire Particles".to_string(),
-            object_type: ObjectType::ParticleSystem,
-            transform: Transform {
-                position: [3.0, 0.5, -2.0],
-                rotation: [0.0, 0.0, 0.0],
-                scale: [1.0, 1.0, 1.0],
-            },
-            parent: None,
-            children: Vec::new(),
-            visible: true,
-            locked: false,
-            components: Vec::new(),
-        }, Some("effects_folder".to_string()));
-
-        db
-    }
-
-    /// Add a new object to the scene
-    pub fn add_object(&self, mut object: SceneObjectData, parent_id: Option<ObjectId>) -> ObjectId {
-        let mut inner = self.inner.write().unwrap();
-        
-        // Generate unique ID if not provided
-        if object.id.is_empty() {
-            object.id = format!("object_{}", inner.next_id);
-            inner.next_id += 1;
-        }
-
-        let id = object.id.clone();
-        object.parent = parent_id.clone();
-
-        // Add to parent's children if parent exists
-        if let Some(ref parent_id) = parent_id {
-            if let Some(parent) = inner.objects.get_mut(parent_id) {
-                parent.children.push(id.clone());
-            }
-        } else {
-            // Add to root objects if no parent
-            inner.root_objects.push(id.clone());
-        }
-
-        // Add to history
-        inner.history.undo_stack.push(SceneCommand::AddObject {
-            object: object.clone(),
-        });
-        inner.history.redo_stack.clear();
-
-        // Add object to database
-        inner.objects.insert(id.clone(), object);
-
-        id
-    }
-
-    /// Remove an object from the scene
-    pub fn remove_object(&self, object_id: &ObjectId) -> bool {
-        let mut inner = self.inner.write().unwrap();
-
-        if let Some(object) = inner.objects.remove(object_id) {
-            // Remove from parent's children or root objects
-            if let Some(ref parent_id) = object.parent {
-                if let Some(parent) = inner.objects.get_mut(parent_id) {
-                    parent.children.retain(|id| id != object_id);
-                }
-            } else {
-                inner.root_objects.retain(|id| id != object_id);
-            }
-
-            // Recursively remove children
-            let children = object.children.clone();
-            for child_id in children {
-                self.remove_object(&child_id);
-            }
-
-            // Add to history
-            inner.history.undo_stack.push(SceneCommand::RemoveObject {
-                object,
-            });
-            inner.history.redo_stack.clear();
-
-            // Deselect if this was the selected object
-            if inner.selected_object.as_ref() == Some(object_id) {
-                inner.selected_object = None;
-            }
-
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Get an object by ID
-    pub fn get_object(&self, object_id: &ObjectId) -> Option<SceneObjectData> {
-        let inner = self.inner.read().unwrap();
-        inner.objects.get(object_id).cloned()
-    }
-
-    /// Get all root-level objects
-    pub fn get_root_objects(&self) -> Vec<SceneObjectData> {
-        let inner = self.inner.read().unwrap();
-        inner.root_objects.iter()
-            .filter_map(|id| inner.objects.get(id).cloned())
-            .collect()
-    }
-
-    /// Get all objects (flat list)
-    pub fn get_all_objects(&self) -> Vec<SceneObjectData> {
-        let inner = self.inner.read().unwrap();
-        inner.objects.values().cloned().collect()
-    }
-
-    /// Update an object's transform
-    pub fn update_transform(&self, object_id: &ObjectId, new_transform: Transform) -> bool {
-        let mut inner = self.inner.write().unwrap();
-
-        if let Some(object) = inner.objects.get_mut(object_id) {
-            let old_transform = object.transform;
-            object.transform = new_transform;
-
-            // Add to history
-            inner.history.undo_stack.push(SceneCommand::ModifyTransform {
-                object_id: object_id.clone(),
-                old_transform,
-                new_transform,
-            });
-            inner.history.redo_stack.clear();
-
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Update an entire object
-    pub fn update_object(&self, object: SceneObjectData) -> bool {
-        let mut inner = self.inner.write().unwrap();
-
-        if let Some(old_object) = inner.objects.get(&object.id).cloned() {
-            inner.objects.insert(object.id.clone(), object.clone());
-
-            // Add to history
-            inner.history.undo_stack.push(SceneCommand::ModifyObject {
-                old_object,
-                new_object: object,
-            });
-            inner.history.redo_stack.clear();
-
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Select an object
-    pub fn select_object(&self, object_id: Option<ObjectId>) {
-        let mut inner = self.inner.write().unwrap();
-        inner.selected_object = object_id;
-    }
-
-    /// Get the currently selected object
-    pub fn get_selected_object(&self) -> Option<SceneObjectData> {
-        let inner = self.inner.read().unwrap();
-        inner.selected_object.as_ref()
-            .and_then(|id| inner.objects.get(id).cloned())
-    }
-
-    /// Get the currently selected object ID
-    pub fn get_selected_object_id(&self) -> Option<ObjectId> {
-        let inner = self.inner.read().unwrap();
-        inner.selected_object.clone()
-    }
-
-    /// Duplicate an object
-    pub fn duplicate_object(&self, object_id: &ObjectId) -> Option<ObjectId> {
-        let object = self.get_object(object_id)?;
-        
-        let mut new_object = object.clone();
-        new_object.id = String::new(); // Will be auto-generated
-        new_object.name = format!("{} Copy", object.name);
-        // Offset position slightly
-        new_object.transform.position[0] += 1.0;
-        
-        Some(self.add_object(new_object, object.parent.clone()))
-    }
-
-    /// Undo the last operation
-    pub fn undo(&self) -> bool {
-        let mut inner = self.inner.write().unwrap();
-
-        if let Some(command) = inner.history.undo_stack.pop() {
-            match command.clone() {
-                SceneCommand::AddObject { object } => {
-                    // Undo add by removing
-                    inner.objects.remove(&object.id);
-                    if object.parent.is_none() {
-                        inner.root_objects.retain(|id| id != &object.id);
-                    }
-                },
-                SceneCommand::RemoveObject { object } => {
-                    // Undo remove by adding back
-                    if object.parent.is_none() {
-                        inner.root_objects.push(object.id.clone());
-                    }
-                    inner.objects.insert(object.id.clone(), object);
-                },
-                SceneCommand::ModifyObject { old_object, .. } => {
-                    // Undo modify by restoring old object
-                    inner.objects.insert(old_object.id.clone(), old_object);
-                },
-                SceneCommand::ModifyTransform { object_id, old_transform, .. } => {
-                    // Undo transform by restoring old transform
-                    if let Some(object) = inner.objects.get_mut(&object_id) {
-                        object.transform = old_transform;
-                    }
-                },
-            }
-
-            inner.history.redo_stack.push(command);
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Redo the last undone operation
-    pub fn redo(&self) -> bool {
-        let mut inner = self.inner.write().unwrap();
-
-        if let Some(command) = inner.history.redo_stack.pop() {
-            match command.clone() {
-                SceneCommand::AddObject { object } => {
-                    // Redo add
-                    if object.parent.is_none() {
-                        inner.root_objects.push(object.id.clone());
-                    }
-                    inner.objects.insert(object.id.clone(), object);
-                },
-                SceneCommand::RemoveObject { object } => {
-                    // Redo remove
-                    inner.objects.remove(&object.id);
-                    if object.parent.is_none() {
-                        inner.root_objects.retain(|id| id != &object.id);
-                    }
-                },
-                SceneCommand::ModifyObject { new_object, .. } => {
-                    // Redo modify
-                    inner.objects.insert(new_object.id.clone(), new_object);
-                },
-                SceneCommand::ModifyTransform { object_id, new_transform, .. } => {
-                    // Redo transform
-                    if let Some(object) = inner.objects.get_mut(&object_id) {
-                        object.transform = new_transform;
-                    }
-                },
-            }
-
-            inner.history.undo_stack.push(command);
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Clear all objects from the scene
-    pub fn clear(&self) {
-        let mut inner = self.inner.write().unwrap();
-        inner.objects.clear();
-        inner.root_objects.clear();
-        inner.selected_object = None;
-        inner.history.undo_stack.clear();
-        inner.history.redo_stack.clear();
-    }
-    
-    /// Save scene to JSON file
-    pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), String> {
-        let inner = self.inner.read().unwrap();
-        
-        // Ensure parent directory exists
-        if let Some(parent) = path.as_ref().parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create directory: {}", e))?;
-        }
-        
-        // Get current timestamp
-        let now = chrono::Utc::now().to_rfc3339();
-        
-        // Create scene file format
-        let scene_file = SceneFile {
-            version: "1.0".to_string(),
-            objects: inner.objects.values().cloned().collect(),
-            metadata: SceneMetadata {
-                created: now.clone(),
-                modified: now,
-                editor_version: "0.1.0".to_string(),
-            },
-        };
-        
-        // Serialize to pretty JSON
-        let json = serde_json::to_string_pretty(&scene_file)
-            .map_err(|e| format!("Failed to serialize scene: {}", e))?;
-        
-        // Write to file
-        fs::write(&path, json)
-            .map_err(|e| format!("Failed to write scene file: {}", e))?;
-        
-        tracing::debug!("[SCENE-DB] 💾 Scene saved successfully to: {:?}", path.as_ref());
-        Ok(())
-    }
-    
-    /// Load scene from JSON file
-    pub fn load_from_file<P: AsRef<Path>>(&self, path: P) -> Result<(), String> {
-        // Read file
-        let json = fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read scene file: {}", e))?;
-        
-        // Deserialize
-        let scene_file: SceneFile = serde_json::from_str(&json)
-            .map_err(|e| format!("Failed to parse scene file: {}", e))?;
-        
-        // Clear current scene
-        self.clear();
-        
-        // Load objects
-        let mut inner = self.inner.write().unwrap();
-        for object in scene_file.objects {
-            // Add to objects map
-            let id = object.id.clone();
-            inner.objects.insert(id.clone(), object.clone());
-            
-            // Add to root objects if no parent
-            if object.parent.is_none() {
-                inner.root_objects.push(id);
-            }
-        }
-        
-        drop(inner);
-
-        tracing::debug!("[SCENE-DB] 📂 Scene loaded successfully from {:?}", path.as_ref());
-        Ok(())
-    }
-
-    /// Reparent an object to a new parent (or make it a root object if parent is None)
-    pub fn reparent_object(&self, object_id: &str, new_parent: Option<String>) -> bool {
-        let mut inner = self.inner.write().unwrap();
-
-        // Get the object
-        let object = match inner.objects.get(object_id) {
-            Some(obj) => obj.clone(),
-            None => return false,
-        };
-
-        // Prevent circular references - check if new_parent is a descendant of object_id
-        if let Some(ref parent_id) = new_parent {
-            if Self::is_ancestor_of(object_id, parent_id, &inner.objects) {
-                return false;  // Would create a cycle
-            }
-        }
-
-        // Remove from old parent's children or root_objects
-        if let Some(ref old_parent_id) = object.parent {
-            if let Some(old_parent) = inner.objects.get_mut(old_parent_id) {
-                old_parent.children.retain(|id| id != object_id);
-            }
-        } else {
-            inner.root_objects.retain(|id| id != object_id);
-        }
-
-        // Add to new parent's children or root_objects
-        if let Some(ref new_parent_id) = new_parent {
-            if let Some(new_parent_obj) = inner.objects.get_mut(new_parent_id) {
-                new_parent_obj.children.push(object_id.to_string());
-            } else {
-                return false;
-            }
-        } else {
-            inner.root_objects.push(object_id.to_string());
-        }
-
-        // Update object's parent field
-        if let Some(obj) = inner.objects.get_mut(object_id) {
-            obj.parent = new_parent;
-        }
-
-        true
-    }
-
-    /// Check if potential_ancestor is an ancestor of object_id (to prevent circular references)
-    fn is_ancestor_of(potential_ancestor: &str, object_id: &str, objects: &std::collections::HashMap<String, SceneObjectData>) -> bool {
-        let mut current_id = object_id;
-        while let Some(obj) = objects.get(current_id) {
-            if let Some(ref parent_id) = obj.parent {
-                if parent_id == potential_ancestor {
-                    return true;
-                }
-                current_id = parent_id;
-            } else {
-                break;
-            }
-        }
-        false
-    }
-
-    /// Move an object up in its sibling list
-    pub fn move_object_up(&self, object_id: &str) -> bool {
-        let mut inner = self.inner.write().unwrap();
-
-        // Get parent ID first
-        let parent_id = inner.objects.get(object_id).and_then(|obj| obj.parent.clone());
-
-        // Get the appropriate sibling list
-        let sibling_list = if let Some(ref pid) = parent_id {
-            match inner.objects.get_mut(pid) {
-                Some(parent) => &mut parent.children,
-                None => return false,
-            }
-        } else {
-            &mut inner.root_objects
-        };
-
-        // Find position and swap with previous
-        let pos = match sibling_list.iter().position(|id| id == object_id) {
-            Some(p) => p,
-            None => return false,
-        };
-
-        if pos == 0 {
-            return false;  // Already first
-        }
-
-        sibling_list.swap(pos, pos - 1);
-        true
-    }
-
-    /// Move an object down in its sibling list
-    pub fn move_object_down(&self, object_id: &str) -> bool {
-        let mut inner = self.inner.write().unwrap();
-
-        // Get parent ID first
-        let parent_id = inner.objects.get(object_id).and_then(|obj| obj.parent.clone());
-
-        // Get the appropriate sibling list
-        let sibling_list = if let Some(ref pid) = parent_id {
-            match inner.objects.get_mut(pid) {
-                Some(parent) => &mut parent.children,
-                None => return false,
-            }
-        } else {
-            &mut inner.root_objects
-        };
-
-        // Find position and swap with next
-        let pos = match sibling_list.iter().position(|id| id == object_id) {
-            Some(p) => p,
-            None => return false,
-        };
-
-        if pos >= sibling_list.len() - 1 {
-            return false;  // Already last
-        }
-
-        sibling_list.swap(pos, pos + 1);
-        true
-    }
-}
-
-/// Scene file format for JSON serialization
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SceneFile {
-    pub version: String,
-    pub objects: Vec<SceneObjectData>,
-    pub metadata: SceneMetadata,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SceneMetadata {
-    pub created: String,
-    pub modified: String,
-    pub editor_version: String,
 }
 
 impl Default for Transform {
@@ -893,19 +42,442 @@ impl Transform {
     pub fn new() -> Self {
         Self::default()
     }
+    pub fn with_position(mut self, position: [f32; 3]) -> Self { self.position = position; self }
+    pub fn with_rotation(mut self, rotation: [f32; 3]) -> Self { self.rotation = rotation; self }
+    pub fn with_scale(mut self, scale: [f32; 3]) -> Self { self.scale = scale; self }
+}
 
-    pub fn with_position(mut self, position: [f32; 3]) -> Self {
-        self.position = position;
-        self
+// ─── SceneObjectData (backwards-compat UI representation) ────────────────────
+
+/// Full UI representation of a scene object — used by panels, undo/redo, and save/load.
+/// Reading this from `SceneDatabase` always returns the latest live values from the atomics.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SceneObjectData {
+    pub id: ObjectId,
+    pub name: String,
+    pub object_type: ObjectType,
+    pub transform: Transform,
+    pub parent: Option<ObjectId>,
+    pub children: Vec<ObjectId>,
+    pub visible: bool,
+    pub locked: bool,
+    pub components: Vec<Component>,
+}
+
+impl SceneObjectData {
+    /// Convert to the engine_backend snapshot format.
+    fn into_snapshot(self) -> SceneObjectSnapshot {
+        SceneObjectSnapshot {
+            id: self.id,
+            name: self.name,
+            object_type: self.object_type,
+            position: self.transform.position,
+            rotation: self.transform.rotation,
+            scale: self.transform.scale,
+            parent: self.parent,
+            children: self.children,
+            visible: self.visible,
+            locked: self.locked,
+            components: self.components,
+        }
+    }
+}
+
+fn snapshot_to_data(s: SceneObjectSnapshot) -> SceneObjectData {
+    SceneObjectData {
+        id: s.id,
+        name: s.name,
+        object_type: s.object_type,
+        transform: Transform {
+            position: s.position,
+            rotation: s.rotation,
+            scale: s.scale,
+        },
+        parent: s.parent,
+        children: s.children,
+        visible: s.visible,
+        locked: s.locked,
+        components: s.components,
+    }
+}
+
+// ─── Undo/Redo ────────────────────────────────────────────────────────────────
+
+struct UndoHistory {
+    undo_stack: Vec<SceneCommand>,
+    redo_stack: Vec<SceneCommand>,
+    max_history: usize,
+}
+
+#[derive(Clone, Debug)]
+enum SceneCommand {
+    AddObject { object: SceneObjectData },
+    RemoveObject { object: SceneObjectData },
+    ModifyObject { old: SceneObjectData, new: SceneObjectData },
+    ModifyTransform { object_id: ObjectId, old: Transform, new: Transform },
+}
+
+// ─── SceneDatabase ────────────────────────────────────────────────────────────
+
+/// UI-layer scene database. Clone-able — all clones share the same live data.
+///
+/// Internally holds an `Arc<SceneDb>` from `engine_backend`. The renderer
+/// also holds a clone of that same Arc and reads transforms atomically
+/// without any coordination with the UI.
+#[derive(Clone)]
+pub struct SceneDatabase {
+    /// The shared, lock-free live data. Also held by the renderer.
+    pub db: Arc<SceneDb>,
+    /// Undo/redo history — only in the UI layer, not needed by the renderer.
+    history: Arc<parking_lot::Mutex<UndoHistory>>,
+}
+
+impl SceneDatabase {
+    pub fn new() -> Self {
+        Self::from_db(Arc::new(SceneDb::new()))
     }
 
-    pub fn with_rotation(mut self, rotation: [f32; 3]) -> Self {
-        self.rotation = rotation;
-        self
+    /// Wrap an existing SceneDb Arc (used when the renderer already created one).
+    pub fn from_db(db: Arc<SceneDb>) -> Self {
+        Self {
+            db,
+            history: Arc::new(parking_lot::Mutex::new(UndoHistory {
+                undo_stack: Vec::new(),
+                redo_stack: Vec::new(),
+                max_history: 100,
+            })),
+        }
     }
 
-    pub fn with_scale(mut self, scale: [f32; 3]) -> Self {
-        self.scale = scale;
-        self
+    /// Build the default scene — the same objects that were in the old hard-coded default.
+    pub fn with_default_scene() -> Self {
+        let this = Self::new();
+        this.populate_default_scene();
+        this
     }
+
+    /// Build the default scene on top of an existing SceneDb.
+    pub fn with_default_scene_on(db: Arc<SceneDb>) -> Self {
+        let this = Self::from_db(db);
+        this.populate_default_scene();
+        this
+    }
+
+    fn populate_default_scene(&self) {
+        let mk = |id: &str, name: &str, ot: ObjectType, pos: [f32;3], rot: [f32;3], scale: [f32;3], comps: Vec<Component>| {
+            SceneObjectData {
+                id: id.to_string(), name: name.to_string(), object_type: ot,
+                transform: Transform { position: pos, rotation: rot, scale },
+                parent: None, children: Vec::new(), visible: true, locked: false, components: comps,
+            }
+        };
+
+        // Root objects
+        self.add_object(mk("main_camera",     "Main Camera",      ObjectType::Camera,
+            [-3.0, 3.0, 6.0], [0.0;3], [1.0;3], vec![]), None);
+        self.add_object(mk("directional_light","Directional Light",ObjectType::Light(LightType::Directional),
+            [4.0, 8.0, 4.0], [-45.0, 45.0, 0.0], [1.0;3], vec![]), None);
+
+        // Geometry folder
+        self.add_object(mk("geometry_folder", "Geometry", ObjectType::Folder,
+            [0.0;3], [0.0;3], [1.0;3], vec![]), None);
+        self.add_object(mk("cube_red", "Red Cube", ObjectType::Mesh(MeshType::Cube),
+            [-2.0, 1.0, 0.0], [0.0;3], [2.0;3],
+            vec![Component::Material { id: "red_metal".into(), color: [0.9,0.2,0.2,1.0], metallic: 0.8, roughness: 0.3 }]),
+            Some("geometry_folder".into()));
+
+        // Spheres sub-folder
+        self.add_object(mk("spheres_folder", "Spheres", ObjectType::Folder,
+            [0.0;3], [0.0;3], [1.0;3], vec![]), Some("geometry_folder".into()));
+        self.add_object(mk("sphere_blue", "Blue Sphere", ObjectType::Mesh(MeshType::Sphere),
+            [2.0, 1.0, 0.0], [0.0;3], [1.0;3],
+            vec![Component::Material { id: "blue_metal".into(), color: [0.2,0.5,0.9,1.0], metallic: 0.9, roughness: 0.1 }]),
+            Some("spheres_folder".into()));
+        self.add_object(mk("sphere_gold", "Gold Sphere", ObjectType::Mesh(MeshType::Sphere),
+            [0.0, 3.0, 0.0], [0.0;3], [1.0;3],
+            vec![Component::Material { id: "gold_metal".into(), color: [1.0,0.843,0.0,1.0], metallic: 0.95, roughness: 0.2 }]),
+            Some("spheres_folder".into()));
+        self.add_object(mk("sphere_green", "Green Sphere", ObjectType::Mesh(MeshType::Sphere),
+            [4.0, 1.5, 2.0], [0.0;3], [0.8;3],
+            vec![Component::Material { id: "green_metal".into(), color: [0.2,0.8,0.3,1.0], metallic: 0.7, roughness: 0.4 }]),
+            Some("spheres_folder".into()));
+
+        // Lights folder
+        self.add_object(mk("lights_folder", "Lights", ObjectType::Folder,
+            [0.0;3], [0.0;3], [1.0;3], vec![]), None);
+        self.add_object(mk("point_light_1", "Point Light", ObjectType::Light(LightType::Point),
+            [0.0, 5.0, 0.0], [0.0;3], [1.0;3], vec![]), Some("lights_folder".into()));
+        self.add_object(mk("spot_light_1", "Spot Light", ObjectType::Light(LightType::Spot),
+            [-5.0, 6.0, 3.0], [-30.0, 45.0, 0.0], [1.0;3], vec![]), Some("lights_folder".into()));
+
+        // Audio folder
+        self.add_object(mk("audio_folder", "Audio", ObjectType::Folder,
+            [0.0;3], [0.0;3], [1.0;3], vec![]), None);
+        self.add_object(mk("ambient_audio", "Ambient Sound", ObjectType::AudioSource,
+            [0.0, 2.0, 0.0], [0.0;3], [1.0;3], vec![]), Some("audio_folder".into()));
+
+        // Effects folder
+        self.add_object(mk("effects_folder", "Effects", ObjectType::Folder,
+            [0.0;3], [0.0;3], [1.0;3], vec![]), None);
+        self.add_object(mk("particles_fire", "Fire Particles", ObjectType::ParticleSystem,
+            [3.0, 0.5, -2.0], [0.0;3], [1.0;3], vec![]), Some("effects_folder".into()));
+    }
+
+    // ── Object creation / deletion ────────────────────────────────────────
+
+    pub fn add_object(&self, object: SceneObjectData, parent_id: Option<ObjectId>) -> ObjectId {
+        let mut snap = object.clone().into_snapshot();
+        snap.parent = parent_id.clone();
+
+        let mut h = self.history.lock();
+        h.undo_stack.push(SceneCommand::AddObject { object });
+        h.redo_stack.clear();
+        if h.undo_stack.len() > h.max_history { h.undo_stack.remove(0); }
+        drop(h);
+
+        self.db.add_object(snap, parent_id)
+    }
+
+    pub fn remove_object(&self, object_id: &ObjectId) -> bool {
+        if let Some(snap) = self.db.get_object(object_id) {
+            let object = snapshot_to_data(snap);
+            let removed = self.db.remove_object(object_id);
+            if removed {
+                let mut h = self.history.lock();
+                h.undo_stack.push(SceneCommand::RemoveObject { object });
+                h.redo_stack.clear();
+            }
+            removed
+        } else {
+            false
+        }
+    }
+
+    // ── Reads ─────────────────────────────────────────────────────────────
+
+    pub fn get_object(&self, id: &ObjectId) -> Option<SceneObjectData> {
+        self.db.get_object(id).map(snapshot_to_data)
+    }
+
+    pub fn get_root_objects(&self) -> Vec<SceneObjectData> {
+        self.db.get_root_snapshots().into_iter().map(snapshot_to_data).collect()
+    }
+
+    pub fn get_all_objects(&self) -> Vec<SceneObjectData> {
+        self.db.get_all_snapshots().into_iter().map(snapshot_to_data).collect()
+    }
+
+    // ── Selection ─────────────────────────────────────────────────────────
+
+    pub fn select_object(&self, id: Option<ObjectId>) {
+        self.db.select_object(id);
+    }
+
+    pub fn get_selected_object(&self) -> Option<SceneObjectData> {
+        self.db.get_selected().map(snapshot_to_data)
+    }
+
+    pub fn get_selected_object_id(&self) -> Option<ObjectId> {
+        self.db.get_selected_id()
+    }
+
+    // ── Transform writes (atomic — no lock in the renderer) ───────────────
+
+    pub fn update_transform(&self, id: &ObjectId, t: Transform) -> bool {
+        if let Some(old_snap) = self.db.get_object(id) {
+            let old = Transform {
+                position: old_snap.position,
+                rotation: old_snap.rotation,
+                scale: old_snap.scale,
+            };
+            let ok = self.db.apply_transform(id, t.position, t.rotation, t.scale);
+            if ok {
+                let mut h = self.history.lock();
+                h.undo_stack.push(SceneCommand::ModifyTransform {
+                    object_id: id.clone(), old, new: t,
+                });
+                h.redo_stack.clear();
+            }
+            ok
+        } else {
+            false
+        }
+    }
+
+    /// Update all fields of an object (used by the properties panel bound fields).
+    pub fn update_object(&self, object: SceneObjectData) -> bool {
+        if let Some(old_snap) = self.db.get_object(&object.id) {
+            let old = snapshot_to_data(old_snap);
+            // Apply atomic hot-path updates
+            let id = &object.id;
+            self.db.apply_transform(id, object.transform.position, object.transform.rotation, object.transform.scale);
+            self.db.set_visible(id, object.visible);
+            self.db.set_locked(id, object.locked);
+            // Apply cold updates
+            self.db.set_name(id, object.name.clone());
+            // Update children/parent via full snapshot
+            if let Some(entry) = self.db.get_entry(id) {
+                let mut meta = entry.meta.write();
+                meta.components = object.components.clone();
+            }
+            let mut h = self.history.lock();
+            h.undo_stack.push(SceneCommand::ModifyObject { old, new: object });
+            h.redo_stack.clear();
+            true
+        } else {
+            false
+        }
+    }
+
+    // ── Structural operations ─────────────────────────────────────────────
+
+    pub fn reparent_object(&self, id: &str, new_parent: Option<String>) -> bool {
+        self.db.reparent_object(id, new_parent)
+    }
+
+    pub fn duplicate_object(&self, id: &ObjectId) -> Option<ObjectId> {
+        self.db.duplicate_object(id)
+    }
+
+    pub fn move_object_up(&self, _id: &str) -> bool {
+        // Order within parent's children list — delegate to db roots/meta
+        // For now a no-op; root ordering can be added to SceneDb later
+        false
+    }
+
+    pub fn move_object_down(&self, _id: &str) -> bool {
+        false
+    }
+
+    // ── Undo / Redo ───────────────────────────────────────────────────────
+
+    pub fn undo(&self) -> bool {
+        let mut h = self.history.lock();
+        if let Some(cmd) = h.undo_stack.pop() {
+            match cmd.clone() {
+                SceneCommand::AddObject { object } => {
+                    drop(h);
+                    self.db.remove_object(&object.id);
+                }
+                SceneCommand::RemoveObject { object } => {
+                    let parent = object.parent.clone();
+                    let snap = object.into_snapshot();
+                    drop(h);
+                    self.db.add_object(snap, parent);
+                }
+                SceneCommand::ModifyObject { old, .. } => {
+                    drop(h);
+                    let id = old.id.clone();
+                    self.db.apply_transform(&id, old.transform.position, old.transform.rotation, old.transform.scale);
+                    self.db.set_visible(&id, old.visible);
+                    self.db.set_name(&id, old.name);
+                }
+                SceneCommand::ModifyTransform { object_id, old, .. } => {
+                    drop(h);
+                    self.db.apply_transform(&object_id, old.position, old.rotation, old.scale);
+                }
+            }
+            // Push to redo — need to re-lock
+            let mut h = self.history.lock();
+            h.redo_stack.push(cmd);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn redo(&self) -> bool {
+        let mut h = self.history.lock();
+        if let Some(cmd) = h.redo_stack.pop() {
+            match cmd.clone() {
+                SceneCommand::AddObject { object } => {
+                    let parent = object.parent.clone();
+                    let snap = object.into_snapshot();
+                    drop(h);
+                    self.db.add_object(snap, parent);
+                }
+                SceneCommand::RemoveObject { object } => {
+                    drop(h);
+                    self.db.remove_object(&object.id);
+                }
+                SceneCommand::ModifyObject { new, .. } => {
+                    drop(h);
+                    let id = new.id.clone();
+                    self.db.apply_transform(&id, new.transform.position, new.transform.rotation, new.transform.scale);
+                    self.db.set_visible(&id, new.visible);
+                    self.db.set_name(&id, new.name);
+                }
+                SceneCommand::ModifyTransform { object_id, new, .. } => {
+                    drop(h);
+                    self.db.apply_transform(&object_id, new.position, new.rotation, new.scale);
+                }
+            }
+            let mut h = self.history.lock();
+            h.undo_stack.push(cmd);
+            true
+        } else {
+            false
+        }
+    }
+
+    // ── Scene management ──────────────────────────────────────────────────
+
+    pub fn clear(&self) {
+        self.db.clear();
+        let mut h = self.history.lock();
+        h.undo_stack.clear();
+        h.redo_stack.clear();
+    }
+
+    /// Save all current scene objects to JSON.
+    pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), String> {
+        let objects: Vec<SceneObjectData> = self.get_all_objects();
+        if let Some(parent) = path.as_ref().parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("mkdir: {e}"))?;
+        }
+        let now = chrono::Utc::now().to_rfc3339();
+        let scene_file = SceneFile {
+            version: "1.0".into(),
+            objects,
+            metadata: SceneMetadata {
+                created: now.clone(),
+                modified: now,
+                editor_version: "0.1.0".into(),
+            },
+        };
+        let json = serde_json::to_string_pretty(&scene_file).map_err(|e| format!("serialize: {e}"))?;
+        fs::write(&path, json).map_err(|e| format!("write: {e}"))?;
+        tracing::debug!("[SCENE-DB] 💾 Saved to {:?}", path.as_ref());
+        Ok(())
+    }
+
+    /// Load scene from JSON, clearing current content first.
+    pub fn load_from_file<P: AsRef<Path>>(&self, path: P) -> Result<(), String> {
+        let json = fs::read_to_string(&path).map_err(|e| format!("read: {e}"))?;
+        let scene_file: SceneFile = serde_json::from_str(&json).map_err(|e| format!("parse: {e}"))?;
+        self.clear();
+        for obj in scene_file.objects {
+            let parent = obj.parent.clone();
+            let snap = obj.into_snapshot();
+            self.db.add_object(snap, parent);
+        }
+        tracing::debug!("[SCENE-DB] 📂 Loaded from {:?}", path.as_ref());
+        Ok(())
+    }
+}
+
+// ─── Scene file format ────────────────────────────────────────────────────────
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SceneFile {
+    pub version: String,
+    pub objects: Vec<SceneObjectData>,
+    pub metadata: SceneMetadata,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SceneMetadata {
+    pub created: String,
+    pub modified: String,
+    pub editor_version: String,
 }
