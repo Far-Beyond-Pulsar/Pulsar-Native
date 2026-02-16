@@ -230,17 +230,21 @@ impl DebugLineRenderer {
         rc.bind_vertex(0, vbuf.into());
 
         for (i, line) in self.lines.iter().enumerate().take(max_lines) {
-            // Alpha fades out as TTL counts down from its starting value.
-            // Use 120 as the canonical full-life TTL.
-            let alpha = ((line.ttl_frames as f32 + 1.0) / 120.0_f32).min(1.0);
+            // No fade — full opacity for debugging visibility.
             let color_data = DebugLineColorData {
                 line_data: DebugLineColorUniforms {
-                    color: [line.color[0], line.color[1], line.color[2], line.color[3] * alpha],
+                    color: [line.color[0], line.color[1], line.color[2], 1.0],
                 },
             };
             rc.bind(1, &color_data);
-            println!("[DEBUG LINES] 🖊  draw quad {}: first_vertex={} count=6 color=[{:.2},{:.2},{:.2},{:.2}]",
-                i, i * 6, line.color[0], line.color[1], line.color[2], line.color[3] * alpha);
+            let base = i * 6;
+            println!(
+                "[DEBUG LINES] 🖊  quad {}: verts [{:.1},{:.1},{:.1}]→[{:.1},{:.1},{:.1}]",
+                i,
+                all_verts[base].position[0],   all_verts[base].position[1],   all_verts[base].position[2],
+                all_verts[base+2].position[0], all_verts[base+2].position[1], all_verts[base+2].position[2],
+            );
+            rc.bind_vertex(0, vbuf.into());
             rc.draw(i as u32 * 6, 6, 0, 1);
         }
 
