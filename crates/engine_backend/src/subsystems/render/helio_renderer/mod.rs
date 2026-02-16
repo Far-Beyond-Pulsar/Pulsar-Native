@@ -42,6 +42,9 @@ pub mod blade_d3d12_ext;
 #[cfg(target_os = "windows")]
 pub mod helio_d3d12_ext;
 
+// Debug line overlay renderer (raycasts, physics queries, etc.)
+pub mod debug_line_renderer;
+
 // Main renderer implementation
 pub mod renderer;
 

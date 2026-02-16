@@ -271,7 +271,12 @@ impl HelioRenderer {
         let mut gizmo_renderer = super::gizmo_feature::GizmoRenderer::new(Arc::clone(&scene_db));
         gizmo_renderer.init(&context, blade_graphics::TextureFormat::Bgra8UnormSrgb, blade_graphics::TextureFormat::Depth32Float);
         tracing::info!("[HELIO] ✅ Gizmo renderer initialized");
-        
+
+        // Create debug line renderer for visualizing raycasts
+        let mut debug_line_renderer = super::debug_line_renderer::DebugLineRenderer::new();
+        debug_line_renderer.init(&context, blade_graphics::TextureFormat::Bgra8UnormSrgb, blade_graphics::TextureFormat::Depth32Float);
+        tracing::info!("[HELIO] ✅ Debug line renderer initialized");
+
         tracing::info!("[HELIO] ✅ Step 6/10: Feature registry built with gizmo overlay feature!");
 
         // Use shared textures if available, otherwise create regular render target
@@ -404,6 +409,7 @@ impl HelioRenderer {
             // Process mouse click for object selection with physics raycasting
             if let Some(mut mouse_input) = _viewport_mouse_input.try_lock() {
                 if mouse_input.left_clicked {
+                    println!("[RENDERER] 🖱  left_clicked fired — physics_query present: {}", physics_query.is_some());
                     mouse_input.left_clicked = false; // Clear click flag
                     
                     // Convert normalized screen coords to world ray
@@ -447,53 +453,91 @@ impl HelioRenderer {
                     // Use physics raycast if available, otherwise fallback to simple intersection
                     if let Some(ref pq) = physics_query {
                         tracing::info!("[VIEWPORT] Using physics raycast");
+                        // Push the line start slightly in front of the camera so the
+                        // start vertex is never at clip_w=0 (camera origin in view space).
+                        let line_start = (ray_origin + ray_dir_world * 0.5).to_array();
+
                         if let Some(hit) = pq.raycast(ray_origin, ray_dir_world, 1000.0) {
                             tracing::info!("[VIEWPORT] 🎯 Object selected via physics raycast: {} at distance {:.2}", hit.object_id, hit.distance);
                             scene_db.select_object(Some(hit.object_id.clone()));
+                            // Solid red from just-in-front-of-camera → hit point
+                            debug_line_renderer.add_line(
+                                line_start,
+                                hit.point.to_array(),
+                                [1.0, 0.0, 0.0, 1.0],
+                                120,
+                            );
                         } else {
                             tracing::info!("[VIEWPORT] ❌ No object hit by physics raycast");
                             scene_db.select_object(None);
+                            // Orange miss ray capped at 50 units
+                            let miss_end = ray_origin + ray_dir_world * 50.0;
+                            debug_line_renderer.add_line(
+                                line_start,
+                                miss_end.to_array(),
+                                [1.0, 0.4, 0.0, 1.0],
+                                120,
+                            );
                         }
                     } else {
+                        println!("[RENDERER] ⚠️  Using fallback raycast (no physics query service)");
                         tracing::info!("[VIEWPORT] Using fallback raycast (no physics)");
                         // Fallback: Simple sphere intersection test
                         let mut closest_hit: Option<(String, f32)> = None;
-                        
+                        let mut closest_dist = f32::MAX;
+
                         scene_db.for_each_entry(|entry| {
                             if !entry.is_visible() {
                                 return;
                             }
-                            
+
                             let obj_pos = Vec3::new(
                                 entry.get_position()[0],
                                 entry.get_position()[1],
                                 entry.get_position()[2],
                             );
-                            
+
                             let to_obj = obj_pos - ray_origin;
                             let proj = to_obj.dot(ray_dir_world);
-                            
+
                             if proj > 0.0 {
                                 let closest_point = ray_origin + ray_dir_world * proj;
                                 let dist_to_ray = (obj_pos - closest_point).length();
-                                
+
                                 let scale = entry.get_scale();
                                 let radius = (scale[0] + scale[1] + scale[2]) / 3.0 * 0.707;
-                                
+
                                 if dist_to_ray < radius {
                                     if closest_hit.is_none() || proj < closest_hit.as_ref().unwrap().1 {
                                         closest_hit = Some((entry.id.clone(), proj));
+                                        closest_dist = proj;
                                     }
                                 }
                             }
                         });
-                        
-                        if let Some((object_id, _)) = closest_hit {
+
+                        let line_start = (ray_origin + ray_dir_world * 0.5).to_array();
+
+                        if let Some((object_id, dist)) = closest_hit {
                             tracing::info!("[VIEWPORT] 🎯 Object selected via fallback raycast: {}", object_id);
                             scene_db.select_object(Some(object_id));
+                            let hit_point = ray_origin + ray_dir_world * dist;
+                            debug_line_renderer.add_line(
+                                line_start,
+                                hit_point.to_array(),
+                                [1.0, 0.0, 0.0, 1.0],
+                                120,
+                            );
                         } else {
                             tracing::info!("[VIEWPORT] ❌ No object hit by fallback raycast");
                             scene_db.select_object(None);
+                            let miss_end = ray_origin + ray_dir_world * 50.0;
+                            debug_line_renderer.add_line(
+                                line_start,
+                                miss_end.to_array(),
+                                [1.0, 0.4, 0.0, 1.0],
+                                120,
+                            );
                         }
                     }
                 }
@@ -715,6 +759,13 @@ impl HelioRenderer {
                 depth_view,
                 camera_uniforms.view_proj,
                 camera.position.to_array(),
+            );
+
+            // Render debug lines (raycasts) as overlay on top of everything
+            debug_line_renderer.render(
+                &mut command_encoder,
+                render_target_view,
+                camera_uniforms.view_proj,
             );
 
             // Submit and wait (for now - in real implementation we'd handle DXGI sync differently)
