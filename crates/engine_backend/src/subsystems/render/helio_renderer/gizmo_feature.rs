@@ -69,15 +69,15 @@ impl GizmoRenderer {
     pub fn init(&mut self, context: &Arc<gpu::Context>, color_format: gpu::TextureFormat, depth_format: gpu::TextureFormat) {
         tracing::info!("[GIZMO RENDERER] Initializing");
         
-        // Create simple arrow mesh - MUCH BIGGER for testing
+        // Create simple arrow mesh
         let vertices = vec![
-            GizmoVertex { position: [-0.2, 0.0, 0.0] },
-            GizmoVertex { position: [0.2, 0.0, 0.0] },
-            GizmoVertex { position: [0.2, 8.0, 0.0] },
-            GizmoVertex { position: [-0.2, 8.0, 0.0] },
-            GizmoVertex { position: [-1.0, 8.0, 0.0] },
-            GizmoVertex { position: [1.0, 8.0, 0.0] },
-            GizmoVertex { position: [0.0, 10.0, 0.0] },
+            GizmoVertex { position: [-0.02, 0.0, 0.0] },
+            GizmoVertex { position: [0.02, 0.0, 0.0] },
+            GizmoVertex { position: [0.02, 0.8, 0.0] },
+            GizmoVertex { position: [-0.02, 0.8, 0.0] },
+            GizmoVertex { position: [-0.1, 0.8, 0.0] },
+            GizmoVertex { position: [0.1, 0.8, 0.0] },
+            GizmoVertex { position: [0.0, 1.0, 0.0] },
         ];
         
         let indices: Vec<u32> = vec![0, 1, 2,  0, 2, 3,  4, 5, 6];
@@ -159,10 +159,7 @@ impl GizmoRenderer {
     ) {
         let gizmo_state = self.scene_db.get_gizmo_state();
         
-        tracing::info!("[GIZMO RENDERER] Render called - gizmo_type: {:?}", gizmo_state.gizmo_type);
-        
         if gizmo_state.gizmo_type == GizmoType::None {
-            tracing::info!("[GIZMO RENDERER] Skipping - gizmo type is None");
             return;
         }
         
@@ -176,35 +173,22 @@ impl GizmoRenderer {
         
         // Get selected object position
         let selected_id = match self.scene_db.get_selected_id() {
-            Some(id) => {
-                tracing::info!("[GIZMO RENDERER] Selected object ID: {:?}", id);
-                id
-            },
-            None => {
-                tracing::warn!("[GIZMO RENDERER] No object selected");
-                return;
-            }
+            Some(id) => id,
+            None => return,
         };
         
         let entry = match self.scene_db.get_entry(&selected_id) {
             Some(e) => e,
-            None => {
-                tracing::error!("[GIZMO RENDERER] Selected object {:?} not found in SceneDB", selected_id);
-                return;
-            }
+            None => return,
         };
         
         let pos_array = entry.get_position();
         let gizmo_pos = [pos_array[0], pos_array[1], pos_array[2]];
         
-        tracing::info!("[GIZMO RENDERER] Gizmo position: {:?}", gizmo_pos);
-        
-        // Calculate scale - MUCH BIGGER for testing
+        // Calculate scale based on camera distance
         let distance = (Vec3::new(camera_pos[0], camera_pos[1], camera_pos[2]) 
                       - Vec3::new(gizmo_pos[0], gizmo_pos[1], gizmo_pos[2])).length();
-        let scale = 5.0; // Fixed large scale for testing
-        
-        tracing::info!("[GIZMO RENDERER] Camera distance: {:.2}, gizmo scale: {:.2} (FIXED FOR TESTING)", distance, scale);
+        let scale = (distance * 0.15).max(0.5).min(3.0);
         
         let camera_data = GizmoCameraData {
             camera: GizmoCameraUniforms {
@@ -233,8 +217,6 @@ impl GizmoRenderer {
         let mut rc = pass.with(pipeline);
         rc.bind(0, &camera_data);
         
-        tracing::info!("[GIZMO RENDERER] Starting to render {} axes", 3);
-        
         // Render each axis
         for axis in [GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z] {
             let highlighted = gizmo_state.highlighted_axis == Some(axis);
@@ -259,14 +241,10 @@ impl GizmoRenderer {
             rc.bind(1, &instance_data);
             rc.bind_vertex(0, vbuf.into());
             rc.draw_indexed(ibuf.into(), gpu::IndexType::U32, self.arrow_index_count, 0, 0, 1);
-            
-            tracing::debug!("[GIZMO RENDERER] Drew axis {:?} with color {:?}", axis, color);
         }
         
         drop(rc);
         drop(pass);
-        
-        tracing::info!("[GIZMO RENDERER] ✅ Render complete - drew 3 gizmo axes");
     }
     
     pub fn cleanup(&mut self, context: &Arc<gpu::Context>) {
