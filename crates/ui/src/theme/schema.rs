@@ -21,7 +21,7 @@ pub struct ThemeSet {
     /// The URL of the theme.
     pub url: Option<SharedString>,
 
-    /// The base font size, default is 16.
+    /// The base font size, default is 14.
     #[serde(rename = "font.size")]
     pub font_size: Option<f32>,
 

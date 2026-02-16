@@ -1246,12 +1246,12 @@ impl Render for FontSizeSelector {
                             .max_h(px(480.0))
                             .label("Font Size")
                             .menu_with_check("Large", font_size == 18.0, Box::new(SelectFont(18)))
+                            .menu_with_check("Medium", font_size == 16.0, Box::new(SelectFont(16)))
                             .menu_with_check(
-                                "Medium (default)",
-                                font_size == 16.0,
-                                Box::new(SelectFont(16))
+                                "Small (default)",
+                                font_size == 14.0,
+                                Box::new(SelectFont(14))
                             )
-                            .menu_with_check("Small", font_size == 14.0, Box::new(SelectFont(14)))
                             .separator()
                             .label("Border Radius")
                             .menu_with_check("8px", radius == 8.0, Box::new(SelectRadius(8)))

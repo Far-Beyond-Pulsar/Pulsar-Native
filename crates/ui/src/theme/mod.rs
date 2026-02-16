@@ -214,7 +214,7 @@ impl From<ThemeColor> for Theme {
         Theme {
             mode: ThemeMode::default(),
             transparent: Hsla::transparent_black(),
-            font_size: px(16.),
+            font_size: px(14.),
             font_family: if cfg!(target_os = "macos") {
                 ".SystemUIFont".into()
             } else if cfg!(target_os = "windows") {
