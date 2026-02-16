@@ -78,12 +78,14 @@ impl LevelEditorPanel {
         let viewport_state = viewport.read(cx).shared_state();
         
         // Get the central GameThread from the global EngineBackend
-        let game_thread = match engine_backend::EngineBackend::global() {
-            Some(backend) => {
-                let backend_guard = backend.read();
-                backend_guard.game_thread()
+        let (game_thread, physics_query) = match engine_backend::EngineBackend::global() {
+            Some(backend_arc) => {
+                let backend_guard = backend_arc.read();
+                let gt = backend_guard.game_thread()
                     .expect("GameThread not initialized in EngineBackend - engine failed to initialize properly")
-                    .clone()
+                    .clone();
+                let pq = backend_guard.get_physics_query_service();
+                (gt, pq)
             }
             None => {
                 tracing::error!("EngineBackend not initialized when creating level editor");
@@ -101,9 +103,9 @@ impl LevelEditorPanel {
         // panels hold the same Arc. All reads/writes go to the same atomic storage.
         let scene_db = Arc::new(SceneDb::new());
 
-        // Create GPU render engine sharing the scene_db Arc
+        // Create GPU render engine sharing the scene_db Arc and physics query service
         let gpu_engine = Arc::new(Mutex::new(
-            GpuRenderer::new_with_scene_db(1600, 900, scene_db.clone(), None)
+            GpuRenderer::new_with_scene_db_and_physics(1600, 900, scene_db.clone(), None, physics_query)
         ));
         let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
 

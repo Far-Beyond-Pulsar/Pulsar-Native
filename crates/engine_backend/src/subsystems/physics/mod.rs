@@ -47,16 +47,19 @@ impl PhysicsEngine {
         let collider_set_arc = Arc::new(Mutex::new(collider_set));
         let rigid_body_set_arc = Arc::new(Mutex::new(rigid_body_set));
         
-        let query_service = Arc::new(PhysicsQueryService::new(
+        let island_manager_arc = Arc::new(Mutex::new(island_manager));
+        
+        let query_service = Arc::new(PhysicsQueryService::new_with_island_manager(
             collider_set_arc.clone(),
             rigid_body_set_arc.clone(),
+            island_manager_arc.clone(),
         ));
 
         PhysicsEngine {
             gravity,
             integration_parameters,
             physics_pipeline: Arc::new(Mutex::new(physics_pipeline)),
-            island_manager: Arc::new(Mutex::new(island_manager)),
+            island_manager: island_manager_arc,
             broad_phase: Arc::new(Mutex::new(broad_phase)),
             narrow_phase: Arc::new(Mutex::new(narrow_phase)),
             impulse_joint_set: Arc::new(Mutex::new(impulse_joint_set)),

@@ -141,7 +141,7 @@ pub enum SubsystemError {
 ///     }
 /// }
 /// ```
-pub trait Subsystem: Send + Sync {
+pub trait Subsystem: Send + Sync + std::any::Any {
     /// Unique identifier for this subsystem
     fn id(&self) -> SubsystemId;
 

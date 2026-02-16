@@ -38,7 +38,7 @@ pub struct HelioRenderer {
 
 impl HelioRenderer {
     pub async fn new(width: u32, height: u32) -> Self {
-        Self::new_with_game_thread(width, height, None, Arc::new(crate::scene::SceneDb::new())).await
+        Self::new_with_all(width, height, None, Arc::new(crate::scene::SceneDb::new()), None).await
     }
 
     pub async fn new_with_game_thread(
@@ -46,6 +46,16 @@ impl HelioRenderer {
         height: u32,
         game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
         scene_db: Arc<crate::scene::SceneDb>,
+    ) -> Self {
+        Self::new_with_all(width, height, game_thread_state, scene_db, None).await
+    }
+
+    pub async fn new_with_all(
+        width: u32,
+        height: u32,
+        game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
+        scene_db: Arc<crate::scene::SceneDb>,
+        physics_query: Option<Arc<crate::services::PhysicsQueryService>>,
     ) -> Self {
         let shared_textures = Arc::new(Mutex::new(None));
         let camera_input = Arc::new(Mutex::new(CameraInput::new()));
@@ -64,6 +74,7 @@ impl HelioRenderer {
         let scene_db_clone = scene_db.clone();
         let shutdown_clone = shutdown.clone();
         let game_thread_clone = game_thread_state.clone();
+        let physics_query_clone = physics_query.clone();
 
         let render_thread = std::thread::Builder::new()
             .name("helio-render".to_string())
@@ -81,6 +92,7 @@ impl HelioRenderer {
                     scene_db_clone,
                     shutdown_clone,
                     game_thread_clone,
+                    physics_query_clone,
                 );
             })
             .expect("Failed to spawn Helio render thread");
@@ -110,6 +122,7 @@ impl HelioRenderer {
         scene_db: Arc<crate::scene::SceneDb>,
         shutdown: Arc<AtomicBool>,
         _game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
+        physics_query: Option<Arc<crate::services::PhysicsQueryService>>,
     ) {
         profiling::profile_scope!("HelioRenderer::Run");
         tracing::info!("[HELIO] 🚀 Step 1/10: Starting headless renderer {}x{}", width, height);
@@ -385,6 +398,117 @@ impl HelioRenderer {
                 if input.zoom_delta.abs() > 0.001 {
                     camera.position += camera.forward() * input.zoom_delta * 0.5;
                     input.zoom_delta = 0.0; // Clear after applying
+                }
+            }
+            
+            // Process mouse click for object selection with physics raycasting
+            if let Some(mut mouse_input) = _viewport_mouse_input.try_lock() {
+                if mouse_input.left_clicked {
+                    mouse_input.left_clicked = false; // Clear click flag
+                    
+                    // Convert normalized screen coords to world ray
+                    let ndc_x = mouse_input.mouse_pos.x * 2.0 - 1.0;
+                    let ndc_y = 1.0 - mouse_input.mouse_pos.y * 2.0; // Flip Y
+                    
+                    // Create ray from camera through mouse position
+                    let aspect = width as f32 / height as f32;
+                    let fov = 60.0_f32.to_radians();
+                    let tan_half_fov = (fov * 0.5).tan();
+                    
+                    let ray_dir_cam = Vec3::new(
+                        ndc_x * aspect * tan_half_fov,
+                        ndc_y * tan_half_fov,
+                        -1.0,
+                    ).normalize();
+                    
+                    // Transform ray direction to world space
+                    let cam_forward = camera.forward();
+                    let cam_right = camera.right();
+                    let cam_up = cam_right.cross(cam_forward).normalize(); // Compute up vector
+                    
+                    // Negate forward because camera.forward() points down -Z, but we computed ray_dir_cam.z = -1.0
+                    // So we want: cam_forward * -ray_dir_cam.z = cam_forward * -(-1.0) = cam_forward
+                    // Wait no - if camera is at z=23 looking at origin, forward should be negative Z
+                    // So we just use the forward direction as-is
+                    let ray_dir_world = (
+                        cam_right * ray_dir_cam.x +
+                        cam_up * ray_dir_cam.y +
+                        cam_forward * ray_dir_cam.z  // ray_dir_cam.z is already -1.0
+                    ).normalize();
+                    
+                    let ray_origin = camera.position;
+                    
+                    tracing::info!("[VIEWPORT] 🎯 Camera at [{:.2}, {:.2}, {:.2}], forward=[{:.3}, {:.3}, {:.3}]",
+                        ray_origin.x, ray_origin.y, ray_origin.z,
+                        cam_forward.x, cam_forward.y, cam_forward.z);
+                    tracing::info!("[VIEWPORT] 🎯 Ray dir: [{:.3}, {:.3}, {:.3}] (should point toward scene)",
+                        ray_dir_world.x, ray_dir_world.y, ray_dir_world.z);
+                    
+                    // Use physics raycast if available, otherwise fallback to simple intersection
+                    if let Some(ref pq) = physics_query {
+                        tracing::info!("[VIEWPORT] Using physics raycast");
+                        if let Some(hit) = pq.raycast(ray_origin, ray_dir_world, 1000.0) {
+                            tracing::info!("[VIEWPORT] 🎯 Object selected via physics raycast: {} at distance {:.2}", hit.object_id, hit.distance);
+                            scene_db.select_object(Some(hit.object_id.clone()));
+                        } else {
+                            tracing::info!("[VIEWPORT] ❌ No object hit by physics raycast");
+                            scene_db.select_object(None);
+                        }
+                    } else {
+                        tracing::info!("[VIEWPORT] Using fallback raycast (no physics)");
+                        // Fallback: Simple sphere intersection test
+                        let mut closest_hit: Option<(String, f32)> = None;
+                        
+                        scene_db.for_each_entry(|entry| {
+                            if !entry.is_visible() {
+                                return;
+                            }
+                            
+                            let obj_pos = Vec3::new(
+                                entry.get_position()[0],
+                                entry.get_position()[1],
+                                entry.get_position()[2],
+                            );
+                            
+                            let to_obj = obj_pos - ray_origin;
+                            let proj = to_obj.dot(ray_dir_world);
+                            
+                            if proj > 0.0 {
+                                let closest_point = ray_origin + ray_dir_world * proj;
+                                let dist_to_ray = (obj_pos - closest_point).length();
+                                
+                                let scale = entry.get_scale();
+                                let radius = (scale[0] + scale[1] + scale[2]) / 3.0 * 0.707;
+                                
+                                if dist_to_ray < radius {
+                                    if closest_hit.is_none() || proj < closest_hit.as_ref().unwrap().1 {
+                                        closest_hit = Some((entry.id.clone(), proj));
+                                    }
+                                }
+                            }
+                        });
+                        
+                        if let Some((object_id, _)) = closest_hit {
+                            tracing::info!("[VIEWPORT] 🎯 Object selected via fallback raycast: {}", object_id);
+                            scene_db.select_object(Some(object_id));
+                        } else {
+                            tracing::info!("[VIEWPORT] ❌ No object hit by fallback raycast");
+                            scene_db.select_object(None);
+                        }
+                    }
+                }
+            }
+            
+            // Sync scene objects with physics colliders (for raycasting)
+            if let Some(ref pq) = physics_query {
+                // Only sync every 60 frames to avoid overhead
+                if frame_count % 60 == 0 {
+                    tracing::info!("[RENDER] Syncing scene with physics (frame {})", frame_count);
+                    pq.sync_from_scene(&scene_db);
+                }
+            } else {
+                if frame_count % 300 == 0 {
+                    tracing::warn!("[RENDER] ⚠️  No PhysicsQueryService - viewport picking will use fallback");
                 }
             }
             

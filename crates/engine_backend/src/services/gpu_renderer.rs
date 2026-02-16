@@ -68,6 +68,16 @@ impl GpuRenderer {
         scene_db: Arc<SceneDb>,
         game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
     ) -> Self {
+        Self::new_with_scene_db_and_physics(display_width, display_height, scene_db, game_thread_state, None)
+    }
+    
+    pub fn new_with_scene_db_and_physics(
+        display_width: u32,
+        display_height: u32,
+        scene_db: Arc<SceneDb>,
+        game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
+        physics_query: Option<Arc<crate::services::PhysicsQueryService>>,
+    ) -> Self {
         let width = display_width;
         let height = display_height;
 
@@ -76,11 +86,12 @@ impl GpuRenderer {
         let runtime = get_runtime();
         let game_state_for_renderer = game_thread_state.clone();
         let scene_db_clone = scene_db.clone();
+        let physics_query_clone = physics_query.clone();
         let helio_renderer = runtime.block_on(async move {
             tracing::debug!("[GPU-RENDERER] Creating Helio renderer asynchronously...");
             match tokio::time::timeout(
                 tokio::time::Duration::from_secs(10),
-                HelioRenderer::new_with_game_thread(width, height, game_state_for_renderer, scene_db_clone)
+                HelioRenderer::new_with_all(width, height, game_state_for_renderer, scene_db_clone, physics_query_clone)
             ).await {
                 Ok(renderer) => {
                     tracing::info!("[GPU-RENDERER] ✅ Helio renderer created successfully!");

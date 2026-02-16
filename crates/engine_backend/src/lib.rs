@@ -79,6 +79,19 @@ impl EngineBackend {
             game_thread: Some(game_thread_ref),
         }
     }
+    
+    /// Get the physics query service for raycasting
+    pub fn get_physics_query_service(&self) -> Option<Arc<crate::services::PhysicsQueryService>> {
+        use crate::subsystems::framework::subsystem_ids;
+        
+        self.subsystems.get(subsystem_ids::PHYSICS)
+            .and_then(|subsystem| {
+                // Downcast to PhysicsEngine
+                (subsystem as &dyn std::any::Any)
+                    .downcast_ref::<PhysicsEngine>()
+                    .map(|physics| physics.query_service())
+            })
+    }
 
     /// Get a reference to the subsystem registry
     pub fn subsystems(&self) -> &SubsystemRegistry {
