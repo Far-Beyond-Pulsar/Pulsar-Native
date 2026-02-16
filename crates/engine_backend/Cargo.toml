@@ -47,6 +47,7 @@ helio-feature-bloom.workspace = true
 helio-feature-billboards.workspace = true
 blade-graphics.workspace = true
 glam.workspace = true
+bytemuck = "1.14"
 
 wgpu = "27.0.0"
 wgpu-hal = "27.0.0"

@@ -244,7 +244,8 @@ impl HelioRenderer {
         let mut billboards = BillboardFeature::new();
         billboards.set_texture_manager(texture_manager.clone());
 
-        // Build feature registry
+        // Build feature registry WITH gizmo overlay
+        let gizmo_feature = super::gizmo_overlay::GizmoFeature::new(Arc::clone(&scene_db));
         let registry = FeatureRegistry::builder()
             .with_feature(base_geometry)
             .with_feature(BasicLighting::new())
@@ -252,37 +253,13 @@ impl HelioRenderer {
             .with_feature(shadows)
             .with_feature(Bloom::new())
             .with_feature(billboards)
+            .with_feature(gizmo_feature)
             .build();
         
-        tracing::info!("[HELIO] ✅ Step 6/10: Feature registry built with 4 animated RGB lights!");
-
-        // Create gizmo meshes for overlay rendering
-        tracing::info!("[HELIO] 🚀 Step 7/10: Creating gizmo overlay renderer...");
-        let arrow_mesh = MeshBuffer::from_mesh(
-            &*context,
-            "gizmo_arrow",
-            &super::gizmos::create_arrow_mesh(1.0, 0.05, 0.1, 0.3),
-        );
-        let torus_mesh = MeshBuffer::from_mesh(
-            &*context,
-            "gizmo_torus",
-            &super::gizmos::create_torus_mesh(1.0, 0.05, 32, 16),
-        );
-        let cube_mesh_for_gizmo = MeshBuffer::from_mesh(
-            &*context,
-            "gizmo_cube",
-            &create_cube_mesh(1.0),
-        );
-        let gizmo_overlay = super::gizmo_overlay::GizmoOverlayRenderer::new(
-            &*context,
-            arrow_mesh,
-            torus_mesh,
-            cube_mesh_for_gizmo,
-        );
-        tracing::info!("[HELIO] ✅ Step 7/10: Gizmo overlay renderer created");
+        tracing::info!("[HELIO] ✅ Step 6/10: Feature registry built with gizmo overlay feature!");
 
         // Use shared textures if available, otherwise create regular render target
-        tracing::info!("[HELIO] 🚀 Step 8/10: Setting up render targets...");
+        tracing::info!("[HELIO] 🚀 Step 7/10: Setting up render targets...");
         #[cfg(target_os = "windows")]
         let use_shared_textures = helio_shared_textures.is_some();
         
@@ -575,15 +552,8 @@ impl HelioRenderer {
                 delta_time,
             );
 
-            // Render gizmos as overlay on top of scene
-            gizmo_overlay.render_overlay(
-                &scene_db,
-                &mut renderer,
-                &mut command_encoder,
-                &render_target_view,
-                &camera_uniforms,
-                delta_time,
-            );
+            // Gizmos are now rendered automatically by the Helio feature system!
+            // No manual render call needed - the GizmoFeature handles it via post_render_pass()
 
             // Submit and wait (for now - in real implementation we'd handle DXGI sync differently)
             let sync_point = context.submit(&mut command_encoder);

@@ -11,6 +11,8 @@ use ui::{button::{Button, ButtonVariants as _}, h_flex, switch::Switch, ActiveTh
 use rust_i18n::t;
 
 use crate::level_editor::ui::state::LevelEditorState;
+use crate::level_editor::ui::actions::{SelectTool, MoveTool, RotateTool, ScaleTool};
+use crate::level_editor::ui::TransformTool;
 use super::toggle_button::create_state_toggle;
 use super::floating_toolbar::{toolbar_with_drag_handle, create_drag_handle};
 
@@ -175,6 +177,59 @@ where
         )
 }
 
+/// Render gizmo tool selector buttons.
+fn gizmo_tool_buttons(
+    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+    state: &LevelEditorState,
+) -> impl IntoElement {
+    h_flex()
+        .gap_1()
+        .child({
+            let state_clone = state_arc.clone();
+            Button::new("select_tool")
+                .icon(IconName::PcMouse)
+                .ghost()
+                .tooltip("Select Tool (Q)")
+                .selected(state.current_tool == TransformTool::Select)
+                .on_click(move |_, _, _| {
+                    state_clone.write().set_tool(TransformTool::Select);
+                })
+        })
+        .child({
+            let state_clone = state_arc.clone();
+            Button::new("move_tool")
+                .icon(IconName::ARrowUnion)
+                .ghost()
+                .tooltip("Move Tool (W)")
+                .selected(state.current_tool == TransformTool::Move)
+                .on_click(move |_, _, _| {
+                    state_clone.write().set_tool(TransformTool::Move);
+                })
+        })
+        .child({
+            let state_clone = state_arc.clone();
+            Button::new("rotate_tool")
+                .icon(IconName::Refresh)
+                .ghost()
+                .tooltip("Rotate Tool (E)")
+                .selected(state.current_tool == TransformTool::Rotate)
+                .on_click(move |_, _, _| {
+                    state_clone.write().set_tool(TransformTool::Rotate);
+                })
+        })
+        .child({
+            let state_clone = state_arc.clone();
+            Button::new("scale_tool")
+                .icon(IconName::Maximize)
+                .ghost()
+                .tooltip("Scale Tool (R)")
+                .selected(state.current_tool == TransformTool::Scale)
+                .on_click(move |_, _, _| {
+                    state_clone.write().set_tool(TransformTool::Scale);
+                })
+        })
+}
+
 /// Render the complete viewport options toolbar.
 pub fn render_viewport_options<V: 'static>(
     state: &LevelEditorState,
@@ -206,6 +261,8 @@ where
         .gap_2()
         .items_center()
         .child(visual_toggles(state_arc.clone(), state))
+        .child(div().h(px(20.0)).w_px().bg(cx.theme().border))
+        .child(gizmo_tool_buttons(state_arc.clone(), state))
         .child(div().h(px(20.0)).w_px().bg(cx.theme().border))
         .child(overlay_toggles(state_arc.clone(), state, cx))
         .child(

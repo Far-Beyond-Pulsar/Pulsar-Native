@@ -326,7 +326,7 @@ impl HierarchyPanel {
                 item_div
                     .on_click(cx.listener(move |_view, _event, _window, cx| {
                         // Select on click — write to the shared SceneDb atomically
-                                                state_clone_for_click.write().select_object(Some(object_id_for_click.clone()));
+                        state_clone_for_click.write().select_object(Some(object_id_for_click.clone()));
                         
                         // Notify the hierarchy wrapper so GPUI re-renders and observer triggers props panel update
                         cx.notify();

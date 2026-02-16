@@ -807,6 +807,35 @@ impl Render for LevelEditorPanel {
                         // Gizmo interaction is disabled
                     }
                 }
+                
+                // SELECTION SYNC: Sync GPUI selection to backend SceneDB every frame
+                let state = self.shared_state.read();
+                let gpui_selected = state.selected_object();
+                
+                // GIZMO TOOL SYNC: Sync current tool to backend gizmo type
+                use engine_backend::scene::GizmoType as SceneGizmoType;
+                let gizmo_type = match state.current_tool {
+                    TransformTool::Select => SceneGizmoType::None,
+                    TransformTool::Move => SceneGizmoType::Translate,
+                    TransformTool::Rotate => SceneGizmoType::Rotate,
+                    TransformTool::Scale => SceneGizmoType::Scale,
+                };
+                
+                drop(state);
+                let backend_selected = helio_renderer.scene_db.get_selected_id();
+                let backend_gizmo_type = helio_renderer.scene_db.get_gizmo_state().gizmo_type;
+                
+                if gpui_selected != backend_selected {
+                    // Selection changed - sync to backend  
+                    helio_renderer.scene_db.select_object(gpui_selected.clone());
+                    tracing::info!("[GIZMO SYNC] Selection synced to backend: {:?}", gpui_selected);
+                }
+                
+                if gizmo_type != backend_gizmo_type {
+                    // Gizmo type changed - sync to backend
+                    helio_renderer.scene_db.set_gizmo_type(gizmo_type);
+                    tracing::info!("[GIZMO SYNC] Gizmo type synced to backend: {:?}", gizmo_type);
+                }
             }
         }
 

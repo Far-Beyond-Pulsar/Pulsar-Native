@@ -2773,6 +2773,7 @@ dependencies = [
  "ash",
  "async-tungstenite",
  "blade-graphics 0.7.0 (git+https://github.com/tristanpoland/blade?rev=d85bd14a78ed7729abc298906e87332257674a02)",
+ "bytemuck",
  "crossbeam-channel",
  "dashmap 6.1.0",
  "flume",

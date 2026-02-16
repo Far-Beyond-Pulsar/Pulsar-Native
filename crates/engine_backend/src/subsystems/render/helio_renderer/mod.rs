@@ -45,7 +45,7 @@ pub mod renderer;
 // Re-export public API
 pub use core::{CameraInput, RenderMetrics, GpuProfilerData, DiagnosticMetric, SharedGpuTextures};
 pub use renderer::HelioRenderer;
-pub use gizmo_overlay::GizmoOverlayRenderer;
+pub use gizmo_overlay::GizmoFeature;
 
 // Re-export gizmo stub types
 pub use gizmo_types::{
