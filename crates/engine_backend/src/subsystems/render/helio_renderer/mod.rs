@@ -17,6 +17,9 @@ pub mod gizmo_types;
 // Gizmo generation (disabled)
 pub mod gizmos;
 
+// Gizmo overlay renderer (renders on top of scene)
+pub mod gizmo_overlay;
+
 // Scene building system
 pub mod scene_builder;
 
@@ -42,6 +45,7 @@ pub mod renderer;
 // Re-export public API
 pub use core::{CameraInput, RenderMetrics, GpuProfilerData, DiagnosticMetric, SharedGpuTextures};
 pub use renderer::HelioRenderer;
+pub use gizmo_overlay::GizmoOverlayRenderer;
 
 // Re-export gizmo stub types
 pub use gizmo_types::{

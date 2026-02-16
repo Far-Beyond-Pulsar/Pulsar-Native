@@ -729,6 +729,10 @@ impl ViewportPanel {
                                 normalized_x, normalized_y
                             );
                             
+                            // TODO: Check for gizmo interaction first
+                            // If a gizmo axis is clicked, start drag operation
+                            // Otherwise, do object selection raycast
+                            
                             let mut mouse_input = helio_renderer.viewport_mouse_input.lock();
                             mouse_input.left_clicked = true;
                             mouse_input.left_down = true;

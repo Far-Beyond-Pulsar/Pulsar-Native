@@ -1,6 +1,7 @@
 use rapier3d::prelude::*;
 use std::sync::{Arc, Mutex};
 use crate::subsystems::framework::{Subsystem, SubsystemContext, SubsystemError, SubsystemId, subsystem_ids};
+use crate::services::PhysicsQueryService;
 
 pub struct PhysicsEngine {
     // Gravity as rapier3d::math::Vector (which is an alias for Vec3)
@@ -17,6 +18,9 @@ pub struct PhysicsEngine {
     event_handler: (),
     collider_set: Arc<Mutex<ColliderSet>>,
     rigid_body_set: Arc<Mutex<RigidBodySet>>,
+
+    // Query service for raycasting
+    pub query_service: Arc<PhysicsQueryService>,
 
     // Task handle for cleanup
     task_handle: Option<tokio::task::JoinHandle<()>>,
@@ -40,6 +44,14 @@ impl PhysicsEngine {
         let physics_hooks = ();
         let event_handler = ();
 
+        let collider_set_arc = Arc::new(Mutex::new(collider_set));
+        let rigid_body_set_arc = Arc::new(Mutex::new(rigid_body_set));
+        
+        let query_service = Arc::new(PhysicsQueryService::new(
+            collider_set_arc.clone(),
+            rigid_body_set_arc.clone(),
+        ));
+
         PhysicsEngine {
             gravity,
             integration_parameters,
@@ -52,10 +64,16 @@ impl PhysicsEngine {
             ccd_solver: Arc::new(Mutex::new(ccd_solver)),
             physics_hooks,
             event_handler,
-            collider_set: Arc::new(Mutex::new(collider_set)),
-            rigid_body_set: Arc::new(Mutex::new(rigid_body_set)),
+            collider_set: collider_set_arc,
+            rigid_body_set: rigid_body_set_arc,
+            query_service,
             task_handle: None,
         }
+    }
+
+    /// Get a reference to the query service for raycasting
+    pub fn query_service(&self) -> Arc<PhysicsQueryService> {
+        self.query_service.clone()
     }
 }
 

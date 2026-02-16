@@ -256,8 +256,8 @@ impl HelioRenderer {
         
         tracing::info!("[HELIO] ✅ Step 6/10: Feature registry built with 4 animated RGB lights!");
 
-        // Create gizmo meshes
-        tracing::info!("[HELIO] 🚀 Step 7/10: Creating gizmo meshes...");
+        // Create gizmo meshes for overlay rendering
+        tracing::info!("[HELIO] 🚀 Step 7/10: Creating gizmo overlay renderer...");
         let arrow_mesh = MeshBuffer::from_mesh(
             &*context,
             "gizmo_arrow",
@@ -268,7 +268,18 @@ impl HelioRenderer {
             "gizmo_torus",
             &super::gizmos::create_torus_mesh(1.0, 0.05, 32, 16),
         );
-        tracing::info!("[HELIO] ✅ Step 7/10: Gizmo meshes created");
+        let cube_mesh_for_gizmo = MeshBuffer::from_mesh(
+            &*context,
+            "gizmo_cube",
+            &create_cube_mesh(1.0),
+        );
+        let gizmo_overlay = super::gizmo_overlay::GizmoOverlayRenderer::new(
+            &*context,
+            arrow_mesh,
+            torus_mesh,
+            cube_mesh_for_gizmo,
+        );
+        tracing::info!("[HELIO] ✅ Step 7/10: Gizmo overlay renderer created");
 
         // Use shared textures if available, otherwise create regular render target
         tracing::info!("[HELIO] 🚀 Step 8/10: Setting up render targets...");
@@ -562,6 +573,15 @@ impl HelioRenderer {
                 camera_uniforms,
                 &meshes,
                 delta_time,
+            );
+
+            // Render gizmos as overlay on top of scene
+            gizmo_overlay.render_overlay(
+                &scene_db,
+                &mut command_encoder,
+                &render_target_view,
+                &camera_uniforms,
+                &*context,
             );
 
             // Submit and wait (for now - in real implementation we'd handle DXGI sync differently)

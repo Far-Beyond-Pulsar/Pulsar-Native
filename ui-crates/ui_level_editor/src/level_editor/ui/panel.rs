@@ -302,12 +302,26 @@ impl LevelEditorPanel {
             .render(cx)
     }
 
-    // Helper method to sync GPUI gizmo state to Bevy's shared resource
+    // Helper method to sync GPUI gizmo state to SceneDB and Bevy's shared resource
     fn sync_gizmo_to_bevy(&mut self) {
+        // First, sync to SceneDB through HelenRenderer
         if let Ok(engine) = self.gpu_engine.try_lock() {
             if let Some(ref helio_renderer) = engine.helio_renderer {
+                let state = self.shared_state.read();
+                
+                // Map TransformTool to GizmoType
+                use engine_backend::scene::GizmoType as SceneGizmoType;
+                let gizmo_type = match state.current_tool {
+                    TransformTool::Select => SceneGizmoType::None,
+                    TransformTool::Move => SceneGizmoType::Translate,
+                    TransformTool::Rotate => SceneGizmoType::Rotate,
+                    TransformTool::Scale => SceneGizmoType::Scale,
+                };
+                
+                helio_renderer.scene_db.set_gizmo_type(gizmo_type);
+            
+                // Then sync to old Bevy resource (for backwards compatibility)
                 if let Ok(mut bevy_gizmo) = helio_renderer.gizmo_state.try_lock() {
-                    let state = self.shared_state.read();
                     let gpui_gizmo = state.gizmo_state.read();
 
                     // Map GPUI GizmoType to Bevy GizmoType

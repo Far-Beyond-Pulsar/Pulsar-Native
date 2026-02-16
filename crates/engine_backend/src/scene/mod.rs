@@ -405,6 +405,39 @@ impl SceneEntry {
 
 // ─── SceneDb ─────────────────────────────────────────────────────────────────
 
+/// Gizmo state for the level editor
+#[derive(Clone, Debug, PartialEq)]
+pub struct GizmoState {
+    pub gizmo_type: GizmoType,
+    pub highlighted_axis: Option<GizmoAxis>,
+    pub scale_factor: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GizmoType {
+    None,
+    Translate,
+    Rotate,
+    Scale,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GizmoAxis {
+    X,
+    Y,
+    Z,
+}
+
+impl Default for GizmoState {
+    fn default() -> Self {
+        Self {
+            gizmo_type: GizmoType::None,
+            highlighted_axis: None,
+            scale_factor: 1.0,
+        }
+    }
+}
+
 struct SceneDbInner {
     /// All objects — concurrent reads, no global lock.
     objects: DashMap<ObjectId, Arc<SceneEntry>>,
@@ -414,6 +447,8 @@ struct SceneDbInner {
     next_id: AtomicU64,
     /// Currently selected object id.
     selected: RwLock<Option<ObjectId>>,
+    /// Gizmo state for the level editor
+    gizmo_state: RwLock<GizmoState>,
 }
 
 /// The shared scene database. Clone-able — all clones share the same data.
@@ -430,6 +465,7 @@ impl SceneDb {
                 roots: RwLock::new(Vec::new()),
                 next_id: AtomicU64::new(1),
                 selected: RwLock::new(None),
+                gizmo_state: RwLock::new(GizmoState::default()),
             }),
         }
     }
@@ -663,6 +699,32 @@ impl SceneDb {
         self.inner.objects.clear();
         self.inner.roots.write().clear();
         *self.inner.selected.write() = None;
+        *self.inner.gizmo_state.write() = GizmoState::default();
+    }
+
+    // ── Gizmo API ─────────────────────────────────────────────────────────
+
+    /// Get the current gizmo state
+    pub fn get_gizmo_state(&self) -> GizmoState {
+        self.inner.gizmo_state.read().clone()
+    }
+
+    /// Set the gizmo type (called when user switches tools)
+    pub fn set_gizmo_type(&self, gizmo_type: GizmoType) {
+        let mut state = self.inner.gizmo_state.write();
+        state.gizmo_type = gizmo_type;
+    }
+
+    /// Set the highlighted axis (for hover feedback)
+    pub fn set_gizmo_highlighted_axis(&self, axis: Option<GizmoAxis>) {
+        let mut state = self.inner.gizmo_state.write();
+        state.highlighted_axis = axis;
+    }
+
+    /// Set the gizmo scale factor (for camera-distance scaling)
+    pub fn set_gizmo_scale(&self, scale: f32) {
+        let mut state = self.inner.gizmo_state.write();
+        state.scale_factor = scale;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
