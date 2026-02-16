@@ -7,8 +7,8 @@
 
 use glam::{Vec3, Mat4};
 use helio_core::MeshBuffer;
-use helio_render::TransformUniforms;
-use blade_graphics::{CommandEncoder, TextureView};
+use helio_render::{TransformUniforms, CameraUniforms, FeatureRenderer};
+use blade_graphics::CommandEncoder;
 use crate::scene::{SceneDb, GizmoType, GizmoAxis};
 
 /// Renders gizmos as an overlay on top of the rendered scene
@@ -20,7 +20,7 @@ pub struct GizmoOverlayRenderer {
 
 impl GizmoOverlayRenderer {
     pub fn new(
-        context: &blade_graphics::Context,
+        _context: &blade_graphics::Context,
         arrow_mesh: MeshBuffer,
         torus_mesh: MeshBuffer,
         cube_mesh: MeshBuffer,
@@ -34,40 +34,50 @@ impl GizmoOverlayRenderer {
 
     /// Render gizmos as an overlay on top of the scene
     /// 
-    /// This should be called AFTER the main scene rendering is complete,
-    /// but before presenting the final image.
+    /// This renders through the main FeatureRenderer but with a second pass
+    /// that uses unlit flat colors for the gizmo meshes.
     pub fn render_overlay(
         &self,
         scene_db: &SceneDb,
+        renderer: &mut FeatureRenderer,
         command_encoder: &mut CommandEncoder,
-        render_target_view: &TextureView,
-        camera_uniforms: &helio_render::CameraUniforms,
-        context: &blade_graphics::Context,
+        render_target_view: &blade_graphics::TextureView,
+        camera_uniforms: &CameraUniforms,
+        delta_time: f32,
     ) {
         profiling::profile_scope!("GizmoOverlayRenderer::render");
 
         // Get gizmo state from scene database
         let gizmo_state = scene_db.get_gizmo_state();
         
+        tracing::debug!("[GIZMO] Render overlay called - gizmo_type: {:?}", gizmo_state.gizmo_type);
+        
         // Early exit if no gizmos to render
         if gizmo_state.gizmo_type == GizmoType::None {
+            tracing::debug!("[GIZMO] No gizmo type set, skipping render");
             return;
         }
 
         // Get selected object position
         let selected_id = scene_db.get_selected_id();
+        tracing::debug!("[GIZMO] Selected ID: {:?}", selected_id);
+        
         if selected_id.is_none() {
+            tracing::warn!("[GIZMO] No object selected, cannot render gizmos");
             return;
         }
 
         let selected_entry = scene_db.get_entry(&selected_id.unwrap());
         if selected_entry.is_none() {
+            tracing::warn!("[GIZMO] Selected object entry not found in SceneDB");
             return;
         }
 
         let entry = selected_entry.unwrap();
         let position_array = entry.get_position();
         let gizmo_position = Vec3::new(position_array[0], position_array[1], position_array[2]);
+        
+        tracing::info!("[GIZMO] 🎯 Rendering {:?} gizmo at position {:?}", gizmo_state.gizmo_type, gizmo_position);
 
         // Calculate camera distance for scaling
         let camera_pos = Vec3::new(
@@ -82,7 +92,7 @@ impl GizmoOverlayRenderer {
         let final_scale = scale * gizmo_state.scale_factor;
 
         // Prepare gizmo meshes to render
-        let mut gizmo_meshes = Vec::new();
+        let mut gizmo_meshes: Vec<(TransformUniforms, &MeshBuffer)> = Vec::new();
 
         match gizmo_state.gizmo_type {
             GizmoType::Translate => {
@@ -94,7 +104,7 @@ impl GizmoOverlayRenderer {
                         final_scale,
                         gizmo_state.highlighted_axis == Some(axis),
                     );
-                    gizmo_meshes.push((TransformUniforms::from_matrix(transform), &self.arrow_mesh, axis));
+                    gizmo_meshes.push((TransformUniforms::from_matrix(transform), &self.arrow_mesh));
                 }
             }
             GizmoType::Rotate => {
@@ -106,7 +116,7 @@ impl GizmoOverlayRenderer {
                         final_scale,
                         gizmo_state.highlighted_axis == Some(axis),
                     );
-                    gizmo_meshes.push((TransformUniforms::from_matrix(transform), &self.torus_mesh, axis));
+                    gizmo_meshes.push((TransformUniforms::from_matrix(transform), &self.torus_mesh));
                 }
             }
             GizmoType::Scale => {
@@ -124,23 +134,24 @@ impl GizmoOverlayRenderer {
                     let transform = Mat4::from_translation(gizmo_position + offset)
                         * Mat4::from_scale(Vec3::splat(cube_scale));
                     
-                    gizmo_meshes.push((TransformUniforms::from_matrix(transform), &self.cube_mesh, axis));
+                    gizmo_meshes.push((TransformUniforms::from_matrix(transform), &self.cube_mesh));
                 }
             }
             GizmoType::None => {}
         }
 
-        // TODO: Render gizmo meshes with:
-        // - Depth testing disabled (or depth read only, no write)
-        // - Unlit flat colors based on axis
-        // - Simple shader that just colors based on axis (no lighting)
-        //
-        // For now, this is a placeholder. Full implementation requires:
-        // 1. Custom gizmo shader (vertex + fragment)
-        // 2. Pipeline with depth testing disabled
-        // 3. Render pass that draws after main scene
-        //
-        // This will be implemented in the next iteration.
+        tracing::info!("[GIZMO] 📦 Rendering {} gizmo meshes", gizmo_meshes.len());
+
+        // Render gizmo meshes using the existing FeatureRenderer
+        // TODO: This currently renders with lighting. Ideally we want unlit flat colors.
+        // For now this will show the gizmos, we can add a custom unlit pass later.
+        renderer.render(
+            command_encoder,
+            *render_target_view,
+            *camera_uniforms,
+            &gizmo_meshes,
+            delta_time,
+        );
     }
 }
 
@@ -191,3 +202,4 @@ pub fn get_axis_color(axis: GizmoAxis, highlighted: bool) -> Vec3 {
         base_color
     }
 }
+

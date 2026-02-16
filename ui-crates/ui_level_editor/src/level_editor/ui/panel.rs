@@ -304,7 +304,7 @@ impl LevelEditorPanel {
 
     // Helper method to sync GPUI gizmo state to SceneDB and Bevy's shared resource
     fn sync_gizmo_to_bevy(&mut self) {
-        // First, sync to SceneDB through HelenRenderer
+        // First, sync to SceneDB through HelioRenderer
         if let Ok(engine) = self.gpu_engine.try_lock() {
             if let Some(ref helio_renderer) = engine.helio_renderer {
                 let state = self.shared_state.read();
@@ -319,6 +319,13 @@ impl LevelEditorPanel {
                 };
                 
                 helio_renderer.scene_db.set_gizmo_type(gizmo_type);
+                
+                // CRITICAL: Sync selected object to backend SceneDB
+                let selected_id = state.scene_database.get_selected_object_id();
+                helio_renderer.scene_db.select_object(selected_id.clone());
+                
+                tracing::info!("[GIZMO SYNC] Synced to backend SceneDB - tool: {:?}, selected: {:?}", 
+                    state.current_tool, selected_id);
             
                 // Then sync to old Bevy resource (for backwards compatibility)
                 if let Ok(mut bevy_gizmo) = helio_renderer.gizmo_state.try_lock() {

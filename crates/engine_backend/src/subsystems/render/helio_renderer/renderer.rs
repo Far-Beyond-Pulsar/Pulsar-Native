@@ -578,10 +578,11 @@ impl HelioRenderer {
             // Render gizmos as overlay on top of scene
             gizmo_overlay.render_overlay(
                 &scene_db,
+                &mut renderer,
                 &mut command_encoder,
                 &render_target_view,
                 &camera_uniforms,
-                &*context,
+                delta_time,
             );
 
             // Submit and wait (for now - in real implementation we'd handle DXGI sync differently)
