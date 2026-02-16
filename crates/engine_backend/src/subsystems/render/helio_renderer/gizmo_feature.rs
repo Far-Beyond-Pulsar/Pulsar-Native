@@ -52,6 +52,12 @@ pub struct GizmoRenderer {
     arrow_vertex_buffer: Option<gpu::Buffer>,
     arrow_index_buffer: Option<gpu::Buffer>,
     arrow_index_count: u32,
+    torus_vertex_buffer: Option<gpu::Buffer>,
+    torus_index_buffer: Option<gpu::Buffer>,
+    torus_index_count: u32,
+    cube_vertex_buffer: Option<gpu::Buffer>,
+    cube_index_buffer: Option<gpu::Buffer>,
+    cube_index_count: u32,
 }
 
 impl GizmoRenderer {
@@ -63,6 +69,12 @@ impl GizmoRenderer {
             arrow_vertex_buffer: None,
             arrow_index_buffer: None,
             arrow_index_count: 0,
+            torus_vertex_buffer: None,
+            torus_index_buffer: None,
+            torus_index_count: 0,
+            cube_vertex_buffer: None,
+            cube_index_buffer: None,
+            cube_index_count: 0,
         }
     }
     
@@ -107,6 +119,119 @@ impl GizmoRenderer {
         
         self.arrow_vertex_buffer = Some(vbuf);
         self.arrow_index_buffer = Some(ibuf);
+        
+        // === CREATE TORUS MESH (for rotate gizmo) ===
+        let segments = 32;
+        let mut torus_vertices = Vec::new();
+        let mut torus_indices = Vec::new();
+        let radius = 0.8;
+        let thickness = 0.03;
+        
+        for i in 0..segments {
+            let angle = (i as f32 / segments as f32) * std::f32::consts::TAU;
+            let x = angle.cos() * radius;
+            let z = angle.sin() * radius;
+            
+            // Inner and outer vertices
+            let inner_x = angle.cos() * (radius - thickness);
+            let inner_z = angle.sin() * (radius - thickness);
+            
+            torus_vertices.push(GizmoVertex { position: [inner_x, 0.0, inner_z] });
+            torus_vertices.push(GizmoVertex { position: [x, 0.0, z] });
+        }
+        
+        for i in 0..segments {
+            let next = (i + 1) % segments;
+            let base = i * 2;
+            let next_base = next * 2;
+            
+            // Two triangles per segment
+            torus_indices.push(base as u32);
+            torus_indices.push(next_base as u32);
+            torus_indices.push((base + 1) as u32);
+            
+            torus_indices.push((base + 1) as u32);
+            torus_indices.push(next_base as u32);
+            torus_indices.push((next_base + 1) as u32);
+        }
+        
+        self.torus_index_count = torus_indices.len() as u32;
+        
+        let torus_vbuf = context.create_buffer(gpu::BufferDesc {
+            name: "gizmo_torus_vertices",
+            size: (torus_vertices.len() * std::mem::size_of::<GizmoVertex>()) as u64,
+            memory: gpu::Memory::Shared,
+        });
+        unsafe {
+            ptr::copy_nonoverlapping(torus_vertices.as_ptr(), torus_vbuf.data() as *mut GizmoVertex, torus_vertices.len());
+        }
+        context.sync_buffer(torus_vbuf);
+        
+        let torus_ibuf = context.create_buffer(gpu::BufferDesc {
+            name: "gizmo_torus_indices",
+            size: (torus_indices.len() * std::mem::size_of::<u32>()) as u64,
+            memory: gpu::Memory::Shared,
+        });
+        unsafe {
+            ptr::copy_nonoverlapping(torus_indices.as_ptr(), torus_ibuf.data() as *mut u32, torus_indices.len());
+        }
+        context.sync_buffer(torus_ibuf);
+        
+        self.torus_vertex_buffer = Some(torus_vbuf);
+        self.torus_index_buffer = Some(torus_ibuf);
+        
+        // === CREATE CUBE MESH (for scale gizmo) ===
+        let cube_vertices = vec![
+            // Cube with 0.15 unit size
+            GizmoVertex { position: [-0.075, -0.075, -0.075] },
+            GizmoVertex { position: [0.075, -0.075, -0.075] },
+            GizmoVertex { position: [0.075, 0.075, -0.075] },
+            GizmoVertex { position: [-0.075, 0.075, -0.075] },
+            GizmoVertex { position: [-0.075, -0.075, 0.075] },
+            GizmoVertex { position: [0.075, -0.075, 0.075] },
+            GizmoVertex { position: [0.075, 0.075, 0.075] },
+            GizmoVertex { position: [-0.075, 0.075, 0.075] },
+        ];
+        
+        let cube_indices: Vec<u32> = vec![
+            // Front face
+            0, 1, 2,  0, 2, 3,
+            // Back face
+            4, 6, 5,  4, 7, 6,
+            // Top face
+            3, 2, 6,  3, 6, 7,
+            // Bottom face
+            0, 5, 1,  0, 4, 5,
+            // Right face
+            1, 5, 6,  1, 6, 2,
+            // Left face
+            0, 3, 7,  0, 7, 4,
+        ];
+        
+        self.cube_index_count = cube_indices.len() as u32;
+        
+        let cube_vbuf = context.create_buffer(gpu::BufferDesc {
+            name: "gizmo_cube_vertices",
+            size: (cube_vertices.len() * std::mem::size_of::<GizmoVertex>()) as u64,
+            memory: gpu::Memory::Shared,
+        });
+        unsafe {
+            ptr::copy_nonoverlapping(cube_vertices.as_ptr(), cube_vbuf.data() as *mut GizmoVertex, cube_vertices.len());
+        }
+        context.sync_buffer(cube_vbuf);
+        
+        let cube_ibuf = context.create_buffer(gpu::BufferDesc {
+            name: "gizmo_cube_indices",
+            size: (cube_indices.len() * std::mem::size_of::<u32>()) as u64,
+            memory: gpu::Memory::Shared,
+        });
+        unsafe {
+            ptr::copy_nonoverlapping(cube_indices.as_ptr(), cube_ibuf.data() as *mut u32, cube_indices.len());
+        }
+        context.sync_buffer(cube_ibuf);
+        
+        self.cube_vertex_buffer = Some(cube_vbuf);
+        self.cube_index_buffer = Some(cube_ibuf);
         
         // Create pipeline
         let camera_layout = <GizmoCameraData as gpu::ShaderData>::layout();
@@ -163,10 +288,10 @@ impl GizmoRenderer {
             return;
         }
         
-        let (pipeline, vbuf, ibuf) = match (&self.pipeline, self.arrow_vertex_buffer, self.arrow_index_buffer) {
-            (Some(p), Some(v), Some(i)) => (p, v, i),
+        let pipeline = match &self.pipeline {
+            Some(p) => p,
             _ => {
-                tracing::error!("[GIZMO RENDERER] Not initialized - pipeline/buffers missing!");
+                tracing::error!("[GIZMO RENDERER] Not initialized - pipeline missing!");
                 return;
             }
         };
@@ -217,6 +342,29 @@ impl GizmoRenderer {
         let mut rc = pass.with(pipeline);
         rc.bind(0, &camera_data);
         
+        // Select appropriate mesh based on gizmo type
+        let (vbuf, ibuf, index_count) = match gizmo_state.gizmo_type {
+            GizmoType::Translate => {
+                match (self.arrow_vertex_buffer, self.arrow_index_buffer) {
+                    (Some(v), Some(i)) => (v, i, self.arrow_index_count),
+                    _ => return,
+                }
+            },
+            GizmoType::Rotate => {
+                match (self.torus_vertex_buffer, self.torus_index_buffer) {
+                    (Some(v), Some(i)) => (v, i, self.torus_index_count),
+                    _ => return,
+                }
+            },
+            GizmoType::Scale => {
+                match (self.cube_vertex_buffer, self.cube_index_buffer) {
+                    (Some(v), Some(i)) => (v, i, self.cube_index_count),
+                    _ => return,
+                }
+            },
+            GizmoType::None => return,
+        };
+        
         // Render each axis
         for axis in [GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z] {
             let highlighted = gizmo_state.highlighted_axis == Some(axis);
@@ -228,9 +376,17 @@ impl GizmoRenderer {
                 GizmoAxis::Z => ([0.0, 0.0, if highlighted { 1.0 } else { 0.8 }, 1.0], [0.0, 0.0, 1.0]),
             };
             
+            // For scale gizmos, offset the cubes to the end of each axis
+            let instance_pos = if gizmo_state.gizmo_type == GizmoType::Scale {
+                let offset = Vec3::new(axis_dir[0], axis_dir[1], axis_dir[2]) * scale;
+                [gizmo_pos[0] + offset.x, gizmo_pos[1] + offset.y, gizmo_pos[2] + offset.z]
+            } else {
+                gizmo_pos
+            };
+            
             let instance_data = GizmoInstanceData {
                 gizmo: GizmoInstanceUniforms {
-                    world_position: gizmo_pos,
+                    world_position: instance_pos,
                     _pad1: 0.0,
                     color,
                     axis_direction: axis_dir,
@@ -240,7 +396,7 @@ impl GizmoRenderer {
             
             rc.bind(1, &instance_data);
             rc.bind_vertex(0, vbuf.into());
-            rc.draw_indexed(ibuf.into(), gpu::IndexType::U32, self.arrow_index_count, 0, 0, 1);
+            rc.draw_indexed(ibuf.into(), gpu::IndexType::U32, index_count, 0, 0, 1);
         }
         
         drop(rc);
@@ -255,6 +411,18 @@ impl GizmoRenderer {
             context.destroy_buffer(b);
         }
         if let Some(b) = self.arrow_index_buffer.take() {
+            context.destroy_buffer(b);
+        }
+        if let Some(b) = self.torus_vertex_buffer.take() {
+            context.destroy_buffer(b);
+        }
+        if let Some(b) = self.torus_index_buffer.take() {
+            context.destroy_buffer(b);
+        }
+        if let Some(b) = self.cube_vertex_buffer.take() {
+            context.destroy_buffer(b);
+        }
+        if let Some(b) = self.cube_index_buffer.take() {
             context.destroy_buffer(b);
         }
     }
