@@ -292,6 +292,25 @@ impl HelioRenderer {
         };
         tracing::info!("[HELIO] ✅ Step 8/10: Render targets configured");
 
+        // Create depth texture for the render pipeline
+        tracing::info!("[HELIO] 🚀 Step 8.5/10: Creating depth texture...");
+        let depth_texture = context.create_texture(blade_graphics::TextureDesc {
+            name: "helio_depth_buffer",
+            format: blade_graphics::TextureFormat::Depth32Float,
+            size: blade_graphics::Extent {
+                width,
+                height,
+                depth: 1,
+            },
+            dimension: blade_graphics::TextureDimension::D2,
+            array_layer_count: 1,
+            mip_level_count: 1,
+            sample_count: 1,
+            usage: blade_graphics::TextureUsage::TARGET,
+            external: None,
+        });
+        tracing::info!("[HELIO] ✅ Step 8.5/10: Depth texture created");
+
         tracing::info!("[HELIO] 🚀 Step 9/10: Creating FeatureRenderer...");
         let mut renderer = FeatureRenderer::new(
             Arc::clone(&context),
@@ -555,12 +574,9 @@ impl HelioRenderer {
                 delta_time,
             );
 
-            // Render gizmos as overlay (after main scene, using InitOp::Load)
-            // Note: depth_texture() method doesn't exist on FeatureRenderer
-            // For now, skip gizmo rendering until we have proper depth texture access
-            /*
+            // Render gizmos as overlay (after main scene, using InitOp::Load to preserve scene)
             let depth_view = context.create_texture_view(
-                renderer.depth_texture().unwrap(),
+                depth_texture,
                 blade_graphics::TextureViewDesc {
                     name: "helio_depth_view",
                     format: blade_graphics::TextureFormat::Depth32Float,
@@ -569,16 +585,13 @@ impl HelioRenderer {
                 },
             );
             
-            gizmo_feature.lock().unwrap().render_gizmo_overlay(
+            gizmo_renderer.render(
                 &mut command_encoder,
                 render_target_view,
                 depth_view,
                 camera_uniforms.view_proj,
                 camera.position.to_array(),
             );
-            */
-            
-            tracing::debug!("[HELIO] Frame {} rendered (gizmo overlay TODO)", frame_count);
 
             // Submit and wait (for now - in real implementation we'd handle DXGI sync differently)
             let sync_point = context.submit(&mut command_encoder);
