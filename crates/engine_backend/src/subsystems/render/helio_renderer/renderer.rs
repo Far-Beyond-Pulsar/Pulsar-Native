@@ -244,8 +244,7 @@ impl HelioRenderer {
         let mut billboards = BillboardFeature::new();
         billboards.set_texture_manager(texture_manager.clone());
 
-        // Build feature registry WITH gizmo overlay
-        let gizmo_feature = super::gizmo_overlay::GizmoFeature::new(Arc::clone(&scene_db));
+        // Build feature registry
         let registry = FeatureRegistry::builder()
             .with_feature(base_geometry)
             .with_feature(BasicLighting::new())
@@ -253,8 +252,12 @@ impl HelioRenderer {
             .with_feature(shadows)
             .with_feature(Bloom::new())
             .with_feature(billboards)
-            .with_feature(gizmo_feature)
             .build();
+        
+        // Create gizmo renderer separately (not part of feature registry)
+        let mut gizmo_renderer = super::gizmo_feature::GizmoRenderer::new(Arc::clone(&scene_db));
+        gizmo_renderer.init(&context, blade_graphics::TextureFormat::Bgra8UnormSrgb, blade_graphics::TextureFormat::Depth32Float);
+        tracing::info!("[HELIO] ✅ Gizmo renderer initialized");
         
         tracing::info!("[HELIO] ✅ Step 6/10: Feature registry built with gizmo overlay feature!");
 
@@ -552,8 +555,30 @@ impl HelioRenderer {
                 delta_time,
             );
 
-            // Gizmos are now rendered automatically by the Helio feature system!
-            // No manual render call needed - the GizmoFeature handles it via post_render_pass()
+            // Render gizmos as overlay (after main scene, using InitOp::Load)
+            // Note: depth_texture() method doesn't exist on FeatureRenderer
+            // For now, skip gizmo rendering until we have proper depth texture access
+            /*
+            let depth_view = context.create_texture_view(
+                renderer.depth_texture().unwrap(),
+                blade_graphics::TextureViewDesc {
+                    name: "helio_depth_view",
+                    format: blade_graphics::TextureFormat::Depth32Float,
+                    dimension: blade_graphics::ViewDimension::D2,
+                    subresources: &blade_graphics::TextureSubresources::default(),
+                },
+            );
+            
+            gizmo_feature.lock().unwrap().render_gizmo_overlay(
+                &mut command_encoder,
+                render_target_view,
+                depth_view,
+                camera_uniforms.view_proj,
+                camera.position.to_array(),
+            );
+            */
+            
+            tracing::debug!("[HELIO] Frame {} rendered (gizmo overlay TODO)", frame_count);
 
             // Submit and wait (for now - in real implementation we'd handle DXGI sync differently)
             let sync_point = context.submit(&mut command_encoder);

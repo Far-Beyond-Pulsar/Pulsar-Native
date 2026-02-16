@@ -20,6 +20,9 @@ pub mod gizmos;
 // Gizmo overlay renderer (renders on top of scene)
 pub mod gizmo_overlay;
 
+// Gizmo procedural rendering feature
+pub mod gizmo_feature;
+
 // Scene building system
 pub mod scene_builder;
 
