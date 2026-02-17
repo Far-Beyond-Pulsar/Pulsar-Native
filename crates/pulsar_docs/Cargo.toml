@@ -12,7 +12,7 @@ skip = true
 doc = false
 
 [dependencies]
-rust-embed = { version = "6", features = ["interpolate-folder-path"] }
+rust-embed = { version = "6", features = ["include-exclude"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 syn = { version = "2", features = ["full", "parsing", "extra-traits", "visit"] }

@@ -24,3 +24,4 @@ crates/ui/target/rust-analyzer/flycheck0/stderr
 crates/ui/target/rust-analyzer/flycheck0/stdout
 out.txt
 /tools/set-logo/target
+composed_shader_debug.wgsl

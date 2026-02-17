@@ -1,12 +1,16 @@
 use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
 
+
 pub mod project_parser;
 
 // RustEmbed scans the doc folder at compile time
-// If this hangs, the target/doc folder might be missing or have issues
+// Uses a simple relative path (../../target/doc) from crates/pulsar_docs/ to workspace root
+// This is more reliable than $CARGO_MANIFEST_DIR which may not interpolate correctly in attribute macros
+// The build.rs script ensures this directory exists (even if empty) so rust-embed won't fail
+// If files are present in target/doc, they will be embedded; if not, docs_available() returns false
 #[derive(RustEmbed)]
-#[folder = "$CARGO_MANIFEST_DIR/../../target/doc"]
+#[folder = "../../target/doc"]
 #[prefix = ""] 
 // Only include json and md files to avoid scanning everything
 #[include = "*.json"]

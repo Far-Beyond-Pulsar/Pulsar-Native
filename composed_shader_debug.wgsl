@@ -195,9 +195,10 @@ fn get_cloud_self_shadow(view_dir: vec3<f32>, camera_pos: vec3<f32>, sun_dir: ve
 // sun_height: -1 = midnight below horizon, 0 = on the horizon, +1 = zenith noon
 
 fn get_sky_zenith_color(sun_height: f32) -> vec3<f32> {
-    let night    = vec3<f32>(0.003, 0.006, 0.022);   // Dark navy
-    let twilight = vec3<f32>(0.10,  0.14,  0.44);    // Dusky purple-blue
-    let day      = vec3<f32>(0.07,  0.26,  0.78);    // Rich azure
+    // Colors in BGR format (B, G, R) to display correctly
+    let night    = vec3<f32>(0.022, 0.006, 0.003);   // Dark navy BGR
+    let twilight = vec3<f32>(0.44,  0.14,  0.10);    // Dusky purple-blue BGR
+    let day      = vec3<f32>(0.78,  0.26,  0.07);    // Rich azure BGR
 
     if (sun_height < -0.15) {
         return night;
@@ -209,9 +210,10 @@ fn get_sky_zenith_color(sun_height: f32) -> vec3<f32> {
 }
 
 fn get_sky_horizon_color(sun_height: f32) -> vec3<f32> {
-    let night    = vec3<f32>(0.005, 0.008, 0.026);  // Near-black blue
-    let twilight = vec3<f32>(1.00,  0.42,  0.08);   // Burning orange
-    let day      = vec3<f32>(0.52,  0.72,  0.96);   // Pale sky blue
+    // Colors in BGR format (B, G, R) to display correctly
+    let night    = vec3<f32>(0.026, 0.008, 0.005);  // Near-black blue BGR
+    let twilight = vec3<f32>(0.08,  0.42,  1.00);   // Burning orange BGR
+    let day      = vec3<f32>(0.96,  0.72,  0.52);   // Pale sky blue BGR
 
     if (sun_height < -0.15) {
         return night;
@@ -223,9 +225,9 @@ fn get_sky_horizon_color(sun_height: f32) -> vec3<f32> {
 }
 
 fn get_sun_disc_color(sun_height: f32) -> vec3<f32> {
-    // Deep orange-red at sunset, warm white at noon
-    let sunset = vec3<f32>(1.0, 0.45, 0.05);
-    let noon   = vec3<f32>(1.0, 0.96, 0.88);
+    // Colors in BGR format (B, G, R)
+    let sunset = vec3<f32>(0.05, 0.45, 1.0);  // Orange-red BGR
+    let noon   = vec3<f32>(0.88, 0.96, 1.0);  // Warm white BGR
     return mix(sunset, noon, smoothstep(0.0, 0.4, sun_height));
 }
 
@@ -285,13 +287,13 @@ fn calculate_sky_color(world_pos: vec3<f32>, camera_pos: vec3<f32>) -> vec3<f32>
     // Mie forward-scatter: orange glow only near sunset/sunrise.
     // sunset_factor = 1.0 at horizon, ramps to 0.0 when sun_height >= 0.25,
     // so the midday sky stays clean blue with no warm tint.
-    let sunset_factor = clamp(1.0 - sun_height * 4.0, 0.0, 1.0);
-    if (sunset_factor > 0.0 && sun_height > -0.15) {
-        let mie      = pow(max(0.0, sun_dot), 6.0) * 0.40;
-        let mie_wide = pow(max(0.0, sun_dot), 2.0) * 0.10;
-        let mie_str  = max(0.0, sun_height + 0.15) * 0.4 * sunset_factor;
-        sky_color   += vec3<f32>(1.0, 0.50, 0.15) * (mie + mie_wide) * mie_str;
-    }
+    // let sunset_factor = clamp(1.0 - sun_height * 4.0, 0.0, 1.0);
+    // if (sunset_factor > 0.0 && sun_height > -0.15) {
+    //     let mie      = pow(max(0.0, sun_dot), 6.0) * 0.40;
+    //     let mie_wide = pow(max(0.0, sun_dot), 2.0) * 0.10;
+    //     let mie_str  = max(0.0, sun_height + 0.15) * 0.4 * sunset_factor;
+    //     sky_color   += vec3<f32>(1.0, 0.50, 0.15) * (mie + mie_wide) * mie_str;
+    // }
 
     // === 2. Night stars ===
     sky_color += get_stars(view_dir, sun_height);

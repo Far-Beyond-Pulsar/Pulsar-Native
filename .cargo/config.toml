@@ -3,7 +3,7 @@ rustflags = ["-C", "link-arg=/STACK:8000000"]
 
 [build]
 jobs = 4
-rustflags = ["-A", "warnings"]
+# rustflags = ["-A", "warnings"]
 
 [alias]
 set-logo = "run --manifest-path tools/set-logo/Cargo.toml --"

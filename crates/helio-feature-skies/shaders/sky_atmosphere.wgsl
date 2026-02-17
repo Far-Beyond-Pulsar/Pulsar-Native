@@ -180,14 +180,14 @@ fn calculate_sky_color(view_dir: vec3<f32>) -> vec3<f32> {
                     1.0 - exp(-view_dir.y * 3.5));
     }
 
-    // Mie forward scatter: orange glow only near sunset/sunrise, zero at midday.
-    let sunset_factor = clamp(1.0 - sun_height * 4.0, 0.0, 1.0);
-    if (sunset_factor > 0.0 && sun_height > -0.15) {
-        let mie      = pow(max(0.0, sun_dot), 6.0) * 0.40;
-        let mie_wide = pow(max(0.0, sun_dot), 2.0) * 0.10;
-        let mie_str  = max(0.0, sun_height + 0.15) * 0.4 * sunset_factor;
-        sky         += vec3<f32>(1.0, 0.50, 0.15) * (mie + mie_wide) * mie_str;
-    }
+    // // Mie forward scatter: orange glow only near sunset/sunrise, zero at midday.
+    // let sunset_factor = clamp(1.0 - sun_height * 4.0, 0.0, 1.0);
+    // if (sunset_factor > 0.0 && sun_height > -0.15) {
+    //     let mie      = pow(max(0.0, sun_dot), 6.0) * 0.40;
+    //     let mie_wide = pow(max(0.0, sun_dot), 2.0) * 0.10;
+    //     let mie_str  = max(0.0, sun_height + 0.15) * 0.4 * sunset_factor;
+    //     sky         += vec3<f32>(1.0, 0.50, 0.15) * (mie + mie_wide) * mie_str;
+    // }
 
     // 2 — Stars
     sky += sky_stars(view_dir, sun_height);
