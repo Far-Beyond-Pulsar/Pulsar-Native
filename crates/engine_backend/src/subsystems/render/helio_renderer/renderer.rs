@@ -697,8 +697,9 @@ impl HelioRenderer {
             command_encoder.start();
             command_encoder.init_texture(render_target);
 
-            let aspect = width as f32 / height as f32;
-            let camera_uniforms = camera.build_camera_uniforms(60.0, aspect);
+            let aspect       = width as f32 / height as f32;
+            let elapsed_time = start_time.elapsed().as_secs_f32();
+            let camera_uniforms = camera.build_camera_uniforms(60.0, aspect, elapsed_time);
 
             // Update sky sphere position to follow camera (always centered on viewer)
             scene_db.apply_transform("sky_sphere", 
