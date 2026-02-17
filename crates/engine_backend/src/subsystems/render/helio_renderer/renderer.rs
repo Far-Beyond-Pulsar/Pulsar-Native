@@ -195,7 +195,7 @@ impl HelioRenderer {
         let plane_mesh = MeshBuffer::from_mesh(&*context, "plane", &create_plane_mesh(20.0, 20.0));
         
         // Create inverted sky sphere (flipped winding order for inside-out rendering)
-        let mut sky_sphere_data = create_sphere_mesh(50.0, 32, 32);
+        let mut sky_sphere_data = create_sphere_mesh(1.0, 32, 32); // Unit sphere, scaled by transform
         // Flip winding order so backfaces become front faces
         for i in (0..sky_sphere_data.indices.len()).step_by(3) {
             sky_sphere_data.indices.swap(i, i + 2);
@@ -385,9 +385,9 @@ impl HelioRenderer {
             id: "sky_sphere".to_string(),
             name: "Sky Sphere".to_string(),
             object_type: ObjectType::Mesh(MeshType::Sphere),
-            position: [0.0, 5.0, 0.0], // Camera-level to see it
+            position: [0.0, 5.0, 0.0], // Will be updated to camera position each frame
             rotation: [0.0, 0.0, 0.0],
-            scale: [50.0, 50.0, 50.0], // Large enough to see from inside, but not huge yet
+            scale: [500.0, 500.0, 500.0], // Huge sphere to encompass entire scene
             parent: None,
             children: vec![],
             visible: true,
@@ -700,11 +700,18 @@ impl HelioRenderer {
             let aspect = width as f32 / height as f32;
             let camera_uniforms = camera.build_camera_uniforms(60.0, aspect);
 
+            // Update sky sphere position to follow camera (always centered on viewer)
+            scene_db.apply_transform("sky_sphere", 
+                [camera.position.x, camera.position.y, camera.position.z],
+                [0.0, 0.0, 0.0],
+                [500.0, 500.0, 500.0]  // Huge so it's always far away
+            );
+
             // === SCENE DATABASE - render what's actually in the scene ===
             
-            // Ground plane (always present for orientation)
+            // Ground plane (always present for orientation) - MUCH LARGER
             let ground = Mat4::from_translation(Vec3::new(0.0, -0.01, 0.0))
-                * Mat4::from_scale(Vec3::new(20.0, 1.0, 20.0));
+                * Mat4::from_scale(Vec3::new(100.0, 1.0, 100.0));
             let mut meshes = vec![(TransformUniforms::from_matrix(ground), &plane_mesh)];
 
             // Read all scene objects lock-free via DashMap + atomic transforms
