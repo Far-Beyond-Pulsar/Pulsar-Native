@@ -1,0 +1,9 @@
+[package]
+name = "helio-feature-skies"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+helio-features = { path = "../../../../Helio/crates/helio-features" }
+blade-graphics = { git = "https://github.com/kvark/blade", rev = "d85bd14" }
+glam = "0.29"

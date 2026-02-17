@@ -45,6 +45,7 @@ helio-feature-materials.workspace = true
 helio-feature-procedural-shadows.workspace = true
 helio-feature-bloom.workspace = true
 helio-feature-billboards.workspace = true
+helio-feature-skies = { path = "../helio-feature-skies" }
 blade-graphics.workspace = true
 blade-macros.workspace = true
 glam.workspace = true

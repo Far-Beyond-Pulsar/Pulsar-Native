@@ -14,6 +14,7 @@ use helio_feature_materials::BasicMaterials;
 use helio_feature_procedural_shadows::ProceduralShadows;
 use helio_feature_bloom::Bloom;
 use helio_feature_billboards::BillboardFeature;
+use helio_feature_skies::HelioSkies;
 
 use super::core::{CameraInput, RenderMetrics, GpuProfilerData, SharedGpuTextures};
 use super::gizmo_types::{
@@ -181,7 +182,10 @@ impl HelioRenderer {
         let cube_mesh = MeshBuffer::from_mesh(&*context, "cube", &create_cube_mesh(1.0));
         let sphere_mesh = MeshBuffer::from_mesh(&*context, "sphere", &create_sphere_mesh(0.5, 32, 32));
         let plane_mesh = MeshBuffer::from_mesh(&*context, "plane", &create_plane_mesh(20.0, 20.0));
-        tracing::info!("[HELIO] ✅ Step 4/10: Test meshes created");
+        
+        // Create large sky sphere (500 unit radius for far-distance sky rendering)
+        let sky_sphere = MeshBuffer::from_mesh(&*context, "sky_sphere", &create_sphere_mesh(500.0, 32, 32));
+        tracing::info!("[HELIO] ✅ Step 4/10: Test meshes created (including sky sphere)");
 
         // Create TextureManager and load spotlight billboard texture
         tracing::info!("[HELIO] 🚀 Step 5/10: Creating TextureManager and loading textures...");
@@ -265,7 +269,9 @@ impl HelioRenderer {
             .with_feature(shadows)
             .with_feature(Bloom::new())
             .with_feature(billboards)
+            .with_feature(HelioSkies::new())
             .build();
+        tracing::info!("[HELIO] ✅ Helio Skies feature added to registry");
         
         // Create gizmo renderer separately (not part of feature registry)
         let mut gizmo_renderer = super::gizmo_feature::GizmoRenderer::new(Arc::clone(&scene_db));
@@ -641,10 +647,14 @@ impl HelioRenderer {
             let camera_uniforms = camera.build_camera_uniforms(60.0, aspect);
 
             // === SCENE DATABASE - render what's actually in the scene ===
+            // Sky sphere FIRST - positioned at camera, very large
+            let sky_transform = Mat4::from_translation(camera.position);
+            let mut meshes = vec![(TransformUniforms::from_matrix(sky_transform), &sky_sphere)];
+            
             // Ground plane (always present for orientation)
             let ground = Mat4::from_translation(Vec3::new(0.0, -0.01, 0.0))
                 * Mat4::from_scale(Vec3::new(20.0, 1.0, 20.0));
-            let mut meshes = vec![(TransformUniforms::from_matrix(ground), &plane_mesh)];
+            meshes.push((TransformUniforms::from_matrix(ground), &plane_mesh));
 
             // Read all scene objects lock-free via DashMap + atomic transforms
             scene_db.for_each_entry(|entry| {

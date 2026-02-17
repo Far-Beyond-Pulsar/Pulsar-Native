@@ -1093,6 +1093,40 @@ dependencies = [
 [[package]]
 name = "blade-graphics"
 version = "0.7.0"
+source = "git+https://github.com/kvark/blade?rev=d85bd14#d85bd14a78ed7729abc298906e87332257674a02"
+dependencies = [
+ "ash",
+ "ash-window",
+ "bitflags 2.10.0",
+ "bytemuck",
+ "codespan-reporting",
+ "glow",
+ "gpu-alloc",
+ "gpu-alloc-ash",
+ "hidden-trait",
+ "js-sys",
+ "khronos-egl",
+ "libloading",
+ "log",
+ "mint",
+ "naga 27.0.3",
+ "objc2 0.6.3",
+ "objc2-app-kit 0.3.2",
+ "objc2-core-foundation",
+ "objc2-foundation 0.3.2",
+ "objc2-metal 0.3.2",
+ "objc2-quartz-core 0.3.2",
+ "objc2-ui-kit 0.3.2",
+ "once_cell",
+ "raw-window-handle 0.6.2",
+ "slab",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
+name = "blade-graphics"
+version = "0.7.0"
 source = "git+https://github.com/tristanpoland/blade?rev=d85bd14a78ed7729abc298906e87332257674a02#d85bd14a78ed7729abc298906e87332257674a02"
 dependencies = [
  "ash",
@@ -2789,7 +2823,8 @@ dependencies = [
  "helio-feature-lighting",
  "helio-feature-materials",
  "helio-feature-procedural-shadows",
- "helio-features",
+ "helio-feature-skies",
+ "helio-features 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f7eee35e85b9997422d48e324c07b6857b611185)",
  "helio-render",
  "lsp-types",
  "parking_lot",
@@ -4273,7 +4308,7 @@ dependencies = [
  "blade-graphics 0.7.0 (git+https://github.com/tristanpoland/blade?rev=d85bd14a78ed7729abc298906e87332257674a02)",
  "glam 0.29.3",
  "helio-core",
- "helio-features",
+ "helio-features 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f7eee35e85b9997422d48e324c07b6857b611185)",
  "log",
 ]
 
@@ -4287,7 +4322,7 @@ dependencies = [
  "bytemuck",
  "glam 0.29.3",
  "helio-core",
- "helio-features",
+ "helio-features 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f7eee35e85b9997422d48e324c07b6857b611185)",
  "log",
 ]
 
@@ -4296,7 +4331,7 @@ name = "helio-feature-bloom"
 version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f7eee35e85b9997422d48e324c07b6857b611185#f7eee35e85b9997422d48e324c07b6857b611185"
 dependencies = [
- "helio-features",
+ "helio-features 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f7eee35e85b9997422d48e324c07b6857b611185)",
 ]
 
 [[package]]
@@ -4306,7 +4341,7 @@ source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f7eee35e85b9997422d
 dependencies = [
  "blade-graphics 0.7.0 (git+https://github.com/tristanpoland/blade?rev=d85bd14a78ed7729abc298906e87332257674a02)",
  "glam 0.29.3",
- "helio-features",
+ "helio-features 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f7eee35e85b9997422d48e324c07b6857b611185)",
  "log",
 ]
 
@@ -4319,7 +4354,7 @@ dependencies = [
  "blade-macros 0.3.0 (git+https://github.com/tristanpoland/blade?rev=d85bd14a78ed7729abc298906e87332257674a02)",
  "bytemuck",
  "glam 0.29.3",
- "helio-features",
+ "helio-features 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f7eee35e85b9997422d48e324c07b6857b611185)",
  "log",
 ]
 
@@ -4333,7 +4368,25 @@ dependencies = [
  "bytemuck",
  "glam 0.29.3",
  "helio-core",
- "helio-features",
+ "helio-features 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f7eee35e85b9997422d48e324c07b6857b611185)",
+ "log",
+]
+
+[[package]]
+name = "helio-feature-skies"
+version = "0.1.0"
+dependencies = [
+ "blade-graphics 0.7.0 (git+https://github.com/kvark/blade?rev=d85bd14)",
+ "glam 0.29.3",
+ "helio-features 0.1.0",
+]
+
+[[package]]
+name = "helio-features"
+version = "0.1.0"
+dependencies = [
+ "blade-graphics 0.7.0 (git+https://github.com/tristanpoland/blade?rev=d85bd14a78ed7729abc298906e87332257674a02)",
+ "glam 0.29.3",
  "log",
 ]
 
@@ -4359,7 +4412,7 @@ dependencies = [
  "helio-core",
  "helio-feature-billboards",
  "helio-feature-procedural-shadows",
- "helio-features",
+ "helio-features 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f7eee35e85b9997422d48e324c07b6857b611185)",
  "log",
 ]
 
