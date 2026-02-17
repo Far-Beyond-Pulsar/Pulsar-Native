@@ -66,6 +66,13 @@ struct MaterialData {
 const CLOUD_HEIGHT_MIN: f32 = 200.0;   // World-space altitude of cloud base
 const CLOUD_HEIGHT_MAX: f32 = 400.0;   // World-space altitude of cloud top
 const CLOUD_COVERAGE: f32  = 0.58;     // Fraction of sky covered (0=clear, 1=overcast)
+const SUN_DISC_SIZE: f32 = 0.9992;     // Sun angular size (0.9985 = larger, 0.9995 = smaller)
+const SUN_GLOW_SIZE: f32 = 0.980;      // Sun corona/glow size
+
+// Helper function: rendering expects BGR, so swap R and B channels
+fn rgb(r: f32, g: f32, b: f32) -> vec3<f32> {
+    return vec3<f32>(b, g, r);  // Swapped to BGR
+}
 
 // ===== 3D Noise =====
 
@@ -195,10 +202,10 @@ fn get_cloud_self_shadow(view_dir: vec3<f32>, camera_pos: vec3<f32>, sun_dir: ve
 // sun_height: -1 = midnight below horizon, 0 = on the horizon, +1 = zenith noon
 
 fn get_sky_zenith_color(sun_height: f32) -> vec3<f32> {
-    // Colors in BGR format (B, G, R) to display correctly
-    let night    = vec3<f32>(0.022, 0.006, 0.003);   // Dark navy BGR
-    let twilight = vec3<f32>(0.44,  0.14,  0.10);    // Dusky purple-blue BGR
-    let day      = vec3<f32>(0.78,  0.26,  0.07);    // Rich azure BGR
+    // Define colors in RGB and convert to BGR for rendering
+    let night    = rgb(0.003, 0.006, 0.022);   // Dark navy
+    let twilight = rgb(0.10,  0.14,  0.44);    // Dusky purple-blue
+    let day      = rgb(0.07,  0.26,  0.78);    // Rich azure
 
     if (sun_height < -0.15) {
         return night;
@@ -210,10 +217,10 @@ fn get_sky_zenith_color(sun_height: f32) -> vec3<f32> {
 }
 
 fn get_sky_horizon_color(sun_height: f32) -> vec3<f32> {
-    // Colors in BGR format (B, G, R) to display correctly
-    let night    = vec3<f32>(0.026, 0.008, 0.005);  // Near-black blue BGR
-    let twilight = vec3<f32>(0.08,  0.42,  1.00);   // Burning orange BGR
-    let day      = vec3<f32>(0.96,  0.72,  0.52);   // Pale sky blue BGR
+    // Define colors in RGB and convert to BGR for rendering
+    let night    = rgb(0.005, 0.008, 0.026);  // Near-black blue
+    let twilight = rgb(1.00,  0.42,  0.08);   // Burning orange
+    let day      = rgb(0.52,  0.72,  0.96);   // Pale sky blue
 
     if (sun_height < -0.15) {
         return night;
@@ -225,16 +232,16 @@ fn get_sky_horizon_color(sun_height: f32) -> vec3<f32> {
 }
 
 fn get_sun_disc_color(sun_height: f32) -> vec3<f32> {
-    // Colors in BGR format (B, G, R)
-    let sunset = vec3<f32>(0.05, 0.45, 1.0);  // Orange-red BGR
-    let noon   = vec3<f32>(0.88, 0.96, 1.0);  // Warm white BGR
+    // Define colors in RGB and convert to BGR for rendering
+    let sunset = rgb(1.0, 0.45, 0.05);  // Orange-red
+    let noon   = rgb(1.0, 0.96, 0.88);  // Warm white
     return mix(sunset, noon, smoothstep(0.0, 0.4, sun_height));
 }
 
 // ===== Star Field =====
 fn get_stars(view_dir: vec3<f32>, sun_height: f32) -> vec3<f32> {
     if (sun_height > 0.15) {
-        return vec3<f32>(0.0);
+        return rgb(0.0, 0.0, 0.0);  // No stars in daylight
     }
     let visibility = smoothstep(0.15, -0.10, sun_height);
 
@@ -250,7 +257,7 @@ fn get_stars(view_dir: vec3<f32>, sun_height: f32) -> vec3<f32> {
     let star2 = smoothstep(0.04, 0.0, d2) * select(0.0, h2 * 0.9, h2 > 0.985);
 
     // Slight blue-orange variation like real stars
-    let star_col = mix(vec3<f32>(0.80, 0.85, 1.00), vec3<f32>(1.00, 0.95, 0.80), h1);
+    let star_col = mix(rgb(0.80, 0.85, 1.00), rgb(1.00, 0.95, 0.80), h1);
     return star_col * (star1 + star2) * visibility;
 }
 
@@ -277,7 +284,7 @@ fn calculate_sky_color(world_pos: vec3<f32>, camera_pos: vec3<f32>) -> vec3<f32>
     if (view_dir.y < 0.0) {
         // Below horizon: dark ground fog fading to black
         let ground_t = saturate(-view_dir.y * 4.0);
-        sky_color = mix(horizon_col * 0.30, vec3<f32>(0.01, 0.01, 0.01), ground_t);
+        sky_color = mix(horizon_col * 0.30, rgb(0.01, 0.01, 0.01), ground_t);
     } else {
         // Exponential altitude blend (thicker atmosphere near horizon)
         let alt_t = 1.0 - exp(-view_dir.y * 3.5);
@@ -311,16 +318,16 @@ fn calculate_sky_color(world_pos: vec3<f32>, camera_pos: vec3<f32>) -> vec3<f32>
         let self_shadow = get_cloud_self_shadow(view_dir, camera_pos, sun_dir, time);
 
         let lit_col    = mix(
-            vec3<f32>(1.0,  0.62, 0.30),  // Warm golden at sunset
-            vec3<f32>(1.0,  0.98, 0.96),  // Cool bright white at noon
+            rgb(1.0,  0.62, 0.30),  // Warm golden at sunset
+            rgb(1.0,  0.98, 0.96),  // Cool bright white at noon
             smoothstep(0.0, 0.35, sun_height)
         );
         let shadow_col = mix(
-            vec3<f32>(0.28, 0.20, 0.30),  // Deep violet-grey at sunset
-            vec3<f32>(0.55, 0.62, 0.76),  // Cool blue-grey at noon
+            rgb(0.28, 0.20, 0.30),  // Deep violet-grey at sunset
+            rgb(0.55, 0.62, 0.76),  // Cool blue-grey at noon
             smoothstep(0.0, 0.35, sun_height)
         );
-        let night_col  = vec3<f32>(0.035, 0.035, 0.055); // Almost-black night cloud
+        let night_col  = rgb(0.035, 0.035, 0.055); // Almost-black night cloud
 
         // Combine view-elevation shading with self-shadow: thick cloud = dark interior
         let cloud_base  = mix(shadow_col, lit_col, lit_frac * self_shadow);
@@ -340,16 +347,16 @@ fn calculate_sky_color(world_pos: vec3<f32>, camera_pos: vec3<f32>) -> vec3<f32>
     let sun_occl = cloud_density; // how much cloud is blocking the sun
 
     // Disc
-    if (sun_height > -0.08 && sun_dot > 0.9985) {
-        let disc_t     = smoothstep(0.9985, 1.0, sun_dot);
+    if (sun_height > -0.08 && sun_dot > SUN_DISC_SIZE) {
+        let disc_t     = smoothstep(SUN_DISC_SIZE, 1.0, sun_dot);
         let brightness = mix(6.0, 45.0, smoothstep(0.0, 0.4, sun_height));
         let atten      = 1.0 - sun_occl * 0.95;
         sky_color      = mix(sky_color, sun_col * brightness, disc_t * atten);
     }
 
     // Corona / inner glow
-    if (sun_height > -0.10 && sun_dot > 0.975) {
-        let glow       = pow((sun_dot - 0.975) / 0.025, 2.0);
+    if (sun_height > -0.10 && sun_dot > SUN_GLOW_SIZE) {
+        let glow       = pow((sun_dot - SUN_GLOW_SIZE) / (1.0 - SUN_GLOW_SIZE), 2.0);
         let glow_col   = sun_col * mix(2.0, 7.0, smoothstep(0.0, 0.4, sun_height));
         sky_color     += glow_col * glow * 0.35 * (1.0 - sun_occl * 0.7);
     }
