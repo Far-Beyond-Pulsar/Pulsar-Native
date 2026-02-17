@@ -180,6 +180,17 @@ fn get_cloud_coverage_for_ray(view_dir: vec3<f32>, camera_pos: vec3<f32>, time: 
     return clamp(total / 3.0, 0.0, 1.0);
 }
 
+// Cheap self-shadow: 2 density samples toward the sun from the cloud midpoint.
+// Returns [0,1] where 1 = fully lit, 0 = fully shadowed.  Costs ~2 noise evals.
+fn get_cloud_self_shadow(view_dir: vec3<f32>, camera_pos: vec3<f32>, sun_dir: vec3<f32>, time: f32) -> f32 {
+    if (view_dir.y < 0.02) { return 1.0; }
+    let t_mid   = ((CLOUD_HEIGHT_MIN + CLOUD_HEIGHT_MAX) * 0.5 - camera_pos.y) / view_dir.y;
+    let mid_pos = camera_pos + view_dir * t_mid;
+    let d1      = get_cloud_density(mid_pos + sun_dir * 50.0, time);
+    let d2      = get_cloud_density(mid_pos + sun_dir * 100.0, time);
+    return exp(-(d1 + d2) * 2.5);
+}
+
 // ===== Time-of-Day Sky Gradient =====
 // sun_height: -1 = midnight below horizon, 0 = on the horizon, +1 = zenith noon
 
@@ -271,17 +282,15 @@ fn calculate_sky_color(world_pos: vec3<f32>, camera_pos: vec3<f32>) -> vec3<f32>
         sky_color = mix(horizon_col, zenith_col, alt_t);
     }
 
-    // Mie forward-scatter: warm glow in the direction of the sun
-    if (sun_height > -0.15) {
+    // Mie forward-scatter: orange glow only near sunset/sunrise.
+    // sunset_factor = 1.0 at horizon, ramps to 0.0 when sun_height >= 0.25,
+    // so the midday sky stays clean blue with no warm tint.
+    let sunset_factor = clamp(1.0 - sun_height * 4.0, 0.0, 1.0);
+    if (sunset_factor > 0.0 && sun_height > -0.15) {
         let mie      = pow(max(0.0, sun_dot), 6.0) * 0.40;
-        let mie_wide = pow(max(0.0, sun_dot), 2.0) * 0.12;
-        let mie_col  = mix(
-            vec3<f32>(1.0, 0.50, 0.15),  // Orange sunset scatter
-            vec3<f32>(1.0, 0.92, 0.78),  // Warm noon scatter
-            smoothstep(0.0, 0.4, sun_height)
-        );
-        let mie_str = max(0.0, sun_height + 0.15) * 0.5;
-        sky_color  += mie_col * (mie + mie_wide) * mie_str;
+        let mie_wide = pow(max(0.0, sun_dot), 2.0) * 0.10;
+        let mie_str  = max(0.0, sun_height + 0.15) * 0.4 * sunset_factor;
+        sky_color   += vec3<f32>(1.0, 0.50, 0.15) * (mie + mie_wide) * mie_str;
     }
 
     // === 2. Night stars ===
@@ -293,8 +302,11 @@ fn calculate_sky_color(world_pos: vec3<f32>, camera_pos: vec3<f32>) -> vec3<f32>
     let cloud_density = get_cloud_coverage_for_ray(view_dir, camera_pos, time);
 
     if (cloud_density > 0.005) {
-        // Lit colour varies with sun angle and whether we see the top/underside
+        // Lit fraction: top of cloud (high view_dir.y) = lit, underside = shadowed.
         let lit_frac = smoothstep(0.1, 0.8, view_dir.y);
+
+        // Self-shadow: density above the cloud midpoint toward the sun darkens interiors.
+        let self_shadow = get_cloud_self_shadow(view_dir, camera_pos, sun_dir, time);
 
         let lit_col    = mix(
             vec3<f32>(1.0,  0.62, 0.30),  // Warm golden at sunset
@@ -308,11 +320,12 @@ fn calculate_sky_color(world_pos: vec3<f32>, camera_pos: vec3<f32>) -> vec3<f32>
         );
         let night_col  = vec3<f32>(0.035, 0.035, 0.055); // Almost-black night cloud
 
-        let cloud_base  = mix(shadow_col, lit_col, lit_frac);
+        // Combine view-elevation shading with self-shadow: thick cloud = dark interior
+        let cloud_base  = mix(shadow_col, lit_col, lit_frac * self_shadow);
         let cloud_color = mix(night_col, cloud_base, smoothstep(-0.1, 0.12, sun_height));
 
-        // Silver-lining: thin edges catch sunlight
-        let edge_bright = pow(1.0 - cloud_density, 3.0) * max(0.0, sun_height) * 0.45;
+        // Silver-lining: thin sunlit edges (attenuated where self-shadowed)
+        let edge_bright = pow(1.0 - cloud_density, 3.0) * max(0.0, sun_height) * 0.45 * self_shadow;
         let silver      = lit_col * edge_bright;
 
         // Sky darkens under the cloud mass (shadow on the air below)

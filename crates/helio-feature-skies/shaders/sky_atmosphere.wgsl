@@ -104,6 +104,17 @@ fn sky_cloud_coverage(view_dir: vec3<f32>, camera_pos: vec3<f32>, time: f32) -> 
     return clamp(total / 3.0, 0.0, 1.0);
 }
 
+// Cheap self-shadow: 2 density samples toward the sun from the cloud midpoint.
+// Returns [0,1] where 1 = fully lit, 0 = fully shadowed.
+fn sky_cloud_self_shadow(view_dir: vec3<f32>, camera_pos: vec3<f32>, sun_dir: vec3<f32>, time: f32) -> f32 {
+    if (view_dir.y < 0.02) { return 1.0; }
+    let t_mid   = ((CLOUD_HEIGHT_MIN + CLOUD_HEIGHT_MAX) * 0.5 - camera_pos.y) / view_dir.y;
+    let mid_pos = camera_pos + view_dir * t_mid;
+    let d1      = sky_cloud_density(mid_pos + sun_dir * 50.0, time);
+    let d2      = sky_cloud_density(mid_pos + sun_dir * 100.0, time);
+    return exp(-(d1 + d2) * 2.5);
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Time-of-day colour tables
 // ───────────────────────────────────────────────────────────────────────────
@@ -169,13 +180,13 @@ fn calculate_sky_color(view_dir: vec3<f32>) -> vec3<f32> {
                     1.0 - exp(-view_dir.y * 3.5));
     }
 
-    // Mie forward scatter (warm glow toward sun)
-    if (sun_height > -0.15) {
-        let mie    = pow(max(0.0, sun_dot), 6.0) * 0.40;
-        let broad  = pow(max(0.0, sun_dot), 2.0) * 0.12;
-        let mc     = mix(vec3<f32>(1.0,0.50,0.15), vec3<f32>(1.0,0.92,0.78),
-                         smoothstep(0.0, 0.4, sun_height));
-        sky       += mc * (mie + broad) * max(0.0, sun_height + 0.15) * 0.5;
+    // Mie forward scatter: orange glow only near sunset/sunrise, zero at midday.
+    let sunset_factor = clamp(1.0 - sun_height * 4.0, 0.0, 1.0);
+    if (sunset_factor > 0.0 && sun_height > -0.15) {
+        let mie      = pow(max(0.0, sun_dot), 6.0) * 0.40;
+        let mie_wide = pow(max(0.0, sun_dot), 2.0) * 0.10;
+        let mie_str  = max(0.0, sun_height + 0.15) * 0.4 * sunset_factor;
+        sky         += vec3<f32>(1.0, 0.50, 0.15) * (mie + mie_wide) * mie_str;
     }
 
     // 2 — Stars
@@ -187,17 +198,19 @@ fn calculate_sky_color(view_dir: vec3<f32>) -> vec3<f32> {
     let cloud_density = sky_cloud_coverage(view_dir, camera.position, time);
 
     if (cloud_density > 0.005) {
-        let lit_frac  = smoothstep(0.1, 0.8, view_dir.y);
+        let lit_frac    = smoothstep(0.1, 0.8, view_dir.y);
+        let self_shadow = sky_cloud_self_shadow(view_dir, camera.position, sun_dir, time);
+
         let lit_col   = mix(vec3<f32>(1.0,0.62,0.30), vec3<f32>(1.0,0.98,0.96),
                             smoothstep(0.0, 0.35, sun_height));
         let shad_col  = mix(vec3<f32>(0.28,0.20,0.30), vec3<f32>(0.55,0.62,0.76),
                             smoothstep(0.0, 0.35, sun_height));
         let night_col = vec3<f32>(0.035, 0.035, 0.055);
 
-        let cloud_base = mix(shad_col, lit_col, lit_frac);
+        let cloud_base = mix(shad_col, lit_col, lit_frac * self_shadow);
         let cloud_col  = mix(night_col, cloud_base, smoothstep(-0.1, 0.12, sun_height));
 
-        let silver = lit_col * pow(1.0 - cloud_density, 3.0) * max(0.0, sun_height) * 0.45;
+        let silver = lit_col * pow(1.0 - cloud_density, 3.0) * max(0.0, sun_height) * 0.45 * self_shadow;
         sky        = mix(sky * (1.0 - cloud_density * 0.55),
                          cloud_col + silver, cloud_density * 0.92);
     }
