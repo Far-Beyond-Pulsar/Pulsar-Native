@@ -51,6 +51,11 @@ pub struct LevelEditorState {
     pub show_gpu_pipeline_overlay: bool,
     pub show_camera_mode_selector: bool,
     pub show_viewport_options: bool,
+    /// Feature toggles for Helio renderer
+    pub feature_lighting_enabled: bool,
+    pub feature_shadows_enabled: bool,
+    pub feature_bloom_enabled: bool,
+    pub feature_materials_enabled: bool,
     /// Collapsed state for overlays (when X is clicked, overlay collapses to a button)
     pub camera_mode_selector_collapsed: bool,
     pub viewport_options_collapsed: bool,
@@ -232,6 +237,10 @@ impl Default for LevelEditorState {
             show_gpu_pipeline_overlay: false,
             show_camera_mode_selector: true,
             show_viewport_options: true,
+            feature_lighting_enabled: true,
+            feature_shadows_enabled: true,
+            feature_bloom_enabled: true,
+            feature_materials_enabled: true,
             camera_mode_selector_collapsed: false,
             viewport_options_collapsed: false,
             performance_overlay_collapsed: false,

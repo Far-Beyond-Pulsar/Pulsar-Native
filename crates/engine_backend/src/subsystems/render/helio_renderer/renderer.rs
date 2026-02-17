@@ -184,6 +184,7 @@ impl HelioRenderer {
         let plane_mesh = MeshBuffer::from_mesh(&*context, "plane", &create_plane_mesh(20.0, 20.0));
         
         // Create large sky sphere (500 unit radius for far-distance sky rendering)
+        // Sky sphere positioned WAY above scene (Y=10000) so we can detect it by Y position
         let sky_sphere = MeshBuffer::from_mesh(&*context, "sky_sphere", &create_sphere_mesh(500.0, 32, 32));
         tracing::info!("[HELIO] ✅ Step 4/10: Test meshes created (including sky sphere)");
 
@@ -269,9 +270,9 @@ impl HelioRenderer {
             .with_feature(shadows)
             .with_feature(Bloom::new())
             .with_feature(billboards)
-            .with_feature(HelioSkies::new())
+            // .with_feature(HelioSkies::new())  // Disabled - using emissive materials instead
             .build();
-        tracing::info!("[HELIO] ✅ Helio Skies feature added to registry");
+        tracing::info!("[HELIO] ✅ Feature registry built with emissive material support");
         
         // Create gizmo renderer separately (not part of feature registry)
         let mut gizmo_renderer = super::gizmo_feature::GizmoRenderer::new(Arc::clone(&scene_db));
@@ -362,6 +363,31 @@ impl HelioRenderer {
         let mut frame_count: u64 = 0;
 
         tracing::info!("[HELIO] ✅✅✅ ALL INITIALIZATION COMPLETE - ENTERING RENDER LOOP ✅✅✅");
+
+        // Add sky sphere to scene ONCE at startup - TEST with positive scale first
+        use crate::scene::{SceneObjectSnapshot, ObjectType, MeshType, Component};
+        let sky_sphere_obj = SceneObjectSnapshot {
+            id: "sky_sphere".to_string(),
+            name: "Sky Sphere".to_string(),
+            object_type: ObjectType::Mesh(MeshType::Sphere),
+            position: [0.0, 10.0, 0.0], // Elevated so we can see it
+            rotation: [0.0, 0.0, 0.0],
+            scale: [5.0, 5.0, 5.0], // POSITIVE scale first to test if it renders at all
+            parent: None,
+            children: vec![],
+            visible: true,
+            locked: false,
+            components: vec![
+                Component::Material {
+                    id: "sky_material".to_string(),
+                    color: [1.0, 0.0, 1.0, 1.0], // BRIGHT MAGENTA to be unmistakable
+                    metallic: 0.0,
+                    roughness: 1.0,
+                }
+            ],
+        };
+        scene_db.add_object(sky_sphere_obj, None);
+        tracing::info!("[HELIO] ✅ Sky sphere test added at (0, 10, 0) with scale [5, 5, 5] and MAGENTA color");
 
         // Main render loop
         while !shutdown.load(Ordering::Relaxed) {
@@ -647,14 +673,11 @@ impl HelioRenderer {
             let camera_uniforms = camera.build_camera_uniforms(60.0, aspect);
 
             // === SCENE DATABASE - render what's actually in the scene ===
-            // Sky sphere FIRST - positioned at camera, very large
-            let sky_transform = Mat4::from_translation(camera.position);
-            let mut meshes = vec![(TransformUniforms::from_matrix(sky_transform), &sky_sphere)];
             
             // Ground plane (always present for orientation)
             let ground = Mat4::from_translation(Vec3::new(0.0, -0.01, 0.0))
                 * Mat4::from_scale(Vec3::new(20.0, 1.0, 20.0));
-            meshes.push((TransformUniforms::from_matrix(ground), &plane_mesh));
+            let mut meshes = vec![(TransformUniforms::from_matrix(ground), &plane_mesh)];
 
             // Read all scene objects lock-free via DashMap + atomic transforms
             scene_db.for_each_entry(|entry| {
@@ -733,6 +756,11 @@ impl HelioRenderer {
                     */
                 }
             }
+
+            // TEST: Render sky_sphere as a NORMAL sphere at a fixed position to verify it works
+            let test_sky = Mat4::from_translation(Vec3::new(10.0, 5.0, 0.0)) 
+                * Mat4::from_scale(Vec3::new(3.0, 3.0, 3.0)); // Normal positive scale
+            meshes.push((TransformUniforms::from_matrix(test_sky), &sky_sphere));
 
             // Render scene
             let render_target_view = context.create_texture_view(

@@ -1,6 +1,3 @@
-/// Modular Level Editor UI Components
-/// Professional studio-quality level editor with multi-panel layout
-
 mod state;
 mod panel;
 mod world_settings;

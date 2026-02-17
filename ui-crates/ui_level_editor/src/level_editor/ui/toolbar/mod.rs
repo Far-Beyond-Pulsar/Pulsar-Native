@@ -9,6 +9,7 @@ mod time_scale_dropdown;
 mod multiplayer_dropdown;
 mod build_dropdowns;
 mod mode_indicator;
+mod feature_toggles;
 
 pub use actions::*;
 use playback_controls::PlaybackControls;
@@ -16,6 +17,7 @@ use time_scale_dropdown::TimeScaleDropdown;
 use multiplayer_dropdown::MultiplayerDropdown;
 use build_dropdowns::BuildDropdowns;
 use mode_indicator::ModeIndicator;
+use feature_toggles::FeatureToggles;
 
 use super::state::LevelEditorState;
 
@@ -70,6 +72,8 @@ impl ToolbarPanel {
             .child(MultiplayerDropdown::render(state, state_arc.clone(), cx))
             .child(self.render_separator(cx))
             .child(BuildDropdowns::render(state, state_arc.clone(), cx))
+            .child(self.render_separator(cx))
+            .child(FeatureToggles::render(state, state_arc.clone(), cx))
             .child(div().flex_1())
             .child(ModeIndicator::render(state, cx))
             .child(self.render_separator(cx))

@@ -46,11 +46,16 @@ impl Feature for HelioSkies {
                 include_str!("../shaders/sky_atmosphere.wgsl"),
                 10,
             ),
-            // Apply sky rendering in post-process
+            // VERY early in FragmentMain - check if sky and return immediately
             ShaderInjection::with_priority(
-                ShaderInjectionPoint::FragmentPostProcess,
-                "    final_color = apply_volumetric_sky(final_color, input.world_position, camera.position);",
-                5,
+                ShaderInjectionPoint::FragmentMain,
+                r#"    // Helio Skies: Detect sky sphere and return emissive color immediately
+    let distance_to_camera = length(input.world_position - camera.position);
+    if (distance_to_camera > 400.0) {
+        let view_dir = normalize(input.world_position - camera.position);
+        return vec4<f32>(calculate_sky_color(view_dir), 1.0);
+    }"#,
+                1000, // VERY high priority - execute first before anything else
             ),
         ]
     }
