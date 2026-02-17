@@ -84,15 +84,27 @@ plugin_editor_api = { path = "crates/plugin_editor_api"}
 plugin_manager    = { path = "crates/plugin_manager" }
 
 # ---------- Helio Renderer (blade-graphics based) ----------
-helio-core                       = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="f7eee35e85b9997422d48e324c07b6857b611185"}
-helio-render                     = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="f7eee35e85b9997422d48e324c07b6857b611185"}
-helio-features                   = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="f7eee35e85b9997422d48e324c07b6857b611185"}
-helio-feature-base-geometry      = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="f7eee35e85b9997422d48e324c07b6857b611185"}
-helio-feature-lighting           = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="f7eee35e85b9997422d48e324c07b6857b611185"}
-helio-feature-materials          = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="f7eee35e85b9997422d48e324c07b6857b611185"}
-helio-feature-procedural-shadows = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="f7eee35e85b9997422d48e324c07b6857b611185"}
-helio-feature-bloom              = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="f7eee35e85b9997422d48e324c07b6857b611185"}
-helio-feature-billboards         = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="f7eee35e85b9997422d48e324c07b6857b611185"}
+# Using local Helio for development
+helio-core                       = { path = "../Helio/crates/helio-core" }
+helio-render                     = { path = "../Helio/crates/helio-render" }
+helio-features                   = { path = "../Helio/crates/helio-features" }
+helio-feature-base-geometry      = { path = "../Helio/crates/helio-feature-base-geometry" }
+helio-feature-lighting           = { path = "../Helio/crates/helio-feature-lighting" }
+helio-feature-materials          = { path = "../Helio/crates/helio-feature-materials" }
+helio-feature-procedural-shadows = { path = "../Helio/crates/helio-feature-procedural-shadows" }
+helio-feature-bloom              = { path = "../Helio/crates/helio-feature-bloom" }
+helio-feature-billboards         = { path = "../Helio/crates/helio-feature-billboards" }
+
+# Git version (commented out while using local)
+# helio-core                       = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="f7eee35e85b9997422d48e324c07b6857b611185"}
+# helio-render                     = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="f7eee35e85b9997422d48e324c07b6857b611185"}
+# helio-features                   = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="f7eee35e85b9997422d48e324c07b6857b611185"}
+# helio-feature-base-geometry      = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="f7eee35e85b9997422d48e324c07b6857b611185"}
+# helio-feature-lighting           = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="f7eee35e85b9997422d48e324c07b6857b611185"}
+# helio-feature-materials          = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="f7eee35e85b9997422d48e324c07b6857b611185"}
+# helio-feature-procedural-shadows = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="f7eee35e85b9997422d48e324c07b6857b611185"}
+# helio-feature-bloom              = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="f7eee35e85b9997422d48e324c07b6857b611185"}
+# helio-feature-billboards         = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev="f7eee35e85b9997422d48e324c07b6857b611185"}
 
 blade-graphics = { git = "https://github.com/tristanpoland/blade", rev = "d85bd14a78ed7729abc298906e87332257674a02"}
 blade-macros   = { git = "https://github.com/tristanpoland/blade", rev = "d85bd14a78ed7729abc298906e87332257674a02"}

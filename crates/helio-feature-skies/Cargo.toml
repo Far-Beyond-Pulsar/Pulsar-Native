@@ -1,0 +1,12 @@
+[package]
+name = "helio-feature-skies"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+helio-features = { path = "../../../Helio/crates/helio-features" }
+helio-core = { path = "../../../Helio/crates/helio-core" }
+blade-graphics.workspace = true
+glam.workspace = true
+bytemuck = "1.14"
+log = "0.4"
