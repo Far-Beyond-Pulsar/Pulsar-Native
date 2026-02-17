@@ -958,7 +958,7 @@ impl Render for LevelEditorPanel {
             }))
             .child(
                 // Toolbar at the top
-                self.toolbar.render(&*self.shared_state.read(), self.shared_state.clone(), cx)
+                self.toolbar.render(&*self.shared_state.read(), self.shared_state.clone(), self.gpu_engine.clone(), cx)
             )
             .child(
                 // Workspace with draggable panels

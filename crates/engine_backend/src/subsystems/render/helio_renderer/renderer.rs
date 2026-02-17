@@ -1,7 +1,7 @@
 //! Main HelioRenderer struct and initialization logic
 //! Matches BevyRenderer's API but uses blade-graphics + Helio features
 
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering}};
+use std::sync::{Arc, Mutex, atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering}, mpsc};
 use std::time::{Duration, Instant};
 use glam::{Vec3, Mat4};
 
@@ -22,6 +22,11 @@ use super::gizmo_types::{
     ViewportMouseInput, GizmoInteractionState, ActiveRaycastTask, RaycastResult,
 };
 
+/// Command sent from UI to renderer thread
+pub enum RendererCommand {
+    ToggleFeature(String), // feature name
+}
+
 /// Helio-based renderer matching BevyRenderer's API
 pub struct HelioRenderer {
     pub shared_textures: Arc<Mutex<Option<SharedGpuTextures>>>,
@@ -33,6 +38,8 @@ pub struct HelioRenderer {
     /// Shared scene database - the renderer reads from this directly each frame.
     /// The same Arc is held by all UI panels; writes are immediately visible to the renderer.
     pub scene_db: Arc<crate::scene::SceneDb>,
+    /// Channel to send commands to renderer thread
+    pub command_sender: mpsc::Sender<RendererCommand>,
     shutdown: Arc<AtomicBool>,
     _render_thread: Option<std::thread::JoinHandle<()>>,
 }
@@ -64,6 +71,7 @@ impl HelioRenderer {
         let gpu_profiler = Arc::new(Mutex::new(GpuProfilerData::default()));
         let gizmo_state = Arc::new(Mutex::new(GizmoStateResource::default()));
         let viewport_mouse_input = Arc::new(parking_lot::Mutex::new(ViewportMouseInput::default()));
+        let (command_sender, command_receiver) = mpsc::channel();
         let shutdown = Arc::new(AtomicBool::new(false));
 
         let shared_textures_clone = shared_textures.clone();
@@ -90,6 +98,7 @@ impl HelioRenderer {
                     gpu_profiler_clone,
                     gizmo_state_clone,
                     viewport_mouse_input_clone,
+                    command_receiver,
                     scene_db_clone,
                     shutdown_clone,
                     game_thread_clone,
@@ -106,6 +115,7 @@ impl HelioRenderer {
             gizmo_state,
             viewport_mouse_input,
             scene_db,
+            command_sender,
             shutdown,
             _render_thread: Some(render_thread),
         }
@@ -120,6 +130,7 @@ impl HelioRenderer {
         gpu_profiler: Arc<Mutex<GpuProfilerData>>,
         _gizmo_state: Arc<Mutex<GizmoStateResource>>,
         _viewport_mouse_input: Arc<parking_lot::Mutex<ViewportMouseInput>>,
+        command_receiver: mpsc::Receiver<RendererCommand>,
         scene_db: Arc<crate::scene::SceneDb>,
         shutdown: Arc<AtomicBool>,
         _game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
@@ -364,15 +375,15 @@ impl HelioRenderer {
 
         tracing::info!("[HELIO] ✅✅✅ ALL INITIALIZATION COMPLETE - ENTERING RENDER LOOP ✅✅✅");
 
-        // Add sky sphere to scene ONCE at startup - TEST with positive scale first
+        // Add sky sphere to scene ONCE at startup
         use crate::scene::{SceneObjectSnapshot, ObjectType, MeshType, Component};
         let sky_sphere_obj = SceneObjectSnapshot {
             id: "sky_sphere".to_string(),
             name: "Sky Sphere".to_string(),
             object_type: ObjectType::Mesh(MeshType::Sphere),
-            position: [0.0, 10.0, 0.0], // Elevated so we can see it
+            position: [0.0, 5.0, 0.0], // Camera-level to see it
             rotation: [0.0, 0.0, 0.0],
-            scale: [5.0, 5.0, 5.0], // POSITIVE scale first to test if it renders at all
+            scale: [50.0, 50.0, 50.0], // Large enough to see from inside, but not huge yet
             parent: None,
             children: vec![],
             visible: true,
@@ -380,18 +391,31 @@ impl HelioRenderer {
             components: vec![
                 Component::Material {
                     id: "sky_material".to_string(),
-                    color: [1.0, 0.0, 1.0, 1.0], // BRIGHT MAGENTA to be unmistakable
+                    color: [0.5, 0.8, 1.0, 1.0], // Sky blue
                     metallic: 0.0,
                     roughness: 1.0,
                 }
             ],
         };
         scene_db.add_object(sky_sphere_obj, None);
-        tracing::info!("[HELIO] ✅ Sky sphere test added at (0, 10, 0) with scale [5, 5, 5] and MAGENTA color");
+        tracing::info!("[HELIO] ✅ Sky sphere added at (0, 5, 0) with scale [50, 50, 50]");
 
         // Main render loop
         while !shutdown.load(Ordering::Relaxed) {
             profiling::profile_scope!("Helio Frame");
+            
+            // Process renderer commands from UI (non-blocking)
+            while let Ok(cmd) = command_receiver.try_recv() {
+                match cmd {
+                    RendererCommand::ToggleFeature(feature_name) => {
+                        if let Ok(enabled) = renderer.toggle_and_rebuild(&feature_name) {
+                            tracing::info!("[HELIO] Feature '{}' toggled to: {}", feature_name, enabled);
+                        } else {
+                            tracing::warn!("[HELIO] Failed to toggle feature '{}'", feature_name);
+                        }
+                    }
+                }
+            }
             
             let now = Instant::now();
             let delta_time = (now - last_frame_time).as_secs_f32();

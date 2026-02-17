@@ -48,6 +48,7 @@ impl ToolbarPanel {
         &self,
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        gpu_engine: Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
@@ -73,7 +74,7 @@ impl ToolbarPanel {
             .child(self.render_separator(cx))
             .child(BuildDropdowns::render(state, state_arc.clone(), cx))
             .child(self.render_separator(cx))
-            .child(FeatureToggles::render(state, state_arc.clone(), cx))
+            .child(FeatureToggles::render(state, state_arc.clone(), gpu_engine, cx))
             .child(div().flex_1())
             .child(ModeIndicator::render(state, cx))
             .child(self.render_separator(cx))

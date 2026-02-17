@@ -50,7 +50,7 @@ pub mod renderer;
 
 // Re-export public API
 pub use core::{CameraInput, RenderMetrics, GpuProfilerData, DiagnosticMetric, SharedGpuTextures};
-pub use renderer::HelioRenderer;
+pub use renderer::{HelioRenderer, RendererCommand};
 pub use gizmo_overlay::GizmoFeature;
 
 // Re-export gizmo stub types
