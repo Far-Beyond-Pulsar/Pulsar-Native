@@ -194,10 +194,14 @@ impl HelioRenderer {
         let sphere_mesh = MeshBuffer::from_mesh(&*context, "sphere", &create_sphere_mesh(0.5, 32, 32));
         let plane_mesh = MeshBuffer::from_mesh(&*context, "plane", &create_plane_mesh(20.0, 20.0));
         
-        // Create large sky sphere (500 unit radius for far-distance sky rendering)
-        // Sky sphere positioned WAY above scene (Y=10000) so we can detect it by Y position
-        let sky_sphere = MeshBuffer::from_mesh(&*context, "sky_sphere", &create_sphere_mesh(500.0, 32, 32));
-        tracing::info!("[HELIO] ✅ Step 4/10: Test meshes created (including sky sphere)");
+        // Create inverted sky sphere (flipped winding order for inside-out rendering)
+        let mut sky_sphere_data = create_sphere_mesh(50.0, 32, 32);
+        // Flip winding order so backfaces become front faces
+        for i in (0..sky_sphere_data.indices.len()).step_by(3) {
+            sky_sphere_data.indices.swap(i, i + 2);
+        }
+        let sky_sphere_mesh = MeshBuffer::from_mesh(&*context, "sky_sphere_inverted", &sky_sphere_data);
+        tracing::info!("[HELIO] ✅ Step 4/10: Test meshes created (including inverted sky sphere)");
 
         // Create TextureManager and load spotlight billboard texture
         tracing::info!("[HELIO] 🚀 Step 5/10: Creating TextureManager and loading textures...");
@@ -716,7 +720,12 @@ impl HelioRenderer {
                         meshes.push((tu, &cube_mesh));
                     }
                     ObjectType::Mesh(MeshType::Sphere) => {
-                        meshes.push((tu, &sphere_mesh));
+                        // Use inverted sky sphere mesh for the sky sphere object
+                        if entry.id == "sky_sphere" {
+                            meshes.push((tu, &sky_sphere_mesh));
+                        } else {
+                            meshes.push((tu, &sphere_mesh));
+                        }
                     }
                     ObjectType::Mesh(MeshType::Plane) => {
                         meshes.push((tu, &plane_mesh));
@@ -780,11 +789,6 @@ impl HelioRenderer {
                     */
                 }
             }
-
-            // TEST: Render sky_sphere as a NORMAL sphere at a fixed position to verify it works
-            let test_sky = Mat4::from_translation(Vec3::new(10.0, 5.0, 0.0)) 
-                * Mat4::from_scale(Vec3::new(3.0, 3.0, 3.0)); // Normal positive scale
-            meshes.push((TransformUniforms::from_matrix(test_sky), &sky_sphere));
 
             // Render scene
             let render_target_view = context.create_texture_view(
