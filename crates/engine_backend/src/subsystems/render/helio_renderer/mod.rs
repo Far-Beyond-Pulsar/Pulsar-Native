@@ -45,9 +45,6 @@ pub mod helio_d3d12_ext;
 // Debug line overlay renderer (raycasts, physics queries, etc.)
 pub mod debug_line_renderer;
 
-// Helio Skies volumetric atmosphere feature
-pub mod helio_skies_feature;
-
 // Main renderer implementation
 pub mod renderer;
 
@@ -55,7 +52,6 @@ pub mod renderer;
 pub use core::{CameraInput, RenderMetrics, GpuProfilerData, DiagnosticMetric, SharedGpuTextures};
 pub use renderer::HelioRenderer;
 pub use gizmo_overlay::GizmoFeature;
-pub use helio_skies_feature::{HelioSkiesRenderer, HelioSkiesConfig, QualityLevel, ComponentFlags};
 
 // Re-export gizmo stub types
 pub use gizmo_types::{

@@ -14,7 +14,6 @@ use helio_feature_materials::BasicMaterials;
 use helio_feature_procedural_shadows::ProceduralShadows;
 use helio_feature_bloom::Bloom;
 use helio_feature_billboards::BillboardFeature;
-use helio_feature_skies::HelioSkies;
 
 use super::core::{CameraInput, RenderMetrics, GpuProfilerData, SharedGpuTextures};
 use super::gizmo_types::{
@@ -258,20 +257,12 @@ impl HelioRenderer {
         let mut billboards = BillboardFeature::new();
         billboards.set_texture_manager(texture_manager.clone());
 
-        // Create Helio Skies atmosphere feature
-        let mut helio_skies = HelioSkies::new();
-        helio_skies.set_sky_enabled(false); // Disabled for now - needs proper depth-based masking
-        helio_skies.set_fog_enabled(false);
-        helio_skies.set_clouds_enabled(false);
-        tracing::info!("[HELIO] ✅ Helio Skies feature created (all effects disabled for now)");
-
         // Build feature registry
         let registry = FeatureRegistry::builder()
             .with_feature(base_geometry)
             .with_feature(BasicLighting::new())
             .with_feature(BasicMaterials::new())
             .with_feature(shadows)
-            .with_feature(helio_skies)
             .with_feature(Bloom::new())
             .with_feature(billboards)
             .build();
@@ -286,7 +277,7 @@ impl HelioRenderer {
         debug_line_renderer.init(&context, blade_graphics::TextureFormat::Bgra8UnormSrgb, blade_graphics::TextureFormat::Depth32Float);
         tracing::info!("[HELIO] ✅ Debug line renderer initialized");
 
-        tracing::info!("[HELIO] ✅ Step 6/10: Feature registry built with Helio Skies atmosphere!");
+        tracing::info!("[HELIO] ✅ Step 6/10: Feature registry built with gizmo overlay feature!");
 
         // Use shared textures if available, otherwise create regular render target
         tracing::info!("[HELIO] 🚀 Step 7/10: Setting up render targets...");
@@ -743,7 +734,15 @@ impl HelioRenderer {
                     subresources: &blade_graphics::TextureSubresources::default(),
                 },
             );
-            
+            renderer.render(
+                &mut command_encoder,
+                render_target_view,
+                camera_uniforms,
+                &meshes,
+                delta_time,
+            );
+
+            // Render gizmos as overlay (after main scene, using InitOp::Load to preserve scene)
             let depth_view = context.create_texture_view(
                 depth_texture,
                 blade_graphics::TextureViewDesc {
@@ -753,27 +752,6 @@ impl HelioRenderer {
                     subresources: &blade_graphics::TextureSubresources::default(),
                 },
             );
-            
-            // Render main scene first (this likely clears the framebuffer)
-            renderer.render(
-                &mut command_encoder,
-                render_target_view,
-                camera_uniforms,
-                &meshes,
-                delta_time,
-            );
-            
-            // TEST: Render gizmos HERE (before sky) to verify views work
-            tracing::trace!("[HELIO MAIN] TEST: Rendering gizmos BEFORE sky");
-            gizmo_renderer.render(
-                &mut command_encoder,
-                render_target_view,
-                depth_view,
-                camera_uniforms.view_proj,
-                camera.position.to_array(),
-            );
-
-            // Render gizmos AGAIN as overlay
             
             gizmo_renderer.render(
                 &mut command_encoder,
