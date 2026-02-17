@@ -49,7 +49,7 @@ impl Feature for HelioSkies {
             // Apply sky rendering in post-process
             ShaderInjection::with_priority(
                 ShaderInjectionPoint::FragmentPostProcess,
-                "    final_color = apply_volumetric_sky(final_color, world_position, camera_position);",
+                "    final_color = apply_volumetric_sky(final_color, input.world_position, camera.position);",
                 5,
             ),
         ]
