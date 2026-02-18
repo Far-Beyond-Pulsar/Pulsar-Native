@@ -4256,6 +4256,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 [[package]]
 name = "helio-core"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99#e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99"
 dependencies = [
  "blade-graphics 0.7.0 (git+https://github.com/tristanpoland/blade?rev=d85bd14a78ed7729abc298906e87332257674a02)",
  "blade-macros 0.3.0 (git+https://github.com/tristanpoland/blade?rev=d85bd14a78ed7729abc298906e87332257674a02)",
@@ -4268,6 +4269,7 @@ dependencies = [
 [[package]]
 name = "helio-feature-base-geometry"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99#e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99"
 dependencies = [
  "blade-graphics 0.7.0 (git+https://github.com/tristanpoland/blade?rev=d85bd14a78ed7729abc298906e87332257674a02)",
  "glam 0.29.3",
@@ -4279,6 +4281,7 @@ dependencies = [
 [[package]]
 name = "helio-feature-billboards"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99#e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99"
 dependencies = [
  "blade-graphics 0.7.0 (git+https://github.com/tristanpoland/blade?rev=d85bd14a78ed7729abc298906e87332257674a02)",
  "blade-macros 0.3.0 (git+https://github.com/tristanpoland/blade?rev=d85bd14a78ed7729abc298906e87332257674a02)",
@@ -4292,6 +4295,7 @@ dependencies = [
 [[package]]
 name = "helio-feature-bloom"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99#e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99"
 dependencies = [
  "helio-features",
 ]
@@ -4299,6 +4303,7 @@ dependencies = [
 [[package]]
 name = "helio-feature-lighting"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99#e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99"
 dependencies = [
  "blade-graphics 0.7.0 (git+https://github.com/tristanpoland/blade?rev=d85bd14a78ed7729abc298906e87332257674a02)",
  "glam 0.29.3",
@@ -4309,6 +4314,7 @@ dependencies = [
 [[package]]
 name = "helio-feature-materials"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99#e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99"
 dependencies = [
  "blade-graphics 0.7.0 (git+https://github.com/tristanpoland/blade?rev=d85bd14a78ed7729abc298906e87332257674a02)",
  "blade-macros 0.3.0 (git+https://github.com/tristanpoland/blade?rev=d85bd14a78ed7729abc298906e87332257674a02)",
@@ -4321,6 +4327,7 @@ dependencies = [
 [[package]]
 name = "helio-feature-procedural-shadows"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99#e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99"
 dependencies = [
  "blade-graphics 0.7.0 (git+https://github.com/tristanpoland/blade?rev=d85bd14a78ed7729abc298906e87332257674a02)",
  "blade-macros 0.3.0 (git+https://github.com/tristanpoland/blade?rev=d85bd14a78ed7729abc298906e87332257674a02)",
@@ -4343,6 +4350,7 @@ dependencies = [
 [[package]]
 name = "helio-features"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99#e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99"
 dependencies = [
  "blade-graphics 0.7.0 (git+https://github.com/tristanpoland/blade?rev=d85bd14a78ed7729abc298906e87332257674a02)",
  "glam 0.29.3",
@@ -4352,6 +4360,7 @@ dependencies = [
 [[package]]
 name = "helio-render"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99#e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99"
 dependencies = [
  "blade-graphics 0.7.0 (git+https://github.com/tristanpoland/blade?rev=d85bd14a78ed7729abc298906e87332257674a02)",
  "blade-macros 0.3.0 (git+https://github.com/tristanpoland/blade?rev=d85bd14a78ed7729abc298906e87332257674a02)",
@@ -7894,7 +7903,7 @@ dependencies = [
 
 [[package]]
 name = "pulsar_engine"
-version = "0.1.119"
+version = "0.1.120"
 dependencies = [
  "anyhow",
  "chrono",
