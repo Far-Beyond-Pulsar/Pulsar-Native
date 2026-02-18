@@ -46,6 +46,7 @@ impl LogViewerDrawer {
     fn load_latest_log(&mut self, cx: &mut Context<Self>) {
         match LogReader::get_latest_log_path() {
             Ok(path) => {
+                tracing::info!("[LOG_VIEWER] Found log path: {}", path.display());
                 match LogReader::new(&path) {
                     Ok(reader) => {
                         tracing::info!("[LOG_VIEWER] Loaded log file: {} ({} lines)", 
@@ -63,12 +64,13 @@ impl LogViewerDrawer {
                         // Load initial lines
                         self.load_visible_lines(cx);
                         
-                        // Scroll to bottom if locked
+                        // Notify first to render the list
+                        cx.notify();
+                        
+                        // Then scroll to bottom if locked
                         if self.scroll_state.is_locked_to_bottom {
                             self.scroll_to_bottom(cx);
                         }
-                        
-                        cx.notify();
                     }
                     Err(e) => {
                         self.error = Some(format!("Failed to load log file: {}", e));
@@ -113,7 +115,17 @@ impl LogViewerDrawer {
     
     fn scroll_to_bottom(&mut self, cx: &mut Context<Self>) {
         self.scroll_state.scroll_to_bottom();
-        self.table_state.scroll_to_bottom();
+        
+        // Scroll using the VirtualListScrollHandle
+        let items_count = self.table_state.total_lines();
+        if items_count > 0 {
+            self.table_state.scroll_handle.scroll_to_item(
+                items_count.saturating_sub(1),
+                gpui::ScrollStrategy::Bottom
+            );
+        }
+        
+        tracing::info!("[LOG_VIEWER] Scrolled to bottom, total lines: {}", items_count);
         cx.notify();
     }
     
@@ -125,8 +137,11 @@ impl LogViewerDrawer {
     fn start_file_watcher(&mut self, log_path: std::path::PathBuf, cx: &mut Context<Self>) {
         let (tx, rx) = smol::channel::unbounded();
         
+        tracing::info!("[LOG_VIEWER] Starting file watcher for: {}", log_path.display());
+        
         match notify::recommended_watcher(move |res: Result<NotifyEvent, notify::Error>| {
-            if let Ok(_event) = res {
+            if let Ok(event) = res {
+                tracing::debug!("[LOG_VIEWER] File event: {:?}", event);
                 let _ = tx.send_blocking(());
             }
         }) {
@@ -140,7 +155,9 @@ impl LogViewerDrawer {
                 
                 // Spawn task to handle file change notifications
                 cx.spawn(async move |this, mut cx| {
+                    tracing::info!("[LOG_VIEWER] File watcher task started");
                     while rx.recv().await.is_ok() {
+                        tracing::debug!("[LOG_VIEWER] Received file change notification");
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |drawer, cx| {
                                 if let Some(ref mut reader) = drawer.log_reader {
