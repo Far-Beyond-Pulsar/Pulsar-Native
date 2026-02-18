@@ -71,12 +71,39 @@ jobs:
         id: get_commits
         run: |
           if [ -z "${{ steps.get_prev_tag.outputs.prev_tag }}" ]; then
-            COMMITS=$(git log --format='%H%x00%s%x00%an%x00' |
-              jq -Rrs 'split("\u0000") | .[:-1] | (.[0::3] | length) as $n | [range(0; $n) as $i | {sha: .[3*$i], message: .[3*$i+1], author: .[3*$i+2]}]')
+            export GIT_RANGE=
           else
-            COMMITS=$(git log ${{ steps.get_prev_tag.outputs.prev_tag }}..HEAD --format='%H%x00%s%x00%an%x00' |
-              jq -Rrs 'split("\u0000") | .[:-1] | (.[0::3] | length) as $n | [range(0; $n) as $i | {sha: .[3*$i], message: .[3*$i+1], author: .[3*$i+2]}]')
+            export GIT_RANGE="${{ steps.get_prev_tag.outputs.prev_tag }}..HEAD"
           fi
+          COMMITS=$(python - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          range_spec = os.environ.get("GIT_RANGE")
+          cmd = ["git", "log"]
+          if range_spec:
+            cmd.append(range_spec)
+          cmd.append("--format=%H%x00%s%x00%an%x00")
+
+          output = subprocess.check_output(cmd)
+          parts = output.decode("utf-8", errors="replace").split("\x00")
+          if parts and parts[-1] == "":
+            parts = parts[:-1]
+
+          commits = []
+          for i in range(0, len(parts), 3):
+            if i + 2 >= len(parts):
+              break
+            commits.append({
+              "sha": parts[i],
+              "message": parts[i + 1],
+              "author": parts[i + 2],
+            })
+
+          print(json.dumps(commits))
+          PY
+          )
           echo "commits<<EOF" >> $GITHUB_OUTPUT
           echo "$COMMITS" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
