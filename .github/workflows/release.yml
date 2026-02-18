@@ -72,10 +72,10 @@ jobs:
         run: |
           if [ -z "${{ steps.get_prev_tag.outputs.prev_tag }}" ]; then
             COMMITS=$(git log --format='%H%x00%s%x00%an%x00' |
-              jq -Rrs 'split("\u0000") | .[:-1] | (.[0::3] | length) as $n | [range(0; $n) | {sha: .[3*.+0], message: .[3*.+1], author: .[3*.+2]}]')
+              jq -Rrs 'split("\u0000") | .[:-1] | (.[0::3] | length) as $n | [range(0; $n) as $i | {sha: .[3*$i], message: .[3*$i+1], author: .[3*$i+2]}]')
           else
             COMMITS=$(git log ${{ steps.get_prev_tag.outputs.prev_tag }}..HEAD --format='%H%x00%s%x00%an%x00' |
-              jq -Rrs 'split("\u0000") | .[:-1] | (.[0::3] | length) as $n | [range(0; $n) | {sha: .[3*.+0], message: .[3*.+1], author: .[3*.+2]}]')
+              jq -Rrs 'split("\u0000") | .[:-1] | (.[0::3] | length) as $n | [range(0; $n) as $i | {sha: .[3*$i], message: .[3*$i+1], author: .[3*$i+2]}]')
           fi
           echo "commits<<EOF" >> $GITHUB_OUTPUT
           echo "$COMMITS" >> $GITHUB_OUTPUT
