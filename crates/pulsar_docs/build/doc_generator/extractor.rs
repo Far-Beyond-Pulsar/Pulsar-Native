@@ -408,10 +408,49 @@ fn extract_doc_comments(attrs: &[Attribute]) -> Option<String> {
     }
     
     if doc_lines.is_empty() {
+        return None;
+    }
+    
+    // Process the doc comment lines to preserve formatting
+    // Rustdoc strips the leading space after /// but preserves code block indentation
+    let processed = process_doc_comment_lines(&doc_lines);
+    
+    if processed.trim().is_empty() {
         None
     } else {
-        Some(doc_lines.join("\n").trim().to_string())
+        Some(processed)
     }
+}
+
+/// Process doc comment lines to properly preserve code blocks and formatting
+fn process_doc_comment_lines(lines: &[String]) -> String {
+    let mut result = Vec::new();
+    let mut in_code_block = false;
+    let mut code_block_indent = 0;
+    
+    for line in lines {
+        // Check if this line starts or ends a code block
+        let trimmed = line.trim();
+        
+        if trimmed.starts_with("```") {
+            in_code_block = !in_code_block;
+            result.push(line.to_string());
+            
+            // Track base indentation for code blocks
+            if in_code_block {
+                code_block_indent = line.len() - line.trim_start().len();
+            }
+        } else if in_code_block {
+            // Inside code block: preserve all whitespace exactly as-is
+            result.push(line.to_string());
+        } else {
+            // Outside code block: preserve the line but allow rustdoc-style processing
+            // Empty lines are preserved
+            result.push(line.to_string());
+        }
+    }
+    
+    result.join("\n")
 }
 
 /// Extract visibility from syn::Visibility

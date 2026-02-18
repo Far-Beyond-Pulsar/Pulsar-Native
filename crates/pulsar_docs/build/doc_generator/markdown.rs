@@ -34,6 +34,21 @@ struct IndexItem {
     doc_summary: Option<String>,
 }
 
+/// Helper function to write doc comments to markdown
+/// Ensures proper formatting of code blocks and preserves blank lines
+fn write_doc_comment(output: &mut String, doc: &str) -> std::fmt::Result {
+    // Write the doc comment as-is, but ensure it ends with proper spacing
+    writeln!(output, "{}", doc)?;
+    
+    // Add a blank line after doc comments for proper markdown spacing
+    // unless the doc already ends with multiple newlines
+    if !doc.ends_with("\n\n") {
+        writeln!(output)?;
+    }
+    
+    Ok(())
+}
+
 /// Generate hierarchical documentation structure
 pub fn generate_hierarchical_docs(
     docs: &CrateDocumentation,
@@ -236,8 +251,7 @@ fn generate_structs_pages(crate_dir: &Path, structs: &[StructDoc]) -> Result<(),
         writeln!(md)?;
         
         if let Some(doc) = &s.doc_comment {
-            writeln!(md, "{}", doc)?;
-            writeln!(md)?;
+            write_doc_comment(&mut md, doc)?;
         }
         
         // Signature
@@ -268,8 +282,7 @@ fn generate_structs_pages(crate_dir: &Path, structs: &[StructDoc]) -> Result<(),
                 writeln!(md, "**Type:** `{}`", field.type_)?;
                 writeln!(md)?;
                 if let Some(doc) = &field.doc_comment {
-                    writeln!(md, "{}", doc)?;
-                    writeln!(md)?;
+                    write_doc_comment(&mut md, doc)?;
                 }
                 writeln!(md, "---")?;
                 writeln!(md)?;
@@ -309,8 +322,7 @@ fn generate_enums_pages(crate_dir: &Path, enums: &[EnumDoc]) -> Result<(), Box<d
         writeln!(md)?;
         
         if let Some(doc) = &e.doc_comment {
-            writeln!(md, "{}", doc)?;
-            writeln!(md)?;
+            write_doc_comment(&mut md, doc)?;
         }
         
         // Signature
@@ -347,8 +359,7 @@ fn generate_enums_pages(crate_dir: &Path, enums: &[EnumDoc]) -> Result<(), Box<d
             writeln!(md)?;
             
             if let Some(doc) = &variant.doc_comment {
-                writeln!(md, "{}", doc)?;
-                writeln!(md)?;
+                write_doc_comment(&mut md, doc)?;
             }
             
             writeln!(md, "---")?;
@@ -388,8 +399,7 @@ fn generate_traits_pages(crate_dir: &Path, traits: &[TraitDoc]) -> Result<(), Bo
         writeln!(md)?;
         
         if let Some(doc) = &t.doc_comment {
-            writeln!(md, "{}", doc)?;
-            writeln!(md)?;
+            write_doc_comment(&mut md, doc)?;
         }
         
         // Methods
@@ -420,8 +430,7 @@ fn generate_traits_pages(crate_dir: &Path, traits: &[TraitDoc]) -> Result<(), Bo
                 writeln!(md)?;
                 
                 if let Some(doc) = &method.doc_comment {
-                    writeln!(md, "{}", doc)?;
-                    writeln!(md)?;
+                    write_doc_comment(&mut md, doc)?;
                 }
                 
                 writeln!(md, "```rust")?;
@@ -503,8 +512,7 @@ fn generate_functions_pages(crate_dir: &Path, functions: &[FunctionDoc]) -> Resu
         writeln!(md)?;
         
         if let Some(doc) = &f.doc_comment {
-            writeln!(md, "{}", doc)?;
-            writeln!(md)?;
+            write_doc_comment(&mut md, doc)?;
         }
         
         // Source code
@@ -536,8 +544,7 @@ fn generate_macros_pages(crate_dir: &Path, macros: &[MacroDoc]) -> Result<(), Bo
         writeln!(md)?;
         
         if let Some(doc) = &m.doc_comment {
-            writeln!(md, "{}", doc)?;
-            writeln!(md)?;
+            write_doc_comment(&mut md, doc)?;
         }
         
         writeln!(md, "## Source Code")?;
@@ -576,8 +583,7 @@ fn generate_constants_pages(crate_dir: &Path, constants: &[ConstantDoc]) -> Resu
         writeln!(md)?;
         
         if let Some(doc) = &c.doc_comment {
-            writeln!(md, "{}", doc)?;
-            writeln!(md)?;
+            write_doc_comment(&mut md, doc)?;
         }
         
         fs::write(constants_dir.join(format!("{}.md", c.name)), md)?;
