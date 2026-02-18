@@ -20,6 +20,11 @@ pub struct ToggleProblems;
 #[action(namespace = pulsar_app)]
 pub struct ToggleTypeDebugger;
 
+/// Action to toggle the log viewer
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = pulsar_app)]
+pub struct ToggleLogViewer;
+
 /// Action to toggle multiplayer collaboration
 #[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 #[action(namespace = pulsar_app)]

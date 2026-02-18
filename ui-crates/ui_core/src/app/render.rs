@@ -243,6 +243,29 @@ impl PulsarApp {
                                         app.toggle_flamegraph(window, cx);
                                     })),
                             )
+                            .child(
+                                Button::new("toggle-log-viewer")
+                                    .ghost()
+                                    .icon(
+                                        Icon::new(IconName::Page)
+                                            .size(px(16.))
+                                            .text_color(if self.state.log_viewer_open {
+                                                cx.theme().primary
+                                            } else {
+                                                cx.theme().muted_foreground
+                                            })
+                                    )
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(4.))
+                                    .when(self.state.log_viewer_open, |s| {
+                                        s.bg(cx.theme().primary.opacity(0.15))
+                                    })
+                                    .tooltip("View Logs")
+                                    .on_click(cx.listener(|app, _, _window, cx| {
+                                        app.toggle_log_viewer(_window, cx);
+                                    })),
+                            )
                             // Render plugin statusbar buttons for left position
                             .children(self.render_plugin_statusbar_buttons(StatusbarPosition::Left, cx))
                             .child(
@@ -555,6 +578,7 @@ impl Render for PulsarApp {
             .on_action(cx.listener(Self::on_toggle_file_manager))
             .on_action(cx.listener(Self::on_toggle_problems))
             .on_action(cx.listener(Self::on_toggle_type_debugger))
+            .on_action(cx.listener(Self::on_toggle_log_viewer))
             .on_action(cx.listener(Self::on_toggle_flamegraph))
             .on_action(cx.listener(Self::on_toggle_command_palette))
             .on_action(cx.listener(Self::on_open_file))

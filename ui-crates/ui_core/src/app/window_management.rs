@@ -153,6 +153,42 @@ impl PulsarApp {
         );
     }
 
+    pub(super) fn toggle_log_viewer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        self.state.log_viewer_open = !self.state.log_viewer_open;
+        
+        if self.state.log_viewer_open {
+            let log_viewer_drawer = self.state.log_viewer_drawer.clone();
+
+            let _ = cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(Bounds {
+                        origin: Point {
+                            x: px(140.0),
+                            y: px(140.0),
+                        },
+                        size: size(px(1200.0), px(800.0)),
+                    })),
+                    titlebar: Some(gpui::TitlebarOptions {
+                        title: None,
+                        appears_transparent: true,
+                        traffic_light_position: None,
+                    }),
+                    kind: WindowKind::Normal,
+                    is_resizable: true,
+                    window_decorations: Some(gpui::WindowDecorations::Client),
+                    window_min_size: Some(gpui::Size {
+                        width: px(800.),
+                        height: px(500.),
+                    }),
+                    ..Default::default()
+                },
+                move |window, cx| {
+                    cx.new(|cx| Root::new(log_viewer_drawer.into(), window, cx))
+                },
+            );
+        }
+    }
+
     pub(super) fn toggle_multiplayer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let project_path = self.state.project_path.clone();
 
