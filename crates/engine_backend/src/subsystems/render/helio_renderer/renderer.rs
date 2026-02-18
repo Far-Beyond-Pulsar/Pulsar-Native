@@ -484,40 +484,41 @@ impl HelioRenderer {
                     println!("[RENDERER] 🖱  left_clicked fired — physics_query present: {}", physics_query.is_some());
                     mouse_input.left_clicked = false; // Clear click flag
                     
-                    // Convert viewport-relative coordinates to frame-relative coordinates
-                    // mouse_input.mouse_pos is [0,1] within the viewport element
-                    // We need to map this to the position within the full rendered frame
-                    let (frame_x, frame_y) = if let Some(bounds) = mouse_input.viewport_bounds {
+                    // GPUI creates a transparent "hole" in the UI where the viewport element is
+                    // The renderer draws to the full surface (width x height) behind the UI
+                    // We need to map from viewport-relative coords [0,1] to surface coords [0,1]
+                    
+                    let (surface_x, surface_y) = if let Some(bounds) = mouse_input.viewport_bounds {
                         tracing::info!("[VIEWPORT] 🖼️  Viewport bounds: pos=({:.1}, {:.1}) size=({:.1}x{:.1})",
                             bounds.x, bounds.y, bounds.width, bounds.height);
+                        tracing::info!("[VIEWPORT] 🖼️  Renderer surface: {}x{}", width, height);
                         
-                        // Calculate pixel position within the viewport element
+                        // Step 1: Convert viewport-relative [0,1] to pixel position in viewport
                         let pixel_x_in_viewport = mouse_input.mouse_pos.x * bounds.width;
                         let pixel_y_in_viewport = mouse_input.mouse_pos.y * bounds.height;
                         
-                        // Add viewport offset to get position in full frame
-                        let pixel_x_in_frame = bounds.x + pixel_x_in_viewport;
-                        let pixel_y_in_frame = bounds.y + pixel_y_in_viewport;
+                        // Step 2: Add viewport's position to get pixel position in window/surface
+                        let pixel_x_in_surface = bounds.x + pixel_x_in_viewport;
+                        let pixel_y_in_surface = bounds.y + pixel_y_in_viewport;
                         
-                        // Normalize to [0,1] relative to full frame dimensions
-                        let frame_norm_x = pixel_x_in_frame / width as f32;
-                        let frame_norm_y = pixel_y_in_frame / height as f32;
+                        // Step 3: Normalize by surface dimensions to get [0,1] in rendered surface
+                        let surface_norm_x = pixel_x_in_surface / width as f32;
+                        let surface_norm_y = pixel_y_in_surface / height as f32;
                         
-                        tracing::info!("[VIEWPORT] 📍 Viewport coords ({:.3}, {:.3}) -> Frame coords ({:.3}, {:.3})",
-                            mouse_input.mouse_pos.x, mouse_input.mouse_pos.y, frame_norm_x, frame_norm_y);
+                        tracing::info!("[VIEWPORT] 📍 Viewport ({:.3}, {:.3}) -> Pixels ({:.1}, {:.1}) -> Surface ({:.3}, {:.3})",
+                            mouse_input.mouse_pos.x, mouse_input.mouse_pos.y,
+                            pixel_x_in_surface, pixel_y_in_surface,
+                            surface_norm_x, surface_norm_y);
                         
-                        (frame_norm_x, frame_norm_y)
+                        (surface_norm_x, surface_norm_y)
                     } else {
-                        tracing::warn!("[VIEWPORT] ⚠️  No viewport bounds available, using viewport coords directly");
+                        tracing::warn!("[VIEWPORT] ⚠️  No viewport bounds - using viewport coords as-is");
                         (mouse_input.mouse_pos.x, mouse_input.mouse_pos.y)
                     };
                     
-                    // Convert frame-relative normalized coords to NDC [-1, 1]
-                    let ndc_x = frame_x * 2.0 - 1.0;
-                    let ndc_y = 1.0 - frame_y * 2.0; // Flip Y
-                    
-                    tracing::info!("[VIEWPORT] 🎯 Frame coords ({:.3}, {:.3}) -> NDC ({:.3}, {:.3})",
-                        frame_x, frame_y, ndc_x, ndc_y);
+                    // Convert surface-relative normalized coords [0,1] to NDC [-1, 1]
+                    let ndc_x = surface_x * 2.0 - 1.0;
+                    let ndc_y = 1.0 - surface_y * 2.0; // Flip Y
                     
                     // Create ray from camera through mouse position
                     let aspect = width as f32 / height as f32;
