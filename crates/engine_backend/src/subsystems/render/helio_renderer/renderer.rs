@@ -525,9 +525,8 @@ impl HelioRenderer {
                     // Use physics raycast if available, otherwise fallback to simple intersection
                     if let Some(ref pq) = physics_query {
                         tracing::info!("[VIEWPORT] Using physics raycast");
-                        // Push the line start slightly in front of the camera so the
-                        // start vertex is never at clip_w=0 (camera origin in view space).
-                        let line_start = (ray_origin + ray_dir_world * 0.5).to_array();
+                        // Start from camera origin for accurate debug visualization
+                        let line_start = ray_origin.to_array();
 
                         if let Some(hit) = pq.raycast(ray_origin, ray_dir_world, 1000.0) {
                             tracing::info!("[VIEWPORT] 🎯 Object selected via physics raycast: {} at distance {:.2}", hit.object_id, hit.distance);
@@ -537,7 +536,7 @@ impl HelioRenderer {
                                 line_start,
                                 hit.point.to_array(),
                                 [1.0, 0.0, 0.0, 1.0],
-                                120,
+                                u32::MAX,
                             );
                         } else {
                             tracing::info!("[VIEWPORT] ❌ No object hit by physics raycast");
@@ -548,7 +547,7 @@ impl HelioRenderer {
                                 line_start,
                                 miss_end.to_array(),
                                 [1.0, 0.4, 0.0, 1.0],
-                                120,
+                                u32::MAX,
                             );
                         }
                     } else {
@@ -588,7 +587,7 @@ impl HelioRenderer {
                             }
                         });
 
-                        let line_start = (ray_origin + ray_dir_world * 0.5).to_array();
+                        let line_start = ray_origin.to_array();
 
                         if let Some((object_id, dist)) = closest_hit {
                             tracing::info!("[VIEWPORT] 🎯 Object selected via fallback raycast: {}", object_id);
@@ -598,7 +597,7 @@ impl HelioRenderer {
                                 line_start,
                                 hit_point.to_array(),
                                 [1.0, 0.0, 0.0, 1.0],
-                                120,
+                                u32::MAX,
                             );
                         } else {
                             tracing::info!("[VIEWPORT] ❌ No object hit by fallback raycast");
@@ -608,7 +607,7 @@ impl HelioRenderer {
                                 line_start,
                                 miss_end.to_array(),
                                 [1.0, 0.4, 0.0, 1.0],
-                                120,
+                                u32::MAX,
                             );
                         }
                     }

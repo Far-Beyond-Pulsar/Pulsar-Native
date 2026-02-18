@@ -146,6 +146,13 @@ impl DebugLineRenderer {
         color: [f32; 4],
         ttl_frames: u32,
     ) {
+        // Validate input - reject NaN or infinite values
+        if start.iter().any(|v| !v.is_finite()) || end.iter().any(|v| !v.is_finite()) {
+            println!("[DEBUG LINES] ❌ Invalid line with NaN/Inf values - rejecting: start=[{:.2},{:.2},{:.2}] end=[{:.2},{:.2},{:.2}]",
+                start[0], start[1], start[2], end[0], end[1], end[2]);
+            return;
+        }
+        
         if self.lines.len() >= MAX_DEBUG_LINES {
             println!("[DEBUG LINES] ❌ Buffer full — dropping line");
             return;
@@ -272,7 +279,17 @@ impl DebugLineRenderer {
 /// Build 6 vertices (2 triangles) forming a flat world-space quad along A→B.
 /// `half_width` is the perpendicular half-extent in world units.
 fn line_to_quad(a: Vec3, b: Vec3, half_width: f32) -> [DebugLineVertex; 6] {
-    let dir = (b - a).normalize();
+    let delta = b - a;
+    let length = delta.length();
+    
+    // Safeguard: if line is too short (effectively zero-length), create a tiny default quad
+    let dir = if length > 0.0001 {
+        delta / length
+    } else {
+        println!("[DEBUG LINES] ⚠️  Zero-length line detected: [{:.3},{:.3},{:.3}]→[{:.3},{:.3},{:.3}]",
+            a.x, a.y, a.z, b.x, b.y, b.z);
+        Vec3::new(0.0, 0.0, 1.0) // Default direction
+    };
 
     // Pick an up axis that isn't parallel to the line direction.
     let up = if dir.y.abs() < 0.9 { Vec3::Y } else { Vec3::X };
