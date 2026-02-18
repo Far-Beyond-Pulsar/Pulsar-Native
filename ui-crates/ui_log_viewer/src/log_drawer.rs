@@ -19,6 +19,7 @@ pub struct LogViewerDrawer {
     error: Option<String>,
     focus_handle: FocusHandle,
     _watcher: Option<notify::RecommendedWatcher>,
+    entity: Option<Entity<Self>>,
 }
 
 const CHUNK_SIZE: usize = 1000; // Load 1k lines at a time when scrolling
@@ -26,6 +27,7 @@ const MAX_LINES_IN_MEMORY: usize = 10000; // Keep max 10k lines in memory
 
 impl LogViewerDrawer {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let entity = cx.entity().clone();
         let mut drawer = Self {
             log_reader: None,
             table_state: LogTableState::new(),
@@ -33,6 +35,7 @@ impl LogViewerDrawer {
             error: None,
             focus_handle: cx.focus_handle(),
             _watcher: None,
+            entity: Some(entity),
         };
         
         drawer.load_latest_log(cx);
@@ -110,13 +113,13 @@ impl LogViewerDrawer {
     
     fn scroll_to_bottom(&mut self, cx: &mut Context<Self>) {
         self.scroll_state.scroll_to_bottom();
+        self.table_state.scroll_to_bottom();
         cx.notify();
     }
     
     fn jump_to_latest(&mut self, cx: &mut Context<Self>) {
         self.scroll_state.is_locked_to_bottom = true;
         self.scroll_to_bottom(cx);
-        cx.notify();
     }
     
     fn start_file_watcher(&mut self, log_path: std::path::PathBuf, cx: &mut Context<Self>) {
@@ -291,7 +294,7 @@ impl LogViewerDrawer {
 }
 
 impl Render for LogViewerDrawer {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .size_full()
             .track_focus(&self.focus_handle)
@@ -336,7 +339,11 @@ impl Render for LogViewerDrawer {
                         )
                     })
                     .when(self.error.is_none(), |this| {
-                        this.child(render_virtual_log_table(&self.table_state, cx))
+                        if let Some(entity) = self.entity.as_ref() {
+                            this.child(render_virtual_log_table(entity.clone(), &self.table_state, cx))
+                        } else {
+                            this
+                        }
                     })
             )
     }

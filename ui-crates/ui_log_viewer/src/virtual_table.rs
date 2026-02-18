@@ -1,13 +1,16 @@
 //! Virtual scrolling table for displaying log lines efficiently
 
 use gpui::{prelude::*, *};
-use ui::{h_flex, v_flex, scroll::ScrollbarAxis, ActiveTheme as _, StyledExt};
+use ui::{h_flex, v_virtual_list, VirtualListScrollHandle, ActiveTheme as _, StyledExt};
+use std::rc::Rc;
 
 #[derive(Clone, Debug)]
 pub struct LogLine {
     pub line_number: usize,
     pub content: String,
 }
+
+const LINE_HEIGHT: f32 = 22.0;
 
 /// Virtual scroll state with proper viewport tracking
 #[derive(Clone)]
@@ -31,12 +34,14 @@ impl VirtualScrollState {
 
 pub struct LogTableState {
     pub lines: Vec<LogLine>,
+    pub scroll_handle: VirtualListScrollHandle,
 }
 
 impl LogTableState {
     pub fn new() -> Self {
         Self {
             lines: Vec::new(),
+            scroll_handle: VirtualListScrollHandle::new(),
         }
     }
     
@@ -44,21 +49,27 @@ impl LogTableState {
         self.lines = lines;
     }
     
+    pub fn scroll_to_bottom(&mut self) {
+        self.scroll_handle.scroll_to_bottom();
+    }
+    
     pub fn total_lines(&self) -> usize {
         self.lines.len()
     }
 }
 
-/// Render a scrollable log table
-pub fn render_virtual_log_table<V: 'static>(
+/// Render a virtual scrolling log table using VirtualList
+pub fn render_virtual_log_table<V: 'static + Render>(
+    view: Entity<V>,
     table_state: &LogTableState,
     cx: &mut Context<V>,
 ) -> impl IntoElement {
     let line_count = table_state.lines.len();
     
     if line_count == 0 {
-        return v_flex()
+        return div()
             .flex_1()
+            .flex()
             .items_center()
             .justify_center()
             .child(
@@ -70,18 +81,33 @@ pub fn render_virtual_log_table<V: 'static>(
             .into_any_element();
     }
     
-    div()
-        .id("log-scroll-container")
-        .size_full()
-        .scrollable(ScrollbarAxis::Vertical)
-        .child(
-            v_flex()
-                .w_full()
-                .children(table_state.lines.iter().map(|line| {
-                    render_log_line(line, cx)
-                }))
-        )
-        .into_any_element()
+    // Create item sizes - all lines have the same height
+    let item_sizes: Rc<Vec<Size<Pixels>>> = Rc::new(
+        (0..line_count)
+            .map(|_| Size {
+                width: px(1000.0), // Will be overridden by container width
+                height: px(LINE_HEIGHT),
+            })
+            .collect()
+    );
+    
+    let lines = table_state.lines.clone();
+    
+    v_virtual_list(
+        view,
+        "log-lines",
+        item_sizes,
+        move |_view, visible_range, _window, cx| {
+            visible_range
+                .into_iter()
+                .filter_map(|ix| lines.get(ix).cloned())
+                .map(|line| render_log_line(&line, cx))
+                .collect()
+        },
+    )
+    .size_full()
+    .track_scroll(&table_state.scroll_handle)
+    .into_any_element()
 }
 
 fn render_log_line<V: 'static>(
@@ -105,7 +131,7 @@ fn render_log_line<V: 'static>(
     
     h_flex()
         .w_full()
-        .h(px(22.))
+        .h(px(LINE_HEIGHT))
         .px_3()
         .py_1()
         .items_center()
@@ -155,4 +181,3 @@ fn render_log_line<V: 'static>(
                 .child(line.content.clone())
         )
 }
-
