@@ -1,7 +1,10 @@
 /// Pulsar Documentation Generator
 /// 
-/// Documentation is generated manually using a standalone tool.
-/// This build script ensures the docs directory exists and provides instructions if docs aren't present.
+/// This build script automatically generates documentation at build time
+/// by parsing workspace crates and creating markdown/JSON files.
+
+#[path = "build/doc_generator/mod.rs"]
+mod doc_generator;
 
 use std::path::Path;
 use std::fs;
@@ -9,49 +12,59 @@ use std::fs;
 fn main() {
     println!("cargo:warning=[pulsar_docs] Build script started");
     
-    let doc_dir = Path::new("../../target/doc");
-    println!("cargo:warning=[pulsar_docs] Checking for docs at: {:?}", doc_dir);
+    let workspace_root = Path::new("../..");
+    let doc_dir = workspace_root.join("target/doc");
     
-    // Check if SKIP_DOC_CHECK is set
-    let skip_check = std::env::var("SKIP_DOC_CHECK").unwrap_or_default() == "true";
-    println!("cargo:warning=[pulsar_docs] SKIP_DOC_CHECK = {}", skip_check);
+    println!("cargo:warning=[pulsar_docs] Workspace root: {:?}", workspace_root);
+    println!("cargo:warning=[pulsar_docs] Doc directory: {:?}", doc_dir);
     
-    // Ensure the doc directory exists (even if empty)
-    // This is critical for rust-embed to work properly
+    // Check if AUTO_GENERATE_DOCS is disabled
+    let auto_generate = std::env::var("AUTO_GENERATE_DOCS").unwrap_or_else(|_| "true".to_string()) == "true";
+    println!("cargo:warning=[pulsar_docs] AUTO_GENERATE_DOCS = {}", auto_generate);
+    
+    // Ensure the doc directory exists (critical for rust-embed)
     if !doc_dir.exists() {
-        println!("cargo:warning=[pulsar_docs] Creating empty doc directory for rust-embed");
-        if let Err(e) = fs::create_dir_all(doc_dir) {
+        println!("cargo:warning=[pulsar_docs] Creating doc directory");
+        if let Err(e) = fs::create_dir_all(&doc_dir) {
             println!("cargo:warning=[pulsar_docs] Warning: Could not create doc directory: {}", e);
         }
     }
     
-    if skip_check {
-        println!("cargo:warning=[pulsar_docs] Skipping doc check");
+    if !auto_generate {
+        println!("cargo:warning=[pulsar_docs] Skipping automatic doc generation");
+        println!("cargo:warning=[pulsar_docs] Build script completed");
+        return;
+    }
+    
+    // Check if docs already exist with content
+    let has_json_files = doc_dir.exists() && 
+        std::fs::read_dir(&doc_dir)
+            .ok()
+            .and_then(|entries| {
+                entries.filter_map(Result::ok)
+                    .any(|e| e.path().extension().and_then(|s| s.to_str()) == Some("json"))
+                    .then_some(())
+            })
+            .is_some();
+    
+    if has_json_files {
+        println!("cargo:warning=[pulsar_docs] Documentation already exists, skipping generation");
+        println!("cargo:warning=[pulsar_docs] To regenerate docs, delete target/doc and rebuild");
         println!("cargo:warning=[pulsar_docs] Build script completed successfully");
         return;
     }
     
-    // Check if docs exist
-    println!("cargo:warning=[pulsar_docs] Checking if doc directory has content...");
-    let docs_exist = doc_dir.exists() && 
-                     std::fs::read_dir(doc_dir).map(|mut d| d.next().is_some()).unwrap_or(false);
+    // Generate documentation
+    println!("cargo:warning=[pulsar_docs] Generating workspace documentation...");
     
-    println!("cargo:warning=[pulsar_docs] Docs exist with content: {}", docs_exist);
-    
-    if !docs_exist {
-        // Docs don't exist - print warning with instructions
-        println!("cargo:warning=━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        println!("cargo:warning=  ⚠️  Pulsar documentation is not yet generated!");
-        println!("cargo:warning=━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        println!("cargo:warning=");
-        println!("cargo:warning=To generate documentation, run:");
-        println!("cargo:warning=  cargo run --bin pulsar-doc-gen --release");
-        println!("cargo:warning=");
-        println!("cargo:warning=Or skip this check with:");
-        println!("cargo:warning=  SKIP_DOC_CHECK=true cargo build");
-        println!("cargo:warning=");
-        println!("cargo:warning=Note: Building will proceed, but docs_available() will return false.");
-        println!("cargo:warning=━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    match doc_generator::generate_workspace_docs(workspace_root, &doc_dir) {
+        Ok(count) => {
+            println!("cargo:warning=[pulsar_docs] ✓ Successfully generated docs for {} crates", count);
+        }
+        Err(e) => {
+            println!("cargo:warning=[pulsar_docs] ✗ Failed to generate docs: {}", e);
+            println!("cargo:warning=[pulsar_docs] Documentation will be unavailable in the UI");
+        }
     }
     
     println!("cargo:warning=[pulsar_docs] Build script completed successfully");

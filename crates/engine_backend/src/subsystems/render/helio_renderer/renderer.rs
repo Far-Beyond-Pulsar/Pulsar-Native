@@ -238,6 +238,18 @@ impl HelioRenderer {
             tracing::info!("[HELIO] ✅ Spotlight billboard icon configured");
         }
         
+        // Add sun as directional light - matches sky shader sun direction
+        let sun_dir = Vec3::new(0.4, 0.6, -0.5).normalize();
+        shadows.add_light(helio_feature_procedural_shadows::LightConfig {
+            light_type: helio_feature_procedural_shadows::LightType::Directional,
+            position: Vec3::ZERO, // Not used for directional lights
+            direction: -sun_dir,  // Light direction is opposite to sun position
+            intensity: 1.0,
+            color: Vec3::new(1.0, 0.95, 0.9), // Warm daylight
+            attenuation_radius: 0.0,  // Infinite range for sun
+            attenuation_falloff: 0.0,
+        }).expect("Failed to add sun light");
+        
         // Initial static lights (will be replaced by animated lights in loop)
         shadows.add_light(helio_feature_procedural_shadows::LightConfig {
             light_type: helio_feature_procedural_shadows::LightType::Spot {
