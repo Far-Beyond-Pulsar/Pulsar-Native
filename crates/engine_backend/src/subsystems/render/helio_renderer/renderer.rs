@@ -493,25 +493,16 @@ impl HelioRenderer {
                     let fov = 60.0_f32.to_radians();
                     let tan_half_fov = (fov * 0.5).tan();
                     
-                    let ray_dir_cam = Vec3::new(
-                        ndc_x * aspect * tan_half_fov,
-                        ndc_y * tan_half_fov,
-                        -1.0,
-                    ).normalize();
+                    // Compute camera basis vectors
+                    let cam_forward = camera.forward().normalize();
+                    let cam_right = camera.right().normalize();
+                    let cam_up = cam_right.cross(cam_forward).normalize();
                     
-                    // Transform ray direction to world space
-                    let cam_forward = camera.forward();
-                    let cam_right = camera.right();
-                    let cam_up = cam_right.cross(cam_forward).normalize(); // Compute up vector
-                    
-                    // Negate forward because camera.forward() points down -Z, but we computed ray_dir_cam.z = -1.0
-                    // So we want: cam_forward * -ray_dir_cam.z = cam_forward * -(-1.0) = cam_forward
-                    // Wait no - if camera is at z=23 looking at origin, forward should be negative Z
-                    // So we just use the forward direction as-is
+                    // Ray direction: forward + screen-space offsets along right/up
                     let ray_dir_world = (
-                        cam_right * ray_dir_cam.x +
-                        cam_up * ray_dir_cam.y +
-                        cam_forward * ray_dir_cam.z  // ray_dir_cam.z is already -1.0
+                        cam_forward + 
+                        cam_right * (ndc_x * aspect * tan_half_fov) +
+                        cam_up * (ndc_y * tan_half_fov)
                     ).normalize();
                     
                     let ray_origin = camera.position;

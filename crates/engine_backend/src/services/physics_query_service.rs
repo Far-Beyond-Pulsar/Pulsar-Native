@@ -233,6 +233,11 @@ impl PhysicsQueryService {
                 return;
             }
             
+            // Skip sky sphere - it should not participate in raycasting
+            if entry.id == "sky_sphere" {
+                return;
+            }
+            
             let pos = entry.get_position();
             let scale = entry.get_scale();
             let position = Isometry3::translation(pos[0], pos[1], pos[2]);
