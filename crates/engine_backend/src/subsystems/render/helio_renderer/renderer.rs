@@ -484,9 +484,13 @@ impl HelioRenderer {
                     println!("[RENDERER] 🖱  left_clicked fired — physics_query present: {}", physics_query.is_some());
                     mouse_input.left_clicked = false; // Clear click flag
                     
-                    // Convert normalized screen coords to world ray
+                    // Convert normalized screen coords (relative to viewport) to world ray
+                    // mouse_input.mouse_pos is already [0,1] normalized to the viewport bounds
                     let ndc_x = mouse_input.mouse_pos.x * 2.0 - 1.0;
                     let ndc_y = 1.0 - mouse_input.mouse_pos.y * 2.0; // Flip Y
+                    
+                    tracing::info!("[VIEWPORT] 🎯 Mouse click at viewport coords ({:.3}, {:.3}) -> NDC ({:.3}, {:.3})",
+                        mouse_input.mouse_pos.x, mouse_input.mouse_pos.y, ndc_x, ndc_y);
                     
                     // Create ray from camera through mouse position
                     let aspect = width as f32 / height as f32;
