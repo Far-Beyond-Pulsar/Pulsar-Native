@@ -82,11 +82,11 @@ impl LogViewerDrawer {
     }
     
     fn start_file_watcher(&mut self, log_path: std::path::PathBuf, cx: &mut Context<Self>) {
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) = smol::channel::unbounded();
         
         match notify::recommended_watcher(move |res: Result<NotifyEvent, notify::Error>| {
             if let Ok(_event) = res {
-                let _ = tx.send(());
+                let _ = tx.send_blocking(());
             }
         }) {
             Ok(mut watcher) => {
@@ -99,7 +99,7 @@ impl LogViewerDrawer {
                 
                 // Spawn task to handle file change notifications
                 cx.spawn(async move |this, mut cx| {
-                    while rx.recv().is_ok() {
+                    while rx.recv().await.is_ok() {
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |drawer, cx| {
                                 if let Some(ref mut reader) = drawer.log_reader {
