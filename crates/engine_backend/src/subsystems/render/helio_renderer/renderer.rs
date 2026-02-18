@@ -484,33 +484,56 @@ impl HelioRenderer {
                     println!("[RENDERER] 🖱  left_clicked fired — physics_query present: {}", physics_query.is_some());
                     mouse_input.left_clicked = false; // Clear click flag
                     
-                    // Log viewport bounds if available
-                    if let Some(bounds) = mouse_input.viewport_bounds {
+                    // Convert viewport-relative coordinates to frame-relative coordinates
+                    // mouse_input.mouse_pos is [0,1] within the viewport element
+                    // We need to map this to the position within the full rendered frame
+                    let (frame_x, frame_y) = if let Some(bounds) = mouse_input.viewport_bounds {
                         tracing::info!("[VIEWPORT] 🖼️  Viewport bounds: pos=({:.1}, {:.1}) size=({:.1}x{:.1})",
                             bounds.x, bounds.y, bounds.width, bounds.height);
+                        
+                        // Calculate pixel position within the viewport element
+                        let pixel_x_in_viewport = mouse_input.mouse_pos.x * bounds.width;
+                        let pixel_y_in_viewport = mouse_input.mouse_pos.y * bounds.height;
+                        
+                        // Add viewport offset to get position in full frame
+                        let pixel_x_in_frame = bounds.x + pixel_x_in_viewport;
+                        let pixel_y_in_frame = bounds.y + pixel_y_in_viewport;
+                        
+                        // Normalize to [0,1] relative to full frame dimensions
+                        let frame_norm_x = pixel_x_in_frame / width as f32;
+                        let frame_norm_y = pixel_y_in_frame / height as f32;
+                        
+                        tracing::info!("[VIEWPORT] 📍 Viewport coords ({:.3}, {:.3}) -> Frame coords ({:.3}, {:.3})",
+                            mouse_input.mouse_pos.x, mouse_input.mouse_pos.y, frame_norm_x, frame_norm_y);
+                        
+                        (frame_norm_x, frame_norm_y)
                     } else {
-                        tracing::warn!("[VIEWPORT] ⚠️  No viewport bounds available!");
-                    }
+                        tracing::warn!("[VIEWPORT] ⚠️  No viewport bounds available, using viewport coords directly");
+                        (mouse_input.mouse_pos.x, mouse_input.mouse_pos.y)
+                    };
                     
-                    // Convert normalized screen coords (relative to viewport) to world ray
-                    // mouse_input.mouse_pos is already [0,1] normalized to the viewport bounds
-                    let ndc_x = mouse_input.mouse_pos.x * 2.0 - 1.0;
-                    let ndc_y = 1.0 - mouse_input.mouse_pos.y * 2.0; // Flip Y
+                    // Convert frame-relative normalized coords to NDC [-1, 1]
+                    let ndc_x = frame_x * 2.0 - 1.0;
+                    let ndc_y = 1.0 - frame_y * 2.0; // Flip Y
                     
-                    tracing::info!("[VIEWPORT] 🎯 Mouse click at viewport coords ({:.3}, {:.3}) -> NDC ({:.3}, {:.3})",
-                        mouse_input.mouse_pos.x, mouse_input.mouse_pos.y, ndc_x, ndc_y);
+                    tracing::info!("[VIEWPORT] 🎯 Frame coords ({:.3}, {:.3}) -> NDC ({:.3}, {:.3})",
+                        frame_x, frame_y, ndc_x, ndc_y);
                     
                     // Create ray from camera through mouse position
                     let aspect = width as f32 / height as f32;
                     let fov = 60.0_f32.to_radians();
                     let tan_half_fov = (fov * 0.5).tan();
                     
+                    // Standard perspective projection raycast (like Unity, Unreal, etc.)
+                    // Ray originates from camera position and shoots through screen point
+                    
                     // Compute camera basis vectors
                     let cam_forward = camera.forward().normalize();
                     let cam_right = camera.right().normalize();
                     let cam_up = cam_right.cross(cam_forward).normalize();
                     
-                    // Ray direction: forward + screen-space offsets along right/up
+                    // Calculate ray direction from camera through screen point
+                    // This is the standard approach: ray from camera eye through NDC position on near plane
                     let ray_dir_world = (
                         cam_forward + 
                         cam_right * (ndc_x * aspect * tan_half_fov) +
@@ -534,22 +557,22 @@ impl HelioRenderer {
                         if let Some(hit) = pq.raycast(ray_origin, ray_dir_world, 1000.0) {
                             tracing::info!("[VIEWPORT] 🎯 Object selected via physics raycast: {} at distance {:.2}", hit.object_id, hit.distance);
                             scene_db.select_object(Some(hit.object_id.clone()));
-                            // Solid red from camera → hit point (BGR format: R=1.0 becomes B=0.0, G=0.0, R=1.0)
+                            // Solid red from camera → hit point (BRG format: RGB[1,0,0] = BRG[0,1,0])
                             debug_line_renderer.add_line(
                                 line_start,
                                 hit.point.to_array(),
-                                [0.0, 0.0, 1.0, 1.0],  // BGR: Red
+                                [0.0, 1.0, 0.0, 1.0],  // BRG: Red
                                 u32::MAX,
                             );
                         } else {
                             tracing::info!("[VIEWPORT] ❌ No object hit by physics raycast");
                             scene_db.select_object(None);
-                            // Orange miss ray capped at 50 units (BGR format)
+                            // Orange miss ray capped at 50 units (BRG format: RGB[1,0.4,0] = BRG[0,1,0.4])
                             let miss_end = ray_origin + ray_dir_world * 50.0;
                             debug_line_renderer.add_line(
                                 line_start,
                                 miss_end.to_array(),
-                                [0.0, 0.4, 1.0, 1.0],  // BGR: Orange
+                                [0.0, 1.0, 0.4, 1.0],  // BRG: Orange
                                 u32::MAX,
                             );
                         }
@@ -599,7 +622,7 @@ impl HelioRenderer {
                             debug_line_renderer.add_line(
                                 line_start,
                                 hit_point.to_array(),
-                                [0.0, 0.0, 1.0, 1.0],  // BGR: Red
+                                [0.0, 1.0, 0.0, 1.0],  // BRG: Red
                                 u32::MAX,
                             );
                         } else {
@@ -609,7 +632,7 @@ impl HelioRenderer {
                             debug_line_renderer.add_line(
                                 line_start,
                                 miss_end.to_array(),
-                                [0.0, 0.4, 1.0, 1.0],  // BGR: Orange
+                                [0.0, 1.0, 0.4, 1.0],  // BRG: Orange
                                 u32::MAX,
                             );
                         }
