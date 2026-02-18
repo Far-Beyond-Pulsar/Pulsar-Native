@@ -363,7 +363,7 @@ impl CodeBlock {
         
         // If code is empty or has no lines, render empty block
         if lines.is_empty() {
-            return div()
+            return v_flex()
                 .id("codeblock")
                 .mb(style.paragraph_gap)
                 .p_3()
@@ -420,7 +420,7 @@ impl CodeBlock {
             current_offset = line_end + 1;
         }
         
-        div()
+        v_flex()
             .id("codeblock")
             .mb(style.paragraph_gap)
             .p_3()

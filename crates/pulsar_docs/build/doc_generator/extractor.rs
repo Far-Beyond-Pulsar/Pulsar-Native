@@ -10,10 +10,20 @@ use quote::ToTokens;
 use super::parser::ParsedCrate;
 use super::types::*;
 
-/// Extract exact source code for a syntax node - uses quote for reliable stringification
+/// Extract exact source code for a syntax node - uses prettyplease for formatted output
 fn extract_source_from_span<T: ToTokens>(node: &T, _source_code: &str) -> String {
-    // Use quote to convert to string - this is more reliable than span extraction
-    quote::quote!(#node).to_string()
+    // Convert to token stream first
+    let tokens = quote::quote!(#node);
+    
+    // Try to parse as a complete item and format it
+    // If it fails, fall back to the compact token representation
+    if let Ok(file) = syn::parse_file(&tokens.to_string()) {
+        prettyplease::unparse(&file)
+    } else {
+        // Not a complete file, just return formatted tokens
+        // This handles expressions, types, etc that aren't complete items
+        tokens.to_string()
+    }
 }
 
 /// Extract documentation from a parsed crate

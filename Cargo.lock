@@ -7891,6 +7891,7 @@ dependencies = [
 name = "pulsar_docs"
 version = "0.1.0"
 dependencies = [
+ "prettyplease",
  "quote",
  "rust-embed 6.8.1",
  "serde",
