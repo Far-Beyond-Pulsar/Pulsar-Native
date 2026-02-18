@@ -555,6 +555,7 @@ impl Render for LogDrawer {
                             .child(
                                 h_flex()
                                     .gap_2()
+                                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                                     .child(
                                         Button::new("clear-logs")
                                             .label("Clear")
