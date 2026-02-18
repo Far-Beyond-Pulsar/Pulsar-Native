@@ -5,6 +5,7 @@ use ui::{h_flex, ActiveTheme as _, StyledExt};
 use crate::log_reader::LogLine;
 
 /// Virtual scroll state
+#[derive(Clone)]
 pub struct VirtualScrollState {
     pub scroll_offset: f32,
     pub viewport_height: f32,
@@ -12,6 +13,8 @@ pub struct VirtualScrollState {
     pub total_lines: usize,
     pub visible_start: usize,
     pub visible_end: usize,
+    pub cache_start: usize,
+    pub cache_end: usize,
 }
 
 impl VirtualScrollState {
@@ -23,6 +26,8 @@ impl VirtualScrollState {
             total_lines: 0,
             visible_start: 0,
             visible_end: 0,
+            cache_start: 0,
+            cache_end: 0,
         }
     }
     
@@ -31,10 +36,8 @@ impl VirtualScrollState {
         let start_line = (self.scroll_offset / self.line_height).floor() as usize;
         let visible_count = (self.viewport_height / self.line_height).ceil() as usize;
         
-        // Add buffer above and below for smooth scrolling
-        let buffer = 20;
-        self.visible_start = start_line.saturating_sub(buffer);
-        self.visible_end = (start_line + visible_count + buffer).min(self.total_lines);
+        self.visible_start = start_line;
+        self.visible_end = (start_line + visible_count).min(self.total_lines);
     }
     
     /// Get the total content height
@@ -49,12 +52,22 @@ impl VirtualScrollState {
         self.update_visible_range();
     }
     
+    /// Check if currently at bottom
+    pub fn is_at_bottom(&self) -> bool {
+        let max_scroll = (self.content_height() - self.viewport_height).max(0.0);
+        (self.scroll_offset - max_scroll).abs() < 1.0
+    }
+    
     /// Handle scroll event
     pub fn on_scroll(&mut self, delta_y: f32) {
+        let old_offset = self.scroll_offset;
         self.scroll_offset = (self.scroll_offset + delta_y)
             .max(0.0)
             .min((self.content_height() - self.viewport_height).max(0.0));
-        self.update_visible_range();
+        
+        if (self.scroll_offset - old_offset).abs() > 0.1 {
+            self.update_visible_range();
+        }
     }
 }
 
@@ -64,22 +77,26 @@ pub fn render_virtual_log_table<V: 'static>(
     scroll_state: &VirtualScrollState,
     cx: &mut Context<V>,
 ) -> impl IntoElement {
-    let visible_offset = scroll_state.visible_start as f32 * scroll_state.line_height;
-    
     div()
+        .id("log-scroll-container")
         .flex_1()
-        .overflow_hidden()
+        .overflow_y_scroll()
         .bg(cx.theme().background)
         .child(
             div()
                 .h(px(scroll_state.content_height()))
+                .w_full()
                 .relative()
                 .child(
                     div()
                         .absolute()
-                        .top(px(visible_offset))
+                        .top(px(scroll_state.visible_start as f32 * scroll_state.line_height))
                         .w_full()
-                        .children(lines.iter().map(|line| {
+                        .children(lines.iter().skip(
+                            scroll_state.visible_start.saturating_sub(scroll_state.cache_start)
+                        ).take(
+                            scroll_state.visible_end - scroll_state.visible_start
+                        ).map(|line| {
                             render_log_line(line, cx)
                         }))
                 )
@@ -140,3 +157,5 @@ fn render_log_line<V: 'static>(line: &LogLine, cx: &mut Context<V>) -> impl Into
                 .child(line.content.clone())
         )
 }
+
+
