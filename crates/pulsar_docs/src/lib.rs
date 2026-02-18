@@ -84,3 +84,37 @@ pub fn list_crates() -> Vec<String> {
 pub fn docs_available() -> bool {
     !list_crates().is_empty()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_docs_are_embedded() {
+        // This test verifies that documentation was successfully embedded
+        let available = docs_available();
+        println!("docs_available: {}", available);
+        
+        let crates = list_crates();
+        println!("Found {} crates", crates.len());
+        for crate_name in crates.iter().take(5) {
+            println!("  - {}", crate_name);
+        }
+        
+        assert!(available, "Documentation should be embedded after build script runs");
+        assert!(!crates.is_empty(), "Should have at least one documented crate");
+    }
+    
+    #[test]
+    fn test_can_load_crate_index() {
+        let crates = list_crates();
+        if let Some(first_crate) = crates.first() {
+            let index = get_crate_index(first_crate);
+            assert!(index.is_some(), "Should be able to load index.json for {}", first_crate);
+            
+            if let Some(idx) = index {
+                println!("Loaded index for {}: {} sections", idx.name, idx.sections.len());
+            }
+        }
+    }
+}
