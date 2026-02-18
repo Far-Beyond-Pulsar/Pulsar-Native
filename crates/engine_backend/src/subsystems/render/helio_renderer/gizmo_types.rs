@@ -38,6 +38,16 @@ pub struct ViewportMouseInput {
     pub left_clicked: bool,
     pub left_down: bool,
     pub right_button: bool,
+    /// Viewport bounds in the UI (position and size of the viewport element)
+    pub viewport_bounds: Option<ViewportBounds>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ViewportBounds {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
 }
 
 #[derive(Debug, Clone, Default)]

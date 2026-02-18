@@ -484,6 +484,14 @@ impl HelioRenderer {
                     println!("[RENDERER] 🖱  left_clicked fired — physics_query present: {}", physics_query.is_some());
                     mouse_input.left_clicked = false; // Clear click flag
                     
+                    // Log viewport bounds if available
+                    if let Some(bounds) = mouse_input.viewport_bounds {
+                        tracing::info!("[VIEWPORT] 🖼️  Viewport bounds: pos=({:.1}, {:.1}) size=({:.1}x{:.1})",
+                            bounds.x, bounds.y, bounds.width, bounds.height);
+                    } else {
+                        tracing::warn!("[VIEWPORT] ⚠️  No viewport bounds available!");
+                    }
+                    
                     // Convert normalized screen coords (relative to viewport) to world ray
                     // mouse_input.mouse_pos is already [0,1] normalized to the viewport bounds
                     let ndc_x = mouse_input.mouse_pos.x * 2.0 - 1.0;
@@ -526,22 +534,22 @@ impl HelioRenderer {
                         if let Some(hit) = pq.raycast(ray_origin, ray_dir_world, 1000.0) {
                             tracing::info!("[VIEWPORT] 🎯 Object selected via physics raycast: {} at distance {:.2}", hit.object_id, hit.distance);
                             scene_db.select_object(Some(hit.object_id.clone()));
-                            // Solid red from just-in-front-of-camera → hit point
+                            // Solid red from camera → hit point (BGR format: R=1.0 becomes B=0.0, G=0.0, R=1.0)
                             debug_line_renderer.add_line(
                                 line_start,
                                 hit.point.to_array(),
-                                [1.0, 0.0, 0.0, 1.0],
+                                [0.0, 0.0, 1.0, 1.0],  // BGR: Red
                                 u32::MAX,
                             );
                         } else {
                             tracing::info!("[VIEWPORT] ❌ No object hit by physics raycast");
                             scene_db.select_object(None);
-                            // Orange miss ray capped at 50 units
+                            // Orange miss ray capped at 50 units (BGR format)
                             let miss_end = ray_origin + ray_dir_world * 50.0;
                             debug_line_renderer.add_line(
                                 line_start,
                                 miss_end.to_array(),
-                                [1.0, 0.4, 0.0, 1.0],
+                                [0.0, 0.4, 1.0, 1.0],  // BGR: Orange
                                 u32::MAX,
                             );
                         }
@@ -591,7 +599,7 @@ impl HelioRenderer {
                             debug_line_renderer.add_line(
                                 line_start,
                                 hit_point.to_array(),
-                                [1.0, 0.0, 0.0, 1.0],
+                                [0.0, 0.0, 1.0, 1.0],  // BGR: Red
                                 u32::MAX,
                             );
                         } else {
@@ -601,7 +609,7 @@ impl HelioRenderer {
                             debug_line_renderer.add_line(
                                 line_start,
                                 miss_end.to_array(),
-                                [1.0, 0.4, 0.0, 1.0],
+                                [0.0, 0.4, 1.0, 1.0],  // BGR: Orange
                                 u32::MAX,
                             );
                         }

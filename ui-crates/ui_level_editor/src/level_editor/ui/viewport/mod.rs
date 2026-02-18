@@ -603,11 +603,24 @@ impl ViewportPanel {
 
                     if let Ok(engine) = gpu_engine_move.try_lock() {
                         if let Some(ref helio_renderer) = engine.helio_renderer {
+                            // Get viewport bounds from element_bounds if available
+                            let viewport_bounds = if let Some(ref bounds) = *bounds_opt {
+                                Some(engine_backend::subsystems::render::helio_renderer::gizmo_types::ViewportBounds {
+                                    x: bounds.origin.x.into(),
+                                    y: bounds.origin.y.into(),
+                                    width: bounds.size.width.into(),
+                                    height: bounds.size.height.into(),
+                                })
+                            } else {
+                                None
+                            };
+                            
                             let mut mouse_input = helio_renderer.viewport_mouse_input.lock();
                             mouse_input.mouse_pos.x = normalized_x;
                             mouse_input.mouse_pos.y = normalized_y;
                             mouse_input.mouse_delta.x = delta_x;
                             mouse_input.mouse_delta.y = delta_y;
+                            mouse_input.viewport_bounds = viewport_bounds;
                         }
                     }
                 }
@@ -722,6 +735,18 @@ impl ViewportPanel {
                             let normalized_x = (element_x / gpui_width).clamp(0.0, 1.0);
                             let normalized_y = (element_y / gpui_height).clamp(0.0, 1.0);
                             
+                            // Get viewport bounds from element_bounds if available
+                            let viewport_bounds = if let Some(ref bounds) = *bounds_opt {
+                                Some(engine_backend::subsystems::render::helio_renderer::gizmo_types::ViewportBounds {
+                                    x: bounds.origin.x.into(),
+                                    y: bounds.origin.y.into(),
+                                    width: bounds.size.width.into(),
+                                    height: bounds.size.height.into(),
+                                })
+                            } else {
+                                None
+                            };
+                            
                             tracing::info!(
                                 "[VIEWPORT] 🖱️ Left click:\n  Screen: ({}, {})\n  GPUI element: ({:.2}, {:.2}) in viewport {}x{}\n  Normalized: ({:.4}, {:.4})",
                                 event.position.x, event.position.y, 
@@ -738,6 +763,7 @@ impl ViewportPanel {
                             mouse_input.left_down = true;
                             mouse_input.mouse_pos.x = normalized_x;
                             mouse_input.mouse_pos.y = normalized_y;
+                            mouse_input.viewport_bounds = viewport_bounds;
                             tracing::info!("[VIEWPORT] 🎯 Sent mouse input to Bevy: pos=({:.4}, {:.4}), clicked=true", normalized_x, normalized_y);
                         }
                     }
