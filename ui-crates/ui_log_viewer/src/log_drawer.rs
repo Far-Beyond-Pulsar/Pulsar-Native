@@ -7,38 +7,32 @@ use ui::{
 };
 use notify::{Watcher, RecursiveMode, Event as NotifyEvent};
 
-use crate::log_reader::{LogLine, LogReader};
-use crate::virtual_table::{render_virtual_log_table, VirtualScrollState};
+use crate::log_reader::LogReader;
+use crate::virtual_table::{render_virtual_log_table, LogLine, LogTableState, VirtualScrollState};
 
 actions!(log_viewer, [ToggleLogViewer]);
 
 pub struct LogViewerDrawer {
     log_reader: Option<LogReader>,
-    lines_cache: Vec<LogLine>,
+    table_state: LogTableState,
     scroll_state: VirtualScrollState,
-    auto_scroll: bool,
-    is_locked_to_bottom: bool,
     error: Option<String>,
     focus_handle: FocusHandle,
     _watcher: Option<notify::RecommendedWatcher>,
-    load_task: Option<Task<()>>,
 }
 
-const BUFFER_SIZE: usize = 5000; // Keep 5k lines above and below
-const LOAD_CHUNK_SIZE: usize = 1000; // Load 1k lines at a time
+const CHUNK_SIZE: usize = 1000; // Load 1k lines at a time when scrolling
+const MAX_LINES_IN_MEMORY: usize = 10000; // Keep max 10k lines in memory
 
 impl LogViewerDrawer {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let mut drawer = Self {
             log_reader: None,
-            lines_cache: Vec::new(),
+            table_state: LogTableState::new(),
             scroll_state: VirtualScrollState::new(),
-            auto_scroll: true,
-            is_locked_to_bottom: true,
             error: None,
             focus_handle: cx.focus_handle(),
             _watcher: None,
-            load_task: None,
         };
         
         drawer.load_latest_log(cx);
@@ -53,7 +47,9 @@ impl LogViewerDrawer {
                     Ok(reader) => {
                         tracing::info!("[LOG_VIEWER] Loaded log file: {} ({} lines)", 
                             path.display(), reader.total_lines());
-                        self.scroll_state.total_lines = reader.total_lines();
+                        
+                        let total_lines = reader.total_lines();
+                        self.scroll_state.total_lines = total_lines;
                         
                         // Start file watcher
                         self.start_file_watcher(path.clone(), cx);
@@ -61,11 +57,14 @@ impl LogViewerDrawer {
                         self.log_reader = Some(reader);
                         self.error = None;
                         
-                        if self.is_locked_to_bottom {
-                            self.scroll_to_bottom();
+                        // Load initial lines
+                        self.load_visible_lines(cx);
+                        
+                        // Scroll to bottom if locked
+                        if self.scroll_state.is_locked_to_bottom {
+                            self.scroll_to_bottom(cx);
                         }
                         
-                        self.reload_visible_lines(cx);
                         cx.notify();
                     }
                     Err(e) => {
@@ -79,6 +78,45 @@ impl LogViewerDrawer {
                 tracing::error!("[LOG_VIEWER] {}", self.error.as_ref().unwrap());
             }
         }
+    }
+    
+    fn load_visible_lines(&mut self, _cx: &mut Context<Self>) {
+        if let Some(ref reader) = self.log_reader {
+            let total = reader.total_lines();
+            if total == 0 {
+                return;
+            }
+            
+            // Load the last N lines (or all if less than max)
+            let start = total.saturating_sub(MAX_LINES_IN_MEMORY);
+            let end = total;
+            
+            match reader.read_lines(start, end) {
+                Ok(lines) => {
+                    let log_lines: Vec<LogLine> = lines.into_iter().map(|line| LogLine {
+                        line_number: line.line_number,
+                        content: line.content,
+                    }).collect();
+                    
+                    self.table_state.update_lines(log_lines);
+                    tracing::debug!("[LOG_VIEWER] Loaded {} lines ({}..{})", end - start, start, end);
+                }
+                Err(e) => {
+                    tracing::error!("[LOG_VIEWER] Failed to read lines: {}", e);
+                }
+            }
+        }
+    }
+    
+    fn scroll_to_bottom(&mut self, cx: &mut Context<Self>) {
+        self.scroll_state.scroll_to_bottom();
+        cx.notify();
+    }
+    
+    fn jump_to_latest(&mut self, cx: &mut Context<Self>) {
+        self.scroll_state.is_locked_to_bottom = true;
+        self.scroll_to_bottom(cx);
+        cx.notify();
     }
     
     fn start_file_watcher(&mut self, log_path: std::path::PathBuf, cx: &mut Context<Self>) {
@@ -109,9 +147,11 @@ impl LogViewerDrawer {
                                                 let old_total = drawer.scroll_state.total_lines;
                                                 drawer.scroll_state.total_lines = reader.total_lines();
                                                 
-                                                if drawer.is_locked_to_bottom {
-                                                    drawer.scroll_to_bottom();
-                                                    drawer.reload_visible_lines(cx);
+                                                // Reload lines from disk
+                                                drawer.load_visible_lines(cx);
+                                                
+                                                if drawer.scroll_state.is_locked_to_bottom {
+                                                    drawer.scroll_to_bottom(cx);
                                                 }
                                                 cx.notify();
                                                 
@@ -135,71 +175,13 @@ impl LogViewerDrawer {
         }
     }
     
-    fn scroll_to_bottom(&mut self) {
-        self.scroll_state.scroll_to_bottom();
-        self.is_locked_to_bottom = true;
-    }
-    
-    fn reload_visible_lines(&mut self, cx: &mut Context<Self>) {
-        if let Some(ref reader) = self.log_reader {
-            // Calculate range to load with buffer
-            let viewport_start = self.scroll_state.visible_start;
-            let viewport_end = self.scroll_state.visible_end;
-            
-            // Load buffer above and below
-            let buffer_start = viewport_start.saturating_sub(BUFFER_SIZE);
-            let buffer_end = (viewport_end + BUFFER_SIZE).min(reader.total_lines());
-            
-            match reader.read_lines(buffer_start, buffer_end) {
-                Ok(lines) => {
-                    self.lines_cache = lines;
-                    self.scroll_state.cache_start = buffer_start;
-                    self.scroll_state.cache_end = buffer_end;
-                }
-                Err(e) => {
-                    tracing::error!("[LOG_VIEWER] Failed to read lines: {}", e);
-                }
-            }
-        }
-    }
-    
-    pub fn on_scroll(&mut self, delta_y: f32, cx: &mut Context<Self>) {
-        let _old_offset = self.scroll_state.scroll_offset;
-        self.scroll_state.on_scroll(delta_y);
-        
-        // Check if user scrolled away from bottom
-        let at_bottom = self.scroll_state.is_at_bottom();
-        if self.is_locked_to_bottom && !at_bottom {
-            self.is_locked_to_bottom = false;
-            tracing::debug!("[LOG_VIEWER] Unlocked from bottom");
-        }
-        
-        // Check if we need to load more lines
-        self.check_and_load_if_needed(cx);
-        
-        cx.notify();
-    }
-    
-    fn check_and_load_if_needed(&mut self, cx: &mut Context<Self>) {
-        let viewport_start = self.scroll_state.visible_start;
-        let viewport_end = self.scroll_state.visible_end;
-        
-        // Check if we're approaching the edge of our cached range
-        let needs_load_above = viewport_start < self.scroll_state.cache_start + LOAD_CHUNK_SIZE;
-        let needs_load_below = viewport_end > self.scroll_state.cache_end - LOAD_CHUNK_SIZE;
-        
-        if needs_load_above || needs_load_below {
-            self.reload_visible_lines(cx);
-        }
-    }
-    
     fn render_toolbar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let log_path = self.log_reader.as_ref()
             .map(|r| r.file_path().display().to_string())
             .unwrap_or_else(|| "No log file loaded".to_string());
         
         let total_lines = self.scroll_state.total_lines;
-        let show_jump_to_latest = !self.is_locked_to_bottom;
+        let is_locked_to_bottom = self.scroll_state.is_locked_to_bottom;
         
         h_flex()
             .w_full()
@@ -210,15 +192,13 @@ impl LogViewerDrawer {
             .border_b_1()
             .border_color(cx.theme().border)
             .bg(cx.theme().background)
-            .when(show_jump_to_latest, |this| {
+            .when(!is_locked_to_bottom, |this| {
                 this.child(
                     Button::new("jump-to-latest")
                         .label("Jump to Latest")
                         .icon(IconName::ChevronDown)
                         .on_click(cx.listener(|drawer, _event, _window, cx| {
-                            drawer.scroll_to_bottom();
-                            drawer.reload_visible_lines(cx);
-                            cx.notify();
+                            drawer.jump_to_latest(cx);
                         }))
                 )
             })
@@ -252,14 +232,13 @@ impl LogViewerDrawer {
             .child(ui::divider::Divider::vertical().h(px(24.)))
             .child(
                 Button::new("toggle-auto-scroll")
-                    .icon(if self.is_locked_to_bottom { IconName::Check } else { IconName::Pause })
+                    .icon(if is_locked_to_bottom { IconName::Check } else { IconName::Pause })
                     .ghost()
-                    .tooltip(if self.is_locked_to_bottom { "Live mode (locked to bottom)" } else { "Static mode (scroll freely)" })
+                    .tooltip(if is_locked_to_bottom { "Live mode (locked to bottom)" } else { "Static mode (scroll freely)" })
                     .on_click(cx.listener(|drawer, _event, _window, cx| {
-                        drawer.is_locked_to_bottom = !drawer.is_locked_to_bottom;
-                        if drawer.is_locked_to_bottom {
-                            drawer.scroll_to_bottom();
-                            drawer.reload_visible_lines(cx);
+                        drawer.scroll_state.is_locked_to_bottom = !drawer.scroll_state.is_locked_to_bottom;
+                        if drawer.scroll_state.is_locked_to_bottom {
+                            drawer.jump_to_latest(cx);
                         }
                         cx.notify();
                     }))
@@ -270,8 +249,7 @@ impl LogViewerDrawer {
                     .ghost()
                     .tooltip("Scroll to bottom")
                     .on_click(cx.listener(|drawer, _event, _window, cx| {
-                        drawer.scroll_to_bottom();
-                        drawer.reload_visible_lines(cx);
+                        drawer.scroll_to_bottom(cx);
                         cx.notify();
                     }))
             )
@@ -358,19 +336,7 @@ impl Render for LogViewerDrawer {
                         )
                     })
                     .when(self.error.is_none(), |this| {
-                        let drawer_lines = self.lines_cache.clone();
-                        let drawer_scroll = self.scroll_state.clone();
-                        this.child(
-                            div()
-                                .flex_1()
-                                .overflow_hidden()
-                                .bg(cx.theme().background)
-                                .on_scroll_wheel(cx.listener(|drawer, event: &ScrollWheelEvent, _window, cx| {
-                                    let delta_y: f32 = event.delta.pixel_delta(px(1.0)).y.into();
-                                    drawer.on_scroll(delta_y, cx);
-                                }))
-                                .child(render_virtual_log_table(&drawer_lines, &drawer_scroll, cx))
-                        )
+                        this.child(render_virtual_log_table(&self.table_state, cx))
                     })
             )
     }
