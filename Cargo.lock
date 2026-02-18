@@ -12028,6 +12028,7 @@ dependencies = [
  "notify 6.1.1",
  "rust-i18n",
  "smol 2.0.2",
+ "tokio",
  "tracing",
  "ui",
  "ui_common",

@@ -8,7 +8,7 @@ use ui_file_manager::FileManagerDrawer;
 use ui_problems::ProblemsDrawer;
 use ui_level_editor::LevelEditorPanel;
 use ui_type_debugger::TypeDebuggerDrawer;
-use ui_log_viewer::LogViewerDrawer;
+use ui_log_viewer::LogDrawer;
 use ui_entry::EntryScreen;
 use plugin_manager::PluginManager;
 use engine_backend::services::rust_analyzer_manager::RustAnalyzerManager;
@@ -156,7 +156,7 @@ impl PulsarApp {
         let file_manager_drawer = cx.new(|cx| FileManagerDrawer::new(project_path.clone(), window, cx));
         let problems_drawer = cx.new(|cx| ProblemsDrawer::new(window, cx));
         let type_debugger_drawer = cx.new(|cx| TypeDebuggerDrawer::new(window, cx));
-        let log_viewer_drawer = cx.new(|cx| LogViewerDrawer::new(window, cx));
+        let log_viewer_drawer = cx.new(|cx| LogDrawer::new(cx));
 
         // Subscribe to drawer events
         cx.subscribe_in(&file_manager_drawer, window, event_handlers::on_file_selected).detach();

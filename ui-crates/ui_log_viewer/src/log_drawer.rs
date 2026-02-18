@@ -20,6 +20,8 @@ pub struct LogViewerDrawer {
     focus_handle: FocusHandle,
     _watcher: Option<notify::RecommendedWatcher>,
     entity: Option<Entity<Self>>,
+    is_visible: bool,
+    update_task: Option<Task<()>>,
 }
 
 const CHUNK_SIZE: usize = 1000; // Load 1k lines at a time when scrolling
@@ -28,7 +30,7 @@ const MAX_LINES_IN_MEMORY: usize = 10000; // Keep max 10k lines in memory
 impl LogViewerDrawer {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let entity = cx.entity().clone();
-        let mut drawer = Self {
+        let drawer = Self {
             log_reader: None,
             table_state: LogTableState::new(),
             scroll_state: VirtualScrollState::new(),
@@ -36,11 +38,29 @@ impl LogViewerDrawer {
             focus_handle: cx.focus_handle(),
             _watcher: None,
             entity: Some(entity),
+            is_visible: false,
+            update_task: None,
         };
         
-        drawer.load_latest_log(cx);
-        
+        // Don't load logs on construction, wait until drawer is opened
         drawer
+    }
+    
+    pub fn on_open(&mut self, cx: &mut Context<Self>) {
+        if !self.is_visible {
+            self.is_visible = true;
+            tracing::info!("[LOG_VIEWER] Drawer opened, starting log monitoring");
+            self.load_latest_log(cx);
+        }
+    }
+    
+    pub fn on_close(&mut self, _cx: &mut Context<Self>) {
+        if self.is_visible {
+            self.is_visible = false;
+            tracing::info!("[LOG_VIEWER] Drawer closed, stopping log monitoring");
+            self._watcher = None; // Drop the watcher
+            self.update_task = None; // Cancel update task
+        }
     }
     
     fn load_latest_log(&mut self, cx: &mut Context<Self>) {

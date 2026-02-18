@@ -20,7 +20,10 @@ anyhow = "1.0"
 chrono = { version = "0.4" }
 directories = "5.0"
 rust-i18n.workspace = true
+
+# Async
 smol = "2.0"
+tokio = { version = "1", features = ["sync", "macros"] }
 
 # File watching
 notify = { version = "6.0", default-features = false, features = ["macos_kqueue"] }

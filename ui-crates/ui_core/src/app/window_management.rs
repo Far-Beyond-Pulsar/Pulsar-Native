@@ -183,6 +183,10 @@ impl PulsarApp {
                     ..Default::default()
                 },
                 move |window, cx| {
+                    // Start monitoring when window is created
+                    log_viewer_drawer.update(cx, |drawer, cx| {
+                        drawer.start_monitoring(cx);
+                    });
                     cx.new(|cx| Root::new(log_viewer_drawer.into(), window, cx))
                 },
             );
