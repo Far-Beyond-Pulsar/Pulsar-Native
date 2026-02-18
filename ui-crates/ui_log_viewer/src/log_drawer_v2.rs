@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme as _, IconName,
+    h_flex, v_flex, ActiveTheme as _, IconName, TitleBar,
     v_virtual_list, VirtualListScrollHandle,
 };
 
@@ -538,21 +538,18 @@ impl Render for LogDrawer {
             .size_full()
             .bg(theme.background)
             .child(
-                // Header with search and filters
-                v_flex()
-                    .w_full()
-                    .bg(theme.background)
-                    .border_b_1()
-                    .border_color(theme.border)
+                // Title bar
+                TitleBar::new()
                     .child(
-                        // Title bar
                         h_flex()
-                            .h(px(40.0))
-                            .px_4()
+                            .flex_1()
                             .items_center()
                             .justify_between()
                             .child(
                                 div()
+                                    .text_size(px(14.0))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(theme.foreground)
                                     .child("Engine Logs")
                             )
                             .child(
@@ -592,6 +589,14 @@ impl Render for LogDrawer {
                                     )
                             )
                     )
+            )
+            .child(
+                // Filter bar
+                v_flex()
+                    .w_full()
+                    .bg(theme.background)
+                    .border_b_1()
+                    .border_color(theme.border)
                     .child(
                         // Search and filter bar
                         h_flex()

@@ -168,11 +168,7 @@ impl PulsarApp {
                         },
                         size: size(px(1200.0), px(800.0)),
                     })),
-                    titlebar: Some(gpui::TitlebarOptions {
-                        title: None,
-                        appears_transparent: true,
-                        traffic_light_position: None,
-                    }),
+                    titlebar: Some(ui::TitleBar::title_bar_options()),
                     kind: WindowKind::Normal,
                     is_resizable: true,
                     window_decorations: Some(gpui::WindowDecorations::Client),
