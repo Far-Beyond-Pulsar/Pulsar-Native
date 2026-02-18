@@ -266,9 +266,6 @@ impl PhysicsQueryService {
                     entry.id, pos[0], pos[1], pos[2]);
             }
         });
-        
-        tracing::info!("[PHYSICS] 🔄 Synced scene colliders: removed {}, created {} new colliders", 
-            start_count, created_count);
     }
 
     /// Create gizmo colliders for the currently selected object

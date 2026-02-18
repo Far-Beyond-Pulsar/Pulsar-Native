@@ -619,7 +619,6 @@ impl HelioRenderer {
             if let Some(ref pq) = physics_query {
                 // Only sync every 60 frames to avoid overhead
                 if frame_count % 60 == 0 {
-                    tracing::info!("[RENDER] Syncing scene with physics (frame {})", frame_count);
                     pq.sync_from_scene(&scene_db);
                 }
             } else {
