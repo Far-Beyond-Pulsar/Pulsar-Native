@@ -70,11 +70,11 @@ const CLOUD_COVERAGE: f32  = 0.58;     // Fraction of sky covered (0=clear, 1=ov
 // ===== Sun Constants =====
 // Sun angular size: controls the hard edge of the sun disc
 // Higher values = smaller sun (0.9985 = large, 0.9992 = medium, 0.9995 = small)
-const SUN_DISC_SIZE: f32 = 0.3;
+const SUN_DISC_SIZE: f32 = 0.9995 ;
 
 // Sun glow size: controls the soft corona/bloom around the sun
 // Lower values = larger glow (0.96 = huge, 0.98 = large, 0.99 = small)
-const SUN_GLOW_SIZE: f32 = 0.34;
+const SUN_GLOW_SIZE: f32 = 0.99;
 
 // Sun brightness at midday (multiplier for bloom effect)
 const SUN_BRIGHTNESS_MAX: f32 = 45.0;  // Maximum at noon
