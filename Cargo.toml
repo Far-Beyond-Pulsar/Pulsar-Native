@@ -85,12 +85,12 @@ plugin_editor_api = { path = "crates/plugin_editor_api"}
 plugin_manager    = { path = "crates/plugin_manager" }
 
 # ---------- Helio Renderer (blade-graphics based) ----------
-helio-core                       = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99" }
-helio-render                     = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99" }
-helio-features                   = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99" }
-helio-feature-base-geometry      = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99" }
-helio-feature-lighting           = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99" }
-helio-feature-materials          = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99" }
+helio-core                       = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "96489d3d96b95a8664999b916621a22c8d1663b1" }
+helio-render                     = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "96489d3d96b95a8664999b916621a22c8d1663b1" }
+helio-features                   = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "96489d3d96b95a8664999b916621a22c8d1663b1" }
+helio-feature-base-geometry      = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "96489d3d96b95a8664999b916621a22c8d1663b1" }
+helio-feature-lighting           = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "96489d3d96b95a8664999b916621a22c8d1663b1" }
+helio-feature-materials          = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "96489d3d96b95a8664999b916621a22c8d1663b1" }
 helio-feature-procedural-shadows = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99" }
 helio-feature-bloom              = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99" }
 helio-feature-billboards         = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "e38038d3cb0407c21fb7ec8e5e2ff5e6bb8cff99" }
