@@ -11902,6 +11902,7 @@ dependencies = [
  "gpui",
  "pulsar_docs",
  "regex",
+ "tracing",
  "ui",
  "ui_common",
 ]
@@ -11969,6 +11970,7 @@ dependencies = [
  "rusqlite",
  "rust-i18n",
  "serde",
+ "tracing",
  "ui",
 ]
 

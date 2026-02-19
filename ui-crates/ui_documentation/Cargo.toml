@@ -10,6 +10,7 @@ ui_common = { workspace = true }
 pulsar_docs = { path = "../../crates/pulsar_docs" }
 engine_state = { path = "../../crates/engine_state" }
 regex = "1"
+tracing.workspace = true
 
 [lints]
 workspace = true
