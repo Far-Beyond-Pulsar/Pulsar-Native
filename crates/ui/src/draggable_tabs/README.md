@@ -61,17 +61,17 @@ let tab_bar = cx.new(|cx| {
 cx.subscribe(&tab_bar, |_this, _bar, event, _window, cx| {
     match event {
         TabBarEvent::TabSelected(ix) => {
-            println!("Tab {} selected", ix);
+            tracing::trace!("Tab {} selected", ix);
         }
         TabBarEvent::TabClosed(ix) => {
-            println!("Tab {} closed", ix);
+            tracing::trace!("Tab {} closed", ix);
         }
         TabBarEvent::TabReordered { from, to } => {
-            println!("Tab moved from {} to {}", from, to);
+            tracing::trace!("Tab moved from {} to {}", from, to);
         }
         TabBarEvent::TabDropped { tab, at_index } => {
             // Handle tab dropped from another window
-            println!("Tab '{}' dropped at index {}", tab.label, at_index);
+            tracing::trace!("Tab '{}' dropped at index {}", tab.label, at_index);
         }
     }
 })

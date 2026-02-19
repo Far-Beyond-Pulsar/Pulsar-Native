@@ -91,13 +91,13 @@ engine_fs.operations().delete_type_alias(&file_path)?;
 ```rust
 // Get by name
 if let Some(alias) = engine_fs.type_index().get("MyType") {
-    println!("Found: {} at {:?}", alias.display_name, alias.file_path);
+    tracing::trace!("Found: {} at {:?}", alias.display_name, alias.file_path);
 }
 
 // Search
 let results = engine_fs.type_index().search("Vec");
 for alias in results {
-    println!("{}: {}", alias.name, alias.type_expr);
+    tracing::trace!("{}: {}", alias.name, alias.type_expr);
 }
 
 // Get all
@@ -172,8 +172,8 @@ project_root/
 All operations return `Result<T>` with context:
 ```rust
 match engine_fs.operations().create_type_alias("MyType", &content) {
-    Ok(path) => println!("Created at {:?}", path),
-    Err(e) => eprintln!("Failed: {}", e),
+    Ok(path) => tracing::trace!("Created at {:?}", path),
+    Err(e) => tracing::error!("Failed: {}", e),
 }
 ```
 

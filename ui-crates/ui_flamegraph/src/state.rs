@@ -88,7 +88,7 @@ impl SpanCache {
         let build_start = std::time::Instant::now();
         let thread_offsets = calculate_thread_y_offsets(frame);
         let lod_tree = LODTree::build(frame, &thread_offsets);
-        println!("[CACHE] total cache build: {:?}", build_start.elapsed());
+        tracing::trace!("[CACHE] total cache build: {:?}", build_start.elapsed());
         Self {
             thread_offsets: Arc::new(thread_offsets),
             lod_tree: Arc::new(lod_tree),

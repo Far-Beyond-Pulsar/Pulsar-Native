@@ -27,11 +27,11 @@ const SIZES: &[u32] = &[16, 32, 48, 64, 128, 256, 512, 1024, 2048, 4096];
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    println!("🎨 Pulsar Logo Tool");
-    println!("==================\n");
+    tracing::trace!("🎨 Pulsar Logo Tool");
+    tracing::trace!("==================\n");
 
     // Validate input PNG
-    println!("📂 Loading PNG: {}", args.input.display());
+    tracing::trace!("📂 Loading PNG: {}", args.input.display());
     if !args.input.exists() {
         bail!("Input file does not exist: {}", args.input.display());
     }
@@ -42,11 +42,11 @@ fn main() -> Result<()> {
         .context("Failed to decode image")?;
 
     let (width, height) = img.dimensions();
-    println!("   ✓ Dimensions: {}x{}", width, height);
+    tracing::trace!("   ✓ Dimensions: {}x{}", width, height);
 
     if width != height {
-        println!("   ⚠️  Warning: Image is not square ({}x{})", width, height);
-        println!("      This may cause distortion on some platforms.");
+        tracing::trace!("   ⚠️  Warning: Image is not square ({}x{})", width, height);
+        tracing::trace!("      This may cause distortion on some platforms.");
     }
 
     // Determine output directory
@@ -61,39 +61,39 @@ fn main() -> Result<()> {
     };
 
     if args.dry_run {
-        println!("\n🔍 DRY RUN MODE - No files will be modified\n");
+        tracing::trace!("\n🔍 DRY RUN MODE - No files will be modified\n");
     } else {
         fs::create_dir_all(&output_dir)
             .context("Failed to create output directory")?;
     }
 
-    println!("\n📦 Output directory: {}", output_dir.display());
+    tracing::trace!("\n📦 Output directory: {}", output_dir.display());
 
     // Generate ICO for Windows
-    println!("\n🪟 Windows (.ico):");
+    tracing::trace!("\n🪟 Windows (.ico):");
     generate_ico(&img, &output_dir, args.dry_run)?;
 
     // Generate ICNS for macOS
-    println!("\n🍎 macOS (.icns):");
+    tracing::trace!("\n🍎 macOS (.icns):");
     generate_icns(&img, &output_dir, args.dry_run)?;
 
     // Generate PNG copies
-    println!("\n🐧 Linux (PNG):");
+    tracing::trace!("\n🐧 Linux (PNG):");
     generate_png_copies(&img, &output_dir, args.dry_run)?;
 
     // Generate .desktop file template
-    println!("\n📄 Linux Desktop Entry:");
+    tracing::trace!("\n📄 Linux Desktop Entry:");
     generate_desktop_file(&output_dir, args.dry_run)?;
 
     if !args.dry_run {
-        println!("\n✅ Logo files generated successfully!");
-        println!("\n📋 Next steps:");
-        println!("   1. Rebuild your project: cargo build");
-        println!("   2. On Windows: Icon will be embedded in the .exe");
-        println!("   3. On macOS: Use the .icns file in your app bundle");
-        println!("   4. On Linux: Install the .desktop file to ~/.local/share/applications/");
+        tracing::trace!("\n✅ Logo files generated successfully!");
+        tracing::trace!("\n📋 Next steps:");
+        tracing::trace!("   1. Rebuild your project: cargo build");
+        tracing::trace!("   2. On Windows: Icon will be embedded in the .exe");
+        tracing::trace!("   3. On macOS: Use the .icns file in your app bundle");
+        tracing::trace!("   4. On Linux: Install the .desktop file to ~/.local/share/applications/");
     } else {
-        println!("\n✅ Dry run complete - no files were modified");
+        tracing::trace!("\n✅ Dry run complete - no files were modified");
     }
 
     Ok(())
@@ -101,10 +101,10 @@ fn main() -> Result<()> {
 
 fn generate_ico(img: &image::DynamicImage, output_dir: &Path, dry_run: bool) -> Result<()> {
     let ico_path = output_dir.join("logo_sqrkl.ico");
-    println!("   → {}", ico_path.display());
+    tracing::trace!("   → {}", ico_path.display());
 
     if dry_run {
-        println!("      (would generate with sizes: 16, 32, 48, 256)");
+        tracing::trace!("      (would generate with sizes: 16, 32, 48, 256)");
         return Ok(());
     }
 
@@ -117,7 +117,7 @@ fn generate_ico(img: &image::DynamicImage, output_dir: &Path, dry_run: bool) -> 
         
         let ico_image = ico::IconImage::from_rgba_data(size, size, rgba.into_raw());
         ico_dir.add_entry(ico::IconDirEntry::encode(&ico_image)?);
-        println!("      ✓ {}x{}", size, size);
+        tracing::trace!("      ✓ {}x{}", size, size);
     }
 
     let file = File::create(&ico_path)
@@ -130,10 +130,10 @@ fn generate_ico(img: &image::DynamicImage, output_dir: &Path, dry_run: bool) -> 
 
 fn generate_icns(img: &image::DynamicImage, output_dir: &Path, dry_run: bool) -> Result<()> {
     let icns_path = output_dir.join("logo_sqrkl.icns");
-    println!("   → {}", icns_path.display());
+    tracing::trace!("   → {}", icns_path.display());
 
     if dry_run {
-        println!("      (would generate with sizes: 16, 32, 128, 256, 512)");
+        tracing::trace!("      (would generate with sizes: 16, 32, 128, 256, 512)");
         return Ok(());
     }
 
@@ -154,7 +154,7 @@ fn generate_icns(img: &image::DynamicImage, output_dir: &Path, dry_run: bool) ->
         )?;
 
         icon_family.add_icon(&icon_image)?;
-        println!("      ✓ {}x{}", size, size);
+        tracing::trace!("      ✓ {}x{}", size, size);
     }
 
     let file = File::create(&icns_path)
@@ -168,27 +168,27 @@ fn generate_icns(img: &image::DynamicImage, output_dir: &Path, dry_run: bool) ->
 fn generate_png_copies(img: &image::DynamicImage, output_dir: &Path, dry_run: bool) -> Result<()> {
     // Generate standard sizes
     let png_path = output_dir.join("logo_sqrkl.png");
-    println!("   → {}", png_path.display());
+    tracing::trace!("   → {}", png_path.display());
 
     if dry_run {
-        println!("      (would generate: logo_sqrkl.png at 256x256)");
+        tracing::trace!("      (would generate: logo_sqrkl.png at 256x256)");
         return Ok(());
     }
 
     let resized = img.resize_exact(256, 256, image::imageops::FilterType::Lanczos3);
     resized.save_with_format(&png_path, ImageFormat::Png)
         .context("Failed to save PNG")?;
-    println!("      ✓ 256x256");
+    tracing::trace!("      ✓ 256x256");
 
     Ok(())
 }
 
 fn generate_desktop_file(output_dir: &Path, dry_run: bool) -> Result<()> {
     let desktop_path = output_dir.join("pulsar.desktop");
-    println!("   → {}", desktop_path.display());
+    tracing::trace!("   → {}", desktop_path.display());
 
     if dry_run {
-        println!("      (would generate desktop entry file)");
+        tracing::trace!("      (would generate desktop entry file)");
         return Ok(());
     }
 
@@ -207,8 +207,8 @@ Keywords=game;engine;development;
     file.write_all(desktop_content.as_bytes())?;
     file.flush()?;
     
-    println!("      ✓ Desktop entry created");
-    println!("      Note: You may need to adjust paths in the .desktop file");
+    tracing::trace!("      ✓ Desktop entry created");
+    tracing::trace!("      Note: You may need to adjust paths in the .desktop file");
 
     Ok(())
 }

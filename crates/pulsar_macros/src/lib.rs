@@ -34,7 +34,7 @@ use syn::{parse_macro_input, ItemFn, Pat, ReturnType, FnArg, Stmt, Expr};
 /// ```ignore
 /// #[blueprint(type: NodeTypes::fn_, category: "Debug")]
 /// fn print_string(message: String) {
-///     println!("[DEBUG] {}", message);
+///     tracing::trace!("[DEBUG] {}", message);
 /// }
 /// ```
 ///

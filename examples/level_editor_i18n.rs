@@ -7,31 +7,31 @@ use ui_level_editor::{locale, set_locale};
 
 fn main() {
     // Initialize the application (simplified example)
-    println!("Level Editor Translation System Demo\n");
+    tracing::trace!("Level Editor Translation System Demo\n");
 
     // Get current locale
-    println!("Current locale: {}", locale());
+    tracing::trace!("Current locale: {}", locale());
 
     // Display some translations in English (default)
     demo_translations();
 
     // Switch to Simplified Chinese
-    println!("\n--- Switching to Simplified Chinese (zh-CN) ---");
+    tracing::trace!("\n--- Switching to Simplified Chinese (zh-CN) ---");
     set_locale("zh-CN");
     demo_translations();
 
     // Switch to Traditional Chinese
-    println!("\n--- Switching to Traditional Chinese (zh-HK) ---");
+    tracing::trace!("\n--- Switching to Traditional Chinese (zh-HK) ---");
     set_locale("zh-HK");
     demo_translations();
 
     // Switch to Italian
-    println!("\n--- Switching to Italian (it) ---");
+    tracing::trace!("\n--- Switching to Italian (it) ---");
     set_locale("it");
     demo_translations();
 
     // Back to English
-    println!("\n--- Back to English (en) ---");
+    tracing::trace!("\n--- Back to English (en) ---");
     set_locale("en");
     demo_translations();
 }
@@ -39,20 +39,20 @@ fn main() {
 fn demo_translations() {
     use rust_i18n::t;
 
-    println!("Toolbar:");
-    println!("  - Play: {}", t!("LevelEditor.Toolbar.StartSimulation"));
-    println!("  - Stop: {}", t!("LevelEditor.Toolbar.StopSimulation"));
-    println!("  - Time: {}", t!("LevelEditor.Toolbar.TimeScale"));
+    tracing::trace!("Toolbar:");
+    tracing::trace!("  - Play: {}", t!("LevelEditor.Toolbar.StartSimulation"));
+    tracing::trace!("  - Stop: {}", t!("LevelEditor.Toolbar.StopSimulation"));
+    tracing::trace!("  - Time: {}", t!("LevelEditor.Toolbar.TimeScale"));
 
-    println!("\nPanels:");
-    println!("  - {}", t!("LevelEditor.Hierarchy.Title"));
-    println!("  - {}", t!("LevelEditor.Properties.Title"));
-    println!("  - {}", t!("LevelEditor.Performance.Title"));
+    tracing::trace!("\nPanels:");
+    tracing::trace!("  - {}", t!("LevelEditor.Hierarchy.Title"));
+    tracing::trace!("  - {}", t!("LevelEditor.Properties.Title"));
+    tracing::trace!("  - {}", t!("LevelEditor.Performance.Title"));
 
-    println!("\nActions:");
-    println!("  - {}", t!("LevelEditor.Hierarchy.AddObject"));
-    println!("  - {}", t!("LevelEditor.Properties.AddComponent"));
-    println!("  - {}", t!("LevelEditor.Assets.Refresh"));
+    tracing::trace!("\nActions:");
+    tracing::trace!("  - {}", t!("LevelEditor.Hierarchy.AddObject"));
+    tracing::trace!("  - {}", t!("LevelEditor.Properties.AddComponent"));
+    tracing::trace!("  - {}", t!("LevelEditor.Assets.Refresh"));
 }
 
 // Example output:

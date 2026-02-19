@@ -271,7 +271,7 @@ fn main() {
 
     // Execute the initialization graph
     if let Err(e) = graph.execute(&mut init_ctx) {
-        eprintln!("Engine initialization failed: {}", e);
+        tracing::error!("Engine initialization failed: {}", e);
         std::process::exit(1);
     }
 

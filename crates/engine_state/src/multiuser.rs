@@ -173,8 +173,8 @@ pub fn clear_multiuser_context() {
 /// # Example
 /// ```ignore
 /// if let Some(ctx) = get_multiuser_context() {
-///     println!("In session: {}", ctx.session_id);
-///     println!("We are {}", if ctx.is_host { "host" } else { "client" });
+///     tracing::trace!("In session: {}", ctx.session_id);
+///     tracing::trace!("We are {}", if ctx.is_host { "host" } else { "client" });
 /// }
 /// ```
 pub fn get_multiuser_context() -> Option<MultiuserContext> {

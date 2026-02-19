@@ -30,12 +30,12 @@ impl InstrumentationCollector {
     pub fn start(&self) {
         let mut running = self.running.write();
         if *running {
-            println!("[PROFILER] Already running, ignoring start request");
+            tracing::trace!("[PROFILER] Already running, ignoring start request");
             return; // Already running
         }
         *running = true;
 
-        println!("[PROFILER] Profiling enabled: {}", profiling::is_profiling_enabled());
+        tracing::trace!("[PROFILER] Profiling enabled: {}", profiling::is_profiling_enabled());
         
         // Create a test span to verify the system works
         {
@@ -49,7 +49,7 @@ impl InstrumentationCollector {
         // CRITICAL: Collect events from channel into storage FIRST
         profiling::collect_events();
         
-        println!("[PROFILER] Current event count: {}", profiling::get_all_events().len());
+        tracing::trace!("[PROFILER] Current event count: {}", profiling::get_all_events().len());
 
         let trace_data = Arc::clone(&self.trace_data);
         let running_flag = Arc::clone(&self.running);
@@ -81,7 +81,7 @@ fn collector_loop(
     running: Arc<parking_lot::RwLock<bool>>,
     update_interval_ms: u64,
 ) {
-    println!("[PROFILER] Starting instrumentation collector");
+    tracing::trace!("[PROFILER] Starting instrumentation collector");
     
     let mut last_event_count = 0;
 
@@ -102,18 +102,18 @@ fn collector_loop(
         let new_events = &all_events[last_event_count..];
         last_event_count = all_events.len();
 
-        println!("[PROFILER] Collected {} new instrumentation events (total: {})", 
+        tracing::trace!("[PROFILER] Collected {} new instrumentation events (total: {})", 
             new_events.len(), all_events.len());
 
         // Convert ONLY new events to TraceData format
         if let Err(e) = convert_profile_events_to_trace(new_events, &trace_data) {
-            eprintln!("[PROFILER] Failed to convert events: {}", e);
+            tracing::error!("[PROFILER] Failed to convert events: {}", e);
         }
     }
 
     // NOTE: Don't disable profiling here! 
     // Profiling is managed by the engine, not the collector
-    println!("[PROFILER] Instrumentation collector stopped");
+    tracing::trace!("[PROFILER] Instrumentation collector stopped");
 }
 
 /// Convert profiling events to TraceData format and ADD them (don't replace!)
@@ -132,7 +132,7 @@ pub fn convert_profile_events_to_trace(
         .collect();
     let mut frame_times = current_frame.frame_times_ms.clone();
 
-    println!("[PROFILER] BEFORE: {} existing spans", existing_span_count);
+    tracing::trace!("[PROFILER] BEFORE: {} existing spans", existing_span_count);
 
     // Add new events to existing spans and extract frame times
     for (idx, event) in events.iter().enumerate() {
@@ -143,7 +143,7 @@ pub fn convert_profile_events_to_trace(
             // Extract frame time from duration field (stored in nanoseconds)
             let frame_time_ms = event.duration_ns as f32 / 1_000_000.0;
             frame_times.push(frame_time_ms);
-            println!("[PROFILER] Frame marker: {:.2}ms ({:.1} FPS)", frame_time_ms, 1000.0 / frame_time_ms);
+            tracing::trace!("[PROFILER] Frame marker: {:.2}ms ({:.1} FPS)", frame_time_ms, 1000.0 / frame_time_ms);
             continue; // Don't add frame markers as regular spans
         }
         
@@ -165,13 +165,13 @@ pub fn convert_profile_events_to_trace(
         
         // Debug: Print first few spans to see durations
         if idx < 3 {
-            println!("[PROFILER] Span {}: {} @ {}ns for {}ns ({:.2}ms)", 
+            tracing::trace!("[PROFILER] Span {}: {} @ {}ns for {}ns ({:.2}ms)", 
                 idx, event.name, event.start_ns, event.duration_ns,
                 event.duration_ns as f64 / 1_000_000.0);
         }
     }
 
-    println!("[PROFILER] AFTER: {} spans (added {}), {} frame times", 
+    tracing::trace!("[PROFILER] AFTER: {} spans (added {}), {} frame times", 
         spans.len(), spans.len() - existing_span_count, frame_times.len());
 
     // Update the trace data with accumulated spans and frame times
@@ -181,7 +181,7 @@ pub fn convert_profile_events_to_trace(
     
     // Verify it was set correctly
     let verification_frame = trace_data.get_frame();
-    println!("[PROFILER] VERIFIED: TraceData now has {} spans across {} threads, {} frame times", 
+    tracing::trace!("[PROFILER] VERIFIED: TraceData now has {} spans across {} threads, {} frame times", 
         verification_frame.spans.len(), verification_frame.threads.len(), verification_frame.frame_times_ms.len());
 
     Ok(())

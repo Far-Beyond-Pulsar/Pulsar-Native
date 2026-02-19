@@ -93,7 +93,7 @@ use super::types::SharedCloneProgress;
 ///
 /// // Monitor progress from another thread
 /// let status = progress.lock();
-/// println!("Progress: {}", status.message);
+/// tracing::trace!("Progress: {}", status.message);
 /// # Ok(())
 /// # }
 /// ```
@@ -296,7 +296,7 @@ pub fn add_user_upstream(
 ///
 /// # fn example() -> Result<(), git2::Error> {
 /// let repo = init_repository(Path::new("/path/to/new/project"))?;
-/// println!("Initialized repository at: {:?}", repo.path());
+/// tracing::trace!("Initialized repository at: {:?}", repo.path());
 /// # Ok(())
 /// # }
 /// ```
@@ -330,9 +330,9 @@ pub fn init_repository(path: &Path) -> Result<git2::Repository, git2::Error> {
 /// use std::path::Path;
 ///
 /// if is_git_repo(Path::new("/path/to/project")) {
-///     println!("This is a git repository");
+///     tracing::trace!("This is a git repository");
 /// } else {
-///     println!("Not a git repository");
+///     tracing::trace!("Not a git repository");
 /// }
 /// ```
 pub fn is_git_repo(path: &Path) -> bool {
@@ -367,10 +367,10 @@ pub fn is_git_repo(path: &Path) -> bool {
 ///
 /// let project_path = Path::new("/path/to/project");
 /// if has_origin_remote(project_path) {
-///     println!("Repository is connected to origin");
+///     tracing::trace!("Repository is connected to origin");
 ///     // Can check for updates or push changes
 /// } else {
-///     println!("No origin remote configured");
+///     tracing::trace!("No origin remote configured");
 ///     // Might need to add one
 /// }
 /// ```
@@ -422,9 +422,9 @@ pub fn has_origin_remote(path: &Path) -> bool {
 /// # fn example() -> Result<(), git2::Error> {
 /// let project_path = Path::new("/path/to/project");
 /// match check_for_updates(project_path) {
-///     Ok(0) => println!("Repository is up to date"),
-///     Ok(n) => println!("Repository is {} commits behind origin", n),
-///     Err(e) => eprintln!("Failed to check for updates: {}", e),
+///     Ok(0) => tracing::trace!("Repository is up to date"),
+///     Ok(n) => tracing::trace!("Repository is {} commits behind origin", n),
+///     Err(e) => tracing::error!("Failed to check for updates: {}", e),
 /// }
 /// # Ok(())
 /// # }
@@ -524,13 +524,13 @@ pub fn check_for_updates(path: &Path) -> Result<usize, git2::Error> {
 ///
 /// // Check if updates are available first
 /// match check_for_updates(project_path) {
-///     Ok(0) => println!("Already up to date"),
+///     Ok(0) => tracing::trace!("Already up to date"),
 ///     Ok(n) => {
-///         println!("Pulling {} commits...", n);
+///         tracing::trace!("Pulling {} commits...", n);
 ///         pull_updates(project_path)?;
-///         println!("Successfully updated!");
+///         tracing::trace!("Successfully updated!");
 ///     }
-///     Err(e) => eprintln!("Error checking updates: {}", e),
+///     Err(e) => tracing::error!("Error checking updates: {}", e),
 /// }
 /// # Ok(())
 /// # }

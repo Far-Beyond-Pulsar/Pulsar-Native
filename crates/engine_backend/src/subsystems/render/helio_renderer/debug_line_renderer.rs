@@ -148,21 +148,21 @@ impl DebugLineRenderer {
     ) {
         // Validate input - reject NaN or infinite values
         if start.iter().any(|v| !v.is_finite()) || end.iter().any(|v| !v.is_finite()) {
-            println!("[DEBUG LINES] ❌ Invalid line with NaN/Inf values - rejecting: start=[{:.2},{:.2},{:.2}] end=[{:.2},{:.2},{:.2}]",
+            tracing::trace!("[DEBUG LINES] ❌ Invalid line with NaN/Inf values - rejecting: start=[{:.2},{:.2},{:.2}] end=[{:.2},{:.2},{:.2}]",
                 start[0], start[1], start[2], end[0], end[1], end[2]);
             return;
         }
         
         if self.lines.len() >= MAX_DEBUG_LINES {
-            println!("[DEBUG LINES] ❌ Buffer full — dropping line");
+            tracing::trace!("[DEBUG LINES] ❌ Buffer full — dropping line");
             return;
         }
-        println!(
+        tracing::trace!(
             "[DEBUG LINES] ➕ add_line start=[{:.2},{:.2},{:.2}] end=[{:.2},{:.2},{:.2}] ttl={}",
             start[0], start[1], start[2], end[0], end[1], end[2], ttl_frames
         );
         self.lines.push(DebugLine { start, end, color, ttl_frames });
-        println!("[DEBUG LINES] 📦 {} line(s) queued", self.lines.len());
+        tracing::trace!("[DEBUG LINES] 📦 {} line(s) queued", self.lines.len());
     }
 
     /// Record the overlay render pass. Call after `gizmo_renderer.render()`.
@@ -181,19 +181,19 @@ impl DebugLineRenderer {
             return;
         }
 
-        println!("[DEBUG LINES] render() — {} line(s) active", self.lines.len());
+        tracing::trace!("[DEBUG LINES] render() — {} line(s) active", self.lines.len());
 
         let pipeline = match &self.pipeline {
             Some(p) => p,
-            None => { println!("[DEBUG LINES] ❌ pipeline missing"); return; }
+            None => { tracing::trace!("[DEBUG LINES] ❌ pipeline missing"); return; }
         };
         let vbuf = match self.vertex_buffer {
             Some(b) => b,
-            None => { println!("[DEBUG LINES] ❌ vertex_buffer missing"); return; }
+            None => { tracing::trace!("[DEBUG LINES] ❌ vertex_buffer missing"); return; }
         };
         let context = match &self.context {
             Some(c) => Arc::clone(c),
-            None => { println!("[DEBUG LINES] ❌ context missing"); return; }
+            None => { tracing::trace!("[DEBUG LINES] ❌ context missing"); return; }
         };
 
         let max_lines = self.lines.len().min(MAX_DEBUG_LINES);
@@ -205,7 +205,7 @@ impl DebugLineRenderer {
             all_verts.extend_from_slice(&quads);
         }
 
-        println!("[DEBUG LINES] 🔺 uploading {} vertices for {} quads", all_verts.len(), max_lines);
+        tracing::trace!("[DEBUG LINES] 🔺 uploading {} vertices for {} quads", all_verts.len(), max_lines);
 
         unsafe {
             ptr::copy_nonoverlapping(
@@ -245,7 +245,7 @@ impl DebugLineRenderer {
             };
             rc.bind(1, &color_data);
             let base = i * 6;
-            println!(
+            tracing::trace!(
                 "[DEBUG LINES] 🖊  quad {}: verts [{:.1},{:.1},{:.1}]→[{:.1},{:.1},{:.1}]",
                 i,
                 all_verts[base].position[0],   all_verts[base].position[1],   all_verts[base].position[2],
@@ -286,7 +286,7 @@ fn line_to_quad(a: Vec3, b: Vec3, half_width: f32) -> [DebugLineVertex; 6] {
     let dir = if length > 0.0001 {
         delta / length
     } else {
-        println!("[DEBUG LINES] ⚠️  Zero-length line detected: [{:.3},{:.3},{:.3}]→[{:.3},{:.3},{:.3}]",
+        tracing::trace!("[DEBUG LINES] ⚠️  Zero-length line detected: [{:.3},{:.3},{:.3}]→[{:.3},{:.3},{:.3}]",
             a.x, a.y, a.z, b.x, b.y, b.z);
         Vec3::new(0.0, 0.0, 1.0) // Default direction
     };

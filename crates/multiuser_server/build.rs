@@ -28,8 +28,8 @@ fn main() -> Result<()> {
         // Force CMake to use the builder that respects these flags
         std::env::set_var("AWS_LC_SYS_CMAKE_BUILDER", "1");
 
-        println!("cargo:warning=Setting CFLAGS for C11: {}", new_cflags);
-        println!("cargo:warning=Setting CMAKE_C_STANDARD=11");
+        tracing::trace!("cargo:warning=Setting CFLAGS for C11: {}", new_cflags);
+        tracing::trace!("cargo:warning=Setting CMAKE_C_STANDARD=11");
     }
 
     // TODO: Uncomment when proto files are created

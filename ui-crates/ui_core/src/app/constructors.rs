@@ -139,17 +139,17 @@ impl PulsarApp {
         // Set project path in engine_state for access from other crates
         if let Some(ref path) = project_path {
             let path_str = path.to_string_lossy().to_string();
-            println!("[ENGINE_STATE DEBUG] ========================================");
-            println!("[ENGINE_STATE DEBUG] Setting project path to: {:?}", path);
-            println!("[ENGINE_STATE DEBUG] As string: {:?}", path_str);
+            tracing::trace!("[ENGINE_STATE DEBUG] ========================================");
+            tracing::trace!("[ENGINE_STATE DEBUG] Setting project path to: {:?}", path);
+            tracing::trace!("[ENGINE_STATE DEBUG] As string: {:?}", path_str);
             engine_state::set_project_path(path_str.clone());
-            println!("[ENGINE_STATE DEBUG] Verification - get_project_path(): {:?}", engine_state::get_project_path());
-            println!("[ENGINE_STATE DEBUG] ========================================");
+            tracing::trace!("[ENGINE_STATE DEBUG] Verification - get_project_path(): {:?}", engine_state::get_project_path());
+            tracing::trace!("[ENGINE_STATE DEBUG] ========================================");
             tracing::info!("Set engine project path to {:?}", path);
         } else {
-            println!("[ENGINE_STATE DEBUG] ========================================");
-            println!("[ENGINE_STATE DEBUG] NO PROJECT PATH - project_path is None");
-            println!("[ENGINE_STATE DEBUG] ========================================");
+            tracing::trace!("[ENGINE_STATE DEBUG] ========================================");
+            tracing::trace!("[ENGINE_STATE DEBUG] NO PROJECT PATH - project_path is None");
+            tracing::trace!("[ENGINE_STATE DEBUG] ========================================");
         }
 
         // Create drawers
@@ -183,9 +183,9 @@ impl PulsarApp {
         cx.subscribe_in(&rust_analyzer, window, event_handlers::on_analyzer_event).detach();
 
         // Subscribe to tab panel events
-        println!("[SUBSCRIPTION] Setting up subscription to center_tabs (ID: {:?}) for PanelEvent", center_tabs.entity_id());
+        tracing::trace!("[SUBSCRIPTION] Setting up subscription to center_tabs (ID: {:?}) for PanelEvent", center_tabs.entity_id());
         cx.subscribe_in(&center_tabs, window, event_handlers::on_tab_panel_event).detach();
-        println!("[SUBSCRIPTION] Subscription to center_tabs set up successfully");
+        tracing::trace!("[SUBSCRIPTION] Subscription to center_tabs set up successfully");
 
         // Subscribe to entry screen events
         if let Some(screen) = &entry_screen {

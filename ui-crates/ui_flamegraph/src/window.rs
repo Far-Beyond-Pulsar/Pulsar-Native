@@ -77,7 +77,7 @@ impl FlamegraphWindow {
             return;
         }
 
-        println!("[PROFILER] Starting instrumentation collector");
+        tracing::trace!("[PROFILER] Starting instrumentation collector");
 
         // Create database file in project directory
         if let Some(project_path) = engine_state::get_project_path() {
@@ -88,17 +88,17 @@ impl FlamegraphWindow {
                     
                     match profiling::database::create_database(&db_path) {
                         Ok(conn) => {
-                            println!("[PROFILER] Created database: {}", db_path.display());
+                            tracing::trace!("[PROFILER] Created database: {}", db_path.display());
                             self.current_db_path = Some(db_path);
                             self.db_connection = Some(Arc::new(parking_lot::Mutex::new(conn)));
                         }
                         Err(e) => {
-                            eprintln!("[PROFILER] Failed to create database: {}", e);
+                            tracing::error!("[PROFILER] Failed to create database: {}", e);
                         }
                     }
                 }
                 Err(e) => {
-                    eprintln!("[PROFILER] Failed to create profiling directory: {}", e);
+                    tracing::error!("[PROFILER] Failed to create profiling directory: {}", e);
                 }
             }
         }
@@ -113,7 +113,7 @@ impl FlamegraphWindow {
         self.collector = Some(collector);
         self.is_profiling = true;
 
-        println!("[PROFILER] Instrumentation profiling started");
+        tracing::trace!("[PROFILER] Instrumentation profiling started");
         _cx.notify();
     }
 
@@ -130,11 +130,11 @@ impl FlamegraphWindow {
         if let Some(db_conn) = &self.db_connection {
             let events = profiling::get_all_events();
             if let Err(e) = profiling::database::save_events(&db_conn.lock(), &events) {
-                eprintln!("[PROFILER] Failed to save events to database: {}", e);
+                tracing::error!("[PROFILER] Failed to save events to database: {}", e);
             } else {
-                println!("[PROFILER] Saved {} events to database", events.len());
+                tracing::trace!("[PROFILER] Saved {} events to database", events.len());
                 if let Some(path) = &self.current_db_path {
-                    println!("[PROFILER] Database saved to: {}", path.display());
+                    tracing::trace!("[PROFILER] Database saved to: {}", path.display());
                 }
             }
         }
@@ -142,7 +142,7 @@ impl FlamegraphWindow {
         self.collector = None;
         self.is_profiling = false;
         
-        println!("[PROFILER] Instrumentation profiling stopped");
+        tracing::trace!("[PROFILER] Instrumentation profiling stopped");
         _cx.notify();
     }
 
@@ -179,23 +179,23 @@ impl FlamegraphWindow {
             Ok(conn) => {
                 match profiling::database::load_events(&conn) {
                     Ok(events) => {
-                        println!("[PROFILER] Loaded {} events from {}", events.len(), db_path.display());
+                        tracing::trace!("[PROFILER] Loaded {} events from {}", events.len(), db_path.display());
                         
                         // Convert to TraceData format
                         if let Err(e) = crate::profiler::convert_profile_events_to_trace(&events, &self.trace_data) {
-                            eprintln!("[PROFILER] Failed to convert events: {}", e);
+                            tracing::error!("[PROFILER] Failed to convert events: {}", e);
                         }
                         
                         self.current_db_path = Some(db_path);
                         _cx.notify();
                     }
                     Err(e) => {
-                        eprintln!("[PROFILER] Failed to load events from database: {}", e);
+                        tracing::error!("[PROFILER] Failed to load events from database: {}", e);
                     }
                 }
             }
             Err(e) => {
-                eprintln!("[PROFILER] Failed to open database: {}", e);
+                tracing::error!("[PROFILER] Failed to open database: {}", e);
             }
         }
     }
@@ -205,17 +205,17 @@ impl FlamegraphWindow {
             // List available sessions
             match profiling::database::list_profiling_sessions(project_path) {
                 Ok(sessions) => {
-                    println!("[PROFILER] Found {} profiling sessions", sessions.len());
+                    tracing::trace!("[PROFILER] Found {} profiling sessions", sessions.len());
                     if let Some(latest) = sessions.first() {
                         // For now, just load the latest
                         // TODO: Show a UI list to pick from
                         self.load_from_database(latest.clone(), cx);
                     } else {
-                        println!("[PROFILER] No profiling sessions found");
+                        tracing::trace!("[PROFILER] No profiling sessions found");
                     }
                 }
                 Err(e) => {
-                    eprintln!("[PROFILER] Failed to list sessions: {}", e);
+                    tracing::error!("[PROFILER] Failed to list sessions: {}", e);
                 }
             }
         }

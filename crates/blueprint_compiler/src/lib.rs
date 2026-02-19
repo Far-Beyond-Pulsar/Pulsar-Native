@@ -50,10 +50,10 @@ pub fn get_metadata_provider() -> BlueprintMetadataProvider {
 ///
 /// match compile_blueprint(&graph) {
 ///     Ok(rust_code) => {
-///         println!("Compiled successfully!");
+///         tracing::trace!("Compiled successfully!");
 ///         std::fs::write("generated.rs", rust_code).unwrap();
 ///     }
-///     Err(e) => eprintln!("Compilation failed: {}", e),
+///     Err(e) => tracing::error!("Compilation failed: {}", e),
 /// }
 /// ```
 pub fn compile_blueprint(graph: &GraphDescription) -> Result<String> {
@@ -78,9 +78,9 @@ mod tests {
         // Should have at least some nodes from pulsar_std
         assert!(!nodes.is_empty(), "Should load nodes from pulsar_std");
         
-        println!("Loaded {} nodes from pulsar_std", nodes.len());
+        tracing::trace!("Loaded {} nodes from pulsar_std", nodes.len());
         for node in nodes.iter().take(5) {
-            println!("  - {} ({})", node.name, node.category);
+            tracing::trace!("  - {} ({})", node.name, node.category);
         }
     }
 
@@ -91,7 +91,7 @@ mod tests {
             .with_test_writer()
             .try_init();
 
-        println!("\n=== Building Complex Test Blueprint ===");
+        tracing::trace!("\n=== Building Complex Test Blueprint ===");
         
         // Create a more complex graph with math and control flow
         let mut graph = GraphDescription::new("complex_test_blueprint");
@@ -250,23 +250,23 @@ mod tests {
             ConnectionType::Data,
         ));
         
-        println!("Graph created with {} nodes and {} connections", 
+        tracing::trace!("Graph created with {} nodes and {} connections", 
             graph.nodes.len(), graph.connections.len());
         
         // ==========================================
         // Compile the graph
         // ==========================================
-        println!("\n=== Compiling Complex Blueprint ===");
+        tracing::trace!("\n=== Compiling Complex Blueprint ===");
         let result = compile_blueprint(&graph);
         
         match result {
             Ok(rust_code) => {
-                println!("\n✅ === Compilation Successful! ===");
-                println!("Generated {} bytes of Rust code", rust_code.len());
+                tracing::trace!("\n✅ === Compilation Successful! ===");
+                tracing::trace!("Generated {} bytes of Rust code", rust_code.len());
                 
-                println!("\n=== Generated Code ===");
-                println!("{}", rust_code);
-                println!("=== End of Generated Code ===\n");
+                tracing::trace!("\n=== Generated Code ===");
+                tracing::trace!("{}", rust_code);
+                tracing::trace!("=== End of Generated Code ===\n");
                 
                 // Verify the code contains expected elements
                 assert!(rust_code.len() > 100, "Generated code should be substantial");
@@ -276,12 +276,12 @@ mod tests {
                 // Write full output to file
                 let output_path = "../../target/complex_blueprint_output.rs";
                 if let Err(e) = std::fs::write(output_path, &rust_code) {
-                    println!("Note: Could not write to {}: {}", output_path, e);
+                    tracing::trace!("Note: Could not write to {}: {}", output_path, e);
                 } else {
-                    println!("✅ Full output written to: {}", output_path);
+                    tracing::trace!("✅ Full output written to: {}", output_path);
                 }
                 
-                println!("\n✅ Test Passed! Complex Blueprint compiled successfully");
+                tracing::trace!("\n✅ Test Passed! Complex Blueprint compiled successfully");
             }
             Err(e) => {
                 panic!("❌ Complex Blueprint compilation failed: {}", e);
@@ -339,17 +339,17 @@ mod tests {
         graph.add_node(add_node);
         
         // Try to compile (may fail if add node doesn't exist)
-        println!("\n=== Compiling Data Flow Test Blueprint ===");
+        tracing::trace!("\n=== Compiling Data Flow Test Blueprint ===");
         let result = compile_blueprint(&graph);
         
         match result {
             Ok(rust_code) => {
-                println!("\n=== Data Flow Compilation Successful ===");
-                println!("Generated {} bytes of Rust code", rust_code.len());
+                tracing::trace!("\n=== Data Flow Compilation Successful ===");
+                tracing::trace!("Generated {} bytes of Rust code", rust_code.len());
             }
             Err(e) => {
-                println!("\n=== Expected behavior if 'add' node not found ===");
-                println!("Compilation error: {}", e);
+                tracing::trace!("\n=== Expected behavior if 'add' node not found ===");
+                tracing::trace!("Compilation error: {}", e);
                 // This is okay - the test demonstrates the error handling
             }
         }

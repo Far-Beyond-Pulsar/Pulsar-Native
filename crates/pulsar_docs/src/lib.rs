@@ -93,12 +93,12 @@ mod tests {
     fn test_docs_are_embedded() {
         // This test verifies that documentation was successfully embedded
         let available = docs_available();
-        println!("docs_available: {}", available);
+        tracing::trace!("docs_available: {}", available);
         
         let crates = list_crates();
-        println!("Found {} crates", crates.len());
+        tracing::trace!("Found {} crates", crates.len());
         for crate_name in crates.iter().take(5) {
-            println!("  - {}", crate_name);
+            tracing::trace!("  - {}", crate_name);
         }
         
         assert!(available, "Documentation should be embedded after build script runs");
@@ -113,7 +113,7 @@ mod tests {
             assert!(index.is_some(), "Should be able to load index.json for {}", first_crate);
             
             if let Some(idx) = index {
-                println!("Loaded index for {}: {} sections", idx.name, idx.sections.len());
+                tracing::trace!("Loaded index for {}: {} sections", idx.name, idx.sections.len());
             }
         }
     }

@@ -971,8 +971,8 @@ impl DockArea {
                         // Do nothing for TabClosed
                     }
                     PanelEvent::MoveToNewWindow { panel, position, source_tab_panel, source_index } => {
-                        println!("[DOCK_AREA] Received MoveToNewWindow from TabPanel");
-                        println!("[DOCK_AREA] Source index: {}", source_index);
+                        tracing::trace!("[DOCK_AREA] Received MoveToNewWindow from TabPanel");
+                        tracing::trace!("[DOCK_AREA] Source index: {}", source_index);
                         let parent_window_handle = window.window_handle();
                         
                         let source = PanelSource {
@@ -1084,10 +1084,10 @@ impl DockArea {
             ..Default::default()
         };
 
-        println!("[DOCK_AREA] Creating popout window with options");
+        tracing::trace!("[DOCK_AREA] Creating popout window with options");
 
         let _ = cx.open_window(window_options, move |window, cx| {
-            println!("[DOCK_AREA] Inside window creation callback");
+            tracing::trace!("[DOCK_AREA] Inside window creation callback");
 
             // Create a minimal new dock area for this detached window
             let new_dock_area = cx.new(|cx| DockArea::new("detached-dock", Some(1), window, cx));
@@ -1115,7 +1115,7 @@ impl DockArea {
                 dock.set_center(dock_item, window, cx);
             });
 
-            println!("[DOCK_AREA] Popout window created successfully");
+            tracing::trace!("[DOCK_AREA] Popout window created successfully");
             let popout_window = cx.new(|cx| PopoutDockWindow::new(
                 new_dock_area, 
                 panel.clone(),
@@ -1164,7 +1164,7 @@ impl Render for PopoutDockWindow {
         // Add close handler to restore panel to its original location
         if let Some(source_info) = source {
             title_bar = title_bar.on_close_window(move |_, window, cx| {
-                println!("[POPOUT] Close button clicked, restoring panel to original location");
+                tracing::trace!("[POPOUT] Close button clicked, restoring panel to original location");
                 
                 let panel_to_restore = panel.clone();
                 let tab_index = source_info.tab_index;
@@ -1172,7 +1172,7 @@ impl Render for PopoutDockWindow {
                 let _ = cx.update_window(source_info.parent_window, |_root, window, cx| {
                     if let Some(source_tab_panel) = source_info.tab_panel.upgrade() {
                         cx.update_entity(&source_tab_panel, |tab_panel, cx| {
-                            println!("[POPOUT] Adding panel back to original tab panel at index {:?}", tab_index);
+                            tracing::trace!("[POPOUT] Adding panel back to original tab panel at index {:?}", tab_index);
                             
                             if let Some(idx) = tab_index {
                                 // Restore to the specific index
@@ -1183,7 +1183,7 @@ impl Render for PopoutDockWindow {
                             }
                         });
                     } else {
-                        println!("[POPOUT] Warning: source tab panel was dropped, cannot restore");
+                        tracing::trace!("[POPOUT] Warning: source tab panel was dropped, cannot restore");
                     }
                 });
                 
@@ -1191,7 +1191,7 @@ impl Render for PopoutDockWindow {
                 window.remove_window();
             });
         } else {
-            println!("[POPOUT] Warning: no source information available for restoration");
+            tracing::trace!("[POPOUT] Warning: no source information available for restoration");
         }
 
         v_flex()

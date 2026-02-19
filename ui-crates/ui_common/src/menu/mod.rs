@@ -1017,8 +1017,8 @@ impl Render for AppTitleBar {
         // Only rebuild menus if locale changed
         let current_locale = locale().to_string();
         if current_locale != self.last_locale {
-            eprintln!("DEBUG: Locale changed from {} to {}", self.last_locale, current_locale);
-            eprintln!("DEBUG: Test translation Menu.File = {}", t!("Menu.File"));
+            tracing::error!("DEBUG: Locale changed from {} to {}", self.last_locale, current_locale);
+            tracing::error!("DEBUG: Test translation Menu.File = {}", t!("Menu.File"));
             
             // Rebuild menus and app menu bar
             init_app_menus(self.title.clone(), cx);

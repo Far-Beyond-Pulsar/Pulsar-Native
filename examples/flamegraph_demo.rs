@@ -353,8 +353,8 @@ fn generate_demo_trace(trace: &TraceData) {
     }
 
     let total_spans = trace.get_frame().spans.len();
-    println!("Generated trace with {} spans across 500 frames", total_spans);
-    println!("Average spans per frame: {}", total_spans / 500);
+    tracing::trace!("Generated trace with {} spans across 500 frames", total_spans);
+    tracing::trace!("Average spans per frame: {}", total_spans / 500);
 }
 
 fn main() {

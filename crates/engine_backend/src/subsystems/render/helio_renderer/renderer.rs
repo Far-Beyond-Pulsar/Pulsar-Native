@@ -481,7 +481,7 @@ impl HelioRenderer {
             // Process mouse click for object selection with physics raycasting
             if let Some(mut mouse_input) = _viewport_mouse_input.try_lock() {
                 if mouse_input.left_clicked {
-                    println!("[RENDERER] 🖱  left_clicked fired — physics_query present: {}", physics_query.is_some());
+                    tracing::trace!("[RENDERER] 🖱  left_clicked fired — physics_query present: {}", physics_query.is_some());
                     mouse_input.left_clicked = false; // Clear click flag
                     
                     // GPUI creates a transparent "hole" in the UI where the viewport element is
@@ -578,7 +578,7 @@ impl HelioRenderer {
                             );
                         }
                     } else {
-                        println!("[RENDERER] ⚠️  Using fallback raycast (no physics query service)");
+                        tracing::trace!("[RENDERER] ⚠️  Using fallback raycast (no physics query service)");
                         tracing::info!("[VIEWPORT] Using fallback raycast (no physics)");
                         // Fallback: Simple sphere intersection test
                         let mut closest_hit: Option<(String, f32)> = None;

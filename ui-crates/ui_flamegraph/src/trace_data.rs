@@ -841,7 +841,7 @@ impl TraceData {
         }
 
         let total_spans = trace.get_frame().spans.len();
-        println!("Generated sample trace: {} spans across 2000 frames", total_spans);
+        tracing::trace!("Generated sample trace: {} spans across 2000 frames", total_spans);
 
         trace
     }

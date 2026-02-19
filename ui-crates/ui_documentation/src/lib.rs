@@ -492,7 +492,7 @@ impl DocumentationWindow {
                         if !this.new_file_name.is_empty() {
                             let file_name = this.new_file_name.clone();
                             if let Err(e) = this.manual_docs.create_new_file(file_name, window, cx) {
-                                eprintln!("Failed to create file: {}", e);
+                                tracing::error!("Failed to create file: {}", e);
                             }
                             this.show_new_file_dialog = false;
                             this.new_file_name.clear();

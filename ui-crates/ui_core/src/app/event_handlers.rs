@@ -594,7 +594,7 @@ pub fn on_tab_panel_event(
     window: &mut Window,
     cx: &mut Context<PulsarApp>,
 ) {
-    println!("[PANEL_EVENT] Received event: {:?}", match event {
+    tracing::trace!("[PANEL_EVENT] Received event: {:?}", match event {
         PanelEvent::MoveToNewWindow { position, source_index, .. } => {
             format!("MoveToNewWindow at {:?}, from index {}", position, source_index)
         },
@@ -609,7 +609,7 @@ pub fn on_tab_panel_event(
         PanelEvent::MoveToNewWindow { .. } => {
             // This event is now handled by DockArea's subscription, which has proper source info
             // No need to handle it here anymore
-            println!("[PANEL_EVENT] MoveToNewWindow is now handled by DockArea");
+            tracing::trace!("[PANEL_EVENT] MoveToNewWindow is now handled by DockArea");
         }
         PanelEvent::TabClosed(entity_id) => {
             // Editor tracking has been migrated to plugins

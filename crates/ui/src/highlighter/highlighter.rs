@@ -423,7 +423,7 @@ impl SyntaxHighlighter {
 
         // DO NOT REMOVE THIS PRINT, it's useful for debugging
         // for item in highlights {
-        //     println!("item: {:?}", item);
+        //     tracing::trace!("item: {:?}", item);
         // }
 
         highlights
@@ -603,9 +603,9 @@ impl SyntaxHighlighter {
 
         // NOTE: DO NOT remove this comment, it is used for debugging.
         // for style in &styles {
-        //     println!("---- style: {:?} - {:?}", style.0, style.1.color);
+        //     tracing::trace!("---- style: {:?} - {:?}", style.0, style.1.color);
         // }
-        // println!("--------------------------------");
+        // tracing::trace!("--------------------------------");
 
         styles
     }

@@ -22,7 +22,7 @@ impl PulsarApp {
         parent_window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        println!("[POPOUT] Creating detached window for panel at position: {:?}", position);
+        tracing::trace!("[POPOUT] Creating detached window for panel at position: {:?}", position);
 
         // Track the panel so we can restore it when the window closes
         self.state.popped_out_panels.push(panel.clone());
@@ -55,7 +55,7 @@ impl PulsarApp {
             ..Default::default()
         };
 
-        println!("[POPOUT] Opening window with options");
+        tracing::trace!("[POPOUT] Opening window with options");
 
         // Store reference to the center tabs and parent window handle for restoration
         let center_tabs = self.state.center_tabs.clone();
@@ -64,7 +64,7 @@ impl PulsarApp {
 
         // Create a dedicated panel window instead of embedding in full PulsarApp
         let result = cx.open_window(window_options, move |window, cx| {
-            println!("[POPOUT] Inside window creation callback");
+            tracing::trace!("[POPOUT] Inside window creation callback");
             let panel_window = cx.new(|cx| PanelWindow::new(
                 panel_for_popout, 
                 center_tabs, 
@@ -72,13 +72,13 @@ impl PulsarApp {
                 window, 
                 cx
             ));
-            println!("[POPOUT] PanelWindow created successfully");
+            tracing::trace!("[POPOUT] PanelWindow created successfully");
             cx.new(|cx| Root::new(panel_window.into(), window, cx))
         });
 
         match result {
-            Ok(_) => println!("[POPOUT] Window opened successfully"),
-            Err(e) => println!("[POPOUT] Failed to open window: {:?}", e),
+            Ok(_) => tracing::trace!("[POPOUT] Window opened successfully"),
+            Err(e) => tracing::trace!("[POPOUT] Failed to open window: {:?}", e),
         }
     }
 

@@ -133,7 +133,7 @@ impl EngineFs {
             self.type_database.clone(),
         )?;
 
-        println!("Started filesystem watcher for project at {:?}", self.project_root);
+        tracing::trace!("Started filesystem watcher for project at {:?}", self.project_root);
 
         Ok(())
     }

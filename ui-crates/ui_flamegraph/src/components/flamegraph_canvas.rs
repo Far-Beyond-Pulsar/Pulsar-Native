@@ -121,7 +121,7 @@ pub fn render_flamegraph_canvas(
                     FRAME_COUNT += 1;
                     if FRAME_COUNT % 60 == 0 {  // Log every 60 frames
                         let duration_ms = (visible_time.end - visible_time.start) as f64 / 1_000_000.0;
-                        println!("[FLAMEGRAPH] Visible range: {} - {} ({:.2}ms), pan_x: {:.1}, zoom: {:.8}", 
+                        tracing::trace!("[FLAMEGRAPH] Visible range: {} - {} ({:.2}ms), pan_x: {:.1}, zoom: {:.8}", 
                             visible_time.start, visible_time.end, duration_ms, view_state.pan_x, view_state.zoom);
                     }
                 }
@@ -136,7 +136,7 @@ pub fn render_flamegraph_canvas(
 
                 unsafe {
                     if FRAME_COUNT % 60 == 0 {
-                        println!("[FLAMEGRAPH] LOD returned {} spans", merged_spans.len());
+                        tracing::trace!("[FLAMEGRAPH] LOD returned {} spans", merged_spans.len());
                     }
                 }
 

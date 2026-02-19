@@ -41,13 +41,13 @@ impl Render for PanelWindow {
             .child(
                 TitleBar::new()
                     .on_close_window(move |_, window, cx| {
-                        println!("[POPOUT] Close button clicked, restoring panel to main window");
+                        tracing::trace!("[POPOUT] Close button clicked, restoring panel to main window");
                         
                         // Restore the panel to the main window
                         let panel_to_restore = panel.clone();
                         let _ = cx.update_window(parent_window_handle, |_root, window, cx| {
                             cx.update_entity(&center_tabs, |tab_panel, cx| {
-                                println!("[POPOUT] Adding panel back to center tabs");
+                                tracing::trace!("[POPOUT] Adding panel back to center tabs");
                                 tab_panel.add_panel(panel_to_restore.clone(), window, cx);
                             });
                         });
