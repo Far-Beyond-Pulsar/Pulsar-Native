@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-helio-features.workspace = true
+helio-core = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "03e1e3d9693329b2ea0c5367e648d45b2e04dde7" }
+helio-features = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "03e1e3d9693329b2ea0c5367e648d45b2e04dde7" }
 blade-graphics.workspace = true
 glam.workspace = true

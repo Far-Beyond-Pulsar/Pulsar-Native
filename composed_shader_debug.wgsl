@@ -66,8 +66,19 @@ struct MaterialData {
 const CLOUD_HEIGHT_MIN: f32 = 200.0;   // World-space altitude of cloud base
 const CLOUD_HEIGHT_MAX: f32 = 400.0;   // World-space altitude of cloud top
 const CLOUD_COVERAGE: f32  = 0.58;     // Fraction of sky covered (0=clear, 1=overcast)
-const SUN_DISC_SIZE: f32 = 0.9992;     // Sun angular size (0.9985 = larger, 0.9995 = smaller)
-const SUN_GLOW_SIZE: f32 = 0.980;      // Sun corona/glow size
+
+// ===== Sun Constants =====
+// Sun angular size: controls the hard edge of the sun disc
+// Higher values = smaller sun (0.9985 = large, 0.9992 = medium, 0.9995 = small)
+const SUN_DISC_SIZE: f32 = 0.3;
+
+// Sun glow size: controls the soft corona/bloom around the sun
+// Lower values = larger glow (0.96 = huge, 0.98 = large, 0.99 = small)
+const SUN_GLOW_SIZE: f32 = 0.34;
+
+// Sun brightness at midday (multiplier for bloom effect)
+const SUN_BRIGHTNESS_MAX: f32 = 45.0;  // Maximum at noon
+const SUN_BRIGHTNESS_MIN: f32 = 6.0;   // Minimum at horizon
 
 // Helper function: rendering expects BGR, so swap R and B channels
 fn rgb(r: f32, g: f32, b: f32) -> vec3<f32> {
@@ -159,8 +170,7 @@ fn get_cloud_density(world_pos: vec3<f32>, time: f32) -> f32 {
 }
 
 // Integrate cloud density along the view ray through the cloud slab.
-// Uses 3-sample ray marching through the cloud slab for correct coverage at
-// all viewing angles (near-horizon clouds are now visible, not just overhead).
+// Uses more samples for proper 3D depth when viewing from the side.
 fn get_cloud_coverage_for_ray(view_dir: vec3<f32>, camera_pos: vec3<f32>, time: f32) -> f32 {
     // Camera is always below the clouds; ray must be pointing upward
     if (view_dir.y < 0.02) {
@@ -175,16 +185,30 @@ fn get_cloud_coverage_for_ray(view_dir: vec3<f32>, camera_pos: vec3<f32>, time: 
     }
 
     let t_enter   = max(0.0, t_min);
-    let step_size = (t_max - t_enter) / 3.0;
+    let t_exit    = t_max;
+    
+    // More samples for side views (better 3D appearance)
+    let num_steps = 8;
+    let step_size = (t_exit - t_enter) / f32(num_steps);
 
     var total = 0.0;
-    for (var i = 0; i < 3; i++) {
+    var transmittance = 1.0;
+    
+    for (var i = 0; i < num_steps; i++) {
         let t          = t_enter + (f32(i) + 0.5) * step_size;
         let sample_pos = camera_pos + view_dir * t;
-        total         += get_cloud_density(sample_pos, time);
+        let density    = get_cloud_density(sample_pos, time);
+        
+        // Accumulate density with transmittance for depth
+        total += density * transmittance;
+        transmittance *= exp(-density * 0.5);
+        
+        if (transmittance < 0.01) {
+            break;
+        }
     }
 
-    return clamp(total / 3.0, 0.0, 1.0);
+    return clamp(total / f32(num_steps) * 1.5, 0.0, 1.0);
 }
 
 // Cheap self-shadow: 2 density samples toward the sun from the cloud midpoint.
@@ -311,11 +335,18 @@ fn calculate_sky_color(world_pos: vec3<f32>, camera_pos: vec3<f32>) -> vec3<f32>
     let cloud_density = get_cloud_coverage_for_ray(view_dir, camera_pos, time);
 
     if (cloud_density > 0.005) {
-        // Lit fraction: top of cloud (high view_dir.y) = lit, underside = shadowed.
-        let lit_frac = smoothstep(0.1, 0.8, view_dir.y);
-
+        // Improved 3D lighting for side views
+        // Calculate lighting based on sun angle to cloud position
+        let sun_alignment = dot(view_dir, sun_dir);
+        
+        // Base lighting from sun direction
+        let lit_frac = smoothstep(-0.2, 0.6, sun_alignment);
+        
         // Self-shadow: density above the cloud midpoint toward the sun darkens interiors.
         let self_shadow = get_cloud_self_shadow(view_dir, camera_pos, sun_dir, time);
+        
+        // Depth-based shading: clouds closer to viewer appear brighter
+        let depth_fade = smoothstep(0.7, 0.3, cloud_density);
 
         let lit_col    = mix(
             rgb(1.0,  0.62, 0.30),  // Warm golden at sunset
@@ -328,9 +359,11 @@ fn calculate_sky_color(world_pos: vec3<f32>, camera_pos: vec3<f32>) -> vec3<f32>
             smoothstep(0.0, 0.35, sun_height)
         );
         let night_col  = rgb(0.035, 0.035, 0.055); // Almost-black night cloud
-
-        // Combine view-elevation shading with self-shadow: thick cloud = dark interior
-        let cloud_base  = mix(shadow_col, lit_col, lit_frac * self_shadow);
+        
+        // Enhanced 3D shading: mix between lit and shadow with depth
+        let base_shading = mix(shadow_col, lit_col, lit_frac * self_shadow);
+        let depth_enhanced = mix(base_shading * 0.7, base_shading, depth_fade);
+        let cloud_base  = depth_enhanced;
         let cloud_color = mix(night_col, cloud_base, smoothstep(-0.1, 0.12, sun_height));
 
         // Silver-lining: thin sunlit edges (attenuated where self-shadowed)
@@ -349,7 +382,7 @@ fn calculate_sky_color(world_pos: vec3<f32>, camera_pos: vec3<f32>) -> vec3<f32>
     // Disc
     if (sun_height > -0.08 && sun_dot > SUN_DISC_SIZE) {
         let disc_t     = smoothstep(SUN_DISC_SIZE, 1.0, sun_dot);
-        let brightness = mix(6.0, 45.0, smoothstep(0.0, 0.4, sun_height));
+        let brightness = mix(SUN_BRIGHTNESS_MIN, SUN_BRIGHTNESS_MAX, smoothstep(0.0, 0.4, sun_height));
         let atten      = 1.0 - sun_occl * 0.95;
         sky_color      = mix(sky_color, sun_col * brightness, disc_t * atten);
     }
