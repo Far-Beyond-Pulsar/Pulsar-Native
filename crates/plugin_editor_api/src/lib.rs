@@ -846,6 +846,7 @@ macro_rules! export_plugin {
             use std::ptr;
 
             unsafe {
+                // TODO: Could do drop in place here
                 // Read the value to trigger the destructor
                 let _value = ptr::read(ptr as *mut Box<dyn $crate::EditorPlugin> as *const Box<dyn $crate::EditorPlugin>);
                 
