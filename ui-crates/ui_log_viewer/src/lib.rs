@@ -7,6 +7,7 @@ mod performance_metrics;
 mod system_info;
 mod memory_tracking;
 mod atomic_memory_tracking;
+mod type_tracking;
 pub mod tracking_allocator;
 
 pub use log_drawer_v2::LogDrawer;
@@ -16,6 +17,7 @@ pub use system_info::{SystemInfo, SharedSystemInfo, create_shared_info};
 pub use memory_tracking::{MemoryTracker, SharedMemoryTracker, create_memory_tracker, MemoryCategory, MemoryStatsSnapshot};
 pub use tracking_allocator::{TrackingAllocator, MemoryCategoryGuard};
 pub use atomic_memory_tracking::{ATOMIC_MEMORY_COUNTERS, AllocationEntry, SizeBucket};
+pub use type_tracking::{TYPE_TRACKER, AllocationSite};
 
 use gpui::*;
 use ui::{

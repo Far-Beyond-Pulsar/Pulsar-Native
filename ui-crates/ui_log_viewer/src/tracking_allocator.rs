@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::cell::Cell;
 use crate::memory_tracking::MemoryCategory;
 use crate::atomic_memory_tracking::ATOMIC_MEMORY_COUNTERS;
+use crate::type_tracking::TYPE_TRACKER;
 
 /// Thread-local flag to prevent recursive tracking
 thread_local! {
@@ -34,18 +35,56 @@ impl TrackingAllocator {
 
     /// Record an allocation (lock-free, atomic - ultra fast)
     #[inline]
-    fn record_alloc(&self, size: usize) {
-        // Simple atomic increment - no locks, no blocking, no allocations
+    fn record_alloc(&self, layout: Layout) {
+        // Check if tracking is enabled to prevent recursion
+        let was_enabled = TRACKING_ENABLED.with(|enabled| {
+            let was = enabled.get();
+            if was {
+                enabled.set(false);
+            }
+            was
+        });
+
+        if !was_enabled {
+            return; // Already tracking, prevent recursion
+        }
+
+        // Track allocations (no allocations in these calls)
         let category = Self::categorize_allocation();
-        ATOMIC_MEMORY_COUNTERS.record_alloc(size, category);
+        ATOMIC_MEMORY_COUNTERS.record_alloc(layout.size(), category);
+
+        // Track by type (layout) - this might allocate via DashMap but tracking is disabled
+        TYPE_TRACKER.record_alloc(layout);
+
+        // Re-enable tracking
+        TRACKING_ENABLED.with(|enabled| enabled.set(true));
     }
 
     /// Record a deallocation (lock-free, atomic - ultra fast)
     #[inline]
-    fn record_dealloc(&self, size: usize) {
-        // Simple atomic decrement - no locks, no blocking, no allocations
+    fn record_dealloc(&self, layout: Layout) {
+        // Check if tracking is enabled to prevent recursion
+        let was_enabled = TRACKING_ENABLED.with(|enabled| {
+            let was = enabled.get();
+            if was {
+                enabled.set(false);
+            }
+            was
+        });
+
+        if !was_enabled {
+            return; // Already tracking, prevent recursion
+        }
+
+        // Track deallocations
         let category = Self::categorize_allocation();
-        ATOMIC_MEMORY_COUNTERS.record_dealloc(size, category);
+        ATOMIC_MEMORY_COUNTERS.record_dealloc(layout.size(), category);
+
+        // Track by type (layout)
+        TYPE_TRACKER.record_dealloc(layout);
+
+        // Re-enable tracking
+        TRACKING_ENABLED.with(|enabled| enabled.set(true));
     }
 }
 
@@ -53,32 +92,32 @@ unsafe impl GlobalAlloc for TrackingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let ptr = System.alloc(layout);
         if !ptr.is_null() {
-            self.record_alloc(layout.size());
+            self.record_alloc(layout);
         }
         ptr
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        self.record_dealloc(layout.size());
+        self.record_dealloc(layout);
         System.dealloc(ptr, layout);
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
         let ptr = System.alloc_zeroed(layout);
         if !ptr.is_null() {
-            self.record_alloc(layout.size());
+            self.record_alloc(layout);
         }
         ptr
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        let old_size = layout.size();
         let new_ptr = System.realloc(ptr, layout, new_size);
 
         if !new_ptr.is_null() {
-            // Record as dealloc of old size and alloc of new size
-            self.record_dealloc(old_size);
-            self.record_alloc(new_size);
+            // Record as dealloc of old layout and alloc of new layout
+            self.record_dealloc(layout);
+            let new_layout = Layout::from_size_align_unchecked(new_size, layout.align());
+            self.record_alloc(new_layout);
         }
 
         new_ptr

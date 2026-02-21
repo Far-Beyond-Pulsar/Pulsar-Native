@@ -470,12 +470,86 @@ impl Panel for SystemInfoPanel {
     }
 }
 
+/// Allocation types table delegate
+struct AllocationTypesTable {
+    sites: Vec<crate::AllocationSite>,
+    columns: Vec<ui::table::Column>,
+}
+
+impl AllocationTypesTable {
+    fn new() -> Self {
+        let columns = vec![
+            ui::table::Column::new("type").name("Type Signature").resizable(true),
+            ui::table::Column::new("size").name("Size").resizable(true),
+            ui::table::Column::new("align").name("Align").resizable(true),
+            ui::table::Column::new("count").name("Count").resizable(true),
+            ui::table::Column::new("total").name("Total MB").resizable(true),
+        ];
+
+        Self {
+            sites: Vec::new(),
+            columns,
+        }
+    }
+
+    fn update_sites(&mut self) {
+        self.sites = crate::TYPE_TRACKER.get_sites();
+    }
+}
+
+impl ui::table::TableDelegate for AllocationTypesTable {
+    fn columns_count(&self, _cx: &gpui::App) -> usize {
+        self.columns.len()
+    }
+
+    fn rows_count(&self, _cx: &gpui::App) -> usize {
+        self.sites.len()
+    }
+
+    fn column(&self, col_ix: usize, _cx: &gpui::App) -> &ui::table::Column {
+        &self.columns[col_ix]
+    }
+
+    fn render_td(
+        &self,
+        row_ix: usize,
+        col_ix: usize,
+        _window: &mut Window,
+        cx: &mut Context<ui::table::Table<Self>>,
+    ) -> impl IntoElement {
+        use ui::h_flex;
+        let theme = cx.theme();
+
+        if let Some(site) = self.sites.get(row_ix) {
+            let text = match col_ix {
+                0 => site.type_signature.clone(),
+                1 => format!("{}B", site.size),
+                2 => format!("{}", site.align),
+                3 => format!("{}", site.count),
+                4 => format!("{:.2}", site.total_bytes as f64 / 1024.0 / 1024.0),
+                _ => String::new(),
+            };
+
+            h_flex()
+                .px_2()
+                .py_1()
+                .text_size(px(11.0))
+                .text_color(theme.foreground)
+                .child(text)
+                .into_any_element()
+        } else {
+            div().into_any_element()
+        }
+    }
+}
+
 /// Memory Breakdown Panel - Real-time memory allocation tracking
 pub struct MemoryBreakdownPanel {
     focus_handle: FocusHandle,
     last_update: std::time::Instant,
     scroll_handle: ui::VirtualListScrollHandle,
     entries: Vec<crate::AllocationEntry>,
+    types_table: AllocationTypesTable,
 }
 
 impl MemoryBreakdownPanel {
@@ -486,6 +560,7 @@ impl MemoryBreakdownPanel {
             last_update: std::time::Instant::now(),
             scroll_handle: ui::VirtualListScrollHandle::new(),
             entries: Vec::new(),
+            types_table: AllocationTypesTable::new(),
         }
     }
 }
@@ -504,6 +579,7 @@ impl Render for MemoryBreakdownPanel {
         if now.duration_since(self.last_update).as_millis() >= 100 {
             self.last_update = now;
             self.entries = ATOMIC_MEMORY_COUNTERS.get_all_entries();
+            self.types_table.update_sites();
             cx.notify();
         }
 

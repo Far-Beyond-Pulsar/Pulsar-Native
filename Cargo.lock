@@ -12043,11 +12043,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "dashmap 6.1.0",
  "directories 5.0.1",
  "engine_backend",
  "engine_state",
  "gpui",
  "notify 6.1.1",
+ "once_cell",
  "parking_lot",
  "rand 0.8.5",
  "rust-i18n",
