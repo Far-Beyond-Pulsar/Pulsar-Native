@@ -1,0 +1,14 @@
+# UI Type Debugger Translations - ru
+
+# Drawer Title
+TypeDebugger.Title: "База типов"
+
+# Search & Actions
+TypeDebugger.Search.Placeholder: "Поиск типов..."
+TypeDebugger.Action.ClearAll: "Очистить все типы"
+TypeDebugger.Action.GroupByKind: "Группировать по виду"
+TypeDebugger.Action.ShowFlatList: "Показать плоский список"
+
+# Empty State
+TypeDebugger.Empty.Title: "Типы не найдены"
+TypeDebugger.Empty.Message: "Нет типов, соответствующих критериям поиска."
