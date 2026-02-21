@@ -550,7 +550,7 @@ impl Render for LogDrawer {
                                     .text_size(px(14.0))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(theme.foreground)
-                                    .child("Engine Logs")
+                                    .child("Mission Control")
                             )
                             .child(
                                 h_flex()

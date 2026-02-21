@@ -154,10 +154,10 @@ impl PulsarApp {
     }
 
     pub(super) fn toggle_log_viewer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.state.log_viewer_open = !self.state.log_viewer_open;
-        
-        if self.state.log_viewer_open {
-            let log_viewer_drawer = self.state.log_viewer_drawer.clone();
+        self.state.mission_control_open = !self.state.mission_control_open;
+
+        if self.state.mission_control_open {
+            let mission_control = self.state.mission_control.clone();
 
             let _ = cx.open_window(
                 WindowOptions {
@@ -168,7 +168,11 @@ impl PulsarApp {
                         },
                         size: size(px(1200.0), px(800.0)),
                     })),
-                    titlebar: Some(ui::TitleBar::title_bar_options()),
+                    titlebar: Some(gpui::TitlebarOptions {
+                        title: Some("Mission Control".into()),
+                        appears_transparent: true,
+                        traffic_light_position: None,
+                    }),
                     kind: WindowKind::Normal,
                     is_resizable: true,
                     window_decorations: Some(gpui::WindowDecorations::Client),
@@ -180,10 +184,10 @@ impl PulsarApp {
                 },
                 move |window, cx| {
                     // Start monitoring when window is created
-                    log_viewer_drawer.update(cx, |drawer, cx| {
-                        drawer.start_monitoring(cx);
+                    mission_control.update(cx, |mc, cx| {
+                        mc.start_monitoring(cx);
                     });
-                    cx.new(|cx| Root::new(log_viewer_drawer.into(), window, cx))
+                    cx.new(|cx| Root::new(mission_control.into(), window, cx))
                 },
             );
         }

@@ -249,7 +249,7 @@ impl PulsarApp {
                                     .icon(
                                         Icon::new(IconName::Page)
                                             .size(px(16.))
-                                            .text_color(if self.state.log_viewer_open {
+                                            .text_color(if self.state.mission_control_open {
                                                 cx.theme().primary
                                             } else {
                                                 cx.theme().muted_foreground
@@ -258,10 +258,10 @@ impl PulsarApp {
                                     .px_2()
                                     .py_1()
                                     .rounded(px(4.))
-                                    .when(self.state.log_viewer_open, |s| {
+                                    .when(self.state.mission_control_open, |s| {
                                         s.bg(cx.theme().primary.opacity(0.15))
                                     })
-                                    .tooltip("View Logs")
+                                    .tooltip("Mission Control")
                                     .on_click(cx.listener(|app, _, _window, cx| {
                                         app.toggle_log_viewer(_window, cx);
                                     })),

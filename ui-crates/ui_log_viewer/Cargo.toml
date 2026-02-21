@@ -12,6 +12,10 @@ ui.workspace = true
 # UI crates
 ui_common.workspace = true
 
+# Engine
+engine_backend.workspace = true
+engine_state.workspace = true
+
 # Logging
 tracing.workspace = true
 
@@ -20,6 +24,8 @@ anyhow = "1.0"
 chrono = { version = "0.4" }
 directories = "5.0"
 rust-i18n.workspace = true
+sysinfo = "0.30"
+parking_lot = "0.12"
 
 # Async
 smol = "2.0"

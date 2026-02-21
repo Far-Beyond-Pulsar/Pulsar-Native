@@ -9,7 +9,7 @@ use ui_problems::ProblemsDrawer;
 // use ui_level_editor::LevelEditorPanel;
 // use ui_daw_editor::DawEditorPanel;
 use ui_type_debugger::TypeDebuggerDrawer;
-use ui_log_viewer::LogDrawer;
+use ui_log_viewer::MissionControlPanel;
 use ui_entry::EntryScreen;
 use ui_common::command_palette::{GenericPalette, Palette, PaletteId, PaletteViewDelegate};
 use engine_backend::services::rust_analyzer_manager::RustAnalyzerManager;
@@ -31,8 +31,8 @@ pub struct AppState {
     pub drawer_resizing: bool,
     pub problems_drawer: Entity<ProblemsDrawer>,
     pub type_debugger_drawer: Entity<TypeDebuggerDrawer>,
-    pub log_viewer_drawer: Entity<LogDrawer>,
-    pub log_viewer_open: bool,
+    pub mission_control: Entity<MissionControlPanel>,
+    pub mission_control_open: bool,
 
     // Editor tracking - commented out as these editors have been migrated to plugins
     // pub daw_editors: Vec<Entity<DawEditorPanel>>,

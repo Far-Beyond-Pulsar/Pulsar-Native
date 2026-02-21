@@ -20,7 +20,7 @@ pub struct ToggleProblems;
 #[action(namespace = pulsar_app)]
 pub struct ToggleTypeDebugger;
 
-/// Action to toggle the log viewer
+/// Action to toggle Mission Control (engine monitoring and logs)
 #[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 #[action(namespace = pulsar_app)]
 pub struct ToggleLogViewer;
