@@ -7977,6 +7977,7 @@ dependencies = [
  "ui_documentation",
  "ui_entry",
  "ui_loading_screen",
+ "ui_log_viewer",
  "ui_settings",
  "urlencoding",
  "windows 0.62.2",

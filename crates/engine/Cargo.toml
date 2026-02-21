@@ -37,6 +37,7 @@ ui_settings.workspace = true
 ui_loading_screen.workspace = true
 ui_about.workspace = true
 ui_documentation.workspace = true
+ui_log_viewer.workspace = true
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 tracing = "0.1.41"

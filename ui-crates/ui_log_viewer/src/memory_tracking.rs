@@ -6,21 +6,23 @@ use parking_lot::RwLock;
 
 /// Category of memory allocation
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[repr(usize)]
 pub enum MemoryCategory {
-    Engine,
-    Renderer,
-    UI,
-    Physics,
-    Audio,
-    Assets,
-    Scripts,
-    Network,
-    Unknown,
+    Unknown = 0,
+    Engine = 1,
+    Renderer = 2,
+    UI = 3,
+    Physics = 4,
+    Audio = 5,
+    Assets = 6,
+    Scripts = 7,
+    Network = 8,
 }
 
 impl MemoryCategory {
     pub fn as_str(&self) -> &'static str {
         match self {
+            MemoryCategory::Unknown => "Unknown",
             MemoryCategory::Engine => "Engine",
             MemoryCategory::Renderer => "Renderer",
             MemoryCategory::UI => "UI",
@@ -29,7 +31,6 @@ impl MemoryCategory {
             MemoryCategory::Assets => "Assets",
             MemoryCategory::Scripts => "Scripts",
             MemoryCategory::Network => "Network",
-            MemoryCategory::Unknown => "Unknown",
         }
     }
 }
@@ -183,7 +184,6 @@ pub type SharedMemoryTracker = Arc<RwLock<MemoryTracker>>;
 /// Create a shared memory tracker
 pub fn create_memory_tracker() -> SharedMemoryTracker {
     let tracker = MemoryTracker::new();
-    // Simulate some initial allocations for demo
-    tracker.simulate_allocations();
+    // Real allocations will be tracked by the global allocator
     Arc::new(RwLock::new(tracker))
 }

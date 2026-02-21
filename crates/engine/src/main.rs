@@ -31,6 +31,12 @@
 //!
 //! Each task is profiled with `Engine::Init::{TaskName}` scope.
 
+// --- Global Allocator Setup ---
+use ui_log_viewer::TrackingAllocator;
+
+#[global_allocator]
+static GLOBAL_ALLOCATOR: TrackingAllocator = TrackingAllocator::new();
+
 // Re-export render from backend where it actually lives
 pub use engine_backend::subsystems::render;
 // Re-export compiler and graph from ui crate (canonical location)

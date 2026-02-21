@@ -658,7 +658,7 @@ impl Render for MemoryBreakdownPanel {
                     .mt_4()
                     .text_size(px(10.0))
                     .text_color(theme.muted_foreground.opacity(0.7))
-                    .child("Memory tracking via allocator hooks (simulated data)")
+                    .child("Real-time memory tracking via global allocator hooks")
             )
     }
 }
