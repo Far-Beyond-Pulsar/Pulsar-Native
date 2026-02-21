@@ -8,6 +8,7 @@ mod system_info;
 mod memory_tracking;
 mod atomic_memory_tracking;
 mod type_tracking;
+mod memory_database;
 pub mod tracking_allocator;
 
 pub use log_drawer_v2::LogDrawer;

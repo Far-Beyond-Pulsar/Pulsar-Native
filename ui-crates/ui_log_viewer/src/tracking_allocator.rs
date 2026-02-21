@@ -53,8 +53,8 @@ impl TrackingAllocator {
         let category = Self::categorize_allocation();
         ATOMIC_MEMORY_COUNTERS.record_alloc(layout.size(), category);
 
-        // Track by type (layout) - this might allocate via DashMap but tracking is disabled
-        TYPE_TRACKER.record_alloc(layout);
+        // Type tracking disabled for now
+        // TYPE_TRACKER.record_alloc(layout);
 
         // Re-enable tracking
         TRACKING_ENABLED.with(|enabled| enabled.set(true));
@@ -80,8 +80,8 @@ impl TrackingAllocator {
         let category = Self::categorize_allocation();
         ATOMIC_MEMORY_COUNTERS.record_dealloc(layout.size(), category);
 
-        // Track by type (layout)
-        TYPE_TRACKER.record_dealloc(layout);
+        // Type tracking disabled for now
+        // TYPE_TRACKER.record_dealloc(layout);
 
         // Re-enable tracking
         TRACKING_ENABLED.with(|enabled| enabled.set(true));

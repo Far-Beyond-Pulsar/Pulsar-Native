@@ -6,6 +6,7 @@ use crate::log_drawer_v2::LogDrawer;
 use crate::performance_metrics::SharedPerformanceMetrics;
 use crate::system_info::SharedSystemInfo;
 use crate::memory_tracking::SharedMemoryTracker;
+use smol::Timer;
 
 /// Logs Panel - Main log viewer in the center
 pub struct LogsPanel {
@@ -470,97 +471,23 @@ impl Panel for SystemInfoPanel {
     }
 }
 
-/// Allocation types table delegate
-struct AllocationTypesTable {
-    sites: Vec<crate::AllocationSite>,
-    columns: Vec<ui::table::Column>,
-}
-
-impl AllocationTypesTable {
-    fn new() -> Self {
-        let columns = vec![
-            ui::table::Column::new("type").name("Type Signature").resizable(true),
-            ui::table::Column::new("size").name("Size").resizable(true),
-            ui::table::Column::new("align").name("Align").resizable(true),
-            ui::table::Column::new("count").name("Count").resizable(true),
-            ui::table::Column::new("total").name("Total MB").resizable(true),
-        ];
-
-        Self {
-            sites: Vec::new(),
-            columns,
-        }
-    }
-
-    fn update_sites(&mut self) {
-        self.sites = crate::TYPE_TRACKER.get_sites();
-    }
-}
-
-impl ui::table::TableDelegate for AllocationTypesTable {
-    fn columns_count(&self, _cx: &gpui::App) -> usize {
-        self.columns.len()
-    }
-
-    fn rows_count(&self, _cx: &gpui::App) -> usize {
-        self.sites.len()
-    }
-
-    fn column(&self, col_ix: usize, _cx: &gpui::App) -> &ui::table::Column {
-        &self.columns[col_ix]
-    }
-
-    fn render_td(
-        &self,
-        row_ix: usize,
-        col_ix: usize,
-        _window: &mut Window,
-        cx: &mut Context<ui::table::Table<Self>>,
-    ) -> impl IntoElement {
-        use ui::h_flex;
-        let theme = cx.theme();
-
-        if let Some(site) = self.sites.get(row_ix) {
-            let text = match col_ix {
-                0 => site.type_signature.clone(),
-                1 => format!("{}B", site.size),
-                2 => format!("{}", site.align),
-                3 => format!("{}", site.count),
-                4 => format!("{:.2}", site.total_bytes as f64 / 1024.0 / 1024.0),
-                _ => String::new(),
-            };
-
-            h_flex()
-                .px_2()
-                .py_1()
-                .text_size(px(11.0))
-                .text_color(theme.foreground)
-                .child(text)
-                .into_any_element()
-        } else {
-            div().into_any_element()
-        }
-    }
-}
-
 /// Memory Breakdown Panel - Real-time memory allocation tracking
 pub struct MemoryBreakdownPanel {
     focus_handle: FocusHandle,
-    last_update: std::time::Instant,
     scroll_handle: ui::VirtualListScrollHandle,
-    entries: Vec<crate::AllocationEntry>,
-    types_table: AllocationTypesTable,
+    cached_entries: Vec<crate::AllocationEntry>,
+    cached_total: usize,
+    last_update: std::time::Instant,
 }
 
 impl MemoryBreakdownPanel {
     pub fn new(_memory_tracker: SharedMemoryTracker, cx: &mut Context<Self>) -> Self {
-        // We don't use the memory_tracker anymore - using atomic counters directly
         Self {
             focus_handle: cx.focus_handle(),
-            last_update: std::time::Instant::now(),
             scroll_handle: ui::VirtualListScrollHandle::new(),
-            entries: Vec::new(),
-            types_table: AllocationTypesTable::new(),
+            cached_entries: Vec::new(),
+            cached_total: 0,
+            last_update: std::time::Instant::now(),
         }
     }
 }
@@ -568,29 +495,36 @@ impl MemoryBreakdownPanel {
 impl EventEmitter<PanelEvent> for MemoryBreakdownPanel {}
 
 impl Render for MemoryBreakdownPanel {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         use ui::{h_flex, v_virtual_list};
-        use crate::atomic_memory_tracking::ATOMIC_MEMORY_COUNTERS;
 
         let theme = cx.theme().clone();
 
-        // Update entries at a reasonable rate (max 10 FPS)
+        // Only update cache every 2 seconds when visible
         let now = std::time::Instant::now();
-        if now.duration_since(self.last_update).as_millis() >= 100 {
+        if now.duration_since(self.last_update).as_secs() >= 2 {
             self.last_update = now;
-            self.entries = ATOMIC_MEMORY_COUNTERS.get_all_entries();
-            self.types_table.update_sites();
-            cx.notify();
+            
+            use crate::atomic_memory_tracking::ATOMIC_MEMORY_COUNTERS;
+            
+            // Quick atomic reads (cheap)
+            self.cached_total = ATOMIC_MEMORY_COUNTERS.total();
+            self.cached_entries = ATOMIC_MEMORY_COUNTERS.get_all_entries();
         }
 
-        let total_current = ATOMIC_MEMORY_COUNTERS.total();
-        let entry_count = self.entries.len();
+        // Use only cached values
+        let total_current = self.cached_total;
+        let entry_count = self.cached_entries.len();
 
         // Fixed row height for uniform list
         let row_height = px(50.0);
         let item_sizes = std::rc::Rc::new(vec![size(px(0.0), row_height); entry_count]);
 
         let view = cx.entity().clone();
+        
+        // Clone cached data for the closure to avoid reading from atomics
+        let cached_entries = self.cached_entries.clone();
+        let cached_total = total_current;
 
         v_flex()
             .size_full()
@@ -626,10 +560,12 @@ impl Render for MemoryBreakdownPanel {
                     view,
                     "memory-breakdown-list",
                     item_sizes,
-                    move |this, range, window, cx| {
+                    move |_this, range, _window, cx| {
                         let theme = cx.theme().clone();
-                        let total = ATOMIC_MEMORY_COUNTERS.total();
-                        let entries = ATOMIC_MEMORY_COUNTERS.get_all_entries();
+                        
+                        // Use cached data - NO atomic reads!
+                        let total = cached_total;
+                        let entries = &cached_entries;
 
                         // Color palette
                         let colors = vec![

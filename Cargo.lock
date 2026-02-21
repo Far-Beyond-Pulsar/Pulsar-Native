@@ -12043,6 +12043,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "crossbeam-channel",
  "dashmap 6.1.0",
  "directories 5.0.1",
  "engine_backend",
@@ -12052,6 +12053,7 @@ dependencies = [
  "once_cell",
  "parking_lot",
  "rand 0.8.5",
+ "rusqlite",
  "rust-i18n",
  "smol 2.0.2",
  "sysinfo 0.30.13",
