@@ -2,7 +2,7 @@
 
 use std::collections::VecDeque;
 use std::sync::Arc;
-use sysinfo::System;
+use sysinfo::{System, Networks, Components};
 use parking_lot::RwLock;
 use crate::gpu_info;
 
@@ -23,7 +23,7 @@ pub struct MemoryDataPoint {
     pub memory_mb: f64,
 }
 
-/// GPU usage data point (from render metrics)
+/// GPU VRAM usage data point
 #[derive(Clone)]
 pub struct GpuDataPoint {
     pub index: usize,
@@ -45,6 +45,20 @@ pub struct FrameTimeDataPoint {
     pub frame_time_ms: f64,
 }
 
+/// Network throughput data point (KB/s)
+#[derive(Clone)]
+pub struct NetDataPoint {
+    pub index: usize,
+    pub kbps: f64,
+}
+
+/// Disk throughput data point (KB/s)
+#[derive(Clone)]
+pub struct DiskDataPoint {
+    pub index: usize,
+    pub kbps: f64,
+}
+
 /// Container for all performance metrics
 pub struct PerformanceMetrics {
     pub cpu_history: VecDeque<CpuDataPoint>,
@@ -62,6 +76,16 @@ pub struct PerformanceMetrics {
     pub frame_time_history: VecDeque<FrameTimeDataPoint>,
     pub frame_time_counter: usize,
 
+    // Network
+    pub net_rx_history: VecDeque<NetDataPoint>,
+    pub net_tx_history: VecDeque<NetDataPoint>,
+    pub net_counter: usize,
+
+    // Disk (process-level)
+    pub disk_read_history: VecDeque<DiskDataPoint>,
+    pub disk_write_history: VecDeque<DiskDataPoint>,
+    pub disk_counter: usize,
+
     // Current values
     pub current_cpu: f64,
     pub current_memory_mb: f64,
@@ -69,9 +93,20 @@ pub struct PerformanceMetrics {
     pub current_vram_used_mb: f64,
     pub current_fps: f64,
     pub current_frame_time_ms: f64,
+    pub current_net_rx_kbps: f64,
+    pub current_net_tx_kbps: f64,
+    pub current_disk_read_kbps: f64,
+    pub current_disk_write_kbps: f64,
+
+    /// Per-core history: (core_index, history_deque). Populated on first update.
+    pub cpu_core_histories: Vec<VecDeque<f64>>,
+    /// Per-sensor temperature history: (label, history_deque). Populated on first update.
+    pub temp_histories: Vec<(String, VecDeque<f64>)>,
 
     // System info
     system: System,
+    networks: Networks,
+    components: Components,
     current_pid: sysinfo::Pid,
 }
 
@@ -80,6 +115,8 @@ impl PerformanceMetrics {
         let mut system = System::new_all();
         system.refresh_all();
 
+        let networks = Networks::new_with_refreshed_list();
+        let components = Components::new_with_refreshed_list();
         let current_pid = sysinfo::get_current_pid().unwrap_or(sysinfo::Pid::from_u32(0));
 
         Self {
@@ -98,56 +135,115 @@ impl PerformanceMetrics {
             frame_time_history: VecDeque::with_capacity(MAX_HISTORY_SIZE),
             frame_time_counter: 0,
 
+            net_rx_history: VecDeque::with_capacity(MAX_HISTORY_SIZE),
+            net_tx_history: VecDeque::with_capacity(MAX_HISTORY_SIZE),
+            net_counter: 0,
+
+            disk_read_history: VecDeque::with_capacity(MAX_HISTORY_SIZE),
+            disk_write_history: VecDeque::with_capacity(MAX_HISTORY_SIZE),
+            disk_counter: 0,
+
             current_cpu: 0.0,
             current_memory_mb: 0.0,
             current_vram_used_mb: 0.0,
             current_fps: 0.0,
             current_frame_time_ms: 0.0,
+            current_net_rx_kbps: 0.0,
+            current_net_tx_kbps: 0.0,
+            current_disk_read_kbps: 0.0,
+            current_disk_write_kbps: 0.0,
+            cpu_core_histories: Vec::new(),
+            temp_histories: Vec::new(),
 
             system,
+            networks,
+            components,
             current_pid,
         }
     }
 
-    /// Update system metrics (CPU, Memory)
+    /// Update system metrics — called every second from the background task.
     pub fn update_system_metrics(&mut self) {
-        // Refresh system info
         self.system.refresh_cpu();
         self.system.refresh_memory();
         self.system.refresh_processes();
+        self.networks.refresh();
+        self.components.refresh();
 
-        // Get CPU usage for current process
+        // ── Per-process CPU + memory ──────────────────────────────────────────
         let cpu_usage = if let Some(process) = self.system.process(self.current_pid) {
             process.cpu_usage() as f64
         } else {
-            // Fallback to average CPU usage if process not found
             let cpus = self.system.cpus();
             if !cpus.is_empty() {
-                cpus.iter().map(|cpu| cpu.cpu_usage()).sum::<f32>() as f64 / cpus.len() as f64
+                cpus.iter().map(|c| c.cpu_usage()).sum::<f32>() as f64 / cpus.len() as f64
             } else {
                 0.0
             }
         };
 
-        // Get memory usage for current process in MB
-        let memory_mb = if let Some(process) = self.system.process(self.current_pid) {
-            process.memory() as f64 / 1024.0 / 1024.0
-        } else {
-            0.0
-        };
+        let memory_mb = self.system.process(self.current_pid)
+            .map(|p| p.memory() as f64 / 1024.0 / 1024.0)
+            .unwrap_or(0.0);
 
         self.current_cpu = cpu_usage;
         self.current_memory_mb = memory_mb;
 
-        // Query live VRAM usage from platform APIs.
+        // ── Per-core CPU histories ────────────────────────────────────────────
+        let core_count = self.system.cpus().len();
+        if self.cpu_core_histories.len() != core_count {
+            self.cpu_core_histories = vec![VecDeque::with_capacity(MAX_HISTORY_SIZE); core_count];
+        }
+        for (i, cpu) in self.system.cpus().iter().enumerate() {
+            let hist = &mut self.cpu_core_histories[i];
+            if hist.len() >= MAX_HISTORY_SIZE { hist.pop_front(); }
+            hist.push_back(cpu.cpu_usage() as f64);
+        }
+
+        // ── Per-sensor temperature histories ─────────────────────────────────
+        for comp in self.components.iter() {
+            let label = comp.label().to_string();
+            let temp = comp.temperature() as f64;
+            if let Some(entry) = self.temp_histories.iter_mut().find(|(l, _)| *l == label) {
+                if entry.1.len() >= MAX_HISTORY_SIZE { entry.1.pop_front(); }
+                entry.1.push_back(temp);
+            } else {
+                let mut dq = VecDeque::with_capacity(MAX_HISTORY_SIZE);
+                dq.push_back(temp);
+                self.temp_histories.push((label, dq));
+            }
+        }
+
+        // ── GPU VRAM ──────────────────────────────────────────────────────────
         if let Some(used_mb) = gpu_info::query_vram_used_mb() {
             self.current_vram_used_mb = used_mb as f64;
         }
 
-        // Add to history
+        // ── Network (bytes since last refresh ≈ bytes/s) ─────────────────────
+        let (total_rx, total_tx) = self.networks
+            .iter()
+            .fold((0u64, 0u64), |(rx, tx), (_, data)| {
+                (rx + data.received(), tx + data.transmitted())
+            });
+        self.current_net_rx_kbps = total_rx as f64 / 1024.0;
+        self.current_net_tx_kbps = total_tx as f64 / 1024.0;
+
+        // ── Disk I/O (process-level, bytes since last refresh ≈ bytes/s) ─────
+        let (disk_r, disk_w) = self.system.process(self.current_pid)
+            .map(|p| {
+                let u = p.disk_usage();
+                (u.read_bytes as f64 / 1024.0, u.written_bytes as f64 / 1024.0)
+            })
+            .unwrap_or((0.0, 0.0));
+        self.current_disk_read_kbps = disk_r;
+        self.current_disk_write_kbps = disk_w;
+
+        // ── Push to histories ─────────────────────────────────────────────────
         self.add_cpu(cpu_usage);
         self.add_memory(memory_mb);
         self.add_gpu(self.current_vram_used_mb);
+        self.add_net(self.current_net_rx_kbps, self.current_net_tx_kbps);
+        self.add_disk(self.current_disk_read_kbps, self.current_disk_write_kbps);
     }
 
     /// Update from render metrics (FPS, Frame Time)
@@ -182,14 +278,25 @@ impl PerformanceMetrics {
     }
 
     fn add_gpu(&mut self, vram_used_mb: f64) {
-        if self.gpu_history.len() >= MAX_HISTORY_SIZE {
-            self.gpu_history.pop_front();
-        }
-        self.gpu_history.push_back(GpuDataPoint {
-            index: self.gpu_counter,
-            vram_used_mb,
-        });
+        if self.gpu_history.len() >= MAX_HISTORY_SIZE { self.gpu_history.pop_front(); }
+        self.gpu_history.push_back(GpuDataPoint { index: self.gpu_counter, vram_used_mb });
         self.gpu_counter += 1;
+    }
+
+    fn add_net(&mut self, rx_kbps: f64, tx_kbps: f64) {
+        if self.net_rx_history.len() >= MAX_HISTORY_SIZE { self.net_rx_history.pop_front(); }
+        if self.net_tx_history.len() >= MAX_HISTORY_SIZE { self.net_tx_history.pop_front(); }
+        self.net_rx_history.push_back(NetDataPoint { index: self.net_counter, kbps: rx_kbps });
+        self.net_tx_history.push_back(NetDataPoint { index: self.net_counter, kbps: tx_kbps });
+        self.net_counter += 1;
+    }
+
+    fn add_disk(&mut self, read_kbps: f64, write_kbps: f64) {
+        if self.disk_read_history.len() >= MAX_HISTORY_SIZE { self.disk_read_history.pop_front(); }
+        if self.disk_write_history.len() >= MAX_HISTORY_SIZE { self.disk_write_history.pop_front(); }
+        self.disk_read_history.push_back(DiskDataPoint { index: self.disk_counter, kbps: read_kbps });
+        self.disk_write_history.push_back(DiskDataPoint { index: self.disk_counter, kbps: write_kbps });
+        self.disk_counter += 1;
     }
 
     fn add_fps(&mut self, fps: f64) {
