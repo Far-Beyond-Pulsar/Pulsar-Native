@@ -26,6 +26,7 @@ directories = "5.0"
 rust-i18n.workspace = true
 sysinfo = "0.30"
 parking_lot = "0.12"
+rand = "0.8"
 
 # Async
 smol = "2.0"

@@ -5,11 +5,13 @@ mod log_reader;
 mod workspace_panels;
 mod performance_metrics;
 mod system_info;
+mod memory_tracking;
 
 pub use log_drawer_v2::LogDrawer;
-pub use workspace_panels::{LogsPanel, ResourceMonitorPanel, SystemInfoPanel};
+pub use workspace_panels::{LogsPanel, ResourceMonitorPanel, SystemInfoPanel, MemoryBreakdownPanel};
 pub use performance_metrics::{PerformanceMetrics, SharedPerformanceMetrics, create_shared_metrics};
 pub use system_info::{SystemInfo, SharedSystemInfo, create_shared_info};
+pub use memory_tracking::{MemoryTracker, SharedMemoryTracker, create_memory_tracker, MemoryCategory};
 
 use gpui::*;
 use ui::{
@@ -25,6 +27,7 @@ pub struct MissionControlPanel {
     workspace: Option<Entity<Workspace>>,
     metrics: SharedPerformanceMetrics,
     system_info: SharedSystemInfo,
+    memory_tracker: SharedMemoryTracker,
     _metrics_task: Option<Task<()>>,
 }
 
@@ -33,6 +36,7 @@ impl MissionControlPanel {
         let log_drawer = cx.new(|cx| LogDrawer::new(cx));
         let metrics = create_shared_metrics();
         let system_info = create_shared_info();
+        let memory_tracker = create_memory_tracker();
 
         Self {
             focus_handle: cx.focus_handle(),
@@ -40,6 +44,7 @@ impl MissionControlPanel {
             workspace: None,
             metrics,
             system_info,
+            memory_tracker,
             _metrics_task: None,
         }
     }
@@ -89,6 +94,7 @@ impl MissionControlPanel {
         let log_drawer = self.log_drawer.clone();
         let metrics = self.metrics.clone();
         let system_info = self.system_info.clone();
+        let memory_tracker = self.memory_tracker.clone();
 
         workspace.update(cx, |workspace, cx| {
             let dock_area = workspace.dock_area().downgrade();
@@ -96,6 +102,11 @@ impl MissionControlPanel {
             // Create logs panel for center
             let logs_panel = cx.new(|cx| {
                 LogsPanel::new(log_drawer.clone(), cx)
+            });
+
+            // Create memory breakdown panel for center
+            let memory_panel = cx.new(|cx| {
+                MemoryBreakdownPanel::new(memory_tracker.clone(), cx)
             });
 
             // Create resource monitor panel for right top
@@ -108,10 +119,13 @@ impl MissionControlPanel {
                 SystemInfoPanel::new(system_info.clone(), cx)
             });
 
-            // Center: Just logs panel
+            // Center: Logs panel and Memory breakdown panel as tabs
             let center_tabs = DockItem::tabs(
-                vec![std::sync::Arc::new(logs_panel) as std::sync::Arc<dyn ui::dock::PanelView>],
-                Some(0),
+                vec![
+                    std::sync::Arc::new(logs_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
+                    std::sync::Arc::new(memory_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
+                ],
+                Some(0), // Default to logs tab
                 &dock_area,
                 window,
                 cx,

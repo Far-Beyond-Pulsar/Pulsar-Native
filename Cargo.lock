@@ -12048,6 +12048,7 @@ dependencies = [
  "gpui",
  "notify 6.1.1",
  "parking_lot",
+ "rand 0.8.5",
  "rust-i18n",
  "smol 2.0.2",
  "sysinfo 0.30.13",

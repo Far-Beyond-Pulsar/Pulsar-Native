@@ -5,6 +5,7 @@ use ui::{ActiveTheme, StyledExt, dock::{Panel, PanelEvent}, v_flex};
 use crate::log_drawer_v2::LogDrawer;
 use crate::performance_metrics::SharedPerformanceMetrics;
 use crate::system_info::SharedSystemInfo;
+use crate::memory_tracking::SharedMemoryTracker;
 
 /// Logs Panel - Main log viewer in the center
 pub struct LogsPanel {
@@ -466,5 +467,214 @@ impl Panel for SystemInfoPanel {
 
     fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
         "System Info".into_any_element()
+    }
+}
+
+/// Memory Breakdown Panel - Real-time memory allocation tracking
+pub struct MemoryBreakdownPanel {
+    focus_handle: FocusHandle,
+    memory_tracker: SharedMemoryTracker,
+}
+
+impl MemoryBreakdownPanel {
+    pub fn new(memory_tracker: SharedMemoryTracker, cx: &mut Context<Self>) -> Self {
+        Self {
+            focus_handle: cx.focus_handle(),
+            memory_tracker,
+        }
+    }
+
+    fn category_row(
+        category_name: &str,
+        size_bytes: usize,
+        percentage: f64,
+        color: Hsla,
+        cx: &App,
+    ) -> impl IntoElement {
+        use ui::h_flex;
+        let theme = cx.theme();
+
+        let size_mb = size_bytes as f64 / 1024.0 / 1024.0;
+
+        v_flex()
+            .w_full()
+            .gap_1()
+            .child(
+                h_flex()
+                    .w_full()
+                    .justify_between()
+                    .items_center()
+                    .child(
+                        div()
+                            .text_size(px(12.0))
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .text_color(theme.foreground)
+                            .child(category_name.to_string())
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(theme.muted_foreground)
+                                    .child(format!("{:.2} MB", size_mb))
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(color)
+                                    .child(format!("{:.1}%", percentage))
+                            )
+                    )
+            )
+            .child(
+                // Progress bar
+                div()
+                    .w_full()
+                    .h(px(6.0))
+                    .bg(theme.border)
+                    .rounded(px(3.0))
+                    .child(
+                        div()
+                            .h_full()
+                            .w(relative(percentage as f32 / 100.0))
+                            .bg(color)
+                            .rounded(px(3.0))
+                    )
+            )
+    }
+}
+
+impl EventEmitter<PanelEvent> for MemoryBreakdownPanel {}
+
+impl Render for MemoryBreakdownPanel {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        use ui::{h_flex, scroll::ScrollbarAxis};
+        let theme = cx.theme().clone();
+
+        let tracker = self.memory_tracker.read();
+        let stats = tracker.stats();
+        let stats_guard = stats.read();
+
+        let total_current = stats_guard.current_usage;
+        let breakdown = stats_guard.category_breakdown();
+
+        drop(stats_guard);
+        drop(tracker);
+
+        // Request continuous updates
+        cx.notify();
+
+        // Color palette for categories
+        let colors = vec![
+            theme.chart_1,
+            theme.chart_2,
+            theme.chart_3,
+            theme.chart_4,
+            theme.chart_5,
+            theme.info,
+            theme.warning,
+            theme.success,
+        ];
+
+        v_flex()
+            .size_full()
+            .bg(theme.sidebar)
+            .p_4()
+            .gap_4()
+            .scrollable(ScrollbarAxis::Vertical)
+            .child(
+                // Header
+                h_flex()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        div()
+                            .text_size(px(14.0))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(theme.foreground)
+                            .child("Memory Breakdown")
+                    )
+            )
+            .child(
+                // Summary Stats
+                v_flex()
+                    .w_full()
+                    .p_3()
+                    .gap_2()
+                    .bg(theme.background)
+                    .border_1()
+                    .border_color(theme.border)
+                    .rounded(px(6.0))
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(theme.muted_foreground)
+                                    .child("Current Usage")
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(18.0))
+                                    .font_weight(gpui::FontWeight::BOLD)
+                                    .text_color(theme.accent)
+                                    .child(format!("{:.2} MB", total_current as f64 / 1024.0 / 1024.0))
+                            )
+                    )
+            )
+            .child(
+                // Category Breakdown
+                v_flex()
+                    .w_full()
+                    .gap_3()
+                    .children(
+                        breakdown.iter().enumerate().map(|(idx, (category, size))| {
+                            let percentage = if total_current > 0 {
+                                (*size as f64 / total_current as f64) * 100.0
+                            } else {
+                                0.0
+                            };
+                            let color = colors[idx % colors.len()];
+
+                            Self::category_row(
+                                category.as_str(),
+                                *size,
+                                percentage,
+                                color,
+                                cx,
+                            )
+                        })
+                    )
+            )
+            .child(
+                // Info text
+                div()
+                    .mt_4()
+                    .text_size(px(10.0))
+                    .text_color(theme.muted_foreground.opacity(0.7))
+                    .child("Memory tracking via allocator hooks (simulated data)")
+            )
+    }
+}
+
+impl Focusable for MemoryBreakdownPanel {
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
+impl Panel for MemoryBreakdownPanel {
+    fn panel_name(&self) -> &'static str {
+        "memory_breakdown"
+    }
+
+    fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
+        "Memory".into_any_element()
     }
 }
