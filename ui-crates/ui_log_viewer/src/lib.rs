@@ -15,7 +15,7 @@ use gpui::*;
 use ui::{
     dock::DockItem,
     workspace::Workspace,
-    v_flex, ActiveTheme,
+    v_flex, h_flex, ActiveTheme, TitleBar,
 };
 
 /// Mission Control - Main panel with workspace layout
@@ -93,24 +93,33 @@ impl MissionControlPanel {
         workspace.update(cx, |workspace, cx| {
             let dock_area = workspace.dock_area().downgrade();
 
-            // Create logs panel for center top
+            // Create logs panel for center
             let logs_panel = cx.new(|cx| {
                 LogsPanel::new(log_drawer.clone(), cx)
             });
 
-            // Create system info panel for center bottom
-            let system_info_panel = cx.new(|cx| {
-                SystemInfoPanel::new(system_info.clone(), cx)
-            });
-
-            // Create resource monitor panel for right
+            // Create resource monitor panel for right top
             let resource_panel = cx.new(|cx| {
                 ResourceMonitorPanel::new(metrics.clone(), cx)
             });
 
-            // Center: Logs panel at top, system info at bottom (split vertically)
-            let logs_tabs = DockItem::tabs(
+            // Create system info panel for right bottom
+            let system_info_panel = cx.new(|cx| {
+                SystemInfoPanel::new(system_info.clone(), cx)
+            });
+
+            // Center: Just logs panel
+            let center_tabs = DockItem::tabs(
                 vec![std::sync::Arc::new(logs_panel) as std::sync::Arc<dyn ui::dock::PanelView>],
+                Some(0),
+                &dock_area,
+                window,
+                cx,
+            );
+
+            // Right: Resource monitor (top) + System info (bottom) split vertically
+            let resource_tabs = DockItem::tabs(
+                vec![std::sync::Arc::new(resource_panel) as std::sync::Arc<dyn ui::dock::PanelView>],
                 Some(0),
                 &dock_area,
                 window,
@@ -125,30 +134,21 @@ impl MissionControlPanel {
                 cx,
             );
 
-            let center_tabs = ui::dock::DockItem::split_with_sizes(
+            let right_split = ui::dock::DockItem::split_with_sizes(
                 gpui::Axis::Vertical,
-                vec![logs_tabs, system_info_tabs],
-                vec![None, Some(px(300.0))], // Logs flexible, system info 300px
+                vec![resource_tabs, system_info_tabs],
+                vec![None, Some(px(350.0))], // Charts flexible, system info 350px
                 &dock_area,
                 window,
                 cx,
             );
 
-            // Right: Resource monitor panel
-            let right_tabs = DockItem::tabs(
-                vec![std::sync::Arc::new(resource_panel) as std::sync::Arc<dyn ui::dock::PanelView>],
-                Some(0),
-                &dock_area,
-                window,
-                cx,
-            );
-
-            // Initialize workspace with center (split) and right panels
+            // Initialize workspace with center and right (split) panels
             workspace.initialize(
                 center_tabs,
                 None, // No left dock
-                Some(right_tabs), // Right dock for resources
-                None, // Bottom is part of center split now
+                Some(right_split), // Right dock split between charts and system info
+                None, // No bottom dock
                 window,
                 cx,
             );
@@ -168,9 +168,28 @@ impl Render for MissionControlPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.initialize_workspace(window, cx);
 
+        let theme = cx.theme();
+
         v_flex()
             .size_full()
-            .bg(cx.theme().background)
+            .bg(theme.background)
+            .child(
+                // Title bar
+                TitleBar::new()
+                    .child(
+                        h_flex()
+                            .flex_1()
+                            .items_center()
+                            .px_4()
+                            .child(
+                                div()
+                                    .text_size(px(14.0))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(theme.foreground)
+                                    .child("Mission Control")
+                            )
+                    )
+            )
             .child(
                 if let Some(ref workspace) = self.workspace {
                     workspace.clone().into_any_element()
