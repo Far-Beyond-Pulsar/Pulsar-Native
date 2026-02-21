@@ -103,6 +103,11 @@ pub struct PerformanceMetrics {
     /// Per-sensor temperature history: (label, history_deque). Populated on first update.
     pub temp_histories: Vec<(String, VecDeque<f64>)>,
 
+    /// Per-GPU-engine utilization history: (engine_name, history). Populated on first update.
+    pub gpu_engine_histories: std::collections::HashMap<String, VecDeque<f64>>,
+    /// Shared (non-local/system) GPU memory currently used in MiB.
+    pub current_vram_shared_mb: f64,
+
     // System info
     system: System,
     networks: Networks,
@@ -154,6 +159,8 @@ impl PerformanceMetrics {
             current_disk_write_kbps: 0.0,
             cpu_core_histories: Vec::new(),
             temp_histories: Vec::new(),
+            gpu_engine_histories: std::collections::HashMap::new(),
+            current_vram_shared_mb: 0.0,
 
             system,
             networks,
@@ -224,9 +231,33 @@ impl PerformanceMetrics {
             }
         }
 
-        // ── GPU VRAM ──────────────────────────────────────────────────────────
+        // ── GPU VRAM (dedicated + shared) ────────────────────────────────────
         if let Some(used_mb) = gpu_info::query_vram_used_mb() {
             self.current_vram_used_mb = used_mb as f64;
+        }
+        if let Some(shared_mb) = gpu_info::query_vram_shared_mb() {
+            self.current_vram_shared_mb = shared_mb as f64;
+        }
+
+        // ── GPU engine utilization (PDH, Windows only) ────────────────────────
+        let engine_map = crate::gpu_engines::collect();
+        for (engine, pct) in &engine_map {
+            let hist = self.gpu_engine_histories
+                .entry(engine.clone())
+                .or_insert_with(|| VecDeque::with_capacity(MAX_HISTORY_SIZE));
+            if hist.len() >= MAX_HISTORY_SIZE { hist.pop_front(); }
+            hist.push_back(*pct);
+        }
+        // Also push 0 for any known engine not seen this tick (keeps histories in sync)
+        if !engine_map.is_empty() {
+            for &eng in crate::gpu_engines::KNOWN_ENGINES {
+                if !engine_map.contains_key(eng) {
+                    if let Some(hist) = self.gpu_engine_histories.get_mut(eng) {
+                        if hist.len() >= MAX_HISTORY_SIZE { hist.pop_front(); }
+                        hist.push_back(0.0);
+                    }
+                }
+            }
         }
 
         // ── Network (bytes since last refresh ≈ bytes/s) ─────────────────────

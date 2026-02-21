@@ -85,6 +85,29 @@ pub fn query_vram_used_mb() -> Option<u64> {
     platform_vram_used_mb()
 }
 
+/// Query current live shared (non-local) VRAM usage in MiB on Windows.
+pub fn query_vram_shared_mb() -> Option<u64> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::Graphics::Dxgi::{
+            CreateDXGIFactory1, IDXGIAdapter3, IDXGIFactory1,
+            DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL, DXGI_QUERY_VIDEO_MEMORY_INFO,
+        };
+        use windows::core::Interface;
+        unsafe {
+            let factory: IDXGIFactory1 = CreateDXGIFactory1().ok()?;
+            let adapter3: IDXGIAdapter3 = factory.EnumAdapters1(0).ok()?.cast().ok()?;
+            let mut info = DXGI_QUERY_VIDEO_MEMORY_INFO::default();
+            adapter3.QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL, &mut info).ok()?;
+            Some(info.CurrentUsage / (1024 * 1024))
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    None
+}
+
+
+
 fn pci_vendor_name(vendor_id: u32) -> String {
     match vendor_id as u32 {
         0x10DE => "NVIDIA",

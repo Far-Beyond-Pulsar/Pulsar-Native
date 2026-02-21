@@ -43,5 +43,5 @@ wgpu.workspace = true
 notify = { version = "6.0", default-features = false, features = ["macos_kqueue"] }
 
 [target.'cfg(windows)'.dependencies]
-windows.workspace = true
+windows = { workspace = true, features = ["Win32_System_Performance"] }
 winreg = "0.52"
