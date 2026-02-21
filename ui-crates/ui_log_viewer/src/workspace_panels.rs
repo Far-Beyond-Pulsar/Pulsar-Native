@@ -500,9 +500,9 @@ impl Render for MemoryBreakdownPanel {
 
         let theme = cx.theme().clone();
 
-        // Only update cache every 2 seconds when visible
+        // Update at 15 fps (~67ms) when visible
         let now = std::time::Instant::now();
-        if now.duration_since(self.last_update).as_secs() >= 2 {
+        if now.duration_since(self.last_update).as_millis() >= 67 {
             self.last_update = now;
             
             use crate::atomic_memory_tracking::ATOMIC_MEMORY_COUNTERS;
