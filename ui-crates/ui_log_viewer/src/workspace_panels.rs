@@ -929,7 +929,13 @@ impl Render for AdvancedMetricsPanel {
                             div()
                                 .text_size(px(11.0))
                                 .text_color(theme.muted_foreground)
-                                .child("No temperature sensors detected. On Windows, sensor access may require elevated privileges or third-party drivers.")
+                                .child(
+                                    if cfg!(windows) {
+                                        "Temperature sensors are not available on Windows at this time."
+                                    } else {
+                                        "No temperature sensors detected."
+                                    }
+                                )
                         )
                     })
                     .when(!temps_empty, |this: Div| {

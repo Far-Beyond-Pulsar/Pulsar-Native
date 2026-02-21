@@ -168,6 +168,7 @@ impl PerformanceMetrics {
         self.system.refresh_memory();
         self.system.refresh_processes();
         self.networks.refresh();
+        #[cfg(not(windows))]
         self.components.refresh();
 
         // ── Per-process CPU + memory ──────────────────────────────────────────
@@ -201,16 +202,25 @@ impl PerformanceMetrics {
         }
 
         // ── Per-sensor temperature histories ─────────────────────────────────
-        for comp in self.components.iter() {
-            let label = comp.label().to_string();
-            let temp = comp.temperature() as f64;
-            if let Some(entry) = self.temp_histories.iter_mut().find(|(l, _)| *l == label) {
-                if entry.1.len() >= MAX_HISTORY_SIZE { entry.1.pop_front(); }
-                entry.1.push_back(temp);
-            } else {
-                let mut dq = VecDeque::with_capacity(MAX_HISTORY_SIZE);
-                dq.push_back(temp);
-                self.temp_histories.push((label, dq));
+        // Windows: temperature access is not reliably available without a
+        // kernel driver. We surface a UI note instead of showing garbage data.
+        #[cfg(not(windows))]
+        {
+            self.components.refresh(false);
+            for comp in self.components.iter() {
+                let label = comp.label().to_string();
+                let temp = match comp.temperature() {
+                    Some(t) => t as f64,
+                    None => continue,
+                };
+                if let Some(entry) = self.temp_histories.iter_mut().find(|(l, _)| *l == label) {
+                    if entry.1.len() >= MAX_HISTORY_SIZE { entry.1.pop_front(); }
+                    entry.1.push_back(temp);
+                } else {
+                    let mut dq = VecDeque::with_capacity(MAX_HISTORY_SIZE);
+                    dq.push_back(temp);
+                    self.temp_histories.push((label, dq));
+                }
             }
         }
 
