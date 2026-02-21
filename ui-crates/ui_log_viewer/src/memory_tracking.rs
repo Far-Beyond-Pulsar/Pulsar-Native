@@ -5,7 +5,7 @@ use std::sync::Arc;
 use parking_lot::RwLock;
 
 /// Category of memory allocation
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 #[repr(usize)]
 pub enum MemoryCategory {
     Unknown = 0,
@@ -122,6 +122,23 @@ impl MemoryStats {
         categories.sort_by(|a, b| b.1.cmp(&a.1));
         categories
     }
+
+    /// Create a snapshot for efficient rendering (avoids holding locks)
+    pub fn snapshot(&self) -> MemoryStatsSnapshot {
+        MemoryStatsSnapshot {
+            current_usage: self.current_usage,
+            peak_usage: self.peak_usage,
+            category_breakdown: self.category_breakdown(),
+        }
+    }
+}
+
+/// Lightweight snapshot of memory stats for UI rendering
+#[derive(Clone)]
+pub struct MemoryStatsSnapshot {
+    pub current_usage: usize,
+    pub peak_usage: usize,
+    pub category_breakdown: Vec<(MemoryCategory, usize)>,
 }
 
 /// Global memory tracker
@@ -138,6 +155,11 @@ impl MemoryTracker {
 
     pub fn stats(&self) -> Arc<RwLock<MemoryStats>> {
         self.stats.clone()
+    }
+
+    /// Get a snapshot of current stats (non-blocking, fast)
+    pub fn snapshot(&self) -> MemoryStatsSnapshot {
+        self.stats.read().snapshot()
     }
 
     /// Record an allocation

@@ -4,9 +4,10 @@
 //! in real-time, providing detailed memory usage statistics categorized by subsystem.
 
 use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::cell::Cell;
-use crate::memory_tracking::{MemoryCategory, SharedMemoryTracker};
+use crate::memory_tracking::MemoryCategory;
+use crate::atomic_memory_tracking::ATOMIC_MEMORY_COUNTERS;
 
 /// Thread-local flag to prevent recursive tracking
 thread_local! {
@@ -15,14 +16,6 @@ thread_local! {
 
 /// Global tracking allocator instance
 pub struct TrackingAllocator;
-
-// Static instance for accessing the global allocator tracker
-static GLOBAL_TRACKER: parking_lot::RwLock<Option<SharedMemoryTracker>> = parking_lot::RwLock::new(None);
-
-/// Set the global memory tracker (must be called after initialization)
-pub fn set_global_memory_tracker(tracker: SharedMemoryTracker) {
-    *GLOBAL_TRACKER.write() = Some(tracker);
-}
 
 impl TrackingAllocator {
     /// Create a new tracking allocator
@@ -39,50 +32,20 @@ impl TrackingAllocator {
         CURRENT_CATEGORY.with(|cat| cat.load(Ordering::Relaxed).into())
     }
 
-    /// Record an allocation
+    /// Record an allocation (lock-free, atomic - ultra fast)
+    #[inline]
     fn record_alloc(&self, size: usize) {
-        // Check if tracking is enabled, and if so, disable it to prevent recursion
-        let was_enabled = TRACKING_ENABLED.with(|enabled| {
-            let was = enabled.get();
-            if was {
-                enabled.set(false);
-            }
-            was
-        });
-
-        if !was_enabled {
-            return;
-        }
-
-        if let Some(tracker) = GLOBAL_TRACKER.read().as_ref() {
-            let category = Self::categorize_allocation();
-            tracker.read().allocate(size, category);
-        }
-
-        TRACKING_ENABLED.with(|enabled| enabled.set(true));
+        // Simple atomic increment - no locks, no blocking, no allocations
+        let category = Self::categorize_allocation();
+        ATOMIC_MEMORY_COUNTERS.record_alloc(size, category);
     }
 
-    /// Record a deallocation
+    /// Record a deallocation (lock-free, atomic - ultra fast)
+    #[inline]
     fn record_dealloc(&self, size: usize) {
-        // Check if tracking is enabled, and if so, disable it to prevent recursion
-        let was_enabled = TRACKING_ENABLED.with(|enabled| {
-            let was = enabled.get();
-            if was {
-                enabled.set(false);
-            }
-            was
-        });
-
-        if !was_enabled {
-            return;
-        }
-
-        if let Some(tracker) = GLOBAL_TRACKER.read().as_ref() {
-            let category = Self::categorize_allocation();
-            tracker.read().deallocate(size, category);
-        }
-
-        TRACKING_ENABLED.with(|enabled| enabled.set(true));
+        // Simple atomic decrement - no locks, no blocking, no allocations
+        let category = Self::categorize_allocation();
+        ATOMIC_MEMORY_COUNTERS.record_dealloc(size, category);
     }
 }
 

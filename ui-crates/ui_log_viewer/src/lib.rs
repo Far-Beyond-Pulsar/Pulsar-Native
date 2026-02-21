@@ -6,14 +6,16 @@ mod workspace_panels;
 mod performance_metrics;
 mod system_info;
 mod memory_tracking;
+mod atomic_memory_tracking;
 pub mod tracking_allocator;
 
 pub use log_drawer_v2::LogDrawer;
 pub use workspace_panels::{LogsPanel, ResourceMonitorPanel, SystemInfoPanel, MemoryBreakdownPanel};
 pub use performance_metrics::{PerformanceMetrics, SharedPerformanceMetrics, create_shared_metrics};
 pub use system_info::{SystemInfo, SharedSystemInfo, create_shared_info};
-pub use memory_tracking::{MemoryTracker, SharedMemoryTracker, create_memory_tracker, MemoryCategory};
-pub use tracking_allocator::{TrackingAllocator, MemoryCategoryGuard, set_global_memory_tracker};
+pub use memory_tracking::{MemoryTracker, SharedMemoryTracker, create_memory_tracker, MemoryCategory, MemoryStatsSnapshot};
+pub use tracking_allocator::{TrackingAllocator, MemoryCategoryGuard};
+pub use atomic_memory_tracking::ATOMIC_MEMORY_COUNTERS;
 
 use gpui::*;
 use ui::{
@@ -40,8 +42,7 @@ impl MissionControlPanel {
         let system_info = create_shared_info();
         let memory_tracker = create_memory_tracker();
 
-        // Connect the memory tracker to the global allocator
-        set_global_memory_tracker(memory_tracker.clone());
+        // Using atomic counters now - no need to connect tracker
 
         Self {
             focus_handle: cx.focus_handle(),

@@ -473,14 +473,15 @@ impl Panel for SystemInfoPanel {
 /// Memory Breakdown Panel - Real-time memory allocation tracking
 pub struct MemoryBreakdownPanel {
     focus_handle: FocusHandle,
-    memory_tracker: SharedMemoryTracker,
+    last_update: std::time::Instant,
 }
 
 impl MemoryBreakdownPanel {
-    pub fn new(memory_tracker: SharedMemoryTracker, cx: &mut Context<Self>) -> Self {
+    pub fn new(_memory_tracker: SharedMemoryTracker, cx: &mut Context<Self>) -> Self {
+        // We don't use the memory_tracker anymore - using atomic counters directly
         Self {
             focus_handle: cx.focus_handle(),
-            memory_tracker,
+            last_update: std::time::Instant::now(),
         }
     }
 
@@ -553,20 +554,20 @@ impl EventEmitter<PanelEvent> for MemoryBreakdownPanel {}
 impl Render for MemoryBreakdownPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         use ui::{h_flex, scroll::ScrollbarAxis};
+        use crate::atomic_memory_tracking::ATOMIC_MEMORY_COUNTERS;
+
         let theme = cx.theme().clone();
 
-        let tracker = self.memory_tracker.read();
-        let stats = tracker.stats();
-        let stats_guard = stats.read();
+        // Get atomic snapshot - zero locks, ultra fast!
+        let total_current = ATOMIC_MEMORY_COUNTERS.total();
+        let breakdown = ATOMIC_MEMORY_COUNTERS.snapshot();
 
-        let total_current = stats_guard.current_usage;
-        let breakdown = stats_guard.category_breakdown();
-
-        drop(stats_guard);
-        drop(tracker);
-
-        // Request continuous updates
-        cx.notify();
+        // Request updates at a reasonable rate (max 10 FPS)
+        let now = std::time::Instant::now();
+        if now.duration_since(self.last_update).as_millis() >= 100 {
+            self.last_update = now;
+            cx.notify();
+        }
 
         // Color palette for categories
         let colors = vec![
