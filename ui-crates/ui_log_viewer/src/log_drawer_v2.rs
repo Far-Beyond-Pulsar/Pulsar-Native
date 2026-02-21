@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme as _, IconName, TitleBar,
+    h_flex, v_flex, ActiveTheme as _, IconName,
     v_virtual_list, VirtualListScrollHandle,
 };
 
@@ -538,57 +538,48 @@ impl Render for LogDrawer {
             .size_full()
             .bg(theme.background)
             .child(
-                // Title bar
-                TitleBar::new()
+                // Toolbar with controls
+                h_flex()
+                    .w_full()
+                    .h(px(44.0))
+                    .px_4()
+                    .items_center()
+                    .justify_between()
+                    .bg(theme.background)
+                    .border_b_1()
+                    .border_color(theme.border)
+                    .child(
+                        div()
+                            .text_color(theme.muted_foreground)
+                            .child(format!("{} / {} lines",
+                                if self.search_query.is_empty() && self.level_filter.is_none() {
+                                    self.lines.len()
+                                } else {
+                                    self.filtered_indices.len()
+                                },
+                                self.total_lines
+                            ))
+                    )
                     .child(
                         h_flex()
-                            .flex_1()
-                            .items_center()
-                            .justify_between()
+                            .gap_2()
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                             .child(
-                                div()
-                                    .text_size(px(14.0))
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(theme.foreground)
-                                    .child("Mission Control")
+                                Button::new("clear-logs")
+                                    .label("Clear")
+                                    .icon(IconName::Trash)
+                                    .on_click(cx.listener(|this, _event, _window, cx| {
+                                        this.clear_logs(cx);
+                                    }))
                             )
-                            .child(
-                                h_flex()
-                                    .gap_2()
-                                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                                    .child(
-                                        Button::new("clear-logs")
-                                            .label("Clear")
-                                            .icon(IconName::Trash)
-                                            .on_click(cx.listener(|this, _event, _window, cx| {
-                                                this.clear_logs(cx);
-                                            }))
-                                    )
-                                    .map(|this| {
-                                        if !self.locked_to_bottom {
-                                            this.child(
-                                                Button::new("jump-to-latest")
-                                                    .label("Jump to Latest")
-                                                    .icon(IconName::ChevronDown)
-                                                    .on_click(cx.listener(Self::jump_to_latest))
-                                            )
-                                        } else {
-                                            this
-                                        }
-                                    })
-                                    .child(
-                                        div()
-                                            .text_color(theme.muted_foreground)
-                                            .child(format!("{} / {} lines", 
-                                                if self.search_query.is_empty() && self.level_filter.is_none() {
-                                                    self.lines.len()
-                                                } else {
-                                                    self.filtered_indices.len()
-                                                },
-                                                self.total_lines
-                                            ))
-                                    )
-                            )
+                            .when(!self.locked_to_bottom, |this| {
+                                this.child(
+                                    Button::new("jump-to-latest")
+                                        .label("Jump to Latest")
+                                        .icon(IconName::ChevronDown)
+                                        .on_click(cx.listener(Self::jump_to_latest))
+                                )
+                            })
                     )
             )
             .child(

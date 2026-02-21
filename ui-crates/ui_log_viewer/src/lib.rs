@@ -4,10 +4,12 @@ mod log_drawer_v2;
 mod log_reader;
 mod workspace_panels;
 mod performance_metrics;
+mod system_info;
 
 pub use log_drawer_v2::LogDrawer;
-pub use workspace_panels::{LogsPanel, ResourceMonitorPanel};
+pub use workspace_panels::{LogsPanel, ResourceMonitorPanel, SystemInfoPanel};
 pub use performance_metrics::{PerformanceMetrics, SharedPerformanceMetrics, create_shared_metrics};
+pub use system_info::{SystemInfo, SharedSystemInfo, create_shared_info};
 
 use gpui::*;
 use ui::{
@@ -22,6 +24,7 @@ pub struct MissionControlPanel {
     log_drawer: Entity<LogDrawer>,
     workspace: Option<Entity<Workspace>>,
     metrics: SharedPerformanceMetrics,
+    system_info: SharedSystemInfo,
     _metrics_task: Option<Task<()>>,
 }
 
@@ -29,12 +32,14 @@ impl MissionControlPanel {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let log_drawer = cx.new(|cx| LogDrawer::new(cx));
         let metrics = create_shared_metrics();
+        let system_info = create_shared_info();
 
         Self {
             focus_handle: cx.focus_handle(),
             log_drawer,
             workspace: None,
             metrics,
+            system_info,
             _metrics_task: None,
         }
     }
@@ -83,13 +88,19 @@ impl MissionControlPanel {
 
         let log_drawer = self.log_drawer.clone();
         let metrics = self.metrics.clone();
+        let system_info = self.system_info.clone();
 
         workspace.update(cx, |workspace, cx| {
             let dock_area = workspace.dock_area().downgrade();
 
-            // Create logs panel for center
+            // Create logs panel for center top
             let logs_panel = cx.new(|cx| {
                 LogsPanel::new(log_drawer.clone(), cx)
+            });
+
+            // Create system info panel for center bottom
+            let system_info_panel = cx.new(|cx| {
+                SystemInfoPanel::new(system_info.clone(), cx)
             });
 
             // Create resource monitor panel for right
@@ -97,10 +108,27 @@ impl MissionControlPanel {
                 ResourceMonitorPanel::new(metrics.clone(), cx)
             });
 
-            // Center: Logs panel
-            let center_tabs = DockItem::tabs(
+            // Center: Logs panel at top, system info at bottom (split vertically)
+            let logs_tabs = DockItem::tabs(
                 vec![std::sync::Arc::new(logs_panel) as std::sync::Arc<dyn ui::dock::PanelView>],
                 Some(0),
+                &dock_area,
+                window,
+                cx,
+            );
+
+            let system_info_tabs = DockItem::tabs(
+                vec![std::sync::Arc::new(system_info_panel) as std::sync::Arc<dyn ui::dock::PanelView>],
+                Some(0),
+                &dock_area,
+                window,
+                cx,
+            );
+
+            let center_tabs = ui::dock::DockItem::split_with_sizes(
+                gpui::Axis::Vertical,
+                vec![logs_tabs, system_info_tabs],
+                vec![None, Some(px(300.0))], // Logs flexible, system info 300px
                 &dock_area,
                 window,
                 cx,
@@ -115,12 +143,12 @@ impl MissionControlPanel {
                 cx,
             );
 
-            // Initialize workspace with center and right panels
+            // Initialize workspace with center (split) and right panels
             workspace.initialize(
                 center_tabs,
                 None, // No left dock
                 Some(right_tabs), // Right dock for resources
-                None, // No bottom dock
+                None, // Bottom is part of center split now
                 window,
                 cx,
             );
