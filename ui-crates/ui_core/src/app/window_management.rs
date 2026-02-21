@@ -166,7 +166,7 @@ impl PulsarApp {
                             x: px(140.0),
                             y: px(140.0),
                         },
-                        size: size(px(1200.0), px(800.0)),
+                        size: size(px(1920.0), px(1080.0)),
                     })),
                     titlebar: Some(gpui::TitlebarOptions {
                         title: Some("Mission Control".into()),

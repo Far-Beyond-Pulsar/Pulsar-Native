@@ -105,7 +105,7 @@ impl Dock {
             panel,
             open: true,
             collapsible: true,
-            size: px(200.0),
+            size: px(400.0),
             resizing: false,
         }
     }
