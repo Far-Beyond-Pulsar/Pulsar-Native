@@ -5,6 +5,7 @@ mod log_reader;
 mod workspace_panels;
 mod performance_metrics;
 mod system_info;
+mod gpu_info;
 mod memory_tracking;
 mod atomic_memory_tracking;
 mod type_tracking;

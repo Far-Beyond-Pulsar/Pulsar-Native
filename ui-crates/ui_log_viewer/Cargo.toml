@@ -36,5 +36,12 @@ crossbeam-channel = "0.5"
 smol = "2.0"
 tokio = { version = "1", features = ["sync", "macros"] }
 
+# GPU detection
+wgpu.workspace = true
+
 # File watching
 notify = { version = "6.0", default-features = false, features = ["macos_kqueue"] }
+
+[target.'cfg(windows)'.dependencies]
+windows.workspace = true
+winreg = "0.52"

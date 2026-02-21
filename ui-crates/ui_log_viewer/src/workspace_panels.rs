@@ -77,7 +77,7 @@ impl Render for ResourceMonitorPanel {
         let metrics = self.metrics.read();
         let current_cpu = metrics.current_cpu;
         let current_memory_mb = metrics.current_memory_mb;
-        let current_gpu = metrics.current_gpu;
+        let current_vram_used_mb = metrics.current_vram_used_mb;
         let current_fps = metrics.current_fps;
 
         // Clone data for charts
@@ -222,14 +222,18 @@ impl Render for ResourceMonitorPanel {
                                     .text_size(px(12.0))
                                     .font_weight(gpui::FontWeight::MEDIUM)
                                     .text_color(theme.muted_foreground)
-                                    .child("GPU Memory")
+                                    .child("GPU VRAM Used")
                             )
                             .child(
                                 div()
                                     .text_size(px(18.0))
                                     .font_weight(gpui::FontWeight::BOLD)
                                     .text_color(theme.success)
-                                    .child(format!("{:.1}%", current_gpu))
+                                    .child(if current_vram_used_mb > 0.0 {
+                                        format!("{:.0} MB", current_vram_used_mb)
+                                    } else {
+                                        "N/A".to_string()
+                                    })
                             )
                     )
                     .when(!gpu_data.is_empty(), |this| {
@@ -240,12 +244,11 @@ impl Render for ResourceMonitorPanel {
                                 .child(
                                     AreaChart::<_, SharedString, f64>::new(gpu_data.clone())
                                         .x(|d| format!("{}", d.index).into())
-                                        .y(|d| d.usage)
+                                        .y(|d| d.vram_used_mb)
                                         .stroke(theme.success)
                                         .fill(theme.success.opacity(0.15))
                                         .linear()
                                         .tick_margin(0)
-                                        .max_y_range(100.0)
                                 )
                         )
                     })
@@ -442,6 +445,7 @@ impl Render for SystemInfoPanel {
                     .child(Self::info_row("GPU", &info.gpu_name, cx))
                     .child(Self::info_row("Vendor", &info.gpu_vendor, cx))
                     .child(Self::info_row("Driver", &info.gpu_driver_version, cx))
+                    .child(Self::info_row("VRAM", info.gpu_vram_formatted(), cx))
             )
             .child(
                 // Engine Information

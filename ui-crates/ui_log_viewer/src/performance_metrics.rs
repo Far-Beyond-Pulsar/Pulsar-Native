@@ -4,6 +4,7 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use sysinfo::System;
 use parking_lot::RwLock;
+use crate::gpu_info;
 
 /// Maximum number of data points to keep in history
 pub const MAX_HISTORY_SIZE: usize = 60;
@@ -26,7 +27,8 @@ pub struct MemoryDataPoint {
 #[derive(Clone)]
 pub struct GpuDataPoint {
     pub index: usize,
-    pub usage: f64,
+    /// VRAM currently used in MiB.
+    pub vram_used_mb: f64,
 }
 
 /// FPS data point
@@ -63,7 +65,8 @@ pub struct PerformanceMetrics {
     // Current values
     pub current_cpu: f64,
     pub current_memory_mb: f64,
-    pub current_gpu: f64,
+    /// Live VRAM currently used in MiB (0 if unavailable).
+    pub current_vram_used_mb: f64,
     pub current_fps: f64,
     pub current_frame_time_ms: f64,
 
@@ -97,7 +100,7 @@ impl PerformanceMetrics {
 
             current_cpu: 0.0,
             current_memory_mb: 0.0,
-            current_gpu: 0.0,
+            current_vram_used_mb: 0.0,
             current_fps: 0.0,
             current_frame_time_ms: 0.0,
 
@@ -136,23 +139,24 @@ impl PerformanceMetrics {
         self.current_cpu = cpu_usage;
         self.current_memory_mb = memory_mb;
 
+        // Query live VRAM usage from platform APIs.
+        if let Some(used_mb) = gpu_info::query_vram_used_mb() {
+            self.current_vram_used_mb = used_mb as f64;
+        }
+
         // Add to history
         self.add_cpu(cpu_usage);
         self.add_memory(memory_mb);
+        self.add_gpu(self.current_vram_used_mb);
     }
 
-    /// Update from render metrics (FPS, GPU, Frame Time)
-    pub fn update_from_render_metrics(&mut self, fps: f32, frame_time_ms: f32, memory_mb: f32) {
+    /// Update from render metrics (FPS, Frame Time)
+    pub fn update_from_render_metrics(&mut self, fps: f32, frame_time_ms: f32, _memory_mb: f32) {
         self.current_fps = fps as f64;
         self.current_frame_time_ms = frame_time_ms as f64;
 
-        // Use GPU memory as a proxy for GPU usage (better than nothing)
-        // In the future, we could add actual GPU utilization tracking
-        self.current_gpu = (memory_mb / 8192.0 * 100.0).min(100.0) as f64; // Assuming 8GB VRAM max
-
         self.add_fps(fps as f64);
         self.add_frame_time(frame_time_ms as f64);
-        self.add_gpu(self.current_gpu);
     }
 
     fn add_cpu(&mut self, usage: f64) {
@@ -177,13 +181,13 @@ impl PerformanceMetrics {
         self.memory_counter += 1;
     }
 
-    fn add_gpu(&mut self, usage: f64) {
+    fn add_gpu(&mut self, vram_used_mb: f64) {
         if self.gpu_history.len() >= MAX_HISTORY_SIZE {
             self.gpu_history.pop_front();
         }
         self.gpu_history.push_back(GpuDataPoint {
             index: self.gpu_counter,
-            usage,
+            vram_used_mb,
         });
         self.gpu_counter += 1;
     }

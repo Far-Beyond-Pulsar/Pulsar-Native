@@ -3,6 +3,7 @@
 use sysinfo::System;
 use std::sync::Arc;
 use parking_lot::RwLock;
+use crate::gpu_info;
 
 /// Comprehensive system information
 #[derive(Clone)]
@@ -23,10 +24,12 @@ pub struct SystemInfo {
     pub total_memory: u64, // bytes
     pub total_swap: u64,   // bytes
 
-    // GPU Information (from engine if available)
+    // GPU Information
     pub gpu_name: String,
     pub gpu_driver_version: String,
     pub gpu_vendor: String,
+    /// Total dedicated GPU memory in MiB, if detectable.
+    pub gpu_vram_total_mb: Option<u64>,
 
     // Additional system info
     pub uptime: u64, // seconds
@@ -62,10 +65,12 @@ impl SystemInfo {
         let total_memory = sys.total_memory();
         let total_swap = sys.total_swap();
 
-        // GPU Information - will be populated from engine backend if available
-        let gpu_name = "Detecting...".to_string();
-        let gpu_driver_version = "N/A".to_string();
-        let gpu_vendor = "N/A".to_string();
+        // GPU Information — detected via wgpu adapter enumeration + platform APIs.
+        let gpu = gpu_info::detect_primary_gpu();
+        let gpu_name = if gpu.name.is_empty() { "Unknown".to_string() } else { gpu.name };
+        let gpu_vendor = if gpu.vendor.is_empty() { "Unknown".to_string() } else { gpu.vendor };
+        let gpu_driver_version = gpu.driver_version;
+        let gpu_vram_total_mb = gpu.vram_total_mb;
 
         // System uptime
         let uptime = System::uptime();
@@ -84,6 +89,7 @@ impl SystemInfo {
             gpu_name,
             gpu_driver_version,
             gpu_vendor,
+            gpu_vram_total_mb,
             uptime,
         }
     }
@@ -94,6 +100,15 @@ impl SystemInfo {
 
     pub fn total_swap_gb(&self) -> f64 {
         self.total_swap as f64 / 1024.0 / 1024.0 / 1024.0
+    }
+
+    /// Returns a human-readable VRAM string, e.g. "8192 MB" or "N/A".
+    pub fn gpu_vram_formatted(&self) -> String {
+        match self.gpu_vram_total_mb {
+            Some(mb) if mb >= 1024 => format!("{:.0} GB", mb as f64 / 1024.0),
+            Some(mb) => format!("{} MB", mb),
+            None => "N/A".to_string(),
+        }
     }
 
     pub fn uptime_formatted(&self) -> String {
