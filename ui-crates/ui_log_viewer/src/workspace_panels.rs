@@ -68,7 +68,7 @@ impl EventEmitter<PanelEvent> for ResourceMonitorPanel {}
 impl Render for ResourceMonitorPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         use gpui::prelude::FluentBuilder;
-        use ui::{h_flex, chart::AreaChart};
+        use ui::{h_flex, chart::AreaChart, scroll::ScrollbarAxis};
         let theme = cx.theme().clone();
 
         // Read current metrics
@@ -94,6 +94,7 @@ impl Render for ResourceMonitorPanel {
             .bg(theme.sidebar)
             .p_4()
             .gap_4()
+            .scrollable(ScrollbarAxis::Vertical)
             .child(
                 // Header
                 h_flex()
@@ -374,7 +375,7 @@ impl EventEmitter<PanelEvent> for SystemInfoPanel {}
 
 impl Render for SystemInfoPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        use ui::h_flex;
+        use ui::{h_flex, scroll::ScrollbarAxis};
         let theme = cx.theme().clone();
 
         let info = self.system_info.read();
@@ -384,6 +385,7 @@ impl Render for SystemInfoPanel {
             .bg(theme.sidebar)
             .p_4()
             .gap_3()
+            .scrollable(ScrollbarAxis::Vertical)
             .child(
                 // Header
                 h_flex()
