@@ -15,7 +15,7 @@ pub use performance_metrics::{PerformanceMetrics, SharedPerformanceMetrics, crea
 pub use system_info::{SystemInfo, SharedSystemInfo, create_shared_info};
 pub use memory_tracking::{MemoryTracker, SharedMemoryTracker, create_memory_tracker, MemoryCategory, MemoryStatsSnapshot};
 pub use tracking_allocator::{TrackingAllocator, MemoryCategoryGuard};
-pub use atomic_memory_tracking::ATOMIC_MEMORY_COUNTERS;
+pub use atomic_memory_tracking::{ATOMIC_MEMORY_COUNTERS, AllocationEntry, SizeBucket};
 
 use gpui::*;
 use ui::{

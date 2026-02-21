@@ -474,6 +474,8 @@ impl Panel for SystemInfoPanel {
 pub struct MemoryBreakdownPanel {
     focus_handle: FocusHandle,
     last_update: std::time::Instant,
+    scroll_handle: ui::VirtualListScrollHandle,
+    entries: Vec<crate::AllocationEntry>,
 }
 
 impl MemoryBreakdownPanel {
@@ -482,116 +484,51 @@ impl MemoryBreakdownPanel {
         Self {
             focus_handle: cx.focus_handle(),
             last_update: std::time::Instant::now(),
+            scroll_handle: ui::VirtualListScrollHandle::new(),
+            entries: Vec::new(),
         }
-    }
-
-    fn category_row(
-        category_name: &str,
-        size_bytes: usize,
-        percentage: f64,
-        color: Hsla,
-        cx: &App,
-    ) -> impl IntoElement {
-        use ui::h_flex;
-        let theme = cx.theme();
-
-        let size_mb = size_bytes as f64 / 1024.0 / 1024.0;
-
-        v_flex()
-            .w_full()
-            .gap_1()
-            .child(
-                h_flex()
-                    .w_full()
-                    .justify_between()
-                    .items_center()
-                    .child(
-                        div()
-                            .text_size(px(12.0))
-                            .font_weight(gpui::FontWeight::MEDIUM)
-                            .text_color(theme.foreground)
-                            .child(category_name.to_string())
-                    )
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(
-                                div()
-                                    .text_size(px(11.0))
-                                    .text_color(theme.muted_foreground)
-                                    .child(format!("{:.2} MB", size_mb))
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(11.0))
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(color)
-                                    .child(format!("{:.1}%", percentage))
-                            )
-                    )
-            )
-            .child(
-                // Progress bar
-                div()
-                    .w_full()
-                    .h(px(6.0))
-                    .bg(theme.border)
-                    .rounded(px(3.0))
-                    .child(
-                        div()
-                            .h_full()
-                            .w(relative(percentage as f32 / 100.0))
-                            .bg(color)
-                            .rounded(px(3.0))
-                    )
-            )
     }
 }
 
 impl EventEmitter<PanelEvent> for MemoryBreakdownPanel {}
 
 impl Render for MemoryBreakdownPanel {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        use ui::{h_flex, scroll::ScrollbarAxis};
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        use ui::{h_flex, v_virtual_list};
         use crate::atomic_memory_tracking::ATOMIC_MEMORY_COUNTERS;
 
         let theme = cx.theme().clone();
 
-        // Get atomic snapshot - zero locks, ultra fast!
-        let total_current = ATOMIC_MEMORY_COUNTERS.total();
-        let breakdown = ATOMIC_MEMORY_COUNTERS.snapshot();
-
-        // Request updates at a reasonable rate (max 10 FPS)
+        // Update entries at a reasonable rate (max 10 FPS)
         let now = std::time::Instant::now();
         if now.duration_since(self.last_update).as_millis() >= 100 {
             self.last_update = now;
+            self.entries = ATOMIC_MEMORY_COUNTERS.get_all_entries();
             cx.notify();
         }
 
-        // Color palette for categories
-        let colors = vec![
-            theme.chart_1,
-            theme.chart_2,
-            theme.chart_3,
-            theme.chart_4,
-            theme.chart_5,
-            theme.info,
-            theme.warning,
-            theme.success,
-        ];
+        let total_current = ATOMIC_MEMORY_COUNTERS.total();
+        let entry_count = self.entries.len();
+
+        // Fixed row height for uniform list
+        let row_height = px(50.0);
+        let item_sizes = std::rc::Rc::new(vec![size(px(0.0), row_height); entry_count]);
+
+        let view = cx.entity().clone();
 
         v_flex()
             .size_full()
             .bg(theme.sidebar)
-            .p_4()
-            .gap_4()
-            .scrollable(ScrollbarAxis::Vertical)
+            .gap_2()
             .child(
-                // Header
-                h_flex()
-                    .items_center()
-                    .justify_between()
+                // Header with total
+                v_flex()
+                    .w_full()
+                    .p_4()
+                    .bg(theme.background)
+                    .border_b_1()
+                    .border_color(theme.border)
+                    .gap_2()
                     .child(
                         div()
                             .text_size(px(14.0))
@@ -599,67 +536,105 @@ impl Render for MemoryBreakdownPanel {
                             .text_color(theme.foreground)
                             .child("Memory Breakdown")
                     )
-            )
-            .child(
-                // Summary Stats
-                v_flex()
-                    .w_full()
-                    .p_3()
-                    .gap_2()
-                    .bg(theme.background)
-                    .border_1()
-                    .border_color(theme.border)
-                    .rounded(px(6.0))
                     .child(
-                        h_flex()
-                            .w_full()
-                            .justify_between()
-                            .child(
-                                div()
-                                    .text_size(px(11.0))
-                                    .text_color(theme.muted_foreground)
-                                    .child("Current Usage")
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(18.0))
-                                    .font_weight(gpui::FontWeight::BOLD)
-                                    .text_color(theme.accent)
-                                    .child(format!("{:.2} MB", total_current as f64 / 1024.0 / 1024.0))
-                            )
+                        div()
+                            .text_size(px(20.0))
+                            .font_weight(gpui::FontWeight::BOLD)
+                            .text_color(theme.accent)
+                            .child(format!("{:.2} MB", total_current as f64 / 1024.0 / 1024.0))
                     )
             )
             .child(
-                // Category Breakdown
-                v_flex()
-                    .w_full()
-                    .gap_3()
-                    .children(
-                        breakdown.iter().enumerate().map(|(idx, (category, size))| {
-                            let percentage = if total_current > 0 {
-                                (*size as f64 / total_current as f64) * 100.0
-                            } else {
-                                0.0
-                            };
-                            let color = colors[idx % colors.len()];
+                // Virtual list of allocations
+                v_virtual_list(
+                    view,
+                    "memory-breakdown-list",
+                    item_sizes,
+                    move |this, range, window, cx| {
+                        let theme = cx.theme().clone();
+                        let total = ATOMIC_MEMORY_COUNTERS.total();
+                        let entries = ATOMIC_MEMORY_COUNTERS.get_all_entries();
 
-                            Self::category_row(
-                                category.as_str(),
-                                *size,
-                                percentage,
-                                color,
-                                cx,
-                            )
-                        })
-                    )
-            )
-            .child(
-                // Info text
-                div()
-                    .mt_4()
-                    .text_size(px(10.0))
-                    .text_color(theme.muted_foreground.opacity(0.7))
-                    .child("Real-time memory tracking via global allocator hooks")
+                        // Color palette
+                        let colors = vec![
+                            theme.chart_1,
+                            theme.chart_2,
+                            theme.chart_3,
+                            theme.chart_4,
+                            theme.chart_5,
+                            theme.info,
+                            theme.warning,
+                            theme.success,
+                        ];
+
+                        range.map(|ix| {
+                            if let Some(entry) = entries.get(ix) {
+                                let percentage = if total > 0 {
+                                    (entry.size as f64 / total as f64) * 100.0
+                                } else {
+                                    0.0
+                                };
+                                let color = colors[ix % colors.len()];
+                                let size_mb = entry.size as f64 / 1024.0 / 1024.0;
+
+                                v_flex()
+                                    .w_full()
+                                    .p_3()
+                                    .gap_1()
+                                    .child(
+                                        h_flex()
+                                            .w_full()
+                                            .justify_between()
+                                            .items_center()
+                                            .child(
+                                                div()
+                                                    .text_size(px(12.0))
+                                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                                    .text_color(theme.foreground)
+                                                    .child(entry.name.clone())
+                                            )
+                                            .child(
+                                                h_flex()
+                                                    .gap_2()
+                                                    .items_center()
+                                                    .child(
+                                                        div()
+                                                            .text_size(px(11.0))
+                                                            .text_color(theme.muted_foreground)
+                                                            .child(format!("{:.2} MB", size_mb))
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .text_size(px(11.0))
+                                                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                            .text_color(color)
+                                                            .child(format!("{:.1}%", percentage))
+                                                    )
+                                            )
+                                    )
+                                    .child(
+                                        // Progress bar
+                                        div()
+                                            .w_full()
+                                            .h(px(6.0))
+                                            .bg(theme.border)
+                                            .rounded(px(3.0))
+                                            .child(
+                                                div()
+                                                    .h_full()
+                                                    .w(relative(percentage as f32 / 100.0))
+                                                    .bg(color)
+                                                    .rounded(px(3.0))
+                                            )
+                                    )
+                                    .into_any_element()
+                            } else {
+                                div().into_any_element()
+                            }
+                        }).collect()
+                    },
+                )
+                .track_scroll(&self.scroll_handle)
             )
     }
 }
