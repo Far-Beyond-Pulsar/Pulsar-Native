@@ -7,6 +7,7 @@ mod performance_metrics;
 mod system_info;
 mod gpu_info;
 mod gpu_engines;
+mod mem_details;
 mod memory_tracking;
 mod atomic_memory_tracking;
 mod type_tracking;
@@ -117,7 +118,7 @@ impl MissionControlPanel {
 
             // Create memory breakdown panel for center
             let memory_panel = cx.new(|cx| {
-                MemoryBreakdownPanel::new(memory_tracker.clone(), cx)
+                MemoryBreakdownPanel::new(memory_tracker.clone(), metrics.clone(), cx)
             });
 
             // Create advanced metrics panel for center

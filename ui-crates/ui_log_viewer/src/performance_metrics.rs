@@ -108,6 +108,13 @@ pub struct PerformanceMetrics {
     /// Shared (non-local/system) GPU memory currently used in MiB.
     pub current_vram_shared_mb: f64,
 
+    /// Extended memory snapshot (cache, pools, committed, etc).
+    pub mem_snapshot: crate::mem_details::MemorySnapshot,
+    /// Committed memory history for chart (MiB).
+    pub committed_history: VecDeque<f64>,
+    /// Cached memory history for chart (MiB).
+    pub cached_history: VecDeque<f64>,
+
     // System info
     system: System,
     networks: Networks,
@@ -161,6 +168,9 @@ impl PerformanceMetrics {
             temp_histories: Vec::new(),
             gpu_engine_histories: std::collections::HashMap::new(),
             current_vram_shared_mb: 0.0,
+            mem_snapshot: crate::mem_details::MemorySnapshot::default(),
+            committed_history: VecDeque::with_capacity(MAX_HISTORY_SIZE),
+            cached_history: VecDeque::with_capacity(MAX_HISTORY_SIZE),
 
             system,
             networks,
@@ -196,6 +206,17 @@ impl PerformanceMetrics {
 
         self.current_cpu = cpu_usage;
         self.current_memory_mb = memory_mb;
+
+        // ── Extended memory details ───────────────────────────────────────────
+        self.mem_snapshot = crate::mem_details::collect(&self.system);
+        if let Some(committed) = self.mem_snapshot.committed_mb {
+            if self.committed_history.len() >= MAX_HISTORY_SIZE { self.committed_history.pop_front(); }
+            self.committed_history.push_back(committed as f64);
+        }
+        if let Some(cached) = self.mem_snapshot.cached_mb {
+            if self.cached_history.len() >= MAX_HISTORY_SIZE { self.cached_history.pop_front(); }
+            self.cached_history.push_back(cached as f64);
+        }
 
         // ── Per-core CPU histories ────────────────────────────────────────────
         let core_count = self.system.cpus().len();
