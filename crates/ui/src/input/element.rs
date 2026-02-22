@@ -1268,8 +1268,7 @@ impl Element for TextElement {
                 let has_diff_highlight = if let Some(highlight) = line_highlights.get(row) {
                     match highlight {
                         crate::input::LineHighlight::Added => {
-                            // Green with 30% opacity: RGBA
-                            let green_bg: gpui::Hsla = gpui::rgba(0x00400050).into();
+                            let green_bg: gpui::Hsla = gpui::rgba(0x00cc0055).into();
                             window.paint_quad(fill(
                                 Bounds::new(p, size(bounds.size.width, height)),
                                 green_bg,
@@ -1277,8 +1276,7 @@ impl Element for TextElement {
                             true
                         }
                         crate::input::LineHighlight::Removed => {
-                            // Red with 30% opacity: RGBA
-                            let red_bg: gpui::Hsla = gpui::rgba(0x40000050).into();
+                            let red_bg: gpui::Hsla = gpui::rgba(0xff000055).into();
                             window.paint_quad(fill(
                                 Bounds::new(p, size(bounds.size.width, height)),
                                 red_bg,
@@ -1444,6 +1442,21 @@ impl Element for TextElement {
                         window.paint_quad(fill(
                             Bounds::new(p, size(prepaint.last_layout.line_number_width, height)),
                             bg_color,
+                        ));
+                    }
+                }
+
+                // Paint diff gutter bar (3px strip on left edge of line-number column)
+                if let Some(highlight) = line_highlights.get(row) {
+                    let bar_color: Option<gpui::Hsla> = match highlight {
+                        crate::input::LineHighlight::Added   => Some(gpui::rgba(0x00cc00ff).into()),
+                        crate::input::LineHighlight::Removed => Some(gpui::rgba(0xff2222ff).into()),
+                        crate::input::LineHighlight::None    => None,
+                    };
+                    if let Some(color) = bar_color {
+                        window.paint_quad(fill(
+                            Bounds::new(p, size(px(3.), height)),
+                            color,
                         ));
                     }
                 }

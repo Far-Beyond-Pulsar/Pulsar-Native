@@ -181,7 +181,8 @@ fn get_ahead_behind(repo: &Repository) -> Result<(usize, usize), git2::Error> {
 pub fn stage_file(repo_path: &Path, file_path: &str) -> Result<(), git2::Error> {
     let repo = Repository::open(repo_path)?;
     let mut index = repo.index()?;
-    index.add_path(Path::new(file_path))?;
+    let git_path = file_path.replace('\\', "/");
+    index.add_path(Path::new(&git_path))?;
     index.write()?;
     Ok(())
 }
@@ -189,8 +190,20 @@ pub fn stage_file(repo_path: &Path, file_path: &str) -> Result<(), git2::Error> 
 /// Unstage a file (blocking — run on background executor)
 pub fn unstage_file(repo_path: &Path, file_path: &str) -> Result<(), git2::Error> {
     let repo = Repository::open(repo_path)?;
-    let head = repo.head()?.peel_to_tree()?;
-    repo.reset_default(Some(&head.into_object()), &[Path::new(file_path)])?;
+    // Normalize to forward slashes for git
+    let git_path = file_path.replace('\\', "/");
+    match repo.head() {
+        Ok(head) => {
+            let tree = head.peel_to_tree()?;
+            repo.reset_default(Some(&tree.into_object()), &[Path::new(&git_path)])?;
+        }
+        Err(_) => {
+            // No HEAD (initial repo) — remove from index entirely
+            let mut index = repo.index()?;
+            index.remove_path(Path::new(&git_path))?;
+            index.write()?;
+        }
+    }
     Ok(())
 }
 
@@ -300,6 +313,22 @@ pub enum FileContentResult {
     Error(String),
 }
 
+/// Kind of diff line — used to drive LineHighlight in the editor
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiffLineKind {
+    Added,
+    Removed,
+    Context,
+    Header,
+}
+
+/// Result of a git diff operation
+#[derive(Debug, Clone)]
+pub struct DiffResult {
+    pub text: String,
+    pub line_kinds: Vec<DiffLineKind>,
+}
+
 /// Get the list of files changed in a specific commit (blocking — run on background executor)
 pub fn get_commit_files(repo_path: &Path, commit_hash: &str) -> Result<Vec<FileChange>, git2::Error> {
     let repo = Repository::open(repo_path)?;
@@ -381,4 +410,91 @@ pub fn load_file_at_commit(
             }
         }
     }
+}
+
+// ── Diff helpers ─────────────────────────────────────────────────────────────
+
+/// Build unified-diff text + per-line kind tags from a git2 Diff object.
+fn build_diff_result(diff: &git2::Diff) -> Result<DiffResult, git2::Error> {
+    let mut text = String::new();
+    let mut line_kinds: Vec<DiffLineKind> = Vec::new();
+
+    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+        let origin = line.origin();
+        let content = std::str::from_utf8(line.content()).unwrap_or("");
+        match origin {
+            '+' => {
+                text.push('+');
+                text.push_str(content);
+                if !content.ends_with('\n') { text.push('\n'); }
+                line_kinds.push(DiffLineKind::Added);
+            }
+            '-' => {
+                text.push('-');
+                text.push_str(content);
+                if !content.ends_with('\n') { text.push('\n'); }
+                line_kinds.push(DiffLineKind::Removed);
+            }
+            ' ' => {
+                text.push(' ');
+                text.push_str(content);
+                if !content.ends_with('\n') { text.push('\n'); }
+                line_kinds.push(DiffLineKind::Context);
+            }
+            'H' => {
+                // Hunk header: @@ -x,y +x,y @@ ...
+                text.push_str(content);
+                if !content.ends_with('\n') { text.push('\n'); }
+                line_kinds.push(DiffLineKind::Header);
+            }
+            _ => {} // Skip file headers (diff --git, index, ---, +++)
+        }
+        true
+    })?;
+
+    if text.is_empty() {
+        text = "(no changes)\n".to_string();
+        line_kinds.push(DiffLineKind::Context);
+    }
+
+    Ok(DiffResult { text, line_kinds })
+}
+
+/// Compute the working-tree diff for a single file vs HEAD (blocking).
+/// Shows both staged and unstaged changes combined.
+pub fn load_file_diff_working(repo_path: &Path, file_path: &str) -> Result<DiffResult, String> {
+    let repo = Repository::open(repo_path).map_err(|e| e.message().to_string())?;
+    let normalized = file_path.replace('\\', "/");
+    let mut opts = git2::DiffOptions::new();
+    opts.pathspec(&normalized);
+
+    let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
+    let diff = repo
+        .diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut opts))
+        .map_err(|e| e.message().to_string())?;
+
+    build_diff_result(&diff).map_err(|e| e.message().to_string())
+}
+
+/// Compute the diff for a single file in a commit vs its parent (blocking).
+pub fn load_file_diff_at_commit(
+    repo_path: &Path,
+    commit_hash: &str,
+    file_path: &str,
+) -> Result<DiffResult, String> {
+    let repo = Repository::open(repo_path).map_err(|e| e.message().to_string())?;
+    let oid = git2::Oid::from_str(commit_hash).map_err(|e| e.message().to_string())?;
+    let commit = repo.find_commit(oid).map_err(|e| e.message().to_string())?;
+    let tree = commit.tree().map_err(|e| e.message().to_string())?;
+    let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
+
+    let normalized = file_path.replace('\\', "/");
+    let mut opts = git2::DiffOptions::new();
+    opts.pathspec(&normalized);
+
+    let diff = repo
+        .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut opts))
+        .map_err(|e| e.message().to_string())?;
+
+    build_diff_result(&diff).map_err(|e| e.message().to_string())
 }

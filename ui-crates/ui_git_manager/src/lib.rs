@@ -7,7 +7,7 @@ mod models;
 mod views;
 
 use gpui::*;
-use ui::{Root, v_flex, h_flex, TitleBar, ActiveTheme as _, input::{InputState, InputEvent, TabSize}};
+use ui::{Root, v_flex, h_flex, TitleBar, ActiveTheme as _, input::{InputState, InputEvent, TabSize, LineHighlight}};
 use std::path::PathBuf;
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -23,7 +23,7 @@ pub struct GitManager {
     selected_file: Option<String>,
     file_content: Option<FileContentResult>,        // non-text error/binary/toolong states
     file_viewer: Option<Entity<InputState>>,        // fresh entity created per-file
-    pending_file_content: Option<(String, &'static str)>, // (content, language) ready to apply
+    pending_file_content: Option<(String, Vec<DiffLineKind>, &'static str)>, // (content, line_kinds, language) ready to apply
     commit_message_input: Entity<InputState>,
     commit_description_input: Entity<InputState>,
     // History view
@@ -32,7 +32,7 @@ pub struct GitManager {
     selected_commit_file: Option<String>,
     selected_commit_file_content: Option<FileContentResult>, // non-text error/binary/toolong states
     commit_file_viewer: Option<Entity<InputState>>,          // fresh entity created per-file
-    pending_commit_file_content: Option<(String, &'static str)>,   // (content, language) ready to apply
+    pending_commit_file_content: Option<(String, Vec<DiffLineKind>, &'static str)>,   // (content, line_kinds, language) ready to apply
     current_view: GitView,
     focus_handle: FocusHandle,
 }
@@ -200,18 +200,18 @@ impl GitManager {
         let repo_path = self.project_path.clone();
         cx.spawn(async move |this, mut cx| {
             let result = cx.background_executor()
-                .spawn(async move { load_file_at_commit(&repo_path, &commit_hash, &file_path, 1000) })
+                .spawn(async move { load_file_diff_at_commit(&repo_path, &commit_hash, &file_path) })
                 .await;
             cx.update(|cx| {
                 this.update(cx, |git_manager, cx| {
                     match result {
-                        FileContentResult::Text(content) => {
-                            let lang = detect_language(git_manager.selected_commit_file.as_deref().unwrap_or(""));
-                            git_manager.pending_commit_file_content = Some((content, lang));
+                        Ok(diff) => {
+                            let lang = "diff";
+                            git_manager.pending_commit_file_content = Some((diff.text, diff.line_kinds, lang));
                             git_manager.selected_commit_file_content = None;
                         }
-                        other => {
-                            git_manager.selected_commit_file_content = Some(other);
+                        Err(msg) => {
+                            git_manager.selected_commit_file_content = Some(FileContentResult::Error(msg));
                             git_manager.pending_commit_file_content = None;
                         }
                     }
@@ -230,18 +230,18 @@ impl GitManager {
         let repo_path = self.project_path.clone();
         cx.spawn(async move |this, mut cx| {
             let result = cx.background_executor()
-                .spawn(async move { load_file_content(&repo_path, &file_path, 1000) })
+                .spawn(async move { load_file_diff_working(&repo_path, &file_path) })
                 .await;
             cx.update(|cx| {
                 this.update(cx, |git_manager, cx| {
                     match result {
-                        FileContentResult::Text(content) => {
-                            let lang = detect_language(git_manager.selected_file.as_deref().unwrap_or(""));
-                            git_manager.pending_file_content = Some((content, lang));
+                        Ok(diff) => {
+                            let lang = "diff";
+                            git_manager.pending_file_content = Some((diff.text, diff.line_kinds, lang));
                             git_manager.file_content = None;
                         }
-                        other => {
-                            git_manager.file_content = Some(other);
+                        Err(msg) => {
+                            git_manager.file_content = Some(FileContentResult::Error(msg));
                             git_manager.pending_file_content = None;
                         }
                     }
@@ -292,27 +292,34 @@ impl Focusable for GitManager {
 
 impl Render for GitManager {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Apply any pending file content — create a fresh Entity<InputState> per file
-        // exactly like Plugin_CodeEditor does: new entity per file open
-        if let Some((content, lang)) = self.pending_file_content.take() {
+        // Apply any pending diff content — create a fresh Entity<InputState> per file
+        if let Some((content, line_kinds, lang)) = self.pending_file_content.take() {
+            let highlights: Vec<LineHighlight> = line_kinds.iter().map(|k| match k {
+                DiffLineKind::Added   => LineHighlight::Added,
+                DiffLineKind::Removed => LineHighlight::Removed,
+                _                     => LineHighlight::None,
+            }).collect();
             let viewer = cx.new(|cx| {
                 let mut state = InputState::new(window, cx)
                     .code_editor(lang)
-                    .multi_line()
-                    .line_number(true)
                     .tab_size(TabSize { tab_size: 4, hard_tabs: false });
+                state.set_line_highlights(highlights);
                 state.set_value(&content, window, cx);
                 state
             });
             self.file_viewer = Some(viewer);
         }
-        if let Some((content, lang)) = self.pending_commit_file_content.take() {
+        if let Some((content, line_kinds, lang)) = self.pending_commit_file_content.take() {
+            let highlights: Vec<LineHighlight> = line_kinds.iter().map(|k| match k {
+                DiffLineKind::Added   => LineHighlight::Added,
+                DiffLineKind::Removed => LineHighlight::Removed,
+                _                     => LineHighlight::None,
+            }).collect();
             let viewer = cx.new(|cx| {
                 let mut state = InputState::new(window, cx)
                     .code_editor(lang)
-                    .multi_line()
-                    .line_number(true)
                     .tab_size(TabSize { tab_size: 4, hard_tabs: false });
+                state.set_line_highlights(highlights);
                 state.set_value(&content, window, cx);
                 state
             });

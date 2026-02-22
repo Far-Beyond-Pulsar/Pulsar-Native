@@ -46,7 +46,21 @@ pub fn render_file_panel(git_manager: &GitManager, cx: &mut Context<GitManager>)
                 .flex_1()
                 .min_h_0()
                 .overflow_hidden()
-                .child(TextInput::new(viewer).disabled(true))
+                .child(
+                TextInput::new(viewer)
+                    
+                    .h_full()
+                    .w_full()
+                    .font(gpui::Font {
+                        family: "JetBrains Mono".to_string().into(),
+                        weight: gpui::FontWeight::NORMAL,
+                        style: gpui::FontStyle::Normal,
+                        features: gpui::FontFeatures::default(),
+                        fallbacks: Some(gpui::FontFallbacks::from_fonts(vec!["monospace".to_string()])),
+                    })
+                    .text_size(px(14.0))
+                    .border_0()
+            )
                 .into_any_element(),
 
             (None, Some(FileContentResult::Binary)) => v_flex()
@@ -80,3 +94,5 @@ pub fn render_file_panel(git_manager: &GitManager, cx: &mut Context<GitManager>)
 
     v_flex().size_full().child(header).child(body)
 }
+
+
