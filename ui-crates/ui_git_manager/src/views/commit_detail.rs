@@ -6,6 +6,7 @@ use gpui::*;
 use ui::{
     h_flex, v_flex, Icon, IconName, ActiveTheme as _, StyledExt,
     scroll::ScrollbarAxis,
+    input::TextInput,
 };
 
 pub fn render_commit_detail(git_manager: &GitManager, cx: &mut Context<GitManager>) -> impl IntoElement {
@@ -141,73 +142,50 @@ pub fn render_commit_detail(git_manager: &GitManager, cx: &mut Context<GitManage
         .overflow_hidden()
         .child(content_header_label);
 
-    let content_body: AnyElement =
-        match (&git_manager.selected_commit_file, &git_manager.selected_commit_file_content) {
-            (None, _) => v_flex()
-                .flex_1()
-                .items_center()
-                .justify_center()
-                .gap_2()
-                .child(Icon::new(IconName::Code).size(px(24.)).text_color(muted_fg))
-                .child(div().text_xs().text_color(muted_fg).child("Select a file to preview"))
-                .into_any_element(),
+    let content_body: AnyElement = match &git_manager.selected_commit_file {
+        None => v_flex()
+            .flex_1().items_center().justify_center().gap_2()
+            .child(Icon::new(IconName::Code).size(px(24.)).text_color(muted_fg))
+            .child(div().text_xs().text_color(muted_fg).child("Select a file to preview"))
+            .into_any_element(),
 
-            (Some(_), None) => v_flex()
+        Some(_) => match (&git_manager.commit_file_viewer, &git_manager.selected_commit_file_content) {
+            // Viewer ready — full height
+            (Some(viewer), _) => div()
                 .flex_1()
-                .items_center()
-                .justify_center()
-                .child(div().text_xs().text_color(muted_fg).child("Loading…"))
-                .into_any_element(),
-
-            (Some(_), Some(FileContentResult::Text(text))) => div()
-                .flex_1()
+                .min_h_0()
                 .overflow_hidden()
-                .child(
-                    div()
-                        .id("commit-file-content-scroll")
-                        .size_full()
-                        .p_3()
-                        .scrollable(ScrollbarAxis::Both)
-                        .child(
-                            div()
-                                .font_family("JetBrains Mono, Menlo, Monaco, Consolas, monospace")
-                                .text_xs()
-                                .text_color(foreground)
-                                .child(text.clone()),
-                        ),
-                )
+                .child(TextInput::new(viewer).disabled(true))
                 .into_any_element(),
 
-            (Some(_), Some(FileContentResult::Binary)) => v_flex()
-                .flex_1()
-                .items_center()
-                .justify_center()
-                .gap_2()
+            (None, Some(FileContentResult::Binary)) => v_flex()
+                .flex_1().items_center().justify_center().gap_2()
                 .child(Icon::new(IconName::Code).size(px(24.)).text_color(muted_fg))
                 .child(div().text_sm().font_weight(gpui::FontWeight::SEMIBOLD).text_color(foreground).child("Binary file"))
                 .child(div().text_xs().text_color(muted_fg).child("Cannot display as text"))
                 .into_any_element(),
 
-            (Some(_), Some(FileContentResult::TooLong(lines))) => v_flex()
-                .flex_1()
-                .items_center()
-                .justify_center()
-                .gap_2()
+            (None, Some(FileContentResult::TooLong(lines))) => v_flex()
+                .flex_1().items_center().justify_center().gap_2()
                 .child(Icon::new(IconName::Code).size(px(24.)).text_color(muted_fg))
                 .child(div().text_sm().font_weight(gpui::FontWeight::SEMIBOLD).text_color(foreground).child("File too long"))
                 .child(div().text_xs().text_color(muted_fg).child(format!("{} lines — preview limited to 1 000 lines", lines)))
                 .into_any_element(),
 
-            (Some(_), Some(FileContentResult::Error(msg))) => v_flex()
-                .flex_1()
-                .items_center()
-                .justify_center()
-                .gap_2()
+            (None, Some(FileContentResult::Error(msg))) => v_flex()
+                .flex_1().items_center().justify_center().gap_2()
                 .child(Icon::new(IconName::CircleX).size(px(24.)).text_color(danger))
                 .child(div().text_sm().font_weight(gpui::FontWeight::SEMIBOLD).text_color(foreground).child("Could not read file"))
                 .child(div().text_xs().text_color(muted_fg).child(msg.clone()))
                 .into_any_element(),
-        };
+
+            // Loading (or Text routed to viewer)
+            (None, _) => v_flex()
+                .flex_1().items_center().justify_center()
+                .child(div().text_xs().text_color(muted_fg).child("Loading\u{2026}"))
+                .into_any_element(),
+        },
+    };
 
     let content_pane = v_flex()
         .flex_1()

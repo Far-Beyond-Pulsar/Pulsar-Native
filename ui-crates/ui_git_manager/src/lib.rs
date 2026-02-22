@@ -7,7 +7,7 @@ mod models;
 mod views;
 
 use gpui::*;
-use ui::{Root, v_flex, h_flex, TitleBar, ActiveTheme as _, input::{InputState, InputEvent}};
+use ui::{Root, v_flex, h_flex, TitleBar, ActiveTheme as _, input::{InputState, InputEvent, TabSize}};
 use std::path::PathBuf;
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -21,14 +21,18 @@ pub struct GitManager {
     repo_state: Arc<RwLock<RepositoryState>>,
     // Changes view
     selected_file: Option<String>,
-    file_content: Option<FileContentResult>,
+    file_content: Option<FileContentResult>,        // non-text error/binary/toolong states
+    file_viewer: Option<Entity<InputState>>,        // fresh entity created per-file
+    pending_file_content: Option<(String, &'static str)>, // (content, language) ready to apply
     commit_message_input: Entity<InputState>,
     commit_description_input: Entity<InputState>,
     // History view
     selected_commit: Option<String>,
     selected_commit_files: Vec<FileChange>,
     selected_commit_file: Option<String>,
-    selected_commit_file_content: Option<FileContentResult>,
+    selected_commit_file_content: Option<FileContentResult>, // non-text error/binary/toolong states
+    commit_file_viewer: Option<Entity<InputState>>,          // fresh entity created per-file
+    pending_commit_file_content: Option<(String, &'static str)>,   // (content, language) ready to apply
     current_view: GitView,
     focus_handle: FocusHandle,
 }
@@ -58,6 +62,7 @@ impl GitManager {
             input
         });
 
+        // Pre-create read-only code viewers (content set lazily via pending fields + render)
         // Subscribe to Enter key events on commit message input
         cx.subscribe(&commit_message_input, |this, _input, event: &InputEvent, cx| {
             if let InputEvent::PressEnter { secondary: false } = event {
@@ -83,12 +88,16 @@ impl GitManager {
             repo_state,
             selected_file: None,
             file_content: None,
+            file_viewer: None,
+            pending_file_content: None,
             commit_message_input,
             commit_description_input,
             selected_commit: None,
             selected_commit_files: Vec::new(),
             selected_commit_file: None,
             selected_commit_file_content: None,
+            commit_file_viewer: None,
+            pending_commit_file_content: None,
             current_view: GitView::Changes,
             focus_handle: cx.focus_handle(),
         }
@@ -184,6 +193,8 @@ impl GitManager {
         };
         self.selected_commit_file = Some(file_path.clone());
         self.selected_commit_file_content = None;
+        self.commit_file_viewer = None;
+        self.pending_commit_file_content = None;
         cx.notify();
 
         let repo_path = self.project_path.clone();
@@ -193,7 +204,17 @@ impl GitManager {
                 .await;
             cx.update(|cx| {
                 this.update(cx, |git_manager, cx| {
-                    git_manager.selected_commit_file_content = Some(result);
+                    match result {
+                        FileContentResult::Text(content) => {
+                            let lang = detect_language(git_manager.selected_commit_file.as_deref().unwrap_or(""));
+                            git_manager.pending_commit_file_content = Some((content, lang));
+                            git_manager.selected_commit_file_content = None;
+                        }
+                        other => {
+                            git_manager.selected_commit_file_content = Some(other);
+                            git_manager.pending_commit_file_content = None;
+                        }
+                    }
                     cx.notify();
                 }).ok();
             }).ok();
@@ -203,6 +224,8 @@ impl GitManager {
     pub fn select_file(&mut self, file_path: String, cx: &mut Context<Self>) {
         self.selected_file = Some(file_path.clone());
         self.file_content = None;
+        self.file_viewer = None;
+        self.pending_file_content = None;
         cx.notify();
         let repo_path = self.project_path.clone();
         cx.spawn(async move |this, mut cx| {
@@ -211,7 +234,17 @@ impl GitManager {
                 .await;
             cx.update(|cx| {
                 this.update(cx, |git_manager, cx| {
-                    git_manager.file_content = Some(result);
+                    match result {
+                        FileContentResult::Text(content) => {
+                            let lang = detect_language(git_manager.selected_file.as_deref().unwrap_or(""));
+                            git_manager.pending_file_content = Some((content, lang));
+                            git_manager.file_content = None;
+                        }
+                        other => {
+                            git_manager.file_content = Some(other);
+                            git_manager.pending_file_content = None;
+                        }
+                    }
                     cx.notify();
                 }).ok();
             }).ok();
@@ -258,7 +291,34 @@ impl Focusable for GitManager {
 }
 
 impl Render for GitManager {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Apply any pending file content — create a fresh Entity<InputState> per file
+        // exactly like Plugin_CodeEditor does: new entity per file open
+        if let Some((content, lang)) = self.pending_file_content.take() {
+            let viewer = cx.new(|cx| {
+                let mut state = InputState::new(window, cx)
+                    .code_editor(lang)
+                    .multi_line()
+                    .line_number(true)
+                    .tab_size(TabSize { tab_size: 4, hard_tabs: false });
+                state.set_value(&content, window, cx);
+                state
+            });
+            self.file_viewer = Some(viewer);
+        }
+        if let Some((content, lang)) = self.pending_commit_file_content.take() {
+            let viewer = cx.new(|cx| {
+                let mut state = InputState::new(window, cx)
+                    .code_editor(lang)
+                    .multi_line()
+                    .line_number(true)
+                    .tab_size(TabSize { tab_size: 4, hard_tabs: false });
+                state.set_value(&content, window, cx);
+                state
+            });
+            self.commit_file_viewer = Some(viewer);
+        }
+
         let theme = cx.theme();
 
         v_flex()
@@ -310,4 +370,33 @@ pub fn create_git_manager_component(
 ) -> Entity<Root> {
     let git_manager = cx.new(|cx| GitManager::new(project_path, window, cx));
     cx.new(|cx| Root::new(git_manager.into(), window, cx))
+}
+
+/// Detect syntax highlighting language from file path extension
+pub fn detect_language(file_path: &str) -> &'static str {
+    let ext = std::path::Path::new(file_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    match ext.to_lowercase().as_str() {
+        "rs" => "rust",
+        "js" | "jsx" | "mjs" | "cjs" => "javascript",
+        "ts" | "tsx" => "typescript",
+        "py" => "python",
+        "go" => "go",
+        "c" | "h" => "c",
+        "cpp" | "cc" | "cxx" | "hpp" | "hxx" => "cpp",
+        "java" => "java",
+        "json" => "json",
+        "toml" => "toml",
+        "yaml" | "yml" => "yaml",
+        "md" | "markdown" => "markdown",
+        "html" | "htm" => "html",
+        "css" => "css",
+        "xml" => "xml",
+        "sh" | "bash" | "zsh" => "bash",
+        "lua" => "lua",
+        "wgsl" | "glsl" | "hlsl" => "glsl",
+        _ => "text",
+    }
 }
