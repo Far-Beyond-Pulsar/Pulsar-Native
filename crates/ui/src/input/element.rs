@@ -1409,6 +1409,8 @@ impl Element for TextElement {
 
         // Paint line numbers
         let mut offset_y = px(0.);
+        let line_highlights_snap: Vec<crate::input::LineHighlight> =
+            self.state.read(cx).line_highlights.clone();
         if let Some(line_numbers) = prepaint.line_numbers.as_ref() {
             offset_y += invisible_top_padding;
 
@@ -1447,7 +1449,7 @@ impl Element for TextElement {
                 }
 
                 // Paint diff gutter bar (3px strip on left edge of line-number column)
-                if let Some(highlight) = line_highlights.get(row) {
+                if let Some(highlight) = line_highlights_snap.get(row) {
                     let bar_color: Option<gpui::Hsla> = match highlight {
                         crate::input::LineHighlight::Added   => Some(gpui::rgba(0x00cc00ff).into()),
                         crate::input::LineHighlight::Removed => Some(gpui::rgba(0xff2222ff).into()),

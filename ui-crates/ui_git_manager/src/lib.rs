@@ -206,7 +206,7 @@ impl GitManager {
                 this.update(cx, |git_manager, cx| {
                     match result {
                         Ok(diff) => {
-                            let lang = "diff";
+                            let lang = detect_language(git_manager.selected_commit_file.as_deref().unwrap_or(""));
                             git_manager.pending_commit_file_content = Some((diff.text, diff.line_kinds, lang));
                             git_manager.selected_commit_file_content = None;
                         }
@@ -236,7 +236,7 @@ impl GitManager {
                 this.update(cx, |git_manager, cx| {
                     match result {
                         Ok(diff) => {
-                            let lang = "diff";
+                            let lang = detect_language(git_manager.selected_file.as_deref().unwrap_or(""));
                             git_manager.pending_file_content = Some((diff.text, diff.line_kinds, lang));
                             git_manager.file_content = None;
                         }

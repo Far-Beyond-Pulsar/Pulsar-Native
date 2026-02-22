@@ -415,6 +415,7 @@ pub fn load_file_at_commit(
 // ── Diff helpers ─────────────────────────────────────────────────────────────
 
 /// Build unified-diff text + per-line kind tags from a git2 Diff object.
+/// Strips hunk headers; keeps +/- prefix on each changed/context line.
 fn build_diff_result(diff: &git2::Diff) -> Result<DiffResult, git2::Error> {
     let mut text = String::new();
     let mut line_kinds: Vec<DiffLineKind> = Vec::new();
@@ -441,19 +442,14 @@ fn build_diff_result(diff: &git2::Diff) -> Result<DiffResult, git2::Error> {
                 if !content.ends_with('\n') { text.push('\n'); }
                 line_kinds.push(DiffLineKind::Context);
             }
-            'H' => {
-                // Hunk header: @@ -x,y +x,y @@ ...
-                text.push_str(content);
-                if !content.ends_with('\n') { text.push('\n'); }
-                line_kinds.push(DiffLineKind::Header);
-            }
-            _ => {} // Skip file headers (diff --git, index, ---, +++)
+            // Skip file headers and hunk headers — not rendered as file lines
+            _ => {}
         }
         true
     })?;
 
     if text.is_empty() {
-        text = "(no changes)\n".to_string();
+        text = " (no changes)\n".to_string();
         line_kinds.push(DiffLineKind::Context);
     }
 
@@ -467,6 +463,7 @@ pub fn load_file_diff_working(repo_path: &Path, file_path: &str) -> Result<DiffR
     let normalized = file_path.replace('\\', "/");
     let mut opts = git2::DiffOptions::new();
     opts.pathspec(&normalized);
+    opts.context_lines(u32::MAX); // include entire file as context
 
     let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
     let diff = repo
@@ -491,6 +488,7 @@ pub fn load_file_diff_at_commit(
     let normalized = file_path.replace('\\', "/");
     let mut opts = git2::DiffOptions::new();
     opts.pathspec(&normalized);
+    opts.context_lines(u32::MAX); // include entire file as context
 
     let diff = repo
         .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut opts))
