@@ -313,20 +313,38 @@ pub enum FileContentResult {
     Error(String),
 }
 
-/// Kind of diff line — used to drive LineHighlight in the editor
+/// Kind of diff line
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiffLineKind {
     Added,
     Removed,
     Context,
-    Header,
 }
 
-/// Result of a git diff operation
+/// A single line in a diff view
+#[derive(Debug, Clone)]
+pub struct DiffLine {
+    pub kind: DiffLineKind,
+    pub content: String,
+    /// Line number in the new file (None for removed lines)
+    pub new_line_num: Option<usize>,
+    /// Line number in the old file (None for added lines)
+    pub old_line_num: Option<usize>,
+}
+
+/// A segment in a diff view — either visible lines or a collapsible unchanged region
+#[derive(Debug, Clone)]
+pub enum DiffSegment {
+    /// Lines that should always be shown (changed + their context)
+    Hunk(Vec<DiffLine>),
+    /// Unchanged lines that are collapsed by default; user can expand them
+    Collapsed { lines: Vec<DiffLine>, region_idx: usize },
+}
+
+/// Full diff result — ready for direct rendering
 #[derive(Debug, Clone)]
 pub struct DiffResult {
-    pub text: String,
-    pub line_kinds: Vec<DiffLineKind>,
+    pub segments: Vec<DiffSegment>,
 }
 
 /// Get the list of files changed in a specific commit (blocking — run on background executor)
@@ -414,48 +432,67 @@ pub fn load_file_at_commit(
 
 // ── Diff helpers ─────────────────────────────────────────────────────────────
 
-/// Run a Myers line-level diff between `old` and `new` text.
-/// Returns the **new** file's full content with per-line DiffLineKind,
-/// with removed lines interleaved inline (just like Monaco inline diff).
+const CONTEXT_LINES: usize = 3;
+
+/// Run a Myers line-level diff and produce collapsible segments (Monaco/GitHub style).
 fn diff_lines(old_text: &str, new_text: &str) -> DiffResult {
     use similar::{ChangeTag, TextDiff};
 
     let diff = TextDiff::from_lines(old_text, new_text);
-    let mut text = String::new();
-    let mut line_kinds = Vec::new();
+    let mut all_lines: Vec<DiffLine> = Vec::new();
 
     for change in diff.iter_all_changes() {
-        let line = change.value();
-        match change.tag() {
-            ChangeTag::Insert => {
-                text.push_str(line);
-                if !line.ends_with('\n') { text.push('\n'); }
-                line_kinds.push(DiffLineKind::Added);
-            }
-            ChangeTag::Delete => {
-                text.push_str(line);
-                if !line.ends_with('\n') { text.push('\n'); }
-                line_kinds.push(DiffLineKind::Removed);
-            }
-            ChangeTag::Equal => {
-                text.push_str(line);
-                if !line.ends_with('\n') { text.push('\n'); }
-                line_kinds.push(DiffLineKind::Context);
-            }
+        let content = change.value().trim_end_matches('\n').to_string();
+        let (kind, new_num, old_num) = match change.tag() {
+            ChangeTag::Insert => (DiffLineKind::Added,   change.new_index().map(|i| i + 1), None),
+            ChangeTag::Delete => (DiffLineKind::Removed, None, change.old_index().map(|i| i + 1)),
+            ChangeTag::Equal  => (DiffLineKind::Context, change.new_index().map(|i| i + 1), change.old_index().map(|i| i + 1)),
+        };
+        all_lines.push(DiffLine { kind, content, new_line_num: new_num, old_line_num: old_num });
+    }
+
+    let n = all_lines.len();
+    let has_changes = all_lines.iter().any(|l| l.kind != DiffLineKind::Context);
+
+    // No changes — return whole file as a single hunk (no collapse bars)
+    if !has_changes || n == 0 {
+        return DiffResult { segments: vec![DiffSegment::Hunk(all_lines)] };
+    }
+
+    // Mark lines within CONTEXT_LINES of any change as visible
+    let mut visible = vec![false; n];
+    for i in 0..n {
+        if all_lines[i].kind != DiffLineKind::Context {
+            let lo = i.saturating_sub(CONTEXT_LINES);
+            let hi = (i + CONTEXT_LINES + 1).min(n);
+            for j in lo..hi { visible[j] = true; }
         }
     }
 
-    if text.is_empty() {
-        text = new_text.to_string();
-        for _ in new_text.lines() {
-            line_kinds.push(DiffLineKind::Context);
+    // Build segments
+    let mut segments: Vec<DiffSegment> = Vec::new();
+    let mut region_idx = 0usize;
+    let mut i = 0;
+    while i < n {
+        if visible[i] {
+            let start = i;
+            while i < n && visible[i] { i += 1; }
+            segments.push(DiffSegment::Hunk(all_lines[start..i].to_vec()));
+        } else {
+            let start = i;
+            while i < n && !visible[i] { i += 1; }
+            segments.push(DiffSegment::Collapsed {
+                lines: all_lines[start..i].to_vec(),
+                region_idx,
+            });
+            region_idx += 1;
         }
     }
 
-    DiffResult { text, line_kinds }
+    DiffResult { segments }
 }
 
-/// Load old blob content for a file from HEAD (or empty string if new file).
+/// Load old blob content for a file from HEAD (empty string for new files).
 fn load_blob_from_head(repo: &Repository, file_path: &str) -> String {
     let normalized = file_path.replace('\\', "/");
     repo.head().ok()
@@ -466,7 +503,7 @@ fn load_blob_from_head(repo: &Repository, file_path: &str) -> String {
         .unwrap_or_default()
 }
 
-/// Load old blob content for a file from a commit's parent (or empty string if new file).
+/// Load old blob content from a commit's parent (empty string for added files).
 fn load_blob_from_parent(repo: &Repository, commit: &git2::Commit, file_path: &str) -> String {
     let normalized = file_path.replace('\\', "/");
     commit.parent(0).ok()
@@ -480,19 +517,12 @@ fn load_blob_from_parent(repo: &Repository, commit: &git2::Commit, file_path: &s
 /// Compute the working-tree diff for a single file vs HEAD (blocking).
 pub fn load_file_diff_working(repo_path: &Path, file_path: &str) -> Result<DiffResult, String> {
     let repo = Repository::open(repo_path).map_err(|e| e.message().to_string())?;
-
-    // New = working tree file
     let new_text = std::fs::read_to_string(repo_path.join(file_path))
         .map_err(|e| e.to_string())?;
-
-    // Check binary
     if new_text.contains('\0') {
         return Err("Binary file".to_string());
     }
-
-    // Old = HEAD version (empty for new/untracked files)
     let old_text = load_blob_from_head(&repo, file_path);
-
     Ok(diff_lines(&old_text, &new_text))
 }
 
@@ -505,17 +535,12 @@ pub fn load_file_diff_at_commit(
     let repo = Repository::open(repo_path).map_err(|e| e.message().to_string())?;
     let oid = git2::Oid::from_str(commit_hash).map_err(|e| e.message().to_string())?;
     let commit = repo.find_commit(oid).map_err(|e| e.message().to_string())?;
-
-    // New = file at this commit
     let normalized = file_path.replace('\\', "/");
     let new_text = commit.tree().ok()
         .and_then(|t| t.get_path(Path::new(&normalized)).ok())
         .and_then(|e| repo.find_blob(e.id()).ok())
         .and_then(|b| String::from_utf8(b.content().to_vec()).ok())
-        .ok_or_else(|| format!("File not found or binary in commit"))?;
-
-    // Old = file at parent commit (empty for added files)
+        .ok_or_else(|| "File not found or binary in commit".to_string())?;
     let old_text = load_blob_from_parent(&repo, &commit, file_path);
-
     Ok(diff_lines(&old_text, &new_text))
 }
