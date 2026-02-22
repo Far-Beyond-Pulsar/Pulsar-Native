@@ -62,6 +62,7 @@ pub fn render_changes_view(git_manager: &mut GitManager, cx: &mut Context<GitMan
         .border_t_1()
         .border_color(border)
         .child(TextInput::new(&git_manager.commit_message_input))
+        .child(TextInput::new(&git_manager.commit_description_input))
         .when(has_staged, |this| {
             this.child(
                 Button::new("commit-button")

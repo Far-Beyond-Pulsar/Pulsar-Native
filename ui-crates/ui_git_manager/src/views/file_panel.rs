@@ -67,7 +67,7 @@ pub fn render_file_panel(git_manager: &GitManager, cx: &mut Context<GitManager>)
                     .scrollable(ScrollbarAxis::Both)
                     .child(
                         div()
-                            .font_family("monospace")
+                            .font_family("JetBrains Mono, Menlo, Monaco, Consolas, monospace")
                             .text_xs()
                             .text_color(foreground)
                             .child(text.clone()),

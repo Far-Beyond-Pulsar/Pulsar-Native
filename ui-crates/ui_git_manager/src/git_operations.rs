@@ -299,3 +299,86 @@ pub enum FileContentResult {
     TooLong(usize),
     Error(String),
 }
+
+/// Get the list of files changed in a specific commit (blocking — run on background executor)
+pub fn get_commit_files(repo_path: &Path, commit_hash: &str) -> Result<Vec<FileChange>, git2::Error> {
+    let repo = Repository::open(repo_path)?;
+    let oid = git2::Oid::from_str(commit_hash)?;
+    let commit = repo.find_commit(oid)?;
+
+    let tree = commit.tree()?;
+    let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
+
+    let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)?;
+
+    let mut files = Vec::new();
+    for delta in diff.deltas() {
+        let path = delta
+            .new_file()
+            .path()
+            .or_else(|| delta.old_file().path())
+            .and_then(|p| p.to_str())
+            .unwrap_or("")
+            .to_string();
+
+        let status = match delta.status() {
+            git2::Delta::Added => ChangeStatus::Added,
+            git2::Delta::Deleted => ChangeStatus::Deleted,
+            git2::Delta::Renamed => ChangeStatus::Renamed,
+            git2::Delta::Copied => ChangeStatus::Copied,
+            _ => ChangeStatus::Modified,
+        };
+
+        files.push(FileChange { path, status, additions: 0, deletions: 0 });
+    }
+    Ok(files)
+}
+
+/// Load file content at a specific commit (blocking — run on background executor)
+pub fn load_file_at_commit(
+    repo_path: &Path,
+    commit_hash: &str,
+    file_path: &str,
+    line_limit: usize,
+) -> FileContentResult {
+    let repo = match Repository::open(repo_path) {
+        Ok(r) => r,
+        Err(e) => return FileContentResult::Error(e.to_string()),
+    };
+    let oid = match git2::Oid::from_str(commit_hash) {
+        Ok(o) => o,
+        Err(e) => return FileContentResult::Error(e.to_string()),
+    };
+    let commit = match repo.find_commit(oid) {
+        Ok(c) => c,
+        Err(e) => return FileContentResult::Error(e.to_string()),
+    };
+    let tree = match commit.tree() {
+        Ok(t) => t,
+        Err(e) => return FileContentResult::Error(e.to_string()),
+    };
+    let entry = match tree.get_path(Path::new(file_path)) {
+        Ok(e) => e,
+        Err(e) => return FileContentResult::Error(format!("File not found in commit: {}", e)),
+    };
+    let blob = match repo.find_blob(entry.id()) {
+        Ok(b) => b,
+        Err(e) => return FileContentResult::Error(e.to_string()),
+    };
+    let bytes = blob.content();
+    let probe = &bytes[..bytes.len().min(8192)];
+    if probe.contains(&0u8) {
+        return FileContentResult::Binary;
+    }
+    match String::from_utf8(bytes.to_vec()) {
+        Err(_) => FileContentResult::Binary,
+        Ok(text) => {
+            let line_count = text.lines().count();
+            if line_count > line_limit {
+                FileContentResult::TooLong(line_count)
+            } else {
+                FileContentResult::Text(text)
+            }
+        }
+    }
+}

@@ -19,10 +19,16 @@ pub use models::*;
 pub struct GitManager {
     project_path: PathBuf,
     repo_state: Arc<RwLock<RepositoryState>>,
-    selected_commit: Option<String>,
+    // Changes view
     selected_file: Option<String>,
     file_content: Option<FileContentResult>,
     commit_message_input: Entity<InputState>,
+    commit_description_input: Entity<InputState>,
+    // History view
+    selected_commit: Option<String>,
+    selected_commit_files: Vec<FileChange>,
+    selected_commit_file: Option<String>,
+    selected_commit_file_content: Option<FileContentResult>,
     current_view: GitView,
     focus_handle: FocusHandle,
 }
@@ -41,7 +47,14 @@ impl GitManager {
         // Create commit message input
         let commit_message_input = cx.new(|cx| {
             let mut input = InputState::new(window, cx);
-            input.set_placeholder("Enter commit message...", window, cx);
+            input.set_placeholder("Summary (required)", window, cx);
+            input
+        });
+
+        // Create commit description input
+        let commit_description_input = cx.new(|cx| {
+            let mut input = InputState::new(window, cx).multi_line().auto_grow(2, 5);
+            input.set_placeholder("Description (optional)", window, cx);
             input
         });
 
@@ -68,10 +81,14 @@ impl GitManager {
         Self {
             project_path,
             repo_state,
-            selected_commit: None,
             selected_file: None,
             file_content: None,
             commit_message_input,
+            commit_description_input,
+            selected_commit: None,
+            selected_commit_files: Vec::new(),
+            selected_commit_file: None,
+            selected_commit_file_content: None,
             current_view: GitView::Changes,
             focus_handle: cx.focus_handle(),
         }
@@ -141,8 +158,46 @@ impl GitManager {
     }
 
     fn select_commit(&mut self, commit_hash: String, cx: &mut Context<Self>) {
-        self.selected_commit = Some(commit_hash);
+        self.selected_commit = Some(commit_hash.clone());
+        self.selected_commit_files = Vec::new();
+        self.selected_commit_file = None;
+        self.selected_commit_file_content = None;
         cx.notify();
+
+        let path = self.project_path.clone();
+        cx.spawn(async move |this, mut cx| {
+            if let Ok(files) = cx.background_executor().spawn(async move { get_commit_files(&path, &commit_hash) }).await {
+                cx.update(|cx| {
+                    this.update(cx, |git_manager, cx| {
+                        git_manager.selected_commit_files = files;
+                        cx.notify();
+                    }).ok();
+                }).ok();
+            }
+        }).detach();
+    }
+
+    pub fn select_commit_file(&mut self, file_path: String, cx: &mut Context<Self>) {
+        let commit_hash = match &self.selected_commit {
+            Some(h) => h.clone(),
+            None => return,
+        };
+        self.selected_commit_file = Some(file_path.clone());
+        self.selected_commit_file_content = None;
+        cx.notify();
+
+        let repo_path = self.project_path.clone();
+        cx.spawn(async move |this, mut cx| {
+            let result = cx.background_executor()
+                .spawn(async move { load_file_at_commit(&repo_path, &commit_hash, &file_path, 1000) })
+                .await;
+            cx.update(|cx| {
+                this.update(cx, |git_manager, cx| {
+                    git_manager.selected_commit_file_content = Some(result);
+                    cx.notify();
+                }).ok();
+            }).ok();
+        }).detach();
     }
 
     pub fn select_file(&mut self, file_path: String, cx: &mut Context<Self>) {
@@ -230,13 +285,18 @@ impl Render for GitManager {
                                 }
                             )
                     )
-                    // Right panel — file content viewer
+                    // Right panel — file content viewer or commit detail
                     .child(
                         v_flex()
                             .flex_1()
                             .h_full()
                             .overflow_hidden()
-                            .child(views::render_file_panel(self, cx))
+                            .child(
+                                match self.current_view {
+                                    GitView::History => views::render_commit_detail(self, cx).into_any_element(),
+                                    _ => views::render_file_panel(self, cx).into_any_element(),
+                                }
+                            )
                     )
             )
     }
