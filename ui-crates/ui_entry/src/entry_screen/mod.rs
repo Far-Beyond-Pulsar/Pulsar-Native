@@ -543,7 +543,11 @@ impl EntryScreen {
         self.recent_projects.save(&self.recent_projects_path);
         cx.notify();
     }
-    
+
+    pub(crate) fn open_git_manager(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        cx.emit(GitManagerRequested { path });
+    }
+
     pub(crate) fn open_project_settings(&mut self, project_path: PathBuf, project_name: String, cx: &mut Context<Self>) {
         // Create settings with NO data loaded - instant UI
         let settings = views::ProjectSettings::new(project_path.clone(), project_name);
@@ -746,6 +750,14 @@ default_scene = "scenes/main.scene"
 }
 
 impl EventEmitter<crate::entry_screen::project_selector::ProjectSelected> for EntryScreen {}
+
+/// Event emitted when git manager is requested
+#[derive(Clone, Debug)]
+pub struct GitManagerRequested {
+    pub path: PathBuf,
+}
+
+impl EventEmitter<GitManagerRequested> for EntryScreen {}
 
 impl Render for EntryScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

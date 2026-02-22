@@ -1,0 +1,17 @@
+[package]
+name = "ui_git_manager"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gpui = { workspace = true }
+ui = { path = "../../crates/ui" }
+ui_common = { workspace = true }
+engine_state = { path = "../../crates/engine_state" }
+chrono = "0.4"
+git2 = "0.19"
+parking_lot = "0.12"
+
+
+[lints]
+workspace = true

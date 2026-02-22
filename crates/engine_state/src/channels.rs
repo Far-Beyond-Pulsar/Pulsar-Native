@@ -19,6 +19,8 @@ pub enum WindowRequest {
     ProjectEditor { project_path: String },
     /// Open project splash screen
     ProjectSplash { project_path: String },
+    /// Open git manager window
+    GitManager { project_path: String },
     /// Close specific window
     CloseWindow { window_id: u64 },
 }

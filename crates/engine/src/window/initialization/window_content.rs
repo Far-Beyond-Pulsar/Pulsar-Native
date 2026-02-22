@@ -10,6 +10,7 @@ use ui_entry::create_entry_component;
 use ui_settings::create_settings_component;
 use ui_loading_screen::create_loading_component;
 use ui_about::create_about_window;
+use ui_git_manager::create_git_manager_component;
 use ui_documentation;
 use ui;
 use std::path::PathBuf;
@@ -82,6 +83,14 @@ pub fn create_window_content(
             ));
             let pulsar_root = cx.new(|cx| PulsarRoot::new("Pulsar Engine", app, window, cx));
             cx.new(|cx| ui::Root::new(pulsar_root.into(), window, cx))
+        }
+        Some(WindowRequest::GitManager { project_path }) => {
+            // Create Git Manager window
+            create_git_manager_component(
+                window,
+                cx,
+                PathBuf::from(project_path),
+            )
         }
         Some(WindowRequest::CloseWindow { .. }) | None => {
             // Fallback to entry screen if window_type is None or CloseWindow

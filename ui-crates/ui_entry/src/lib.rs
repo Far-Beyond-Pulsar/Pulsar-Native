@@ -9,7 +9,7 @@ pub mod dependency_setup_window;
 
 // Re-export main types
 pub use window::EntryWindow;
-pub use entry_screen::{EntryScreen, project_selector::ProjectSelected};
+pub use entry_screen::{EntryScreen, project_selector::ProjectSelected, GitManagerRequested};
 pub use dependency_setup_window::{DependencySetupWindow, SetupComplete};
 pub use oobe::{IntroScreen, IntroComplete, has_seen_intro, mark_intro_seen, reset_intro};
 
@@ -96,6 +96,17 @@ pub fn create_entry_component(
             });
         }
     }).detach();
-    
+
+    // Subscribe to GitManagerRequested event - open git manager window
+    let engine_context_clone = engine_context.clone();
+    cx.subscribe(&entry_screen, move |_view: Entity<EntryScreen>, event: &GitManagerRequested, _cx: &mut App| {
+        tracing::debug!("🔧 [ENTRY] Git Manager requested for: {:?}", event.path);
+
+        // Request git manager window
+        engine_context_clone.request_window(WindowRequest::GitManager {
+            project_path: event.path.to_string_lossy().to_string(),
+        });
+    }).detach();
+
     cx.new(|cx| Root::new(entry_screen.clone().into(), window, cx))
 }

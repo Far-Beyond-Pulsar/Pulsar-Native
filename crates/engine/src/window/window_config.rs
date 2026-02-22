@@ -45,6 +45,11 @@ impl WindowConfig {
                 width: 960.0,
                 height: 540.0,
             }),
+            WindowRequest::GitManager { .. } => Some(Self {
+                title: "Git Manager",
+                width: 1200.0,
+                height: 800.0,
+            }),
             WindowRequest::CloseWindow { .. } => None,
         }
     }

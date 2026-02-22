@@ -418,6 +418,20 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
                                         }
                                     }))
                             )
+                            .when(is_git, |this| {
+                                this.child(
+                                    Button::new(SharedString::from(format!("git-manager-{}", proj_path)))
+                                        .icon(IconName::GitBranch)
+                                        .tooltip("Open Git Manager")
+                                        .with_variant(ui::button::ButtonVariant::Ghost)
+                                        .on_click(cx.listener({
+                                            let path = proj_path.clone();
+                                            move |this, _, _, cx| {
+                                                this.open_git_manager(std::path::PathBuf::from(&path), cx);
+                                            }
+                                        }))
+                                )
+                            })
                             .child(
                                 Button::new(SharedString::from(format!("location-{}", proj_path)))
                                     .icon(IconName::FolderOpen)

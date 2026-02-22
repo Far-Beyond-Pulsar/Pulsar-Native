@@ -8153,6 +8153,7 @@ dependencies = [
  "ui_core",
  "ui_documentation",
  "ui_entry",
+ "ui_git_manager",
  "ui_loading_screen",
  "ui_log_viewer",
  "ui_settings",
@@ -12176,6 +12177,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.115",
+]
+
+[[package]]
+name = "ui_git_manager"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "engine_state",
+ "git2",
+ "gpui",
+ "parking_lot",
+ "ui",
+ "ui_common",
 ]
 
 [[package]]
