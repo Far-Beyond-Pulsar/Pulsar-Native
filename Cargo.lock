@@ -12188,6 +12188,7 @@ dependencies = [
  "git2",
  "gpui",
  "parking_lot",
+ "similar",
  "ui",
  "ui_common",
 ]

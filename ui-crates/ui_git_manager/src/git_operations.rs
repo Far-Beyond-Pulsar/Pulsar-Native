@@ -414,63 +414,86 @@ pub fn load_file_at_commit(
 
 // ── Diff helpers ─────────────────────────────────────────────────────────────
 
-/// Build unified-diff text + per-line kind tags from a git2 Diff object.
-/// Strips hunk headers; keeps +/- prefix on each changed/context line.
-fn build_diff_result(diff: &git2::Diff) -> Result<DiffResult, git2::Error> {
-    let mut text = String::new();
-    let mut line_kinds: Vec<DiffLineKind> = Vec::new();
+/// Run a Myers line-level diff between `old` and `new` text.
+/// Returns the **new** file's full content with per-line DiffLineKind,
+/// with removed lines interleaved inline (just like Monaco inline diff).
+fn diff_lines(old_text: &str, new_text: &str) -> DiffResult {
+    use similar::{ChangeTag, TextDiff};
 
-    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
-        let origin = line.origin();
-        let content = std::str::from_utf8(line.content()).unwrap_or("");
-        match origin {
-            '+' => {
-                text.push('+');
-                text.push_str(content);
-                if !content.ends_with('\n') { text.push('\n'); }
+    let diff = TextDiff::from_lines(old_text, new_text);
+    let mut text = String::new();
+    let mut line_kinds = Vec::new();
+
+    for change in diff.iter_all_changes() {
+        let line = change.value();
+        match change.tag() {
+            ChangeTag::Insert => {
+                text.push_str(line);
+                if !line.ends_with('\n') { text.push('\n'); }
                 line_kinds.push(DiffLineKind::Added);
             }
-            '-' => {
-                text.push('-');
-                text.push_str(content);
-                if !content.ends_with('\n') { text.push('\n'); }
+            ChangeTag::Delete => {
+                text.push_str(line);
+                if !line.ends_with('\n') { text.push('\n'); }
                 line_kinds.push(DiffLineKind::Removed);
             }
-            ' ' => {
-                text.push(' ');
-                text.push_str(content);
-                if !content.ends_with('\n') { text.push('\n'); }
+            ChangeTag::Equal => {
+                text.push_str(line);
+                if !line.ends_with('\n') { text.push('\n'); }
                 line_kinds.push(DiffLineKind::Context);
             }
-            // Skip file headers and hunk headers — not rendered as file lines
-            _ => {}
         }
-        true
-    })?;
-
-    if text.is_empty() {
-        text = " (no changes)\n".to_string();
-        line_kinds.push(DiffLineKind::Context);
     }
 
-    Ok(DiffResult { text, line_kinds })
+    if text.is_empty() {
+        text = new_text.to_string();
+        for _ in new_text.lines() {
+            line_kinds.push(DiffLineKind::Context);
+        }
+    }
+
+    DiffResult { text, line_kinds }
+}
+
+/// Load old blob content for a file from HEAD (or empty string if new file).
+fn load_blob_from_head(repo: &Repository, file_path: &str) -> String {
+    let normalized = file_path.replace('\\', "/");
+    repo.head().ok()
+        .and_then(|h| h.peel_to_tree().ok())
+        .and_then(|t| t.get_path(Path::new(&normalized)).ok())
+        .and_then(|e| repo.find_blob(e.id()).ok())
+        .and_then(|b| String::from_utf8(b.content().to_vec()).ok())
+        .unwrap_or_default()
+}
+
+/// Load old blob content for a file from a commit's parent (or empty string if new file).
+fn load_blob_from_parent(repo: &Repository, commit: &git2::Commit, file_path: &str) -> String {
+    let normalized = file_path.replace('\\', "/");
+    commit.parent(0).ok()
+        .and_then(|p| p.tree().ok())
+        .and_then(|t| t.get_path(Path::new(&normalized)).ok())
+        .and_then(|e| repo.find_blob(e.id()).ok())
+        .and_then(|b| String::from_utf8(b.content().to_vec()).ok())
+        .unwrap_or_default()
 }
 
 /// Compute the working-tree diff for a single file vs HEAD (blocking).
-/// Shows both staged and unstaged changes combined.
 pub fn load_file_diff_working(repo_path: &Path, file_path: &str) -> Result<DiffResult, String> {
     let repo = Repository::open(repo_path).map_err(|e| e.message().to_string())?;
-    let normalized = file_path.replace('\\', "/");
-    let mut opts = git2::DiffOptions::new();
-    opts.pathspec(&normalized);
-    opts.context_lines(u32::MAX); // include entire file as context
 
-    let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
-    let diff = repo
-        .diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut opts))
-        .map_err(|e| e.message().to_string())?;
+    // New = working tree file
+    let new_text = std::fs::read_to_string(repo_path.join(file_path))
+        .map_err(|e| e.to_string())?;
 
-    build_diff_result(&diff).map_err(|e| e.message().to_string())
+    // Check binary
+    if new_text.contains('\0') {
+        return Err("Binary file".to_string());
+    }
+
+    // Old = HEAD version (empty for new/untracked files)
+    let old_text = load_blob_from_head(&repo, file_path);
+
+    Ok(diff_lines(&old_text, &new_text))
 }
 
 /// Compute the diff for a single file in a commit vs its parent (blocking).
@@ -482,17 +505,17 @@ pub fn load_file_diff_at_commit(
     let repo = Repository::open(repo_path).map_err(|e| e.message().to_string())?;
     let oid = git2::Oid::from_str(commit_hash).map_err(|e| e.message().to_string())?;
     let commit = repo.find_commit(oid).map_err(|e| e.message().to_string())?;
-    let tree = commit.tree().map_err(|e| e.message().to_string())?;
-    let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
 
+    // New = file at this commit
     let normalized = file_path.replace('\\', "/");
-    let mut opts = git2::DiffOptions::new();
-    opts.pathspec(&normalized);
-    opts.context_lines(u32::MAX); // include entire file as context
+    let new_text = commit.tree().ok()
+        .and_then(|t| t.get_path(Path::new(&normalized)).ok())
+        .and_then(|e| repo.find_blob(e.id()).ok())
+        .and_then(|b| String::from_utf8(b.content().to_vec()).ok())
+        .ok_or_else(|| format!("File not found or binary in commit"))?;
 
-    let diff = repo
-        .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut opts))
-        .map_err(|e| e.message().to_string())?;
+    // Old = file at parent commit (empty for added files)
+    let old_text = load_blob_from_parent(&repo, &commit, file_path);
 
-    build_diff_result(&diff).map_err(|e| e.message().to_string())
+    Ok(diff_lines(&old_text, &new_text))
 }

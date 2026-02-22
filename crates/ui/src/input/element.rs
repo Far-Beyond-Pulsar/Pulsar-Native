@@ -1268,7 +1268,7 @@ impl Element for TextElement {
                 let has_diff_highlight = if let Some(highlight) = line_highlights.get(row) {
                     match highlight {
                         crate::input::LineHighlight::Added => {
-                            let green_bg: gpui::Hsla = gpui::rgba(0x00cc0055).into();
+                            let green_bg: gpui::Hsla = gpui::rgba(0x00cc0033).into();
                             window.paint_quad(fill(
                                 Bounds::new(p, size(bounds.size.width, height)),
                                 green_bg,
@@ -1276,7 +1276,7 @@ impl Element for TextElement {
                             true
                         }
                         crate::input::LineHighlight::Removed => {
-                            let red_bg: gpui::Hsla = gpui::rgba(0xff000055).into();
+                            let red_bg: gpui::Hsla = gpui::rgba(0xff222233).into();
                             window.paint_quad(fill(
                                 Bounds::new(p, size(bounds.size.width, height)),
                                 red_bg,
