@@ -60,7 +60,8 @@ impl AdvancedMetricsPanel {
                             .stroke(color)
                             .fill(color.opacity(0.2))
                             .linear()
-                            .tick_margin(0),
+                            .tick_margin(0)
+                            .max_points(crate::performance_metrics::MAX_HISTORY_SIZE),
                     ),
                 )
             })

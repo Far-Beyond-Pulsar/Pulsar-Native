@@ -52,7 +52,8 @@ impl ResourceMonitorPanel {
                             .stroke(color)
                             .fill(color.opacity(0.15))
                             .linear()
-                            .tick_margin(0),
+                            .tick_margin(0)
+                            .max_points(crate::performance_metrics::MAX_HISTORY_SIZE),
                     ),
                 )
             })
@@ -116,6 +117,7 @@ impl Render for ResourceMonitorPanel {
                                 .x(|d| format!("{}", d.index).into()).y(|d| d.usage)
                                 .stroke(theme.info).fill(theme.info.opacity(0.15))
                                 .linear().tick_margin(0).max_y_range(100.0)
+                                .max_points(crate::performance_metrics::MAX_HISTORY_SIZE)
                         ))
                     })
             )
@@ -135,6 +137,7 @@ impl Render for ResourceMonitorPanel {
                                 .x(|d| format!("{}", d.index).into()).y(|d| d.memory_mb)
                                 .stroke(theme.warning).fill(theme.warning.opacity(0.15))
                                 .linear().tick_margin(0)
+                                .max_points(crate::performance_metrics::MAX_HISTORY_SIZE)
                         ))
                     })
             )
@@ -158,6 +161,7 @@ impl Render for ResourceMonitorPanel {
                                 .x(|d| format!("{}", d.index).into()).y(|d| d.vram_used_mb)
                                 .stroke(theme.success).fill(theme.success.opacity(0.15))
                                 .linear().tick_margin(0)
+                                .max_points(crate::performance_metrics::MAX_HISTORY_SIZE)
                         ))
                     })
             )
@@ -181,6 +185,7 @@ impl Render for ResourceMonitorPanel {
                                 .x(|d| format!("{}", d.index).into()).y(|d| d.fps)
                                 .stroke(theme.accent).fill(theme.accent.opacity(0.15))
                                 .linear().tick_margin(0)
+                                .max_points(crate::performance_metrics::MAX_HISTORY_SIZE)
                         ))
                     })
             )
