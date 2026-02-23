@@ -31,6 +31,7 @@ dashmap = "6.0"
 once_cell = "1.19"
 rusqlite = { version = "0.32", features = ["bundled"] }
 crossbeam-channel = "0.5"
+backtrace = "0.3"
 
 # Async
 smol = "2.0"

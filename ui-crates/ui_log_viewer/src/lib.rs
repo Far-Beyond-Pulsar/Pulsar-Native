@@ -10,12 +10,13 @@ mod gpu_engines;
 mod mem_details;
 mod memory_tracking;
 mod atomic_memory_tracking;
+mod caller_tracking;
 mod type_tracking;
 mod memory_database;
 pub mod tracking_allocator;
 
 pub use log_drawer_v2::LogDrawer;
-pub use panels::{LogsPanel, ResourceMonitorPanel, SystemInfoPanel, MemoryBreakdownPanel, AdvancedMetricsPanel, GpuMetricsPanel};
+pub use panels::{LogsPanel, ResourceMonitorPanel, SystemInfoPanel, MemoryBreakdownPanel, AdvancedMetricsPanel, GpuMetricsPanel, CallerSitesPanel};
 pub use performance_metrics::{PerformanceMetrics, SharedPerformanceMetrics, create_shared_metrics};
 pub use system_info::{SystemInfo, SharedSystemInfo, create_shared_info};
 pub use memory_tracking::{MemoryTracker, SharedMemoryTracker, create_memory_tracker, MemoryCategory, MemoryStatsSnapshot};
@@ -131,7 +132,10 @@ impl MissionControlPanel {
                 GpuMetricsPanel::new(metrics.clone(), system_info.clone(), cx)
             });
 
-            // Create resource monitor panel for right top
+            // Create caller sites panel for center
+            let callers_panel = cx.new(|cx| {
+                CallerSitesPanel::new(window, cx)
+            });
             let resource_panel = cx.new(|cx| {
                 ResourceMonitorPanel::new(metrics.clone(), cx)
             });
@@ -141,13 +145,14 @@ impl MissionControlPanel {
                 SystemInfoPanel::new(system_info.clone(), cx)
             });
 
-            // Center: Logs | Memory | CPU | GPU tabs
+            // Center: Logs | Memory | CPU | GPU | Callers tabs
             let center_tabs = DockItem::tabs(
                 vec![
                     std::sync::Arc::new(logs_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
                     std::sync::Arc::new(memory_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
                     std::sync::Arc::new(advanced_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
                     std::sync::Arc::new(gpu_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
+                    std::sync::Arc::new(callers_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
                 ],
                 Some(0), // Default to logs tab
                 &dock_area,

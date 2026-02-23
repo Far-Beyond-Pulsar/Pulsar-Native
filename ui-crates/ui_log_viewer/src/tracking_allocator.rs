@@ -8,83 +8,65 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::cell::Cell;
 use crate::memory_tracking::MemoryCategory;
 use crate::atomic_memory_tracking::ATOMIC_MEMORY_COUNTERS;
-use crate::type_tracking::TYPE_TRACKER;
+use crate::caller_tracking;
 
 /// Thread-local flag to prevent recursive tracking
 thread_local! {
     static TRACKING_ENABLED: Cell<bool> = const { Cell::new(true) };
 }
 
+/// Sample 1 in N allocations for callsite tracking.
+/// Counters/bytes are still recorded for every alloc via ATOMIC_MEMORY_COUNTERS.
+const CALLER_SAMPLE_RATE: usize = 1000;
+static SAMPLE_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 /// Global tracking allocator instance
 pub struct TrackingAllocator;
 
 impl TrackingAllocator {
-    /// Create a new tracking allocator
-    pub const fn new() -> Self {
-        Self
-    }
+    pub const fn new() -> Self { Self }
 
-    /// Categorize allocation based on call stack
-    /// This is a heuristic - we check the backtrace to determine which subsystem
-    /// is making the allocation
     fn categorize_allocation() -> MemoryCategory {
-        // For now, use a simple thread-local categorization
-        // In a full implementation, we'd use backtrace analysis
         CURRENT_CATEGORY.with(|cat| cat.load(Ordering::Relaxed).into())
     }
 
-    /// Record an allocation (lock-free, atomic - ultra fast)
     #[inline]
-    fn record_alloc(&self, layout: Layout) {
-        // Check if tracking is enabled to prevent recursion
-        let was_enabled = TRACKING_ENABLED.with(|enabled| {
-            let was = enabled.get();
-            if was {
-                enabled.set(false);
-            }
-            was
-        });
+    fn record_alloc(&self, ptr: *mut u8, layout: Layout) {
+        let was_enabled = TRACKING_ENABLED.with(|e| { let v = e.get(); if v { e.set(false); } v });
+        if !was_enabled { return; }
 
-        if !was_enabled {
-            return; // Already tracking, prevent recursion
-        }
-
-        // Track allocations (no allocations in these calls)
         let category = Self::categorize_allocation();
         ATOMIC_MEMORY_COUNTERS.record_alloc(layout.size(), category);
 
-        // Type tracking disabled for now
-        // TYPE_TRACKER.record_alloc(layout);
-
-        // Re-enable tracking
-        TRACKING_ENABLED.with(|enabled| enabled.set(true));
-    }
-
-    /// Record a deallocation (lock-free, atomic - ultra fast)
-    #[inline]
-    fn record_dealloc(&self, layout: Layout) {
-        // Check if tracking is enabled to prevent recursion
-        let was_enabled = TRACKING_ENABLED.with(|enabled| {
-            let was = enabled.get();
-            if was {
-                enabled.set(false);
+        // Sample 1 in CALLER_SAMPLE_RATE allocs for callsite capture.
+        if SAMPLE_COUNTER.fetch_add(1, Ordering::Relaxed) % CALLER_SAMPLE_RATE == 0 {
+            let mut frames = [0usize; 10];
+            let mut count = 0usize;
+            unsafe {
+                backtrace::trace_unsynchronized(|frame| {
+                    if count < frames.len() { frames[count] = frame.ip() as usize; count += 1; true }
+                    else { false }
+                });
             }
-            was
-        });
-
-        if !was_enabled {
-            return; // Already tracking, prevent recursion
+            if count > 0 {
+                caller_tracking::record_alloc(ptr as usize, &frames[..count], layout.size());
+            }
         }
 
-        // Track deallocations
+        TRACKING_ENABLED.with(|e| e.set(true));
+    }
+
+    /// Dealloc: look up the ptr in the alloc-key table to pair with the original alloc site.
+    #[inline]
+    fn record_dealloc(&self, ptr: *mut u8, layout: Layout) {
+        let was_enabled = TRACKING_ENABLED.with(|e| { let v = e.get(); if v { e.set(false); } v });
+        if !was_enabled { return; }
+
         let category = Self::categorize_allocation();
         ATOMIC_MEMORY_COUNTERS.record_dealloc(layout.size(), category);
+        caller_tracking::record_dealloc(ptr as usize, layout.size());
 
-        // Type tracking disabled for now
-        // TYPE_TRACKER.record_dealloc(layout);
-
-        // Re-enable tracking
-        TRACKING_ENABLED.with(|enabled| enabled.set(true));
+        TRACKING_ENABLED.with(|e| e.set(true));
     }
 }
 
@@ -92,34 +74,31 @@ unsafe impl GlobalAlloc for TrackingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let ptr = System.alloc(layout);
         if !ptr.is_null() {
-            self.record_alloc(layout);
+            self.record_alloc(ptr, layout);
         }
         ptr
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        self.record_dealloc(layout);
+        self.record_dealloc(ptr, layout);
         System.dealloc(ptr, layout);
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
         let ptr = System.alloc_zeroed(layout);
         if !ptr.is_null() {
-            self.record_alloc(layout);
+            self.record_alloc(ptr, layout);
         }
         ptr
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
         let new_ptr = System.realloc(ptr, layout, new_size);
-
         if !new_ptr.is_null() {
-            // Record as dealloc of old layout and alloc of new layout
-            self.record_dealloc(layout);
+            self.record_dealloc(ptr, layout);
             let new_layout = Layout::from_size_align_unchecked(new_size, layout.align());
-            self.record_alloc(new_layout);
+            self.record_alloc(new_ptr, new_layout);
         }
-
         new_ptr
     }
 }
