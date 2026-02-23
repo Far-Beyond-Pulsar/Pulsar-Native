@@ -99,6 +99,7 @@ impl GitManager {
         let auth_password_input = cx.new(|cx| {
             let mut input = InputState::new(window, cx);
             input.set_placeholder("Password / Token", window, cx);
+            input.set_masked(true, window, cx);
             input
         });
 
