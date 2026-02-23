@@ -122,10 +122,11 @@ static SYMBOL_CACHE: Lazy<Mutex<HashMap<u64, String>>> =
 #[inline]
 pub fn record_alloc(ptr: usize, frames: &[usize], size: usize) {
     if frames.is_empty() { return; }
-    if CALLER_BUSY.with(|b| b.replace(true)) { return; }
 
-    // Global counter — always updated, regardless of CALLER_MAP cap.
+    // Global counter updated unconditionally — even if CALLER_BUSY blocks per-site recording.
     GLOBAL_LIVE_BYTES.fetch_add(size as i64, Ordering::Relaxed);
+
+    if CALLER_BUSY.with(|b| b.replace(true)) { return; }
 
     // Skip allocator-internal frames:
     //   0: backtrace::trace_unsynchronized
@@ -162,10 +163,11 @@ pub fn record_alloc(ptr: usize, frames: &[usize], size: usize) {
 #[inline]
 pub fn record_dealloc(ptr: usize, size: usize) {
     if ptr == 0 { return; }
-    if CALLER_BUSY.with(|b| b.replace(true)) { return; }
 
     // Always subtract from global counter.
     GLOBAL_LIVE_BYTES.fetch_sub(size as i64, Ordering::Relaxed);
+
+    if CALLER_BUSY.with(|b| b.replace(true)) { return; }
 
     if let Some((_, key)) = ALLOC_KEYS.remove(&ptr) {
         if let Some(entry) = CALLER_MAP.get(&key) {

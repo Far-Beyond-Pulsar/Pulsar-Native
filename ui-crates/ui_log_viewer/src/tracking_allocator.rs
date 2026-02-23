@@ -27,12 +27,17 @@ impl TrackingAllocator {
     #[inline]
     fn record_alloc(&self, ptr: *mut u8, layout: Layout) {
         let was_enabled = TRACKING_ENABLED.with(|e| { let v = e.get(); if v { e.set(false); } v });
-        if !was_enabled { return; }
+        if !was_enabled {
+            // Re-entry: this is the tracker's own internal allocation (DashMap resize, Vec, etc.).
+            // We can't do per-site recording (CALLER_BUSY is set, doing DashMap ops would deadlock),
+            // but we DO count it in the global live total so "process live" stays honest.
+            caller_tracking::GLOBAL_LIVE_BYTES.fetch_add(layout.size() as i64, Ordering::Relaxed);
+            return;
+        }
 
         ATOMIC_MEMORY_COUNTERS.record_alloc(layout.size(), Self::categorize_allocation());
 
         // Capture raw return addresses only — no symbol resolution, no heap alloc.
-        // RtlCaptureStackBackTrace (Windows) is ~200ns for 8 frames.
         let mut frames = [0usize; 8];
         let mut count = 0usize;
         unsafe {
@@ -51,10 +56,13 @@ impl TrackingAllocator {
     #[inline]
     fn record_dealloc(&self, ptr: *mut u8, layout: Layout) {
         let was_enabled = TRACKING_ENABLED.with(|e| { let v = e.get(); if v { e.set(false); } v });
-        if !was_enabled { return; }
+        if !was_enabled {
+            // Re-entry: tracker's own dealloc — keep global total accurate.
+            caller_tracking::GLOBAL_LIVE_BYTES.fetch_sub(layout.size() as i64, Ordering::Relaxed);
+            return;
+        }
 
         ATOMIC_MEMORY_COUNTERS.record_dealloc(layout.size(), Self::categorize_allocation());
-        // Pair with original alloc site via ptr→key lookup.
         caller_tracking::record_dealloc(ptr as usize, layout.size());
 
         TRACKING_ENABLED.with(|e| e.set(true));
