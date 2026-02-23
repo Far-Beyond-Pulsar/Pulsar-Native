@@ -33,7 +33,7 @@ impl HierarchyPanel {
         let is_drag_in_progress = !matches!(&state.hierarchy_drag_state, HierarchyDragState::None);
 
         let state_arc_for_esc = state_arc.clone();
-        let object_count = state.scene_database.get_root_objects().len();
+        let object_count = state.scene_database.get_all_objects().len();
         let selected = state.selected_object();
         
         
@@ -107,6 +107,7 @@ impl HierarchyPanel {
                                             parent: None,
                                             children: vec![],
                                             components: vec![],
+                                            scene_path: String::new(),
                                         };
                                         state_clone.read().scene_database.add_object(new_object, None);
                                     })
@@ -131,6 +132,7 @@ impl HierarchyPanel {
                                             parent: None,
                                             children: vec![],
                                             components: vec![],
+                                            scene_path: String::new(),
                                         };
                                         state_clone.read().scene_database.add_object(new_folder, None);
                                     })
@@ -325,12 +327,20 @@ impl HierarchyPanel {
         container.child(
                 item_div
                     .on_click(cx.listener(move |_view, _event, _window, cx| {
-                        // Select on click — write to the shared SceneDb atomically
-                        state_clone_for_click.write().select_object(Some(object_id_for_click.clone()));
-                        
-                        // Notify the hierarchy wrapper so GPUI re-renders and observer triggers props panel update
+                        if is_folder {
+                            // Folders only expand/collapse on click — no selection change
+                            let mut state_write = state_clone_for_click.write();
+                            if state_write.is_object_expanded(&object_id_for_click) {
+                                state_write.expanded_objects.remove(&object_id_for_click);
+                            } else {
+                                state_write.expanded_objects.insert(object_id_for_click.clone());
+                            }
+                        } else {
+                            // Non-folder: select the object
+                            state_clone_for_click.write().select_object(Some(object_id_for_click.clone()));
+                        }
                         cx.notify();
-                                            }))
+                    }))
                     .on_mouse_down(MouseButton::Left, cx.listener(move |_view, event: &MouseDownEvent, _window, cx| {
                         // Start drag operation if shift is held
                         if event.modifiers.shift {

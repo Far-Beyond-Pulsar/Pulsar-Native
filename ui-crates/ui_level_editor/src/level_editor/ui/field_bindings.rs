@@ -467,6 +467,7 @@ mod tests {
             visible: true,
             locked: false,
             components: Vec::new(),
+            scene_path: String::new(),
         }, None);
 
         // Create binding for position.x

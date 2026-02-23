@@ -55,6 +55,9 @@ impl Transform {
 pub struct SceneObjectData {
     pub id: ObjectId,
     pub name: String,
+    /// Canonical path, e.g. "Geometry/Spheres/Blue Sphere". Always in sync with SceneDb.
+    #[serde(default)]
+    pub scene_path: String,
     pub object_type: ObjectType,
     pub transform: Transform,
     pub parent: Option<ObjectId>,
@@ -70,6 +73,7 @@ impl SceneObjectData {
         SceneObjectSnapshot {
             id: self.id,
             name: self.name,
+            scene_path: self.scene_path,
             object_type: self.object_type,
             position: self.transform.position,
             rotation: self.transform.rotation,
@@ -87,6 +91,7 @@ fn snapshot_to_data(s: SceneObjectSnapshot) -> SceneObjectData {
     SceneObjectData {
         id: s.id,
         name: s.name,
+        scene_path: s.scene_path,
         object_type: s.object_type,
         transform: Transform {
             position: s.position,
@@ -169,6 +174,7 @@ impl SceneDatabase {
                 id: id.to_string(), name: name.to_string(), object_type: ot,
                 transform: Transform { position: pos, rotation: rot, scale },
                 parent: None, children: Vec::new(), visible: true, locked: false, components: comps,
+                scene_path: String::new(), // auto-computed by SceneDb::add_object
             }
         };
 
@@ -264,7 +270,13 @@ impl SceneDatabase {
     }
 
     pub fn get_all_objects(&self) -> Vec<SceneObjectData> {
+        // DFS order so parents always precede children (important for save/load).
         self.db.get_all_snapshots().into_iter().map(snapshot_to_data).collect()
+    }
+
+    /// Return the ordered child ids of `parent_id`, or root ids if `None`.
+    pub fn get_children(&self, parent_id: Option<&str>) -> Vec<ObjectId> {
+        self.db.get_children(parent_id)
     }
 
     // ── Selection ─────────────────────────────────────────────────────────

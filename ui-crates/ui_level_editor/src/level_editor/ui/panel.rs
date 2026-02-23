@@ -422,6 +422,7 @@ impl LevelEditorPanel {
             parent: None,
             children: vec![],
             components: vec![],
+            scene_path: String::new(),
         };
         self.shared_state.read().scene_database.add_object(new_object, None);
         self.shared_state.write().has_unsaved_changes = true;
@@ -447,6 +448,7 @@ impl LevelEditorPanel {
             parent: None,
             children: vec![],
             components: vec![],
+            scene_path: String::new(),
         };
         self.shared_state.read().scene_database.add_object(new_object, None);
         self.shared_state.write().has_unsaved_changes = true;

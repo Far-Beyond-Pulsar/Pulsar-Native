@@ -396,6 +396,7 @@ impl HelioRenderer {
         let sky_sphere_obj = SceneObjectSnapshot {
             id: "sky_sphere".to_string(),
             name: "Sky Sphere".to_string(),
+            scene_path: "Sky Sphere".to_string(),
             object_type: ObjectType::Mesh(MeshType::Sphere),
             position: [0.0, 5.0, 0.0], // Will be updated to camera position each frame
             rotation: [0.0, 0.0, 0.0],

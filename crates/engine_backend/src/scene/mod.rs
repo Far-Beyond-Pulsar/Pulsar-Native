@@ -14,6 +14,7 @@
 //! Object storage uses `dashmap::DashMap` which provides concurrent access
 //! without a global lock — reads on different shards proceed in parallel.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use dashmap::DashMap;
@@ -226,11 +227,16 @@ pub enum ColliderShape {
 pub struct SceneObjectSnapshot {
     pub id: ObjectId,
     pub name: String,
+    /// Canonical path from scene root, e.g. "Geometry/Spheres/Blue Sphere".
+    /// Derived from the parent chain; always kept in sync by SceneDb.
+    #[serde(default)]
+    pub scene_path: String,
     pub object_type: ObjectType,
     pub position: [f32; 3],
     pub rotation: [f32; 3],
     pub scale: [f32; 3],
     pub parent: Option<ObjectId>,
+    /// Children are populated on read by SceneDb; not stored per-entry.
     pub children: Vec<ObjectId>,
     pub visible: bool,
     pub locked: bool,
@@ -262,7 +268,8 @@ pub struct SceneEntry {
 pub struct SceneEntryMeta {
     pub name: String,
     pub parent: Option<ObjectId>,
-    pub children: Vec<ObjectId>,
+    /// Canonical path, e.g. "Geometry/Spheres/Blue Sphere".  Kept in sync by SceneDb.
+    pub scene_path: String,
     pub components: Vec<Component>,
 }
 
@@ -291,7 +298,7 @@ impl SceneEntry {
             meta: RwLock::new(SceneEntryMeta {
                 name: snap.name.clone(),
                 parent: snap.parent.clone(),
-                children: snap.children.clone(),
+                scene_path: snap.scene_path.clone(),
                 components: snap.components.clone(),
             }),
         }
@@ -385,17 +392,19 @@ impl SceneEntry {
     }
 
     /// Take a snapshot of this entry for UI display / undo-redo.
+    /// Note: `children` is left empty — SceneDb populates it from the children_map.
     pub fn snapshot(&self) -> SceneObjectSnapshot {
         let meta = self.meta.read();
         SceneObjectSnapshot {
             id: self.id.clone(),
             name: meta.name.clone(),
+            scene_path: meta.scene_path.clone(),
             object_type: self.object_type,
             position: self.get_position(),
             rotation: self.get_rotation(),
             scale: self.get_scale(),
             parent: meta.parent.clone(),
-            children: meta.children.clone(),
+            children: vec![],
             visible: self.is_visible(),
             locked: self.is_locked(),
             components: meta.components.clone(),
@@ -441,8 +450,9 @@ impl Default for GizmoState {
 struct SceneDbInner {
     /// All objects — concurrent reads, no global lock.
     objects: DashMap<ObjectId, Arc<SceneEntry>>,
-    /// Root-level object ordering — only locked for structural changes.
-    roots: RwLock<Vec<ObjectId>>,
+    /// Maps parent_id → ordered child ids.  Key "" (empty) = root-level objects.
+    /// Single source of truth for parent-child relationships; replaces per-entry children lists.
+    children_map: RwLock<HashMap<String, Vec<ObjectId>>>,
     /// Auto-incrementing id counter.
     next_id: AtomicU64,
     /// Currently selected object id.
@@ -462,7 +472,7 @@ impl SceneDb {
         Self {
             inner: Arc::new(SceneDbInner {
                 objects: DashMap::new(),
-                roots: RwLock::new(Vec::new()),
+                children_map: RwLock::new(HashMap::new()),
                 next_id: AtomicU64::new(1),
                 selected: RwLock::new(None),
                 gizmo_state: RwLock::new(GizmoState::default()),
@@ -482,13 +492,26 @@ impl SceneDb {
         let id = snap.id.clone();
         snap.parent = parent_id.clone();
 
-        // Update parent's children list
-        if let Some(ref pid) = parent_id {
-            if let Some(parent_entry) = self.inner.objects.get(pid) {
-                parent_entry.meta.write().children.push(id.clone());
+        // Always recompute scene_path from the live parent chain so it is always accurate.
+        snap.scene_path = {
+            let parent_path = parent_id.as_deref()
+                .and_then(|pid| self.inner.objects.get(pid))
+                .map(|p| p.meta.read().scene_path.clone())
+                .unwrap_or_default();
+            if parent_path.is_empty() {
+                snap.name.clone()
+            } else {
+                format!("{}/{}", parent_path, snap.name)
             }
-        } else {
-            self.inner.roots.write().push(id.clone());
+        };
+
+        // Register in children_map under the parent key (or "" for roots).
+        {
+            let key = parent_id.as_deref().unwrap_or("").to_string();
+            self.inner.children_map.write()
+                .entry(key)
+                .or_insert_with(Vec::new)
+                .push(id.clone());
         }
 
         self.inner.objects.insert(id.clone(), Arc::new(SceneEntry::new(&snap)));
@@ -497,25 +520,28 @@ impl SceneDb {
 
     /// Remove an object (and recursively its children).
     pub fn remove_object(&self, id: &str) -> bool {
+        // Collect children before touching anything (get_children reads children_map).
+        let children = self.get_children(Some(id));
+
         if let Some((_, entry)) = self.inner.objects.remove(id) {
-            // Detach from parent or roots
+            let parent = entry.meta.read().parent.clone();
+
+            // Remove id from its parent's list and drop id's own children list.
             {
-                let meta = entry.meta.read();
-                if let Some(ref pid) = meta.parent {
-                    if let Some(p) = self.inner.objects.get(pid) {
-                        p.meta.write().children.retain(|c| c != id);
-                    }
-                } else {
-                    self.inner.roots.write().retain(|r| r != id);
+                let key = parent.as_deref().unwrap_or("").to_string();
+                let mut map = self.inner.children_map.write();
+                if let Some(siblings) = map.get_mut(&key) {
+                    siblings.retain(|c| c != id);
                 }
-                // Recurse into children (clone to avoid holding meta read lock during recursion)
-                let children = meta.children.clone();
-                drop(meta);
-                for child in children {
-                    self.remove_object(&child);
-                }
+                map.remove(id);
             }
-            // Deselect if needed
+
+            // Recurse into children (locks fully released above).
+            for child_id in children {
+                self.remove_object(&child_id);
+            }
+
+            // Deselect if needed.
             let mut sel = self.inner.selected.write();
             if sel.as_deref() == Some(id) {
                 *sel = None;
@@ -544,7 +570,11 @@ impl SceneDb {
     // ── Reads ─────────────────────────────────────────────────────────────
 
     pub fn get_object(&self, id: &str) -> Option<SceneObjectSnapshot> {
-        self.inner.objects.get(id).map(|e| e.snapshot())
+        self.inner.objects.get(id).map(|e| {
+            let mut snap = e.snapshot();
+            snap.children = self.get_children(Some(id));
+            snap
+        })
     }
 
     /// Get a direct Arc to the live entry. The renderer uses this for atomic transform reads.
@@ -553,14 +583,27 @@ impl SceneDb {
     }
 
     pub fn get_root_snapshots(&self) -> Vec<SceneObjectSnapshot> {
-        let roots = self.inner.roots.read();
-        roots.iter()
-            .filter_map(|id| self.inner.objects.get(id).map(|e| e.snapshot()))
+        self.get_children(None).into_iter()
+            .filter_map(|id| self.get_object(&id))
             .collect()
     }
 
     pub fn get_all_snapshots(&self) -> Vec<SceneObjectSnapshot> {
-        self.inner.objects.iter().map(|e| e.snapshot()).collect()
+        self.collect_dfs(None)
+    }
+
+    /// Depth-first ordered snapshot of all objects (parents before children).
+    /// Use this for serialisation so load order is always valid.
+    fn collect_dfs(&self, parent_id: Option<&str>) -> Vec<SceneObjectSnapshot> {
+        let mut result = Vec::new();
+        for id in self.get_children(parent_id) {
+            if let Some(snap) = self.get_object(&id) {
+                result.push(snap);
+                let mut children = self.collect_dfs(Some(&id));
+                result.append(&mut children);
+            }
+        }
+        result
     }
 
     /// Iterate over all live entries — the render thread calls this each frame.
@@ -624,12 +667,27 @@ impl SceneDb {
     // ── Cold data writes ──────────────────────────────────────────────────
 
     pub fn set_name(&self, id: &str, name: String) -> bool {
+        // Read parent first, then release entry ref before any further lookups.
+        let parent = match self.inner.objects.get(id) {
+            Some(e) => e.meta.read().parent.clone(),
+            None => return false,
+        };
+
+        let parent_path = parent.as_deref()
+            .and_then(|pid| self.inner.objects.get(pid))
+            .map(|p| p.meta.read().scene_path.clone())
+            .unwrap_or_default();
+        let new_path = if parent_path.is_empty() {
+            name.clone()
+        } else {
+            format!("{}/{}", parent_path, name)
+        };
+
         if let Some(e) = self.inner.objects.get(id) {
             e.meta.write().name = name;
-            true
-        } else {
-            false
         }
+        self.update_subtree_path(id, &new_path);
+        true
     }
 
     pub fn set_locked(&self, id: &str, v: bool) -> bool {
@@ -650,38 +708,38 @@ impl SceneDb {
             }
         }
 
-        let old_parent = {
-            if let Some(e) = self.inner.objects.get(id) {
-                e.meta.read().parent.clone()
-            } else {
-                return false;
-            }
+        let old_parent = match self.inner.objects.get(id) {
+            Some(e) => e.meta.read().parent.clone(),
+            None => return false,
         };
 
-        // Remove from old parent
-        if let Some(ref old_pid) = old_parent {
-            if let Some(p) = self.inner.objects.get(old_pid) {
-                p.meta.write().children.retain(|c| c != id);
+        // Update children_map atomically: remove from old parent, add to new.
+        {
+            let mut map = self.inner.children_map.write();
+            let old_key = old_parent.as_deref().unwrap_or("").to_string();
+            if let Some(siblings) = map.get_mut(&old_key) {
+                siblings.retain(|c| c != id);
             }
-        } else {
-            self.inner.roots.write().retain(|r| r != id);
+            let new_key = new_parent.as_deref().unwrap_or("").to_string();
+            map.entry(new_key).or_insert_with(Vec::new).push(id.to_string());
         }
 
-        // Add to new parent
-        if let Some(ref new_pid) = new_parent {
-            if let Some(p) = self.inner.objects.get(new_pid) {
-                p.meta.write().children.push(id.to_string());
-            } else {
-                return false;
-            }
-        } else {
-            self.inner.roots.write().push(id.to_string());
-        }
-
-        // Update the object's own parent field
+        // Update the object's parent field.
         if let Some(e) = self.inner.objects.get(id) {
-            e.meta.write().parent = new_parent;
+            e.meta.write().parent = new_parent.clone();
         }
+
+        // Recompute scene_path for the moved subtree.
+        let parent_path = new_parent.as_deref()
+            .and_then(|pid| self.inner.objects.get(pid))
+            .map(|p| p.meta.read().scene_path.clone())
+            .unwrap_or_default();
+        let name = self.inner.objects.get(id)
+            .map(|e| e.meta.read().name.clone())
+            .unwrap_or_default();
+        let new_path = if parent_path.is_empty() { name } else { format!("{}/{}", parent_path, name) };
+        self.update_subtree_path(id, &new_path);
+
         true
     }
 
@@ -692,12 +750,13 @@ impl SceneDb {
         snap.name = format!("{} Copy", snap.name);
         snap.position[0] += 1.0;
         snap.children.clear();
+        snap.scene_path = String::new(); // recomputed by add_object
         Some(self.add_object(snap, parent))
     }
 
     pub fn clear(&self) {
         self.inner.objects.clear();
-        self.inner.roots.write().clear();
+        self.inner.children_map.write().clear();
         *self.inner.selected.write() = None;
         *self.inner.gizmo_state.write() = GizmoState::default();
     }
@@ -728,6 +787,30 @@ impl SceneDb {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
+
+    /// Return the ordered child ids of `parent_id`, or root ids if `None`.
+    pub fn get_children(&self, parent_id: Option<&str>) -> Vec<ObjectId> {
+        let key = parent_id.unwrap_or("");
+        self.inner.children_map.read()
+            .get(key)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// Recursively update scene_path for `id` and all its descendants.
+    fn update_subtree_path(&self, id: &str, new_path: &str) {
+        if let Some(entry) = self.inner.objects.get(id) {
+            entry.meta.write().scene_path = new_path.to_string();
+        }
+        // entry ref dropped — safe to recurse
+        for child_id in self.get_children(Some(id)) {
+            let child_name = self.inner.objects.get(&child_id)
+                .map(|e| e.meta.read().name.clone())
+                .unwrap_or_default();
+            let child_path = format!("{}/{}", new_path, child_name);
+            self.update_subtree_path(&child_id, &child_path);
+        }
+    }
 
     fn is_ancestor_of(&self, potential_ancestor: &str, of: &str) -> bool {
         let mut current = of.to_string();
