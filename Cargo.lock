@@ -12081,6 +12081,7 @@ dependencies = [
  "ui_entry",
  "ui_file_manager",
  "ui_flamegraph",
+ "ui_git_manager",
  "ui_level_editor",
  "ui_log_viewer",
  "ui_multiplayer",

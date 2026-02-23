@@ -20,6 +20,7 @@ ui_type_debugger.workspace = true
 ui_file_manager.workspace = true
 ui_plugin_manager.workspace = true
 ui_log_viewer.workspace = true
+ui_git_manager = { path = "../ui_git_manager" }
 
 
 # Engine

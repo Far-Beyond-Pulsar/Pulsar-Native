@@ -33,6 +33,7 @@ pub struct AppState {
     pub type_debugger_drawer: Entity<TypeDebuggerDrawer>,
     pub mission_control: Entity<MissionControlPanel>,
     pub mission_control_open: bool,
+    pub git_manager_open: bool,
 
     // Editor tracking - commented out as these editors have been migrated to plugins
     // pub daw_editors: Vec<Entity<DawEditorPanel>>,

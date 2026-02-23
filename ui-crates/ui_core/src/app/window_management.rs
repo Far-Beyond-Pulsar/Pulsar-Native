@@ -1,5 +1,6 @@
 //! Window management and creation logic
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use gpui::{px, size, Bounds, Context, Point, Window, WindowBounds, WindowKind, WindowOptions};
 use gpui::AppContext;
@@ -9,6 +10,7 @@ use ui_flamegraph::{FlamegraphWindow, TraceData};
 use ui_type_debugger::TypeDebuggerWindow;
 use ui_multiplayer::MultiplayerWindow;
 use ui_plugin_manager::PluginManagerWindow;
+use ui_git_manager::create_git_manager_component;
 
 use super::PulsarApp;
 use super::panel_window::PanelWindow;
@@ -191,6 +193,35 @@ impl PulsarApp {
                 },
             );
         }
+    }
+
+    pub(super) fn open_git_manager(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.state.git_manager_open = true;
+        let project_path = self.state.project_path.clone()
+            .unwrap_or_else(|| PathBuf::from("."));
+
+        let _ = cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds {
+                    origin: Point { x: px(160.0), y: px(120.0) },
+                    size: size(px(1280.0), px(800.0)),
+                })),
+                titlebar: Some(gpui::TitlebarOptions {
+                    title: Some("Git Manager".into()),
+                    appears_transparent: true,
+                    traffic_light_position: None,
+                }),
+                kind: WindowKind::Normal,
+                is_resizable: true,
+                window_decorations: Some(gpui::WindowDecorations::Client),
+                window_min_size: Some(gpui::Size {
+                    width: px(800.),
+                    height: px(500.),
+                }),
+                ..Default::default()
+            },
+            move |window, cx| create_git_manager_component(window, cx, project_path),
+        );
     }
 
     pub(super) fn toggle_multiplayer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {

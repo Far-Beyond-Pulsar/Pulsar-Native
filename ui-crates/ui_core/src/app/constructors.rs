@@ -240,6 +240,7 @@ impl PulsarApp {
                 type_debugger_drawer,
                 mission_control,
                 mission_control_open: false,
+                git_manager_open: false,
                 center_tabs,
                 // script_editor: None, // Migrated to plugins
                 // daw_editors: Vec::new(),

@@ -266,6 +266,29 @@ impl PulsarApp {
                                         app.toggle_log_viewer(_window, cx);
                                     })),
                             )
+                            .child(
+                                Button::new("open-git-manager")
+                                    .ghost()
+                                    .icon(
+                                        Icon::new(IconName::GitBranch)
+                                            .size(px(16.))
+                                            .text_color(if self.state.git_manager_open {
+                                                cx.theme().primary
+                                            } else {
+                                                cx.theme().muted_foreground
+                                            })
+                                    )
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(4.))
+                                    .when(self.state.git_manager_open, |s| {
+                                        s.bg(cx.theme().primary.opacity(0.15))
+                                    })
+                                    .tooltip("Git Manager")
+                                    .on_click(cx.listener(|app, _, window, cx| {
+                                        app.open_git_manager(window, cx);
+                                    })),
+                            )
                             // Render plugin statusbar buttons for left position
                             .children(self.render_plugin_statusbar_buttons(StatusbarPosition::Left, cx))
                             .child(
