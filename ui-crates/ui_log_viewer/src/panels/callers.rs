@@ -158,6 +158,9 @@ impl Render for CallerSitesPanel {
         let theme       = cx.theme().clone();
         let filter_text = self.filter_input.read(cx).value().to_string();
 
+        // True process-wide live bytes (all tracked allocs, regardless of CALLER_MAP cap or filter).
+        let global_live = crate::caller_tracking::GLOBAL_LIVE_BYTES.load(std::sync::atomic::Ordering::Relaxed);
+
         // Refresh rows from snapshot and re-apply sort.
         {
             let snap = CALLER_SNAPSHOT.read();
@@ -208,6 +211,12 @@ impl Render for CallerSitesPanel {
                             .bg(theme.muted.opacity(0.5)).text_xs()
                             .text_color(theme.muted_foreground)
                             .child(format!("{} sites", row_count))
+                    )
+                    .child(
+                        div().px_2().py(px(2.0)).rounded(px(4.0))
+                            .bg(theme.danger.opacity(0.15)).text_xs()
+                            .text_color(theme.danger)
+                            .child(format!("process live: {}", CallerSitesPanel::fmt_live(global_live)))
                     )
                     .child(div().flex_1().child(TextInput::new(&self.filter_input)))
             )

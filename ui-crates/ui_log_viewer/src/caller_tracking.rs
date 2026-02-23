@@ -85,6 +85,10 @@ pub static CALLER_MAP: Lazy<DashMap<StackKey, CallerStats>> =
 pub static ALLOC_KEYS: Lazy<DashMap<usize, StackKey>> =
     Lazy::new(|| DashMap::with_capacity(131072));
 
+/// Global live-bytes counter: incremented on every tracked alloc, decremented on every matched dealloc.
+/// This is the ground-truth live memory from ALL tracked call sites, regardless of CALLER_MAP cap.
+pub static GLOBAL_LIVE_BYTES: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+
 // ─── Snapshot (UI-readable) ───────────────────────────────────────────────────
 
 /// A resolved row for display in the UI.
@@ -120,6 +124,9 @@ pub fn record_alloc(ptr: usize, frames: &[usize], size: usize) {
     if frames.is_empty() { return; }
     if CALLER_BUSY.with(|b| b.replace(true)) { return; }
 
+    // Global counter — always updated, regardless of CALLER_MAP cap.
+    GLOBAL_LIVE_BYTES.fetch_add(size as i64, Ordering::Relaxed);
+
     // Skip allocator-internal frames:
     //   0: backtrace::trace_unsynchronized
     //   1: record_alloc (tracking_allocator)
@@ -142,7 +149,6 @@ pub fn record_alloc(ptr: usize, frames: &[usize], size: usize) {
                 let _ = entry.first_frame.compare_exchange(0, first, Ordering::Relaxed, Ordering::Relaxed);
             }
             // Store ptr → key for dealloc pairing.
-            // No cap: ALLOC_KEYS is naturally bounded by live tracked allocations.
             if ptr != 0 {
                 ALLOC_KEYS.insert(ptr, key);
             }
@@ -157,6 +163,10 @@ pub fn record_alloc(ptr: usize, frames: &[usize], size: usize) {
 pub fn record_dealloc(ptr: usize, size: usize) {
     if ptr == 0 { return; }
     if CALLER_BUSY.with(|b| b.replace(true)) { return; }
+
+    // Always subtract from global counter.
+    GLOBAL_LIVE_BYTES.fetch_sub(size as i64, Ordering::Relaxed);
+
     if let Some((_, key)) = ALLOC_KEYS.remove(&ptr) {
         if let Some(entry) = CALLER_MAP.get(&key) {
             entry.total_deallocs.fetch_add(1, Ordering::Relaxed);
@@ -184,9 +194,9 @@ pub fn refresh_snapshot(filter: &str) {
 
     CALLER_BUSY.with(|b| b.set(false));
 
-    // 2. Sort by alloc count descending, keep only top 100 BEFORE resolving symbols.
-    //    This means symbol resolution (the slow DbgHelp call) runs at most 100 times per refresh.
-    raw.sort_unstable_by(|a, b| b.total_allocs.cmp(&a.total_allocs));
+    // 2. Sort by live_bytes descending (worst current leakers first), keep top 100 BEFORE resolving symbols.
+    //    Sorting by alloc count misses infrequent-but-large leakers; live_bytes is the accurate signal.
+    raw.sort_unstable_by(|a, b| b.live_bytes.max(0).cmp(&a.live_bytes.max(0)));
     raw.truncate(100);
 
     // 3. Resolve symbols + build rows for the top 100 only.
