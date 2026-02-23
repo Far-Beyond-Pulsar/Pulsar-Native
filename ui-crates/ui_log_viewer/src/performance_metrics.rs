@@ -7,7 +7,7 @@ use parking_lot::RwLock;
 use crate::gpu_info;
 
 /// Maximum number of data points to keep in history
-pub const MAX_HISTORY_SIZE: usize = 60;
+pub const MAX_HISTORY_SIZE: usize = 20;
 
 /// CPU usage data point
 #[derive(Clone)]
