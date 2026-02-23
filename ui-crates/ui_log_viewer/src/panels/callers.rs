@@ -171,9 +171,25 @@ impl Render for CallerSitesPanel {
         self.apply_sort();
 
         let row_count  = self.cached_rows.len();
+
+        // Compute column totals across all visible rows.
+        let (tot_allocs, tot_deallocs, tot_live, tot_bytes, tot_leak) = self.cached_rows.iter().fold(
+            (0u64, 0u64, 0i64, 0u64, 0u64),
+            |(a, d, l, b, k), r| (
+                a + r.total_allocs,
+                d + r.total_deallocs,
+                l + r.live_bytes,
+                b + r.total_bytes,
+                k + r.leaked_estimate,
+            ),
+        );
+
         let item_sizes = Rc::new(vec![size(px(0.0), px(28.0)); row_count]);
         let view       = cx.entity().clone();
         let cached_rows = self.cached_rows.clone();
+
+        let live_total_color  = if tot_live  < 0 { theme.danger } else { theme.success };
+        let leak_total_color  = if tot_leak  > 0 { theme.danger } else { theme.muted_foreground };
 
         v_flex()
             .size_full()
@@ -206,6 +222,21 @@ impl Render for CallerSitesPanel {
                     .child(self.render_col_header("Live",              SortCol::Live,     false, cx))
                     .child(self.render_col_header("Total",             SortCol::Total,    false, cx))
                     .child(self.render_col_header("Est.Leak",          SortCol::EstLeak,  false, cx))
+            )
+            // ── Totals row ────────────────────────────────────────────────────
+            .child(
+                h_flex()
+                    .w_full().px_3().py_1().gap_2().items_center()
+                    .bg(theme.muted.opacity(0.15)).border_b_1().border_color(theme.border)
+                    .child(
+                        div().flex_1().text_xs().font_weight(FontWeight::SEMIBOLD)
+                            .text_color(theme.muted_foreground).child("TOTAL")
+                    )
+                    .child(num_cell(format!("{}", tot_allocs),                              theme.muted_foreground))
+                    .child(num_cell(format!("{}", tot_deallocs),                            theme.muted_foreground))
+                    .child(num_cell(CallerSitesPanel::fmt_live(tot_live),                  live_total_color))
+                    .child(num_cell(CallerSitesPanel::fmt_bytes(tot_bytes),                theme.warning))
+                    .child(num_cell(CallerSitesPanel::fmt_bytes(tot_leak),                 leak_total_color))
             )
             // ── Virtual list ──────────────────────────────────────────────────
             .child(

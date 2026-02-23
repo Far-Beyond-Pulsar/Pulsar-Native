@@ -81,9 +81,9 @@ pub static CALLER_MAP: Lazy<DashMap<StackKey, CallerStats>> =
     Lazy::new(|| DashMap::with_capacity(4096));
 
 /// Maps allocation pointer → StackKey, so deallocs can be paired with their alloc site.
-/// Only sampled allocations are stored here (same 1/N sample rate as CALLER_MAP inserts).
+/// Size is bounded by the number of currently live tracked allocations (naturally shrinks on dealloc).
 pub static ALLOC_KEYS: Lazy<DashMap<usize, StackKey>> =
-    Lazy::new(|| DashMap::with_capacity(65536));
+    Lazy::new(|| DashMap::with_capacity(131072));
 
 // ─── Snapshot (UI-readable) ───────────────────────────────────────────────────
 
@@ -97,7 +97,7 @@ pub struct CallerRow {
     pub total_bytes:      u64,
     pub live_bytes:       i64,
     pub avg_size:         u64,
-    /// Estimated bytes leaked: (allocs - deallocs) * avg_size
+    /// Estimated live bytes: live_bytes.max(0) — exact when dealloc pairing succeeds.
     pub leaked_estimate:  u64,
 }
 
@@ -122,7 +122,7 @@ pub fn record_alloc(ptr: usize, frames: &[usize], size: usize) {
 
     // Skip allocator-internal frames:
     //   0: backtrace::trace_unsynchronized
-    //   1: record_alloc (tracking_allocator closure)
+    //   1: record_alloc (tracking_allocator)
     //   2: GlobalAlloc::alloc / alloc_zeroed / realloc
     //   3: compiler-generated alloc shim
     let skip = frames.len().min(4);
@@ -132,7 +132,8 @@ pub fn record_alloc(ptr: usize, frames: &[usize], size: usize) {
         let key   = StackKey::from_frames(meaningful);
         let first = meaningful[0] as u64;
 
-        if CALLER_MAP.len() < 2048 || CALLER_MAP.contains_key(&key) {
+        // Allow up to 8192 unique call sites; existing keys always update.
+        if CALLER_MAP.len() < 8192 || CALLER_MAP.contains_key(&key) {
             let entry = CALLER_MAP.entry(key).or_default();
             entry.total_allocs.fetch_add(1, Ordering::Relaxed);
             entry.total_bytes.fetch_add(size as u64, Ordering::Relaxed);
@@ -140,8 +141,9 @@ pub fn record_alloc(ptr: usize, frames: &[usize], size: usize) {
             if entry.first_frame.load(Ordering::Relaxed) == 0 {
                 let _ = entry.first_frame.compare_exchange(0, first, Ordering::Relaxed, Ordering::Relaxed);
             }
-            // Store ptr → key so dealloc can find the right alloc site.
-            if ptr != 0 && ALLOC_KEYS.len() < 131072 {
+            // Store ptr → key for dealloc pairing.
+            // No cap: ALLOC_KEYS is naturally bounded by live tracked allocations.
+            if ptr != 0 {
                 ALLOC_KEYS.insert(ptr, key);
             }
         }
@@ -167,15 +169,12 @@ pub fn record_dealloc(ptr: usize, size: usize) {
 // ─── Background snapshot builder ─────────────────────────────────────────────
 
 /// Build and publish a new snapshot. Called by background task every 500ms.
-/// Does NOT need to be fast — runs off the hot path entirely.
 pub fn refresh_snapshot(filter: &str) {
-    // Block tracking for ALL allocations on this thread during snapshot build —
-    // prevents refresh_snapshot's own Vec/HashMap allocations from polluting the data.
     CALLER_BUSY.with(|b| b.set(true));
 
-    // 1. Snapshot raw stats from all DashMap shards.
+    // 1. Snapshot raw stats — no symbol work yet.
     struct RawRow { first_frame: u64, total_allocs: u64, total_deallocs: u64, total_bytes: u64, live_bytes: i64 }
-    let raw: Vec<RawRow> = CALLER_MAP.iter().map(|e| RawRow {
+    let mut raw: Vec<RawRow> = CALLER_MAP.iter().map(|e| RawRow {
         first_frame:    e.value().first_frame.load(Ordering::Relaxed),
         total_allocs:   e.value().total_allocs.load(Ordering::Relaxed),
         total_deallocs: e.value().total_deallocs.load(Ordering::Relaxed),
@@ -185,40 +184,35 @@ pub fn refresh_snapshot(filter: &str) {
 
     CALLER_BUSY.with(|b| b.set(false));
 
-    // 2. Resolve symbols and merge rows sharing the same symbol string.
-    let mut merged: HashMap<String, (u64, u64, u64, i64)> = HashMap::new(); // symbol → (allocs, deallocs, bytes, live)
-    for r in raw {
-        let symbol = resolve_symbol(r.first_frame);
-        let entry = merged.entry(symbol).or_insert((0, 0, 0, 0));
-        entry.0 += r.total_allocs;
-        entry.1 += r.total_deallocs;
-        entry.2 += r.total_bytes;
-        entry.3 += r.live_bytes;
-    }
+    // 2. Sort by alloc count descending, keep only top 100 BEFORE resolving symbols.
+    //    This means symbol resolution (the slow DbgHelp call) runs at most 100 times per refresh.
+    raw.sort_unstable_by(|a, b| b.total_allocs.cmp(&a.total_allocs));
+    raw.truncate(100);
 
-    // 3. Build rows, apply optional filter.
+    // 3. Resolve symbols + build rows for the top 100 only.
     let f_lower = if filter.is_empty() { None } else { Some(filter.to_lowercase()) };
 
-    let mut rows: Vec<CallerRow> = merged.into_iter().filter_map(|(symbol, (total_allocs, total_deallocs, total_bytes, live_bytes))| {
+    let mut rows: Vec<CallerRow> = raw.into_iter().filter_map(|r| {
+        let symbol = resolve_symbol(r.first_frame);
         if let Some(ref f) = f_lower {
             if !symbol.to_lowercase().contains(f.as_str()) { return None; }
         }
-        let avg_size = if total_allocs > 0 { total_bytes / total_allocs } else { 0 };
-        // Leaked = unmatched allocs × avg size. Clamp to zero (transient races can flip sign).
-        let leaked_allocs = total_allocs.saturating_sub(total_deallocs);
-        let leaked_estimate = leaked_allocs.saturating_mul(avg_size);
-        let key = StackKey::from_frames(&[symbol.as_ptr() as usize, symbol.len()]);
-        Some(CallerRow { key, symbol, total_allocs, total_deallocs, total_bytes, live_bytes, avg_size, leaked_estimate })
+        let avg_size        = if r.total_allocs > 0 { r.total_bytes / r.total_allocs } else { 0 };
+        // Use live_bytes directly — it's maintained atomically (add on alloc, sub on dealloc).
+        // Much more accurate than (allocs - deallocs) * avg_size which breaks if sizes vary.
+        let leaked_estimate = r.live_bytes.max(0) as u64;
+        let key = StackKey::from_frames(&[r.first_frame as usize]);
+        Some(CallerRow { key, symbol,
+            total_allocs: r.total_allocs, total_deallocs: r.total_deallocs,
+            total_bytes: r.total_bytes, live_bytes: r.live_bytes,
+            avg_size, leaked_estimate })
     }).collect();
 
-    // Sort by leaked_estimate descending — highest estimated leak first.
+    // Default sort: highest leak estimate first, break ties by alloc count.
     rows.sort_unstable_by(|a, b| b.leaked_estimate.cmp(&a.leaked_estimate)
         .then(b.total_allocs.cmp(&a.total_allocs)));
-    rows.truncate(200);
 
-    // 4. Publish.
     *CALLER_SNAPSHOT.write() = rows;
-
     CALLER_BUSY.with(|b| b.set(false));
 }
 
