@@ -1,10 +1,11 @@
 //! Compact toolbar: tab selector + branch/sync row
 
-use crate::{GitManager, GitView};
+use crate::{GitManager, GitView, PendingAuthOp};
 use gpui::*;
 use ui::{
     h_flex, v_flex, Icon, IconName, ActiveTheme as _,
     button::{Button, ButtonVariant, ButtonVariants as _},
+    input::TextInput,
 };
 
 pub fn render_toolbar(git_manager: &GitManager, cx: &mut Context<GitManager>) -> impl IntoElement {
@@ -18,6 +19,7 @@ pub fn render_toolbar(git_manager: &GitManager, cx: &mut Context<GitManager>) ->
     let border = cx.theme().border;
     let muted_fg = cx.theme().muted_foreground;
     let danger = cx.theme().danger;
+    let warning = cx.theme().warning;
 
     // Tab row
     let tabs = h_flex()
@@ -111,8 +113,48 @@ pub fn render_toolbar(git_manager: &GitManager, cx: &mut Context<GitManager>) ->
         .child(tabs)
         .child(sync_row);
 
-    // Show last operation error as a dismissible banner
-    if let Some(err) = &git_manager.op_error {
+    // Auth credential prompt — shown when a remote op returns 401
+    if let Some(pending_op) = git_manager.pending_auth_op {
+        toolbar = toolbar.child(
+            v_flex()
+                .w_full()
+                .px_1()
+                .py_1()
+                .gap_1()
+                .rounded(cx.theme().radius)
+                .bg(warning.opacity(0.08))
+                .border_1()
+                .border_color(warning.opacity(0.3))
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(warning)
+                        .child(format!("Authentication required for {}", pending_op.label())),
+                )
+                .child(TextInput::new(&git_manager.auth_username_input))
+                .child(TextInput::new(&git_manager.auth_password_input))
+                .child(
+                    h_flex()
+                        .gap_1()
+                        .child(
+                            Button::new("auth-retry")
+                                .label(pending_op.label())
+                                .primary()
+                                .compact()
+                                .on_click(cx.listener(|this, _, _, cx| this.retry_with_auth(cx))),
+                        )
+                        .child(
+                            Button::new("auth-cancel")
+                                .label("Cancel")
+                                .ghost()
+                                .compact()
+                                .on_click(cx.listener(|this, _, _, cx| this.cancel_auth(cx))),
+                        ),
+                ),
+        );
+    } else if let Some(err) = &git_manager.op_error {
+        // Non-auth errors: plain dismissible banner
         let err = err.clone();
         toolbar = toolbar.child(
             h_flex()

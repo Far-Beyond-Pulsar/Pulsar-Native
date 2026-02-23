@@ -3,6 +3,7 @@
 use crate::models::*;
 use git2::{Repository, StatusOptions, BranchType};
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 /// Load the complete repository state (blocking — run on background executor)
 pub fn load_repository_state(path: &Path) -> Result<RepositoryState, git2::Error> {
@@ -262,29 +263,145 @@ pub fn commit_staged_changes(repo_path: &Path, message: &str) -> Result<(), git2
     Ok(())
 }
 
-/// Fetch from remote without merging (blocking — run on background executor)
-pub fn fetch_from_remote(repo_path: &Path) -> Result<(), git2::Error> {
+/// Resolve the remote to use: branch tracking remote → "origin" → first available
+fn find_remote_name(repo: &Repository) -> Result<String, git2::Error> {
+    // Try the upstream remote for the current branch via config
+    if let Ok(head) = repo.head() {
+        if let Some(branch_name) = head.shorthand() {
+            let key = format!("branch.{}.remote", branch_name);
+            if let Ok(remote) = repo.config().and_then(|c| c.get_string(&key)) {
+                if !remote.is_empty() {
+                    return Ok(remote);
+                }
+            }
+        }
+    }
+    // Fall back to "origin" if it exists
+    if repo.find_remote("origin").is_ok() {
+        return Ok("origin".to_string());
+    }
+    // Last resort: first remote in the list
+    let remotes = repo.remotes()?;
+    remotes
+        .get(0)
+        .map(|n| n.to_string())
+        .ok_or_else(|| git2::Error::from_str("No remotes configured"))
+}
+
+/// Returns true if the git2 error indicates an authentication failure.
+pub fn is_auth_error(e: &git2::Error) -> bool {
+    let msg = e.message().to_lowercase();
+    msg.contains("authentication") || msg.contains("401") || msg.contains("credentials")
+        || e.class() == git2::ErrorClass::Http
+}
+
+/// Persist credentials to the system git credential store via `git credential approve`.
+/// Called after a successful remote op that used explicit creds.
+pub fn store_git_credentials(repo_path: &Path, username: &str, password: &str) {
+    let repo = match Repository::open(repo_path) {
+        Ok(r) => r,
+        Err(_) => return,
+    };
+    let remote_name = find_remote_name(&repo).unwrap_or_else(|_| "origin".to_string());
+    let url = repo
+        .find_remote(&remote_name)
+        .ok()
+        .and_then(|r| r.url().map(|u| u.to_string()));
+    let url = match url {
+        Some(u) => u,
+        None => return,
+    };
+    // Parse scheme + host from the URL so git-credential gets the right context
+    let parsed = url.splitn(3, '/').collect::<Vec<_>>();
+    let (protocol, host) = if parsed.len() >= 3 {
+        let protocol = parsed[0].trim_end_matches(':').to_string();
+        let host = parsed[2].to_string();
+        (protocol, host)
+    } else {
+        return;
+    };
+    let input = format!(
+        "protocol={}\nhost={}\nusername={}\npassword={}\n",
+        protocol, host, username, password
+    );
+    let _ = std::process::Command::new("git")
+        .args(["credential", "approve"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            if let Some(stdin) = child.stdin.as_mut() {
+                let _ = stdin.write_all(input.as_bytes());
+            }
+            child.wait()
+        });
+}
+
+/// Build remote callbacks that try SSH-agent → credential_helper → explicit creds.
+fn make_callbacks(creds: Option<(String, String)>) -> git2::RemoteCallbacks<'static> {
+    let mut callbacks = git2::RemoteCallbacks::new();
+    callbacks.credentials(move |url, username, allowed_types| {
+        // Explicit credentials take priority (retry after auth failure)
+        if let Some((ref user, ref pass)) = creds {
+            return git2::Cred::userpass_plaintext(user, pass);
+        }
+        // SSH key from agent
+        if allowed_types.contains(git2::CredentialType::SSH_KEY) {
+            if let Ok(c) = git2::Cred::ssh_key_from_agent(username.unwrap_or("git")) {
+                return Ok(c);
+            }
+        }
+        // System credential helper (git credential store / keychain)
+        if allowed_types.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
+            if let Ok(cfg) = git2::Config::open_default() {
+                if let Ok(c) = git2::Cred::credential_helper(&cfg, url, username) {
+                    return Ok(c);
+                }
+            }
+        }
+        Err(git2::Error::from_str("No credentials available"))
+    });
+    callbacks
+}
+
+/// Fetch from remote without merging (blocking — run on background executor).
+/// Pass `creds` to retry after an auth failure.
+pub fn fetch_from_remote(repo_path: &Path, creds: Option<(String, String)>) -> Result<(), git2::Error> {
     let repo = Repository::open(repo_path)?;
-    let mut remote = repo.find_remote("origin")?;
-    remote.fetch(&["+refs/heads/*:refs/remotes/origin/*"], None, None)?;
+    let remote_name = find_remote_name(&repo)?;
+    let mut remote = repo.find_remote(&remote_name)?;
+    let refspec = format!("+refs/heads/*:refs/remotes/{}/*", remote_name);
+    let mut opts = git2::FetchOptions::new();
+    opts.remote_callbacks(make_callbacks(creds));
+    remote.fetch(&[refspec.as_str()], Some(&mut opts), None)?;
     Ok(())
 }
 
-/// Push to remote (blocking — run on background executor)
-pub fn push_to_remote(repo_path: &Path) -> Result<(), git2::Error> {
+/// Push to remote (blocking — run on background executor).
+/// Pass `creds` to retry after an auth failure.
+pub fn push_to_remote(repo_path: &Path, creds: Option<(String, String)>) -> Result<(), git2::Error> {
     let repo = Repository::open(repo_path)?;
-    let mut remote = repo.find_remote("origin")?;
+    let remote_name = find_remote_name(&repo)?;
+    let mut remote = repo.find_remote(&remote_name)?;
     let head = repo.head()?;
     let branch_name = head.shorthand().unwrap_or("HEAD");
-    remote.push(&[format!("refs/heads/{}:refs/heads/{}", branch_name, branch_name)], None)?;
+    let mut opts = git2::PushOptions::new();
+    opts.remote_callbacks(make_callbacks(creds));
+    remote.push(&[format!("refs/heads/{}:refs/heads/{}", branch_name, branch_name)], Some(&mut opts))?;
     Ok(())
 }
 
-/// Pull from remote (blocking — run on background executor)
-pub fn pull_from_remote(repo_path: &Path) -> Result<(), git2::Error> {
+/// Pull from remote (blocking — run on background executor).
+/// Pass `creds` to retry after an auth failure.
+pub fn pull_from_remote(repo_path: &Path, creds: Option<(String, String)>) -> Result<(), git2::Error> {
     let repo = Repository::open(repo_path)?;
-    let mut remote = repo.find_remote("origin")?;
-    remote.fetch(&["HEAD"], None, None)?;
+    let remote_name = find_remote_name(&repo)?;
+    let mut remote = repo.find_remote(&remote_name)?;
+    let mut opts = git2::FetchOptions::new();
+    opts.remote_callbacks(make_callbacks(creds));
+    remote.fetch(&["HEAD"], Some(&mut opts), None)?;
 
     let fetch_head = repo.find_reference("FETCH_HEAD")?;
     let fetch_commit = repo.reference_to_annotated_commit(&fetch_head)?;

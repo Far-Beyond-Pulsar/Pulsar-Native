@@ -16,6 +16,20 @@ use std::sync::Arc;
 pub use git_operations::*;
 pub use models::*;
 
+/// Which remote operation is awaiting credential input
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PendingAuthOp { Fetch, Push, Pull }
+
+impl PendingAuthOp {
+    pub fn label(self) -> &'static str {
+        match self {
+            PendingAuthOp::Fetch => "Fetch",
+            PendingAuthOp::Push  => "Push",
+            PendingAuthOp::Pull  => "Pull",
+        }
+    }
+}
+
 /// Main Git Manager window
 pub struct GitManager {
     project_path: PathBuf,
@@ -36,6 +50,10 @@ pub struct GitManager {
     commit_file_expanded: HashSet<usize>,
     /// Last error from a background git operation (push/pull/fetch/switch)
     pub(crate) op_error: Option<String>,
+    /// When set, the toolbar shows a credential prompt and retries this op on submit
+    pub(crate) pending_auth_op: Option<PendingAuthOp>,
+    pub(crate) auth_username_input: Entity<InputState>,
+    pub(crate) auth_password_input: Entity<InputState>,
     current_view: GitView,
     focus_handle: FocusHandle,
 }
@@ -72,6 +90,18 @@ impl GitManager {
             }
         }).detach();
 
+        // Create auth credential inputs
+        let auth_username_input = cx.new(|cx| {
+            let mut input = InputState::new(window, cx);
+            input.set_placeholder("Username", window, cx);
+            input
+        });
+        let auth_password_input = cx.new(|cx| {
+            let mut input = InputState::new(window, cx);
+            input.set_placeholder("Password / Token", window, cx);
+            input
+        });
+
         // Load initial git state
         let path = project_path.clone();
         cx.spawn(async move |this, mut cx| {
@@ -101,6 +131,9 @@ impl GitManager {
             commit_file_diff_error: None,
             commit_file_expanded: HashSet::new(),
             op_error: None,
+            pending_auth_op: None,
+            auth_username_input,
+            auth_password_input,
             current_view: GitView::Changes,
             focus_handle: cx.focus_handle(),
         }
@@ -289,46 +322,65 @@ impl GitManager {
     }
 
     fn fetch(&mut self, cx: &mut Context<Self>) {
-        let path = self.project_path.clone();
-        self.op_error = None;
-        cx.spawn(async move |this, mut cx| {
-            let result = cx.background_executor().spawn(async move { fetch_from_remote(&path) }).await;
-            cx.update(|cx| {
-                this.update(cx, |gm, cx| {
-                    if let Err(e) = &result {
-                        gm.op_error = Some(format!("Fetch failed: {}", e));
-                    }
-                    gm.refresh_state(cx);
-                }).ok();
-            }).ok();
-        }).detach();
+        self.run_remote_op(PendingAuthOp::Fetch, None, cx);
     }
 
     fn push(&mut self, cx: &mut Context<Self>) {
-        let path = self.project_path.clone();
-        self.op_error = None;
-        cx.spawn(async move |this, mut cx| {
-            let result = cx.background_executor().spawn(async move { push_to_remote(&path) }).await;
-            cx.update(|cx| {
-                this.update(cx, |gm, cx| {
-                    if let Err(e) = &result {
-                        gm.op_error = Some(format!("Push failed: {}", e));
-                    }
-                    gm.refresh_state(cx);
-                }).ok();
-            }).ok();
-        }).detach();
+        self.run_remote_op(PendingAuthOp::Push, None, cx);
     }
 
     fn pull(&mut self, cx: &mut Context<Self>) {
+        self.run_remote_op(PendingAuthOp::Pull, None, cx);
+    }
+
+    pub fn retry_with_auth(&mut self, cx: &mut Context<Self>) {
+        let op = match self.pending_auth_op {
+            Some(op) => op,
+            None => return,
+        };
+        let username = self.auth_username_input.read(cx).text().to_string();
+        let password = self.auth_password_input.read(cx).text().to_string();
+        self.pending_auth_op = None;
+        self.op_error = None;
+        self.run_remote_op(op, Some((username, password)), cx);
+    }
+
+    pub fn cancel_auth(&mut self, cx: &mut Context<Self>) {
+        self.pending_auth_op = None;
+        self.op_error = None;
+        cx.notify();
+    }
+
+    fn run_remote_op(&mut self, op: PendingAuthOp, creds: Option<(String, String)>, cx: &mut Context<Self>) {
         let path = self.project_path.clone();
         self.op_error = None;
         cx.spawn(async move |this, mut cx| {
-            let result = cx.background_executor().spawn(async move { pull_from_remote(&path) }).await;
+            let creds_clone = creds.clone();
+            let path_clone = path.clone();
+            let result = cx.background_executor().spawn(async move {
+                match op {
+                    PendingAuthOp::Fetch => fetch_from_remote(&path, creds),
+                    PendingAuthOp::Push  => push_to_remote(&path, creds),
+                    PendingAuthOp::Pull  => pull_from_remote(&path, creds),
+                }
+            }).await;
+            // Persist explicit creds on success so git credential store has them for next time
+            if result.is_ok() {
+                if let Some((user, pass)) = creds_clone {
+                    store_git_credentials(&path_clone, &user, &pass);
+                }
+            }
             cx.update(|cx| {
                 this.update(cx, |gm, cx| {
-                    if let Err(e) = &result {
-                        gm.op_error = Some(format!("Pull failed: {}", e));
+                    match &result {
+                        Err(e) if is_auth_error(e) => {
+                            gm.pending_auth_op = Some(op);
+                            gm.op_error = Some("Authentication required".to_string());
+                        }
+                        Err(e) => {
+                            gm.op_error = Some(format!("{} failed: {}", op.label(), e));
+                        }
+                        Ok(_) => {}
                     }
                     gm.refresh_state(cx);
                 }).ok();
