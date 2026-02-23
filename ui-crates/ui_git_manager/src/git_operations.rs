@@ -295,42 +295,32 @@ pub fn is_auth_error(e: &git2::Error) -> bool {
 }
 
 /// Derive a stable keyring service name from the remote URL (host only, no path).
-fn keyring_service(repo_path: &Path) -> Option<String> {
+/// Returns the remote URL for the repo — used as both the keyring service key and lookup key.
+fn remote_url_for_keyring(repo_path: &Path) -> Option<String> {
     let repo = Repository::open(repo_path).ok()?;
     let remote_name = find_remote_name(&repo).ok()?;
-    let url = repo.find_remote(&remote_name).ok()?.url()?.to_string();
-    // Extract host: "https://github.com/org/repo" → "github.com"
-    let host = url
-        .splitn(3, "//")
-        .nth(1)
-        .and_then(|s| s.split('/').next())
-        .unwrap_or(&url)
-        .to_string();
-    Some(format!("pulsar-git:{}", host))
+    repo.find_remote(&remote_name).ok()?.url().map(|u| u.to_string())
 }
 
-/// Save credentials to the OS keychain (Windows Credential Manager / macOS Keychain / Linux Secret Service).
+/// Save credentials to the OS keychain, keyed by the remote URL.
+/// The secret value encodes both username and password as "username\npassword".
 pub fn store_git_credentials(repo_path: &Path, username: &str, password: &str) {
-    if let Some(service) = keyring_service(repo_path) {
-        let entry = keyring::Entry::new(&service, username);
-        if let Ok(e) = entry {
-            let _ = e.set_password(password);
+    if let Some(url) = remote_url_for_keyring(repo_path) {
+        if let Ok(entry) = keyring::Entry::new("pulsar-git", &url) {
+            let _ = entry.set_password(&format!("{}\n{}", username, password));
         }
     }
 }
 
-/// Load credentials from the OS keychain. Returns `(username, password)` or `None`.
+/// Load credentials from the OS keychain, keyed by the remote URL.
+/// Returns `(username, password)` or `None`.
 pub fn load_git_credentials(repo_path: &Path) -> Option<(String, String)> {
-    // Try to find username from git config first
-    let repo = Repository::open(repo_path).ok()?;
-    let service = keyring_service(repo_path)?;
-    // Look up any stored entry for this service — try common usernames
-    let cfg = repo.config().ok()?;
-    let username = cfg.get_string("credential.username")
-        .or_else(|_| cfg.get_string("user.email"))
-        .unwrap_or_else(|_| "git".to_string());
-    let entry = keyring::Entry::new(&service, &username).ok()?;
-    let password = entry.get_password().ok()?;
+    let url = remote_url_for_keyring(repo_path)?;
+    let entry = keyring::Entry::new("pulsar-git", &url).ok()?;
+    let secret = entry.get_password().ok()?;
+    let mut parts = secret.splitn(2, '\n');
+    let username = parts.next()?.to_string();
+    let password = parts.next()?.to_string();
     Some((username, password))
 }
 
