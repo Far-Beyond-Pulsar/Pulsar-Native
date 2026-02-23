@@ -27,6 +27,7 @@ where
     stroke_style: StrokeStyle,
     fill: Vec<Background>,
     tick_margin: usize,
+    max_points: Option<usize>,
     min_y_range: Option<f64>,
     max_y_range: Option<f64>,
     reference_lines: Vec<(f64, Hsla, SharedString)>,
@@ -47,6 +48,7 @@ where
             stroke: vec![],
             fill: vec![],
             tick_margin: 1,
+            max_points: None,
             x: None,
             y: vec![],
             min_y_range: None,
@@ -85,6 +87,12 @@ where
         self
     }
 
+    /// Limit the chart to the last `n` data points.
+    pub fn max_points(mut self, n: usize) -> Self {
+        self.max_points = Some(n);
+        self
+    }
+
     pub fn min_y_range(mut self, min: f64) -> Self {
         self.min_y_range = Some(min);
         self
@@ -107,6 +115,13 @@ where
     Y: Clone + Copy + PartialOrd + Num + ToPrimitive + FromPrimitive + Sealed + 'static,
 {
     fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        // Enforce max_points: keep only the last N items
+        if let Some(n) = self.max_points {
+            if self.data.len() > n {
+                self.data.drain(..self.data.len() - n);
+            }
+        }
+
         let Some(x_fn) = self.x.as_ref() else {
             return;
         };
