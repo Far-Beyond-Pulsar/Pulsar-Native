@@ -187,6 +187,15 @@ pub fn stage_file(repo_path: &Path, file_path: &str) -> Result<(), git2::Error> 
     Ok(())
 }
 
+/// Stage all modified/untracked files (blocking — run on background executor)
+pub fn stage_all_files(repo_path: &Path) -> Result<(), git2::Error> {
+    let repo = Repository::open(repo_path)?;
+    let mut index = repo.index()?;
+    index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)?;
+    index.write()?;
+    Ok(())
+}
+
 /// Unstage a file (blocking — run on background executor)
 pub fn unstage_file(repo_path: &Path, file_path: &str) -> Result<(), git2::Error> {
     let repo = Repository::open(repo_path)?;
@@ -201,6 +210,30 @@ pub fn unstage_file(repo_path: &Path, file_path: &str) -> Result<(), git2::Error
             // No HEAD (initial repo) — remove from index entirely
             let mut index = repo.index()?;
             index.remove_path(Path::new(&git_path))?;
+            index.write()?;
+        }
+    }
+    Ok(())
+}
+
+/// Unstage all staged files (blocking — run on background executor)
+pub fn unstage_all_files(repo_path: &Path) -> Result<(), git2::Error> {
+    let repo = Repository::open(repo_path)?;
+    match repo.head() {
+        Ok(head) => {
+            let head_commit = head.peel_to_commit()?;
+            repo.reset_default(
+                Some(head_commit.as_object()),
+                std::iter::empty::<&str>(),
+            )?;
+            // reset_default with empty paths resets everything staged
+            // Alternatively use reset --mixed HEAD which is what we want:
+            repo.reset(head_commit.as_object(), git2::ResetType::Mixed, None)?;
+        }
+        Err(_) => {
+            // No HEAD — clear the entire index
+            let mut index = repo.index()?;
+            index.clear()?;
             index.write()?;
         }
     }

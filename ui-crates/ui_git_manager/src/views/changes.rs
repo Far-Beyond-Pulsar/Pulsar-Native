@@ -178,12 +178,38 @@ fn render_file_section(
     v_flex()
         .gap_1()
         .child(
-            div()
+            h_flex()
                 .px_1()
-                .text_xs()
-                .font_weight(gpui::FontWeight::SEMIBOLD)
-                .text_color(muted_fg)
-                .child(format!("{} ({})", title, files.len())),
+                .items_center()
+                .w_full()
+                .child(
+                    div()
+                        .flex_1()
+                        .text_xs()
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(muted_fg)
+                        .child(format!("{} ({})", title, files.len())),
+                )
+                .when(is_staged, |this| {
+                    this.child(
+                        Button::new("unstage-all-button")
+                            .icon(Icon::new(IconName::Minus).text_color(warning))
+                            .ghost()
+                            .compact()
+                            .tooltip("Unstage All".to_string())
+                            .on_click(cx.listener(|this, _, _, cx| this.unstage_all(cx))),
+                    )
+                })
+                .when(!is_staged, |this| {
+                    this.child(
+                        Button::new("stage-all-button")
+                            .icon(Icon::new(IconName::Plus).text_color(warning))
+                            .ghost()
+                            .compact()
+                            .tooltip("Stage All".to_string())
+                            .on_click(cx.listener(|this, _, _, cx| this.stage_all(cx))),
+                    )
+                }),
         )
         .child(file_list)
 }

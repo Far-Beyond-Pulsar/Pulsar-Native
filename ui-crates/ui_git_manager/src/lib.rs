@@ -160,6 +160,36 @@ impl GitManager {
         }).detach();
     }
 
+    pub fn stage_all(&mut self, cx: &mut Context<Self>) {
+        let path = self.project_path.clone();
+        cx.spawn(async move |this, mut cx| {
+            let result = cx.background_executor().spawn(async move { stage_all_files(&path) }).await;
+            cx.update(|cx| {
+                this.update(cx, |gm, cx| {
+                    if let Err(e) = &result {
+                        gm.op_error = Some(format!("Stage all failed: {}", e));
+                    }
+                    gm.refresh_state(cx);
+                }).ok();
+            }).ok();
+        }).detach();
+    }
+
+    pub fn unstage_all(&mut self, cx: &mut Context<Self>) {
+        let path = self.project_path.clone();
+        cx.spawn(async move |this, mut cx| {
+            let result = cx.background_executor().spawn(async move { unstage_all_files(&path) }).await;
+            cx.update(|cx| {
+                this.update(cx, |gm, cx| {
+                    if let Err(e) = &result {
+                        gm.op_error = Some(format!("Unstage all failed: {}", e));
+                    }
+                    gm.refresh_state(cx);
+                }).ok();
+            }).ok();
+        }).detach();
+    }
+
     fn unstage_file(&mut self, file_path: String, cx: &mut Context<Self>) {
         let path = self.project_path.clone();
         cx.spawn(async move |this, mut cx| {
