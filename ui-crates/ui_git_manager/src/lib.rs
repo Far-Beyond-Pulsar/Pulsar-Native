@@ -34,6 +34,8 @@ pub struct GitManager {
     commit_file_diff: Option<DiffResult>,
     commit_file_diff_error: Option<String>,
     commit_file_expanded: HashSet<usize>,
+    /// Last error from a background git operation (push/pull/fetch/switch)
+    pub(crate) op_error: Option<String>,
     current_view: GitView,
     focus_handle: FocusHandle,
 }
@@ -98,6 +100,7 @@ impl GitManager {
             commit_file_diff: None,
             commit_file_diff_error: None,
             commit_file_expanded: HashSet::new(),
+            op_error: None,
             current_view: GitView::Changes,
             focus_handle: cx.focus_handle(),
         }
@@ -146,11 +149,14 @@ impl GitManager {
         let path = self.project_path.clone();
         cx.spawn(async move |this, mut cx| {
             let result = cx.background_executor().spawn(async move { stage_file(&path, &file_path) }).await;
-            if result.is_ok() {
-                cx.update(|cx| {
-                    this.update(cx, |git_manager, cx| { git_manager.refresh_state(cx); }).ok();
+            cx.update(|cx| {
+                this.update(cx, |gm, cx| {
+                    if let Err(e) = &result {
+                        gm.op_error = Some(format!("Stage failed: {}", e));
+                    }
+                    gm.refresh_state(cx);
                 }).ok();
-            }
+            }).ok();
         }).detach();
     }
 
@@ -158,11 +164,14 @@ impl GitManager {
         let path = self.project_path.clone();
         cx.spawn(async move |this, mut cx| {
             let result = cx.background_executor().spawn(async move { unstage_file(&path, &file_path) }).await;
-            if result.is_ok() {
-                cx.update(|cx| {
-                    this.update(cx, |git_manager, cx| { git_manager.refresh_state(cx); }).ok();
+            cx.update(|cx| {
+                this.update(cx, |gm, cx| {
+                    if let Err(e) = &result {
+                        gm.op_error = Some(format!("Unstage failed: {}", e));
+                    }
+                    gm.refresh_state(cx);
                 }).ok();
-            }
+            }).ok();
         }).detach();
     }
 
@@ -249,36 +258,73 @@ impl GitManager {
         cx.notify();
     }
 
+    fn fetch(&mut self, cx: &mut Context<Self>) {
+        let path = self.project_path.clone();
+        self.op_error = None;
+        cx.spawn(async move |this, mut cx| {
+            let result = cx.background_executor().spawn(async move { fetch_from_remote(&path) }).await;
+            cx.update(|cx| {
+                this.update(cx, |gm, cx| {
+                    if let Err(e) = &result {
+                        gm.op_error = Some(format!("Fetch failed: {}", e));
+                    }
+                    gm.refresh_state(cx);
+                }).ok();
+            }).ok();
+        }).detach();
+    }
+
     fn push(&mut self, cx: &mut Context<Self>) {
         let path = self.project_path.clone();
+        self.op_error = None;
         cx.spawn(async move |this, mut cx| {
-            let _ = cx.background_executor().spawn(async move { push_to_remote(&path) }).await;
+            let result = cx.background_executor().spawn(async move { push_to_remote(&path) }).await;
             cx.update(|cx| {
-                this.update(cx, |git_manager, cx| { git_manager.refresh_state(cx); }).ok();
+                this.update(cx, |gm, cx| {
+                    if let Err(e) = &result {
+                        gm.op_error = Some(format!("Push failed: {}", e));
+                    }
+                    gm.refresh_state(cx);
+                }).ok();
             }).ok();
         }).detach();
     }
 
     fn pull(&mut self, cx: &mut Context<Self>) {
         let path = self.project_path.clone();
+        self.op_error = None;
         cx.spawn(async move |this, mut cx| {
-            let _ = cx.background_executor().spawn(async move { pull_from_remote(&path) }).await;
+            let result = cx.background_executor().spawn(async move { pull_from_remote(&path) }).await;
             cx.update(|cx| {
-                this.update(cx, |git_manager, cx| { git_manager.refresh_state(cx); }).ok();
+                this.update(cx, |gm, cx| {
+                    if let Err(e) = &result {
+                        gm.op_error = Some(format!("Pull failed: {}", e));
+                    }
+                    gm.refresh_state(cx);
+                }).ok();
             }).ok();
         }).detach();
     }
 
     fn switch_branch(&mut self, branch_name: String, cx: &mut Context<Self>) {
         let path = self.project_path.clone();
+        self.op_error = None;
         cx.spawn(async move |this, mut cx| {
             let result = cx.background_executor().spawn(async move { switch_branch(&path, &branch_name) }).await;
-            if result.is_ok() {
-                cx.update(|cx| {
-                    this.update(cx, |git_manager, cx| { git_manager.refresh_state(cx); }).ok();
+            cx.update(|cx| {
+                this.update(cx, |gm, cx| {
+                    if let Err(e) = &result {
+                        gm.op_error = Some(format!("Switch failed: {}", e));
+                    }
+                    gm.refresh_state(cx);
                 }).ok();
-            }
+            }).ok();
         }).detach();
+    }
+
+    fn dismiss_error(&mut self, cx: &mut Context<Self>) {
+        self.op_error = None;
+        cx.notify();
     }
 }
 

@@ -190,12 +190,12 @@ pub fn stage_file(repo_path: &Path, file_path: &str) -> Result<(), git2::Error> 
 /// Unstage a file (blocking — run on background executor)
 pub fn unstage_file(repo_path: &Path, file_path: &str) -> Result<(), git2::Error> {
     let repo = Repository::open(repo_path)?;
-    // Normalize to forward slashes for git
     let git_path = file_path.replace('\\', "/");
     match repo.head() {
         Ok(head) => {
-            let tree = head.peel_to_tree()?;
-            repo.reset_default(Some(&tree.into_object()), &[Path::new(&git_path)])?;
+            // Reset the index entry to match HEAD, which removes it from staging
+            let head_commit = head.peel_to_commit()?;
+            repo.reset_default(Some(head_commit.as_object()), std::iter::once(git_path.as_str()))?;
         }
         Err(_) => {
             // No HEAD (initial repo) — remove from index entirely
@@ -226,6 +226,14 @@ pub fn commit_staged_changes(repo_path: &Path, message: &str) -> Result<(), git2
         &[&parent_commit],
     )?;
 
+    Ok(())
+}
+
+/// Fetch from remote without merging (blocking — run on background executor)
+pub fn fetch_from_remote(repo_path: &Path) -> Result<(), git2::Error> {
+    let repo = Repository::open(repo_path)?;
+    let mut remote = repo.find_remote("origin")?;
+    remote.fetch(&["+refs/heads/*:refs/remotes/origin/*"], None, None)?;
     Ok(())
 }
 
@@ -263,18 +271,63 @@ pub fn pull_from_remote(repo_path: &Path) -> Result<(), git2::Error> {
     }
 }
 
-/// Switch to a different branch, carrying uncommitted changes (blocking — run on background executor)
+/// Switch to a different branch, carrying uncommitted changes via auto-stash (blocking — run on background executor)
 pub fn switch_branch(repo_path: &Path, branch_name: &str) -> Result<(), git2::Error> {
-    let repo = Repository::open(repo_path)?;
-    let (object, reference) = repo.revparse_ext(branch_name)?;
-    // SAFE strategy: refuses to overwrite local modifications, carrying them to the new branch
-    let mut checkout = git2::build::CheckoutBuilder::default();
-    checkout.safe();
-    repo.checkout_tree(&object, Some(&mut checkout))?;
-    match reference {
-        Some(reference) => repo.set_head(reference.name().unwrap())?,
-        None => repo.set_head_detached(object.id())?,
+    let mut repo = Repository::open(repo_path)?;
+
+    // Auto-stash any dirty working tree so we can carry changes across branches
+    let has_changes = {
+        let mut opts = StatusOptions::new();
+        opts.include_untracked(true);
+        repo.statuses(Some(&mut opts))?.iter().any(|s| {
+            s.status().intersects(
+                git2::Status::INDEX_NEW
+                    | git2::Status::INDEX_MODIFIED
+                    | git2::Status::INDEX_DELETED
+                    | git2::Status::WT_MODIFIED
+                    | git2::Status::WT_DELETED
+                    | git2::Status::WT_NEW,
+            )
+        })
+    };
+
+    let stashed = if has_changes {
+        let sig = repo.signature().or_else(|_| {
+            git2::Signature::now("Pulsar", "pulsar@local")
+        })?;
+        match repo.stash_save(
+            &sig,
+            "pulsar: auto-stash before branch switch",
+            Some(git2::StashFlags::INCLUDE_UNTRACKED),
+        ) {
+            Ok(_) => true,
+            Err(_) => false,
+        }
+    } else {
+        false
+    };
+
+    // Resolve branch ref — handles both local names and remote tracking names.
+    // We drop object + reference BEFORE stash_pop to release the immutable borrow on repo.
+    {
+        let (object, reference) = repo.revparse_ext(branch_name)?;
+        let mut checkout = git2::build::CheckoutBuilder::default();
+        checkout.safe();
+        repo.checkout_tree(&object, Some(&mut checkout))?;
+        match reference {
+            Some(gref) => repo.set_head(gref.name().unwrap_or(branch_name))?,
+            None => repo.set_head_detached(object.id())?,
+        }
+    } // object + reference dropped here — immutable borrow released
+
+    // Re-apply stashed changes on the new branch
+    if stashed {
+        let mut stash_opts = git2::StashApplyOptions::new();
+        stash_opts.reinstantiate_index();
+        // Best-effort — if it conflicts the user can resolve manually
+        let _ = repo.stash_pop(0, Some(&mut stash_opts));
     }
+
     Ok(())
 }
 

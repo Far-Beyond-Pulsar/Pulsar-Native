@@ -91,8 +91,8 @@ fn render_branch_section(
                     .text_color(primary)
                     .child("✓"),
             );
-        } else if !is_remote {
-            // Local non-current branch: click to switch (carries uncommitted changes)
+        } else {
+            // Any non-current branch (local or remote tracking) can be switched to
             item = item.cursor_pointer().on_mouse_down(
                 gpui::MouseButton::Left,
                 cx.listener(move |this, _: &gpui::MouseDownEvent, _, cx| {
