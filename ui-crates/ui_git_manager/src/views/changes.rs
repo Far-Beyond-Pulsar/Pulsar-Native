@@ -1,6 +1,6 @@
 //! Changes view: staged / unstaged file lists + commit section
 
-use crate::{GitManager, models::*, FileContentResult};
+use crate::{GitManager, models::*, FileContentResult, DiscardFileChanges, IgnoreFile, IgnoreExtension, IgnoreFolder, CopyRelativePath, CopyFullPath, OpenInExplorer};
 use gpui::*;
 use gpui::prelude::FluentBuilder as _;
 use ui::{
@@ -8,6 +8,7 @@ use ui::{
     button::{Button, ButtonVariants as _},
     scroll::ScrollbarAxis,
     input::TextInput,
+    menu::context_menu::ContextMenuExt as _,
 };
 use super::toolbar::render_toolbar;
 
@@ -104,6 +105,7 @@ fn render_file_section(
     for file in files.iter() {
         let file_path = file.path.clone();
         let file_path_for_select = file.path.clone();
+        let file_path_for_ctx = file.path.clone();
         let file_status = file.status.short_str();
         let display_name = file
             .path
@@ -118,9 +120,31 @@ fn render_file_section(
             _ => warning,
         };
         let muted_hover = muted_bg.opacity(0.3);
+        let ext = std::path::Path::new(&file_path_for_ctx)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_string();
 
+        // Build all ancestor folder paths (relative to repo root) from innermost to outermost.
+        // e.g. "src/foo/bar.rs" → ["src/foo", "src"]
+        let folder_paths: Vec<String> = {
+            let norm = file_path_for_ctx.replace('\\', "/");
+            let mut parts: Vec<&str> = norm.split('/').collect();
+            parts.pop(); // remove filename
+            let mut folders = Vec::new();
+            while !parts.is_empty() {
+                folders.push(parts.join("/"));
+                parts.pop();
+            }
+            folders
+        };
+        let has_folders = !folder_paths.is_empty();
+
+        let row_id = SharedString::from(format!("git-file-{}", file.path));
         file_list = file_list.child(
             h_flex()
+                .id(row_id)
                 .px_1()
                 .py_1()
                 .rounded(radius)
@@ -134,6 +158,44 @@ fn render_file_section(
                         this.select_file(file_path_for_select.clone(), cx);
                     }),
                 )
+                .context_menu(move |menu, window, cx| {
+                    let fp = file_path_for_ctx.clone();
+                    let menu = menu
+                        .menu("Discard File Changes", Box::new(DiscardFileChanges { path: fp.clone() }))
+                        .separator()
+                        .menu("Ignore File", Box::new(IgnoreFile { path: fp.clone() }));
+
+                    let menu = if has_folders {
+                        let folders_for_sub = folder_paths.clone();
+                        menu.submenu("Ignore Folder", window, cx, move |mut sub, _w, _c| {
+                            for folder in &folders_for_sub {
+                                sub = sub.menu(
+                                    SharedString::from(folder.clone()),
+                                    Box::new(IgnoreFolder { folder: folder.clone() }),
+                                );
+                            }
+                            sub
+                        })
+                    } else {
+                        menu
+                    };
+
+                    let menu = if !ext.is_empty() {
+                        menu.menu(
+                            SharedString::from(format!("Ignore *.{}", ext)),
+                            Box::new(IgnoreExtension { path: fp.clone() }),
+                        )
+                    } else {
+                        menu
+                    };
+
+                    menu
+                        .separator()
+                        .menu("Copy Relative Path", Box::new(CopyRelativePath { path: fp.clone() }))
+                        .menu("Copy Full Path", Box::new(CopyFullPath { path: fp.clone() }))
+                        .separator()
+                        .menu("Show in Explorer", Box::new(OpenInExplorer { path: fp }))
+                })
                 // Status letter badge
                 .child(
                     div()

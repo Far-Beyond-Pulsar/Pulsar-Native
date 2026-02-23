@@ -11,6 +11,7 @@ engine_state = { path = "../../crates/engine_state" }
 chrono = "0.4"
 git2 = "0.19"
 keyring = "3"
+serde = { workspace = true }
 parking_lot = "0.12"
 similar = "2"
 

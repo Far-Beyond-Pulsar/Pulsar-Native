@@ -7,6 +7,7 @@ mod models;
 mod views;
 
 use gpui::*;
+use gpui::ClipboardItem;
 use ui::{Root, v_flex, h_flex, TitleBar, ActiveTheme as _, input::{InputState, InputEvent}};
 use std::path::PathBuf;
 use std::collections::HashSet;
@@ -15,6 +16,36 @@ use std::sync::Arc;
 
 pub use git_operations::*;
 pub use models::*;
+
+// ── File context-menu actions ────────────────────────────────────────────────
+#[derive(Clone, Debug, PartialEq, serde::Deserialize, Action)]
+#[action(namespace = git_manager, no_json)]
+pub struct DiscardFileChanges { pub path: String }
+
+#[derive(Clone, Debug, PartialEq, serde::Deserialize, Action)]
+#[action(namespace = git_manager, no_json)]
+pub struct IgnoreFile { pub path: String }
+
+#[derive(Clone, Debug, PartialEq, serde::Deserialize, Action)]
+#[action(namespace = git_manager, no_json)]
+pub struct IgnoreExtension { pub path: String }
+
+#[derive(Clone, Debug, PartialEq, serde::Deserialize, Action)]
+#[action(namespace = git_manager, no_json)]
+pub struct IgnoreFolder { pub folder: String }
+
+#[derive(Clone, Debug, PartialEq, serde::Deserialize, Action)]
+#[action(namespace = git_manager, no_json)]
+pub struct CopyRelativePath { pub path: String }
+
+#[derive(Clone, Debug, PartialEq, serde::Deserialize, Action)]
+#[action(namespace = git_manager, no_json)]
+pub struct CopyFullPath { pub path: String }
+
+#[derive(Clone, Debug, PartialEq, serde::Deserialize, Action)]
+#[action(namespace = git_manager, no_json)]
+pub struct OpenInExplorer { pub path: String }
+// ────────────────────────────────────────────────────────────────────────────
 
 /// Which remote operation is awaiting credential input
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -366,25 +397,28 @@ impl GitManager {
     fn run_remote_op(&mut self, op: PendingAuthOp, explicit_creds: Option<(String, String)>, cx: &mut Context<Self>) {
         let path = self.project_path.clone();
         self.op_error = None;
-        // Use explicit creds first, then fall back to in-memory cached creds
-        let creds = explicit_creds.clone().or_else(|| self.stored_creds.clone());
+        let cached_creds = self.stored_creds.clone();
         let explicit_was_provided = explicit_creds.is_some();
         cx.spawn(async move |this, mut cx| {
-            let creds_clone = creds.clone();
             let path_clone = path.clone();
             let result = cx.background_executor().spawn(async move {
-                match op {
+                // Priority: explicit (retry) → in-memory cache → OS keychain
+                let creds = explicit_creds
+                    .or(cached_creds)
+                    .or_else(|| load_git_credentials(&path));
+                let creds_used = creds.clone();
+                let res = match op {
                     PendingAuthOp::Fetch => fetch_from_remote(&path, creds),
                     PendingAuthOp::Push  => push_to_remote(&path, creds),
                     PendingAuthOp::Pull  => pull_from_remote(&path, creds),
-                }
+                };
+                (res, creds_used)
             }).await;
-            // Best-effort persist to OS credential store (fire and forget)
+            let (result, creds_used) = result;
+            // On success with any creds: persist to keychain and update memory cache
             if result.is_ok() {
-                if explicit_was_provided {
-                    if let Some((ref user, ref pass)) = creds_clone {
-                        store_git_credentials(&path_clone, user, pass);
-                    }
+                if let Some((ref user, ref pass)) = creds_used {
+                    store_git_credentials(&path_clone, user, pass);
                 }
             }
             // Single update — set stored_creds and handle errors together
@@ -393,15 +427,13 @@ impl GitManager {
                     match &result {
                         Ok(_) => {
                             // Cache creds in memory on success
-                            if let Some(c) = creds_clone {
+                            if let Some(c) = creds_used {
                                 gm.stored_creds = Some(c);
                             }
                         }
                         Err(e) if is_auth_error(e) => {
-                            // Stale stored creds failed — clear them and prompt again
-                            if !explicit_was_provided {
-                                gm.stored_creds = None;
-                            }
+                            // Stale creds failed — clear them and prompt
+                            gm.stored_creds = None;
                             gm.pending_auth_op = Some(op);
                             gm.op_error = Some("Authentication required".to_string());
                         }
@@ -435,6 +467,45 @@ impl GitManager {
         self.op_error = None;
         cx.notify();
     }
+
+    fn discard_file_changes(&mut self, path: &str, cx: &mut Context<Self>) {
+        let repo_path = self.project_path.clone();
+        let file_path = path.to_string();
+        cx.spawn(async move |this, mut cx| {
+            let result = cx.background_executor().spawn(async move {
+                discard_file_changes(&repo_path, &file_path)
+            }).await;
+            cx.update(|cx| {
+                this.update(cx, |gm, cx| {
+                    if let Err(e) = &result {
+                        gm.op_error = Some(format!("Discard failed: {}", e));
+                    }
+                    gm.refresh_state(cx);
+                }).ok();
+            }).ok();
+        }).detach();
+    }
+
+    fn append_gitignore(&mut self, line: String, cx: &mut Context<Self>) {
+        let repo_path = self.project_path.clone();
+        cx.spawn(async move |this, mut cx| {
+            let result = cx.background_executor().spawn(async move {
+                append_to_gitignore(&repo_path, &line)
+            }).await;
+            cx.update(|cx| {
+                this.update(cx, |gm, cx| {
+                    if let Err(e) = &result {
+                        gm.op_error = Some(format!("Gitignore failed: {}", e));
+                    }
+                    gm.refresh_state(cx);
+                }).ok();
+            }).ok();
+        }).detach();
+    }
+    fn open_in_explorer(&mut self, path: &str, _cx: &mut Context<Self>) {
+        let full_path = self.project_path.join(path);
+        open_in_explorer(&full_path);
+    }
 }
 
 impl Focusable for GitManager {
@@ -446,10 +517,46 @@ impl Focusable for GitManager {
 impl Render for GitManager {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
+        let project_path = self.project_path.clone();
 
         v_flex()
             .size_full()
             .bg(theme.background)
+            .key_context("GitManager")
+            .on_action(cx.listener(|this, action: &DiscardFileChanges, _window, cx| {
+                this.discard_file_changes(&action.path, cx);
+            }))
+            .on_action(cx.listener(|this, action: &IgnoreFile, _window, cx| {
+                let filename = std::path::Path::new(&action.path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(&action.path)
+                    .to_string();
+                this.append_gitignore(filename, cx);
+            }))
+            .on_action(cx.listener(|this, action: &IgnoreExtension, _window, cx| {
+                let ext = std::path::Path::new(&action.path)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| format!("*.{}", e))
+                    .unwrap_or_default();
+                if !ext.is_empty() {
+                    this.append_gitignore(ext, cx);
+                }
+            }))
+            .on_action(cx.listener(|this, action: &IgnoreFolder, _window, cx| {
+                this.append_gitignore(action.folder.clone(), cx);
+            }))
+            .on_action(cx.listener(move |_this, action: &CopyRelativePath, _window, cx| {
+                cx.write_to_clipboard(ClipboardItem::new_string(action.path.clone()));
+            }))
+            .on_action(cx.listener(move |_this, action: &CopyFullPath, _window, cx| {
+                let full = project_path.join(&action.path).to_string_lossy().to_string();
+                cx.write_to_clipboard(ClipboardItem::new_string(full));
+            }))
+            .on_action(cx.listener(|this, action: &OpenInExplorer, _window, cx| {
+                this.open_in_explorer(&action.path, cx);
+            }))
             .child(TitleBar::new())
             .child(
                 h_flex()
