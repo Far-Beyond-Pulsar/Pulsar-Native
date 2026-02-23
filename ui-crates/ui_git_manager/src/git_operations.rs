@@ -3,7 +3,6 @@
 use crate::models::*;
 use git2::{Repository, StatusOptions, BranchType};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
 
 /// Load the complete repository state (blocking — run on background executor)
 pub fn load_repository_state(path: &Path) -> Result<RepositoryState, git2::Error> {
@@ -295,48 +294,44 @@ pub fn is_auth_error(e: &git2::Error) -> bool {
         || e.class() == git2::ErrorClass::Http
 }
 
-/// Persist credentials to the system git credential store via `git credential approve`.
-/// Called after a successful remote op that used explicit creds.
+/// Derive a stable keyring service name from the remote URL (host only, no path).
+fn keyring_service(repo_path: &Path) -> Option<String> {
+    let repo = Repository::open(repo_path).ok()?;
+    let remote_name = find_remote_name(&repo).ok()?;
+    let url = repo.find_remote(&remote_name).ok()?.url()?.to_string();
+    // Extract host: "https://github.com/org/repo" → "github.com"
+    let host = url
+        .splitn(3, "//")
+        .nth(1)
+        .and_then(|s| s.split('/').next())
+        .unwrap_or(&url)
+        .to_string();
+    Some(format!("pulsar-git:{}", host))
+}
+
+/// Save credentials to the OS keychain (Windows Credential Manager / macOS Keychain / Linux Secret Service).
 pub fn store_git_credentials(repo_path: &Path, username: &str, password: &str) {
-    let repo = match Repository::open(repo_path) {
-        Ok(r) => r,
-        Err(_) => return,
-    };
-    let remote_name = find_remote_name(&repo).unwrap_or_else(|_| "origin".to_string());
-    let url = repo
-        .find_remote(&remote_name)
-        .ok()
-        .and_then(|r| r.url().map(|u| u.to_string()));
-    let url = match url {
-        Some(u) => u,
-        None => return,
-    };
-    // Parse scheme + host from the URL so git-credential gets the right context
-    let parsed = url.splitn(3, '/').collect::<Vec<_>>();
-    let (protocol, host) = if parsed.len() >= 3 {
-        let protocol = parsed[0].trim_end_matches(':').to_string();
-        let host = parsed[2].to_string();
-        (protocol, host)
-    } else {
-        return;
-    };
-    let input = format!(
-        "protocol={}\nhost={}\nusername={}\npassword={}\n",
-        protocol, host, username, password
-    );
-    let _ = std::process::Command::new("git")
-        .args(["credential", "approve"])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .and_then(|mut child| {
-            use std::io::Write;
-            if let Some(stdin) = child.stdin.as_mut() {
-                let _ = stdin.write_all(input.as_bytes());
-            }
-            child.wait()
-        });
+    if let Some(service) = keyring_service(repo_path) {
+        let entry = keyring::Entry::new(&service, username);
+        if let Ok(e) = entry {
+            let _ = e.set_password(password);
+        }
+    }
+}
+
+/// Load credentials from the OS keychain. Returns `(username, password)` or `None`.
+pub fn load_git_credentials(repo_path: &Path) -> Option<(String, String)> {
+    // Try to find username from git config first
+    let repo = Repository::open(repo_path).ok()?;
+    let service = keyring_service(repo_path)?;
+    // Look up any stored entry for this service — try common usernames
+    let cfg = repo.config().ok()?;
+    let username = cfg.get_string("credential.username")
+        .or_else(|_| cfg.get_string("user.email"))
+        .unwrap_or_else(|_| "git".to_string());
+    let entry = keyring::Entry::new(&service, &username).ok()?;
+    let password = entry.get_password().ok()?;
+    Some((username, password))
 }
 
 /// Build remote callbacks that try SSH-agent → credential_helper → explicit creds.

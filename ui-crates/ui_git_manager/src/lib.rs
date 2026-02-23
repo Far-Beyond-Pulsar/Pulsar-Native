@@ -54,6 +54,9 @@ pub struct GitManager {
     pub(crate) pending_auth_op: Option<PendingAuthOp>,
     pub(crate) auth_username_input: Entity<InputState>,
     pub(crate) auth_password_input: Entity<InputState>,
+    /// Credentials cached in process memory after a successful auth — reused automatically.
+    /// Never written to disk by us; cleared when the window closes.
+    stored_creds: Option<(String, String)>,
     current_view: GitView,
     focus_handle: FocusHandle,
 }
@@ -103,17 +106,24 @@ impl GitManager {
             input
         });
 
-        // Load initial git state
+        // Load initial git state + stored credentials from OS keychain
         let path = project_path.clone();
         cx.spawn(async move |this, mut cx| {
-            if let Ok(state) = cx.background_executor().spawn(async move { load_repository_state(&path) }).await {
-                cx.update(|cx| {
-                    this.update(cx, |git_manager, cx| {
-                        *git_manager.repo_state.write() = state;
-                        cx.notify();
-                    }).ok();
+            let path2 = path.clone();
+            let (state, stored_creds) = cx.background_executor().spawn(async move {
+                let state = load_repository_state(&path).ok();
+                let creds = load_git_credentials(&path);
+                (state, creds)
+            }).await;
+            cx.update(|cx| {
+                this.update(cx, |git_manager, cx| {
+                    if let Some(s) = state {
+                        *git_manager.repo_state.write() = s;
+                    }
+                    git_manager.stored_creds = stored_creds;
+                    cx.notify();
                 }).ok();
-            }
+            }).ok();
         }).detach();
 
         Self {
@@ -135,6 +145,7 @@ impl GitManager {
             pending_auth_op: None,
             auth_username_input,
             auth_password_input,
+            stored_creds: None,
             current_view: GitView::Changes,
             focus_handle: cx.focus_handle(),
         }
@@ -352,9 +363,12 @@ impl GitManager {
         cx.notify();
     }
 
-    fn run_remote_op(&mut self, op: PendingAuthOp, creds: Option<(String, String)>, cx: &mut Context<Self>) {
+    fn run_remote_op(&mut self, op: PendingAuthOp, explicit_creds: Option<(String, String)>, cx: &mut Context<Self>) {
         let path = self.project_path.clone();
         self.op_error = None;
+        // Use explicit creds first, then fall back to in-memory cached creds
+        let creds = explicit_creds.clone().or_else(|| self.stored_creds.clone());
+        let explicit_was_provided = explicit_creds.is_some();
         cx.spawn(async move |this, mut cx| {
             let creds_clone = creds.clone();
             let path_clone = path.clone();
@@ -365,23 +379,35 @@ impl GitManager {
                     PendingAuthOp::Pull  => pull_from_remote(&path, creds),
                 }
             }).await;
-            // Persist explicit creds on success so git credential store has them for next time
+            // Best-effort persist to OS credential store (fire and forget)
             if result.is_ok() {
-                if let Some((user, pass)) = creds_clone {
-                    store_git_credentials(&path_clone, &user, &pass);
+                if explicit_was_provided {
+                    if let Some((ref user, ref pass)) = creds_clone {
+                        store_git_credentials(&path_clone, user, pass);
+                    }
                 }
             }
+            // Single update — set stored_creds and handle errors together
             cx.update(|cx| {
                 this.update(cx, |gm, cx| {
                     match &result {
+                        Ok(_) => {
+                            // Cache creds in memory on success
+                            if let Some(c) = creds_clone {
+                                gm.stored_creds = Some(c);
+                            }
+                        }
                         Err(e) if is_auth_error(e) => {
+                            // Stale stored creds failed — clear them and prompt again
+                            if !explicit_was_provided {
+                                gm.stored_creds = None;
+                            }
                             gm.pending_auth_op = Some(op);
                             gm.op_error = Some("Authentication required".to_string());
                         }
                         Err(e) => {
                             gm.op_error = Some(format!("{} failed: {}", op.label(), e));
                         }
-                        Ok(_) => {}
                     }
                     gm.refresh_state(cx);
                 }).ok();
