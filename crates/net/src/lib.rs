@@ -17,12 +17,12 @@ impl PulsarIntNetConnection {
         self.connection.close(error_code.into(), reason.as_bytes());
     }
 
-    pub fn remote_address(&self) -> Option<std::net::SocketAddr> {
-        self.connection.remote_address().ok()
+    pub fn remote_address(&self) -> std::net::SocketAddr {
+        self.connection.remote_address()
     }
 
     pub fn local_address(&self) -> Option<std::net::SocketAddr> {
-        self.connection.local_address().ok()
+        self.endpoint.local_addr().ok()
     }
 
     pub fn is_connected(&self) -> bool {
