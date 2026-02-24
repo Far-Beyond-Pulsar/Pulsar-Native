@@ -355,8 +355,11 @@ impl SettingsScreenV2 {
     }
 
     fn save_all_changes(&mut self, cx: &mut Context<Self>) {
+        tracing::info!("Saving all changes for {:?} settings", self.active_tab);
+
         // Apply all pending changes to the appropriate storage
         for (key, value) in self.pending_changes.drain() {
+            tracing::debug!("Applying change: {} = {:?}", key, value);
             match self.active_tab {
                 SettingsTab::Global => {
                     self.container.global.set(key, value);
@@ -364,6 +367,8 @@ impl SettingsScreenV2 {
                 SettingsTab::Project => {
                     if let Some(ref mut project) = self.container.project {
                         project.set(key, value);
+                    } else {
+                        tracing::warn!("No project settings available - cannot save project setting: {}", key);
                     }
                 }
             }
@@ -374,13 +379,20 @@ impl SettingsScreenV2 {
             SettingsTab::Global => {
                 if let Err(e) = self.container.global.save() {
                     tracing::error!("Failed to save global settings: {}", e);
+                } else {
+                    tracing::info!("Successfully saved global settings");
                 }
             }
             SettingsTab::Project => {
                 if let Some(ref project) = self.container.project {
+                    tracing::info!("Saving project settings to: {:?}", project.path());
                     if let Err(e) = project.save() {
                         tracing::error!("Failed to save project settings: {}", e);
+                    } else {
+                        tracing::info!("Successfully saved project settings");
                     }
+                } else {
+                    tracing::warn!("No project is currently loaded - cannot save project settings");
                 }
             }
         }

@@ -13,8 +13,10 @@ impl SettingsWindow {
         // Initialize default settings in the registry if not already done
         engine_state::register_default_settings();
 
-        // For now, we don't pass a project path - this could be enhanced to accept one
-        let project_path = None;
+        // Get the current project path from the engine context
+        let project_path = engine_state::EngineContext::global()
+            .and_then(|ctx| ctx.project.read().ok())
+            .map(|project| project.path.clone());
 
         let settings_screen = cx.new(|cx| SettingsScreenV2::new(
             SettingsScreenV2Props {
