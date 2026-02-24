@@ -2,6 +2,7 @@
 mod tests {
     use super::*;
     use plugin_editor_api::FileTypeId;
+    use type_db::TypeDatabase;
 
     // # TypeDatabase Tests
     //
