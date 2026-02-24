@@ -20,7 +20,7 @@ pub use panels::{LogsPanel, ResourceMonitorPanel, SystemInfoPanel, MemoryBreakdo
 pub use performance_metrics::{PerformanceMetrics, SharedPerformanceMetrics, create_shared_metrics};
 pub use system_info::{SystemInfo, SharedSystemInfo, create_shared_info};
 pub use memory_tracking::{MemoryTracker, SharedMemoryTracker, create_memory_tracker, MemoryCategory, MemoryStatsSnapshot};
-pub use tracking_allocator::{TrackingAllocator, MemoryCategoryGuard};
+pub use tracking_allocator::{TrackingAllocator, MemoryCategoryGuard, is_tracking_active, enable_tracking, disable_tracking};
 pub use atomic_memory_tracking::{ATOMIC_MEMORY_COUNTERS, AllocationEntry, SizeBucket};
 pub use type_tracking::{TYPE_TRACKER, AllocationSite};
 

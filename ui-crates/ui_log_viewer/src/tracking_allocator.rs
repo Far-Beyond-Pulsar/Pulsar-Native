@@ -5,11 +5,29 @@
 //! happens only in the background snapshot thread for the top 100 call sites.
 
 use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
 use std::cell::Cell;
 use crate::memory_tracking::MemoryCategory;
 use crate::atomic_memory_tracking::ATOMIC_MEMORY_COUNTERS;
 use crate::caller_tracking;
+
+/// Global flag to enable/disable tracking. When false, allocator behaves exactly like System allocator.
+static TRACKING_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// Enable allocation tracking (captures backtraces and records stats).
+pub fn enable_tracking() {
+    TRACKING_ACTIVE.store(true, Ordering::Relaxed);
+}
+
+/// Disable allocation tracking (zero overhead, behaves like System allocator).
+pub fn disable_tracking() {
+    TRACKING_ACTIVE.store(false, Ordering::Relaxed);
+}
+
+/// Check if tracking is currently active.
+pub fn is_tracking_active() -> bool {
+    TRACKING_ACTIVE.load(Ordering::Relaxed)
+}
 
 thread_local! {
     static TRACKING_ENABLED: Cell<bool> = const { Cell::new(true) };
@@ -26,6 +44,11 @@ impl TrackingAllocator {
 
     #[inline]
     fn record_alloc(&self, ptr: *mut u8, layout: Layout) {
+        // Early exit if tracking is disabled — zero overhead, just like System allocator.
+        if !TRACKING_ACTIVE.load(Ordering::Relaxed) {
+            return;
+        }
+
         let was_enabled = TRACKING_ENABLED.with(|e| { let v = e.get(); if v { e.set(false); } v });
         if !was_enabled {
             // Re-entry: this is the tracker's own internal allocation (DashMap resize, Vec, etc.).
@@ -55,6 +78,11 @@ impl TrackingAllocator {
 
     #[inline]
     fn record_dealloc(&self, ptr: *mut u8, layout: Layout) {
+        // Early exit if tracking is disabled — zero overhead, just like System allocator.
+        if !TRACKING_ACTIVE.load(Ordering::Relaxed) {
+            return;
+        }
+
         let was_enabled = TRACKING_ENABLED.with(|e| { let v = e.get(); if v { e.set(false); } v });
         if !was_enabled {
             // Re-entry: tracker's own dealloc — keep global total accurate.

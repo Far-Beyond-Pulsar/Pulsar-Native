@@ -10,6 +10,7 @@ use ui::{
     input::{InputState, TextInput},
 };
 use crate::caller_tracking::{CALLER_SNAPSHOT, CallerRow, refresh_snapshot};
+use crate::tracking_allocator::{is_tracking_active, enable_tracking, disable_tracking};
 
 // ─── Sort state ───────────────────────────────────────────────────────────────
 
@@ -194,6 +195,14 @@ impl Render for CallerSitesPanel {
         let live_total_color  = if tot_live  < 0 { theme.danger } else { theme.success };
         let leak_total_color  = if tot_leak  > 0 { theme.danger } else { theme.muted_foreground };
 
+        // Check current tracking state
+        let tracking_active = is_tracking_active();
+        let (btn_text, btn_bg, btn_text_color) = if tracking_active {
+            ("Tracking: ON", theme.success.opacity(0.2), theme.success)
+        } else {
+            ("Tracking: OFF", theme.muted.opacity(0.3), theme.muted_foreground)
+        };
+
         v_flex()
             .size_full()
             .bg(theme.background)
@@ -217,6 +226,24 @@ impl Render for CallerSitesPanel {
                             .bg(theme.danger.opacity(0.15)).text_xs()
                             .text_color(theme.danger)
                             .child(format!("process live: {}", CallerSitesPanel::fmt_live(global_live)))
+                    )
+                    .child(
+                        // Toggle button
+                        div().px_3().py(px(4.0)).rounded(px(4.0))
+                            .bg(btn_bg)
+                            .text_xs().font_weight(FontWeight::SEMIBOLD)
+                            .text_color(btn_text_color)
+                            .cursor_pointer()
+                            .hover(|s| s.bg(theme.accent.opacity(0.3)))
+                            .on_mouse_down(MouseButton::Left, cx.listener(move |_this, _ev, _window, cx| {
+                                if is_tracking_active() {
+                                    disable_tracking();
+                                } else {
+                                    enable_tracking();
+                                }
+                                cx.notify();
+                            }))
+                            .child(btn_text)
                     )
                     .child(div().flex_1().child(TextInput::new(&self.filter_input)))
             )
