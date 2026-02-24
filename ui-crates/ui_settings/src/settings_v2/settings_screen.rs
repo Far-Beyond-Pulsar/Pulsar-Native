@@ -7,8 +7,11 @@ use gpui::prelude::FluentBuilder as _;
 use std::path::PathBuf;
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme, Disableable as _, Icon, IconName, scroll::ScrollbarAxis, StyledExt as _,
-    input::InputEvent,
+    h_flex, v_flex, ActiveTheme, Colorize as _, Disableable as _, Icon, IconName, scroll::ScrollbarAxis, StyledExt as _, IndexPath,
+    input::{InputEvent, NumberInputEvent},
+    dropdown::{DropdownEvent, DropdownState},
+    slider::{SliderEvent, SliderState, SliderValue},
+    color_picker::{ColorPickerEvent, ColorPickerState},
 };
 
 /// Props for the new settings screen
@@ -30,8 +33,14 @@ pub struct SettingsScreenV2 {
     has_unsaved_changes: bool,
     /// Input states for text/number fields
     input_states: std::collections::HashMap<String, Entity<ui::input::InputState>>,
-    /// Subscriptions to input events (prevents them from being dropped)
-    subscriptions: std::collections::HashMap<String, Subscription>,
+    /// Dropdown states for dropdown fields
+    dropdown_states: std::collections::HashMap<String, Entity<DropdownState<Vec<String>>>>,
+    /// Slider states for slider fields
+    slider_states: std::collections::HashMap<String, Entity<SliderState>>,
+    /// Color picker states for color fields
+    color_picker_states: std::collections::HashMap<String, Entity<ColorPickerState>>,
+    /// Subscriptions to component events (prevents them from being dropped)
+    subscriptions: std::collections::HashMap<String, Vec<Subscription>>,
 }
 
 impl SettingsScreenV2 {
@@ -54,6 +63,9 @@ impl SettingsScreenV2 {
             pending_changes: std::collections::HashMap::new(),
             has_unsaved_changes: false,
             input_states: std::collections::HashMap::new(),
+            dropdown_states: std::collections::HashMap::new(),
+            slider_states: std::collections::HashMap::new(),
+            color_picker_states: std::collections::HashMap::new(),
             subscriptions: std::collections::HashMap::new(),
         }
     }
@@ -133,9 +145,149 @@ impl SettingsScreenV2 {
 
         // Store state and subscription
         self.input_states.insert(key.to_string(), state.clone());
-        self.subscriptions.insert(key.to_string(), subscription);
+        self.subscriptions.entry(key.to_string()).or_insert_with(Vec::new).push(subscription);
 
         state
+    }
+
+    fn get_or_create_dropdown_state(
+        &mut self,
+        key: &str,
+        options: &[engine_state::DropdownOption],
+        current_value: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>
+    ) -> Entity<DropdownState<Vec<String>>> {
+        if let Some(state) = self.dropdown_states.get(key) {
+            return state.clone();
+        }
+
+        // Convert options to strings (Vec<String> is the delegate)
+        let option_values: Vec<String> = options.iter().map(|opt| opt.value.clone()).collect();
+        let selected_index = options.iter().position(|opt| opt.value == current_value)
+            .map(|row| IndexPath::default().row(row));
+
+        // Create dropdown state with Vec<String> as delegate
+        let state = cx.new(|cx| DropdownState::new(option_values, selected_index, window, cx));
+
+        // Subscribe to dropdown events
+        let key_clone = key.to_string();
+        let subscription = cx.subscribe_in(
+            &state,
+            window,
+            move |this, _state, event: &DropdownEvent<Vec<String>>, _window, _cx| {
+                if let DropdownEvent::Confirm(Some(value)) = event {
+                    this.pending_changes.insert(key_clone.clone(), SettingValue::String(value.clone()));
+                    this.has_unsaved_changes = true;
+                }
+            },
+        );
+
+        // Store state and subscription
+        self.dropdown_states.insert(key.to_string(), state.clone());
+        self.subscriptions.entry(key.to_string()).or_insert_with(Vec::new).push(subscription);
+
+        state
+    }
+
+    fn get_or_create_slider_state(
+        &mut self,
+        key: &str,
+        min: f64,
+        max: f64,
+        step: f64,
+        current_value: f64,
+        window: &mut Window,
+        cx: &mut Context<Self>
+    ) -> Entity<SliderState> {
+        if let Some(state) = self.slider_states.get(key) {
+            return state.clone();
+        }
+
+        // Create slider state
+        let state = cx.new(|_cx| {
+            SliderState::new()
+                .min(min as f32)
+                .max(max as f32)
+                .step(step as f32)
+                .default_value(current_value as f32)
+        });
+
+        // Subscribe to slider events
+        let key_clone = key.to_string();
+        let subscription = cx.subscribe_in(
+            &state,
+            window,
+            move |this, _state, event: &SliderEvent, _window, _cx| {
+                if let SliderEvent::Change(value) = event {
+                    let num_value = match value {
+                        SliderValue::Single(v) => *v as f64,
+                        SliderValue::Range(_, end) => *end as f64, // Use end value for range
+                    };
+                    this.pending_changes.insert(key_clone.clone(), SettingValue::Number(num_value));
+                    this.has_unsaved_changes = true;
+                }
+            },
+        );
+
+        // Store state and subscription
+        self.slider_states.insert(key.to_string(), state.clone());
+        self.subscriptions.entry(key.to_string()).or_insert_with(Vec::new).push(subscription);
+
+        state
+    }
+
+    fn get_or_create_color_picker_state(
+        &mut self,
+        key: &str,
+        current_value: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>
+    ) -> Entity<ColorPickerState> {
+        if let Some(state) = self.color_picker_states.get(key) {
+            return state.clone();
+        }
+
+        // Parse color from hex string
+        let color = Self::parse_hex_color(current_value);
+
+        // Create color picker state
+        let state = cx.new(|cx| {
+            ColorPickerState::new(window, cx)
+                .default_value(color)
+        });
+
+        // Subscribe to color picker events
+        let key_clone = key.to_string();
+        let subscription = cx.subscribe_in(
+            &state,
+            window,
+            move |this, _state, event: &ColorPickerEvent, _window, _cx| {
+                if let ColorPickerEvent::Change(Some(color)) = event {
+                    let hex = Self::color_to_hex(*color);
+                    this.pending_changes.insert(key_clone.clone(), SettingValue::String(hex));
+                    this.has_unsaved_changes = true;
+                }
+            },
+        );
+
+        // Store state and subscription
+        self.color_picker_states.insert(key.to_string(), state.clone());
+        self.subscriptions.entry(key.to_string()).or_insert_with(Vec::new).push(subscription);
+
+        state
+    }
+
+    fn parse_hex_color(hex: &str) -> Hsla {
+        Hsla::parse_hex(hex).unwrap_or(Hsla::parse_hex("#000000").unwrap())
+    }
+
+    fn color_to_hex(color: Hsla) -> String {
+        let rgb = color.to_rgb();
+        let r = (rgb.r * 255.0).round() as u8;
+        let g = (rgb.g * 255.0).round() as u8;
+        let b = (rgb.b * 255.0).round() as u8;
+        format!("#{:02x}{:02x}{:02x}", r, g, b)
     }
 
     fn get_current_value(&self, key: &str) -> SettingValue {
@@ -575,10 +727,12 @@ impl SettingsScreenV2 {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         use engine_state::FieldType;
-        use ui::input::TextInput;
+        use ui::input::{TextInput, NumberInput};
         use ui::switch::Switch;
         use ui::button::{Button, ButtonVariants as _};
-        use ui::menu::popup_menu::PopupMenuExt;
+        use ui::dropdown::Dropdown;
+        use ui::slider::Slider;
+        use ui::color_picker::ColorPicker;
 
         let key = definition.key.clone();
 
@@ -615,8 +769,7 @@ impl SettingsScreenV2 {
                     .gap_2()
                     .items_center()
                     .child(
-                        TextInput::new(&input_state)
-                            .w(px(100.0))
+                        NumberInput::new(&input_state)
                     )
                     .when(min_opt.is_some() || max_opt.is_some(), |this| {
                         this.child(
@@ -651,81 +804,33 @@ impl SettingsScreenV2 {
             }
 
             FieldType::Dropdown { options } => {
-                let theme = cx.theme();
                 let current_str = current_value.as_string().unwrap_or("");
-                let current_label = options
-                    .iter()
-                    .find(|opt| opt.value == current_str)
-                    .map(|opt| opt.label.as_str())
-                    .unwrap_or(current_str);
 
-                // For now, show current value in a styled div
-                // Full dropdown would require custom action types
-                div()
-                    .px_3()
-                    .py_1p5()
-                    .min_w(px(150.0))
-                    .rounded_md()
-                    .bg(theme.background)
-                    .border_1()
-                    .border_color(theme.border)
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(theme.foreground)
-                                    .child(current_label.to_string())
-                            )
-                            .child(
-                                Icon::new(IconName::ChevronDown)
-                                    .size(px(16.0))
-                                    .text_color(theme.muted_foreground)
-                            )
-                    )
+                // Create dropdown state with event subscription
+                let dropdown_state = self.get_or_create_dropdown_state(&key, options, current_str, window, cx);
+
+                Dropdown::new(&dropdown_state)
+                    .w(px(200.0))
                     .into_any_element()
             }
 
-            FieldType::Slider { min, max, step: _ } => {
-                let theme = cx.theme();
+            FieldType::Slider { min, max, step } => {
                 let value = current_value.as_number().unwrap_or(*min);
-                let percentage = ((value - min) / (max - min) * 100.0).clamp(0.0, 100.0);
+                let min_val = *min;
+                let max_val = *max;
+                let step_val = *step;
+
+                // Create slider state BEFORE borrowing theme
+                let slider_state = self.get_or_create_slider_state(&key, min_val, max_val, step_val, value, window, cx);
+
+                let theme = cx.theme();
 
                 v_flex()
                     .gap_2()
                     .min_w(px(200.0))
                     .child(
-                        div()
-                            .w_full()
-                            .h(px(6.0))
-                            .rounded_full()
-                            .bg(theme.secondary)
-                            .relative()
-                            .child(
-                                div()
-                                    .absolute()
-                                    .left_0()
-                                    .top_0()
-                                    .h_full()
-                                    .w(relative((percentage / 100.0) as f32))
-                                    .rounded_full()
-                                    .bg(theme.primary)
-                            )
-                            .child(
-                                div()
-                                    .absolute()
-                                    .left(relative((percentage / 100.0) as f32))
-                                    .top(px(-3.0))
-                                    .w(px(12.0))
-                                    .h(px(12.0))
-                                    .rounded_full()
-                                    .bg(theme.primary)
-                                    .border_2()
-                                    .border_color(theme.background)
-                                    .shadow_md()
-                            )
+                        Slider::new(&slider_state)
+                            .horizontal()
                     )
                     .child(
                         h_flex()
@@ -734,7 +839,7 @@ impl SettingsScreenV2 {
                                 div()
                                     .text_xs()
                                     .text_color(theme.muted_foreground)
-                                    .child(format!("{}", min))
+                                    .child(format!("{}", min_val))
                             )
                             .child(
                                 div()
@@ -747,44 +852,19 @@ impl SettingsScreenV2 {
                                 div()
                                     .text_xs()
                                     .text_color(theme.muted_foreground)
-                                    .child(format!("{}", max))
+                                    .child(format!("{}", max_val))
                             )
                     )
                     .into_any_element()
             }
 
             FieldType::ColorPicker => {
-                let theme = cx.theme();
                 let color_str = current_value.as_string().unwrap_or("#000000");
 
-                h_flex()
-                    .gap_3()
-                    .items_center()
-                    .child(
-                        div()
-                            .w(px(40.0))
-                            .h(px(40.0))
-                            .rounded_md()
-                            .border_2()
-                            .border_color(theme.border)
-                            .bg(gpui::rgb(0x000000))
-                    )
-                    .child(
-                        div()
-                            .px_3()
-                            .py_1p5()
-                            .rounded_md()
-                            .bg(theme.background)
-                            .border_1()
-                            .border_color(theme.border)
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .font_family("monospace")
-                                    .text_color(theme.foreground)
-                                    .child(color_str.to_string())
-                            )
-                    )
+                // Create color picker state with event subscription
+                let color_picker_state = self.get_or_create_color_picker_state(&key, color_str, window, cx);
+
+                ColorPicker::new(&color_picker_state)
                     .into_any_element()
             }
 
