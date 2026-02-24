@@ -15,8 +15,11 @@ impl SettingsWindow {
 
         // Get the current project path from the engine context
         let project_path = engine_state::EngineContext::global()
-            .and_then(|ctx| ctx.project.read().ok())
-            .map(|project| project.path.clone());
+            .and_then(|ctx| {
+                ctx.project.read()
+                    .as_ref()
+                    .map(|project| project.path.clone())
+            });
 
         let settings_screen = cx.new(|cx| SettingsScreenV2::new(
             SettingsScreenV2Props {
