@@ -162,9 +162,18 @@ impl SettingsScreenV2 {
             return state.clone();
         }
 
-        // Convert options to strings (Vec<String> is the delegate)
-        let option_values: Vec<String> = options.iter().map(|opt| opt.value.clone()).collect();
-        let selected_index = options.iter().position(|opt| opt.value == current_value)
+        // Special handling for theme dropdown - get themes from ThemeRegistry
+        let option_values: Vec<String> = if key == "appearance.theme" {
+            ui::theme::ThemeRegistry::global(cx)
+                .themes()
+                .keys()
+                .map(|k| k.to_string())
+                .collect()
+        } else {
+            options.iter().map(|opt| opt.value.clone()).collect()
+        };
+
+        let selected_index = option_values.iter().position(|opt| opt == current_value)
             .map(|row| IndexPath::default().row(row));
 
         // Create dropdown state with Vec<String> as delegate
@@ -172,13 +181,27 @@ impl SettingsScreenV2 {
 
         // Subscribe to dropdown events
         let key_clone = key.to_string();
+        let is_theme = key == "appearance.theme";
         let subscription = cx.subscribe_in(
             &state,
             window,
-            move |this, _state, event: &DropdownEvent<Vec<String>>, _window, _cx| {
+            move |this, _state, event: &DropdownEvent<Vec<String>>, _window, cx| {
                 if let DropdownEvent::Confirm(Some(value)) = event {
                     this.pending_changes.insert(key_clone.clone(), SettingValue::String(value.clone()));
                     this.has_unsaved_changes = true;
+
+                    // Special handling for theme - apply immediately for preview
+                    if is_theme {
+                        let theme_name = SharedString::from(value.clone());
+                        if let Some(theme_config) = ui::theme::ThemeRegistry::global(cx)
+                            .themes()
+                            .get(&theme_name)
+                            .cloned()
+                        {
+                            ui::theme::Theme::global_mut(cx).apply_config(&theme_config);
+                            cx.refresh_windows();
+                        }
+                    }
                 }
             },
         );
@@ -290,10 +313,20 @@ impl SettingsScreenV2 {
         format!("#{:02x}{:02x}{:02x}", r, g, b)
     }
 
-    fn get_current_value(&self, key: &str) -> SettingValue {
+    fn get_current_value(&self, key: &str, cx: &App) -> SettingValue {
         // Check pending changes first
         if let Some(value) = self.pending_changes.get(key) {
             return value.clone();
+        }
+
+        // Special handling for theme - get from Theme global
+        if key == "appearance.theme" {
+            let theme = ui::theme::Theme::global(cx);
+            let theme_name = match theme.mode {
+                ui::theme::ThemeMode::Light => theme.light_theme.name.to_string(),
+                ui::theme::ThemeMode::Dark => theme.dark_theme.name.to_string(),
+            };
+            return SettingValue::String(theme_name);
         }
 
         // Then check the appropriate storage
@@ -960,7 +993,7 @@ impl SettingsScreenV2 {
                         v_flex()
                             .w_full()
                             .children(settings.iter().map(|def| {
-                                let current_value = self.get_current_value(&def.key);
+                                let current_value = self.get_current_value(&def.key, cx);
                                 self.render_setting_row_inline(def, &current_value, window, cx)
                             }))
                     )
