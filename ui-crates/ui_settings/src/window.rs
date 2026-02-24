@@ -1,24 +1,24 @@
-use crate::settings::{SettingsScreen, SettingsScreenProps};
+use crate::settings_v2::{SettingsScreenV2, SettingsScreenV2Props};
 use gpui::*;
 use ui::{
     v_flex, ActiveTheme, TitleBar,
 };
 
 pub struct SettingsWindow {
-    settings_screen: Option<Entity<SettingsScreen>>,
+    settings_screen: Option<Entity<SettingsScreenV2>>,
 }
 
 impl SettingsWindow {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let proj_dirs = directories::ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
-            .expect("Could not determine app data directory");
-        let appdata_dir = proj_dirs.data_dir();
-        let config_dir = appdata_dir.join("configs");
-        let config_file = config_dir.join("engine.toml");
+        // Initialize default settings in the registry if not already done
+        engine_state::register_default_settings();
 
-        let settings_screen = cx.new(|cx| SettingsScreen::new(
-            SettingsScreenProps {
-                config_path: config_file,
+        // For now, we don't pass a project path - this could be enhanced to accept one
+        let project_path = None;
+
+        let settings_screen = cx.new(|cx| SettingsScreenV2::new(
+            SettingsScreenV2Props {
+                project_path,
             },
             window,
             cx

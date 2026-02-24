@@ -2942,8 +2942,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "dashmap 6.1.0",
+ "directories 5.0.1",
+ "once_cell",
  "parking_lot",
  "rust-discord-activity",
+ "serde",
+ "toml 0.8.23",
  "tracing",
  "type_db",
 ]
@@ -8172,6 +8176,7 @@ dependencies = [
  "engine_state",
  "gpui",
  "image",
+ "once_cell",
  "parking_lot",
  "profiling 0.1.0",
  "pulsar_std 0.1.0",
@@ -12359,6 +12364,7 @@ dependencies = [
  "directories 5.0.1",
  "engine_state",
  "gpui",
+ "tracing",
  "ui",
 ]
 

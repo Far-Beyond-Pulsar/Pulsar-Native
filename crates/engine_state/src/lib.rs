@@ -46,6 +46,11 @@ mod multiuser;
 pub mod context;
 pub mod renderers_typed;
 
+// Settings system
+pub mod settings_registry;
+pub mod settings_storage;
+pub mod settings_defaults;
+
 pub use channels::{WindowRequest, WindowRequestSender, WindowRequestReceiver, window_request_channel};
 pub use discord::DiscordPresence;
 
@@ -63,6 +68,14 @@ pub use multiuser::{
 // Re-export typed systems as primary API
 pub use context::{EngineContext, WindowContext, ProjectContext, LaunchContext};
 pub use renderers_typed::{TypedRendererHandle, TypedRendererRegistry, RendererType};
+
+// Re-export settings system
+pub use settings_registry::{
+    DropdownOption, FieldType, SettingDefinition, SettingScope, SettingValue,
+    SettingsRegistry, register_setting, registry,
+};
+pub use settings_storage::{GlobalSettings, ProjectSettings, SettingsStorage};
+pub use settings_defaults::register_default_settings;
 
 // Type alias for backward compatibility - EngineState is now EngineContext
 #[deprecated(since = "0.2.0", note = "Use EngineContext instead - provides typed context fields")]
