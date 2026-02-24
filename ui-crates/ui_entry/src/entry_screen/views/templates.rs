@@ -184,7 +184,7 @@ fn render_template_grid(
                     .items_center()
                     .gap_2()
                     .child(
-                        Icon::new(IconName::GitHub)
+                        Icon::new(IconName::Github)
                             .size(px(14.0))
                             .text_color(theme.muted_foreground)
                     )

@@ -128,6 +128,7 @@ toml = "0.8"
 rust-embed = { version = "6", features = ["interpolate-folder-path", "include-exclude"] }
 directories = "5"
 blueprint_compiler = { path = "../blueprint_compiler" }
+pulsar_macros = { path = "../pulsar_macros" }
 
 # Windows DirectX for shared texture opening (zero-copy DX12<->DX11)
 [target.'cfg(windows)'.dependencies]

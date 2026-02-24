@@ -144,7 +144,7 @@ impl FileManagerDrawer {
                     )
                     .child(
                         Button::new("popout")
-                            .icon(IconName::ARrowUpRightSquare)
+                            .icon(IconName::ArrowUpRightSquare)
                             .ghost()
                             .tooltip("Pop Out to New Window")
                             .on_click(cx.listener(|drawer, _event, window: &mut Window, cx| {

@@ -67,7 +67,7 @@ impl BuildDropdowns {
             TargetPlatform::SolarisSparcv9 | TargetPlatform::SolarisX86_64 
             | TargetPlatform::IlumosX86_64 => IconName::Sun,
             
-            TargetPlatform::RedoxX86_64 => IconName::CPU,
+            TargetPlatform::RedoxX86_64 => IconName::Cpu,
             
             TargetPlatform::FuchsiaAarch64 | TargetPlatform::FuchsiaX86_64 => IconName::Hexagon,
             

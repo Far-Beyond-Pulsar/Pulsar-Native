@@ -12042,6 +12042,7 @@ dependencies = [
  "once_cell",
  "parking_lot",
  "paste",
+ "pulsar_macros 0.1.0",
  "regex",
  "ropey",
  "rust-embed 6.8.1",

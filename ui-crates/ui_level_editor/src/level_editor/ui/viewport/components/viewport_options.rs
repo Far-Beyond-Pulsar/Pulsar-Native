@@ -198,7 +198,7 @@ fn gizmo_tool_buttons(
         .child({
             let state_clone = state_arc.clone();
             Button::new("move_tool")
-                .icon(IconName::ARrowUnion)
+                .icon(IconName::ArrowUnion)
                 .ghost()
                 .tooltip("Move Tool (W)")
                 .selected(state.current_tool == TransformTool::Move)

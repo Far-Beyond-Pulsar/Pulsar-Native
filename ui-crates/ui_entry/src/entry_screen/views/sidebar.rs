@@ -68,7 +68,7 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
         )
         .child(
             Button::new("clone-git")
-                .icon(IconName::GitHub)
+                .icon(IconName::Github)
                 .label("")
                 .tooltip("Clone from Git")
                 .with_variant(if screen.view == EntryScreenView::CloneGit {

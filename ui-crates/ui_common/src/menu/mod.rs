@@ -1064,7 +1064,7 @@ impl Render for AppTitleBar {
                     .child(self.font_size_selector.clone())
                     .child(
                         Button::new("github")
-                            .icon(IconName::GitHub)
+                            .icon(IconName::Git)
                             .small()
                             .ghost()
                             .on_click(|_, _, cx| {

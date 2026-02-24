@@ -86,7 +86,7 @@ fn render_settings_sidebar(settings: &ProjectSettings, cx: &mut Context<EntryScr
                 .gap_1()
                 .mt_2()
                 .child(render_sidebar_item("General", IconName::Folder, ProjectSettingsTab::General, &active_tab, cx))
-                .child(render_sidebar_item("Git Info", IconName::GitHub, ProjectSettingsTab::GitInfo, &active_tab, cx))
+                .child(render_sidebar_item("Git Info", IconName::Github, ProjectSettingsTab::GitInfo, &active_tab, cx))
                 .child(render_sidebar_item("Git CI/CD", IconName::Settings, ProjectSettingsTab::GitCI, &active_tab, cx))
                 .child(render_sidebar_item("Metadata", IconName::Folder, ProjectSettingsTab::Metadata, &active_tab, cx))
                 .child(render_sidebar_item("Disk Info", IconName::HardDrive, ProjectSettingsTab::DiskInfo, &active_tab, cx))

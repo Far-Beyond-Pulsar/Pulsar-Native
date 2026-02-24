@@ -243,7 +243,7 @@ impl ManualDocsPanel {
                                     .child(
                                         Button::new("mode-split")
                                             .label("Split")
-                                            .icon(IconName::SplitARea)
+                                            .icon(IconName::SplitArea)
                                             .xsmall()
                                             .when(state.view_mode == ViewMode::Split, |btn| {
                                                 btn.bg(theme.accent)

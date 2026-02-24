@@ -95,7 +95,7 @@ pub fn render_git_ci_tab(settings: &ProjectSettings, cx: &mut Context<EntryScree
                 .child(
                     Button::new("view-actions")
                         .label("View on GitHub")
-                        .icon(IconName::GitHub)
+                        .icon(IconName::Github)
                         .w_full()
                         .with_variant(ui::button::ButtonVariant::Secondary)
                         .on_click({

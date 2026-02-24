@@ -271,7 +271,7 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
                                         .into_any_element()
                                 }
                                 _ => {
-                                    Icon::new(IconName::GitHub)
+                                    Icon::new(IconName::Github)
                                         .size(px(14.))
                                         .text_color(theme.muted_foreground)
                                         .into_any_element()
@@ -372,7 +372,7 @@ fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<E
                                 this.when_some(preferred_git_tool.clone(), |this2, git_tool: String| {
                                     this2.child(
                                         Button::new(SharedString::from(format!("open-git-{}", proj_path)))
-                                            .icon(IconName::GitHub)
+                                            .icon(IconName::Github)
                                             .tooltip(format!("Open in {}", get_tool_display_name(&git_tool)))
                                             .with_variant(ui::button::ButtonVariant::Ghost)
                                             .on_click({

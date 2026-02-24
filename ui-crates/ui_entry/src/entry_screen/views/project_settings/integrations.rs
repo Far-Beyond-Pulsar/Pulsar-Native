@@ -247,7 +247,7 @@ fn render_tool_row(
                 .child(
                     Icon::new(match tool_type {
                         "editor" => IconName::Code,
-                        "git" => IconName::GitHub,
+                        "git" => IconName::Github,
                         "terminal" => IconName::Terminal,
                         _ => IconName::Settings,
                     })

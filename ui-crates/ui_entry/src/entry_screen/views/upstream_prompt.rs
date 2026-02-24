@@ -44,7 +44,7 @@ pub fn render_upstream_prompt(screen: &mut EntryScreen, cx: &mut Context<EntrySc
                         .items_center()
                         .gap_3()
                         .child(
-                            Icon::new(IconName::GitHub)
+                            Icon::new(IconName::Github)
                                 .size(px(24.))
                                 .text_color(theme.primary)
                         )

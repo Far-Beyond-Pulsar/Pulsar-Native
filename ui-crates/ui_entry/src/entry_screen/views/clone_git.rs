@@ -28,7 +28,7 @@ pub fn render_clone_git(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>)
                         .gap_3()
                         .items_center()
                         .child(
-                            Icon::new(IconName::GitHub)
+                            Icon::new(IconName::Github)
                                 .size(px(28.))
                                 .text_color(theme.primary)
                         )
@@ -156,7 +156,7 @@ pub fn render_clone_git(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>)
                         .child(
                             Button::new("clone-repo")
                                 .label("Clone Repository")
-                                .icon(IconName::GitHub)
+                                .icon(IconName::Github)
                                 .with_variant(ui::button::ButtonVariant::Primary)
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     let url = this.git_repo_url.clone();

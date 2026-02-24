@@ -60,7 +60,7 @@ pub fn render_git_info_tab(settings: &ProjectSettings, cx: &mut Context<EntryScr
                         .child(
                             Button::new("open-git-ui")
                                 .label("Open Git GUI")
-                                .icon(IconName::GitHub)
+                                .icon(IconName::Github)
                                 .flex_1()
                                 .with_variant(ui::button::ButtonVariant::Secondary)
                                 .on_click({
@@ -78,7 +78,7 @@ pub fn render_git_info_tab(settings: &ProjectSettings, cx: &mut Context<EntryScr
                         .child(
                             Button::new("view-git-log")
                                 .label("View Git Log")
-                                .icon(IconName::GitHub)
+                                .icon(IconName::Github)
                                 .flex_1()
                                 .with_variant(ui::button::ButtonVariant::Secondary)
                                 .on_click({
