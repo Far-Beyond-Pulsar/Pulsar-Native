@@ -6,6 +6,7 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use parking_lot::RwLock;
 use dashmap::DashMap;
 use type_db::TypeDatabase;
@@ -134,6 +135,9 @@ pub struct EngineContext {
 
     /// Typed renderer registry (replaces old Arc<dyn Any> system)
     pub renderers: crate::renderers_typed::TypedRendererRegistry,
+
+    /// Monotonically increasing window ID counter
+    next_id: Arc<AtomicU64>,
 }
 
 impl EngineContext {
@@ -149,6 +153,7 @@ impl EngineContext {
             window_sender: Arc::new(RwLock::new(None)),
             window_count: Arc::new(parking_lot::Mutex::new(0)),
             renderers: crate::renderers_typed::TypedRendererRegistry::new(),
+            next_id: Arc::new(AtomicU64::new(1)),
         }
     }
 
@@ -158,12 +163,19 @@ impl EngineContext {
         self
     }
 
+    /// Allocate the next unique window ID
+    pub fn next_window_id(&self) -> WindowId {
+        self.next_id.fetch_add(1, Ordering::SeqCst)
+    }
+
     /// Request a new window
     pub fn request_window(&self, request: WindowRequest) {
+        tracing::info!("request_window called: {:?}", request);
         let sender = self.window_sender.read();
         if let Some(sender) = sender.as_ref() {
-            if let Err(e) = sender.send(request) {
-                tracing::error!("Failed to send window request: {}", e);
+            match sender.send(request) {
+                Ok(()) => tracing::info!("Window request sent successfully"),
+                Err(e) => tracing::error!("Failed to send window request: {}", e),
             }
         } else {
             tracing::error!("Window sender not initialized!");

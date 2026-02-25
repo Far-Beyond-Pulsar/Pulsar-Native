@@ -12,10 +12,9 @@ path = "src/main.rs"
 [dependencies]
 # horizon.workspace = true
 anyhow.workspace = true
-gpui.workspace = true
+gpui-ce.workspace = true
 ui = { workspace = true, features = ["tree-sitter-languages"] }
 winit.workspace = true
-raw-window-handle.workspace = true
 thiserror = "2.0"
 image = "0.25"  # For loading window icon
 

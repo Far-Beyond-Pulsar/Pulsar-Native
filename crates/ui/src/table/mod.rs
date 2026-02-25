@@ -1436,7 +1436,7 @@ where
                             .flex_grow()
                             .size_full()
                             .with_sizing_behavior(ListSizingBehavior::Auto)
-                            .track_scroll(self.vertical_scroll_handle.clone())
+                            .track_scroll(&self.vertical_scroll_handle)
                             .into_any_element(),
                         ),
                     )

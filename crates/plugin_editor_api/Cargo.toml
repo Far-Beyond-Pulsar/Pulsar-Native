@@ -9,9 +9,8 @@ serde_json = "1.0"
 tracing = "0.1.41"
 
 # UI dependencies (for Panel trait integration)
-gpui = { workspace = true }
-ui = { workspace = true }
-
+gpui-ce.workspace = true
+ui.workspace = true
 [build-dependencies]
 tracing = "0.1.41"
 

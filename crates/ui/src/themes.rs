@@ -99,12 +99,25 @@ pub fn init(cx: &mut App) {
     }
 
     tracing::info!("Themes dir: {}", themes_dir.display());
+
+    // immediately apply configured theme (respecting its mode) before starting
+    // the watcher, since sync_system_appearance may have set mode earlier.
+    if let Some(theme) = ThemeRegistry::global(cx)
+        .themes()
+        .get(&state.theme)
+        .cloned()
+    {
+        Theme::change(theme.mode, None, cx);
+        Theme::global_mut(cx).apply_config(&theme);
+    }
+
     if let Err(err) = ThemeRegistry::watch_dir(themes_dir, cx, move |cx| {
         if let Some(theme) = ThemeRegistry::global(cx)
             .themes()
             .get(&state.theme)
             .cloned()
         {
+            Theme::change(theme.mode, None, cx);
             Theme::global_mut(cx).apply_config(&theme);
         }
     }) {

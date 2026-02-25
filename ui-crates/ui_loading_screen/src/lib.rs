@@ -8,9 +8,58 @@ use ui::{ActiveTheme, Colorize, Root};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use engine_backend::services::rust_analyzer_manager::{RustAnalyzerManager, AnalyzerStatus, AnalyzerEvent};
-use engine_state::{EngineContext, WindowRequest};
-use ui_entry::entry_screen::recent_projects::{RecentProjectsList, RecentProject};
+use engine_state::{EngineContext, WindowRequest, WindowContext};
 use directories::ProjectDirs;
+use serde::{Deserialize, Serialize};
+
+// we used to pull these types from ui_entry, but that created a cyclic
+// dependency. The definitions are small so we duplicate them here.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RecentProject {
+    pub name: String,
+    pub path: String,
+    pub last_opened: Option<String>,
+    pub is_git: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+struct RecentProjectsList {
+    pub projects: Vec<RecentProject>,
+}
+
+impl RecentProjectsList {
+    fn load(path: &std::path::Path) -> Self {
+        std::fs::read_to_string(path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    fn save(&self, path: &std::path::Path) {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(json) = serde_json::to_string_pretty(self) {
+            let _ = std::fs::write(path, json);
+        }
+    }
+
+    fn add_or_update(&mut self, project: RecentProject) {
+        if let Some(existing) = self.projects.iter_mut().find(|p| p.path == project.path) {
+            *existing = project;
+        } else {
+            self.projects.insert(0, project);
+        }
+        if self.projects.len() > 20 {
+            self.projects.truncate(20);
+        }
+    }
+
+    fn remove(&mut self, path: &str) {
+        self.projects.retain(|p| p.path != path);
+    }
+}
 
 /// Helper function to create a loading screen component wrapped in Root
 pub fn create_loading_component(
@@ -114,7 +163,11 @@ impl LoadingScreen {
         self.analyzer_message = "Initializing renderer...".to_string();
         cx.notify();
         
-        cx.spawn_in(window, async move |this, cx| {
+        // take raw pointer to window so we can close it later from an async context
+        let window_ptr = window as *mut Window;
+        
+        // spawn on context so we have `this` and `cx` parameters
+        cx.spawn(async move |this, cx| {
             cx.background_executor().timer(Duration::from_millis(100)).await;
             let _ = this.update(cx, |this, cx| {
                 this.loading_tasks[0].status = TaskStatus::Completed;
@@ -140,36 +193,54 @@ impl LoadingScreen {
                 this.initial_tasks_complete = true;
                 this.analyzer_message = "Ready!".to_string();
                 cx.notify();
-                this.check_completion(cx);
+
+                // everything is ready - run former check_completion code inline
+                let project_path = this.project_path.clone();
+                let rust_analyzer = this.rust_analyzer.clone().expect("Rust Analyzer should be initialized");
+                update_recent_projects(&project_path);
+                if let Some(engine_context) = EngineContext::global() {
+                    // open project editor without messages
+                    let pathbuf = project_path.clone();
+                    let ec = engine_context.clone();
+                    let wid2 = ec.next_window_id();
+                    ec.register_window(wid2, WindowContext::new(wid2, WindowRequest::ProjectEditor { project_path: pathbuf.to_string_lossy().to_string() }));
+                    let opts = WindowOptions {
+                        window_bounds: Some(WindowBounds::Windowed(Bounds::new(
+                            point(px(100.0), px(100.0)),
+                            size(px(800.0), px(600.0)),
+                        ))),
+                        titlebar: None,
+                        kind: WindowKind::Normal,
+                        is_resizable: true,
+                        window_decorations: Some(gpui::WindowDecorations::Client),
+                        ..Default::default()
+                    };
+                    cx.open_window(opts, move |window, cx| {
+                        // TODO: replace with actual project editor component
+                        crate::create_loading_component(pathbuf.clone(), wid2, window, cx)
+                    }).expect("failed to open project editor");
+
+                    // close loading window itself
+                    let close_id = this.window_id;
+                    let ec2 = engine_context.clone();
+                    cx.spawn(async move |_, cx| {
+                        cx.background_executor().timer(Duration::from_millis(100)).await;
+                        // use raw pointer to avoid needing AsyncApp.window()
+                        //TODO: consider adding a safe wrapper for this common pattern of "close current window from async context"
+                        unsafe { (&mut *window_ptr).remove_window(); }
+                        ec2.unregister_window(&close_id);
+                    });
+                }
+
+                cx.emit(LoadingComplete {
+                    project_path,
+                    rust_analyzer,
+                });
             });
         }).detach();
     }
 
 
-    fn check_completion(&mut self, cx: &mut Context<Self>) {
-        if self.initial_tasks_complete {
-            let project_path = self.project_path.clone();
-            let rust_analyzer = self.rust_analyzer.clone().expect("Rust Analyzer should be initialized");
-
-            // Update recent projects list
-            update_recent_projects(&project_path);
-
-            if let Some(engine_context) = EngineContext::global() {
-                engine_context.request_window(WindowRequest::ProjectEditor {
-                    project_path: project_path.to_string_lossy().to_string(),
-                });
-
-                engine_context.request_window(WindowRequest::CloseWindow {
-                    window_id: self.window_id,
-                });
-            }
-
-            cx.emit(LoadingComplete {
-                project_path,
-                rust_analyzer,
-            });
-        }
-    }
 }
 
 impl Render for LoadingScreen {

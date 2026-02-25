@@ -21,6 +21,22 @@ pub enum WindowRequest {
     ProjectSplash { project_path: String },
     /// Open git manager window
     GitManager { project_path: String },
+    /// Open problems/diagnostics window
+    Problems,
+    /// Open type debugger window
+    TypeDebugger,
+    /// Open mission control / log viewer window
+    LogViewer,
+    /// Open multiplayer/collaboration window
+    Multiplayer,
+    /// Open plugin manager window
+    PluginManager,
+    /// Open flamegraph profiler window
+    Flamegraph,
+    /// Open file manager as standalone window
+    FileManager { project_path: Option<String> },
+    /// Open detached panel window
+    DetachedPanel,
     /// Close specific window
     CloseWindow { window_id: u64 },
 }

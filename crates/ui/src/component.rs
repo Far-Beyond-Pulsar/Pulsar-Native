@@ -42,11 +42,7 @@ pub trait Component: Render + Sized + 'static {
     ) -> Result<WindowHandle<Self>> {
         let options = WindowOptions {
             window_bounds: window_config.bounds.map(WindowBounds::Windowed),
-            titlebar: Some(TitlebarOptions {
-                title: Some(SharedString::from(window_config.title.clone())),
-                appears_transparent: false,
-                traffic_light_position: None,
-            }),
+            titlebar: None,
             window_background: WindowBackgroundAppearance::Opaque,
             focus: true,
             show: true,

@@ -1069,11 +1069,7 @@ impl DockArea {
 
         let window_options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-            titlebar: Some(gpui::TitlebarOptions {
-                title: None,
-                appears_transparent: true,
-                traffic_light_position: None,
-            }),
+            titlebar: None,
             window_min_size: Some(gpui::Size {
                 width: px(400.),
                 height: px(300.),

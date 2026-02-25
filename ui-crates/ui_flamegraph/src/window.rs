@@ -45,14 +45,21 @@ impl FlamegraphWindow {
     }
 
     pub fn open(cx: &mut App) -> WindowHandle<Self> {
+        // Register with engine context
+        if let Some(ec) = engine_state::EngineContext::global() {
+            let wid = ec.next_window_id();
+            ec.register_window(wid, engine_state::WindowContext::new(wid, engine_state::WindowRequest::Flamegraph));
+            tracing::debug!("opening flamegraph window id={}", wid);
+        }
+
         let trace_data = Arc::new(TraceData::new());
-        
+
         let window_options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds {
                 origin: point(px(100.0), px(100.0)),
                 size: size(px(1200.0), px(800.0)),
             })),
-            titlebar: Some(TitleBar::title_bar_options()),
+            titlebar: None,
             window_background: WindowBackgroundAppearance::Opaque,
             focus: true,
             show: true,

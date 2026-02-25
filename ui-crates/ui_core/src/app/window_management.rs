@@ -11,6 +11,8 @@ use ui_type_debugger::TypeDebuggerWindow;
 use ui_multiplayer::MultiplayerWindow;
 use ui_plugin_manager::PluginManagerWindow;
 use ui_git_manager::create_git_manager_component;
+use ui_settings::create_settings_component;
+use engine_state::{EngineContext, WindowContext, WindowRequest};
 
 use super::PulsarApp;
 use super::panel_window::PanelWindow;
@@ -40,11 +42,7 @@ impl PulsarApp {
 
         let window_options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-            titlebar: Some(gpui::TitlebarOptions {
-                title: None,
-                appears_transparent: true,
-                traffic_light_position: None,
-            }),
+            titlebar: None,
             window_min_size: Some(gpui::Size {
                 width: px(400.),
                 height: px(300.),
@@ -58,6 +56,13 @@ impl PulsarApp {
         };
 
         tracing::trace!("[POPOUT] Opening window with options");
+
+        // Register with engine context
+        if let Some(ec) = EngineContext::global() {
+            let wid = ec.next_window_id();
+            ec.register_window(wid, WindowContext::new(wid, WindowRequest::DetachedPanel));
+            tracing::trace!("[POPOUT] Registered detached panel window id={}", wid);
+        }
 
         // Store reference to the center tabs and parent window handle for restoration
         let center_tabs = self.state.center_tabs.clone();
@@ -90,6 +95,12 @@ impl PulsarApp {
     }
 
     pub(super) fn toggle_problems(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(ec) = EngineContext::global() {
+            let wid = ec.next_window_id();
+            ec.register_window(wid, WindowContext::new(wid, WindowRequest::Problems));
+            tracing::debug!("opening problems window id={}", wid);
+        }
+
         let problems_drawer = self.state.problems_drawer.clone();
 
         let _ = cx.open_window(
@@ -101,11 +112,7 @@ impl PulsarApp {
                     },
                     size: size(px(900.0), px(600.0)),
                 })),
-                titlebar: Some(gpui::TitlebarOptions {
-                    title: None,
-                    appears_transparent: true,
-                    traffic_light_position: None,
-                }),
+                titlebar: None,
                 kind: WindowKind::Normal,
                 is_resizable: true,
                 window_decorations: Some(gpui::WindowDecorations::Client),
@@ -123,6 +130,12 @@ impl PulsarApp {
     }
 
     pub(super) fn toggle_type_debugger(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(ec) = EngineContext::global() {
+            let wid = ec.next_window_id();
+            ec.register_window(wid, WindowContext::new(wid, WindowRequest::TypeDebugger));
+            tracing::debug!("opening type debugger window id={}", wid);
+        }
+
         let type_debugger_drawer = self.state.type_debugger_drawer.clone();
 
         let _ = cx.open_window(
@@ -134,11 +147,7 @@ impl PulsarApp {
                     },
                     size: size(px(1000.0), px(700.0)),
                 })),
-                titlebar: Some(gpui::TitlebarOptions {
-                    title: None,
-                    appears_transparent: true,
-                    traffic_light_position: None,
-                }),
+                titlebar: None,
                 kind: WindowKind::Normal,
                 is_resizable: true,
                 window_decorations: Some(gpui::WindowDecorations::Client),
@@ -159,6 +168,12 @@ impl PulsarApp {
         self.state.mission_control_open = !self.state.mission_control_open;
 
         if self.state.mission_control_open {
+            if let Some(ec) = EngineContext::global() {
+                let wid = ec.next_window_id();
+                ec.register_window(wid, WindowContext::new(wid, WindowRequest::LogViewer));
+                tracing::debug!("opening log viewer window id={}", wid);
+            }
+
             let mission_control = self.state.mission_control.clone();
 
             let _ = cx.open_window(
@@ -170,11 +185,7 @@ impl PulsarApp {
                         },
                         size: size(px(1920.0), px(1080.0)),
                     })),
-                    titlebar: Some(gpui::TitlebarOptions {
-                        title: Some("Mission Control".into()),
-                        appears_transparent: true,
-                        traffic_light_position: None,
-                    }),
+                    titlebar: None,
                     kind: WindowKind::Normal,
                     is_resizable: true,
                     window_decorations: Some(gpui::WindowDecorations::Client),
@@ -200,17 +211,19 @@ impl PulsarApp {
         let project_path = self.state.project_path.clone()
             .unwrap_or_else(|| PathBuf::from("."));
 
+        if let Some(ec) = EngineContext::global() {
+            let wid = ec.next_window_id();
+            ec.register_window(wid, WindowContext::new(wid, WindowRequest::GitManager { project_path: project_path.to_string_lossy().to_string() }));
+            tracing::debug!("opening git manager window id={}", wid);
+        }
+
         let _ = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds {
                     origin: Point { x: px(160.0), y: px(120.0) },
                     size: size(px(1280.0), px(800.0)),
                 })),
-                titlebar: Some(gpui::TitlebarOptions {
-                    title: Some("Git Manager".into()),
-                    appears_transparent: true,
-                    traffic_light_position: None,
-                }),
+                titlebar: None,
                 kind: WindowKind::Normal,
                 is_resizable: true,
                 window_decorations: Some(gpui::WindowDecorations::Client),
@@ -225,6 +238,12 @@ impl PulsarApp {
     }
 
     pub(super) fn toggle_multiplayer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(ec) = EngineContext::global() {
+            let wid = ec.next_window_id();
+            ec.register_window(wid, WindowContext::new(wid, WindowRequest::Multiplayer));
+            tracing::debug!("opening multiplayer window id={}", wid);
+        }
+
         let project_path = self.state.project_path.clone();
 
         let _ = cx.open_window(
@@ -236,11 +255,7 @@ impl PulsarApp {
                     },
                     size: size(px(500.0), px(600.0)),
                 })),
-                titlebar: Some(gpui::TitlebarOptions {
-                    title: None,
-                    appears_transparent: true,
-                    traffic_light_position: None,
-                }),
+                titlebar: None,
                 kind: WindowKind::Normal,
                 is_resizable: true,
                 window_decorations: Some(gpui::WindowDecorations::Client),
@@ -258,6 +273,12 @@ impl PulsarApp {
     }
 
     pub(super) fn toggle_plugin_manager(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(ec) = EngineContext::global() {
+            let wid = ec.next_window_id();
+            ec.register_window(wid, WindowContext::new(wid, WindowRequest::PluginManager));
+            tracing::debug!("opening plugin manager window id={}", wid);
+        }
+
         let _ = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds {
@@ -267,11 +288,7 @@ impl PulsarApp {
                     },
                     size: size(px(600.0), px(500.0)),
                 })),
-                titlebar: Some(gpui::TitlebarOptions {
-                    title: None,
-                    appears_transparent: true,
-                    traffic_light_position: None,
-                }),
+                titlebar: None,
                 kind: WindowKind::Normal,
                 is_resizable: true,
                 window_decorations: Some(gpui::WindowDecorations::Client),
@@ -287,6 +304,36 @@ impl PulsarApp {
                     PluginManagerWindow::new_global(window, cx)
                 });
                 cx.new(|cx| Root::new(plugin_manager_window.into(), window, cx))
+            },
+        );
+    }
+
+
+    pub(super) fn open_settings(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        // spawn a dedicated settings window
+        if let Some(ec) = EngineContext::global() {
+            let wid = ec.next_window_id();
+            ec.register_window(wid, WindowContext::new(wid, WindowRequest::Settings));
+            tracing::debug!("opening settings window id={}", wid);
+        }
+
+        let ec_for_cb = EngineContext::global();
+        let _ = cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds {
+                    origin: Point { x: px(150.0), y: px(150.0) },
+                    size: size(px(700.0), px(500.0)),
+                })),
+                titlebar: None,
+                kind: WindowKind::Normal,
+                is_resizable: true,
+                window_decorations: Some(gpui::WindowDecorations::Client),
+                window_min_size: Some(gpui::Size { width: px(400.), height: px(300.) }),
+                ..Default::default()
+            },
+            move |window, cx| {
+                // engine_context is only used by component, so unwrap is safe
+                ui_settings::create_settings_component(window, cx, ec_for_cb.as_ref().unwrap())
             },
         );
     }
