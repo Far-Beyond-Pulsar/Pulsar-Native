@@ -32,19 +32,7 @@ ttf-parser = { opt-level = 3 }
 [workspace.dependencies]
 
 # ---------- GPUI (Zed fork) ----------
-gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "696792b69da23b54159bb66ffea5528310d9d2b5", features = ["runtime_shaders", "macos-blade"] }
-
-# ---------- Local Overrides (uncomment to use) ----------
-# gpui = { path = "C:/Users/redst/OneDrive/Documents/GitHub/gpui-ce/crates/gpui", features = ["runtime_shaders", "macos-blade"] }
-# gpui_macros = { path = "C:/Users/redst/OneDrive/Documents/GitHub/gpui-ce/crates/gpui_macros" }
-# reqwest_client = { path = "C:/Users/redst/OneDrive/Documents/GitHub/gpui-ce/crates/reqwest_client" }
-# sum_tree = { path = "C:/Users/redst/OneDrive/Documents/GitHub/gpui-ce/crates/sum_tree" }
-
-# ---------- WGPUI (alternative backend) ----------
-# gpui = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "6f6e5f30a5306a08e9a409ad39b9a0458f0ddf01", features = ["runtime_shaders", "macos-blade"] }
-# gpui_macros = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "6f6e5f30a5306a08e9a409ad39b9a0458f0ddf01" }
-# reqwest_client = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "6f6e5f30a5306a08e9a409ad39b9a0458f0ddf01" }
-# sum_tree = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "6f6e5f30a5306a08e9a409ad39b9a0458f0ddf01" }
+gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "23a10223818370cad0069df11795804705cd7186" }
 
 # ---------- Core Engine ----------
 ui = { path = "crates/ui" }
