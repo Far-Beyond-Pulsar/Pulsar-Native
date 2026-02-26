@@ -84,6 +84,10 @@ pub struct LoadingScreen {
     _analyzer_subscription: Option<Subscription>,
     analyzer_message: String,
     window_id: u64,
+    // raw pointer to allow closing window from async task
+    window_ptr: *mut Window,
+    // flag to open editor only once
+    opened_editor: bool,
     // background thread channel receiver for progress events
     progress_rx: std::sync::mpsc::Receiver<LoadingEvent>,
 }
@@ -95,6 +99,7 @@ struct LoadingTask {
 }
 
 // message sent from the timer thread to the UI
+#[derive(Debug)]
 enum LoadingEvent {
     TaskDone(usize),
     FrameRequest,
@@ -155,6 +160,8 @@ impl LoadingScreen {
             _analyzer_subscription: None,
             analyzer_message: String::new(),
             window_id,
+            window_ptr: window as *mut Window,
+            opened_editor: false,
             progress_rx: rx,
         };
 
@@ -213,6 +220,46 @@ impl Render for LoadingScreen {
                 LoadingEvent::FrameRequest => {
                     _window.request_animation_frame();
                 }
+            }
+        }
+        // once all tasks done, open editor & schedule closing
+        if self.initial_tasks_complete && !self.opened_editor {
+            self.opened_editor = true;
+            if let Some(engine_context) = EngineContext::global() {
+                let pathbuf = self.project_path.clone();
+                let ec = engine_context.clone();
+                let wid2 = ec.next_window_id();
+                ec.register_window(
+                    wid2,
+                    WindowContext::new(
+                        wid2,
+                        WindowRequest::ProjectEditor { project_path: pathbuf.to_string_lossy().to_string() },
+                    ),
+                );
+                let opts = WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(Bounds::new(
+                        point(px(100.0), px(100.0)),
+                        size(px(800.0), px(600.0)),
+                    ))),
+                    titlebar: None,
+                    kind: WindowKind::Normal,
+                    is_resizable: true,
+                    window_decorations: Some(gpui::WindowDecorations::Client),
+                    ..Default::default()
+                };
+                cx.open_window(opts, move |window, cx| {
+                    crate::create_loading_component(pathbuf.clone(), wid2, window, cx)
+                })
+                .expect("failed to open project editor");
+
+                let close_id = self.window_id;
+                let ec2 = engine_context.clone();
+                let ptr = self.window_ptr;
+                cx.spawn(async move |_, cx| {
+                    cx.background_executor().timer(Duration::from_millis(100)).await;
+                    unsafe { (&mut *ptr).remove_window(); }
+                    ec2.unregister_window(&close_id);
+                });
             }
         }
         // request a frame every render call to keep loop alive
