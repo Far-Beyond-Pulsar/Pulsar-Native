@@ -32,9 +32,7 @@ ttf-parser = { opt-level = 3 }
 [workspace.dependencies]
 
 # ---------- GPUI (Zed fork) ----------
-gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "7a2226f63ffe6c37902280ad8405396541968178", features = ["runtime_shaders", "macos-blade"] }
-# workspace dependency for gpui_macros matching the same repo/commit
-gpui_macros = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "7a2226f63ffe6c37902280ad8405396541968178", subdirectory = "crates/gpui_macros" }
+gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "696792b69da23b54159bb66ffea5528310d9d2b5", features = ["runtime_shaders", "macos-blade"] }
 
 # ---------- Local Overrides (uncomment to use) ----------
 # gpui = { path = "C:/Users/redst/OneDrive/Documents/GitHub/gpui-ce/crates/gpui", features = ["runtime_shaders", "macos-blade"] }
