@@ -84,12 +84,20 @@ pub struct LoadingScreen {
     _analyzer_subscription: Option<Subscription>,
     analyzer_message: String,
     window_id: u64,
+    // background thread channel receiver for progress events
+    progress_rx: std::sync::mpsc::Receiver<LoadingEvent>,
 }
 
 #[derive(Clone)]
 struct LoadingTask {
     name: String,
     status: TaskStatus,
+}
+
+// message sent from the timer thread to the UI
+enum LoadingEvent {
+    TaskDone(usize),
+    FrameRequest,
 }
 
 #[derive(Clone, PartialEq)]
@@ -133,6 +141,8 @@ impl LoadingScreen {
             },
         ];
 
+        // create progress channel
+        let (tx, rx) = std::sync::mpsc::channel();
         let mut loading_screen = Self {
             project_path: project_path.clone(),
             project_name,
@@ -145,106 +155,69 @@ impl LoadingScreen {
             _analyzer_subscription: None,
             analyzer_message: String::new(),
             window_id,
+            progress_rx: rx,
         };
 
         let analyzer = cx.new(|cx| RustAnalyzerManager::new(window, cx));
         loading_screen.rust_analyzer = Some(analyzer.clone());
-        loading_screen.start_loading(window, cx);
+        // mark first task
+        loading_screen.loading_tasks[0].status = TaskStatus::InProgress;
+        loading_screen.analyzer_message = "Initializing renderer...".to_string();
+        // spawn background thread for updates
+        let tx_clone = tx.clone();
+        std::thread::spawn(move || {
+            println!("[bg] task1 start");
+            std::thread::sleep(Duration::from_millis(100));
+            tx_clone.send(LoadingEvent::TaskDone(0)).ok();
+
+            println!("[bg] task2 start");
+            std::thread::sleep(Duration::from_millis(100));
+            tx_clone.send(LoadingEvent::TaskDone(1)).ok();
+
+            println!("[bg] task3 start");
+            std::thread::sleep(Duration::from_millis(100));
+            tx_clone.send(LoadingEvent::TaskDone(2)).ok();
+        });
+
         loading_screen
     }
-
-    fn start_loading(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.start_init_tasks(window, cx);
-    }
-
-    fn start_init_tasks(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.loading_tasks[0].status = TaskStatus::InProgress;
-        self.progress = 0.0;
-        self.analyzer_message = "Initializing renderer...".to_string();
-        cx.notify();
-        
-        // take raw pointer to window so we can close it later from an async context
-        let window_ptr = window as *mut Window;
-        
-        // spawn on context so we have `this` and `cx` parameters
-        cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(Duration::from_millis(100)).await;
-            let _ = this.update(cx, |this, cx| {
-                this.loading_tasks[0].status = TaskStatus::Completed;
-                this.progress = 33.0;
-                this.loading_tasks[1].status = TaskStatus::InProgress;
-                this.analyzer_message = "Loading project data...".to_string();
-                cx.notify();
-            });
-            
-            cx.background_executor().timer(Duration::from_millis(100)).await;
-            let _ = this.update(cx, |this, cx| {
-                this.loading_tasks[1].status = TaskStatus::Completed;
-                this.progress = 66.0;
-                this.loading_tasks[2].status = TaskStatus::InProgress;
-                this.analyzer_message = "Opening editor...".to_string();
-                cx.notify();
-            });
-            
-            cx.background_executor().timer(Duration::from_millis(100)).await;
-            let _ = this.update(cx, |this, cx| {
-                this.loading_tasks[2].status = TaskStatus::Completed;
-                this.progress = 100.0;
-                this.initial_tasks_complete = true;
-                this.analyzer_message = "Ready!".to_string();
-                cx.notify();
-
-                // everything is ready - run former check_completion code inline
-                let project_path = this.project_path.clone();
-                let rust_analyzer = this.rust_analyzer.clone().expect("Rust Analyzer should be initialized");
-                update_recent_projects(&project_path);
-                if let Some(engine_context) = EngineContext::global() {
-                    // open project editor without messages
-                    let pathbuf = project_path.clone();
-                    let ec = engine_context.clone();
-                    let wid2 = ec.next_window_id();
-                    ec.register_window(wid2, WindowContext::new(wid2, WindowRequest::ProjectEditor { project_path: pathbuf.to_string_lossy().to_string() }));
-                    let opts = WindowOptions {
-                        window_bounds: Some(WindowBounds::Windowed(Bounds::new(
-                            point(px(100.0), px(100.0)),
-                            size(px(800.0), px(600.0)),
-                        ))),
-                        titlebar: None,
-                        kind: WindowKind::Normal,
-                        is_resizable: true,
-                        window_decorations: Some(gpui::WindowDecorations::Client),
-                        ..Default::default()
-                    };
-                    cx.open_window(opts, move |window, cx| {
-                        // TODO: replace with actual project editor component
-                        crate::create_loading_component(pathbuf.clone(), wid2, window, cx)
-                    }).expect("failed to open project editor");
-
-                    // close loading window itself
-                    let close_id = this.window_id;
-                    let ec2 = engine_context.clone();
-                    cx.spawn(async move |_, cx| {
-                        cx.background_executor().timer(Duration::from_millis(100)).await;
-                        // use raw pointer to avoid needing AsyncApp.window()
-                        //TODO: consider adding a safe wrapper for this common pattern of "close current window from async context"
-                        unsafe { (&mut *window_ptr).remove_window(); }
-                        ec2.unregister_window(&close_id);
-                    });
-                }
-
-                cx.emit(LoadingComplete {
-                    project_path,
-                    rust_analyzer,
-                });
-            });
-        }).detach();
-    }
-
-
 }
 
 impl Render for LoadingScreen {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // keep the animation loop running regardless of events
+        _window.request_animation_frame();
+        println!("[render] called, progress={} task={} initial_done={}", self.progress, self.current_task_index, self.initial_tasks_complete);
+        // process any pending progress events
+        while let Ok(ev) = self.progress_rx.try_recv() {
+            println!("[render] got event {:?}", ev);
+            match ev {
+                LoadingEvent::TaskDone(idx) => {
+                    if idx < self.loading_tasks.len() {
+                        self.loading_tasks[idx].status = TaskStatus::Completed;
+                        if idx + 1 < self.loading_tasks.len() {
+                            self.loading_tasks[idx + 1].status = TaskStatus::InProgress;
+                        }
+                        self.progress = ((idx + 1) as f32 / self.loading_tasks.len() as f32) * 100.0;
+                        self.analyzer_message = if idx + 1 < self.loading_tasks.len() {
+                            self.loading_tasks[idx + 1].name.clone()
+                        } else {
+                            "Ready!".to_string()
+                        };
+                        cx.notify();
+                    }
+                    if idx + 1 == self.loading_tasks.len() {
+                        self.initial_tasks_complete = true;
+                    }
+                }
+                LoadingEvent::FrameRequest => {
+                    _window.request_animation_frame();
+                }
+            }
+        }
+        // request a frame every render call to keep loop alive
+        _window.request_animation_frame();
+
         let theme = cx.theme();
         
         let relative_w = relative(match self.progress {
