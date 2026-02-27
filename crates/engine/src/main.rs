@@ -301,8 +301,7 @@ fn main() {
 
         {
             use window_manager::WindowManager;
-            let wm = WindowManager::new(engine_context.clone());
-            engine_context.window_manager.write().replace(wm.clone());
+            let wm = WindowManager::new();
             cx.set_global(wm);
         }
 
@@ -324,8 +323,8 @@ fn main() {
                     match engine_context.create_window_safe(
                         WindowRequest::ProjectSplash { project_path: pathbuf.to_string_lossy().to_string() },
                         opts,
-                        move |wid, window, cx| {
-                            ui_loading_screen::create_loading_component(pathbuf.clone(), wid, window, cx)
+                        move |window, cx| {
+                            ui_loading_screen::create_loading_component(pathbuf.clone(), 0, window, cx).into()
                         },
                         cx,
                     ) {
@@ -348,7 +347,7 @@ fn main() {
                     match engine_context.create_window_safe(
                         WindowRequest::Entry,
                         opts,
-                        move |wid, window, cx| {
+                        move |window, cx| {
                             let ec_clone = ec.clone();
                             let project_cb: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
                                 std::sync::Arc::new(move |pathbuf, cx| {
@@ -361,8 +360,8 @@ fn main() {
                                             gpui::size(gpui::px(900.0), gpui::px(600.0)),
                                             None,
                                         ),
-                                        move |wid, window, cx| {
-                                            ui_loading_screen::create_loading_component(pathbuf.clone(), wid, window, cx)
+                                        move |window, cx| {
+                                            ui_loading_screen::create_loading_component(pathbuf.clone(), 0, window, cx).into()
                                         },
                                         cx,
                                     ) {
@@ -384,8 +383,8 @@ fn main() {
                                             gpui::size(gpui::px(800.0), gpui::px(600.0)),
                                             None,
                                         ),
-                                        move |wid, window, cx| {
-                                            ui_git_manager::create_git_manager_component(window, cx, pathbuf.clone())
+                                        move |window, cx| {
+                                            ui_git_manager::create_git_manager_component(window, cx, pathbuf.clone()).into()
                                         },
                                         cx,
                                     ) {
@@ -407,8 +406,11 @@ fn main() {
                                             gpui::size(gpui::px(700.0), gpui::px(500.0)),
                                             None,
                                         ),
-                                        move |wid, window, cx| {
-                                            ui_settings::create_settings_component(window, cx, &ec4.clone())
+                                        {
+                                        let ec4_ref = ec4.clone();
+                                        move |window, cx| {
+                                            ui_settings::create_settings_component(window, cx, &ec4_ref).into()
+                                        }
                                         },
                                         cx,
                                     ) {
@@ -418,7 +420,7 @@ fn main() {
                                     }
                                 });
 
-                            ui_entry::create_entry_component(window, cx, &ec, wid, project_cb, git_cb, settings_cb)
+                            ui_entry::create_entry_component(window, cx, &ec, 0, project_cb, git_cb, settings_cb).into()
                         },
                         cx,
                     ) {

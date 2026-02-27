@@ -7870,6 +7870,7 @@ dependencies = [
  "ui_log_viewer",
  "ui_settings",
  "urlencoding",
+ "window_manager",
  "windows 0.62.2",
  "winit",
  "winresource",
