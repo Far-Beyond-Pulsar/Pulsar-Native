@@ -27,6 +27,7 @@ ui_git_manager = { path = "../ui_git_manager" }
 # Engine
 engine_state.workspace = true
 engine_backend.workspace = true
+window_manager.workspace = true
 
 # Plugin system
 plugin_manager = { path = "../../crates/plugin_manager" }

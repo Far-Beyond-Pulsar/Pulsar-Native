@@ -44,26 +44,26 @@ impl FlamegraphWindow {
         })
     }
 
-    pub fn open(cx: &mut App) -> WindowHandle<Self> {
+    pub fn open(cx: &mut App) {
         let trace_data = Arc::new(TraceData::new());
         let window_options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds {
                 origin: point(px(100.0), px(100.0)),
                 size: size(px(1200.0), px(800.0)),
             })),
-            decorations: WindowDecorations::default(),
+            window_decorations: Some(WindowDecorations::default()),
             ..WindowOptions::default()
         };
-        let wm = window_manager::WindowManager::global();
-        let handle = wm.create_window(
-            engine_state::WindowRequest::Flamegraph,
-            window_options,
-            move |_window_id, _window, cx| {
-                FlamegraphWindow::new(trace_data.clone(), cx)
-            },
-            cx
-        ).unwrap().1;
-        handle
+        let _ = window_manager::WindowManager::update_global(cx, |wm, cx| {
+            wm.create_window(
+                engine_state::WindowRequest::Flamegraph,
+                window_options,
+                move |window: &mut gpui::Window, cx: &mut gpui::App| {
+                    FlamegraphWindow::new(trace_data.clone(), window, cx).into()
+                },
+                cx,
+            )
+        });
     }
 
     fn start_profiling(&mut self, _cx: &mut Context<Self>) {

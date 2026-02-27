@@ -2665,6 +2665,7 @@ dependencies = [
  "anyhow",
  "dashmap 6.1.0",
  "directories 5.0.1",
+ "gpui-ce",
  "once_cell",
  "parking_lot",
  "rust-discord-activity",
@@ -11721,6 +11722,7 @@ dependencies = [
  "ui_problems",
  "ui_settings",
  "ui_type_debugger",
+ "window_manager",
 ]
 
 [[package]]
@@ -11803,6 +11805,7 @@ dependencies = [
  "serde",
  "tracing",
  "ui",
+ "window_manager",
 ]
 
 [[package]]
@@ -11866,6 +11869,7 @@ dependencies = [
  "serde_json",
  "tracing",
  "ui",
+ "window_manager",
 ]
 
 [[package]]

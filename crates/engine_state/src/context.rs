@@ -8,16 +8,17 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use parking_lot::RwLock;
+use window_manager;
 use dashmap::DashMap;
 use type_db::TypeDatabase;
 use ui_types_common::window_types::{WindowRequest, WindowId};
 
-use crate::{DiscordPresence, WindowRequestSender};
+use crate::{DiscordPresence, channels::WindowRequestSender};
 
-#[cfg(feature = "window-manager")]
+
 use gpui::{WindowOptions, Window, AnyView};
 
-#[cfg(feature = "window-manager")]
+
 use window_manager::{WindowManager, WindowError};
 
 /// Context for a specific window
@@ -140,7 +141,7 @@ pub struct EngineContext {
     next_id: Arc<AtomicU64>,
 
     /// Optional window manager instance (enabled via feature)
-    #[cfg(feature = "window-manager")]
+
     pub window_manager: Arc<RwLock<Option<window_manager::WindowManager>>>,
 }
 
@@ -158,7 +159,7 @@ impl EngineContext {
             window_count: Arc::new(parking_lot::Mutex::new(0)),
             renderers: crate::renderers_typed::TypedRendererRegistry::new(),
             next_id: Arc::new(AtomicU64::new(1)),
-            #[cfg(feature = "window-manager")]
+
             window_manager: Arc::new(RwLock::new(None)),
         }
     }
@@ -204,7 +205,7 @@ impl EngineContext {
         result
     }
 
-    #[cfg(feature = "window-manager")]
+
     /// Convenience wrapper that either routes through the WindowManager
     /// when available or falls back to raw `cx.open_window`.
     pub fn create_window_safe<F>(
@@ -213,15 +214,15 @@ impl EngineContext {
         options: WindowOptions,
         content_builder: F,
         cx: &mut gpui::App,
-    ) -> Result<(WindowId, gpui::WindowHandle<gpui::AnyView>), window_manager::WindowError>
+    ) -> Result<(WindowId, gpui::AnyWindowHandle), window_manager::WindowError>
     where
-        F: FnOnce(&mut gpui::Window, &mut gpui::App) -> gpui::AnyView + 'static,
+        F: FnOnce(&mut gpui::Window, &mut gpui::App) -> gpui::AnyView + Send + 'static,
     {
         if let Some(wm) = self.window_manager.read().as_ref() {
             wm.create_window(window_type, options, content_builder, cx)
         } else {
             tracing::error!("WindowManager not initialized!");
-            Err(window_manager::WindowError::ManagerNotInitialized)
+            Err(window_manager::WindowError::NotInitialized)
         }
     }
 

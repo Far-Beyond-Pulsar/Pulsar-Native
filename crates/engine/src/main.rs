@@ -125,7 +125,7 @@ fn main() {
             ctx.log_guard = Some(_log_guard);
             Ok(())
         })
-    ).unwrap();
+    )).unwrap();
 
     // Task 2: App data (depends on logging)
     graph.add_task(InitTask::new(
@@ -140,7 +140,7 @@ fn main() {
             tracing::debug!("Config file: {:?}", appdata.config_file);
             Ok(())
         })
-    ).unwrap();
+    )).unwrap();
 
     // Task 3: Settings (depends on app data)
     graph.add_task(InitTask::new(
@@ -153,7 +153,7 @@ fn main() {
             let _engine_settings = EngineSettings::load(&appdata.config_file);
             Ok(())
         })
-    ).unwrap();
+    )).unwrap();
 
     // Task 4: Runtime (depends on logging)
     graph.add_task(InitTask::new(
@@ -165,7 +165,7 @@ fn main() {
             ctx.runtime = Some(rt);
             Ok(())
         })
-    ).unwrap();
+    )).unwrap();
 
     // Task 5: Backend (depends on runtime)
     graph.add_task(InitTask::new(
@@ -189,7 +189,7 @@ fn main() {
             // No need to store in InitContext
             Ok(())
         })
-    ).unwrap();
+    )).unwrap();
 
     // Task 6: Channels (no dependencies)
     // (disabled – window management will be done directly via GPUI)
@@ -223,7 +223,7 @@ fn main() {
             ctx.engine_context = Some(engine_context);
             Ok(())
         })
-    ).unwrap();
+    )).unwrap();
 
     // Task 8: Set Global (depends on engine context)
     graph.add_task(InitTask::new(
@@ -238,7 +238,7 @@ fn main() {
             engine_context.clone().set_global();
             Ok(())
         })
-    ).unwrap();
+    )).unwrap();
 
     // Task 9: Discord (depends on set_global)
     graph.add_task(InitTask::new(
@@ -255,7 +255,7 @@ fn main() {
             }
             Ok(())
         })
-    ).unwrap();
+    )).unwrap();
 
     // Task 10: URI Registration (depends on runtime)
     graph.add_task(InitTask::new(
@@ -274,7 +274,7 @@ fn main() {
             });
             Ok(())
         })
-    ).unwrap();
+    )).unwrap();
 
     // Execute the initialization graph
     if let Err(e) = graph.execute(&mut init_ctx) {
@@ -298,7 +298,7 @@ fn main() {
         ui::themes::init(cx);
 
         // install window manager (if compiled with the feature)
-        #[cfg(feature = "window-manager")]
+
         {
             use window_manager::WindowManager;
             let wm = WindowManager::new(engine_context.clone());
@@ -319,7 +319,7 @@ fn main() {
                     None,
                 );
 
-                #[cfg(feature = "window-manager")]
+
                 {
                     match engine_context.create_window_safe(
                         WindowRequest::ProjectSplash { project_path: pathbuf.to_string_lossy().to_string() },
@@ -343,7 +343,7 @@ fn main() {
                     Some(gpui::Size { width: gpui::px(600.), height: gpui::px(400.) }),
                 );
 
-                #[cfg(feature = "window-manager")]
+
                 {
                     match engine_context.create_window_safe(
                         WindowRequest::Entry,

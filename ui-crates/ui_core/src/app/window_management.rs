@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use gpui::{px, size, Bounds, Context, Point, Window, WindowBounds, WindowKind, WindowOptions};
+use gpui::{px, size, Bounds, Context, Point, UpdateGlobal, Window, WindowBounds, WindowKind, WindowOptions};
 use gpui::AppContext;
 use ui::Root;
 use ui_problems::ProblemsWindow;
@@ -70,28 +70,26 @@ impl PulsarApp {
         let parent_window_handle = parent_window.window_handle();
 
         // Replace direct cx.open_window with window_manager::WindowManager::global().create_window
-        let wm = window_manager::WindowManager::global();
-        let result = wm.create_window(
-            engine_state::WindowRequest::DetachedPanel,
-            window_options,
-            move |_window_id, window, cx| {
-                tracing::trace!("[POPOUT] Inside window creation callback");
-                let panel_window = cx.new(|cx| PanelWindow::new(
-                    panel_for_popout, 
-                    center_tabs, 
-                    parent_window_handle.into(),
-                    window, 
-                    cx
-                ));
-                tracing::trace!("[POPOUT] PanelWindow created successfully");
-                cx.new(|cx| Root::new(panel_window.into(), window, cx))
-            },
-            cx
-        );
-        match result {
-            Ok(_) => tracing::trace!("[POPOUT] Window opened successfully"),
-            Err(e) => tracing::trace!("[POPOUT] Failed to open window: {:?}", e),
-        }
+        let _ = window_manager::WindowManager::update_global(cx, |wm, cx| {
+            wm.create_window(
+                engine_state::WindowRequest::DetachedPanel,
+                window_options,
+                move |window: &mut gpui::Window, cx: &mut gpui::App| {
+                    tracing::trace!("[POPOUT] Inside window creation callback");
+                    let panel_window = cx.new(|cx| PanelWindow::new(
+                        panel_for_popout, 
+                        center_tabs, 
+                        parent_window_handle.into(),
+                        window, 
+                        cx
+                    ));
+                    tracing::trace!("[POPOUT] PanelWindow created successfully");
+                    cx.new(|cx| Root::new(panel_window.into(), window, cx)).into()
+                },
+                cx,
+            )
+        });
+        tracing::trace!("[POPOUT] Window opened successfully");
     }
 
     pub(super) fn toggle_drawer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -128,7 +126,7 @@ impl PulsarApp {
                 ..Default::default()
             },
             |window, cx| {
-                let problems_window = cx.new(|cx| ProblemsWindow::new(problems_drawer, window, cx));
+                let problems_window = cx.new(|cx| ProblemsWindow::new(problems_drawer, cx));
                 cx.new(|cx| Root::new(problems_window.into(), window, cx))
             },
         );
@@ -163,7 +161,7 @@ impl PulsarApp {
                 ..Default::default()
             },
             |window, cx| {
-                let type_debugger_window = cx.new(|cx| TypeDebuggerWindow::new(type_debugger_drawer, window, cx));
+                let type_debugger_window = cx.new(|cx| TypeDebuggerWindow::new(type_debugger_drawer, cx));
                 cx.new(|cx| Root::new(type_debugger_window.into(), window, cx))
             },
         );
@@ -306,7 +304,7 @@ impl PulsarApp {
             move |window, cx| {
                 // PluginManager is now globally accessible
                 let plugin_manager_window = cx.new(|cx| {
-                    PluginManagerWindow::new_global(window, cx)
+                    PluginManagerWindow::new_global(cx)
                 });
                 cx.new(|cx| Root::new(plugin_manager_window.into(), window, cx))
             },

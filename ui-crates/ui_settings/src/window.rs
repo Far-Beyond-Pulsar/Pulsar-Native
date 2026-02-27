@@ -22,12 +22,10 @@ impl SettingsWindow {
                     .map(|project| project.path.clone())
             });
 
-        let settings_screen = cx.new(|cx| SettingsScreenV2::new(
+        let settings_screen = cx.new(|_cx| SettingsScreenV2::new(
             SettingsScreenV2Props {
                 project_path,
             },
-            // window_manager will provide the window
-            cx
         ));
 
         Self {
@@ -38,7 +36,7 @@ impl SettingsWindow {
 }
 
 impl Render for SettingsWindow {
-    fn render(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
 
         v_flex()
