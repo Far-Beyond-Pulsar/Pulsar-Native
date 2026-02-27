@@ -14,18 +14,10 @@ use crate::hooks::{HookContext, HookRegistry, HookType, LoggingHook, TelemetryHo
 use crate::state::WindowState;
 use crate::telemetry::TelemetrySender;
 use crate::validation::{ValidationRule, WindowError, WindowResult, WindowValidator};
-use gpui::{AnyView, AnyWindowHandle, App, AppContext, Context, EventEmitter, Global, IntoElement, Render, Window, WindowOptions};
+use gpui::{AnyWindowHandle, App, AppContext, Context, EventEmitter, Global, Render, Window, WindowOptions};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use ui_types_common::window_types::{WindowId, WindowRequest};
-
-struct AnyViewRoot(AnyView);
-
-impl Render for AnyViewRoot {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        self.0.clone()
-    }
-}
 
 pub struct WindowManager {
     hooks: HookRegistry,
@@ -63,8 +55,9 @@ impl WindowManager {
     }
 
     /// Create a new window via the manager. Returns GPUI handle on success.
-    /// Create a new window and return both its handle and assigned ID.
-    pub fn create_window<F>(
+    /// Generic version that preserves the view type - this is the preferred method.
+    /// The content_builder should return Entity<V> (created with cx.new)
+    pub fn create_window<V, F>(
         &self,
         window_type: WindowRequest,
         options: WindowOptions,
@@ -72,12 +65,17 @@ impl WindowManager {
         cx: &mut App,
     ) -> WindowResult<(WindowId, AnyWindowHandle)>
     where
-        F: FnOnce(&mut Window, &mut App) -> AnyView + Send + 'static,
+        V: Render + 'static,
+        F: FnOnce(&mut Window, &mut App) -> gpui::Entity<V> + Send + 'static,
     {
+        // Create a dummy command just for telemetry and validation
+        // We can't store the actual content_builder in the command since it's not clone-able
+        let dummy_content: Box<dyn Fn(&mut Window, &mut App) -> gpui::AnyView + Send> = 
+            Box::new(|_, _| panic!("dummy content builder should never be called"));
         let command = WindowCommand::Create(CreateWindowCommand::new(
             window_type.clone(),
-            options,
-            content_builder,
+            WindowOptions::default(),
+            dummy_content,
         ));
 
         self.telemetry.record_command_executed(&command);
@@ -86,24 +84,15 @@ impl WindowManager {
         self.hooks.execute_before(&before)?;
 
         let window_id = self.next_id.fetch_add(1, Ordering::SeqCst);
-        let cmd = if let WindowCommand::Create(cmd) = command {
-            cmd
-        } else {
-            unreachable!()
-        };
-        let content = cmd.content_builder;
         let wtype = window_type.clone();
 
         let handle = cx
-            .open_window(cmd.options, move |window, cx| {
-                let view = content(window, cx);
-                cx.new(|_| AnyViewRoot(view))
-            })
+            .open_window(options, content_builder)
             .map_err(|e| WindowError::GpuiError(format!("{:?}", e)))?;
 
         let handle: AnyWindowHandle = handle.into();
 
-        self.state.register_window(window_id, wtype.clone(), cmd.parent_window);
+        self.state.register_window(window_id, wtype.clone(), None);
         let result = WindowCommandResult::Created { window_id };
         self.telemetry.record_command_result(&result);
         let mut after = HookContext::from_result(&result);

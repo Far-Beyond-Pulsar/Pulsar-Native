@@ -253,7 +253,7 @@ impl Render for LoadingScreen {
                         engine_state::WindowRequest::ProjectSplash { project_path: pathbuf.clone().to_string_lossy().to_string() },
                         opts,
                         move |window: &mut gpui::Window, cx: &mut gpui::App| {
-                            crate::create_loading_component(pathbuf.clone(), wid2, window, cx).into()
+                            crate::create_loading_component(pathbuf.clone(), wid2, window, cx)
                         },
                         cx,
                     )

@@ -84,7 +84,7 @@ impl PulsarApp {
                         cx
                     ));
                     tracing::trace!("[POPOUT] PanelWindow created successfully");
-                    cx.new(|cx| Root::new(panel_window.into(), window, cx)).into()
+                    cx.new(|cx| Root::new(panel_window.into(), window, cx))
                 },
                 cx,
             )

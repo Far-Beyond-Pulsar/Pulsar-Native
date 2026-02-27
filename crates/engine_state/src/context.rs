@@ -7,6 +7,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use gpui::AppContext;
 use parking_lot::RwLock;
 use window_manager;
 use dashmap::DashMap;
@@ -16,7 +17,7 @@ use ui_types_common::window_types::{WindowRequest, WindowId};
 use crate::{DiscordPresence, channels::WindowRequestSender};
 
 
-use gpui::{WindowOptions, Window, AnyView};
+use gpui::{WindowOptions, Window, AnyView, Render, IntoElement, Context};
 
 
 use window_manager::{WindowManager, WindowError};
@@ -145,6 +146,15 @@ pub struct EngineContext {
     pub window_manager: Arc<RwLock<Option<window_manager::WindowManager>>>,
 }
 
+/// Wrapper to convert AnyView to a Render-implementing type
+struct AnyViewWrapper(gpui::AnyView);
+
+impl Render for AnyViewWrapper {
+    fn render(&mut self, _: &mut gpui::Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+        self.0.clone()
+    }
+}
+
 impl EngineContext {
     /// Create a new engine context
     pub fn new() -> Self {
@@ -207,11 +217,32 @@ impl EngineContext {
 
 
     /// Convenience wrapper that either routes through the WindowManager
+    /// Create a window through the window manager using a generic content builder.
+    /// This is the preferred method as it preserves the view type and allows Root
+    /// to be the actual window root.
+    pub fn create_window<V, F>(
+        &self,
+        window_type: WindowRequest,
+        options: gpui::WindowOptions,
+        content_builder: F,
+        cx: &mut gpui::App,
+    ) -> Result<(WindowId, gpui::AnyWindowHandle), window_manager::WindowError>
+    where
+        V: gpui::Render + 'static,
+        F: FnOnce(&mut gpui::Window, &mut gpui::App) -> gpui::Entity<V> + Send + 'static,
+    {
+        use gpui::UpdateGlobal;
+        WindowManager::update_global(cx, |wm, cx| {
+            wm.create_window(window_type, options, content_builder, cx)
+        })
+    }
+
+    /// Legacy method: Create a window through the window manager using AnyView.
     /// when available or falls back to raw `cx.open_window`.
     pub fn create_window_safe<F>(
         &self,
         window_type: WindowRequest,
-        options: WindowOptions,
+        options: gpui::WindowOptions,
         content_builder: F,
         cx: &mut gpui::App,
     ) -> Result<(WindowId, gpui::AnyWindowHandle), window_manager::WindowError>
@@ -220,7 +251,16 @@ impl EngineContext {
     {
         use gpui::UpdateGlobal;
         WindowManager::update_global(cx, |wm, cx| {
-            wm.create_window(window_type, options, content_builder, cx)
+            // Wrap the AnyView builder to work with the generic create_window
+            wm.create_window(
+                window_type,
+                options,
+                move |window: &mut gpui::Window, cx: &mut gpui::App| {
+                    let view = content_builder(window, cx);
+                    cx.new(|_| AnyViewWrapper(view))
+                },
+                cx,
+            )
         })
     }
 

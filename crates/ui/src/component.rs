@@ -65,7 +65,7 @@ pub trait Component: Render + Sized + 'static {
                 WindowRequest::Component,
                 options,
                 move |window: &mut gpui::Window, cx: &mut gpui::App| {
-                    cx.new(|cx| Self::new(config.clone(), window, cx)).into()
+                    cx.new(|cx| Self::new(config.clone(), window, cx))
                 },
                 cx,
             )
@@ -75,9 +75,6 @@ pub trait Component: Render + Sized + 'static {
         Ok(())
     }
 }
-
-/// Marker trait for components that should be rendered as the root of a window
-pub trait RootComponent: Component {}
 
 /// Marker trait for components that can be embedded within other components
 pub trait EmbeddableComponent: Component {}

@@ -59,7 +59,8 @@ impl FlamegraphWindow {
                 engine_state::WindowRequest::Flamegraph,
                 window_options,
                 move |window: &mut gpui::Window, cx: &mut gpui::App| {
-                    FlamegraphWindow::new(trace_data.clone(), window, cx).into()
+                    let flamegraph_window = FlamegraphWindow::new(trace_data.clone(), window, cx);
+                    cx.new(|cx| ui::Root::new(flamegraph_window.into(), window, cx))
                 },
                 cx,
             )

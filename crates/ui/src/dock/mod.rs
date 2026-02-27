@@ -1124,7 +1124,7 @@ impl DockArea {
                     window, 
                     cx
                 ));
-                cx.new(|cx| crate::Root::new(popout_window.into(), window, cx)).into()
+                cx.new(|cx| crate::Root::new(popout_window.into(), window, cx))
             },
             cx
         )

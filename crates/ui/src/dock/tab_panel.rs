@@ -1432,7 +1432,7 @@ impl TabPanel {
                     });
 
                     // Create the root for the new window
-                    cx.new(|cx| Root::new(new_dock_area.into(), window, cx)).into()
+                    cx.new(|cx| Root::new(new_dock_area.into(), window, cx))
                 },
                 cx
             )
