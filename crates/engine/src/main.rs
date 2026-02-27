@@ -297,13 +297,20 @@ fn main() {
         // ensure themes registry is initialized and state.json applied
         ui::themes::init(cx);
 
+        // install window manager (if compiled with the feature)
+        #[cfg(feature = "window-manager")]
+        {
+            use window_manager::WindowManager;
+            let wm = WindowManager::new(engine_context.clone());
+            engine_context.window_manager.write().replace(wm.clone());
+            cx.set_global(wm);
+        }
+
         // decide initial window once the UI context is ready
         let mut launch = engine_context.launch.write();
         {
             if let Some(path) = launch.uri_project_path.take() {
                 tracing::info!("Opening project splash from URI: {}", path.display());
-                let wid = engine_context.next_window_id();
-                engine_context.register_window(wid, engine_state::WindowContext::new(wid, WindowRequest::ProjectSplash { project_path: path.to_string_lossy().to_string() }));
                 let pathbuf = PathBuf::from(path);
                 let opts = make_window_options(
                     Some("Pulsar Engine"),
@@ -311,16 +318,33 @@ fn main() {
                     gpui::size(gpui::px(900.0), gpui::px(600.0)),
                     None,
                 );
-                match cx.open_window(opts, move |window, cx| {
-                    ui_loading_screen::create_loading_component(pathbuf.clone(), wid, window, cx)
-                }) {
-                    Ok(_) => tracing::info!("Splash window opened successfully"),
-                    Err(e) => tracing::error!("Failed to open splash window: {:?}", e),
+
+                #[cfg(feature = "window-manager")]
+                {
+                    match engine_context.create_window_safe(
+                        WindowRequest::ProjectSplash { project_path: pathbuf.to_string_lossy().to_string() },
+                        opts,
+                        move |wid, window, cx| {
+                            ui_loading_screen::create_loading_component(pathbuf.clone(), wid, window, cx)
+                        },
+                        cx,
+                    ) {
+                        Ok((wid, _)) => tracing::info!("Splash window opened successfully id={}", wid),
+                        Err(e) => tracing::error!("Failed to open splash window: {}", e),
+                    }
+                }
+                #[cfg(not(feature = "window-manager"))]
+                {
+                    let wid = engine_context.next_window_id();
+                    engine_context.register_window(wid, engine_state::WindowContext::new(wid, WindowRequest::ProjectSplash { project_path: pathbuf.to_string_lossy().to_string() }));
+                    if let Err(e) = cx.open_window(opts, move |window, cx| {
+                        ui_loading_screen::create_loading_component(pathbuf.clone(), wid, window, cx)
+                    }) {
+                        tracing::error!("Failed to open splash window: {:?}", e);
+                    }
                 }
             } else {
                 tracing::info!("Opening main entry window");
-                let wid = engine_context.next_window_id();
-                engine_context.register_window(wid, engine_state::WindowContext::new(wid, WindowRequest::Entry));
                 let ec = engine_context.clone();
                 let opts = make_window_options(
                     Some("Pulsar Engine"),
@@ -328,70 +352,160 @@ fn main() {
                     gpui::size(gpui::px(800.0), gpui::px(600.0)),
                     Some(gpui::Size { width: gpui::px(600.), height: gpui::px(400.) }),
                 );
-                match cx.open_window(opts, move |window, cx| {
-                    // callbacks capture environment by value; cx is passed when invoked
-                    let ec_clone = ec.clone();
-                    let project_cb: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
-                        std::sync::Arc::new(move |pathbuf, cx| {
-                            // open splash window from engine logic
-                            let ec2 = ec_clone.clone();
-                            let wid2 = ec2.next_window_id();
-                            ec2.register_window(wid2, engine_state::WindowContext::new(wid2, WindowRequest::ProjectSplash { project_path: pathbuf.to_string_lossy().to_string() }));
-                            let opts = make_window_options(
-                                Some("Pulsar Engine"),
-                                gpui::point(gpui::px(120.0), gpui::px(120.0)),
-                                gpui::size(gpui::px(900.0), gpui::px(600.0)),
-                                None,
-                            );
-                            if let Err(e) = cx.open_window(opts, move |window, cx| {
-                                ui_loading_screen::create_loading_component(pathbuf.clone(), wid2, window, cx)
-                            }) {
-                                tracing::error!("failed to open splash window: {:?}", e);
-                            }
-                        });
 
-                    let ec_clone2 = ec.clone();
-                    let git_cb: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
-                        std::sync::Arc::new(move |pathbuf, cx| {
-                            let ec3 = ec_clone2.clone();
-                            let wid3 = ec3.next_window_id();
-                            ec3.register_window(wid3, engine_state::WindowContext::new(wid3, WindowRequest::GitManager { project_path: pathbuf.to_string_lossy().to_string() }));
-                            let opts = make_window_options(
-                                Some("Git Manager"),
-                                gpui::point(gpui::px(150.0), gpui::px(150.0)),
-                                gpui::size(gpui::px(800.0), gpui::px(600.0)),
-                                None,
-                            );
-                            if let Err(e) = cx.open_window(opts, move |window, cx| {
-                                ui_git_manager::create_git_manager_component(window, cx, pathbuf.clone())
-                            }) {
-                                tracing::error!("failed to open git manager window: {:?}", e);
-                            }
-                        });
-                    // callback for opening settings window from entry screen
-                    let ec_clone3 = ec.clone();
-                    let settings_cb: std::sync::Arc<dyn Fn(&mut gpui::App) + Send + Sync> =
-                        std::sync::Arc::new(move |cx| {
-                            let ec4 = ec_clone3.clone();
-                            let wid4 = ec4.next_window_id();
-                            ec4.register_window(wid4, engine_state::WindowContext::new(wid4, WindowRequest::Settings));
-                            let opts = make_window_options(
-                                Some("Settings"),
-                                gpui::point(gpui::px(150.0), gpui::px(150.0)),
-                                gpui::size(gpui::px(700.0), gpui::px(500.0)),
-                                None,
-                            );
-                            if let Err(e) = cx.open_window(opts, move |window, cx| {
-                                ui_settings::create_settings_component(window, cx, &ec4.clone())
-                            }) {
-                                tracing::error!("failed to open settings window: {:?}", e);
-                            }
-                        });
+                #[cfg(feature = "window-manager")]
+                {
+                    match engine_context.create_window_safe(
+                        WindowRequest::Entry,
+                        opts,
+                        move |wid, window, cx| {
+                            let ec_clone = ec.clone();
+                            let project_cb: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
+                                std::sync::Arc::new(move |pathbuf, cx| {
+                                    let ec2 = ec_clone.clone();
+                                    if let Ok((wid2, _)) = ec2.create_window_safe(
+                                        WindowRequest::ProjectSplash { project_path: pathbuf.to_string_lossy().to_string() },
+                                        make_window_options(
+                                            Some("Pulsar Engine"),
+                                            gpui::point(gpui::px(120.0), gpui::px(120.0)),
+                                            gpui::size(gpui::px(900.0), gpui::px(600.0)),
+                                            None,
+                                        ),
+                                        move |wid, window, cx| {
+                                            ui_loading_screen::create_loading_component(pathbuf.clone(), wid, window, cx)
+                                        },
+                                        cx,
+                                    ) {
+                                        tracing::info!("opened splash from entry id={} ", wid2);
+                                    } else {
+                                        tracing::error!("failed to open splash window");
+                                    }
+                                });
 
-                    ui_entry::create_entry_component(window, cx, &ec, wid, project_cb, git_cb, settings_cb)
-                }) {
-                    Ok(_) => tracing::info!("Entry window opened successfully"),
-                    Err(e) => tracing::error!("Failed to open entry window: {:?}", e),
+                            let ec_clone2 = ec.clone();
+                            let git_cb: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
+                                std::sync::Arc::new(move |pathbuf, cx| {
+                                    let ec3 = ec_clone2.clone();
+                                    if let Ok((wid3, _)) = ec3.create_window_safe(
+                                        WindowRequest::GitManager { project_path: pathbuf.to_string_lossy().to_string() },
+                                        make_window_options(
+                                            Some("Git Manager"),
+                                            gpui::point(gpui::px(150.0), gpui::px(150.0)),
+                                            gpui::size(gpui::px(800.0), gpui::px(600.0)),
+                                            None,
+                                        ),
+                                        move |wid, window, cx| {
+                                            ui_git_manager::create_git_manager_component(window, cx, pathbuf.clone())
+                                        },
+                                        cx,
+                                    ) {
+                                        tracing::info!("opened git manager id={}", wid3);
+                                    } else {
+                                        tracing::error!("failed to open git manager");
+                                    }
+                                });
+                            // callback for opening settings window from entry screen
+                            let ec_clone3 = ec.clone();
+                            let settings_cb: std::sync::Arc<dyn Fn(&mut gpui::App) + Send + Sync> =
+                                std::sync::Arc::new(move |cx| {
+                                    let ec4 = ec_clone3.clone();
+                                    if let Ok((wid4, _)) = ec4.create_window_safe(
+                                        WindowRequest::Settings,
+                                        make_window_options(
+                                            Some("Settings"),
+                                            gpui::point(gpui::px(150.0), gpui::px(150.0)),
+                                            gpui::size(gpui::px(700.0), gpui::px(500.0)),
+                                            None,
+                                        ),
+                                        move |wid, window, cx| {
+                                            ui_settings::create_settings_component(window, cx, &ec4.clone())
+                                        },
+                                        cx,
+                                    ) {
+                                        tracing::info!("settings window opened id={}", wid4);
+                                    } else {
+                                        tracing::error!("failed to open settings window");
+                                    }
+                                });
+
+                            ui_entry::create_entry_component(window, cx, &ec, wid, project_cb, git_cb, settings_cb)
+                        },
+                        cx,
+                    ) {
+                        Ok((wid, _)) => tracing::info!("Entry window opened successfully id={}", wid),
+                        Err(e) => tracing::error!("Failed to open entry window: {}", e),
+                    }
+                }
+
+                #[cfg(not(feature = "window-manager"))]
+                {
+                    let wid = engine_context.next_window_id();
+                    engine_context.register_window(wid, engine_state::WindowContext::new(wid, WindowRequest::Entry));
+                    match cx.open_window(opts, move |window, cx| {
+                        // callbacks capture environment by value; cx is passed when invoked
+                        let ec_clone = ec.clone();
+                        let project_cb: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
+                            std::sync::Arc::new(move |pathbuf, cx| {
+                                // open splash window from engine logic
+                                let ec2 = ec_clone.clone();
+                                let wid2 = ec2.next_window_id();
+                                ec2.register_window(wid2, engine_state::WindowContext::new(wid2, WindowRequest::ProjectSplash { project_path: pathbuf.to_string_lossy().to_string() }));
+                                let opts = make_window_options(
+                                    Some("Pulsar Engine"),
+                                    gpui::point(gpui::px(120.0), gpui::px(120.0)),
+                                    gpui::size(gpui::px(900.0), gpui::px(600.0)),
+                                    None,
+                                );
+                                if let Err(e) = cx.open_window(opts, move |window, cx| {
+                                    ui_loading_screen::create_loading_component(pathbuf.clone(), wid2, window, cx)
+                                }) {
+                                    tracing::error!("failed to open splash window: {:?}", e);
+                                }
+                            });
+
+                        let ec_clone2 = ec.clone();
+                        let git_cb: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
+                            std::sync::Arc::new(move |pathbuf, cx| {
+                                let ec3 = ec_clone2.clone();
+                                let wid3 = ec3.next_window_id();
+                                ec3.register_window(wid3, engine_state::WindowContext::new(wid3, WindowRequest::GitManager { project_path: pathbuf.to_string_lossy().to_string() }));
+                                let opts = make_window_options(
+                                    Some("Git Manager"),
+                                    gpui::point(gpui::px(150.0), gpui::px(150.0)),
+                                    gpui::size(gpui::px(800.0), gpui::px(600.0)),
+                                    None,
+                                );
+                                if let Err(e) = cx.open_window(opts, move |window, cx| {
+                                    ui_git_manager::create_git_manager_component(window, cx, pathbuf.clone())
+                                }) {
+                                    tracing::error!("failed to open git manager window: {:?}", e);
+                                }
+                            });
+                        // callback for opening settings window from entry screen
+                        let ec_clone3 = ec.clone();
+                        let settings_cb: std::sync::Arc<dyn Fn(&mut gpui::App) + Send + Sync> =
+                            std::sync::Arc::new(move |cx| {
+                                let ec4 = ec_clone3.clone();
+                                let wid4 = ec4.next_window_id();
+                                ec4.register_window(wid4, engine_state::WindowContext::new(wid4, WindowRequest::Settings));
+                                let opts = make_window_options(
+                                    Some("Settings"),
+                                    gpui::point(gpui::px(150.0), gpui::px(150.0)),
+                                    gpui::size(gpui::px(700.0), gpui::px(500.0)),
+                                    None,
+                                );
+                                if let Err(e) = cx.open_window(opts, move |window, cx| {
+                                    ui_settings::create_settings_component(window, cx, &ec4.clone())
+                                }) {
+                                    tracing::error!("failed to open settings window: {:?}", e);
+                                }
+                            });
+
+                        ui_entry::create_entry_component(window, cx, &ec, wid, project_cb, git_cb, settings_cb)
+                    }) {
+                        Ok(_) => tracing::info!("Entry window opened successfully"),
+                        Err(e) => tracing::error!("Failed to open entry window: {:?}", e),
+                    }
                 }
             }
         }

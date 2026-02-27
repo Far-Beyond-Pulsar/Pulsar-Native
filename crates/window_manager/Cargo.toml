@@ -1,0 +1,23 @@
+[package]
+name = "window_manager"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# GPUI framework
+gpui-ce.workspace = true
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Thread-safe data structures
+parking_lot = "0.12"
+dashmap = "6.1.0"
+
+# Logging
+tracing.workspace = true
+
+# Serialization (for window state)
+serde = { version = "1.0", features = ["derive"] }

@@ -35,16 +35,16 @@ ttf-parser = { opt-level = 3 }
 gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "23a10223818370cad0069df11795804705cd7186" }
 
 # ---------- Core Engine ----------
-ui = { path = "crates/ui" }
+ui                    = { path = "crates/ui" }
 gpui-component-macros = { path = "crates/macros" }
-pulsar_std = { path = "crates/pulsar_std" }
-blueprint_compiler = { path = "crates/blueprint_compiler" }
-
-engine_backend = { path = "crates/engine_backend" }
-engine_state   = { path = "crates/engine_state" }
-engine_fs      = { path = "crates/engine_fs" }
-type_db        = { path = "crates/type_db" }
-profiling      = { path = "crates/profiling" }
+type_db               = { path = "crates/type_db" }
+profiling             = { path = "crates/profiling" }
+engine_fs             = { path = "crates/engine_fs" }
+pulsar_std            = { path = "crates/pulsar_std" }
+engine_state          = { path = "crates/engine_state" }
+engine_backend        = { path = "crates/engine_backend" }
+window_manager        = { path = "crates/window_manager" }
+blueprint_compiler    = { path = "crates/blueprint_compiler" }
 
 # ---------- UI Component Crates ----------
 ui_core            = { path = "ui-crates/ui_core" }

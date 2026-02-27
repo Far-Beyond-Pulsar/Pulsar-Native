@@ -2672,6 +2672,7 @@ dependencies = [
  "toml 0.8.23",
  "tracing",
  "type_db",
+ "window_manager",
 ]
 
 [[package]]
@@ -13149,6 +13150,19 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
+
+[[package]]
+name = "window_manager"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dashmap 6.1.0",
+ "gpui-ce",
+ "parking_lot",
+ "serde",
+ "thiserror 2.0.18",
+ "tracing",
+]
 
 [[package]]
 name = "windows"

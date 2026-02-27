@@ -13,6 +13,12 @@ use type_db::TypeDatabase;
 
 use crate::{WindowRequest, DiscordPresence, WindowRequestSender};
 
+#[cfg(feature = "window-manager")]
+use gpui::{WindowOptions, Window, AnyView};
+
+#[cfg(feature = "window-manager")]
+use window_manager::{WindowManager, WindowError};
+
 /// Window ID type (u64 for cross-platform compatibility)
 ///
 /// This is used instead of winit::window::WindowId to keep engine_state
@@ -138,6 +144,10 @@ pub struct EngineContext {
 
     /// Monotonically increasing window ID counter
     next_id: Arc<AtomicU64>,
+
+    /// Optional window manager instance (enabled via feature)
+    #[cfg(feature = "window-manager")]
+    pub window_manager: Arc<RwLock<Option<window_manager::WindowManager>>>,
 }
 
 impl EngineContext {
@@ -154,6 +164,8 @@ impl EngineContext {
             window_count: Arc::new(parking_lot::Mutex::new(0)),
             renderers: crate::renderers_typed::TypedRendererRegistry::new(),
             next_id: Arc::new(AtomicU64::new(1)),
+            #[cfg(feature = "window-manager")]
+            window_manager: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -197,6 +209,32 @@ impl EngineContext {
         }
         result
     }
+
+    #[cfg(feature = "window-manager")]
+    /// Convenience wrapper that either routes through the WindowManager
+    /// when available or falls back to raw `cx.open_window`.
+    pub fn create_window_safe<F>(
+        &self,
+        window_type: WindowRequest,
+        options: WindowOptions,
+        content_builder: F,
+        cx: &mut gpui::App,
+    ) -> Result<(WindowId, gpui::WindowHandle<gpui::AnyView>), window_manager::WindowError>
+    where
+        F: FnOnce(&mut gpui::Window, &mut gpui::App) -> gpui::AnyView + 'static,
+    {
+        if let Some(wm) = self.window_manager.read().as_ref() {
+            wm.create_window(window_type, options, content_builder, cx)
+        } else {
+            tracing::warn!("WindowManager not initialized, using fallback");
+            let wid = self.next_window_id();
+            self.register_window(wid, WindowContext::new(wid, window_type.clone()));
+            cx.open_window(options, content_builder)
+                .map(|handle| (wid, handle))
+                .map_err(|e| window_manager::WindowError::GpuiError(format!("{:?}", e)))
+        }
+    }
+
 
     /// Get window count
     pub fn window_count(&self) -> usize {
