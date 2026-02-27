@@ -218,12 +218,10 @@ impl EngineContext {
     where
         F: FnOnce(&mut gpui::Window, &mut gpui::App) -> gpui::AnyView + Send + 'static,
     {
-        if let Some(wm) = self.window_manager.read().as_ref() {
+        use gpui::UpdateGlobal;
+        WindowManager::update_global(cx, |wm, cx| {
             wm.create_window(window_type, options, content_builder, cx)
-        } else {
-            tracing::error!("WindowManager not initialized!");
-            Err(window_manager::WindowError::NotInitialized)
-        }
+        })
     }
 
 
