@@ -320,11 +320,11 @@ fn main() {
 
 
                 {
-                    match engine_context.create_window_safe(
+                    match engine_context.create_window(
                         WindowRequest::ProjectSplash { project_path: pathbuf.to_string_lossy().to_string() },
                         opts,
                         move |window, cx| {
-                            ui_loading_screen::create_loading_component(pathbuf.clone(), 0, window, cx).into()
+                            ui_loading_screen::create_loading_component(pathbuf.clone(), 0, window, cx)
                         },
                         cx,
                     ) {
@@ -344,7 +344,7 @@ fn main() {
 
 
                 {
-                    match engine_context.create_window_safe(
+                    match engine_context.create_window(
                         WindowRequest::Entry,
                         opts,
                         move |window, cx| {
@@ -352,7 +352,7 @@ fn main() {
                             let project_cb: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
                                 std::sync::Arc::new(move |pathbuf, cx| {
                                     let ec2 = ec_clone.clone();
-                                    if let Ok((wid2, _)) = ec2.create_window_safe(
+                                    if let Ok((wid2, _)) = ec2.create_window(
                                         WindowRequest::ProjectSplash { project_path: pathbuf.to_string_lossy().to_string() },
                                         make_window_options(
                                             Some("Pulsar Engine"),
@@ -361,7 +361,7 @@ fn main() {
                                             None,
                                         ),
                                         move |window, cx| {
-                                            ui_loading_screen::create_loading_component(pathbuf.clone(), 0, window, cx).into()
+                                            ui_loading_screen::create_loading_component(pathbuf.clone(), 0, window, cx)
                                         },
                                         cx,
                                     ) {
@@ -375,7 +375,7 @@ fn main() {
                             let git_cb: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
                                 std::sync::Arc::new(move |pathbuf, cx| {
                                     let ec3 = ec_clone2.clone();
-                                    if let Ok((wid3, _)) = ec3.create_window_safe(
+                                    if let Ok((wid3, _)) = ec3.create_window(
                                         WindowRequest::GitManager { project_path: pathbuf.to_string_lossy().to_string() },
                                         make_window_options(
                                             Some("Git Manager"),
@@ -384,7 +384,7 @@ fn main() {
                                             None,
                                         ),
                                         move |window, cx| {
-                                            ui_git_manager::create_git_manager_component(window, cx, pathbuf.clone()).into()
+                                            ui_git_manager::create_git_manager_component(window, cx, pathbuf.clone())
                                         },
                                         cx,
                                     ) {
@@ -398,7 +398,7 @@ fn main() {
                             let settings_cb: std::sync::Arc<dyn Fn(&mut gpui::App) + Send + Sync> =
                                 std::sync::Arc::new(move |cx| {
                                     let ec4 = ec_clone3.clone();
-                                    if let Ok((wid4, _)) = ec4.create_window_safe(
+                                    if let Ok((wid4, _)) = ec4.create_window(
                                         WindowRequest::Settings,
                                         make_window_options(
                                             Some("Settings"),
@@ -409,7 +409,7 @@ fn main() {
                                         {
                                         let ec4_ref = ec4.clone();
                                         move |window, cx| {
-                                            ui_settings::create_settings_component(window, cx, &ec4_ref).into()
+                                            ui_settings::create_settings_component(window, cx, &ec4_ref)
                                         }
                                         },
                                         cx,
@@ -420,7 +420,7 @@ fn main() {
                                     }
                                 });
 
-                            ui_entry::create_entry_component(window, cx, &ec, 0, project_cb, git_cb, settings_cb).into()
+                            ui_entry::create_entry_component(window, cx, &ec, 0, project_cb, git_cb, settings_cb)
                         },
                         cx,
                     ) {
