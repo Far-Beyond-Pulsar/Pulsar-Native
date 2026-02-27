@@ -27,7 +27,7 @@ impl ProblemsWindow {
 impl EventEmitter<NavigateToDiagnostic> for ProblemsWindow {}
 
 impl Render for ProblemsWindow {
-    fn render(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         drawer_window_entity("Window.Title.Problems", self.problems_drawer.clone(), cx)
     }
 }
