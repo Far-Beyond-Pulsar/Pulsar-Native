@@ -63,18 +63,19 @@ impl TaskId {
 }
 
 /// Common initialization task IDs
+#[rustfmt::skip]
 pub mod task_ids {
     use super::TaskId;
 
-    pub const LOGGING: TaskId = TaskId::new("logging");
-    pub const APPDATA: TaskId = TaskId::new("appdata");
-    pub const SETTINGS: TaskId = TaskId::new("settings");
-    pub const RUNTIME: TaskId = TaskId::new("runtime");
-    pub const BACKEND: TaskId = TaskId::new("backend");
-    pub const ENGINE_CONTEXT: TaskId = TaskId::new("engine_context");
-    pub const URI_HANDLING: TaskId = TaskId::new("uri_handling");
-    pub const SET_GLOBAL: TaskId = TaskId::new("set_global");
-    pub const DISCORD: TaskId = TaskId::new("discord");
+    pub const LOGGING:          TaskId = TaskId::new("logging");
+    pub const APPDATA:          TaskId = TaskId::new("appdata");
+    pub const RUNTIME:          TaskId = TaskId::new("runtime");
+    pub const BACKEND:          TaskId = TaskId::new("backend");
+    pub const DISCORD:          TaskId = TaskId::new("discord");
+    pub const SETTINGS:         TaskId = TaskId::new("settings");
+    pub const SET_GLOBAL:       TaskId = TaskId::new("set_global");
+    pub const URI_HANDLING:     TaskId = TaskId::new("uri_handling");
+    pub const ENGINE_CONTEXT:   TaskId = TaskId::new("engine_context");
     pub const URI_REGISTRATION: TaskId = TaskId::new("uri_registration");
 }
 
