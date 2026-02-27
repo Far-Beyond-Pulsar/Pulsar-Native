@@ -45,38 +45,25 @@ impl FlamegraphWindow {
     }
 
     pub fn open(cx: &mut App) -> WindowHandle<Self> {
-        // Register with engine context
-        if let Some(ec) = engine_state::EngineContext::global() {
-            let wid = ec.next_window_id();
-            ec.register_window(wid, engine_state::WindowContext::new(wid, engine_state::WindowRequest::Flamegraph));
-            tracing::debug!("opening flamegraph window id={}", wid);
-        }
-
         let trace_data = Arc::new(TraceData::new());
-
         let window_options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds {
                 origin: point(px(100.0), px(100.0)),
                 size: size(px(1200.0), px(800.0)),
             })),
-            titlebar: None,
-            window_background: WindowBackgroundAppearance::Opaque,
-            focus: true,
-            show: true,
-            kind: WindowKind::Normal,
-            is_movable: true,
-            is_minimizable: true,
-            is_resizable: true,
-            window_decorations: Some(WindowDecorations::Client),
-            display_id: None,
-            window_min_size: Some(size(px(800.0), px(600.0))),
-            tabbing_identifier: None,
-            app_id: None,
+            decorations: WindowDecorations::default(),
+            ..WindowOptions::default()
         };
-
-        cx.open_window(window_options, |_window, cx| {
-            Self::new(trace_data, _window, cx)
-        }).unwrap()
+        let wm = window_manager::WindowManager::global();
+        let handle = wm.create_window(
+            engine_state::WindowRequest::Flamegraph,
+            window_options,
+            move |_window_id, _window, cx| {
+                FlamegraphWindow::new(trace_data.clone(), cx)
+            },
+            cx
+        ).unwrap().1;
+        handle
     }
 
     fn start_profiling(&mut self, _cx: &mut Context<Self>) {

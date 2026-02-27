@@ -125,7 +125,7 @@ fn main() {
             ctx.log_guard = Some(_log_guard);
             Ok(())
         })
-    )).unwrap();
+    ).unwrap();
 
     // Task 2: App data (depends on logging)
     graph.add_task(InitTask::new(
@@ -140,7 +140,7 @@ fn main() {
             tracing::debug!("Config file: {:?}", appdata.config_file);
             Ok(())
         })
-    )).unwrap();
+    ).unwrap();
 
     // Task 3: Settings (depends on app data)
     graph.add_task(InitTask::new(
@@ -153,7 +153,7 @@ fn main() {
             let _engine_settings = EngineSettings::load(&appdata.config_file);
             Ok(())
         })
-    )).unwrap();
+    ).unwrap();
 
     // Task 4: Runtime (depends on logging)
     graph.add_task(InitTask::new(
@@ -165,7 +165,7 @@ fn main() {
             ctx.runtime = Some(rt);
             Ok(())
         })
-    )).unwrap();
+    ).unwrap();
 
     // Task 5: Backend (depends on runtime)
     graph.add_task(InitTask::new(
@@ -189,7 +189,7 @@ fn main() {
             // No need to store in InitContext
             Ok(())
         })
-    )).unwrap();
+    ).unwrap();
 
     // Task 6: Channels (no dependencies)
     // (disabled – window management will be done directly via GPUI)
@@ -223,7 +223,7 @@ fn main() {
             ctx.engine_context = Some(engine_context);
             Ok(())
         })
-    )).unwrap();
+    ).unwrap();
 
     // Task 8: Set Global (depends on engine context)
     graph.add_task(InitTask::new(
@@ -238,7 +238,7 @@ fn main() {
             engine_context.clone().set_global();
             Ok(())
         })
-    )).unwrap();
+    ).unwrap();
 
     // Task 9: Discord (depends on set_global)
     graph.add_task(InitTask::new(
@@ -255,7 +255,7 @@ fn main() {
             }
             Ok(())
         })
-    )).unwrap();
+    ).unwrap();
 
     // Task 10: URI Registration (depends on runtime)
     graph.add_task(InitTask::new(
@@ -274,7 +274,7 @@ fn main() {
             });
             Ok(())
         })
-    )).unwrap();
+    ).unwrap();
 
     // Execute the initialization graph
     if let Err(e) = graph.execute(&mut init_ctx) {
@@ -331,16 +331,6 @@ fn main() {
                     ) {
                         Ok((wid, _)) => tracing::info!("Splash window opened successfully id={}", wid),
                         Err(e) => tracing::error!("Failed to open splash window: {}", e),
-                    }
-                }
-                #[cfg(not(feature = "window-manager"))]
-                {
-                    let wid = engine_context.next_window_id();
-                    engine_context.register_window(wid, engine_state::WindowContext::new(wid, WindowRequest::ProjectSplash { project_path: pathbuf.to_string_lossy().to_string() }));
-                    if let Err(e) = cx.open_window(opts, move |window, cx| {
-                        ui_loading_screen::create_loading_component(pathbuf.clone(), wid, window, cx)
-                    }) {
-                        tracing::error!("Failed to open splash window: {:?}", e);
                     }
                 }
             } else {
@@ -436,77 +426,6 @@ fn main() {
                         Err(e) => tracing::error!("Failed to open entry window: {}", e),
                     }
                 }
-
-                #[cfg(not(feature = "window-manager"))]
-                {
-                    let wid = engine_context.next_window_id();
-                    engine_context.register_window(wid, engine_state::WindowContext::new(wid, WindowRequest::Entry));
-                    match cx.open_window(opts, move |window, cx| {
-                        // callbacks capture environment by value; cx is passed when invoked
-                        let ec_clone = ec.clone();
-                        let project_cb: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
-                            std::sync::Arc::new(move |pathbuf, cx| {
-                                // open splash window from engine logic
-                                let ec2 = ec_clone.clone();
-                                let wid2 = ec2.next_window_id();
-                                ec2.register_window(wid2, engine_state::WindowContext::new(wid2, WindowRequest::ProjectSplash { project_path: pathbuf.to_string_lossy().to_string() }));
-                                let opts = make_window_options(
-                                    Some("Pulsar Engine"),
-                                    gpui::point(gpui::px(120.0), gpui::px(120.0)),
-                                    gpui::size(gpui::px(900.0), gpui::px(600.0)),
-                                    None,
-                                );
-                                if let Err(e) = cx.open_window(opts, move |window, cx| {
-                                    ui_loading_screen::create_loading_component(pathbuf.clone(), wid2, window, cx)
-                                }) {
-                                    tracing::error!("failed to open splash window: {:?}", e);
-                                }
-                            });
-
-                        let ec_clone2 = ec.clone();
-                        let git_cb: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
-                            std::sync::Arc::new(move |pathbuf, cx| {
-                                let ec3 = ec_clone2.clone();
-                                let wid3 = ec3.next_window_id();
-                                ec3.register_window(wid3, engine_state::WindowContext::new(wid3, WindowRequest::GitManager { project_path: pathbuf.to_string_lossy().to_string() }));
-                                let opts = make_window_options(
-                                    Some("Git Manager"),
-                                    gpui::point(gpui::px(150.0), gpui::px(150.0)),
-                                    gpui::size(gpui::px(800.0), gpui::px(600.0)),
-                                    None,
-                                );
-                                if let Err(e) = cx.open_window(opts, move |window, cx| {
-                                    ui_git_manager::create_git_manager_component(window, cx, pathbuf.clone())
-                                }) {
-                                    tracing::error!("failed to open git manager window: {:?}", e);
-                                }
-                            });
-                        // callback for opening settings window from entry screen
-                        let ec_clone3 = ec.clone();
-                        let settings_cb: std::sync::Arc<dyn Fn(&mut gpui::App) + Send + Sync> =
-                            std::sync::Arc::new(move |cx| {
-                                let ec4 = ec_clone3.clone();
-                                let wid4 = ec4.next_window_id();
-                                ec4.register_window(wid4, engine_state::WindowContext::new(wid4, WindowRequest::Settings));
-                                let opts = make_window_options(
-                                    Some("Settings"),
-                                    gpui::point(gpui::px(150.0), gpui::px(150.0)),
-                                    gpui::size(gpui::px(700.0), gpui::px(500.0)),
-                                    None,
-                                );
-                                if let Err(e) = cx.open_window(opts, move |window, cx| {
-                                    ui_settings::create_settings_component(window, cx, &ec4.clone())
-                                }) {
-                                    tracing::error!("failed to open settings window: {:?}", e);
-                                }
-                            });
-
-                        ui_entry::create_entry_component(window, cx, &ec, wid, project_cb, git_cb, settings_cb)
-                    }) {
-                        Ok(_) => tracing::info!("Entry window opened successfully"),
-                        Err(e) => tracing::error!("Failed to open entry window: {:?}", e),
-                    }
-                }
             }
         }
     });
@@ -529,4 +448,3 @@ fn make_window_options(
         ..Default::default()
     }
 }
-

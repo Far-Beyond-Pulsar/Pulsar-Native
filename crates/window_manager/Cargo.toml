@@ -8,6 +8,9 @@ publish = false
 # GPUI framework
 gpui-ce.workspace = true
 
+# ui_types_common for resolving import errors
+ui_types_common = { path = "../../ui-crates/ui_types_common" }
+
 # Error handling
 thiserror = "2.0"
 anyhow = "1.0"

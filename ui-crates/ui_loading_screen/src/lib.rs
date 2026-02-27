@@ -247,10 +247,16 @@ impl Render for LoadingScreen {
                     window_decorations: Some(gpui::WindowDecorations::Client),
                     ..Default::default()
                 };
-                cx.open_window(opts, move |window, cx| {
-                    crate::create_loading_component(pathbuf.clone(), wid2, window, cx)
-                })
-                .expect("failed to open project editor");
+                // Replace direct cx.open_window with window_manager::WindowManager::global().create_window
+                let wm = window_manager::WindowManager::global();
+                wm.create_window(
+                    engine_state::WindowRequest::ProjectSplash { project_path: pathbuf.clone().to_string_lossy().to_string() },
+                    opts,
+                    move |_window_id, window, cx| {
+                        crate::create_loading_component(pathbuf.clone(), wid2, window, cx)
+                    },
+                    cx
+                ).expect("failed to open project editor");
 
                 let close_id = self.window_id;
                 let ec2 = engine_context.clone();

@@ -69,20 +69,25 @@ impl PulsarApp {
         let panel_for_popout = panel.clone();
         let parent_window_handle = parent_window.window_handle();
 
-        // Create a dedicated panel window instead of embedding in full PulsarApp
-        let result = cx.open_window(window_options, move |window, cx| {
-            tracing::trace!("[POPOUT] Inside window creation callback");
-            let panel_window = cx.new(|cx| PanelWindow::new(
-                panel_for_popout, 
-                center_tabs, 
-                parent_window_handle.into(),
-                window, 
-                cx
-            ));
-            tracing::trace!("[POPOUT] PanelWindow created successfully");
-            cx.new(|cx| Root::new(panel_window.into(), window, cx))
-        });
-
+        // Replace direct cx.open_window with window_manager::WindowManager::global().create_window
+        let wm = window_manager::WindowManager::global();
+        let result = wm.create_window(
+            engine_state::WindowRequest::DetachedPanel,
+            window_options,
+            move |_window_id, window, cx| {
+                tracing::trace!("[POPOUT] Inside window creation callback");
+                let panel_window = cx.new(|cx| PanelWindow::new(
+                    panel_for_popout, 
+                    center_tabs, 
+                    parent_window_handle.into(),
+                    window, 
+                    cx
+                ));
+                tracing::trace!("[POPOUT] PanelWindow created successfully");
+                cx.new(|cx| Root::new(panel_window.into(), window, cx))
+            },
+            cx
+        );
         match result {
             Ok(_) => tracing::trace!("[POPOUT] Window opened successfully"),
             Err(e) => tracing::trace!("[POPOUT] Failed to open window: {:?}", e),

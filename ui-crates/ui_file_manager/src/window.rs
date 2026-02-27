@@ -17,11 +17,10 @@ pub struct FileManagerWindow {
 impl FileManagerWindow {
     pub fn new(
         file_manager: Entity<FileManagerDrawer>,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         // Subscribe to file selected events and forward them to parent window
-        cx.subscribe_in(&file_manager, window, Self::on_file_selected).detach();
+        cx.subscribe_in(&file_manager, Self::on_file_selected).detach();
 
         Self { 
             file_manager,
@@ -36,7 +35,6 @@ impl FileManagerWindow {
         &mut self,
         _drawer: &Entity<FileManagerDrawer>,
         event: &FileSelected,
-        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         // Emit event for parent to handle
@@ -47,7 +45,7 @@ impl FileManagerWindow {
 impl EventEmitter<FileSelected> for FileManagerWindow {}
 
 impl Render for FileManagerWindow {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         drawer_window_entity("Window.Title.FileManager", self.file_manager.clone(), cx)
     }
 }

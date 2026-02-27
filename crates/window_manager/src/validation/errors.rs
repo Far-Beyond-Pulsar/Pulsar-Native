@@ -1,4 +1,4 @@
-use engine_state::WindowId;
+use ui_types_common::window_types::WindowId;
 
 #[derive(Debug, thiserror::Error)]
 pub enum WindowError {

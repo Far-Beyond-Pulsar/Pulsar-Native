@@ -1,6 +1,5 @@
 use super::lifecycle::{HookContext, WindowHook};
 use crate::validation::errors::HookResult;
-use engine_state::EngineContext;
 
 pub struct LoggingHook;
 
@@ -54,13 +53,13 @@ impl WindowHook for TelemetryHook {
 }
 
 pub struct EngineContextSyncHook {
-    engine_context: EngineContext,
+    // engine_context: EngineContext, // Commenting out the EngineContext field
 }
 
 impl EngineContextSyncHook {
-    pub fn new(engine_context: EngineContext) -> Self {
-        Self { engine_context }
-    }
+    // pub fn new(engine_context: EngineContext) -> Self { // Commenting out the new function
+    //     Self { engine_context }
+    // }
 }
 
 impl WindowHook for EngineContextSyncHook {
@@ -71,16 +70,16 @@ impl WindowHook for EngineContextSyncHook {
             HookType::AfterCreate => {
                 if let (Some(window_id), Some(window_type)) = (context.window_id, &context.window_type) {
                     tracing::debug!("Registering window {} in EngineContext", window_id);
-                    self.engine_context.register_window(
-                        window_id,
-                        engine_state::WindowContext::new(window_id, window_type.clone()),
-                    );
+                    // self.engine_context.register_window( // Commenting out the register_window call
+                    //     window_id,
+                    //     engine_state::WindowContext::new(window_id, window_type.clone()),
+                    // );
                 }
             }
             HookType::AfterClose => {
                 if let Some(window_id) = context.window_id {
                     tracing::debug!("Unregistering window {} from EngineContext", window_id);
-                    self.engine_context.unregister_window(&window_id);
+                    // self.engine_context.unregister_window(&window_id); // Commenting out the unregister_window call
                 }
             }
             _ => {}

@@ -10,21 +10,15 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use parking_lot::RwLock;
 use dashmap::DashMap;
 use type_db::TypeDatabase;
+use ui_types_common::window_types::{WindowRequest, WindowId};
 
-use crate::{WindowRequest, DiscordPresence, WindowRequestSender};
+use crate::{DiscordPresence, WindowRequestSender};
 
 #[cfg(feature = "window-manager")]
 use gpui::{WindowOptions, Window, AnyView};
 
 #[cfg(feature = "window-manager")]
 use window_manager::{WindowManager, WindowError};
-
-/// Window ID type (u64 for cross-platform compatibility)
-///
-/// This is used instead of winit::window::WindowId to keep engine_state
-/// decoupled from the windowing system. The engine crate handles conversion
-/// between winit::window::WindowId and u64.
-pub type WindowId = u64;
 
 /// Context for a specific window
 #[derive(Clone)]
@@ -226,12 +220,8 @@ impl EngineContext {
         if let Some(wm) = self.window_manager.read().as_ref() {
             wm.create_window(window_type, options, content_builder, cx)
         } else {
-            tracing::warn!("WindowManager not initialized, using fallback");
-            let wid = self.next_window_id();
-            self.register_window(wid, WindowContext::new(wid, window_type.clone()));
-            cx.open_window(options, content_builder)
-                .map(|handle| (wid, handle))
-                .map_err(|e| window_manager::WindowError::GpuiError(format!("{:?}", e)))
+            tracing::error!("WindowManager not initialized!");
+            Err(window_manager::WindowError::ManagerNotInitialized)
         }
     }
 

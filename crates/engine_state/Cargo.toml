@@ -29,7 +29,10 @@ toml = "0.8"
 directories = "5"
 
 # Optional window manager integration
-window_manager = { path = "../window_manager", optional = true }
+window_manager = { workspace = true, optional = true }
+
+# Shared window types
+ui_types_common = { path = "../../ui-crates/ui_types_common" }
 
 [features]
 default = []

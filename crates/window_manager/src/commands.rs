@@ -1,8 +1,7 @@
-use engine_state::{WindowId, WindowRequest};
-use gpui::{AnyView, App, Bounds, Pixels, Point, Size, Window, WindowDecorations, WindowOptions, WindowKind, WindowBounds};
-use std::sync::Arc;
+use gpui::{AnyView, App, Pixels, Point, Size, Window, WindowOptions};
+use ui_types_common::window_types::{WindowId, WindowRequest};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum WindowCommand {
     Create(CreateWindowCommand),
     Close(CloseWindowCommand),
@@ -14,13 +13,10 @@ pub enum WindowCommand {
     UpdateTitle(UpdateTitleCommand),
 }
 
-#[derive(Clone)]
 pub struct CreateWindowCommand {
     pub window_type: WindowRequest,
     pub options: WindowOptions,
-    /// builder receives the assigned window id so the component can refer to
-    /// it when registering itself or emitting events.
-    pub content_builder: Arc<dyn Fn(WindowId, &mut Window, &mut App) -> AnyView + Send + Sync>,
+    pub content_builder: Box<dyn FnOnce(&mut Window, &mut App) -> AnyView + Send>,
     pub parent_window: Option<WindowId>,
 }
 
@@ -42,12 +38,12 @@ impl CreateWindowCommand {
         content_builder: F,
     ) -> Self
     where
-        F: Fn(WindowId, &mut Window, &mut App) -> AnyView + Send + Sync + 'static,
+        F: FnOnce(&mut Window, &mut App) -> AnyView + Send + 'static,
     {
         Self {
             window_type,
             options,
-            content_builder: Arc::new(content_builder),
+            content_builder: Box::new(content_builder),
             parent_window: None,
         }
     }

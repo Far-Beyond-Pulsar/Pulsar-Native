@@ -1,4 +1,4 @@
-use engine_state::{WindowId, WindowRequest};
+use ui_types_common::window_types::{WindowId, WindowRequest};
 use dashmap::DashMap;
 use std::sync::Arc;
 
@@ -43,7 +43,7 @@ impl WindowState {
     }
 
     pub fn get_window(&self, window_id: WindowId) -> Option<WindowInfo> {
-        self.windows.get(&window_id).map(|entry| entry.clone())
+        self.windows.get(&window_id).map(|entry| entry.value().clone())
     }
 
     pub fn window_count(&self) -> usize {
@@ -54,19 +54,19 @@ impl WindowState {
         self.windows
             .iter()
             .filter(|entry| std::mem::discriminant(&entry.window_type) == std::mem::discriminant(window_type))
-            .map(|entry| entry.clone())
+            .map(|entry| entry.value().clone())
             .collect()
     }
 
     pub fn all_windows(&self) -> Vec<WindowInfo> {
-        self.windows.iter().map(|entry| entry.clone()).collect()
+        self.windows.iter().map(|entry| entry.value().clone()).collect()
     }
 
     pub fn child_windows(&self, parent_id: WindowId) -> Vec<WindowInfo> {
         self.windows
             .iter()
             .filter(|entry| entry.parent_window == Some(parent_id))
-            .map(|entry| entry.clone())
+            .map(|entry| entry.value().clone())
             .collect()
     }
 }

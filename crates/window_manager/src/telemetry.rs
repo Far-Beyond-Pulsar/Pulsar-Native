@@ -1,6 +1,6 @@
 use crate::commands::{WindowCommand, WindowCommandResult};
 use crate::validation::errors::WindowError;
-use engine_state::{WindowId, WindowRequest};
+use ui_types_common::window_types::{WindowId, WindowRequest};
 
 pub struct TelemetrySender {
 }

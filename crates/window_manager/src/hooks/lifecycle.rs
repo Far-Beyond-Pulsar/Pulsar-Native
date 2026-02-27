@@ -1,6 +1,6 @@
 use crate::commands::{WindowCommand, WindowCommandResult};
 use crate::validation::errors::{HookError, HookResult};
-use engine_state::{WindowId, WindowRequest};
+use ui_types_common::window_types::{WindowId, WindowRequest};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

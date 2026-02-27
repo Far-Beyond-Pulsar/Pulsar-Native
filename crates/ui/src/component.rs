@@ -3,6 +3,8 @@
 //! Provides a trait-based system for composable UI components similar to React
 
 use gpui::*;
+use ui_types_common::window_types::{WindowRequest, WindowId};
+use window_manager;
 
 /// Configuration for spawning a component in a window
 #[derive(Clone, Debug)]
@@ -29,7 +31,7 @@ impl Default for ComponentWindowConfig {
 /// A composable UI component that can be rendered and spawned in windows
 pub trait Component: Render + Sized + 'static {
     /// Configuration type for this component
-    type Config: Clone + 'static;
+    type Config: Clone + Send + 'static;
 
     /// Create a new instance with the given configuration
     fn new(config: Self::Config, window: &mut Window, cx: &mut Context<Self>) -> Self;
@@ -39,7 +41,7 @@ pub trait Component: Render + Sized + 'static {
         config: Self::Config,
         window_config: ComponentWindowConfig,
         cx: &mut App,
-    ) -> Result<WindowHandle<Self>> {
+    ) -> Result<()> {
         let options = WindowOptions {
             window_bounds: window_config.bounds.map(WindowBounds::Windowed),
             titlebar: None,
@@ -57,9 +59,20 @@ pub trait Component: Render + Sized + 'static {
             tabbing_identifier: None,
         };
 
-        cx.open_window(options, move |window, cx| {
-            cx.new(|cx| Self::new(config, window, cx))
+        // Replace direct cx.open_window with window_manager::WindowManager::global().create_window
+        window_manager::WindowManager::update_global(cx, |wm: &mut window_manager::WindowManager, cx| {
+            wm.create_window(
+                WindowRequest::Component,
+                options,
+                move |window: &mut gpui::Window, cx: &mut gpui::App| {
+                    cx.new(|cx| Self::new(config.clone(), window, cx)).into()
+                },
+                cx,
+            )
         })
+        .map(|_| ())?;
+
+        Ok(())
     }
 }
 

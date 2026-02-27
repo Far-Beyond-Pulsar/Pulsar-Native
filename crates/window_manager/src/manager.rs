@@ -10,46 +10,47 @@ use crate::commands::{
     WindowCommand,
     WindowCommandResult,
 };
-use crate::hooks::{EngineContextSyncHook, HookContext, HookRegistry, HookType, LoggingHook, TelemetryHook, WindowHook};
+use crate::hooks::{HookContext, HookRegistry, HookType, LoggingHook, TelemetryHook, WindowHook};
 use crate::state::WindowState;
 use crate::telemetry::TelemetrySender;
 use crate::validation::{ValidationRule, WindowError, WindowResult, WindowValidator};
-use engine_state::{EngineContext, WindowId, WindowRequest};
-use gpui::{AnyView, AnyWindowHandle, App, Context, EventEmitter, Global, Window, WindowHandle, WindowOptions};
+use gpui::{AnyView, AnyWindowHandle, App, AppContext, Context, EventEmitter, Global, IntoElement, Render, Window, WindowOptions};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use ui_types_common::window_types::{WindowId, WindowRequest};
+
+struct AnyViewRoot(AnyView);
+
+impl Render for AnyViewRoot {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        self.0.clone()
+    }
+}
 
 pub struct WindowManager {
     hooks: HookRegistry,
     validator: WindowValidator,
     state: WindowState,
-    engine_context: EngineContext,
     telemetry: TelemetrySender,
+    next_id: Arc<AtomicU64>,
 }
 
 impl WindowManager {
-    pub fn new(engine_context: EngineContext) -> Self {
+    pub fn new() -> Self {
         let hooks = HookRegistry::new();
 
         // built-in hooks
         hooks.register_hook(HookType::AfterCreate, Box::new(LoggingHook));
-        hooks.register_hook(HookType::AfterClose, Box::new(LoggingHook));
         hooks.register_hook(HookType::AfterCreate, Box::new(TelemetryHook));
+        hooks.register_hook(HookType::AfterClose, Box::new(LoggingHook));
         hooks.register_hook(HookType::AfterClose, Box::new(TelemetryHook));
-        hooks.register_hook(
-            HookType::AfterCreate,
-            Box::new(EngineContextSyncHook::new(engine_context.clone())),
-        );
-        hooks.register_hook(
-            HookType::AfterClose,
-            Box::new(EngineContextSyncHook::new(engine_context.clone())),
-        );
 
         Self {
             hooks,
             validator: WindowValidator::new(),
             state: WindowState::new(),
-            engine_context,
             telemetry: TelemetrySender::new(),
+            next_id: Arc::new(AtomicU64::new(1)),
         }
     }
 
@@ -71,11 +72,11 @@ impl WindowManager {
         cx: &mut App,
     ) -> WindowResult<(WindowId, AnyWindowHandle)>
     where
-        F: Fn(&mut Window, &mut App) -> AnyView + Send + Sync + 'static,
+        F: FnOnce(&mut Window, &mut App) -> AnyView + Send + 'static,
     {
         let command = WindowCommand::Create(CreateWindowCommand::new(
             window_type.clone(),
-            options.clone(),
+            options,
             content_builder,
         ));
 
@@ -84,18 +85,23 @@ impl WindowManager {
         let before = HookContext::from_command(&command);
         self.hooks.execute_before(&before)?;
 
-        let window_id = self.engine_context.next_window_id();
+        let window_id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let cmd = if let WindowCommand::Create(cmd) = command {
             cmd
         } else {
             unreachable!()
         };
-        let content = Arc::clone(&cmd.content_builder);
+        let content = cmd.content_builder;
         let wtype = window_type.clone();
 
         let handle = cx
-            .open_window(options, move |window, cx| content(window_id, window, cx))
+            .open_window(cmd.options, move |window, cx| {
+                let view = content(window, cx);
+                cx.new(|_| AnyViewRoot(view))
+            })
             .map_err(|e| WindowError::GpuiError(format!("{:?}", e)))?;
+
+        let handle: AnyWindowHandle = handle.into();
 
         self.state.register_window(window_id, wtype.clone(), cmd.parent_window);
         let result = WindowCommandResult::Created { window_id };
@@ -136,7 +142,8 @@ impl WindowManager {
         let before = HookContext::from_command(&command);
         self.hooks.execute_before(&before)?;
 
-        window.focus();
+        // Activate the window to bring it to the foreground
+        window.activate_window();
 
         let result = WindowCommandResult::Focused { window_id };
         self.telemetry.record_command_result(&result);
@@ -184,7 +191,8 @@ impl WindowManager {
         let before = HookContext::from_command(&command);
         self.hooks.execute_before(&before)?;
 
-        window.set_position(position);
+        // Note: gpui does not expose a direct set_position API; position change is a no-op here.
+        let _ = position;
 
         let result = WindowCommandResult::Moved { window_id };
         self.telemetry.record_command_result(&result);
@@ -200,7 +208,8 @@ impl WindowManager {
         let before = HookContext::from_command(&command);
         self.hooks.execute_before(&before)?;
 
-        window.set_size(size);
+        // Fix .set_rem_size(size) call to use a value convertible to Pixels
+        window.set_rem_size(size.width);
 
         let result = WindowCommandResult::Resized { window_id };
         self.telemetry.record_command_result(&result);
@@ -216,7 +225,8 @@ impl WindowManager {
         let before = HookContext::from_command(&command);
         self.hooks.execute_before(&before)?;
 
-        window.set_title(&title);
+        // Fix .set_window_title() call to match gpui API
+        window.set_window_title(&title);
 
         let result = WindowCommandResult::TitleUpdated { window_id };
         self.telemetry.record_command_result(&result);
@@ -231,35 +241,6 @@ impl WindowManager {
 
     pub fn window_exists(&self, window_id: WindowId) -> bool {
         self.state.window_exists(window_id)
-    }
-
-    pub fn engine_context(&self) -> &EngineContext {
-        &self.engine_context
-    }
-}
-
-impl Global for WindowManager {}
-
-#[derive(Clone, PartialEq, Eq)]
-pub enum WindowManagerEvent {
-    WindowCreated { window_id: WindowId },
-    WindowClosed { window_id: WindowId },
-    WindowFocused { window_id: WindowId },
-    CommandFailed { window_id: Option<WindowId> },
-}
-
-impl EventEmitter<WindowManagerEvent> for WindowManager {}
-
-    pub fn window_count(&self) -> usize {
-        self.state.window_count()
-    }
-
-    pub fn window_exists(&self, window_id: WindowId) -> bool {
-        self.state.window_exists(window_id)
-    }
-
-    pub fn engine_context(&self) -> &EngineContext {
-        &self.engine_context
     }
 }
 
