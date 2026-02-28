@@ -1837,7 +1837,10 @@ dependencies = [
  "block",
  "cfg-if 1.0.4",
  "core-foundation 0.10.1",
+ "dispatch2 0.1.0",
+ "io-surface",
  "libc",
+ "objc2 0.5.2",
 ]
 
 [[package]]
@@ -2419,6 +2422,15 @@ name = "dispatch"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd0c93bb4b0c6d9b77f4435b0ae98c24d17f1c45b2ff844c6151a07256ca923b"
+
+[[package]]
+name = "dispatch2"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7de2a06334da574f293150949a2bb7c4916c76b0c3a4e8ffd20ec4d71c2be9a5"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "dispatch2"
@@ -6622,7 +6634,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a180dd8642fa45cdb7dd721cd4c11b1cadd4929ce112ebd8b9f5803cc79d536"
 dependencies = [
  "bitflags 2.11.0",
- "dispatch2",
+ "dispatch2 0.3.1",
  "objc2 0.6.4",
 ]
 
@@ -6633,7 +6645,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e022c9d066895efa1345f8e33e584b9f958da2fd4cd116792e15e07e4720a807"
 dependencies = [
  "bitflags 2.11.0",
- "dispatch2",
+ "dispatch2 0.3.1",
  "objc2 0.6.4",
  "objc2-core-foundation",
  "objc2-io-surface",
@@ -8800,7 +8812,7 @@ checksum = "ef2bee61e6cffa4635c72d7d81a84294e28f0930db0ddcb0f66d10244674ebed"
 dependencies = [
  "ashpd",
  "block2 0.6.2",
- "dispatch2",
+ "dispatch2 0.3.1",
  "js-sys",
  "log",
  "objc2 0.6.4",
@@ -12074,7 +12086,7 @@ name = "ui_level_editor"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "core-graphics",
+ "core-graphics2",
  "device_query",
  "engine_backend",
  "engine_state",
