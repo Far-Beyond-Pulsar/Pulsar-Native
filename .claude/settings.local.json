@@ -37,7 +37,8 @@
       "Bash(do sed -i '/^use /d' \"$f\")",
       "Bash(cd:*)",
       "Bash(git show:*)",
-      "Bash(Select-String -Pattern \"^error\")"
+      "Bash(Select-String -Pattern \"^error\")",
+      "WebSearch"
     ]
   }
 }
