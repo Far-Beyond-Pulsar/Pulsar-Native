@@ -27,6 +27,10 @@
         naersk' = pkgs.callPackage naersk { };
 
         buildInputs = with pkgs; [
+          fontconfig
+          glib
+          gdk-pixbuf
+          gtk3
         ];
 
         nativeBuildInputs =
@@ -43,6 +47,10 @@
             pkg-config
             protobuf
             openssl
+            fontconfig
+             glib
+             gdk-pixbuf
+             gtk3
           ]
           # TODO(mdeand): Add support for macOS 
           ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
