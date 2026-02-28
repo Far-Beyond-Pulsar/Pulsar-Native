@@ -759,6 +759,12 @@ pub struct GitManagerRequested {
 
 impl EventEmitter<GitManagerRequested> for EntryScreen {}
 
+/// Event emitted when the user wants to open global settings (from entry screen)
+#[derive(Clone, Debug)]
+pub struct SettingsRequested;
+
+impl EventEmitter<SettingsRequested> for EntryScreen {}
+
 impl Render for EntryScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let bounds = window.viewport_size();
