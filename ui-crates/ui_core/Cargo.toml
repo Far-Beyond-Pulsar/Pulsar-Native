@@ -6,7 +6,7 @@ publish = false
 
 [dependencies]
 # UI framework
-gpui-ce.workspace = true
+gpui.workspace = true
 ui.workspace = true
 
 # UI crates (all of them!)
@@ -20,14 +20,12 @@ ui_type_debugger.workspace = true
 ui_file_manager.workspace = true
 ui_plugin_manager.workspace = true
 ui_log_viewer.workspace = true
-ui_settings.workspace = true
 ui_git_manager = { path = "../ui_git_manager" }
 
 
 # Engine
 engine_state.workspace = true
 engine_backend.workspace = true
-window_manager.workspace = true
 
 # Plugin system
 plugin_manager = { path = "../../crates/plugin_manager" }

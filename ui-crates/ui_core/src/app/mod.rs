@@ -77,10 +77,6 @@ impl PulsarApp {
         self.open_path(action.path.clone(), window, cx);
     }
 
-    fn on_open_settings(&mut self, _: &ui::OpenSettings, window: &mut Window, cx: &mut Context<Self>) {
-        self.open_settings(window, cx);
-    }
-
     fn on_toggle_command_palette(
         &mut self,
         _: &ToggleCommandPalette,

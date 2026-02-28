@@ -5,8 +5,8 @@ use std::cell::RefCell;
 use gpui::{
     div, prelude::FluentBuilder, px, relative, rems, size, App, AppContext, Bounds, Context, Corner,
     DismissEvent, Div, DragMoveEvent, Empty, Entity, EventEmitter, FocusHandle, Focusable,
-    InteractiveElement as _, IntoElement, ParentElement, Pixels, Point, ReadGlobal, Render, ScrollHandle,
-    SharedString, StatefulInteractiveElement, StyleRefinement, Styled, UpdateGlobal, WeakEntity, Window,
+    InteractiveElement as _, IntoElement, ParentElement, Pixels, Point, Render, ScrollHandle,
+    SharedString, StatefulInteractiveElement, StyleRefinement, Styled, WeakEntity, Window,
     WindowBounds, WindowKind, WindowOptions,
 };
 use rust_i18n::t;
@@ -19,9 +19,6 @@ use super::{
     ClosePanel, Dock, DockArea, DockItem, DockPlacement, Panel, PanelControl, PanelEvent, PanelState,
     PanelStyle, PanelView, StackPanel, ToggleZoom,
 };
-
-use window_manager;
-use ui_types_common::window_types::{WindowRequest, WindowId};
 
 #[derive(Clone)]
 struct TabState {
@@ -1396,46 +1393,37 @@ impl TabPanel {
             ..Default::default()
         };
 
-        // Replace direct cx.open_window with window_manager::WindowManager::global().create_window
-        let _ = window_manager::WindowManager::update_global(cx, |wm, cx| {
-            wm.create_window(
-                WindowRequest::DetachedPanel,
-                window_options,
-                move |window: &mut gpui::Window, cx: &mut gpui::App| {
-                    use crate::Root;
+        let _ = cx.open_window(window_options, move |window, cx| {
+            use crate::Root;
 
-                    // Create a minimal new dock area for this detached window
-                    // This is NOT a copy of the main app - it's just a simple container
-                    let new_dock_area = cx.new(|cx| DockArea::new("detached-dock", Some(1), window, cx));
-                    let weak_new_dock = new_dock_area.downgrade();
+            // Create a minimal new dock area for this detached window
+            // This is NOT a copy of the main app - it's just a simple container
+            let new_dock_area = cx.new(|cx| DockArea::new("detached-dock", Some(1), window, cx));
+            let weak_new_dock = new_dock_area.downgrade();
 
-                    // Create a tab panel with just the one panel
-                    let new_tab_panel = cx.new(|cx| {
-                        let channel = weak_new_dock.upgrade().map(|d| d.read(cx).channel).unwrap_or_default();
-                        let mut tab_panel = Self::new(None, weak_new_dock.clone(), channel, window, cx);
-                        tab_panel.closable = true; // Allow closing this detached window
-                        tab_panel
-                    });
+            // Create a tab panel with just the one panel
+            let new_tab_panel = cx.new(|cx| {
+                let channel = weak_new_dock.upgrade().map(|d| d.read(cx).channel).unwrap_or_default();
+                let mut tab_panel = Self::new(None, weak_new_dock.clone(), channel, window, cx);
+                tab_panel.closable = true; // Allow closing this detached window
+                tab_panel
+            });
 
-                    new_tab_panel.update(cx, |view: &mut TabPanel, cx: &mut Context<TabPanel>| {
-                        view.add_panel(panel.clone(), window, cx);
-                    });
+            new_tab_panel.update(cx, |view, cx| {
+                view.add_panel(panel.clone(), window, cx);
+            });
 
-                    // Set up the dock area with just this panel
-                    new_dock_area.update(cx, |dock: &mut DockArea, cx: &mut Context<DockArea>| {
-                        let dock_item = DockItem::Tabs {
-                            view: new_tab_panel.clone(),
-                            active_ix: 0,
-                            items: vec![panel.clone()],
-                        };
-                        dock.set_center(dock_item, window, cx);
-                    });
+            // Set up the dock area with just this panel
+            new_dock_area.update(cx, |dock, cx| {
+                let dock_item = super::DockItem::Tabs {
+                    view: new_tab_panel,
+                    active_ix: 0,
+                    items: vec![panel.clone()],
+                };
+                dock.set_center(dock_item, window, cx);
+            });
 
-                    // Create the root for the new window
-                    cx.new(|cx| Root::new(new_dock_area.into(), window, cx))
-                },
-                cx
-            )
+            cx.new(|cx| Root::new(new_dock_area.into(), window, cx))
         });
     }
 
@@ -1662,7 +1650,7 @@ impl TabPanel {
         let channel = self.channel;
         let panel_for_new_tab = panel.clone();
         let new_tab_panel = cx.new(|cx| Self::new(None, dock_area.clone(), channel, window, cx));
-        new_tab_panel.update(cx, |view: &mut TabPanel, cx: &mut Context<TabPanel>| {
+        new_tab_panel.update(cx, |view, cx| {
             view.add_panel(panel_for_new_tab, window, cx);
         });
         tracing::debug!("SPLIT: Created new tab panel");
@@ -1908,9 +1896,8 @@ impl TabPanel {
                 cx.update(|window, cx| {
                     tab_panel.update(cx, |view, cx| view.remove_self_if_empty(window, cx))
                 })
-                .ok();
-            }).detach();
-
+            })
+            .detach()
         }
 
         cx.emit(PanelEvent::LayoutChanged);

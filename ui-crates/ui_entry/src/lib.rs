@@ -14,15 +14,12 @@ pub use dependency_setup_window::{DependencySetupWindow, SetupComplete};
 pub use oobe::{IntroScreen, IntroComplete, has_seen_intro, mark_intro_seen, reset_intro};
 
 // Re-export engine types that UI needs
-pub use engine_state::{EngineContext, WindowRequest, WindowContext};
+pub use engine_state::{EngineContext, WindowRequest};
 
 // Re-export actions from ui crate
 pub use ui::OpenSettings;
 
 use gpui::*;
-use std::sync::Arc;
-use std::time::Duration;
-use std::path::PathBuf;
 use ui::Root;
 
 // Component config
@@ -43,16 +40,8 @@ pub fn create_entry_component(
     cx: &mut App,
     engine_context: &EngineContext,
     window_id: u64,
-    on_project_selected: Arc<dyn Fn(PathBuf, &mut App) + Send + Sync>,
-    on_git_manager: Arc<dyn Fn(PathBuf, &mut App) + Send + Sync>,
-    on_settings: Arc<dyn Fn(&mut App) + Send + Sync>,
 ) -> Entity<Root> {
     
-    // take a raw pointer now so we don't capture `window` itself in any of the
-    // `move` callbacks below. `*mut Window` is `Copy` and `'static`, whereas the
-    // `&mut Window` reference is tied to the local stack frame.
-    let window_ptr = window as *mut Window;
-
     // Check if we should show OOBE intro first
     let seen_intro = has_seen_intro();
     tracing::debug!("🎯 [ENTRY] has_seen_intro() = {}", seen_intro);
@@ -69,20 +58,14 @@ pub fn create_entry_component(
             tracing::debug!("🎉 [OOBE] Intro complete, marking as seen");
             mark_intro_seen();
 
-            // finished intro; nothing special to do here
-            // the engine will supply callbacks for opening the new entry window
-            // and we simply defer to them when needed.
+            // Request a new entry window to replace this one
+            engine_context_clone.request_window(WindowRequest::Entry);
 
-            // close this intro/OOBE window soon
+            // Close the current window
             if window_id != 0 {
-                let ec2 = engine_context_clone.clone();
-                let close_id = window_id;
-                // use the precomputed raw pointer instead of capturing `window`
-                cx.spawn(async move |cx| {
-                    cx.background_executor().timer(Duration::from_millis(100)).await;
-                    tracing::debug!("🗑️ (delayed) Closing OOBE window {}", close_id);
-                    unsafe { (&mut *window_ptr).remove_window(); }
-                    ec2.unregister_window(&close_id);
+                tracing::debug!("🗑️ Closing OOBE window {}", window_id);
+                engine_context_clone.request_window(WindowRequest::CloseWindow {
+                    window_id,
                 });
             }
         }).detach();
@@ -95,41 +78,34 @@ pub fn create_entry_component(
 
     // Subscribe to ProjectSelected event - open loading window and close entry window
     let engine_context_clone = engine_context.clone();
-    let on_proj = on_project_selected.clone();
-    cx.subscribe(&entry_screen, move |_view: Entity<EntryScreen>, event: &ProjectSelected, cx: &mut App| {
+    cx.subscribe(&entry_screen, move |_view: Entity<EntryScreen>, event: &ProjectSelected, _cx: &mut App| {
         tracing::debug!("🎯 [ENTRY] Project selected: {:?}", event.path);
         tracing::debug!("🎯 [ENTRY] Path exists: {}", event.path.exists());
         tracing::debug!("🎯 [ENTRY] Path is_dir: {}", event.path.is_dir());
 
-        // invoke callback provided by engine; it will handle opening splash
-        on_proj(event.path.clone(), cx);
+        // Request loading/splash window
+        engine_context_clone.request_window(WindowRequest::ProjectSplash {
+            project_path: event.path.to_string_lossy().to_string(),
+        });
 
-        // Close entry window after delay
+        // Close the entry window
         if window_id != 0 {
-            let ec2 = engine_context_clone.clone();
-            let close_id = window_id;
-            // use the previously computed pointer rather than capturing `window`
-            cx.spawn(async move |cx| {
-                cx.background_executor().timer(Duration::from_millis(100)).await;
-                tracing::debug!("🗑️ (delayed) Closing entry window {}", close_id);
-                unsafe { (&mut *window_ptr).remove_window(); }
-                ec2.unregister_window(&close_id);
+            tracing::debug!("🗑️ Closing entry window {}", window_id);
+            engine_context_clone.request_window(WindowRequest::CloseWindow {
+                window_id,
             });
         }
     }).detach();
 
     // Subscribe to GitManagerRequested event - open git manager window
-    let on_git = on_git_manager.clone();
-    cx.subscribe(&entry_screen, move |_view: Entity<EntryScreen>, event: &GitManagerRequested, cx: &mut App| {
+    let engine_context_clone = engine_context.clone();
+    cx.subscribe(&entry_screen, move |_view: Entity<EntryScreen>, event: &GitManagerRequested, _cx: &mut App| {
         tracing::debug!("🔧 [ENTRY] Git Manager requested for: {:?}", event.path);
-        on_git(event.path.clone(), cx);
-    }).detach();
 
-    // Subscribe to SettingsRequested event - open settings from engine callback
-    let on_set = on_settings.clone();
-    cx.subscribe(&entry_screen, move |_view: Entity<EntryScreen>, _event: &crate::entry_screen::SettingsRequested, cx: &mut App| {
-        tracing::debug!("⚙️ [ENTRY] Settings requested");
-        on_set(cx);
+        // Request git manager window
+        engine_context_clone.request_window(WindowRequest::GitManager {
+            project_path: event.path.to_string_lossy().to_string(),
+        });
     }).detach();
 
     cx.new(|cx| Root::new(entry_screen.clone().into(), window, cx))

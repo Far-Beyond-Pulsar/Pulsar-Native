@@ -7,12 +7,11 @@ edition = "2021"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tracing = "0.1.41"
-gpui-ce.workspace = true
-window_manager = { path = "../window_manager" }
-ui_types_common = { path = "../../ui-crates/ui_types_common" }
 
 # UI dependencies (for Panel trait integration)
-ui.workspace = true
+gpui = { workspace = true }
+ui = { workspace = true }
+
 [build-dependencies]
 tracing = "0.1.41"
 

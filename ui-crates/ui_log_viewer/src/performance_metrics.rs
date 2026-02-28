@@ -234,12 +234,13 @@ impl PerformanceMetrics {
         // kernel driver. We surface a UI note instead of showing garbage data.
         #[cfg(not(windows))]
         {
-            // sysinfo's `refresh` now takes no arguments (the old boolean flag
-            // was removed), and `temperature()` returns an `f32` directly.
-            self.components.refresh();
+            self.components.refresh(false);
             for comp in self.components.iter() {
                 let label = comp.label().to_string();
-                let temp = comp.temperature() as f64;
+                let temp = match comp.temperature() {
+                    Some(t) => t as f64,
+                    None => continue,
+                };
                 if let Some(entry) = self.temp_histories.iter_mut().find(|(l, _)| *l == label) {
                     if entry.1.len() >= MAX_HISTORY_SIZE { entry.1.pop_front(); }
                     entry.1.push_back(temp);

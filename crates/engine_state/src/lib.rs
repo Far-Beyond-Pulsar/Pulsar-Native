@@ -51,6 +51,7 @@ pub mod settings_registry;
 pub mod settings_storage;
 pub mod settings_defaults;
 
+pub use channels::{WindowRequest, WindowRequestSender, WindowRequestReceiver, window_request_channel};
 pub use discord::DiscordPresence;
 
 // Re-export multiuser types and functions
@@ -105,5 +106,3 @@ pub fn set_project_path(path: String) {
     // Also update static storage for backward compatibility
     let _ = PROJECT_PATH.set(path);
 }
-
-pub use ui_types_common::window_types::{WindowRequest, WindowId};

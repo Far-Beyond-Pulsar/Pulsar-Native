@@ -9,8 +9,7 @@ use std::sync::atomic::{AtomicUsize, AtomicU64, Ordering};
 
 use super::core::SharedGpuTextures;
 use super::dxgi_unsafe;
-// compatibility shim: gpui no longer exports these types
-use ui::GpuTextureHandle;
+use gpui::GpuTextureHandle;
 
 pub const RENDER_WIDTH: u32 = 1600;
 pub const RENDER_HEIGHT: u32 = 900;
