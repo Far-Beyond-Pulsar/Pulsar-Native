@@ -197,7 +197,10 @@ pub fn window_to_screen_position(window: &Window, window_x: f32, window_y: f32) 
     match HasWindowHandle::window_handle(window) {
         Ok(handle) => match handle.as_raw() {
             RawWindowHandle::AppKit(appkit_handle) => unsafe {
-                let ns_window = appkit_handle.ns_window.as_ptr() as *mut AnyObject;
+                // `RawWindowHandle::AppKit` exposes an `ns_view` pointer but not
+                // the window directly. Query the view's window object at runtime.
+                let ns_view = appkit_handle.ns_view.as_ptr() as *mut AnyObject;
+                let ns_window: *mut AnyObject = msg_send![ns_view, window];
                 let point = NSPoint {
                     x: window_x as f64,
                     y: window_y as f64,

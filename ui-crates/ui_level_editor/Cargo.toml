@@ -25,6 +25,10 @@ schemars = "1.0"
 device_query = "4.0.1"
 raw-window-handle = "0.6"
 rust-i18n.workspace = true
+core-graphics = "0.23"
+objc2 = "0.6"
+objc2-app-kit = "0.3"
+objc2-foundation = "0.3"  # separate crate for Foundation types
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winuser", "shellapi"] }

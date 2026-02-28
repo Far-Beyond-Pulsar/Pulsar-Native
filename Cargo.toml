@@ -32,7 +32,7 @@ ttf-parser = { opt-level = 3 }
 [workspace.dependencies]
 
 # ---------- GPUI (Zed fork) ----------
-gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "23a10223818370cad0069df11795804705cd7186" }
+gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "d749c54815c489c245737afcdc200528648b8fc8" }
 
 # ---------- Core Engine ----------
 ui                    = { path = "crates/ui" }
@@ -118,21 +118,7 @@ ropey = { version = "=2.0.0-beta.1", features = ["metric_utf16", "metric_lines_l
 # Windows-specific
 ###################################
 
-[workspace.dependencies.windows]
-version = "0.62.2"
-features = [
-    "Wdk",
-    "Wdk_System",
-    "Wdk_System_SystemServices",
-    "Win32_System_Threading",
-    "Win32_System_SystemInformation",
-    "Win32_Graphics_Direct3D",
-    "Win32_Graphics_Direct3D_Fxc",
-    "Win32_Graphics_Direct3D11",
-    "Win32_Graphics_Dxgi",
-    "Win32_Graphics_Dxgi_Common",
-    "Win32_Foundation",
-]
+windows = {version = "0.62.2",features = ["Wdk","Wdk_System","Wdk_System_SystemServices","Win32_System_Threading","Win32_System_SystemInformation","Win32_Graphics_Direct3D","Win32_Graphics_Direct3D_Fxc","Win32_Graphics_Direct3D11","Win32_Graphics_Dxgi","Win32_Graphics_Dxgi_Common","Win32_Foundation",]}
 
 ###################################
 # Clippy Lints

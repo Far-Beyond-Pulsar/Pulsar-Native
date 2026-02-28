@@ -44,7 +44,6 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 rust-embed = { version = "6", features = ["interpolate-folder-path", "include-exclude"] }
 tokio = { version = "1", features = ["full"] }
-windows.workspace = true
 chrono = { version = "0.4", features = ["serde"] }
 directories = "5"
 toml = "0.8"
@@ -56,6 +55,9 @@ dotenv = "0.15"
 window_manager.workspace = true
 pulsar_std = { path = "../pulsar_std" }
 tracing-appender = "0.2.4"
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true }
 
 [build-dependencies]
 winresource = "0.1"
