@@ -8,6 +8,15 @@
 //! - File type and editor registration
 //! - Editor instance creation
 //!
+//! ## Safety Model
+//!
+//! This plugin system eliminates undefined behavior through **permanent library loading**:
+//!
+//! - Plugins are loaded once at startup and NEVER unloaded
+//! - Uses `PermanentLibrary` wrapper to prevent `dlclose`/`FreeLibrary`
+//! - All function pointers, vtables, and drop glue remain valid for process lifetime
+//! - Safe to share `Arc<T>`, trait objects, and function pointers across boundary
+//!
 //! ## Usage
 //!
 //! ```rust,ignore
@@ -15,63 +24,47 @@
 //!
 //! // Create and initialize the plugin manager
 //! let mut manager = PluginManager::new();
-//! manager.load_plugins_from_dir("plugins/editor")?;
+//!
+//! // Load plugins once at startup
+//! manager.load_plugins_from_dir("plugins/editor", &cx)?;
 //!
 //! // Query available file types
-//! let file_types = manager.get_all_file_types();
+//! let file_types = manager.file_type_registry().get_all_file_types();
 //!
 //! // Create an editor for a file
-//! let editor = manager.create_editor_for_file(
-//!     &file_path,
-//!     window,
-//!     cx,
-//! )?;
+//! let editor = manager.create_editor_for_file(&file_path, window, cx)?;
+//!
+//! // Use the editor
+//! workspace.add_tab(editor);
+//!
+//! // That's it! No unloading, no cleanup needed.
+//! // Plugins stay loaded until process exits.
 //! ```
 //!
-//! ## Safety and Memory Management
+//! ## Memory Management
 //!
-//! This plugin system uses dynamic library loading with careful memory management to avoid
-//! heap corruption across DLL boundaries:
+//! Because plugins are never unloaded, memory management is simple:
 //!
-//! ### Memory Ownership Rules
+//! - Plugins can return `Arc<T>` directly (no weak reference workarounds)
+//! - Drop glue is always valid (plugin code never unmaps)
+//! - Trait objects work normally (vtables never invalidate)
+//! - Function pointers can be stored indefinitely
 //!
-//! 1. **Plugin owns its memory**: All plugin instances (`Box<dyn EditorPlugin>`) are allocated
-//!    in the plugin's heap and MUST be freed by calling the plugin's `_plugin_destroy` function.
-//!
-//! 2. **Never use Rust's Drop**: The main app stores raw pointers to plugin instances and
-//!    NEVER converts them to `Box` or lets Rust's Drop trait handle cleanup.
-//!
-//! 3. **Explicit destruction**: Plugins are destroyed by calling their exported `_plugin_destroy`
-//!    function, which frees memory in the plugin's heap.
-//!
-//! ### Cross-DLL Contracts
-//!
-//! 1. **Theme Pointer Validity**: The main app passes a Theme pointer to plugins. This pointer
-//!    MUST remain valid (not moved or dropped) for the entire plugin lifetime.
-//!
-//! 2. **Function Pointer Stability**: Plugins register function pointers with the main app.
-//!    These MUST remain valid until the plugin is unloaded.
-//!
-//! 3. **ABI Compatibility**: Plugins are checked for ABI version compatibility. Mismatched
-//!    versions are rejected at load time.
-//!
-//! ### Why This Approach
-//!
-//! On Windows, each DLL has its own heap allocator. Allocating memory in one DLL and freeing
-//! it in another causes heap corruption. By ensuring each side frees its own memory, we
-//! maintain safety across the DLL boundary.
+//! The only concern is **Arc cycles**, which can cause memory leaks.
+//! See `PLUGIN_ARCHITECTURE.md` for guidelines on preventing cycles with `Weak<T>`.
 
-use libloading::{Library, Symbol};
 use plugin_editor_api::*;
-use ui::dock::PanelView;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use once_cell::sync::OnceCell;
+use ui::dock::PanelView;
 
+mod permanent_library;
 mod registry;
 pub mod builtin;
 
+pub use permanent_library::PermanentLibrary;
 pub use registry::{EditorRegistry, FileTypeRegistry};
 pub use builtin::{BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext};
 
@@ -100,18 +93,28 @@ pub fn global() -> Option<&'static RwLock<PluginManager>> {
 // ============================================================================
 
 /// A loaded plugin with its library handle.
+///
+/// # Memory Model
+///
+/// Because plugins are never unloaded:
+/// - The `plugin` reference has `'static` lifetime (safe because library never unloads)
+/// - The `library` handle is wrapped in `PermanentLibrary` (prevents dlclose/FreeLibrary)
+/// - All plugin code, vtables, and drop glue remain valid forever
 struct LoadedPlugin {
-    /// Raw pointer to plugin instance (owned by plugin DLL, not by us!)
-    /// SAFETY: This pointer is allocated in the plugin's heap and MUST be freed
-    /// by calling the plugin's _plugin_destroy function, NOT by Rust's Drop.
-    plugin_ptr: *mut dyn EditorPlugin,
+    /// Reference to the plugin instance.
+    ///
+    /// SAFETY: This has 'static lifetime because:
+    /// 1. The plugin library is never unloaded (PermanentLibrary prevents it)
+    /// 2. The plugin is created by leaking a Box (intentional permanent allocation)
+    /// 3. The reference remains valid for the process lifetime
+    plugin: &'static mut dyn EditorPlugin,
 
-    /// Function to destroy the plugin (frees memory in plugin's heap)
-    destroy_fn: PluginDestroy,
-
-    /// The dynamic library handle (must be kept alive)
+    /// The dynamic library handle (must be kept alive).
+    ///
+    /// SAFETY: PermanentLibrary ensures this is never unloaded.
+    /// As long as this exists, all symbols from the library remain valid.
     #[allow(dead_code)]
-    library: Arc<Library>,
+    library: PermanentLibrary,
 
     /// Metadata for quick access (owned by main app)
     metadata: PluginMetadata,
@@ -124,12 +127,24 @@ struct LoadedPlugin {
 /// Manages all editor plugins in the system.
 ///
 /// The PluginManager is responsible for:
-/// - Loading plugins from disk
+/// - Loading plugins from disk (once, at startup)
 /// - Verifying version compatibility
 /// - Maintaining registries of file types and editors
 /// - Creating editor instances on demand
 /// - Managing built-in editors (same trait interface, no DLL loading)
 /// - Managing statusbar buttons registered by plugins
+///
+/// # Safety
+///
+/// The PluginManager uses permanent library loading to eliminate undefined behavior:
+/// - Libraries are loaded once and never unloaded
+/// - All plugin code remains valid for process lifetime
+/// - Safe to share Arc<T> and trait objects across boundary
+///
+/// # Thread Safety
+///
+/// The global plugin manager is wrapped in `RwLock` for thread-safe access.
+/// Individual plugin calls are synchronized through this lock.
 pub struct PluginManager {
     /// All loaded plugins, indexed by plugin ID
     plugins: HashMap<PluginId, LoadedPlugin>,
@@ -139,13 +154,13 @@ pub struct PluginManager {
 
     /// Registry of all editors
     editor_registry: EditorRegistry,
-    
+
     /// Built-in editor registry (no DLL loading)
     builtin_registry: BuiltinEditorRegistry,
 
     /// The version info for this engine build
     engine_version: VersionInfo,
-    
+
     /// Project root path for editor context
     project_root: Option<PathBuf>,
 
@@ -154,8 +169,12 @@ pub struct PluginManager {
     statusbar_buttons: Vec<(PluginId, StatusbarButtonDefinition)>,
 }
 
-// SAFETY: PluginManager contains raw pointers but manages their lifecycle carefully.
-// All plugin operations are synchronized through the RwLock wrapper.
+// SAFETY: PluginManager now contains only safe types:
+// - &'static mut dyn EditorPlugin (safe because plugin never unloads)
+// - PermanentLibrary (safe wrapper that prevents unload)
+// - Normal Rust collections (HashMap, Vec, etc.)
+//
+// The RwLock wrapper in the global instance provides thread safety.
 unsafe impl Send for PluginManager {}
 unsafe impl Sync for PluginManager {}
 
@@ -172,19 +191,19 @@ impl PluginManager {
             statusbar_buttons: Vec::new(),
         }
     }
-    
+
     /// Set the project root path for editor context.
     pub fn set_project_root(&mut self, project_root: Option<PathBuf>) {
         self.project_root = project_root;
     }
-    
+
     /// Get a mutable reference to the built-in editor registry.
     ///
     /// This allows external code to register built-in editors during initialization.
     pub fn builtin_registry_mut(&mut self) -> &mut BuiltinEditorRegistry {
         &mut self.builtin_registry
     }
-    
+
     /// Register all built-in editors with the file type and editor registries.
     ///
     /// This should be called after all built-in editors have been registered
@@ -203,7 +222,16 @@ impl PluginManager {
     ///
     /// Plugins that fail version checks or loading will be logged but won't
     /// prevent other plugins from loading.
-    pub fn load_plugins_from_dir(&mut self, dir: impl AsRef<Path>, cx: &gpui::App) -> Result<(), PluginManagerError> {
+    ///
+    /// # Important
+    ///
+    /// Plugins are loaded ONCE and NEVER unloaded. This is intentional and
+    /// necessary for safety. See `PLUGIN_ARCHITECTURE.md` for details.
+    pub fn load_plugins_from_dir(
+        &mut self,
+        dir: impl AsRef<Path>,
+        cx: &gpui::App,
+    ) -> Result<(), PluginManagerError> {
         let dir = dir.as_ref();
 
         if !dir.exists() {
@@ -211,7 +239,7 @@ impl PluginManager {
             return Ok(());
         }
 
-        tracing::debug!("Loading plugins from: {:?}", dir);
+        tracing::info!("Loading plugins from: {:?}", dir);
 
         // Get the appropriate file extension for this platform
         #[cfg(target_os = "windows")]
@@ -237,10 +265,10 @@ impl PluginManager {
             // Attempt to load the plugin
             match self.load_plugin(path, cx) {
                 Ok(plugin_id) => {
-                    tracing::debug!("Successfully loaded plugin: {}", plugin_id);
+                    tracing::info!("✅ Successfully loaded plugin: {}", plugin_id);
                 }
                 Err(e) => {
-                    tracing::error!("Failed to load plugin from {:?}: {}", path, e);
+                    tracing::error!("❌ Failed to load plugin from {:?}: {}", path, e);
                 }
             }
         }
@@ -254,24 +282,44 @@ impl PluginManager {
     ///
     /// This function loads and executes code from a dynamic library. The library
     /// must be compiled with the same Rust version and for the same engine version
-    /// as the current build.
-    pub fn load_plugin(&mut self, path: impl AsRef<Path>, cx: &gpui::App) -> Result<PluginId, PluginManagerError> {
+    /// as the current build. These are checked at runtime.
+    ///
+    /// The loaded library will NEVER be unloaded. This is intentional and necessary
+    /// to prevent undefined behavior.
+    ///
+    /// # Returns
+    ///
+    /// Returns the `PluginId` of the loaded plugin on success.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The library file cannot be loaded
+    /// - Required symbols are missing
+    /// - Version compatibility check fails
+    /// - Plugin creation fails
+    pub fn load_plugin(
+        &mut self,
+        path: impl AsRef<Path>,
+        cx: &gpui::App,
+    ) -> Result<PluginId, PluginManagerError> {
         let path = path.as_ref();
 
         tracing::debug!("Loading plugin from: {:?}", path);
 
-        // Load the library
-        let library = unsafe {
-            Library::new(path).map_err(|e| PluginManagerError::LibraryLoadError {
+        // Load the library permanently
+        let library = PermanentLibrary::new(path).map_err(|e| {
+            PluginManagerError::LibraryLoadError {
                 path: path.to_path_buf(),
                 message: e.to_string(),
-            })?
-        };
-
-        let library = Arc::new(library);
+            }
+        })?;
 
         // Get the version info function
-        let version_fn: Symbol<extern "C" fn() -> VersionInfo> = unsafe {
+        let version_fn: libloading::Symbol<extern "C" fn() -> VersionInfo> = unsafe {
+            // SAFETY: We're loading a symbol from the permanently loaded library.
+            // The symbol must exist and have the correct signature.
+            // If it doesn't, we'll get an error and reject the plugin.
             library
                 .get(b"_plugin_version")
                 .map_err(|e| PluginManagerError::MissingSymbol {
@@ -291,7 +339,7 @@ impl PluginManager {
 
         if !self.engine_version.is_compatible(&plugin_version) {
             tracing::error!(
-                "Plugin version mismatch! Expected engine v{}.{}.{} (ABI v{}), got v{}.{}.{} (ABI v{})",
+                "Plugin version mismatch! Expected engine v{}.{}.{} (rustc hash {:#x}), got v{}.{}.{} (rustc hash {:#x})",
                 self.engine_version.engine_version.0,
                 self.engine_version.engine_version.1,
                 self.engine_version.engine_version.2,
@@ -308,11 +356,13 @@ impl PluginManager {
             });
         }
 
-        tracing::debug!("Version check passed for plugin at {:?}", path);
+        tracing::debug!("✅ Version check passed for plugin at {:?}", path);
 
-        // Setup the plugin logger
         // Get the plugin constructor
-        let create_fn: Symbol<PluginCreate> = unsafe {
+        let create_fn: libloading::Symbol<PluginCreate> = unsafe {
+            // SAFETY: Loading symbol from permanently loaded library.
+            // The returned function pointer remains valid forever because
+            // the library is never unloaded.
             library
                 .get(b"_plugin_create")
                 .map_err(|e| PluginManagerError::MissingSymbol {
@@ -321,107 +371,99 @@ impl PluginManager {
                 })?
         };
 
-        // Get the plugin destructor (CRITICAL for proper memory management)
-        let destroy_fn: Symbol<PluginDestroy> = unsafe {
-            library
-                .get(b"_plugin_destroy")
-                .map_err(|e| PluginManagerError::MissingSymbol {
-                    symbol: "_plugin_destroy".to_string(),
-                    message: e.to_string(),
-                })?
-        };
-
         // Create the plugin instance with Theme pointer for cross-DLL global state sync
-        // SAFETY: We store the raw pointer and NEVER convert it to Box in main app.
-        // The plugin owns this memory and will free it via _plugin_destroy.
-        let plugin_ptr = unsafe {
-            // Get Theme from main app's global state and pass to plugin
+        let plugin = unsafe {
+            // SAFETY: Calling the plugin constructor is safe because:
+            // 1. We trust the plugin code (internal plugins only)
+            // 2. We've verified version compatibility
+            // 3. The returned &'static mut reference is valid because the library never unloads
+            //
+            // We pass the Theme pointer to sync global state across the DLL boundary.
+            // The Theme must remain valid for the process lifetime (guaranteed by engine).
             let theme_ptr = ui::theme::Theme::global(cx) as *const _ as *const std::ffi::c_void;
-            let raw_plugin = create_fn(theme_ptr);
-            if raw_plugin.is_none() {
+
+            // Validate theme pointer before passing to plugin
+            if theme_ptr.is_null() {
                 return Err(PluginManagerError::PluginCreationFailed {
-                    message: "Plugin constructor returned null".to_string(),
+                    message: "Theme pointer is null (engine global state not initialized)"
+                        .to_string(),
                 });
             }
-            raw_plugin
+
+            create_fn(theme_ptr)
         };
 
-        let Some(plugin_ptr) = plugin_ptr else {
-            return Err(PluginManagerError::PluginCreationFailed {
-                message: "Plugin constructor returned null".to_string(),
-            })
-        };
-        
-
-        // Get plugin metadata by temporarily accessing through raw pointer
-        // SAFETY: Plugin just created, pointer is valid. We validated it's not null above.
-        let metadata = unsafe { (plugin_ptr).metadata() };
+        // Get plugin metadata
+        let metadata = plugin.metadata();
         let plugin_id = metadata.id.clone();
 
-        tracing::debug!(
-            "Loaded plugin: {} v{} by {}",
+        tracing::info!(
+            "📦 Loaded plugin: {} v{} by {}",
             metadata.name,
             metadata.version,
             metadata.author
         );
 
-        // Call on_load hook via raw pointer
-        // SAFETY: Plugin just created, pointer is valid, not null
-        unsafe { plugin_ptr.on_load() };
+        // Call on_load hook
+        plugin.on_load();
 
-        // Validate plugin is still functioning after on_load
-        // Some plugins may fail during initialization
-        // Register file types via raw pointer
-        // SAFETY: Plugin just created, pointer is valid
-        let file_types = unsafe { (plugin_ptr).file_types() };
+        // Register file types
+        let file_types = plugin.file_types();
         for file_type in file_types {
             tracing::debug!(
-                "  Registering file type: {} (.{})",
+                "  📄 Registering file type: {} (.{})",
                 file_type.display_name,
                 file_type.extension
             );
-            self.file_type_registry.register(file_type, plugin_id.clone());
+            self.file_type_registry
+                .register(file_type, plugin_id.clone());
         }
 
-        // Register editors via raw pointer
-        // SAFETY: Plugin just created, pointer is valid
-        let editors = unsafe { (plugin_ptr).editors() };
+        // Register editors
+        let editors = plugin.editors();
         for editor in editors {
-            tracing::debug!("  Registering editor: {}", editor.display_name);
+            tracing::debug!("  📝 Registering editor: {}", editor.display_name);
             self.editor_registry.register(editor, plugin_id.clone());
         }
 
-        // Register statusbar buttons via raw pointer
-        // SAFETY: Plugin just created, pointer is valid
-        let statusbar_buttons = unsafe { (plugin_ptr).statusbar_buttons() };
+        // Register statusbar buttons
+        let statusbar_buttons = plugin.statusbar_buttons();
         if !statusbar_buttons.is_empty() {
-            tracing::debug!("  Registering {} statusbar buttons", statusbar_buttons.len());
+            tracing::debug!(
+                "  🔘 Registering {} statusbar buttons",
+                statusbar_buttons.len()
+            );
             for button in statusbar_buttons {
                 tracing::debug!("    - Button: {} at {:?}", button.id, button.position);
 
-                // Store with plugin ID for tracking and cleanup
+                // Store with plugin ID for tracking
+                // SAFETY: Function pointers in buttons remain valid because
+                // the plugin library is never unloaded
                 self.statusbar_buttons.push((plugin_id.clone(), button));
             }
 
             // Sort buttons by priority within their position groups
             self.statusbar_buttons.sort_by(|(_, a), (_, b)| {
                 match (&a.position, &b.position) {
-                    (StatusbarPosition::Left, StatusbarPosition::Left) |
-                    (StatusbarPosition::Right, StatusbarPosition::Right) => {
+                    (StatusbarPosition::Left, StatusbarPosition::Left)
+                    | (StatusbarPosition::Right, StatusbarPosition::Right) => {
                         b.priority.cmp(&a.priority) // Higher priority comes first
                     }
-                    (StatusbarPosition::Left, StatusbarPosition::Right) => std::cmp::Ordering::Less,
-                    (StatusbarPosition::Right, StatusbarPosition::Left) => std::cmp::Ordering::Greater,
+                    (StatusbarPosition::Left, StatusbarPosition::Right) => {
+                        std::cmp::Ordering::Less
+                    }
+                    (StatusbarPosition::Right, StatusbarPosition::Left) => {
+                        std::cmp::Ordering::Greater
+                    }
                 }
             });
         }
 
-        // Store the plugin with raw pointer and destroy function
-        // CRITICAL: We do NOT take ownership of the plugin memory.
-        // The plugin DLL owns it and will free it when destroy_fn is called.
+        // Store the plugin
+        // SAFETY: Both plugin reference and library handle have 'static lifetime
+        // because the library is never unloaded
         let loaded_plugin = LoadedPlugin {
-            plugin_ptr,
-            destroy_fn: *destroy_fn,  // Copy the function pointer
+            plugin,
             library,
             metadata: metadata.clone(),
         };
@@ -429,53 +471,6 @@ impl PluginManager {
         self.plugins.insert(plugin_id.clone(), loaded_plugin);
 
         Ok(plugin_id)
-    }
-
-    /// Unload a plugin by ID.
-    ///
-    /// This will call the plugin's `on_unload` hook, destroy the plugin instance
-    /// (freeing memory in the plugin's heap), and remove all registered file types and editors.
-    pub fn unload_plugin(&mut self, plugin_id: &PluginId) -> Result<(), PluginManagerError> {
-        if let Some(loaded_plugin) = self.plugins.remove(plugin_id) {
-            // Call on_unload hook via raw pointer
-            // SAFETY: Plugin is still valid, about to be destroyed
-            unsafe { (*loaded_plugin.plugin_ptr).on_unload() };
-
-            // Remove file types
-            self.file_type_registry.unregister_by_plugin(plugin_id);
-
-            // Remove editors
-            self.editor_registry.unregister_by_plugin(plugin_id);
-
-            // Remove statusbar buttons registered by this plugin
-            // This is critical because button data (especially function pointers in
-            // custom_callback) becomes invalid when the plugin DLL is unloaded
-            let buttons_before = self.statusbar_buttons.len();
-            self.statusbar_buttons.retain(|(owner_id, _)| owner_id != plugin_id);
-            let buttons_removed = buttons_before - self.statusbar_buttons.len();
-            if buttons_removed > 0 {
-                tracing::debug!("Removed {} statusbar buttons from plugin", buttons_removed);
-            }
-
-            tracing::debug!("Unloading plugin: {}", loaded_plugin.metadata.name);
-
-            // CRITICAL: Call the plugin's destroy function to free memory in plugin's heap
-            // This is the ONLY safe way to free the plugin instance.
-            // SAFETY: We are transferring ownership back to the plugin DLL to free its own memory.
-            unsafe {
-                (loaded_plugin.destroy_fn)(loaded_plugin.plugin_ptr);
-            }
-
-            tracing::debug!("Plugin destroyed: {}", loaded_plugin.metadata.name);
-
-            // Library will be unloaded when Arc drops (if no other references)
-
-            Ok(())
-        } else {
-            Err(PluginManagerError::PluginNotFound {
-                plugin_id: plugin_id.clone(),
-            })
-        }
     }
 
     /// Get all loaded plugins.
@@ -492,7 +487,7 @@ impl PluginManager {
     pub fn editor_registry(&self) -> &EditorRegistry {
         &self.editor_registry
     }
-    
+
     /// Get all registered statusbar buttons from all plugins.
     ///
     /// Buttons are sorted by position (left/right) and priority within each position.
@@ -504,53 +499,47 @@ impl PluginManager {
     }
 
     /// Get statusbar buttons for a specific position.
-    pub fn get_statusbar_buttons_for_position(&self, position: StatusbarPosition) -> Vec<&StatusbarButtonDefinition> {
+    pub fn get_statusbar_buttons_for_position(
+        &self,
+        position: StatusbarPosition,
+    ) -> Vec<&StatusbarButtonDefinition> {
         self.statusbar_buttons
             .iter()
             .filter(|(_, btn)| btn.position == position)
             .map(|(_, btn)| btn)
             .collect()
     }
-    
-    // TODO: We should really be keeping track of which plugin owns what editors rather than finding on-the-fly
-    /// Find which plugin owns a given editor ID
-    pub fn find_plugin_for_editor(&self, editor_id: &EditorId) -> Option<PluginId> {
-        for (_id, plugin) in &self.plugins {
-            let editors = unsafe {
-                let plugin_ref = &*plugin.plugin_ptr;
-                plugin_ref.editors()
-            };
-            
-            if editors.iter().any(|e| &e.id == editor_id) {
-                return Some(plugin.metadata.id.clone());
-            }
-        }
-        None
-    }
 
     /// Create an editor instance for a file.
     ///
     /// This will:
     /// 1. Determine the file type from the path
-    /// 2. Find an editor that supports that file type (if any)
-    /// 3. Create an editor instance using the appropriate plugin
-    ///      else
-    ///    We will return an error in a notification if no suitable
-    ///    editor is found. TODO: Implement a suggested plugins system
-    ///    that can scan the plugins dir on request to identify plugin
-    ///    that may provide support for the file type.
-    /// Create an editor for a file by detecting its type and finding an appropriate editor.
+    /// 2. Find an editor that supports that file type
+    /// 3. Create an editor instance using the appropriate plugin or built-in editor
     ///
-    /// This method:
-    /// 1. Tries built-in editors first (no DLL loading)
-    /// 2. Falls back to DLL-based plugins if no built-in editor is found
-    /// 3. Returns error if no editor can be found
+    /// # Returns
+    ///
+    /// Returns `Arc<dyn PanelView>` which the caller can use directly.
+    ///
+    /// # Safety
+    ///
+    /// Because plugins are never unloaded, the returned `Arc` is safe to hold
+    /// indefinitely. The drop glue and vtable will remain valid for the process
+    /// lifetime.
+    ///
+    /// # Memory Management
+    ///
+    /// The returned `Arc` uses normal Rust reference counting. When all references
+    /// are dropped, the editor's `Drop` implementation will be called (which is safe
+    /// because the plugin code is still loaded).
+    ///
+    /// **Avoid Arc cycles**: Use `Weak<T>` for back-references to prevent memory leaks.
     pub fn create_editor_for_file(
         &mut self,
         file_path: &Path,
         window: &mut Window,
         cx: &mut App,
-    ) -> Result<(std::sync::Arc<dyn ui::dock::PanelView>, Box<dyn EditorInstance>), PluginManagerError> {
+    ) -> Result<Arc<dyn PanelView>, PluginManagerError> {
         // Determine file type
         let file_type_id = self
             .file_type_registry
@@ -576,52 +565,25 @@ impl PluginManager {
             })?
             .clone(); // Clone to avoid borrow checker issues
 
-        // Check if this is a built-in editor (plugin_id == "builtin")
+        // Check if this is a built-in editor
         if plugin_id.as_str() == "builtin" {
             // Create editor context with project root
-            let editor_context = crate::builtin::EditorContext::new(self.project_root.clone());
-            
+            let editor_context = EditorContext::new(self.project_root.clone());
+
             // Create the editor directly using the provider
-            match self.builtin_registry.create_editor(
-                &editor_id,
-                file_path.to_path_buf(),
-                &editor_context,
-                window,
-                cx,
-            ) {
-                Ok(panel) => {
-                    // Return dummy EditorInstance for built-in editors
-                    struct BuiltinEditorInstance;
-                    impl EditorInstance for BuiltinEditorInstance {
-                        fn file_path(&self) -> &PathBuf {
-                            // Built-in editors manage their own file paths internally
-                            // This method should not be called for built-in editors
-                            panic!("Built-in editors handle file paths internally")
-                        }
-                        fn save(&mut self, _window: &mut Window, _cx: &mut App) -> Result<(), PluginError> {
-                            Ok(())
-                        }
-                        fn reload(&mut self, _window: &mut Window, _cx: &mut App) -> Result<(), PluginError> {
-                            Ok(())
-                        }
-                        fn is_dirty(&self) -> bool {
-                            false
-                        }
-                        fn as_any(&self) -> &dyn std::any::Any {
-                            self
-                        }
-                    }
-                    
-                    return Ok((panel, Box::new(BuiltinEditorInstance)));
-                }
-                Err(e) => {
-                    tracing::error!("Built-in editor creation failed: {}", e);
-                    return Err(PluginManagerError::PluginError {
-                        plugin_id: plugin_id.clone(),
-                        error: e,
-                    });
-                }
-            }
+            return self
+                .builtin_registry
+                .create_editor(
+                    &editor_id,
+                    file_path.to_path_buf(),
+                    &editor_context,
+                    window,
+                    cx,
+                )
+                .map_err(|e| PluginManagerError::PluginError {
+                    plugin_id,
+                    error: e,
+                });
         }
 
         // Fall back to DLL-based plugin
@@ -629,6 +591,11 @@ impl PluginManager {
     }
 
     /// Create an editor instance with a specific editor ID.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Arc<dyn PanelView>` which is safe to hold indefinitely because
+    /// the plugin is never unloaded.
     pub fn create_editor(
         &mut self,
         plugin_id: &PluginId,
@@ -636,7 +603,7 @@ impl PluginManager {
         file_path: PathBuf,
         window: &mut Window,
         cx: &mut App,
-    ) -> Result<(std::sync::Arc<dyn ui::dock::PanelView>, Box<dyn EditorInstance>), PluginManagerError> {
+    ) -> Result<Arc<dyn PanelView>, PluginManagerError> {
         let plugin = self
             .plugins
             .get_mut(plugin_id)
@@ -644,65 +611,45 @@ impl PluginManager {
                 plugin_id: plugin_id.clone(),
             })?;
 
-        // Validate plugin pointer before use
-        if plugin.plugin_ptr.is_null() {
-            return Err(PluginManagerError::PluginError {
-                plugin_id: plugin_id.clone(),
-                error: PluginError::Other {
-                    message: "Plugin pointer is null (plugin may have been corrupted)".to_string(),
-                },
-            });
-        }
-
         // Initialize plugin globals (Theme, etc.) from main app before creating editor
         // This syncs the main app's global state into the plugin's DLL memory space
         unsafe {
-            if let Ok(init_fn) = plugin.library.get::<unsafe extern "C" fn(*const std::ffi::c_void)>(b"_plugin_init_globals") {
+            // SAFETY: We're calling an optional init function exported by the plugin.
+            // This function updates the plugin's copy of global state (Theme, etc.)
+            // to match the engine's current state.
+            if let Ok(init_fn) = plugin
+                .library
+                .get::<unsafe extern "C" fn(*const std::ffi::c_void)>(b"_plugin_init_globals")
+            {
                 // Get Theme pointer from main app's global state
                 let theme_ptr = ui::theme::Theme::global(cx) as *const _ as *const std::ffi::c_void;
 
                 // Validate theme pointer before passing to plugin
                 if !theme_ptr.is_null() {
                     init_fn(theme_ptr);
-                    tracing::debug!("Initialized plugin globals for: {}", plugin_id.as_str());
+                    tracing::debug!(
+                        "Initialized plugin globals for: {}",
+                        plugin_id.as_str()
+                    );
                 } else {
                     tracing::warn!("Theme pointer is null, plugin may not have theme access");
                 }
             }
         }
 
-        // Call create_editor via raw pointer
-        // SAFETY: Plugin is loaded, pointer validated as non-null above
-        //
-        // The plugin returns a Weak reference to prevent Arc leaks across DLL boundaries.
-        // The plugin maintains the strong Arc internally, and we upgrade the Weak here.
-        unsafe {
-            let (weak_panel, editor_instance) = (*plugin.plugin_ptr)
-                .create_editor(editor_id.clone(), file_path, window, cx, &EditorLogger)
-                .map_err(|e| PluginManagerError::PluginError {
-                    plugin_id: plugin_id.clone(),
-                    error: e,
-                })?;
-
-            // Upgrade the Weak to an Arc for the main app to use
-            // This is safe because the plugin still holds the strong Arc
-            let arc_panel = weak_panel.upgrade().ok_or_else(|| {
-                PluginManagerError::PluginError {
-                    plugin_id: plugin_id.clone(),
-                    error: PluginError::Other {
-                        message: "Plugin panel was dropped before use".to_string(),
-                    },
-                }
-            })?;
-
-            tracing::debug!(
-                "Created editor (strong: {}, weak: {})",
-                std::sync::Arc::strong_count(&arc_panel),
-                std::sync::Arc::weak_count(&arc_panel)
-            );
-
-            Ok((arc_panel, editor_instance))
-        }
+        // Call create_editor on the plugin
+        // SAFETY: The plugin reference is valid because the library is never unloaded.
+        // The returned Arc<dyn PanelView> is safe because:
+        // 1. The vtable lives in the plugin's .rodata section (never unmapped)
+        // 2. The drop glue lives in the plugin's .text section (never unmapped)
+        // 3. We can safely share the Arc across the boundary
+        plugin
+            .plugin
+            .create_editor(editor_id.clone(), file_path, window, cx)
+            .map_err(|e| PluginManagerError::PluginError {
+                plugin_id: plugin_id.clone(),
+                error: e,
+            })
     }
 
     /// Get the default content for a file type.
@@ -736,9 +683,11 @@ impl PluginManager {
                         message: e.to_string(),
                     })?;
 
-                std::fs::write(path, content).map_err(|e| PluginManagerError::FileCreationError {
-                    path: path.to_path_buf(),
-                    message: e.to_string(),
+                std::fs::write(path, content).map_err(|e| {
+                    PluginManagerError::FileCreationError {
+                        path: path.to_path_buf(),
+                        message: e.to_string(),
+                    }
                 })?;
             }
 
@@ -747,9 +696,11 @@ impl PluginManager {
                 template_structure,
             } => {
                 // Create the folder
-                std::fs::create_dir_all(path).map_err(|e| PluginManagerError::FileCreationError {
-                    path: path.to_path_buf(),
-                    message: e.to_string(),
+                std::fs::create_dir_all(path).map_err(|e| {
+                    PluginManagerError::FileCreationError {
+                        path: path.to_path_buf(),
+                        message: e.to_string(),
+                    }
                 })?;
 
                 // Create the marker file with default content
@@ -770,7 +721,10 @@ impl PluginManager {
                 // Create template structure
                 for template in template_structure {
                     match template {
-                        PathTemplate::File { path: rel_path, content } => {
+                        PathTemplate::File {
+                            path: rel_path,
+                            content,
+                        } => {
                             let file_path = path.join(rel_path);
                             if let Some(parent) = file_path.parent() {
                                 std::fs::create_dir_all(parent).ok();
@@ -806,22 +760,16 @@ impl Default for PluginManager {
     }
 }
 
-// When the manager is dropped, properly destroy all plugins
+// When the manager is dropped, we DON'T destroy plugins (they stay loaded forever)
+// We just log that we're shutting down
 impl Drop for PluginManager {
     fn drop(&mut self) {
-        for (plugin_id, loaded_plugin) in self.plugins.drain() {
-            // Call on_unload hook
-            // SAFETY: Plugin is still valid, about to be destroyed
-            unsafe { (*loaded_plugin.plugin_ptr).on_unload() };
+        tracing::info!("Plugin manager shutting down ({} plugins loaded)", self.plugins.len());
 
-            // CRITICAL: Call destroy function to free memory in plugin's heap
-            // SAFETY: We are transferring ownership back to the plugin DLL
-            unsafe {
-                (loaded_plugin.destroy_fn)(loaded_plugin.plugin_ptr);
-            }
-
-            tracing::debug!("Destroyed plugin on drop: {}", plugin_id);
-        }
+        // Note: We intentionally do NOT unload plugins or call destroy functions.
+        // Plugins remain loaded until process termination. This is safe and intentional.
+        //
+        // The OS will clean up all plugin memory when the process exits.
     }
 }
 
