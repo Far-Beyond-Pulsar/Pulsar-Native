@@ -23,7 +23,7 @@ impl PulsarApp {
                 
                 // Let the plugin system handle everything - no match statements needed!
                 match pm.create_editor_for_file(&path, window, cx) {
-                    Ok((panel, _editor_instance)) => {
+                    Ok(panel) => {
                         tracing::debug!("Successfully created editor for: {:?}", path);
                         self.state.center_tabs.update(cx, |tabs, cx| {
                             tabs.add_panel(panel, window, cx);
