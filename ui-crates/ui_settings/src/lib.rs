@@ -21,6 +21,6 @@ pub fn create_settings_component(
     cx: &mut App,
     _engine_context: &EngineContext,
 ) -> Entity<Root> {
-    let settings_view = cx.new(|cx| SettingsWindow::new(cx));
+    let settings_view = cx.new(|cx| SettingsWindow::new(window, cx));
     cx.new(|cx| Root::new(settings_view.clone().into(), window, cx))
 }

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use dashmap::DashMap;
 
-use ui_types_common::window_types::WindowId;
+use crate::context::WindowId;
 
 /// Type-safe renderer handle using an enum instead of Arc<dyn Any>
 ///

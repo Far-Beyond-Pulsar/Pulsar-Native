@@ -13,8 +13,7 @@
 //!
 //! - **Typed Context System** (`EngineContext`) - Type-safe state management
 //! - **Dependency Graph Init** (`InitGraph`) - Declarative startup ordering
-//! - **Window System** (now internal to GPUI) - windows are managed by GPUI; the engine
-//!   no longer provides its own multi-window handler
+//! - **Window System** (`WinitGpuiApp`) - Multi-window management with GPUI + D3D11
 //! - **Profiling** - Per-task timing and performance analysis
 //!
 //! ## Initialization Tasks
@@ -24,7 +23,7 @@
 //! 3. **Settings** - Load engine configuration
 //! 4. **Runtime** - Tokio async runtime
 //! 5. **Backend** - Engine backend subsystems (physics, etc.)
-//! 6. **Channels** - (deprecated; windows opened directly via GPUI)
+//! 6. **Channels** - Window request communication
 //! 7. **Engine Context** - Global typed state
 //! 8. **Set Global** - Register context globally
 //! 9. **Discord** - Rich presence initialization
@@ -32,11 +31,8 @@
 //!
 //! Each task is profiled with `Engine::Init::{TaskName}` scope.
 
-use gpui::IntoElement;
 // --- Global Allocator Setup ---
 use ui_log_viewer::TrackingAllocator;
-use std::time::Duration;
-use gpui::AppContext;
 
 #[global_allocator]
 static GLOBAL_ALLOCATOR: TrackingAllocator = TrackingAllocator::new();
@@ -57,7 +53,7 @@ pub use ui::OpenSettings;
 
 // --- External and engine imports ---
 use crate::settings::EngineSettings;
-use std::path::PathBuf;
+use std::sync::mpsc::channel;
 
 // --- Internal modules ---
 
@@ -70,9 +66,8 @@ pub mod appdata;    // App data and resource directory management
 pub mod consts;     // Engine constants (name, version, authors, etc.)
 pub mod discord;    // Discord Rich Presence integration
 pub mod runtime;    // Async runtime setup and management
-// Window integration was previously handled by the `window` module, but
-// GPUI now manages its own windows.  The event loop lives in
-// `event_loop.rs` and the engine no longer exposes a dedicated window API.
+pub mod event_loop; // Main event loop handling
+pub mod window;     // Winit integration (Winit + GPUI coordination)
 pub mod uri;        // URI scheme handling
 pub mod init;       // Initialization dependency graph (Phase 1 - new)
 
@@ -80,7 +75,9 @@ pub mod init;       // Initialization dependency graph (Phase 1 - new)
 pub use engine_state::{
     EngineContext,
     WindowRequest,
-    // sender/receiver removed as messaging is no longer used
+    WindowRequestSender,
+    WindowRequestReceiver,
+    window_request_channel,
     LaunchContext,
 };
 
@@ -192,8 +189,7 @@ fn main() {
     )).unwrap();
 
     // Task 6: Channels (no dependencies)
-    // (disabled – window management will be done directly via GPUI)
-    /*graph.add_task(InitTask::new(
+    graph.add_task(InitTask::new(
         CHANNELS,
         "Window Channels",
         vec![],
@@ -203,15 +199,18 @@ fn main() {
             ctx.window_rx = Some(window_rx);
             Ok(())
         })
-    )).unwrap();*/
+    )).unwrap();
 
     // Task 7: Engine Context (depends on channels)
     graph.add_task(InitTask::new(
         ENGINE_CONTEXT,
         "Engine Context",
-        vec![], // no dependency now
+        vec![CHANNELS],
         Box::new(|ctx| {
-            let engine_context = EngineContext::new();
+            let window_tx = ctx.window_tx.as_ref()
+                .ok_or_else(|| init::InitError::MissingContext("Window sender not initialized"))?
+                .clone();
+            let engine_context = EngineContext::new().with_window_sender(window_tx);
 
             // Handle URI project path if present
             if let Some(uri::UriCommand::OpenProject { path }) = &ctx.launch_args.uri_command {
@@ -284,169 +283,9 @@ fn main() {
 
     // Extract initialized components
     let engine_context = init_ctx.engine_context.expect("Engine context should be initialized");
+    let window_rx = init_ctx.window_rx.expect("Window receiver should be initialized");
 
-    // Run the main event loop via GPUI's `App::run` API.
+    // Run the main event loop
     profiling::profile_scope!("Engine::EventLoop");
-
-    // create and run GPUI application
-    let gpui_app = gpui::Application::new().with_assets(Assets);
-
-    gpui_app.run(move |cx: &mut gpui::App| {
-        cx.activate(true);
-        ui::init(cx);
-        // ensure themes registry is initialized and state.json applied
-        ui::themes::init(cx);
-
-        // install window manager (if compiled with the feature)
-
-        {
-            use window_manager::WindowManager;
-            let wm = WindowManager::new();
-            cx.set_global(wm);
-        }
-
-        // decide initial window once the UI context is ready
-        let mut launch = engine_context.launch.write();
-        {
-            if let Some(path) = launch.uri_project_path.take() {
-                tracing::info!("Opening project splash from URI: {}", path.display());
-                let pathbuf = PathBuf::from(path);
-                let opts = make_window_options(
-                    Some("Pulsar Engine"),
-                    gpui::point(gpui::px(120.0), gpui::px(120.0)),
-                    gpui::size(gpui::px(900.0), gpui::px(600.0)),
-                    None,
-                );
-
-
-                {
-                    match engine_context.create_window(
-                        WindowRequest::ProjectSplash { project_path: pathbuf.to_string_lossy().to_string() },
-                        opts,
-                        move |window, cx| {
-                            ui_loading_screen::create_loading_component(pathbuf.clone(), 0, window, cx)
-                        },
-                        cx,
-                    ) {
-                        Ok((wid, _)) => tracing::info!("Splash window opened successfully id={}", wid),
-                        Err(e) => tracing::error!("Failed to open splash window: {}", e),
-                    }
-                }
-            } else {
-                tracing::info!("Opening main entry window");
-                let ec = engine_context.clone();
-                let opts = make_window_options(
-                    Some("Pulsar Engine"),
-                    gpui::point(gpui::px(100.0), gpui::px(100.0)),
-                    gpui::size(gpui::px(800.0), gpui::px(600.0)),
-                    Some(gpui::Size { width: gpui::px(600.), height: gpui::px(400.) }),
-                );
-
-
-                {
-                    match engine_context.create_window(
-                        WindowRequest::Entry,
-                        opts,
-                        move |window, cx| {
-                            let ec_clone = ec.clone();
-                            let project_cb: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
-                                std::sync::Arc::new(move |pathbuf, cx| {
-                                    let ec2 = ec_clone.clone();
-                                    if let Ok((wid2, _)) = ec2.create_window(
-                                        WindowRequest::ProjectSplash { project_path: pathbuf.to_string_lossy().to_string() },
-                                        make_window_options(
-                                            Some("Pulsar Engine"),
-                                            gpui::point(gpui::px(120.0), gpui::px(120.0)),
-                                            gpui::size(gpui::px(900.0), gpui::px(600.0)),
-                                            None,
-                                        ),
-                                        move |window, cx| {
-                                            ui_loading_screen::create_loading_component(pathbuf.clone(), 0, window, cx)
-                                        },
-                                        cx,
-                                    ) {
-                                        tracing::info!("opened splash from entry id={} ", wid2);
-                                    } else {
-                                        tracing::error!("failed to open splash window");
-                                    }
-                                });
-
-                            let ec_clone2 = ec.clone();
-                            let git_cb: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
-                                std::sync::Arc::new(move |pathbuf, cx| {
-                                    let ec3 = ec_clone2.clone();
-                                    if let Ok((wid3, _)) = ec3.create_window(
-                                        WindowRequest::GitManager { project_path: pathbuf.to_string_lossy().to_string() },
-                                        make_window_options(
-                                            Some("Git Manager"),
-                                            gpui::point(gpui::px(150.0), gpui::px(150.0)),
-                                            gpui::size(gpui::px(800.0), gpui::px(600.0)),
-                                            None,
-                                        ),
-                                        move |window, cx| {
-                                            ui_git_manager::create_git_manager_component(window, cx, pathbuf.clone())
-                                        },
-                                        cx,
-                                    ) {
-                                        tracing::info!("opened git manager id={}", wid3);
-                                    } else {
-                                        tracing::error!("failed to open git manager");
-                                    }
-                                });
-                            // callback for opening settings window from entry screen
-                            let ec_clone3 = ec.clone();
-                            let settings_cb: std::sync::Arc<dyn Fn(&mut gpui::App) + Send + Sync> =
-                                std::sync::Arc::new(move |cx| {
-                                    let ec4 = ec_clone3.clone();
-                                    if let Ok((wid4, _)) = ec4.create_window(
-                                        WindowRequest::Settings,
-                                        make_window_options(
-                                            Some("Settings"),
-                                            gpui::point(gpui::px(150.0), gpui::px(150.0)),
-                                            gpui::size(gpui::px(700.0), gpui::px(500.0)),
-                                            None,
-                                        ),
-                                        {
-                                        let ec4_ref = ec4.clone();
-                                        move |window, cx| {
-                                            ui_settings::create_settings_component(window, cx, &ec4_ref)
-                                        }
-                                        },
-                                        cx,
-                                    ) {
-                                        tracing::info!("settings window opened id={}", wid4);
-                                    } else {
-                                        tracing::error!("failed to open settings window");
-                                    }
-                                });
-
-                            ui_entry::create_entry_component(window, cx, &ec, 0, project_cb, git_cb, settings_cb)
-                        },
-                        cx,
-                    ) {
-                        Ok((wid, _)) => tracing::info!("Entry window opened successfully id={}", wid),
-                        Err(e) => tracing::error!("Failed to open entry window: {}", e),
-                    }
-                }
-            }
-        }
-    });
-}
-
-/// Build common `WindowOptions` to reduce boilerplate.
-fn make_window_options(
-    title: Option<&'static str>,
-    origin: gpui::Point<gpui::Pixels>,
-    win_size: gpui::Size<gpui::Pixels>,
-    min_size: Option<gpui::Size<gpui::Pixels>>,
-) -> gpui::WindowOptions {
-    gpui::WindowOptions {
-        window_bounds: Some(gpui::WindowBounds::Windowed(gpui::Bounds::new(origin, win_size))),
-        titlebar: None,
-        kind: gpui::WindowKind::Normal,
-        is_resizable: true,
-        window_decorations: Some(gpui::WindowDecorations::Client),
-        window_min_size: min_size,
-        ..Default::default()
-    }
+    event_loop::run_event_loop(engine_context, window_rx);
 }

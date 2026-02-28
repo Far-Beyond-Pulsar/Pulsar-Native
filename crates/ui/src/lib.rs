@@ -25,13 +25,6 @@ mod styled;
 mod time;
 mod title_bar;
 pub mod bevy_viewport; // Production-ready zero-copy Bevy viewport using GPUI's gpu_canvas
-
-// Compatibility types for legacy GPUI APIs that were removed upstream.
-pub mod gpu_compat;
-
-// Re-export compatibility types at crate root so other crates can import them
-// using `ui::GpuTextureHandle`/`ui::GpuCanvasSource` just like before.
-pub use gpu_compat::{GpuTextureHandle, GpuCanvasSource, gpu_canvas as gpu_canvas_element};
 mod virtual_list;
 mod window_border;
 mod window_wrapper;

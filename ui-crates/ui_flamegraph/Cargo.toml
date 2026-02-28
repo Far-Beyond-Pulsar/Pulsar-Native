@@ -6,9 +6,8 @@ publish = false
 
 [dependencies]
 # UI framework
-gpui-ce.workspace = true
+gpui.workspace = true
 ui.workspace = true
-window_manager.workspace = true
 
 # Profiling - instrumentation-based (Unreal Insights style)
 profiling = { path = "../../crates/profiling" }

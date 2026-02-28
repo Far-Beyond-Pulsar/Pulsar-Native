@@ -22,7 +22,7 @@ pub struct PluginManagerWindow {
 
 impl PluginManagerWindow {
     /// Create a new plugin manager window using the global plugin manager
-    pub fn new_global(cx: &mut Context<Self>) -> Self {
+    pub fn new_global(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         // Load initial plugin list from global
         let plugins = if let Some(pm_lock) = plugin_manager::global() {
             if let Ok(pm) = pm_lock.read() {

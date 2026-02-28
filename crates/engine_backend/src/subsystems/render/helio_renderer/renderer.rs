@@ -15,7 +15,6 @@ use helio_feature_procedural_shadows::ProceduralShadows;
 use helio_feature_bloom::Bloom;
 use helio_feature_billboards::BillboardFeature;
 use helio_feature_skies::HelioSkies;
-use ui::GpuTextureHandle;
 
 use super::core::{CameraInput, RenderMetrics, GpuProfilerData, SharedGpuTextures};
 use super::gizmo_types::{
@@ -941,7 +940,7 @@ impl HelioRenderer {
         0
     }
 
-    pub fn get_current_native_handle(&self) -> Option<GpuTextureHandle> {
+    pub fn get_current_native_handle(&self) -> Option<gpui::GpuTextureHandle> {
         // Get the current readable texture handle for DXGI sharing
         if let Ok(lock) = self.shared_textures.lock() {
             if let Some(ref textures) = *lock {

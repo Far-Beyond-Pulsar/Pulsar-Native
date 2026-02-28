@@ -44,7 +44,7 @@ pub struct SettingsScreenV2 {
 }
 
 impl SettingsScreenV2 {
-    pub fn new(props: SettingsScreenV2Props) -> Self {
+    pub fn new(props: SettingsScreenV2Props, _window: &mut Window, _cx: &mut App) -> Self {
         let container = SettingsContainer::new(props.project_path);
 
         // Get the first page for the active tab

@@ -14,9 +14,8 @@ use gpui::*;
 use gpui::prelude::FluentBuilder;
 use std::sync::Arc;
 
-// Compatibility types matching the old GPUI API. These are defined in the
-// `ui` crate because the upstream gpui library no longer exposes them.
-pub use crate::{GpuCanvasSource, GpuTextureHandle, gpu_canvas_element};
+// Re-export GPU canvas types from gpui
+pub use gpui::{GpuCanvasSource, GpuTextureHandle, gpu_canvas as gpu_canvas_element};
 
 /// Bevy viewport state that can be shared across threads
 #[derive(Clone)]
