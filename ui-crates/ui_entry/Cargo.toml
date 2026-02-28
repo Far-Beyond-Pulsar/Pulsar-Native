@@ -9,10 +9,17 @@ publish = false
 rustup.workspace = true
 
 # UI framework
-gpui.workspace = true
+gpui-ce.workspace = true
 ui.workspace = true
 # Engine
 engine_state.workspace = true
+
+# Git manager window dependency
+ui_git_manager.workspace = true
+
+# Loading screen is used by entry for splash/progress
+ui_loading_screen.workspace = true
+
 
 # Git operations
 git2 = "0.19"

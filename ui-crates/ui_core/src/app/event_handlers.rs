@@ -659,12 +659,22 @@ pub fn on_popout_file_manager(
 ) {
     use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
     use ui::Root;
+    use engine_state::{EngineContext, WindowContext, WindowRequest};
 
     // Get project path from the drawer
     let project_path = drawer.read(cx).project_path.clone();
-    
+
     app.state.drawer_open = false;
     cx.notify();
+
+    // Register with engine context
+    if let Some(ec) = EngineContext::global() {
+        let wid = ec.next_window_id();
+        ec.register_window(wid, WindowContext::new(wid, WindowRequest::FileManager {
+            project_path: project_path.as_ref().map(|p| p.to_string_lossy().to_string()),
+        }));
+        tracing::debug!("opening file manager popout window id={}", wid);
+    }
 
     // Use mouse position from event for window placement
     let window_origin = Point {
@@ -679,11 +689,7 @@ pub fn on_popout_file_manager(
                 origin: window_origin,
                 size: size(px(1000.0), px(700.0)),
             })),
-            titlebar: Some(gpui::TitlebarOptions {
-                title: None,
-                appears_transparent: true,
-                traffic_light_position: None,
-            }),
+            titlebar: None,
             kind: WindowKind::Normal,
             is_resizable: true,
             window_decorations: Some(gpui::WindowDecorations::Client),

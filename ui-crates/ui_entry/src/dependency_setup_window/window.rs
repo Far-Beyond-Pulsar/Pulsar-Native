@@ -23,7 +23,7 @@ pub struct SetupComplete;
 impl EventEmitter<SetupComplete> for DependencySetupWindow {}
 
 impl DependencySetupWindow {
-    pub fn new(_window: &mut Window, _cx: &mut Context<Self>) -> Self {
+    pub fn new(_cx: &mut Context<Self>) -> Self {
         Self {
             setup_tasks: vec![
                 SetupTask::new("Checking Rust", "Looking for an existing toolchain"),

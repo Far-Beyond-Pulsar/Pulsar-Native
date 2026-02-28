@@ -13,7 +13,7 @@ doctest = false
 
 [features]
 decimal = ["dep:rust_decimal"]
-inspector = ["gpui/inspector"]
+inspector = ["gpui-ce/inspector"]
 # For syntax highlighting in Markdown and CodeEditor.
 tree-sitter-languages = [
     "dep:tree-sitter-bash",
@@ -47,12 +47,17 @@ tree-sitter-languages = [
 ]
 
 [dependencies]
-gpui.workspace = true
-sum_tree.workspace = true
-gpui_macros.workspace = true
+gpui-ce.workspace = true
+window_manager = { path = "../window_manager" }
+ui_types_common = { path = "../../ui-crates/ui_types_common" }
+
+# gpui_macros dependency removed because the pinned GPUI commit does not include it
+# gpui_macros = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "7a2226f63ffe6c37902280ad8405396541968178", subdirectory = "crates/gpui_macros" }
+
 # rope.workspace = true
 anyhow.workspace = true
 gpui-component-macros.workspace = true
+gpui_sum_tree = "0.2.2"
 notify.workspace = true
 ropey.workspace = true
 rust-i18n.workspace = true

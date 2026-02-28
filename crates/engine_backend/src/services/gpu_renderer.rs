@@ -4,6 +4,7 @@
 use crate::subsystems::render::{HelioRenderer, RenderMetrics};
 use crate::scene::SceneDb;
 use std::sync::{Arc, Mutex, Once};
+use ui::GpuTextureHandle;
 use std::time::Instant;
 
 /// Simple framebuffer structure for compatibility
@@ -143,7 +144,7 @@ impl GpuRenderer {
 
     /// TRUE ZERO-COPY: Get native GPU texture handle for immediate-mode rendering
     /// NO buffers, NO copies - just a raw pointer for GPUI to display!
-    pub fn get_native_texture_handle(&self) -> Option<gpui::GpuTextureHandle> {
+    pub fn get_native_texture_handle(&self) -> Option<GpuTextureHandle> {
         let renderer = self.helio_renderer.as_ref()?;
         let shared_textures = renderer.shared_textures.lock().ok()?;
         let textures = shared_textures.as_ref()?;

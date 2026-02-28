@@ -47,7 +47,7 @@ impl FileManagerWindow {
 impl EventEmitter<FileSelected> for FileManagerWindow {}
 
 impl Render for FileManagerWindow {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         drawer_window_entity("Window.Title.FileManager", self.file_manager.clone(), cx)
     }
 }
