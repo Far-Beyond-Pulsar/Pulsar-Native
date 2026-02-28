@@ -55,24 +55,6 @@ impl PluginManagerWindow {
         }
         cx.notify();
     }
-
-    /// Unload a plugin by ID
-    fn unload_plugin(&mut self, plugin_id: &PluginId, cx: &mut Context<Self>) {
-        if let Some(pm_lock) = plugin_manager::global() {
-            if let Ok(mut pm) = pm_lock.write() {
-                match pm.unload_plugin(plugin_id) {
-                    Ok(_) => {
-                        tracing::info!("✅ Plugin unloaded successfully: {}", plugin_id);
-                        // Refresh the list
-                        self.refresh(cx);
-                    }
-                    Err(e) => {
-                        tracing::error!("❌ Failed to unload plugin: {:?}", e);
-                    }
-                }
-            }
-        }
-    }
 }
 
 impl Render for PluginManagerWindow {
@@ -251,7 +233,7 @@ impl PluginManagerWindow {
                             .icon(IconName::Trash)
                             .danger()
                             .on_click(cx.listener(move |this, _, _window, cx| {
-                                this.unload_plugin(&id_for_button, cx);
+                                todo!("Implement plugin unloading in PluginManager and call it here (plugin_id: {})", id_for_button);
                             }))
                     })
             )
