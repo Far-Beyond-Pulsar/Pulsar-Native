@@ -6,7 +6,7 @@ publish = false
 
 [dependencies]
 # UI framework
-gpui-ce.workspace = true
+gpui.workspace = true
 ui.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 rust-i18n.workspace = true

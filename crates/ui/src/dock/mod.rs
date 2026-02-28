@@ -10,11 +10,9 @@ use anyhow::Result;
 use gpui::{
     actions, canvas, div, prelude::FluentBuilder, AnyElement, AnyView, AnyWindowHandle, App, AppContext, Axis,
     Bounds, Context, Edges, Entity, EntityId, EventEmitter, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, ReadGlobal, Render, SharedString, Styled, Subscription, UpdateGlobal, WeakEntity, Window,
+    ParentElement as _, Pixels, Render, SharedString, Styled, Subscription, WeakEntity, Window,
 };
 use std::sync::{Arc, OnceLock};
-use ui_types_common::window_types::{WindowRequest, WindowId};
-use window_manager;
 
 pub use dock::*;
 pub use panel::*;
@@ -1071,7 +1069,11 @@ impl DockArea {
 
         let window_options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-            titlebar: None,
+            titlebar: Some(gpui::TitlebarOptions {
+                title: None,
+                appears_transparent: true,
+                traffic_light_position: None,
+            }),
             window_min_size: Some(gpui::Size {
                 width: px(400.),
                 height: px(300.),
@@ -1082,52 +1084,46 @@ impl DockArea {
             ..Default::default()
         };
 
-        // Replace direct cx.open_window with window_manager::WindowManager::global().create_window
-        let _ = window_manager::WindowManager::update_global(cx, |wm, cx| {
-            wm.create_window(
-            WindowRequest::DetachedPanel,
-            window_options,
-            move |window: &mut gpui::Window, cx: &mut gpui::App| {
-                tracing::trace!("[DOCK_AREA] Inside window creation callback");
+        tracing::trace!("[DOCK_AREA] Creating popout window with options");
 
-                // Create a minimal new dock area for this detached window
-                let new_dock_area = cx.new(|cx| DockArea::new("detached-dock", Some(1), window, cx));
-                let weak_new_dock = new_dock_area.downgrade();
+        let _ = cx.open_window(window_options, move |window, cx| {
+            tracing::trace!("[DOCK_AREA] Inside window creation callback");
 
-                // Create a tab panel with just the one panel
-                let new_tab_panel = cx.new(|cx| {
-                    let channel = weak_new_dock.upgrade().map(|d| d.read(cx).channel).unwrap_or_default();
-                    let mut tab_panel = TabPanel::new(None, weak_new_dock.clone(), channel, window, cx);
-                    tab_panel.closable = true;
-                    tab_panel
-                });
+            // Create a minimal new dock area for this detached window
+            let new_dock_area = cx.new(|cx| DockArea::new("detached-dock", Some(1), window, cx));
+            let weak_new_dock = new_dock_area.downgrade();
 
-                new_tab_panel.update(cx, |view: &mut TabPanel, cx: &mut Context<TabPanel>| {
-                    view.add_panel(panel.clone(), window, cx);
-                });
+            // Create a tab panel with just the one panel
+            let new_tab_panel = cx.new(|cx| {
+                let channel = weak_new_dock.upgrade().map(|d| d.read(cx).channel).unwrap_or_default();
+                let mut tab_panel = TabPanel::new(None, weak_new_dock.clone(), channel, window, cx);
+                tab_panel.closable = true;
+                tab_panel
+            });
 
-                // Set up the dock area with just this panel
-                new_dock_area.update(cx, |dock: &mut DockArea, cx: &mut Context<DockArea>| {
-                    let dock_item = DockItem::Tabs {
-                        view: new_tab_panel.clone(),
-                        active_ix: 0,
-                        items: vec![panel.clone()],
-                    };
-                    dock.set_center(dock_item, window, cx);
-                });
+            new_tab_panel.update(cx, |view, cx| {
+                view.add_panel(panel.clone(), window, cx);
+            });
 
-                tracing::trace!("[DOCK_AREA] Popout window created successfully");
-                let popout_window = cx.new(|cx| PopoutDockWindow::new(
-                    new_dock_area, 
-                    panel.clone(),
-                    source,
-                    window, 
-                    cx
-                ));
-                cx.new(|cx| crate::Root::new(popout_window.into(), window, cx))
-            },
-            cx
-        )
+            // Set up the dock area with just this panel
+            new_dock_area.update(cx, |dock, cx| {
+                let dock_item = DockItem::Tabs {
+                    view: new_tab_panel,
+                    active_ix: 0,
+                    items: vec![panel.clone()],
+                };
+                dock.set_center(dock_item, window, cx);
+            });
+
+            tracing::trace!("[DOCK_AREA] Popout window created successfully");
+            let popout_window = cx.new(|cx| PopoutDockWindow::new(
+                new_dock_area, 
+                panel.clone(),
+                source,
+                window, 
+                cx
+            ));
+            cx.new(|cx| crate::Root::new(popout_window.into(), window, cx))
         });
     }
 }

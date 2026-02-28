@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-gpui-ce.workspace = true
+gpui = { workspace = true }
 ui = { path = "../../crates/ui" }
 ui_common = { workspace = true }
 pulsar_docs = { path = "../../crates/pulsar_docs" }

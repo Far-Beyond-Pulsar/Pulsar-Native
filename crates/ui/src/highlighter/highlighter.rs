@@ -10,7 +10,7 @@ use std::{
     ops::Range,
     usize,
 };
-use gpui_sum_tree::Bias;
+use sum_tree::Bias;
 use tree_sitter::{
     InputEdit, Node, Parser, Point, Query, QueryCursor, QueryMatch, StreamingIterator, Tree,
 };
@@ -102,7 +102,7 @@ impl HighlightItem {
     }
 }
 
-impl gpui_sum_tree::Item for HighlightItem {
+impl sum_tree::Item for HighlightItem {
     type Summary = HighlightSummary;
     fn summary(&self, _cx: &()) -> Self::Summary {
         HighlightSummary {
@@ -115,7 +115,7 @@ impl gpui_sum_tree::Item for HighlightItem {
     }
 }
 
-impl gpui_sum_tree::Summary for HighlightSummary {
+impl sum_tree::Summary for HighlightSummary {
     type Context<'a> = &'a ();
     fn zero(_: Self::Context<'_>) -> Self {
         HighlightSummary {
@@ -136,7 +136,7 @@ impl gpui_sum_tree::Summary for HighlightSummary {
     }
 }
 
-impl<'a> gpui_sum_tree::Dimension<'a, HighlightSummary> for usize {
+impl<'a> sum_tree::Dimension<'a, HighlightSummary> for usize {
     fn zero(_: &()) -> Self {
         0
     }
@@ -144,7 +144,7 @@ impl<'a> gpui_sum_tree::Dimension<'a, HighlightSummary> for usize {
     fn add_summary(&mut self, _: &'a HighlightSummary, _: &()) {}
 }
 
-impl<'a> gpui_sum_tree::Dimension<'a, HighlightSummary> for Range<usize> {
+impl<'a> sum_tree::Dimension<'a, HighlightSummary> for Range<usize> {
     fn zero(_: &()) -> Self {
         Default::default()
     }

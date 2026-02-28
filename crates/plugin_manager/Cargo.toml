@@ -13,8 +13,9 @@ tracing = { workspace = true }
 once_cell = "1.19"
 
 # UI dependencies
-gpui-ce.workspace = true
-ui.workspace = true
+gpui = { workspace = true }
+ui = { workspace = true }
+
 # File system operations
 walkdir = "2.4"
 

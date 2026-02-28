@@ -6,21 +6,18 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use gpui::AppContext;
 use parking_lot::RwLock;
-use window_manager;
 use dashmap::DashMap;
 use type_db::TypeDatabase;
-use ui_types_common::window_types::{WindowRequest, WindowId};
 
-use crate::{DiscordPresence, channels::WindowRequestSender};
+use crate::{WindowRequest, DiscordPresence, WindowRequestSender};
 
-
-use gpui::{WindowOptions, Window, AnyView, Render, IntoElement, Context};
-
-
-use window_manager::{WindowManager, WindowError};
+/// Window ID type (u64 for cross-platform compatibility)
+///
+/// This is used instead of winit::window::WindowId to keep engine_state
+/// decoupled from the windowing system. The engine crate handles conversion
+/// between winit::window::WindowId and u64.
+pub type WindowId = u64;
 
 /// Context for a specific window
 #[derive(Clone)]
@@ -137,22 +134,6 @@ pub struct EngineContext {
 
     /// Typed renderer registry (replaces old Arc<dyn Any> system)
     pub renderers: crate::renderers_typed::TypedRendererRegistry,
-
-    /// Monotonically increasing window ID counter
-    next_id: Arc<AtomicU64>,
-
-    /// Optional window manager instance (enabled via feature)
-
-    pub window_manager: Arc<RwLock<Option<window_manager::WindowManager>>>,
-}
-
-/// Wrapper to convert AnyView to a Render-implementing type
-struct AnyViewWrapper(gpui::AnyView);
-
-impl Render for AnyViewWrapper {
-    fn render(&mut self, _: &mut gpui::Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
-        self.0.clone()
-    }
 }
 
 impl EngineContext {
@@ -168,9 +149,6 @@ impl EngineContext {
             window_sender: Arc::new(RwLock::new(None)),
             window_count: Arc::new(parking_lot::Mutex::new(0)),
             renderers: crate::renderers_typed::TypedRendererRegistry::new(),
-            next_id: Arc::new(AtomicU64::new(1)),
-
-            window_manager: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -180,19 +158,12 @@ impl EngineContext {
         self
     }
 
-    /// Allocate the next unique window ID
-    pub fn next_window_id(&self) -> WindowId {
-        self.next_id.fetch_add(1, Ordering::SeqCst)
-    }
-
     /// Request a new window
     pub fn request_window(&self, request: WindowRequest) {
-        tracing::info!("request_window called: {:?}", request);
         let sender = self.window_sender.read();
         if let Some(sender) = sender.as_ref() {
-            match sender.send(request) {
-                Ok(()) => tracing::info!("Window request sent successfully"),
-                Err(e) => tracing::error!("Failed to send window request: {}", e),
+            if let Err(e) = sender.send(request) {
+                tracing::error!("Failed to send window request: {}", e);
             }
         } else {
             tracing::error!("Window sender not initialized!");
@@ -214,56 +185,6 @@ impl EngineContext {
         }
         result
     }
-
-
-    /// Convenience wrapper that either routes through the WindowManager
-    /// Create a window through the window manager using a generic content builder.
-    /// This is the preferred method as it preserves the view type and allows Root
-    /// to be the actual window root.
-    pub fn create_window<V, F>(
-        &self,
-        window_type: WindowRequest,
-        options: gpui::WindowOptions,
-        content_builder: F,
-        cx: &mut gpui::App,
-    ) -> Result<(WindowId, gpui::AnyWindowHandle), window_manager::WindowError>
-    where
-        V: gpui::Render + 'static,
-        F: FnOnce(&mut gpui::Window, &mut gpui::App) -> gpui::Entity<V> + Send + 'static,
-    {
-        use gpui::UpdateGlobal;
-        WindowManager::update_global(cx, |wm, cx| {
-            wm.create_window(window_type, options, content_builder, cx)
-        })
-    }
-
-    /// Legacy method: Create a window through the window manager using AnyView.
-    /// when available or falls back to raw `cx.open_window`.
-    pub fn create_window_safe<F>(
-        &self,
-        window_type: WindowRequest,
-        options: gpui::WindowOptions,
-        content_builder: F,
-        cx: &mut gpui::App,
-    ) -> Result<(WindowId, gpui::AnyWindowHandle), window_manager::WindowError>
-    where
-        F: FnOnce(&mut gpui::Window, &mut gpui::App) -> gpui::AnyView + Send + 'static,
-    {
-        use gpui::UpdateGlobal;
-        WindowManager::update_global(cx, |wm, cx| {
-            // Wrap the AnyView builder to work with the generic create_window
-            wm.create_window(
-                window_type,
-                options,
-                move |window: &mut gpui::Window, cx: &mut gpui::App| {
-                    let view = content_builder(window, cx);
-                    cx.new(|_| AnyViewWrapper(view))
-                },
-                cx,
-            )
-        })
-    }
-
 
     /// Get window count
     pub fn window_count(&self) -> usize {

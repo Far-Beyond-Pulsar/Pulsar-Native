@@ -3,8 +3,6 @@
 //! Provides a trait-based system for composable UI components similar to React
 
 use gpui::*;
-use ui_types_common::window_types::{WindowRequest, WindowId};
-use window_manager;
 
 /// Configuration for spawning a component in a window
 #[derive(Clone, Debug)]
@@ -31,7 +29,7 @@ impl Default for ComponentWindowConfig {
 /// A composable UI component that can be rendered and spawned in windows
 pub trait Component: Render + Sized + 'static {
     /// Configuration type for this component
-    type Config: Clone + Send + 'static;
+    type Config: Clone + 'static;
 
     /// Create a new instance with the given configuration
     fn new(config: Self::Config, window: &mut Window, cx: &mut Context<Self>) -> Self;
@@ -41,10 +39,14 @@ pub trait Component: Render + Sized + 'static {
         config: Self::Config,
         window_config: ComponentWindowConfig,
         cx: &mut App,
-    ) -> Result<()> {
+    ) -> Result<WindowHandle<Self>> {
         let options = WindowOptions {
             window_bounds: window_config.bounds.map(WindowBounds::Windowed),
-            titlebar: None,
+            titlebar: Some(TitlebarOptions {
+                title: Some(SharedString::from(window_config.title.clone())),
+                appears_transparent: false,
+                traffic_light_position: None,
+            }),
             window_background: WindowBackgroundAppearance::Opaque,
             focus: true,
             show: true,
@@ -59,22 +61,14 @@ pub trait Component: Render + Sized + 'static {
             tabbing_identifier: None,
         };
 
-        // Replace direct cx.open_window with window_manager::WindowManager::global().create_window
-        window_manager::WindowManager::update_global(cx, |wm: &mut window_manager::WindowManager, cx| {
-            wm.create_window(
-                WindowRequest::Component,
-                options,
-                move |window: &mut gpui::Window, cx: &mut gpui::App| {
-                    cx.new(|cx| Self::new(config.clone(), window, cx))
-                },
-                cx,
-            )
+        cx.open_window(options, move |window, cx| {
+            cx.new(|cx| Self::new(config, window, cx))
         })
-        .map(|_| ())?;
-
-        Ok(())
     }
 }
+
+/// Marker trait for components that should be rendered as the root of a window
+pub trait RootComponent: Component {}
 
 /// Marker trait for components that can be embedded within other components
 pub trait EmbeddableComponent: Component {}

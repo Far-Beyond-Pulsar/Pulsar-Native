@@ -44,7 +44,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use thiserror::Error;
 use tokio::runtime::Runtime;
-use engine_state::EngineContext;
+use engine_state::{EngineContext, WindowRequestReceiver, WindowRequestSender};
 use crate::args::ParsedArgs;
 use crate::logging::LogGuard;
 
@@ -63,19 +63,19 @@ impl TaskId {
 }
 
 /// Common initialization task IDs
-#[rustfmt::skip]
 pub mod task_ids {
     use super::TaskId;
 
-    pub const LOGGING:          TaskId = TaskId::new("logging");
-    pub const APPDATA:          TaskId = TaskId::new("appdata");
-    pub const RUNTIME:          TaskId = TaskId::new("runtime");
-    pub const BACKEND:          TaskId = TaskId::new("backend");
-    pub const DISCORD:          TaskId = TaskId::new("discord");
-    pub const SETTINGS:         TaskId = TaskId::new("settings");
-    pub const SET_GLOBAL:       TaskId = TaskId::new("set_global");
-    pub const URI_HANDLING:     TaskId = TaskId::new("uri_handling");
-    pub const ENGINE_CONTEXT:   TaskId = TaskId::new("engine_context");
+    pub const LOGGING: TaskId = TaskId::new("logging");
+    pub const APPDATA: TaskId = TaskId::new("appdata");
+    pub const SETTINGS: TaskId = TaskId::new("settings");
+    pub const RUNTIME: TaskId = TaskId::new("runtime");
+    pub const BACKEND: TaskId = TaskId::new("backend");
+    pub const CHANNELS: TaskId = TaskId::new("channels");
+    pub const ENGINE_CONTEXT: TaskId = TaskId::new("engine_context");
+    pub const URI_HANDLING: TaskId = TaskId::new("uri_handling");
+    pub const SET_GLOBAL: TaskId = TaskId::new("set_global");
+    pub const DISCORD: TaskId = TaskId::new("discord");
     pub const URI_REGISTRATION: TaskId = TaskId::new("uri_registration");
 }
 
@@ -117,9 +117,11 @@ pub struct InitContext {
     /// Engine backend
     pub backend: Option<engine_backend::EngineBackend>,
 
-    // legacy channel fields (unused)
-    // pub window_tx: Option<WindowRequestSender>,
-    // pub window_rx: Option<WindowRequestReceiver>,
+    /// Window request sender channel
+    pub window_tx: Option<WindowRequestSender>,
+
+    /// Window request receiver channel
+    pub window_rx: Option<WindowRequestReceiver>,
 
     /// Engine context (replaces EngineState)
     pub engine_context: Option<EngineContext>,
@@ -133,8 +135,8 @@ impl InitContext {
             log_guard: None,
             runtime: None,
             backend: None,
-            // window_tx: None,
-            // window_rx: None,
+            window_tx: None,
+            window_rx: None,
             engine_context: None,
         }
     }

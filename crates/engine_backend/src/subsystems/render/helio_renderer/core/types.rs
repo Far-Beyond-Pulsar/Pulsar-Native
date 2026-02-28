@@ -3,8 +3,7 @@
 
 use glam::Vec3;
 use std::sync::{Arc, Mutex};
-// compatibility shim: gpui no longer exports these types
-use ui::GpuTextureHandle;
+use gpui::GpuTextureHandle;
 
 /// Rendering metrics
 #[derive(Debug, Clone, Default)]

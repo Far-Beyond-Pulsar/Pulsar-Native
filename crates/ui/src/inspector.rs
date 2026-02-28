@@ -284,12 +284,14 @@ impl StyleMethods {
     fn get() -> &'static Self {
         static STYLE_METHODS: OnceLock<StyleMethods> = OnceLock::new();
         STYLE_METHODS.get_or_init(|| {
-            let table: Vec<_> = gpui::styled_reflection::methods::<StyleRefinement>()
-                .into_iter()
-                .map(|method| {
-                    (Box::new(method.invoke(StyleRefinement::default())), method)
-                })
-                .collect();
+            let table: Vec<_> = [
+                crate::styled_ext_reflection::methods::<StyleRefinement>(),
+                gpui::styled_reflection::methods::<StyleRefinement>(),
+            ]
+            .into_iter()
+            .flatten()
+            .map(|method| (Box::new(method.invoke(StyleRefinement::default())), method))
+            .collect();
             let map = table
                 .iter()
                 .map(|(_, method)| (method.name, method.clone()))
