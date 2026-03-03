@@ -44,32 +44,27 @@ impl FlamegraphWindow {
         })
     }
 
-    pub fn open(cx: &mut App) -> WindowHandle<Self> {
+    pub fn open(cx: &mut App) {
         let trace_data = Arc::new(TraceData::new());
-        
         let window_options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds {
                 origin: point(px(100.0), px(100.0)),
                 size: size(px(1200.0), px(800.0)),
             })),
-            titlebar: Some(TitleBar::title_bar_options()),
-            window_background: WindowBackgroundAppearance::Opaque,
-            focus: true,
-            show: true,
-            kind: WindowKind::Normal,
-            is_movable: true,
-            is_minimizable: true,
-            is_resizable: true,
-            window_decorations: Some(WindowDecorations::Client),
-            display_id: None,
-            window_min_size: Some(size(px(800.0), px(600.0))),
-            tabbing_identifier: None,
-            app_id: None,
+            window_decorations: Some(WindowDecorations::default()),
+            ..WindowOptions::default()
         };
-
-        cx.open_window(window_options, |_window, cx| {
-            Self::new(trace_data, _window, cx)
-        }).unwrap()
+        let _ = window_manager::WindowManager::update_global(cx, |wm, cx| {
+            wm.create_window(
+                engine_state::WindowRequest::Flamegraph,
+                window_options,
+                move |window: &mut gpui::Window, cx: &mut gpui::App| {
+                    let flamegraph_window = FlamegraphWindow::new(trace_data.clone(), window, cx);
+                    cx.new(|cx| ui::Root::new(flamegraph_window.into(), window, cx))
+                },
+                cx,
+            )
+        });
     }
 
     fn start_profiling(&mut self, _cx: &mut Context<Self>) {

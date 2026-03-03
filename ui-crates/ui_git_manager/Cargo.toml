@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-gpui = { workspace = true }
+gpui-ce.workspace = true
 ui = { path = "../../crates/ui", features = ["tree-sitter-languages"] }
 ui_common = { workspace = true }
 engine_state = { path = "../../crates/engine_state" }

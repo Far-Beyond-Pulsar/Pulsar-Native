@@ -6,7 +6,7 @@ publish = false
 
 [dependencies]
 # UI framework
-gpui.workspace = true
+gpui-ce.workspace = true
 ui.workspace = true
 engine_backend.workspace = true
 serde_json = "1.0"

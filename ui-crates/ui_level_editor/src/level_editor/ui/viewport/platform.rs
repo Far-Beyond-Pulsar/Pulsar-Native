@@ -172,18 +172,26 @@ pub fn window_to_screen_position(window: &Window, window_x: f32, window_y: f32) 
 // macOS implementations
 #[cfg(target_os = "macos")]
 pub fn set_cursor_position(screen_x: i32, screen_y: i32) {
-    use core_graphics::display::CGDisplay;
-    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+    // core-graphics2 is pulled in under the macos target; the crate alias
+    // is `core_graphics2` (see Cargo.toml).  adjust imports accordingly.
+    use core_graphics2::display::CGDisplay;
+    use core_graphics2::event_source::CGEventSource;
+    use core_graphics2::event_types::CGEventSourceStateID;
 
     unsafe {
-        CGDisplay::warp_mouse_cursor_position(core_graphics::geometry::CGPoint {
+        // warp the cursor using the geometry type from the new crate
+        let _ = CGDisplay::main().warp_mouse_cursor_position(core_graphics2::geometry::CGPoint {
             x: screen_x as f64,
             y: screen_y as f64,
-        })
-        .ok();
+        });
 
-        // Disassociate mouse and cursor position momentarily to prevent jumping
-        CGEventSource::set_local_events_suppression_interval(0.0);
+        // Disassociate mouse and cursor position momentarily to prevent jumping.
+        // the newer binding exposes this as an *instance* method; create a
+        // temporary source and adjust the interval. failure to create the
+        // source is non‑fatal, so ignore the result.
+        if let Ok(src) = CGEventSource::new(CGEventSourceStateID::CombinedSessionState) {
+            src.set_local_events_suppression_interval(0.0);
+        }
     }
 }
 
@@ -197,7 +205,10 @@ pub fn window_to_screen_position(window: &Window, window_x: f32, window_y: f32) 
     match HasWindowHandle::window_handle(window) {
         Ok(handle) => match handle.as_raw() {
             RawWindowHandle::AppKit(appkit_handle) => unsafe {
-                let ns_window = appkit_handle.ns_window.as_ptr() as *mut AnyObject;
+                // `RawWindowHandle::AppKit` exposes an `ns_view` pointer but not
+                // the window directly. Query the view's window object at runtime.
+                let ns_view = appkit_handle.ns_view.as_ptr() as *mut AnyObject;
+                let ns_window: *mut AnyObject = msg_send![ns_view, window];
                 let point = NSPoint {
                     x: window_x as f64,
                     y: window_y as f64,

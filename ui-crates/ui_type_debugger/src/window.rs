@@ -14,7 +14,6 @@ pub struct TypeDebuggerWindow {
 impl TypeDebuggerWindow {
     pub fn new(
         type_debugger_drawer: Entity<TypeDebuggerDrawer>,
-        _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Self {
         Self { type_debugger_drawer }
@@ -28,7 +27,7 @@ impl TypeDebuggerWindow {
 impl EventEmitter<NavigateToType> for TypeDebuggerWindow {}
 
 impl Render for TypeDebuggerWindow {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         drawer_window_entity("Window.Title.TypeDebugger", self.type_debugger_drawer.clone(), cx)
     }
 }

@@ -4,6 +4,7 @@ use ui::{
     v_flex, IconName, ActiveTheme as _,
 };
 use crate::OpenSettings;
+use crate::entry_screen::SettingsRequested;
 use crate::entry_screen::{EntryScreen, EntryScreenView};
 
 pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {
@@ -109,8 +110,9 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                 .label("")
                 .tooltip("Settings")
                 .with_variant(ui::button::ButtonVariant::Ghost)
-                .on_click(cx.listener(|_, _, window, cx| {
-                    window.dispatch_action(Box::new(OpenSettings), cx);
+                .on_click(cx.listener(|_, _, _, cx| {
+                    // emit entry-screen event; engine will handle opening window via callback
+                    cx.emit(SettingsRequested);
                 }))
         )
 }
