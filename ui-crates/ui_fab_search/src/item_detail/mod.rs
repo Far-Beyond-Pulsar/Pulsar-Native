@@ -12,23 +12,20 @@ use std::sync::Arc;
 use gpui::{prelude::*, *};
 use ui::{v_flex, ActiveTheme, scroll::{Scrollbar, ScrollbarState}};
 
-use crate::parser::{strip_html, FabItemDetail};
+use crate::parser::{strip_html, SketchfabModelDetail};
 
-use changelog::{ChangelogEntry, ChangelogSection};
+use changelog::ModelStatsSection;
 use description::DescriptionSection;
 use format_tags::FormatTagsSection;
 use gallery::{GalleryImage, GalleryStrip};
 use header::DetailHeader;
-use license_section::{LicenseEntry, LicenseSection};
-use meta_bar::{MetaBar, RatingInfo};
+use license_section::LicenseSection;
+use meta_bar::MetaBar;
 
 /// Full item detail page — scrollable column of rich sections.
-///
-/// Constructs all sub-components from the raw [`FabItemDetail`] payload and
-/// renders them in a polished, vertically-scrollable view.
 #[derive(IntoElement)]
 pub struct ItemDetailView {
-    detail: Box<FabItemDetail>,
+    detail: Box<SketchfabModelDetail>,
     /// Pre-decoded images ready for synchronous rendering, keyed by their original download URL.
     images: HashMap<String, Arc<gpui::RenderImage>>,
     scroll_handle: ScrollHandle,
@@ -40,7 +37,7 @@ pub struct ItemDetailView {
 
 impl ItemDetailView {
     pub fn new(
-        detail: Box<FabItemDetail>,
+        detail: Box<SketchfabModelDetail>,
         images: HashMap<String, Arc<gpui::RenderImage>>,
         scroll_handle: ScrollHandle,
         scroll_state: ScrollbarState,
@@ -66,116 +63,78 @@ impl RenderOnce for ItemDetailView {
         let images = self.images;
 
         // ── URL ─────────────────────────────────────────────────────────────
-        let fab_url = SharedString::from(format!("https://www.fab.com/listings/{}", d.uid));
+        let viewer_url = SharedString::from(d.viewer_url.clone());
 
         // ── header ──────────────────────────────────────────────────────────
-        let header = DetailHeader::new(d.title.clone(), fab_url, self.on_back);
+        let header = DetailHeader::new(d.name.clone(), viewer_url.clone(), self.on_back);
 
         // ── meta bar ────────────────────────────────────────────────────────
-        let rating = d.ratings.as_ref().map(|r| RatingInfo {
-            average: r.average_rating,
-            total: r.total,
-            review_count: d.review_count,
-            buckets: [
-                r.rating5.unwrap_or(0),
-                r.rating4.unwrap_or(0),
-                r.rating3.unwrap_or(0),
-                r.rating2.unwrap_or(0),
-                r.rating1.unwrap_or(0),
-            ],
-        });
+        let seller_name: SharedString = d.user.as_ref()
+            .map(|u| SharedString::from(u.display().to_string()))
+            .unwrap_or_default();
 
-        let seller_avatar = d.user.profile_image_url.as_deref()
+        let seller_avatar: Option<Arc<gpui::RenderImage>> = d.user.as_ref()
+            .and_then(|u| u.avatar_url(128))
             .and_then(|url| images.get(url))
             .cloned();
 
+        let category = d.categories.first()
+            .map(|c| SharedString::from(c.name.clone()));
+
         let meta = MetaBar::new(
-            d.user.seller_name.clone(),
+            seller_name,
             seller_avatar,
-            d.category.as_ref().map(|c| c.name.clone()),
-            rating,
+            category,
+            d.view_count,
+            d.like_count,
             d.published_at.clone(),
         );
 
         // ── gallery ─────────────────────────────────────────────────────────
         let gallery_images: Vec<GalleryImage> = d
-            .medias
-            .iter()
-            .filter(|m| m.media_type == "image" || m.media_type.is_empty())
-            .take(12)
-            .map(|m| {
-                // Prefer the largest thumbnail image URL, fall back to media_url
-                let url = m
-                    .images
-                    .iter()
-                    .max_by_key(|i| i.width)
-                    .map(|i| i.url.as_str())
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or(m.media_url.as_str())
-                    .to_string();
-                let (w, h) = m
-                    .images
-                    .first()
-                    .map(|i| (i.width, i.height))
-                    .unwrap_or((1280, 720));
-                GalleryImage {
-                    url: SharedString::from(url.clone()),
-                    width: w,
-                    height: h,
-                    image: images.get(&url).cloned(),
-                }
+            .all_thumbnail_urls()
+            .into_iter()
+            .take(8)
+            .map(|url| GalleryImage {
+                url: SharedString::from(url.to_string()),
+                width: 1920,
+                height: 1080,
+                image: images.get(url).cloned(),
             })
             .collect();
 
         let show_gallery = !gallery_images.is_empty();
-        let gallery = GalleryStrip::new(gallery_images, self.gallery_scroll_handle.clone(), self.gallery_scroll_state.clone());
+        let gallery = GalleryStrip::new(
+            gallery_images,
+            self.gallery_scroll_handle.clone(),
+            self.gallery_scroll_state.clone(),
+        );
 
-        // ── licenses ────────────────────────────────────────────────────────
-        let is_free = d.is_free;
-        let license_entries: Vec<LicenseEntry> = d
-            .licenses
-            .iter()
-            .map(|l| {
-                let price = if is_free {
-                    SharedString::from("Free")
-                } else if let Some(ref pt) = l.price_tier {
-                    let effective = pt.discounted_price.unwrap_or(pt.price);
-                    SharedString::from(format!("{} {:.2}", pt.currency_code, effective))
-                } else {
-                    SharedString::from("—")
-                };
-
-                let purchase_url = l.slug.as_ref().map(|slug| {
-                    SharedString::from(format!("https://www.fab.com/listings/{}", slug))
-                });
-
-                LicenseEntry {
-                    name: SharedString::from(l.name.clone()),
-                    price,
-                    purchase_url,
-                }
-            })
-            .collect();
-
-        let show_licenses = !license_entries.is_empty();
-        let license_sec = LicenseSection::new(license_entries, is_free);
+        // ── license ─────────────────────────────────────────────────────────
+        let license_label: Option<SharedString> = d.license_label().map(SharedString::from);
+        let show_license = license_label.is_some();
+        let license_sec = LicenseSection::new(license_label, d.is_downloadable, viewer_url);
 
         // ── format tags ─────────────────────────────────────────────────────
-        let formats: Vec<(String, String)> = d
-            .asset_formats
-            .iter()
-            .map(|f| {
-                (
-                    f.asset_format_type.code.clone(),
-                    f.asset_format_type.name.clone(),
-                )
+        let formats: Vec<(String, String)> = d.archives.as_ref()
+            .map(|a| {
+                a.available()
+                    .into_iter()
+                    .map(|(lbl, arc)| {
+                        let size_str = arc.size_label().unwrap_or_default();
+                        let display = if size_str.is_empty() {
+                            lbl.to_string()
+                        } else {
+                            format!("{} ({})", lbl, size_str)
+                        };
+                        (lbl.to_string(), display)
+                    })
+                    .collect()
             })
-            .collect();
+            .unwrap_or_default();
 
-        let tags: Vec<SharedString> = d
-            .tags
-            .iter()
-            .map(|t| SharedString::from(t.name.clone()))
+        let tags: Vec<SharedString> = d.tags.iter()
+            .map(|t| SharedString::from(t.slug.clone()))
             .collect();
 
         let show_format_tags = !formats.is_empty() || !tags.is_empty();
@@ -187,21 +146,19 @@ impl RenderOnce for ItemDetailView {
         let show_desc = !desc_text.is_empty();
         let description = DescriptionSection::new(SharedString::from(desc_text));
 
-        // ── changelog ───────────────────────────────────────────────────────
-        let changelog_entries: Vec<ChangelogEntry> = d
-            .changelogs
-            .iter()
-            .rev()
-            .map(|c| ChangelogEntry {
-                date: SharedString::from(
-                    c.published_at.get(..10).unwrap_or("").to_string(),
-                ),
-                content: SharedString::from(strip_html(&c.content)),
-            })
-            .collect();
-
-        let show_changelog = !changelog_entries.is_empty();
-        let changelog = ChangelogSection::new(changelog_entries);
+        // ── model stats ──────────────────────────────────────────────────────
+        let stats = ModelStatsSection::new(
+            d.view_count,
+            d.like_count,
+            d.download_count,
+            d.face_count,
+            d.vertex_count,
+            d.material_count,
+            d.texture_count,
+            d.animation_count,
+            d.sound_count,
+            d.pbr_type.clone(),
+        );
 
         // ── assemble ────────────────────────────────────────────────────────
         let bg = cx.theme().background;
@@ -234,11 +191,11 @@ impl RenderOnce for ItemDetailView {
                                     .w_full()
                                     .child(meta)
                                     .when(show_gallery, |el| el.child(gallery))
-                                    .when(show_licenses, |el| el.child(license_sec))
+                                    .when(show_license, |el| el.child(license_sec))
                                     .when(show_format_tags, |el| el.child(format_tags))
                                     .when(show_desc, |el| el.child(description))
-                                    .when(show_changelog, |el| el.child(changelog)),
-                            )
+                                    .child(stats),
+                            ),
                     )
                     .child(
                         div()
@@ -249,3 +206,4 @@ impl RenderOnce for ItemDetailView {
             )
     }
 }
+

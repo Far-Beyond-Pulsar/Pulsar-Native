@@ -61,13 +61,13 @@ impl RenderOnce for DetailHeader {
                     .truncate()
                     .child(self.title),
             )
-            // ── open on fab ──────────────────────────────────────────────
+            // ── view on sketchfab ─────────────────────────────────────
             .child(
-                Button::new("detail-open-fab")
+                Button::new("detail-open-sketchfab")
                     .small()
                     .primary()
                     .icon(Icon::new(IconName::ExternalLink).small())
-                    .label("Open on Fab")
+                    .label("View on Sketchfab")
                     .on_click(move |_ev, _window, cx| {
                         cx.open_url(fab_url.as_ref());
                     }),

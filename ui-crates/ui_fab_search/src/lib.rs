@@ -6,7 +6,7 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use gpui::{ prelude::*, * };
+use gpui::{prelude::*, *};
 use ui::{
     ActiveTheme,
     Root,
@@ -14,36 +14,134 @@ use ui::{
     TitleBar,
     v_flex,
     h_flex,
-    button::Button,
-    input::{ InputState, TextInput },
+    button::{Button, ButtonVariants as _},
+    input::{InputState, TextInput},
     scroll::{Scrollbar, ScrollbarState},
     IconName,
     StyledExt,
 };
-use parser::{FabItemDetail, FabListing};
+use parser::{fmt_count, SketchfabModel, SketchfabModelDetail};
 
-/// Simple window that lets the user search the Fab asset store
+// ── Sort options ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum SortBy {
+    Relevance,
+    MostViewed,
+    MostLiked,
+    Newest,
+    Oldest,
+}
+
+impl SortBy {
+    fn api_value(&self) -> Option<&'static str> {
+        match self {
+            SortBy::Relevance  => None,
+            SortBy::MostViewed => Some("-viewCount"),
+            SortBy::MostLiked  => Some("-likeCount"),
+            SortBy::Newest     => Some("-publishedAt"),
+            SortBy::Oldest     => Some("publishedAt"),
+        }
+    }
+    fn label(&self) -> &'static str {
+        match self {
+            SortBy::Relevance  => "Relevance",
+            SortBy::MostViewed => "Most Viewed",
+            SortBy::MostLiked  => "Most Liked",
+            SortBy::Newest     => "Newest",
+            SortBy::Oldest     => "Oldest",
+        }
+    }
+    fn all() -> [SortBy; 5] {
+        [SortBy::Relevance, SortBy::MostViewed, SortBy::MostLiked, SortBy::Newest, SortBy::Oldest]
+    }
+}
+
+// ── License filter ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum LicenseFilter {
+    All,
+    CC0,
+    CcBy,
+    CcBySa,
+    CcByNd,
+    CcByNc,
+    CcByNcSa,
+    CcByNcNd,
+    Standard,
+    Editorial,
+}
+
+impl LicenseFilter {
+    fn api_value(&self) -> Option<&'static str> {
+        match self {
+            LicenseFilter::All      => None,
+            LicenseFilter::CC0      => Some("cc0"),
+            LicenseFilter::CcBy     => Some("by"),
+            LicenseFilter::CcBySa   => Some("by-sa"),
+            LicenseFilter::CcByNd   => Some("by-nd"),
+            LicenseFilter::CcByNc   => Some("by-nc"),
+            LicenseFilter::CcByNcSa => Some("by-nc-sa"),
+            LicenseFilter::CcByNcNd => Some("by-nc-nd"),
+            LicenseFilter::Standard => Some("st"),
+            LicenseFilter::Editorial=> Some("ed"),
+        }
+    }
+    fn label(&self) -> &'static str {
+        match self {
+            LicenseFilter::All      => "All Licenses",
+            LicenseFilter::CC0      => "CC0",
+            LicenseFilter::CcBy     => "CC BY",
+            LicenseFilter::CcBySa   => "CC BY-SA",
+            LicenseFilter::CcByNd   => "CC BY-ND",
+            LicenseFilter::CcByNc   => "CC BY-NC",
+            LicenseFilter::CcByNcSa => "CC BY-NC-SA",
+            LicenseFilter::CcByNcNd => "CC BY-NC-ND",
+            LicenseFilter::Standard => "Standard",
+            LicenseFilter::Editorial=> "Editorial",
+        }
+    }
+    fn all() -> Vec<LicenseFilter> {
+        use LicenseFilter::*;
+        vec![All, CC0, CcBy, CcBySa, CcByNd, CcByNc, CcByNcSa, CcByNcNd, Standard, Editorial]
+    }
+}
+
+// ── Main window struct ───────────────────────────────────────────────────────
+
 pub struct FabSearchWindow {
     focus_handle: FocusHandle,
     search_query: String,
     search_input: Entity<InputState>,
-    filter_kind: Option<String>,
-    results: Vec<FabListing>,
+
+    // filters
+    sort_by: SortBy,
+    filter_downloadable: bool,
+    filter_animated: bool,
+    filter_staffpicked: bool,
+    filter_license: LicenseFilter,
+    show_license_menu: bool,
+
+    // results
+    results: Vec<SketchfabModel>,
+    next_url: Option<String>,
+    prev_url: Option<String>,
     request_log: Vec<String>,
     is_loading: bool,
     error: Option<String>,
-    /// Last URL fetched — used for the "Open in Browser" fallback button.
     last_url: Option<String>,
 
-    // ── item detail state ──────────────────────────────────────────────────
+    // item detail
     selected_item_uid: Option<String>,
-    item_detail: Option<Box<FabItemDetail>>,
+    item_detail: Option<Box<SketchfabModelDetail>>,
     detail_loading: bool,
     detail_error: Option<String>,
-    // ── image cache ────────────────────────────────────────────────────────
-    /// None = download in progress; Some(path) = file sitting in disk cache.
+
+    // image cache: None = in-flight, Some(arc) = ready
     image_cache: HashMap<String, Option<std::sync::Arc<gpui::RenderImage>>>,
-    // ── scrollbars ─────────────────────────────────────────────────────────
+
+    // scrollbars
     log_scroll_handle: ScrollHandle,
     log_scroll_state: ScrollbarState,
     results_scroll_handle: ScrollHandle,
@@ -58,12 +156,12 @@ impl FabSearchWindow {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
         let search_input = cx.new(|cx| {
-            InputState::new(_window, cx).placeholder("Search fab...")
+            InputState::new(_window, cx).placeholder("Search Sketchfab models…")
         });
 
         cx.subscribe(&search_input, |this, _input, event: &ui::input::InputEvent, cx| {
             if let ui::input::InputEvent::PressEnter { .. } = event {
-                this.perform_search(cx);
+                this.begin_search(None, cx);
             }
         }).detach();
 
@@ -71,8 +169,15 @@ impl FabSearchWindow {
             focus_handle,
             search_query: String::new(),
             search_input,
-            filter_kind: None,
+            sort_by: SortBy::Relevance,
+            filter_downloadable: false,
+            filter_animated: false,
+            filter_staffpicked: false,
+            filter_license: LicenseFilter::All,
+            show_license_menu: false,
             results: Vec::new(),
+            next_url: None,
+            prev_url: None,
             request_log: Vec::new(),
             is_loading: false,
             error: None,
@@ -101,20 +206,16 @@ impl FabSearchWindow {
         cx.notify();
     }
 
-    /// Kick off a background download for `url` if not already cached/loading.
-    /// Stores `None` immediately (= loading) then updates to `Some(arc)` once done.
     fn ensure_image_loaded(&mut self, url: String, cx: &mut Context<Self>) {
         if url.is_empty() || self.image_cache.contains_key(&url) {
             return;
         }
-        self.image_cache.insert(url.clone(), None); // mark as in-flight
+        self.image_cache.insert(url.clone(), None);
 
-        let (tx, rx) =
-            smol::channel::bounded::<Option<std::sync::Arc<gpui::RenderImage>>>(1);
-        let url_for_thread = url.clone();
-
+        let (tx, rx) = smol::channel::bounded::<Option<std::sync::Arc<gpui::RenderImage>>>(1);
+        let url_thread = url.clone();
         std::thread::spawn(move || {
-            let maybe = image_loader::fetch_and_decode(&url_for_thread).ok();
+            let maybe = image_loader::fetch_and_decode(&url_thread).ok();
             smol::block_on(tx.send(maybe)).ok();
         });
 
@@ -124,30 +225,26 @@ impl FabSearchWindow {
                     this.update(cx, |view, cx| {
                         view.image_cache.insert(url, maybe);
                         cx.notify();
-                    })
-                    .ok();
-                })
-                .ok();
+                    }).ok();
+                }).ok();
             }
-        })
-        .detach();
+        }).detach();
     }
 
     fn open_item_detail(&mut self, uid: String, cx: &mut Context<Self>) {
-        if self.selected_item_uid.as_deref() == Some(uid.as_str()) {
+        if self.selected_item_uid.as_deref() == Some(&uid) {
             return;
         }
         self.selected_item_uid = Some(uid.clone());
         self.item_detail = None;
         self.detail_loading = true;
         self.detail_error = None;
-        self.request_log.push(format!("GET /i/listings/{}", uid));
+        self.request_log.push(format!("GET /v3/models/{}", uid));
         cx.notify();
 
-        let (tx, rx) = smol::channel::bounded::<(Vec<String>, Result<Box<FabItemDetail>, String>)>(1);
+        let (tx, rx) = smol::channel::bounded::<(Vec<String>, Result<Box<SketchfabModelDetail>, String>)>(1);
         std::thread::spawn(move || {
-            let result = fetch_fab_item_detail(&uid);
-            smol::block_on(tx.send(result)).ok();
+            smol::block_on(tx.send(fetch_sketchfab_model_detail(&uid))).ok();
         });
 
         cx.spawn(async move |this, cx| {
@@ -158,27 +255,17 @@ impl FabSearchWindow {
                         view.request_log.extend(log_lines);
                         match result {
                             Ok(detail) => {
-                                view.request_log.push(format!("  ✓ detail: {}", detail.title));
-                                // kick off gallery image downloads
-                                let gallery_urls: Vec<String> = detail.medias.iter()
-                                    .filter(|m| m.media_type == "image" || m.media_type.is_empty())
-                                    .take(12)
-                                    .map(|m| {
-                                        m.images.iter()
-                                            .max_by_key(|i| i.width)
-                                            .map(|i| i.url.as_str())
-                                            .filter(|s: &&str| !s.is_empty())
-                                            .unwrap_or(m.media_url.as_str())
-                                            .to_string()
-                                    })
-                                    .collect();
-                                for url in gallery_urls {
+                                view.request_log.push(format!("  ✓ model: {}", detail.name));
+                                // preload all thumbnail sizes as gallery images
+                                let urls: Vec<String> = detail.all_thumbnail_urls()
+                                    .into_iter().take(8).map(|s| s.to_string()).collect();
+                                for url in urls {
                                     view.ensure_image_loaded(url, cx);
                                 }
-                                // seller avatar
-                                if let Some(ref avatar_url) = detail.user.profile_image_url {
-                                    if !avatar_url.is_empty() {
-                                        view.ensure_image_loaded(avatar_url.clone(), cx);
+                                // avatar
+                                if let Some(ref user) = detail.user {
+                                    if let Some(url) = user.avatar_url(128) {
+                                        view.ensure_image_loaded(url.to_string(), cx);
                                     }
                                 }
                                 view.item_detail = Some(detail);
@@ -195,31 +282,38 @@ impl FabSearchWindow {
         }).detach();
     }
 
-    fn perform_search(&mut self, cx: &mut Context<Self>) {
-        if self.search_query.trim().is_empty() {
-            return;
-        }
-
-        let query = self.search_query.clone();
-        let ltype = self.filter_kind.clone().unwrap_or_else(|| "3d-model".to_string());
-        let encoded = urlencoding::encode(&query).into_owned();
-        let url = format!(
-            "https://www.fab.com/i/listings/search?listing_types={}&sort_by=-relevance&q={}",
-            ltype, encoded
+    fn build_search_url(&self) -> String {
+        let q = urlencoding::encode(self.search_query.trim()).into_owned();
+        let mut url = format!(
+            "https://api.sketchfab.com/v3/search?type=models&q={}&count=24",
+            q
         );
+        if let Some(s) = self.sort_by.api_value()       { url.push_str(&format!("&sort_by={}", s)); }
+        if self.filter_downloadable                      { url.push_str("&downloadable=true"); }
+        if self.filter_animated                         { url.push_str("&animated=true"); }
+        if self.filter_staffpicked                      { url.push_str("&staffpicked=true"); }
+        if let Some(l) = self.filter_license.api_value() { url.push_str(&format!("&license={}", l)); }
+        url
+    }
 
+    fn begin_search(&mut self, override_url: Option<String>, cx: &mut Context<Self>) {
+        if self.search_query.trim().is_empty() { return; }
+
+        let url = override_url.clone().unwrap_or_else(|| self.build_search_url());
         self.is_loading = true;
         self.results.clear();
         self.error = None;
         self.last_url = Some(url.clone());
+        if override_url.is_none() {
+            self.next_url = None;
+            self.prev_url = None;
+        }
         self.request_log.push(format!("GET {}", url));
         cx.notify();
 
-        let fetch_url = url.clone();
-        let (tx, rx) = smol::channel::bounded::<(Vec<String>, Result<Vec<FabListing>, String>)>(1);
+        let (tx, rx) = smol::channel::bounded::<(Vec<String>, Result<SearchPage, String>)>(1);
         std::thread::spawn(move || {
-            let result = fetch_fab_listings(&fetch_url);
-            smol::block_on(tx.send(result)).ok();
+            smol::block_on(tx.send(fetch_sketchfab_models(&url))).ok();
         });
 
         cx.spawn(async move |this, cx| {
@@ -229,18 +323,13 @@ impl FabSearchWindow {
                         view.is_loading = false;
                         view.request_log.extend(log_lines);
                         match result {
-                            Ok(listings) => {
-                                view.request_log.push(
-                                    format!("  ✓ {} result(s)", listings.len())
-                                );
-                                view.results = listings;
-                                // kick off thumbnail downloads
+                            Ok(page) => {
+                                view.request_log.push(format!("  ✓ {} model(s)", page.models.len()));
+                                view.next_url = page.next;
+                                view.prev_url = page.prev;
+                                view.results = page.models;
                                 let thumb_urls: Vec<String> = view.results.iter()
-                                    .filter_map(|l| {
-                                        l.thumbnails.first()
-                                            .and_then(|t| t.best_image_url(260))
-                                            .map(|s| s.to_string())
-                                    })
+                                    .filter_map(|m| m.thumb_url(260).map(|s| s.to_string()))
                                     .collect();
                                 for url in thumb_urls {
                                     view.ensure_image_loaded(url, cx);
@@ -259,14 +348,20 @@ impl FabSearchWindow {
     }
 }
 
-// ── response cache ──────────────────────────────────────────────────────────
+// ── Cache ────────────────────────────────────────────────────────────────────
 
-const CACHE_CAP: usize = 20;
+const CACHE_CAP: usize = 30;
 const CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 
+struct SearchPage {
+    models: Vec<SketchfabModel>,
+    next: Option<String>,
+    prev: Option<String>,
+}
+
 enum CacheValue {
-    Listings(Vec<FabListing>),
-    Detail(Box<FabItemDetail>),
+    Page { models: Vec<SketchfabModel>, next: Option<String>, prev: Option<String> },
+    Detail(Box<SketchfabModelDetail>),
 }
 
 struct CacheEntry {
@@ -275,211 +370,140 @@ struct CacheEntry {
     inserted_at: Instant,
 }
 
-struct FabCache {
-    entries: VecDeque<CacheEntry>,
-}
+struct SearchCache { entries: VecDeque<CacheEntry> }
 
-impl FabCache {
-    fn new() -> Self {
-        Self { entries: VecDeque::with_capacity(CACHE_CAP) }
+impl SearchCache {
+    fn new() -> Self { Self { entries: VecDeque::with_capacity(CACHE_CAP) } }
+
+    fn evict(&mut self) {
+        self.entries.retain(|e| e.inserted_at.elapsed() < CACHE_TTL);
     }
 
-    fn get_listings(&mut self, key: &str) -> Option<Vec<FabListing>> {
-        self.find(key).and_then(|e| {
-            if let CacheValue::Listings(ref v) = e.value { Some(v.clone()) } else { None }
-        })
-    }
-
-    fn get_detail(&mut self, key: &str) -> Option<Box<FabItemDetail>> {
-        self.find(key).and_then(|e| {
-            if let CacheValue::Detail(ref v) = e.value { Some(v.clone()) } else { None }
+    fn get_detail(&mut self, key: &str) -> Option<Box<SketchfabModelDetail>> {
+        self.evict();
+        self.entries.iter().find(|e| e.key == key).and_then(|e| {
+            if let CacheValue::Detail(ref d) = e.value { Some(d.clone()) } else { None }
         })
     }
 
     fn insert(&mut self, key: String, value: CacheValue) {
-        // Remove existing entry for the same key
         self.entries.retain(|e| e.key != key);
-        // Evict oldest if at capacity
-        if self.entries.len() >= CACHE_CAP {
-            self.entries.pop_front();
-        }
+        if self.entries.len() >= CACHE_CAP { self.entries.pop_front(); }
         self.entries.push_back(CacheEntry { key, value, inserted_at: Instant::now() });
     }
-
-    fn find(&mut self, key: &str) -> Option<&CacheEntry> {
-        // Evict expired entries first
-        self.entries.retain(|e| e.inserted_at.elapsed() < CACHE_TTL);
-        self.entries.iter().find(|e| e.key == key)
-    }
 }
 
-fn global_cache() -> &'static Mutex<FabCache> {
-    static CACHE: OnceLock<Mutex<FabCache>> = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(FabCache::new()))
+fn global_cache() -> &'static Mutex<SearchCache> {
+    static CACHE: OnceLock<Mutex<SearchCache>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(SearchCache::new()))
 }
 
-// ── fetch helpers ────────────────────────────────────────────────────────────
+// ── Fetch ────────────────────────────────────────────────────────────────────
 
-/// Perform a request impersonating Chrome's full TLS fingerprint (JA3/JA4 + HTTP/2 settings)
-/// via rquest's BoringSSL backend.  Must be called from an OS thread, not a GPUI/smol task.
-/// Returns `(log_lines, result)` so the caller can push all logs into the UI panel.
-fn fetch_fab_listings(url: &str) -> (Vec<String>, Result<Vec<FabListing>, String>) {
-    use rquest::Impersonate;
-
-    let mut log: Vec<String> = Vec::new();
-    macro_rules! log {
-        ($($arg:tt)*) => {{
-            let s = format!($($arg)*);
-            println!("{}", s);
-            log.push(s);
-        }}
-    }
-
-    // Check cache first
-    if let Ok(mut cache) = global_cache().lock() {
-        if let Some(cached) = cache.get_listings(url) {
-            log!("cache hit: {}", url);
-            return (log, Ok(cached));
-        }
-    }
-
-    let rt = match tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-    {
-        Ok(rt) => rt,
-        Err(e) => return (log, Err(format!("tokio error: {}", e))),
+fn fetch_sketchfab_models(url: &str) -> (Vec<String>, Result<SearchPage, String>) {
+    let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+        Ok(r) => r, Err(e) => return (vec![], Err(format!("tokio: {}", e))),
     };
+    let url = url.to_string();
+    let (log, result) = rt.block_on(async move {
+        let mut log: Vec<String> = Vec::new();
+        macro_rules! logv { ($($t:tt)*) => {{ let s = format!($($t)*); println!("{}", s); log.push(s); }} }
 
-    let result = rt.block_on(async {
-        log!("→ GET {}", url);
-
-        let client = rquest::Client::builder()
-            .impersonate(Impersonate::Chrome131)
+        logv!("→ GET {}", url);
+        let client = match reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
+            .user_agent("Pulsar-Native/1.0")
             .build()
-            .map_err(|e| { log!("client build: {}", e); e.to_string() })?;
+        {
+            Ok(c) => c,
+            Err(e) => { logv!("build: {}", e); return (log, Err(e.to_string())); }
+        };
 
-        let response = client.get(url).send().await
-            .map_err(|e| { log!("request error: {}", e); e.to_string() })?;
-
-        let status = response.status();
-        log!("← HTTP {}", status);
-        for (k, v) in response.headers() {
-            log!("  {}: {}", k, v.to_str().unwrap_or("?"));
-        }
-
-        let text = response.text().await
-            .map_err(|e| { log!("body read error: {}", e); e.to_string() })?;
-
-        log!("body ({} bytes): {}…", text.len(), &text[..text.len().min(300)]);
-
+        let resp = match client.get(&url).send().await {
+            Ok(r) => r,
+            Err(e) => { logv!("request: {}", e); return (log, Err(e.to_string())); }
+        };
+        let status = resp.status();
+        logv!("← HTTP {}", status);
+        let text = match resp.text().await {
+            Ok(t) => t,
+            Err(e) => return (log, Err(e.to_string())),
+        };
+        logv!("body {} bytes", text.len());
         if !status.is_success() {
-            return Err(format!("HTTP {} — blocked. Use 'Open in Browser' as fallback.", status));
+            return (log, Err(format!("HTTP {} — {}", status, &text[..text.len().min(120)])));
         }
-
-        let parsed: parser::FabSearchResponse = serde_json::from_str(&text)
-            .map_err(|e| { log!("parse error: {}", e); format!("Parse error: {e}") })?;
-
-        log!("parsed {} listings", parsed.results.len());
-        Ok(parsed.results)
+        let result = serde_json::from_str::<parser::SketchfabSearchResponse>(&text)
+            .map_err(|e| { logv!("parse: {}", e); format!("Parse error: {e}") })
+            .map(|parsed| {
+                logv!("parsed {} models", parsed.results.len());
+                SearchPage { next: parsed.next, prev: parsed.previous, models: parsed.results }
+            });
+        (log, result)
     });
-
-    // Store successful result in cache
-    if let Ok(listings) = &result {
-        if let Ok(mut cache) = global_cache().lock() {
-            cache.insert(url.to_string(), CacheValue::Listings(listings.clone()));
-        }
-    }
-
     (log, result)
 }
 
-/// Fetch full item detail from GET /i/listings/{uid}.
-/// Must be called from an OS thread (not a GPUI/smol task).
-fn fetch_fab_item_detail(uid: &str) -> (Vec<String>, Result<Box<FabItemDetail>, String>) {
-    use rquest::Impersonate;
+fn fetch_sketchfab_model_detail(uid: &str) -> (Vec<String>, Result<Box<SketchfabModelDetail>, String>) {
+    let url = format!("https://api.sketchfab.com/v3/models/{}", uid);
 
-    let mut log: Vec<String> = Vec::new();
-    macro_rules! log {
-        ($($arg:tt)*) => {{
-            let s = format!($($arg)*);
-            println!("{}", s);
-            log.push(s);
-        }}
-    }
-
-    let url = format!("https://www.fab.com/i/listings/{}", uid);
-
-    // Check cache first
     if let Ok(mut cache) = global_cache().lock() {
         if let Some(cached) = cache.get_detail(&url) {
-            log!("cache hit: {}", url);
-            return (log, Ok(cached));
+            return (vec!["cache hit".into()], Ok(cached));
         }
     }
 
-    let rt = match tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-    {
-        Ok(rt) => rt,
-        Err(e) => return (log, Err(format!("tokio error: {}", e))),
+    let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+        Ok(r) => r, Err(e) => return (vec![], Err(format!("tokio: {}", e))),
     };
+    let url2 = url.clone();
+    let (log, result) = rt.block_on(async move {
+        let mut log: Vec<String> = Vec::new();
+        macro_rules! logv { ($($t:tt)*) => {{ let s = format!($($t)*); println!("{}", s); log.push(s); }} }
 
-    let result = rt.block_on(async {
-        log!("→ GET {}", url);
-
-        let client = rquest::Client::builder()
-            .impersonate(Impersonate::Chrome131)
+        logv!("→ GET {}", url2);
+        let client = match reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
+            .user_agent("Pulsar-Native/1.0")
             .build()
-            .map_err(|e| { log!("client build: {}", e); e.to_string() })?;
-
-        let response = client.get(&url).send().await
-            .map_err(|e| { log!("request error: {}", e); e.to_string() })?;
-
-        let status = response.status();
-        log!("← HTTP {}", status);
-
-        let text = response.text().await
-            .map_err(|e| { log!("body read: {}", e); e.to_string() })?;
-
-        log!("body ({} bytes): {}…", text.len(), &text[..text.len().min(200)]);
-
-        if !status.is_success() {
-            return Err(format!("HTTP {}", status));
-        }
-
-        let parsed: FabItemDetail = serde_json::from_str(&text)
-            .map_err(|e| { log!("parse error: {}", e); format!("Parse error: {e}") })?;
-
-        log!("parsed item: {}", parsed.title);
-        Ok(Box::new(parsed))
+        {
+            Ok(c) => c,
+            Err(e) => return (log, Err(e.to_string())),
+        };
+        let resp = match client.get(&url2).send().await {
+            Ok(r) => r,
+            Err(e) => return (log, Err(e.to_string())),
+        };
+        let status = resp.status();
+        logv!("← HTTP {}", status);
+        let text = match resp.text().await {
+            Ok(t) => t,
+            Err(e) => return (log, Err(e.to_string())),
+        };
+        if !status.is_success() { return (log, Err(format!("HTTP {}", status))); }
+        let result = serde_json::from_str::<SketchfabModelDetail>(&text)
+            .map_err(|e| { logv!("parse: {}", e); format!("Parse error: {e}") })
+            .map(|parsed| { logv!("parsed: {}", parsed.name); Box::new(parsed) });
+        (log, result)
     });
-
-    // Store successful result in cache
-    if let Ok(detail) = &result {
+    if let Ok(ref d) = result {
         if let Ok(mut cache) = global_cache().lock() {
-            cache.insert(url.clone(), CacheValue::Detail(detail.clone()));
+            cache.insert(url, CacheValue::Detail(d.clone()));
         }
     }
-
     (log, result)
 }
 
+// ── Focusable + Render ───────────────────────────────────────────────────────
+
 impl Focusable for FabSearchWindow {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle {
-        self.focus_handle.clone()
-    }
+    fn focus_handle(&self, _cx: &App) -> FocusHandle { self.focus_handle.clone() }
 }
 
 impl Render for FabSearchWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let current_input = self.search_input.read(cx).value().to_string();
-        if current_input != self.search_query {
-            self.search_query = current_input;
-        }
+        if current_input != self.search_query { self.search_query = current_input; }
 
         let bg         = cx.theme().background;
         let card_bg    = cx.theme().sidebar;
@@ -488,414 +512,337 @@ impl Render for FabSearchWindow {
         let muted_fg   = cx.theme().muted_foreground;
         let accent_bg  = cx.theme().secondary;
         let accent_fg  = cx.theme().secondary_foreground;
+        let active_bg  = cx.theme().accent;
+        let active_fg  = cx.theme().accent_foreground;
 
-        // ── request log panel ──────────────────────────────────────────────
+        // ── Request log ───────────────────────────────────────────────────
         let log_panel = div()
-            .w(px(260.0))
-            .flex_shrink_0()
-            .min_h_0()
-            .border_r_1()
-            .border_color(border_col)
-            .flex()
-            .flex_col()
+            .w(px(260.0)).flex_shrink_0().min_h_0()
+            .border_r_1().border_color(border_col)
+            .flex().flex_col()
+            .child(div().px_3().py_2().border_b_1().border_color(border_col)
+                .text_sm().font_bold().text_color(muted_fg).child("Request Log"))
             .child(
-                div()
-                    .px_3()
-                    .py_2()
-                    .border_b_1()
-                    .border_color(border_col)
-                    .text_sm()
-                    .font_bold()
-                    .text_color(muted_fg)
-                    .child("Request Log")
-            )
-            .child(
-                div()
-                    .relative()
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_hidden()
-                    .child(
-                        div()
-                            .id("log-scroll")
-                            .size_full()
-                            .overflow_y_scroll()
-                            .track_scroll(&self.log_scroll_handle)
-                            .p_2()
-                            .child(
-                                v_flex()
-                                    .gap_1()
-                                    .children(self.request_log.iter().rev().map(|entry| {
-                                        div()
-                                            .text_xs()
-                                            .text_color(muted_fg)
-                                            .font_family("monospace")
-                                            .child(entry.clone())
-                                    }))
-                            )
+                div().relative().flex_1().min_h_0().overflow_hidden()
+                    .child(div().id("log-scroll").size_full()
+                        .overflow_y_scroll()
+                        .track_scroll(&self.log_scroll_handle)
+                        .p_2()
+                        .child(v_flex().gap_1()
+                            .children(self.request_log.iter().rev().map(|e| {
+                                div().text_xs().text_color(muted_fg)
+                                    .font_family("monospace").child(e.clone())
+                            }))
+                        )
                     )
-                    .child(
-                        div()
-                            .absolute()
-                            .inset_0()
-                            .child(Scrollbar::vertical(&self.log_scroll_state, &self.log_scroll_handle))
-                    )
+                    .child(div().absolute().inset_0()
+                        .child(Scrollbar::vertical(&self.log_scroll_state, &self.log_scroll_handle)))
             );
 
-        // ── results body ───────────────────────────────────────────────────
+        // ── Body ──────────────────────────────────────────────────────────
         let body: AnyElement = if self.is_loading {
-            div()
-                .flex_1()
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(div().text_color(muted_fg).child("Fetching results from Fab…"))
+            div().flex_1().flex().items_center().justify_center()
+                .child(div().text_color(muted_fg).child("Searching Sketchfab…"))
                 .into_any_element()
-        } else if let Some(ref err) = self.error {
-            let err_text = err.clone();
-            let has_url = self.last_url.is_some();
 
-            div()
-                .flex_1()
-                .min_h_0()
-                .flex()
-                .flex_col()
-                .items_center()
-                .justify_center()
-                .gap_2()
-                .child(div().text_color(gpui::red()).child(err_text))
-                .when(has_url, |el| {
-                    el.child(
-                        Button::new("open-in-browser")
-                            .label("Open in Browser")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                if let Some(url) = &this.last_url {
-                                    cx.open_url(url);
-                                }
-                            })),
-                    )
-                })
+        } else if let Some(ref err) = self.error.clone() {
+            let has_url = self.last_url.is_some();
+            div().flex_1().min_h_0().flex().flex_col()
+                .items_center().justify_center().gap_2()
+                .child(div().text_color(gpui::red()).child(err.clone()))
+                .when(has_url, |el| el.child(
+                    Button::new("open-browser").label("Open in Browser")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            if let Some(url) = &this.last_url { cx.open_url(url); }
+                        }))
+                ))
                 .into_any_element()
+
         } else if self.selected_item_uid.is_some() {
-            // ── item detail view ──────────────────────────────────────────────
             if self.detail_loading {
-                div()
-                    .flex_1()                    .min_h_0()                    .min_h_0()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(div().text_color(muted_fg).child("Loading item details…"))
+                div().flex_1().min_h_0().flex().items_center().justify_center()
+                    .child(div().text_color(muted_fg).child("Loading model details…"))
                     .into_any_element()
-            } else if let Some(ref err) = self.detail_error {
-                let err_text = err.clone();
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .flex()
-                    .flex_col()
-                    .items_center()
-                    .justify_center()
-                    .gap_2()
-                    .child(div().text_color(gpui::red()).child(err_text))
-                    .child(
-                        Button::new("back-from-error")
-                            .label("← Back")
-                            .on_click(cx.listener(|this, _, _, cx| this.go_back(cx)))
-                    )
+
+            } else if let Some(ref err) = self.detail_error.clone() {
+                div().flex_1().min_h_0().flex().flex_col()
+                    .items_center().justify_center().gap_2()
+                    .child(div().text_color(gpui::red()).child(err.clone()))
+                    .child(Button::new("back-err").label("← Back")
+                        .on_click(cx.listener(|this, _, _, cx| this.go_back(cx))))
                     .into_any_element()
+
             } else if let Some(ref detail) = self.item_detail {
                 let entity = cx.entity().clone();
-                // Collect only the fully-loaded images for this detail view
-                let mut loaded_images: std::collections::HashMap<String, std::sync::Arc<gpui::RenderImage>> = detail
-                    .medias
-                    .iter()
-                    .filter(|m| m.media_type == "image" || m.media_type.is_empty())
-                    .take(12)
-                    .filter_map(|m| {
-                        let url = m
-                            .images
-                            .iter()
-                            .max_by_key(|i| i.width)
-                            .map(|i| i.url.as_str())
-                            .filter(|s: &&str| !s.is_empty())
-                            .unwrap_or(m.media_url.as_str())
-                            .to_string();
-                        self.image_cache
-                            .get(&url)
-                            .and_then(|opt| opt.clone())
-                            .map(|arc| (url, arc))
-                    })
-                    .collect();
-                // Also include the seller avatar so MetaBar can render it synchronously
-                if let Some(avatar_url) = detail.user.profile_image_url.as_deref() {
-                    if let Some(Some(arc)) = self.image_cache.get(avatar_url) {
-                        loaded_images.insert(avatar_url.to_string(), arc.clone());
+
+                // collect loaded images keyed by URL
+                let mut loaded: HashMap<String, std::sync::Arc<gpui::RenderImage>> =
+                    detail.all_thumbnail_urls().into_iter().take(8).filter_map(|url| {
+                        self.image_cache.get(url).and_then(|o| o.clone())
+                            .map(|arc| (url.to_string(), arc))
+                    }).collect();
+
+                if let Some(ref user) = detail.user {
+                    if let Some(url) = user.avatar_url(128) {
+                        if let Some(Some(arc)) = self.image_cache.get(url) {
+                            loaded.insert(url.to_string(), arc.clone());
+                        }
                     }
                 }
+
                 item_detail::ItemDetailView::new(
                     detail.clone(),
-                    loaded_images,
+                    loaded,
                     self.detail_scroll_handle.clone(),
                     self.detail_scroll_state.clone(),
                     self.gallery_scroll_handle.clone(),
                     self.gallery_scroll_state.clone(),
-                    move |_window, cx| {
-                        entity.update(cx, |this, cx| this.go_back(cx));
-                    },
-                )
-                .into_any_element()
+                    move |_window, cx| { entity.update(cx, |this, cx| this.go_back(cx)); },
+                ).into_any_element()
+
             } else {
-                // selected but no detail yet (shouldn't happen, but guard)
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .flex()
-                    .items_center()
-                    .justify_center()
+                div().flex_1().min_h_0().flex().items_center().justify_center()
                     .child(div().text_color(muted_fg).child("Loading…"))
                     .into_any_element()
             }
+
         } else if self.results.is_empty() {
-            div()
-                .flex_1()
-                .min_h_0()
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(div().text_color(muted_fg).child("Search Fab to discover assets"))
+            div().flex_1().min_h_0().flex().items_center().justify_center()
+                .child(div().text_color(muted_fg)
+                    .child("Search Sketchfab to browse free 3D models"))
                 .into_any_element()
+
         } else {
-            let cards: Vec<AnyElement> = self.results.iter().enumerate().map(|(idx, listing)| {
-                let price_text = if listing.is_free {
-                    "Free".to_string()
-                } else if let Some(ref sp) = listing.starting_price {
-                    format!("${:.2}", sp.price)
-                } else {
-                    "—".to_string()
-                };
+            // ── Results grid ──────────────────────────────────────────────
+            let next_url = self.next_url.clone();
+            let prev_url = self.prev_url.clone();
+            let has_next = next_url.is_some();
+            let has_prev = prev_url.is_some();
 
-                let rating_text = listing.ratings.as_ref().map(|r| {
-                    format!("★ {:.1}  ({} ratings)", r.average_rating, r.total)
-                }).unwrap_or_default();
+            let cards: Vec<AnyElement> = self.results.iter().enumerate().map(|(idx, model)| {
+                let name     = model.name.clone();
+                let author   = model.user.as_ref().map(|u| u.display().to_string()).unwrap_or_default();
+                let category = model.primary_category().map(|s| s.to_string()).unwrap_or_default();
+                let subtitle = if category.is_empty() { author.clone() }
+                               else { format!("{} · {}", author, category) };
+                let views    = fmt_count(model.view_count);
+                let likes    = fmt_count(model.like_count);
+                let is_dl    = model.is_downloadable;
+                let is_anim  = model.animation_count > 0;
+                let is_sp    = model.staffpicked_at.as_ref().map(|v| !v.is_null()).unwrap_or(false);
 
-                let seller   = listing.user.seller_name.clone();
-                let category = listing.category.as_ref().map(|c| c.name.clone()).unwrap_or_default();
-                let formats: Vec<String> = listing.asset_formats.iter()
-                    .map(|f| f.asset_format_type.name.clone())
-                    .take(3)
-                    .collect();
-
-                let card_uid = listing.uid.clone();
-                let listing_type = listing.listing_type.clone().unwrap_or_default();
-                let thumb_url: Option<String> = listing
-                    .thumbnails
-                    .first()
-                    .and_then(|t| t.best_image_url(260))
-                    .map(|s| s.to_string());
-                // Look up the cached RenderImage — None-value = still downloading
-                let thumb_image: Option<std::sync::Arc<gpui::RenderImage>> = thumb_url
-                    .as_deref()
-                    .and_then(|u| self.image_cache.get(u))
-                    .and_then(|opt| opt.clone());
+                let card_uid = model.uid.clone();
+                let thumb_url = model.thumb_url(260).map(|s| s.to_string());
+                let thumb_arc: Option<std::sync::Arc<gpui::RenderImage>> = thumb_url
+                    .as_deref().and_then(|u| self.image_cache.get(u)).and_then(|o| o.clone());
 
                 div()
-                    .id(SharedString::from(format!("fab-card-{}", idx)))
+                    .id(SharedString::from(format!("skfb-card-{}", idx)))
                     .cursor_pointer()
-                    .w(px(260.0))
-                    .rounded_lg()
-                    .bg(card_bg)
-                    .border_1()
-                    .border_color(border_col)
-                    .overflow_hidden()
-                    .flex()
-                    .flex_col()
-                    .on_click(cx.listener(move |this, _ev, _win, cx| {
+                    .w(px(260.0)).rounded_lg().bg(card_bg)
+                    .border_1().border_color(border_col)
+                    .overflow_hidden().flex().flex_col()
+                    .on_click(cx.listener(move |this, _, _, cx| {
                         this.open_item_detail(card_uid.clone(), cx);
                     }))
-                    // thumbnail — real image when available, muted placeholder otherwise
+                    // thumbnail
                     .child(
-                        div()
-                            .w_full()
-                            .h(px(140.0))
-                            .bg(card_bg)
-                            .overflow_hidden()
+                        div().w_full().h(px(146.0)).bg(card_bg).overflow_hidden().relative()
                             .map(|el| {
-                                if let Some(arc) = thumb_image {
-                                    el.child(
-                                        img(gpui::ImageSource::Render(arc))
-                                            .w_full()
-                                            .h_full()
-                                            .object_fit(gpui::ObjectFit::Cover),
-                                    )
+                                if let Some(arc) = thumb_arc {
+                                    el.child(img(gpui::ImageSource::Render(arc))
+                                        .w_full().h_full().object_fit(gpui::ObjectFit::Cover))
                                 } else {
-                                    el.bg(border_col)
-                                        .flex()
-                                        .items_center()
-                                        .justify_center()
-                                        .child(
-                                            div()
-                                                .text_xs()
-                                                .text_color(muted_fg)
-                                                .child(listing_type),
-                                        )
+                                    el.bg(border_col).flex().items_center().justify_center()
+                                        .child(div().text_xs().text_color(muted_fg).child(""))
                                 }
-                            }),
+                            })
+                            .when(is_sp, |el| el.child(
+                                div().absolute().top(px(6.0)).left(px(6.0))
+                                    .px_2().py(px(2.0)).rounded_full()
+                                    .bg(gpui::rgb(0xFACC15))
+                                    .text_xs().font_bold().text_color(gpui::rgb(0x000000))
+                                    .child("★ Staff Pick")
+                            ))
+                            .when(is_dl, |el| el.child(
+                                div().absolute().bottom(px(6.0)).right(px(6.0))
+                                    .px_2().py(px(2.0)).rounded_full()
+                                    .bg(gpui::rgb(0x22C55E))
+                                    .text_xs().font_bold().text_color(gpui::rgb(0xFFFFFF))
+                                    .child("↓")
+                            ))
+                            .when(is_anim, |el| el.child(
+                                div().absolute().bottom(px(6.0)).left(px(6.0))
+                                    .px_2().py(px(2.0)).rounded_full()
+                                    .bg(gpui::rgb(0x6366F1))
+                                    .text_xs().font_bold().text_color(gpui::rgb(0xFFFFFF))
+                                    .child("▶")
+                            ))
                     )
-                    // card body
-                    .child(
-                        div()
-                            .p_3()
-                            .child(
-                                v_flex()
-                                    .gap_1()
-                                    .child(
-                                        div()
-                                            .text_sm()
-                                            .font_bold()
-                                            .text_color(fg)
-                                            .line_clamp(2)
-                                            .child(listing.title.clone())
-                                    )
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .text_color(muted_fg)
-                                            .child(if category.is_empty() {
-                                                seller.clone()
-                                            } else {
-                                                format!("{} · {}", seller, category)
-                                            })
-                                    )
-                                    .child(
-                                        h_flex()
-                                            .gap_2()
-                                            .items_center()
-                                            .justify_between()
-                                            .child(
-                                                div()
-                                                    .text_sm()
-                                                    .font_bold()
-                                                    .text_color(fg)
-                                                    .child(price_text)
-                                            )
-                                            .when(!rating_text.is_empty(), |el| {
-                                                el.child(
-                                                    div()
-                                                        .text_xs()
-                                                        .text_color(muted_fg)
-                                                        .child(rating_text)
-                                                )
-                                            })
-                                    )
-                                    .when(!formats.is_empty(), |el| {
-                                        el.child(
-                                            div()
-                                                .flex()
-                                                .flex_wrap()
-                                                .gap_1()
-                                                .mt_1()
-                                                .children(formats.iter().map(|f| {
-                                                    div()
-                                                        .text_xs()
-                                                        .px_2()
-                                                        .py(px(2.0))
-                                                        .rounded_sm()
-                                                        .bg(accent_bg)
-                                                        .text_color(accent_fg)
-                                                        .child(f.clone())
-                                                }))
-                                        )
-                                    })
-                            )
-                    )
+                    // body
+                    .child(div().p_3().child(v_flex().gap_1()
+                        .child(div().text_sm().font_bold().text_color(fg)
+                            .line_clamp(2).child(name))
+                        .child(div().text_xs().text_color(muted_fg).child(subtitle))
+                        .child(h_flex().gap_3().items_center().mt_1()
+                            .child(div().text_xs().text_color(muted_fg)
+                                .child(format!("👁 {}", views)))
+                            .child(div().text_xs().text_color(muted_fg)
+                                .child(format!("♥ {}", likes)))
+                        )
+                    ))
                     .into_any_element()
             }).collect();
 
-            div()
-                .relative()
-                .flex_1()
-                .min_h_0()
-                .overflow_hidden()
+            div().relative().flex_1().min_h_0().overflow_hidden()
                 .child(
-                    div()
-                        .id("results-scroll")
-                        .size_full()
+                    div().id("results-scroll").size_full()
                         .overflow_y_scroll()
                         .track_scroll(&self.results_scroll_handle)
                         .p_4()
-                        .child(
-                            div()
-                                .flex()
-                                .flex_wrap()
-                                .gap_4()
-                                .children(cards)
-                        )
+                        .child(div().flex().flex_wrap().gap_4().children(cards))
+                        .when(has_prev || has_next, |el| el.child(
+                            h_flex().w_full().justify_center().gap_4().mt_6().mb_2()
+                                .when(has_prev, |el| {
+                                    let pu = prev_url.clone().unwrap();
+                                    el.child(Button::new("prev-page").small().ghost()
+                                        .label("← Prev")
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.begin_search(Some(pu.clone()), cx);
+                                        })))
+                                })
+                                .when(has_next, |el| {
+                                    let nu = next_url.clone().unwrap();
+                                    el.child(Button::new("next-page").small()
+                                        .label("Next →")
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.begin_search(Some(nu.clone()), cx);
+                                        })))
+                                })
+                        ))
                 )
-                .child(
-                    div()
-                        .absolute()
-                        .inset_0()
-                        .child(Scrollbar::vertical(&self.results_scroll_state, &self.results_scroll_handle))
-                )
+                .child(div().absolute().inset_0()
+                    .child(Scrollbar::vertical(&self.results_scroll_state, &self.results_scroll_handle)))
                 .into_any_element()
         };
 
-        // ── root layout ────────────────────────────────────────────────────
-        let layout = v_flex()
-            .size_full()
-            .bg(bg)
-            .child(TitleBar::new().child("Fab Search"))
-            // search row
-            .child(
+        // ── Filter bar ────────────────────────────────────────────────────
+        let dl_active  = self.filter_downloadable;
+        let an_active  = self.filter_animated;
+        let sp_active  = self.filter_staffpicked;
+        let lic_active = self.filter_license != LicenseFilter::All;
+        let lic_label  = self.filter_license.label();
+        let show_lic   = self.show_license_menu;
+
+        let filter_bar = div()
+            .w_full().px_4().py_2()
+            .border_b_1().border_color(border_col)
+            .flex().flex_row().flex_wrap().gap_2().items_center()
+            .child(div().text_xs().font_bold().text_color(muted_fg).child("Sort:"))
+            .children(SortBy::all().into_iter().map(|s| {
+                let active = self.sort_by == s;
+                let lbl = s.label();
                 div()
-                    .w_full()
-                    .p_4()
-                    .border_b_1()
-                    .border_color(border_col)
-                    .child(
-                        h_flex()
-                            .w_full()
-                            .gap_2()
-                            .items_center()
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w(px(200.0))
-                                    .child(
-                                        TextInput::new(&self.search_input)
-                                            .w_full()
-                                            .prefix(
-                                                ui::Icon::new(IconName::Search)
-                                                    .size_4()
-                                                    .text_color(muted_fg)
-                                            )
-                                    )
-                            )
-                            .child(
-                                Button::new("Search")
-                                    .small()
-                                    .on_click(cx.listener(|this, _event, _window, cx| {
-                                        this.perform_search(cx);
-                                    }))
-                            )
+                    .id(SharedString::from(format!("sort-{}", lbl)))
+                    .cursor_pointer().px_2().py(px(3.0)).rounded_full()
+                    .text_xs().font_medium()
+                    .bg(if active { active_bg } else { accent_bg })
+                    .text_color(if active { active_fg } else { accent_fg })
+                    .child(lbl)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.sort_by = s;
+                        if !this.search_query.is_empty() { this.begin_search(None, cx); }
+                        else { cx.notify(); }
+                    }))
+            }))
+            .child(div().w(px(1.0)).h(px(16.0)).bg(border_col))
+            .child(div().id("f-dl").cursor_pointer().px_2().py(px(3.0)).rounded_full()
+                .text_xs().font_medium()
+                .bg(if dl_active { active_bg } else { accent_bg })
+                .text_color(if dl_active { active_fg } else { accent_fg })
+                .child("↓ Download")
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.filter_downloadable = !this.filter_downloadable;
+                    if !this.search_query.is_empty() { this.begin_search(None, cx); }
+                    else { cx.notify(); }
+                }))
+            )
+            .child(div().id("f-an").cursor_pointer().px_2().py(px(3.0)).rounded_full()
+                .text_xs().font_medium()
+                .bg(if an_active { active_bg } else { accent_bg })
+                .text_color(if an_active { active_fg } else { accent_fg })
+                .child("▶ Animated")
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.filter_animated = !this.filter_animated;
+                    if !this.search_query.is_empty() { this.begin_search(None, cx); }
+                    else { cx.notify(); }
+                }))
+            )
+            .child(div().id("f-sp").cursor_pointer().px_2().py(px(3.0)).rounded_full()
+                .text_xs().font_medium()
+                .bg(if sp_active { active_bg } else { accent_bg })
+                .text_color(if sp_active { active_fg } else { accent_fg })
+                .child("★ Staff Pick")
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.filter_staffpicked = !this.filter_staffpicked;
+                    if !this.search_query.is_empty() { this.begin_search(None, cx); }
+                    else { cx.notify(); }
+                }))
+            )
+            .child(div().w(px(1.0)).h(px(16.0)).bg(border_col))
+            .child(div().id("f-lic").cursor_pointer().px_2().py(px(3.0)).rounded_full()
+                .text_xs().font_medium()
+                .bg(if lic_active { active_bg } else { accent_bg })
+                .text_color(if lic_active { active_fg } else { accent_fg })
+                .child(format!("© {}", lic_label))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.show_license_menu = !this.show_license_menu;
+                    cx.notify();
+                }))
+            )
+            .when(show_lic, |el| el.children(LicenseFilter::all().into_iter().map(|lic| {
+                let sel = self.filter_license == lic;
+                let lbl = lic.label();
+                div()
+                    .id(SharedString::from(format!("lic-{}", lbl)))
+                    .cursor_pointer().px_2().py(px(3.0)).rounded_full()
+                    .text_xs().border_1().border_color(border_col)
+                    .bg(if sel { active_bg } else { cx.theme().background })
+                    .text_color(if sel { active_fg } else { muted_fg })
+                    .child(lbl)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.filter_license = lic;
+                        this.show_license_menu = false;
+                        if !this.search_query.is_empty() { this.begin_search(None, cx); }
+                        else { cx.notify(); }
+                    }))
+            })));
+
+        // ── Root ──────────────────────────────────────────────────────────
+        let layout = v_flex()
+            .size_full().bg(bg)
+            .child(TitleBar::new().child("Sketchfab"))
+            .child(
+                div().w_full().px_4().pt_4().pb_3()
+                    .border_b_1().border_color(border_col)
+                    .child(h_flex().w_full().gap_2().items_center()
+                        .child(div().flex_1().min_w(px(200.0))
+                            .child(TextInput::new(&self.search_input).w_full()
+                                .prefix(ui::Icon::new(IconName::Search)
+                                    .size_4().text_color(muted_fg))))
+                        .child(Button::new("search-btn")
+                            .label("Search")
+                            .on_click(cx.listener(|this, _, _, cx| this.begin_search(None, cx))))
                     )
             )
-            // log + results row
-            .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .flex()
-                    .flex_row()
-                    .child(log_panel)
-                    .child(body)
+            .child(filter_bar)
+            .child(div().flex_1().min_h_0().flex().flex_row()
+                .child(log_panel)
+                .child(body)
             );
 
-        let modal_layer = Root::render_modal_layer(window, cx);
-
-        div()
-            .size_full()
+        div().size_full()
             .child(layout)
-            .children(modal_layer)
+            .children(Root::render_modal_layer(window, cx))
     }
 }
