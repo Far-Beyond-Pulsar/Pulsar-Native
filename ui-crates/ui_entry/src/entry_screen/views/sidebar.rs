@@ -4,7 +4,7 @@ use ui::{
     v_flex, IconName, ActiveTheme as _,
 };
 use crate::OpenSettings;
-use crate::entry_screen::SettingsRequested;
+use crate::entry_screen::{SettingsRequested, FabSearchRequested};
 use crate::entry_screen::{EntryScreen, EntryScreenView};
 
 pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {
@@ -80,6 +80,16 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.view = EntryScreenView::CloneGit;
                     cx.notify();
+                }))
+        )
+        .child(
+            Button::new("fab-search")
+                .icon(IconName::ShoppingBag)
+                .label("")
+                .tooltip("FAB Asset Marketplace")
+                .with_variant(ui::button::ButtonVariant::Ghost)
+                .on_click(cx.listener(|_, _, _, cx| {
+                    cx.emit(FabSearchRequested);
                 }))
         )
         .child(div().flex_1())

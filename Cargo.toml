@@ -65,6 +65,7 @@ ui_type_debugger    = { path = "ui-crates/ui_type_debugger" }
 ui_plugin_manager   = { path = "ui-crates/ui_plugin_manager" }
 ui_log_viewer       = { path = "ui-crates/ui_log_viewer" }
 ui_git_manager      = { path = "ui-crates/ui_git_manager" }
+ui_fab_search       = { path = "ui-crates/ui_fab_search" }
 
 # ---------- Plugin System ----------
 plugin_editor_api = { path = "crates/plugin_editor_api"}

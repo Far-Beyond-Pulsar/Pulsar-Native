@@ -9,7 +9,7 @@ pub mod dependency_setup_window;
 
 // Re-export main types
 pub use window::EntryWindow;
-pub use entry_screen::{EntryScreen, project_selector::ProjectSelected, GitManagerRequested};
+pub use entry_screen::{EntryScreen, project_selector::ProjectSelected, GitManagerRequested, FabSearchRequested};
 pub use dependency_setup_window::{DependencySetupWindow, SetupComplete};
 pub use oobe::{IntroScreen, IntroComplete, has_seen_intro, mark_intro_seen, reset_intro};
 
@@ -46,6 +46,7 @@ pub fn create_entry_component(
     on_project_selected: Arc<dyn Fn(PathBuf, &mut App) + Send + Sync>,
     on_git_manager: Arc<dyn Fn(PathBuf, &mut App) + Send + Sync>,
     on_settings: Arc<dyn Fn(&mut App) + Send + Sync>,
+    on_fab_search: Arc<dyn Fn(&mut App) + Send + Sync>,
 ) -> Entity<Root> {
     
     // take a raw pointer now so we don't capture `window` itself in any of the
@@ -130,6 +131,13 @@ pub fn create_entry_component(
     cx.subscribe(&entry_screen, move |_view: Entity<EntryScreen>, _event: &crate::entry_screen::SettingsRequested, cx: &mut App| {
         tracing::debug!("⚙️ [ENTRY] Settings requested");
         on_set(cx);
+    }).detach();
+
+    // Subscribe to FabSearchRequested event - open FAB marketplace from engine callback
+    let on_fab = on_fab_search.clone();
+    cx.subscribe(&entry_screen, move |_view: Entity<EntryScreen>, _event: &crate::entry_screen::FabSearchRequested, cx: &mut App| {
+        tracing::debug!("🛍️ [ENTRY] FAB search requested");
+        on_fab(cx);
     }).detach();
 
     cx.new(|cx| Root::new(entry_screen.clone().into(), window, cx))
