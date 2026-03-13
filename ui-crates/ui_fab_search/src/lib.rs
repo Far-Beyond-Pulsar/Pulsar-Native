@@ -3,6 +3,7 @@ pub mod item_detail;
 pub mod parser;
 
 use std::collections::{HashMap, VecDeque};
+use std::rc::Rc;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -17,6 +18,7 @@ use ui::{
     input::{InputState, TextInput},
     scroll::{Scrollbar, ScrollbarState},
     skeleton::Skeleton,
+    v_virtual_list, VirtualListScrollHandle,
     IconName,
     StyledExt,
 };
@@ -126,7 +128,7 @@ pub struct FabSearchWindow {
     // results
     results: Vec<SketchfabModel>,
     next_url: Option<String>,
-    request_log: Vec<String>,
+
     is_loading: bool,
     is_loading_more: bool,
     error: Option<String>,
@@ -141,10 +143,12 @@ pub struct FabSearchWindow {
     // image cache: None = in-flight, Some(arc) = ready
     image_cache: HashMap<String, Option<std::sync::Arc<gpui::RenderImage>>>,
 
+    // entity ref (needed for v_virtual_list)
+    entity: Option<Entity<Self>>,
+
     // scrollbars
-    log_scroll_handle: ScrollHandle,
-    log_scroll_state: ScrollbarState,
-    results_scroll_handle: ScrollHandle,
+
+    results_scroll_handle: VirtualListScrollHandle,
     results_scroll_state: ScrollbarState,
     detail_scroll_handle: ScrollHandle,
     detail_scroll_state: ScrollbarState,
@@ -165,7 +169,7 @@ impl FabSearchWindow {
             }
         }).detach();
 
-        Self {
+        let mut this = Self {
             focus_handle,
             search_query: String::new(),
             search_input,
@@ -177,7 +181,7 @@ impl FabSearchWindow {
             show_license_menu: false,
             results: Vec::new(),
             next_url: None,
-            request_log: Vec::new(),
+
             is_loading: false,
             is_loading_more: false,
             error: None,
@@ -187,15 +191,19 @@ impl FabSearchWindow {
             detail_loading: false,
             detail_error: None,
             image_cache: HashMap::new(),
-            log_scroll_handle: ScrollHandle::new(),
-            log_scroll_state: ScrollbarState::default(),
-            results_scroll_handle: ScrollHandle::new(),
+            entity: None,
+
+            results_scroll_handle: VirtualListScrollHandle::new(),
             results_scroll_state: ScrollbarState::default(),
             detail_scroll_handle: ScrollHandle::new(),
             detail_scroll_state: ScrollbarState::default(),
             gallery_scroll_handle: ScrollHandle::new(),
             gallery_scroll_state: ScrollbarState::default(),
-        }
+        };
+        // Store self-entity reference so v_virtual_list can capture it
+        let entity = cx.entity();
+        this.entity = Some(entity);
+        this
     }
 
     fn go_back(&mut self, cx: &mut Context<Self>) {
@@ -239,7 +247,6 @@ impl FabSearchWindow {
         self.item_detail = None;
         self.detail_loading = true;
         self.detail_error = None;
-        self.request_log.push(format!("GET /v3/models/{}", uid));
         cx.notify();
 
         let (tx, rx) = smol::channel::bounded::<(Vec<String>, Result<Box<SketchfabModelDetail>, String>)>(1);
@@ -248,14 +255,12 @@ impl FabSearchWindow {
         });
 
         cx.spawn(async move |this, cx| {
-            if let Ok((log_lines, result)) = rx.recv().await {
+            if let Ok((_, result)) = rx.recv().await {
                 cx.update(|cx| {
                     this.update(cx, |view, cx| {
                         view.detail_loading = false;
-                        view.request_log.extend(log_lines);
                         match result {
                             Ok(detail) => {
-                                view.request_log.push(format!("  ✓ model: {}", detail.name));
                                 // preload all thumbnail sizes as gallery images
                                 let urls: Vec<String> = detail.all_thumbnail_urls()
                                     .into_iter().take(8).map(|s| s.to_string()).collect();
@@ -271,7 +276,6 @@ impl FabSearchWindow {
                                 view.item_detail = Some(detail);
                             }
                             Err(e) => {
-                                view.request_log.push(format!("  ✗ {}", e));
                                 view.detail_error = Some(e);
                             }
                         }
@@ -306,7 +310,6 @@ impl FabSearchWindow {
         self.next_url = None;
         self.error = None;
         self.last_url = Some(url.clone());
-        self.request_log.push(format!("GET {}", url));
         cx.notify();
 
         let (tx, rx) = smol::channel::bounded::<(Vec<String>, Result<SearchPage, String>)>(1);
@@ -315,14 +318,12 @@ impl FabSearchWindow {
         });
 
         cx.spawn(async move |this, cx| {
-            if let Ok((log_lines, result)) = rx.recv().await {
+            if let Ok((_, result)) = rx.recv().await {
                 cx.update(|cx| {
                     this.update(cx, |view, cx| {
                         view.is_loading = false;
-                        view.request_log.extend(log_lines);
                         match result {
                             Ok(page) => {
-                                view.request_log.push(format!("  ✓ {} model(s)", page.models.len()));
                                 view.next_url = page.next;
                                 view.results = page.models;
                                 let thumb_urls: Vec<String> = view.results.iter()
@@ -333,7 +334,6 @@ impl FabSearchWindow {
                                 }
                             }
                             Err(e) => {
-                                view.request_log.push(format!("  ✗ {}", e));
                                 view.error = Some(e);
                             }
                         }
@@ -350,7 +350,6 @@ impl FabSearchWindow {
             None => return,
         };
         self.is_loading_more = true;
-        self.request_log.push(format!("GET {} (more)", url));
         cx.notify();
 
         let (tx, rx) = smol::channel::bounded::<(Vec<String>, Result<SearchPage, String>)>(1);
@@ -359,14 +358,12 @@ impl FabSearchWindow {
         });
 
         cx.spawn(async move |this, cx| {
-            if let Ok((log_lines, result)) = rx.recv().await {
+            if let Ok((_, result)) = rx.recv().await {
                 cx.update(|cx| {
                     this.update(cx, |view, cx| {
                         view.is_loading_more = false;
-                        view.request_log.extend(log_lines);
                         match result {
                             Ok(page) => {
-                                view.request_log.push(format!("  ✓ {} more model(s)", page.models.len()));
                                 view.next_url = page.next;
                                 let thumb_urls: Vec<String> = page.models.iter()
                                     .filter_map(|m| m.thumb_url(260).map(|s| s.to_string()))
@@ -377,7 +374,6 @@ impl FabSearchWindow {
                                 }
                             }
                             Err(e) => {
-                                view.request_log.push(format!("  ✗ {}", e));
                                 view.error = Some(e);
                             }
                         }
@@ -555,30 +551,6 @@ impl Render for FabSearchWindow {
         let active_bg  = cx.theme().accent;
         let active_fg  = cx.theme().accent_foreground;
 
-        // ── Request log ───────────────────────────────────────────────────
-        let log_panel = div()
-            .w(px(260.0)).flex_shrink_0().min_h_0()
-            .border_r_1().border_color(border_col)
-            .flex().flex_col()
-            .child(div().px_3().py_2().border_b_1().border_color(border_col)
-                .text_sm().font_bold().text_color(muted_fg).child("Request Log"))
-            .child(
-                div().relative().flex_1().min_h_0().overflow_hidden()
-                    .child(div().id("log-scroll").size_full()
-                        .overflow_y_scroll()
-                        .track_scroll(&self.log_scroll_handle)
-                        .p_2()
-                        .child(v_flex().gap_1()
-                            .children(self.request_log.iter().rev().map(|e| {
-                                div().text_xs().text_color(muted_fg)
-                                    .font_family("monospace").child(e.clone())
-                            }))
-                        )
-                    )
-                    .child(div().absolute().inset_0()
-                        .child(Scrollbar::vertical(&self.log_scroll_state, &self.log_scroll_handle)))
-            );
-
         // ── Body ──────────────────────────────────────────────────────────
         let body: AnyElement = if self.is_loading {
             div().flex_1().flex().items_center().justify_center()
@@ -653,126 +625,153 @@ impl Render for FabSearchWindow {
                 .into_any_element()
 
         } else {
-            // ── Results grid ──────────────────────────────────────────────
-            let next_url = self.next_url.clone();
-            let has_next = next_url.is_some();
-            let is_loading_more = self.is_loading_more;
+            // ── Virtual results grid ──────────────────────────────────────
+            const COLS: usize = 3;
+            const CARD_H: f32 = 260.0; // thumb(146) + body(114)
+            const ROW_H: f32 = CARD_H + 16.0; // + row gap
 
-            let cards: Vec<AnyElement> = self.results.iter().enumerate().map(|(idx, model)| {
-                let name     = model.name.clone();
-                let author   = model.user.as_ref().map(|u| u.display().to_string()).unwrap_or_default();
-                let category = model.primary_category().map(|s| s.to_string()).unwrap_or_default();
-                let subtitle = if category.is_empty() { author.clone() }
-                               else { format!("{} · {}", author, category) };
-                let views    = fmt_count(model.view_count);
-                let likes    = fmt_count(model.like_count);
-                let is_dl    = model.is_downloadable;
-                let is_anim  = model.animation_count > 0;
-                let is_sp    = model.staffpicked_at.as_ref().map(|v| !v.is_null()).unwrap_or(false);
+            let entity = self.entity.clone().unwrap();
+            let total_results = self.results.len();
+            let result_rows = total_results.div_ceil(COLS);
+            let skel_rows: usize = if self.is_loading_more { 2 } else { 0 };
+            let end_row: usize = if !self.is_loading_more && self.next_url.is_none() { 1 } else { 0 };
+            let total_items = result_rows + skel_rows + end_row;
 
-                let card_uid = model.uid.clone();
-                let thumb_url = model.thumb_url(260).map(|s| s.to_string());
-                let thumb_arc: Option<std::sync::Arc<gpui::RenderImage>> = thumb_url
-                    .as_deref().and_then(|u| self.image_cache.get(u)).and_then(|o| o.clone());
-
-                div()
-                    .id(SharedString::from(format!("skfb-card-{}", idx)))
-                    .cursor_pointer()
-                    .w(px(260.0)).rounded_lg().bg(card_bg)
-                    .border_1().border_color(border_col)
-                    .overflow_hidden().flex().flex_col()
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.open_item_detail(card_uid.clone(), cx);
-                    }))
-                    // thumbnail
-                    .child(
-                        div().w_full().h(px(146.0)).bg(card_bg).overflow_hidden().relative()
-                            .map(|el| {
-                                if let Some(arc) = thumb_arc {
-                                    el.child(img(gpui::ImageSource::Render(arc))
-                                        .w_full().h_full().object_fit(gpui::ObjectFit::Cover))
-                                } else {
-                                    el.bg(border_col).flex().items_center().justify_center()
-                                        .child(div().text_xs().text_color(muted_fg).child(""))
-                                }
-                            })
-                            .when(is_sp, |el| el.child(
-                                div().absolute().top(px(6.0)).left(px(6.0))
-                                    .px_2().py(px(2.0)).rounded_full()
-                                    .bg(gpui::rgb(0xFACC15))
-                                    .text_xs().font_bold().text_color(gpui::rgb(0x000000))
-                                    .child("★ Staff Pick")
-                            ))
-                            .when(is_dl, |el| el.child(
-                                div().absolute().bottom(px(6.0)).right(px(6.0))
-                                    .px_2().py(px(2.0)).rounded_full()
-                                    .bg(gpui::rgb(0x22C55E))
-                                    .text_xs().font_bold().text_color(gpui::rgb(0xFFFFFF))
-                                    .child("↓")
-                            ))
-                            .when(is_anim, |el| el.child(
-                                div().absolute().bottom(px(6.0)).left(px(6.0))
-                                    .px_2().py(px(2.0)).rounded_full()
-                                    .bg(gpui::rgb(0x6366F1))
-                                    .text_xs().font_bold().text_color(gpui::rgb(0xFFFFFF))
-                                    .child("▶")
-                            ))
-                    )
-                    // body
-                    .child(div().p_3().child(v_flex().gap_1()
-                        .child(div().text_sm().font_bold().text_color(fg)
-                            .line_clamp(2).child(name))
-                        .child(div().text_xs().text_color(muted_fg).child(subtitle))
-                        .child(h_flex().gap_3().items_center().mt_1()
-                            .child(div().text_xs().text_color(muted_fg)
-                                .child(format!("👁 {}", views)))
-                            .child(div().text_xs().text_color(muted_fg)
-                                .child(format!("♥ {}", likes)))
-                        )
-                    ))
-                    .into_any_element()
-            }).collect();
+            let item_sizes = Rc::new(
+                (0..total_items).map(|_| size(px(0.0), px(ROW_H))).collect::<Vec<_>>()
+            );
 
             div().relative().flex_1().min_h_0().overflow_hidden()
                 .child(
-                    div().id("results-scroll").size_full()
-                        .overflow_y_scroll()
-                        .track_scroll(&self.results_scroll_handle)
-                        .on_scroll_wheel(cx.listener(|this, _ev: &gpui::ScrollWheelEvent, _window, cx| {
-                            if this.is_loading || this.is_loading_more || this.next_url.is_none() {
-                                return;
+                    v_virtual_list(
+                        entity,
+                        "skfb-results-grid",
+                        item_sizes,
+                        move |view: &mut FabSearchWindow, range, _window, cx| {
+                            let theme = cx.theme().clone();
+                            let fg = theme.foreground;
+                            let muted_fg = theme.muted_foreground;
+                            let card_bg = theme.secondary;
+                            let border_col = theme.border;
+
+                            let total_res = view.results.len();
+                            let res_rows = total_res.div_ceil(COLS);
+                            let s_rows: usize = if view.is_loading_more { 2 } else { 0 };
+
+                            // Near-bottom detection: kick off load_more when
+                            // the visible range reaches the last result row.
+                            if !view.is_loading && !view.is_loading_more
+                                && view.next_url.is_some()
+                                && range.end >= res_rows.saturating_sub(1)
+                            {
+                                view.load_more(cx);
                             }
-                            let max_off = this.results_scroll_handle.max_offset().height;
-                            let cur_off = this.results_scroll_handle.offset().y;
-                            if max_off - cur_off < px(600.0) {
-                                this.load_more(cx);
-                            }
-                        }))
-                        .p_4()
-                        .child(div().flex().flex_wrap().gap_4().children(cards))
-                        .when(is_loading_more, |el| el.child(
-                            div().flex().flex_wrap().gap_4().pt_4()
-                                .children((0..6).map(|i| {
-                                    div()
-                                        .id(SharedString::from(format!("skel-{}", i)))
-                                        .w(px(260.0)).rounded_lg()
-                                        .border_1().border_color(border_col)
-                                        .overflow_hidden().flex().flex_col()
-                                        .child(Skeleton::new().w_full().h(px(146.0)))
-                                        .child(
-                                            div().p_3().child(
-                                                v_flex().gap_2()
+
+                            range.map(|row_idx| -> AnyElement {
+                                if row_idx < res_rows {
+                                    // ── Real card row ─────────────────────
+                                    let start = row_idx * COLS;
+                                    let end = (start + COLS).min(view.results.len());
+                                    let row_cards: Vec<AnyElement> = (start..end).map(|idx| {
+                                        let model = &view.results[idx];
+                                        let name     = model.name.clone();
+                                        let author   = model.user.as_ref().map(|u| u.display().to_string()).unwrap_or_default();
+                                        let category = model.primary_category().map(|s| s.to_string()).unwrap_or_default();
+                                        let subtitle = if category.is_empty() { author } else { format!("{} · {}", author, category) };
+                                        let views    = fmt_count(model.view_count);
+                                        let likes    = fmt_count(model.like_count);
+                                        let is_dl    = model.is_downloadable;
+                                        let is_anim  = model.animation_count > 0;
+                                        let is_sp    = model.staffpicked_at.as_ref().map(|v| !v.is_null()).unwrap_or(false);
+                                        let card_uid = model.uid.clone();
+                                        let thumb_arc = model.thumb_url(260)
+                                            .and_then(|u| view.image_cache.get(u))
+                                            .and_then(|o| o.clone());
+
+                                        div()
+                                            .id(SharedString::from(format!("skfb-card-{}", idx)))
+                                            .cursor_pointer()
+                                            .w(px(260.0)).rounded_lg().bg(card_bg)
+                                            .border_1().border_color(border_col)
+                                            .overflow_hidden().flex().flex_col()
+                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                this.open_item_detail(card_uid.clone(), cx);
+                                            }))
+                                            .child(
+                                                div().w_full().h(px(146.0)).overflow_hidden().relative()
+                                                    .map(|el| {
+                                                        if let Some(arc) = thumb_arc {
+                                                            el.child(img(gpui::ImageSource::Render(arc))
+                                                                .w_full().h_full().object_fit(gpui::ObjectFit::Cover))
+                                                        } else {
+                                                            el.bg(border_col).flex().items_center().justify_center()
+                                                                .child(div().text_xs().text_color(muted_fg).child(""))
+                                                        }
+                                                    })
+                                                    .when(is_sp, |el| el.child(
+                                                        div().absolute().top(px(6.0)).left(px(6.0))
+                                                            .px_2().py(px(2.0)).rounded_full()
+                                                            .bg(gpui::rgb(0xFACC15))
+                                                            .text_xs().font_bold().text_color(gpui::rgb(0x000000))
+                                                            .child("★ Staff Pick")
+                                                    ))
+                                                    .when(is_dl, |el| el.child(
+                                                        div().absolute().bottom(px(6.0)).right(px(6.0))
+                                                            .px_2().py(px(2.0)).rounded_full()
+                                                            .bg(gpui::rgb(0x22C55E))
+                                                            .text_xs().font_bold().text_color(gpui::rgb(0xFFFFFF))
+                                                            .child("↓")
+                                                    ))
+                                                    .when(is_anim, |el| el.child(
+                                                        div().absolute().bottom(px(6.0)).left(px(6.0))
+                                                            .px_2().py(px(2.0)).rounded_full()
+                                                            .bg(gpui::rgb(0x6366F1))
+                                                            .text_xs().font_bold().text_color(gpui::rgb(0xFFFFFF))
+                                                            .child("▶")
+                                                    ))
+                                            )
+                                            .child(div().p_3().child(v_flex().gap_1()
+                                                .child(div().text_sm().font_bold().text_color(fg).line_clamp(2).child(name))
+                                                .child(div().text_xs().text_color(muted_fg).child(subtitle))
+                                                .child(h_flex().gap_3().items_center().mt_1()
+                                                    .child(div().text_xs().text_color(muted_fg).child(format!("👁 {}", views)))
+                                                    .child(div().text_xs().text_color(muted_fg).child(format!("♥ {}", likes)))
+                                                )
+                                            ))
+                                            .into_any_element()
+                                    }).collect();
+
+                                    h_flex().px_4().py(px(8.0)).gap_4().items_start()
+                                        .children(row_cards)
+                                        .into_any_element()
+
+                                } else if row_idx < res_rows + s_rows {
+                                    // ── Skeleton row ──────────────────────
+                                    h_flex().px_4().py(px(8.0)).gap_4().items_start()
+                                        .children((0..COLS).map(|i| {
+                                            div()
+                                                .id(SharedString::from(format!("skel-{}-{}", row_idx, i)))
+                                                .w(px(260.0)).rounded_lg()
+                                                .border_1().border_color(border_col)
+                                                .overflow_hidden().flex().flex_col()
+                                                .child(Skeleton::new().w_full().h(px(146.0)))
+                                                .child(div().p_3().child(v_flex().gap_2()
                                                     .child(Skeleton::new().w(px(160.0)).h_4())
                                                     .child(Skeleton::new().secondary(true).w(px(100.0)).h_3())
                                                     .child(Skeleton::new().secondary(true).w(px(120.0)).h_3())
-                                            )
-                                        )
-                                }))
-                        ))
-                        .when(!is_loading_more && !has_next && !self.results.is_empty(), |el| el.child(
-                            h_flex().w_full().justify_center().py_3()
-                                .child(div().text_xs().text_color(muted_fg).child("End of results"))
-                        ))
+                                                ))
+                                        }))
+                                        .into_any_element()
+
+                                } else {
+                                    // ── End of results row ────────────────
+                                    h_flex().w_full().px_4().justify_center().py_3()
+                                        .child(div().text_xs().text_color(muted_fg).child("End of results"))
+                                        .into_any_element()
+                                }
+                            }).collect()
+                        },
+                    ).track_scroll(&self.results_scroll_handle)
                 )
                 .child(div().absolute().inset_0()
                     .child(Scrollbar::vertical(&self.results_scroll_state, &self.results_scroll_handle)))
@@ -889,10 +888,7 @@ impl Render for FabSearchWindow {
                     )
             )
             .child(filter_bar)
-            .child(div().flex_1().min_h_0().flex().flex_row()
-                .child(log_panel)
-                .child(body)
-            );
+            .child(body);
 
         div().size_full()
             .child(layout)
