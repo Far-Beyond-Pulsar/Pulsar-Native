@@ -9,6 +9,8 @@ pub enum WindowRequest {
     ProjectEditor { project_path: String },
     ProjectSplash { project_path: String },
     GitManager { project_path: String },
+    /// Open FAB asset marketplace search
+    FabSearch,
     Problems,
     TypeDebugger,
     LogViewer,

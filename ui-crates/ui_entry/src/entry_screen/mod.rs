@@ -765,6 +765,12 @@ pub struct SettingsRequested;
 
 impl EventEmitter<SettingsRequested> for EntryScreen {}
 
+/// Event emitted when the user wants to open the FAB asset marketplace search
+#[derive(Clone, Debug)]
+pub struct FabSearchRequested;
+
+impl EventEmitter<FabSearchRequested> for EntryScreen {}
+
 impl Render for EntryScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let bounds = window.viewport_size();

@@ -420,7 +420,32 @@ fn main() {
                                     }
                                 });
 
-                            ui_entry::create_entry_component(window, cx, &ec, 0, project_cb, git_cb, settings_cb)
+                            // callback for opening FAB asset marketplace from entry screen
+                            let ec_clone5 = ec.clone();
+                            let fab_cb: std::sync::Arc<dyn Fn(&mut gpui::App) + Send + Sync> =
+                                std::sync::Arc::new(move |cx| {
+                                    let ec5 = ec_clone5.clone();
+                                    if let Ok((wid5, _)) = ec5.create_window(
+                                        WindowRequest::FabSearch,
+                                        make_window_options(
+                                            Some("FAB Marketplace"),
+                                            gpui::point(gpui::px(200.0), gpui::px(150.0)),
+                                            gpui::size(gpui::px(900.0), gpui::px(650.0)),
+                                            Some(gpui::Size { width: gpui::px(600.), height: gpui::px(400.) }),
+                                        ),
+                                        move |window, cx| {
+                                            let fab_window = cx.new(|cx| ui_fab_search::FabSearchWindow::new(window, cx));
+                                            cx.new(|cx| ui::Root::new(fab_window.into(), window, cx))
+                                        },
+                                        cx,
+                                    ) {
+                                        tracing::info!("FAB search window opened id={}", wid5);
+                                    } else {
+                                        tracing::error!("failed to open FAB search window");
+                                    }
+                                });
+
+                            ui_entry::create_entry_component(window, cx, &ec, 0, project_cb, git_cb, settings_cb, fab_cb)
                         },
                         cx,
                     ) {
