@@ -290,6 +290,7 @@ impl FabSearchWindow {
         if saved_token.is_some() {
             this.fetch_me(cx);
         }
+        this.scan_downloads_folder();
         this
     }
 
@@ -363,6 +364,39 @@ impl FabSearchWindow {
     }
 
     // ── Download methods ─────────────────────────────────────────────────────
+
+    /// Scan the Sketchfab download folder and populate `download_state` with
+    /// `Done` entries for files that already exist on disk.  Active/session
+    /// entries always take precedence (we never overwrite them).
+    fn scan_downloads_folder(&mut self) {
+        let dir = dirs::download_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("Sketchfab");
+        let Ok(read_dir) = std::fs::read_dir(&dir) else { return; };
+        for entry in read_dir.flatten() {
+            let path = entry.path();
+            if !path.is_file() { continue; }
+            let filename = match path.file_name().and_then(|n| n.to_str()) {
+                Some(n) => n.to_string(),
+                None => continue,
+            };
+            // Use the file stem (e.g. "abc123" from "abc123.zip") as the key
+            // so it coincides with a Sketchfab UID if the file came from a
+            // session download, preventing duplicates.
+            let uid = path.file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or(&filename)
+                .to_string();
+            // Never overwrite an in-session (InProgress / Error / Done) entry.
+            if self.download_state.contains_key(&uid) { continue; }
+            let total_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
+            self.download_state.insert(uid, DownloadState::Done {
+                filename,
+                path,
+                total_bytes,
+            });
+        }
+    }
 
     fn start_download(&mut self, uid: String, cx: &mut Context<Self>) {
         // Don't restart an in-progress download.
@@ -1509,6 +1543,10 @@ impl Render for FabSearchWindow {
                                 .label(dl_label)
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.show_download_manager = !this.show_download_manager;
+                                    if this.show_download_manager {
+                                        // Refresh with any files added outside this session.
+                                        this.scan_downloads_folder();
+                                    }
                                     cx.notify();
                                 })))
                         })
