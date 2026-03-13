@@ -570,7 +570,7 @@ impl Render for FabSearchWindow {
             } else if let Some(ref detail) = self.item_detail {
                 let entity = cx.entity().clone();
                 // Collect only the fully-loaded images for this detail view
-                let loaded_images: std::collections::HashMap<String, std::sync::Arc<gpui::RenderImage>> = detail
+                let mut loaded_images: std::collections::HashMap<String, std::sync::Arc<gpui::RenderImage>> = detail
                     .medias
                     .iter()
                     .filter(|m| m.media_type == "image" || m.media_type.is_empty())
@@ -587,9 +587,15 @@ impl Render for FabSearchWindow {
                         self.image_cache
                             .get(&url)
                             .and_then(|opt| opt.clone())
-                            .map(|path| (url, path))
+                            .map(|arc| (url, arc))
                     })
                     .collect();
+                // Also include the seller avatar so MetaBar can render it synchronously
+                if let Some(avatar_url) = detail.user.profile_image_url.as_deref() {
+                    if let Some(Some(arc)) = self.image_cache.get(avatar_url) {
+                        loaded_images.insert(avatar_url.to_string(), arc.clone());
+                    }
+                }
                 item_detail::ItemDetailView::new(
                     detail.clone(),
                     loaded_images,

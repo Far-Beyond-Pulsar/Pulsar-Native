@@ -73,9 +73,13 @@ impl RenderOnce for ItemDetailView {
             ],
         });
 
+        let seller_avatar = d.user.profile_image_url.as_deref()
+            .and_then(|url| images.get(url))
+            .cloned();
+
         let meta = MetaBar::new(
             d.user.seller_name.clone(),
-            d.user.profile_image_url.clone(),
+            seller_avatar,
             d.category.as_ref().map(|c| c.name.clone()),
             rating,
             d.published_at.clone(),

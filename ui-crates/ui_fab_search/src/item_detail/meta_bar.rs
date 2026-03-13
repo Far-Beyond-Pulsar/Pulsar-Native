@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use gpui::{prelude::*, *};
 use ui::{
     avatar::Avatar,
@@ -19,7 +20,8 @@ pub struct RatingInfo {
 #[derive(IntoElement)]
 pub struct MetaBar {
     pub seller_name: SharedString,
-    pub seller_avatar_url: Option<SharedString>,
+    /// Pre-decoded avatar image; `None` while downloading or if unavailable.
+    pub seller_avatar: Option<Arc<gpui::RenderImage>>,
     pub category: Option<SharedString>,
     pub rating: Option<RatingInfo>,
     pub published_at: Option<SharedString>,
@@ -28,14 +30,14 @@ pub struct MetaBar {
 impl MetaBar {
     pub fn new(
         seller_name: impl Into<SharedString>,
-        seller_avatar_url: Option<impl Into<SharedString>>,
+        seller_avatar: Option<Arc<gpui::RenderImage>>,
         category: Option<impl Into<SharedString>>,
         rating: Option<RatingInfo>,
         published_at: Option<impl Into<SharedString>>,
     ) -> Self {
         Self {
             seller_name: seller_name.into(),
-            seller_avatar_url: seller_avatar_url.map(|u| u.into()),
+            seller_avatar,
             category: category.map(|c| c.into()),
             rating,
             published_at: published_at.map(|d| d.into()),
@@ -79,8 +81,8 @@ impl RenderOnce for MetaBar {
                             .with_size(Size::Medium)
                             .name(self.seller_name.clone())
                             .map(|av| {
-                                if let Some(url) = &self.seller_avatar_url {
-                                    av.src(url.clone())
+                                if let Some(arc) = self.seller_avatar {
+                                    av.src(gpui::ImageSource::Render(arc))
                                 } else {
                                     av
                                 }
