@@ -126,9 +126,9 @@ pub struct FabSearchWindow {
     // results
     results: Vec<SketchfabModel>,
     next_url: Option<String>,
-    prev_url: Option<String>,
     request_log: Vec<String>,
     is_loading: bool,
+    is_loading_more: bool,
     error: Option<String>,
     last_url: Option<String>,
 
@@ -177,9 +177,9 @@ impl FabSearchWindow {
             show_license_menu: false,
             results: Vec::new(),
             next_url: None,
-            prev_url: None,
             request_log: Vec::new(),
             is_loading: false,
+            is_loading_more: false,
             error: None,
             last_url: None,
             selected_item_uid: None,
@@ -296,18 +296,16 @@ impl FabSearchWindow {
         url
     }
 
-    fn begin_search(&mut self, override_url: Option<String>, cx: &mut Context<Self>) {
+    fn begin_search(&mut self, cx: &mut Context<Self>) {
         if self.search_query.trim().is_empty() { return; }
 
-        let url = override_url.clone().unwrap_or_else(|| self.build_search_url());
+        let url = self.build_search_url();
         self.is_loading = true;
+        self.is_loading_more = false;
         self.results.clear();
+        self.next_url = None;
         self.error = None;
         self.last_url = Some(url.clone());
-        if override_url.is_none() {
-            self.next_url = None;
-            self.prev_url = None;
-        }
         self.request_log.push(format!("GET {}", url));
         cx.notify();
 
@@ -326,11 +324,54 @@ impl FabSearchWindow {
                             Ok(page) => {
                                 view.request_log.push(format!("  ✓ {} model(s)", page.models.len()));
                                 view.next_url = page.next;
-                                view.prev_url = page.prev;
                                 view.results = page.models;
                                 let thumb_urls: Vec<String> = view.results.iter()
                                     .filter_map(|m| m.thumb_url(260).map(|s| s.to_string()))
                                     .collect();
+                                for url in thumb_urls {
+                                    view.ensure_image_loaded(url, cx);
+                                }
+                            }
+                            Err(e) => {
+                                view.request_log.push(format!("  ✗ {}", e));
+                                view.error = Some(e);
+                            }
+                        }
+                        cx.notify();
+                    }).ok();
+                }).ok();
+            }
+        }).detach();
+    }
+
+    fn load_more(&mut self, cx: &mut Context<Self>) {
+        let url = match self.next_url.clone() {
+            Some(u) => u,
+            None => return,
+        };
+        self.is_loading_more = true;
+        self.request_log.push(format!("GET {} (more)", url));
+        cx.notify();
+
+        let (tx, rx) = smol::channel::bounded::<(Vec<String>, Result<SearchPage, String>)>(1);
+        std::thread::spawn(move || {
+            smol::block_on(tx.send(fetch_sketchfab_models(&url))).ok();
+        });
+
+        cx.spawn(async move |this, cx| {
+            if let Ok((log_lines, result)) = rx.recv().await {
+                cx.update(|cx| {
+                    this.update(cx, |view, cx| {
+                        view.is_loading_more = false;
+                        view.request_log.extend(log_lines);
+                        match result {
+                            Ok(page) => {
+                                view.request_log.push(format!("  ✓ {} more model(s)", page.models.len()));
+                                view.next_url = page.next;
+                                let thumb_urls: Vec<String> = page.models.iter()
+                                    .filter_map(|m| m.thumb_url(260).map(|s| s.to_string()))
+                                    .collect();
+                                view.results.extend(page.models);
                                 for url in thumb_urls {
                                     view.ensure_image_loaded(url, cx);
                                 }
@@ -356,11 +397,10 @@ const CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 struct SearchPage {
     models: Vec<SketchfabModel>,
     next: Option<String>,
-    prev: Option<String>,
 }
 
 enum CacheValue {
-    Page { models: Vec<SketchfabModel>, next: Option<String>, prev: Option<String> },
+    Page { models: Vec<SketchfabModel>, next: Option<String> },
     Detail(Box<SketchfabModelDetail>),
 }
 
@@ -437,7 +477,7 @@ fn fetch_sketchfab_models(url: &str) -> (Vec<String>, Result<SearchPage, String>
             .map_err(|e| { logv!("parse: {}", e); format!("Parse error: {e}") })
             .map(|parsed| {
                 logv!("parsed {} models", parsed.results.len());
-                SearchPage { next: parsed.next, prev: parsed.previous, models: parsed.results }
+                SearchPage { next: parsed.next, models: parsed.results }
             });
         (log, result)
     });
@@ -615,9 +655,8 @@ impl Render for FabSearchWindow {
         } else {
             // ── Results grid ──────────────────────────────────────────────
             let next_url = self.next_url.clone();
-            let prev_url = self.prev_url.clone();
             let has_next = next_url.is_some();
-            let has_prev = prev_url.is_some();
+            let is_loading_more = self.is_loading_more;
 
             let cards: Vec<AnyElement> = self.results.iter().enumerate().map(|(idx, model)| {
                 let name     = model.name.clone();
@@ -699,26 +738,25 @@ impl Render for FabSearchWindow {
                     div().id("results-scroll").size_full()
                         .overflow_y_scroll()
                         .track_scroll(&self.results_scroll_handle)
+                        .on_scroll_wheel(cx.listener(|this, _ev: &gpui::ScrollWheelEvent, _window, cx| {
+                            if this.is_loading || this.is_loading_more || this.next_url.is_none() {
+                                return;
+                            }
+                            let max_off = this.results_scroll_handle.max_offset().y;
+                            let cur_off = this.results_scroll_handle.offset().y;
+                            if max_off - cur_off < px(600.0) {
+                                this.load_more(cx);
+                            }
+                        }))
                         .p_4()
                         .child(div().flex().flex_wrap().gap_4().children(cards))
-                        .when(has_prev || has_next, |el| el.child(
-                            h_flex().w_full().justify_center().gap_4().mt_6().mb_2()
-                                .when(has_prev, |el| {
-                                    let pu = prev_url.clone().unwrap();
-                                    el.child(Button::new("prev-page").small().ghost()
-                                        .label("← Prev")
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            this.begin_search(Some(pu.clone()), cx);
-                                        })))
-                                })
-                                .when(has_next, |el| {
-                                    let nu = next_url.clone().unwrap();
-                                    el.child(Button::new("next-page").small()
-                                        .label("Next →")
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            this.begin_search(Some(nu.clone()), cx);
-                                        })))
-                                })
+                        .when(is_loading_more, |el| el.child(
+                            h_flex().w_full().justify_center().py_4()
+                                .child(div().text_xs().text_color(muted_fg).child("Loading more…"))
+                        ))
+                        .when(!is_loading_more && !has_next && !self.results.is_empty(), |el| el.child(
+                            h_flex().w_full().justify_center().py_3()
+                                .child(div().text_xs().text_color(muted_fg).child("End of results"))
                         ))
                 )
                 .child(div().absolute().inset_0()
