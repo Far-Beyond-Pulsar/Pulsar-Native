@@ -1,0 +1,5567 @@
+info:
+  version: 3.0.0
+  description: >
+    The Sketchfab REST API provide access to read and write Sketchfab data.
+    Users are authentified with their Sketchfab API Token or OAuth2 credentials.
+    Responses are formatted in JSON. Inputs are in JSON unless specified
+    otherwise.
+
+
+    ## How to make authenticated requests
+
+
+    Some endpoints require users to be authenticated. Users can log in with
+    OAuth2 (preferred), or an API Token.
+
+    When an endpoint requires authentication, you need to send an extra HTTP
+    header:
+
+
+    * for OAuth2: `Authorization: Bearer {INSERT_OAUTH_ACCESS_TOKEN_HERE}`
+
+    * for API Token: `Authorization: Token {INSERT_API_TOKEN_HERE}`
+
+
+    Some model endpoints referring to password-protected models require a
+    password encoded in base64 in request header: `x-skfb-model-pwd:
+    {base64(THE_PASSWORD)}`
+
+
+    See the [Sketchfab Login (OAuth2)
+    documentation](https://sketchfab.com/developers/oauth) for more information
+    on authentication.
+
+
+    ## Pagination
+
+
+    When a request gives many results, results are paginated using cursors.
+
+    Each response will contain these fields you can use to make subsequent
+    requests:
+
+
+    * next: full URL containing the next results.
+
+    * previous: full URL containing the previous results.
+
+    * cursors: an object containing the previous and next cursor that you can
+    use to build the URL to the previous/next results.
+
+
+    By default, pages contain 24 items. You can use the `count` parameter to
+    change the number of items per page. This parameter is capped to 24: it will
+    be ignored if a higher value is passed; the default value will be applied
+    instead.
+
+
+    ## Date format
+
+
+    Dates are formatted using the ISO 8601 format.
+
+
+    ## Limits and quotas
+
+
+    Calls to the API can be throttled to limit abuse. When your application is
+    being throttled, it will
+
+    receive a `429 Too Many Requests` response. This means that you must wait
+    before making more requests.
+  title: Sketchfab API
+paths:
+  /v3/orgs/{orgUid}:
+    get:
+      security:
+        - Token: []
+      description: Returns the detail of an organization. Can take either the
+        organization UID (orgUid) or name preceded by a @ (@orgName).
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/OrgDetailResponse"
+      tags:
+        - orgs
+      produces:
+        - application/json
+    parameters:
+      - required: true
+        type: string
+        description: The organization UID
+        in: path
+        name: orgUid
+    patch:
+      description: Returns the detail of an organization. Can take either the
+        organization UID (orgUid) or name preceded by a @ (@orgName).
+      parameters:
+        - description: Updates the organizations biography
+          in: formData
+          maxLength: 256
+          required: false
+          type: string
+          name: biography
+        - description: Updates the organizations city
+          in: formData
+          maxLength: 50
+          required: false
+          type: string
+          name: city
+        - description: Updates the organnizations country
+          in: formData
+          maxLength: 50
+          required: false
+          type: string
+          name: country
+        - description: Updates the organnizations display name
+          in: formData
+          maxLength: 50
+          required: false
+          type: string
+          name: displayName
+        - description: Updates the organnizations twitter username
+          in: formData
+          maxLength: 15
+          required: false
+          type: string
+          name: twitterUsername
+        - description: Updates the organnizations facebook username
+          in: formData
+          maxLength: 50
+          required: false
+          type: string
+          name: facebookUsername
+        - description: Updates the organnizations linkedin username
+          in: formData
+          maxLength: 50
+          required: false
+          type: string
+          name: linkedinUsername
+        - description: Updates the organnizations tagline
+          in: formData
+          maxLength: 140
+          required: false
+          type: string
+          name: tagline
+        - description: Updates the organnizations website
+          in: formData
+          maxLength: 128
+          required: false
+          type: string
+          name: website
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - orgs
+      consumes:
+        - multipart/form-data
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/OrgDetailResponse"
+        "400":
+          description: Bad Request
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+  /v3/me/subscriptions/{uid}:
+    parameters:
+      - required: true
+        type: string
+        description: The collection UID
+        in: path
+        name: uid
+    delete:
+      security:
+        - Token: []
+      description: Unsubscribes to a collection.
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "404":
+          description: Not Found
+      tags:
+        - me
+        - collections
+      produces:
+        - application/json
+  /v3/models/{uid}/transfer-to-org:
+    post:
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/OrgModelDetailResponse"
+        "400":
+          description: Bad Request. Model cannot be transfered to the org.
+        "401":
+          description: Unauthorized. User token is not valid or missing.
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found. Model does not exist.
+        "429":
+          description: Too many requests. You must wait before making requests again.
+      parameters:
+        - required: true
+          type: string
+          description: The organization UID
+          in: formData
+          name: org
+        - required: true
+          type: string
+          description: The project UID
+          in: formData
+          name: project
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - models
+        - orgs
+      description: Move a model from an individual account to an organization
+    parameters:
+      - required: true
+        type: string
+        description: The model UID
+        in: path
+        name: uid
+  /v3/orgs/{orgUid}/matcaps/{matcapUid}:
+    delete:
+      security:
+        - Token: []
+      description: Deletes a matcap in the given organization. Can take either the
+        organization UID (orgUid) or name preceded by a @ (@orgName).
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+      tags:
+        - orgs
+        - matcaps
+      produces:
+        - application/json
+    parameters:
+      - required: true
+        type: string
+        description: The organization UID
+        in: path
+        name: orgUid
+      - required: true
+        type: string
+        description: The matcap UID
+        in: path
+        name: matcapUid
+    get:
+      security:
+        - Token: []
+      description: Retrieve a matcap in the given organization. Can take either the
+        organization UID (orgUid) or name preceded by a @ (@orgName).
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/OrgMatcapDetail"
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+      tags:
+        - orgs
+        - matcaps
+      produces:
+        - application/json
+  /v3/users:
+    get:
+      description: Returns a list of users.
+      tags:
+        - users
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/UserResponse"
+      parameters:
+        - required: false
+          type: string
+          name: sort_by
+          enum:
+            - dateJoined
+            - -dateJoined
+            - followerCount
+            - -followerCount
+            - modelCount
+            - -modelCount
+          in: query
+        - required: false
+          type: string
+          name: account
+          enum:
+            - free
+            - pro
+            - biz
+          in: query
+      produces:
+        - application/json
+  /v3/comments:
+    post:
+      responses:
+        "201":
+          headers:
+            Location:
+              type: string
+          description: Created
+          schema:
+            $ref: "#/definitions/CreateResponse"
+        "400":
+          description: Bad Request
+        "429":
+          description: Too many requests
+      parameters:
+        - required: true
+          type: string
+          description: <a href="#/models" target="_blank">Model</a> (uid) to comment
+          in: formData
+          name: model
+        - description: Sets a body
+          in: formData
+          maxLength: 3000
+          required: true
+          type: string
+          name: body
+      tags:
+        - comments
+      security:
+        - Token: []
+      consumes:
+        - multipart/form-data
+      description: Creates a comment
+    get:
+      tags:
+        - comments
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/CommentResponse"
+      parameters:
+        - required: false
+          description: Sorts results
+          in: query
+          enum:
+            - createdAt
+            - -createdAt
+          type: string
+          name: sort_by
+        - required: false
+          type: string
+          description: Retrieves comments of a model (urlid)
+          in: query
+          name: model
+        - required: false
+          type: string
+          description: Retrieves comments of a <a href="#!/users/"
+            target="_blank">user</a> (username)
+          in: query
+          name: user
+      description: Returns a list of comments from public, published models
+  /v3/collections:
+    post:
+      description: Creates a collection.
+      parameters:
+        - description: Sets a name
+          in: formData
+          maxLength: 50
+          required: true
+          type: string
+          name: name
+        - description: Sets a description
+          in: formData
+          maxLength: 1024
+          required: true
+          type: string
+          name: description
+        - description: Sets <a href="#/models" target="_blank">models</a> (uid)
+          items:
+            type: string
+          required: false
+          name: models
+          in: formData
+          maxLength: 1024
+          type: array
+          collectionFormat: multi
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - collections
+      consumes:
+        - multipart/form-data
+      responses:
+        "201":
+          headers:
+            Location:
+              type: string
+          description: Created
+          schema:
+            $ref: "#/definitions/CreateResponse"
+        "400":
+          description: Bad Request
+        "401":
+          description: Authentication credentials were not provided or do not match
+    get:
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/CollectionResponse"
+      parameters:
+        - required: false
+          type: string
+          description: Retrieves collections created by <a href="#!/users/"
+            target="_blank">user</a> (username)
+          in: query
+          name: user
+        - description: Retrieves collections by uid
+          in: query
+          items:
+            type: string
+          required: false
+          type: array
+          name: uids
+        - in: query
+          description: Retrieves collections created since a date (ISO 8601 format)
+          format: date
+          required: false
+          type: string
+          name: created_since
+        - required: false
+          type: boolean
+          description: Retrieves restricted collections (off by default)
+          in: query
+          name: restricted
+        - required: false
+          type: string
+          name: sort_by
+          enum:
+            - createdAt
+            - -createdAt
+            - subscriberCount
+            - -subscriberCount
+          in: query
+      produces:
+        - application/json
+      tags:
+        - collections
+      consumes:
+        - multipart/form-data
+      description: Returns a list of collections
+  /v3/me:
+    get:
+      security:
+        - Token: []
+      description: Returns your profile
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/MeDetail"
+      tags:
+        - me
+        - users
+      produces:
+        - application/json
+    patch:
+      description: Updates your profile.
+      parameters:
+        - required: false
+          type: string
+          description: Updates your password. Needs passwordConfirmation
+          in: formData
+          name: password
+        - required: false
+          type: string
+          name: passwordConfirmation
+          in: formData
+        - description: Updates your <a href="#/skills" target="_blank">skills</a> (uid)
+          name: skills
+          in: formData
+          items:
+            type: string
+          required: false
+          type: array
+          collectionFormat: multi
+        - description: Updates your display name
+          in: formData
+          maxLength: 50
+          required: false
+          type: string
+          name: displayName
+        - description: Updates your twitter username
+          in: formData
+          maxLength: 15
+          required: false
+          type: string
+          name: twitterUsername
+        - description: Updates your facebook username
+          in: formData
+          maxLength: 50
+          required: false
+          type: string
+          name: facebookUsername
+        - description: Updates your linkedin username
+          in: formData
+          maxLength: 50
+          required: false
+          type: string
+          name: linkedinUsername
+        - description: Updates your bio
+          in: formData
+          maxLength: 256
+          required: false
+          type: string
+          name: biography
+        - description: Updates your tagline
+          in: formData
+          maxLength: 140
+          required: false
+          type: string
+          name: tagline
+        - description: Updates your website
+          in: formData
+          maxLength: 128
+          required: false
+          type: string
+          name: website
+        - description: Updates your city
+          in: formData
+          maxLength: 50
+          required: false
+          type: string
+          name: city
+        - description: Updates your country
+          in: formData
+          maxLength: 50
+          required: false
+          type: string
+          name: country
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - me
+        - users
+      consumes:
+        - multipart/form-data
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+        "401":
+          description: Authentication credentials were not provided or do not match
+  /v3/orgs/{orgUid}/backgrounds:
+    post:
+      description: Creates a new background in the given organization. Can take either
+        the organization UID (orgUid) or name preceded by a @ (@orgName).
+      parameters:
+        - required: true
+          type: file
+          description: JPG or PNG image. Max 4mb
+          in: formData
+          name: image
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - orgs
+        - backgrounds
+      consumes:
+        - multipart/form-data
+      responses:
+        "201":
+          headers:
+            Location:
+              type: string
+          description: Created
+          schema:
+            $ref: "#/definitions/CreateResponse"
+        "400":
+          description: Bad Request
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+    parameters:
+      - required: true
+        type: string
+        description: The organization UID
+        in: path
+        name: orgUid
+    get:
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/OrgBackgroundListResponse"
+      parameters:
+        - required: false
+          type: string
+          name: sort_by
+          enum:
+            - createdAt
+            - -createdAt
+          in: query
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - orgs
+        - backgrounds
+      description: Returns a list of backgrounds from the given organization. Can take
+        either the organization UID (orgUid) or name preceded by a @ (@orgName).
+  /v3/models/{uid}:
+    put:
+      description: Reuploads a model. Accepts multipart/form-data only.
+      parameters:
+        - description: Sets a name
+          in: formData
+          maxLength: 48
+          required: false
+          type: string
+          name: name
+        - required: false
+          type: boolean
+          description: Sets private (requires a pro plan or higher)
+          in: formData
+          name: private
+        - description: Enables 2D view in model inspector. All <a
+            href="https://help.sketchfab.com/hc/en-us/articles/115004862686-Inspector">downloadable
+            models must have isInspectable enabled</a>.
+          in: formData
+          default: false
+          required: false
+          type: boolean
+          name: isInspectable
+        - description: Whether the model has restricted content.
+          in: formData
+          default: false
+          required: false
+          type: boolean
+          name: isAgeRestricted
+        - description: Sets a password (requires a pro plan or higher)
+          in: formData
+          maxLength: 64
+          required: false
+          type: string
+          name: password
+        - in: formData
+          description: |
+            Sets a <a href=#!/licenses/ target='_blank'>license</a> (label). This makes the model downloadable to others. All <a href="https://help.sketchfab.com/hc/en-us/articles/115004862686-Inspector">downloadable models must have isInspectable enabled</a>.
+          format: test
+          required: false
+          type: string
+          name: license
+        - description: Sets <a href=#!/tags/ target='_blank'>tags</a> (slug)
+          name: tags
+          in: formData
+          items:
+            type: string
+          required: false
+          type: array
+          collectionFormat: multi
+        - description: Sets <a href=#!/categories/ target='_blank'>categories</a> (slug)
+          name: categories
+          in: formData
+          items:
+            type: string
+          required: false
+          type: array
+          collectionFormat: multi
+        - description: Enables AR for a model (requires a premium plan or higher)
+          in: formData
+          default: false
+          required: false
+          type: boolean
+          name: isArEnabled
+        - description: Sets published after it is processed
+          in: formData
+          default: true
+          required: false
+          type: boolean
+          name: isPublished
+        - description: Sets a description
+          in: formData
+          maxLength: 1024
+          required: false
+          type: string
+          name: description
+        - required: true
+          type: file
+          description: Model archive. Max 50mb for basic users, 200mb for pro users, 500mb
+            for biz users
+          in: formData
+          name: modelFile
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - models
+      consumes:
+        - multipart/form-data
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+    get:
+      description: Returns the detail of a model
+      tags:
+        - models
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/ModelDetail"
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+      parameters:
+        - required: false
+          type: string
+          description: Password when the model is password-protected
+          in: header
+          name: x-skfb-model-pwd
+      produces:
+        - application/json
+    patch:
+      description: Updates model information.
+      parameters:
+        - description: Sets a name
+          in: formData
+          maxLength: 48
+          required: false
+          type: string
+          name: name
+        - required: false
+          type: boolean
+          description: Sets private (requires a pro plan or higher)
+          in: formData
+          name: private
+        - description: Enables 2D view in model inspector. All <a
+            href="https://help.sketchfab.com/hc/en-us/articles/115004862686-Inspector">downloadable
+            models must have isInspectable enabled</a>.
+          in: formData
+          default: false
+          required: false
+          type: boolean
+          name: isInspectable
+        - description: Whether the model has restricted content.
+          in: formData
+          default: false
+          required: false
+          type: boolean
+          name: isAgeRestricted
+        - description: Sets a password (requires a pro plan or higher)
+          in: formData
+          maxLength: 64
+          required: false
+          type: string
+          name: password
+        - in: formData
+          description: |
+            Sets a <a href=#!/licenses/ target='_blank'>license</a> (slug). This makes the model downloadable to others. All <a href="https://help.sketchfab.com/hc/en-us/articles/115004862686-Inspector">downloadable models must have isInspectable enabled</a>.
+          format: test
+          required: false
+          type: string
+          name: license
+        - description: Sets <a href=#!/tags/ target='_blank'>tags</a> (slug)
+          name: tags
+          in: formData
+          items:
+            type: string
+          required: false
+          type: array
+          collectionFormat: multi
+        - description: Sets <a href=#!/categories/ target='_blank'>categories</a> (slug)
+          name: categories
+          in: formData
+          items:
+            type: string
+          required: false
+          type: array
+          collectionFormat: multi
+        - description: Enables AR for a model (requires a premium plan or higher)
+          in: formData
+          default: false
+          required: false
+          type: boolean
+          name: isArEnabled
+        - description: Sets published after it is processed
+          in: formData
+          default: true
+          required: false
+          type: boolean
+          name: isPublished
+        - description: Disables public comments for the model
+          in: formData
+          default: false
+          required: false
+          type: boolean
+          name: hasCommentsDisabled
+        - description: Sets a description
+          in: formData
+          maxLength: 1024
+          required: false
+          type: string
+          name: description
+        - required: false
+          type: integer
+          description: Sets a price. Your model must have either standard or editorial
+            license.
+          in: formData
+          name: price
+        - required: false
+          type: string
+          description: Sets <a href=#!/models/patch_v3_models_uid_options
+            target='_blank'>options</a>
+          in: formData
+          name: options
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - models
+      consumes:
+        - multipart/form-data
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+    parameters:
+      - required: true
+        type: string
+        description: The model UID
+        in: path
+        name: uid
+    delete:
+      security:
+        - Token: []
+      tags:
+        - models
+      responses:
+        "204":
+          description: No Content
+      description: Deletes one of your models
+  /v3/me/environments:
+    post:
+      description: Creates an environment (pro only). Accepts multipart/form-data only.
+      parameters:
+        - description: Sets a name
+          in: formData
+          maxLength: 64
+          required: true
+          type: string
+          name: name
+        - required: true
+          type: file
+          name: environmentFile
+          in: formData
+      produces:
+        - aplication/json
+      security:
+        - Token: []
+      tags:
+        - me
+        - environments
+      consumes:
+        - multipart/form-data
+      responses:
+        "201":
+          headers:
+            Location:
+              type: string
+          description: Created
+          schema:
+            $ref: "#/definitions/CreateResponse"
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+    get:
+      security:
+        - Token: []
+      description: Returns available environments for your models.
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/EnvironmentResponse"
+        "401":
+          description: Authentication credentials were not provided or do not match
+      tags:
+        - me
+        - environments
+      produces:
+        - application/json
+  /v3/users/{uid}:
+    parameters:
+      - required: true
+        type: string
+        description: The user UID
+        in: path
+        name: uid
+    get:
+      description: Returns the detail of a user.
+      tags:
+        - users
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/UserDetail"
+        "404":
+          description: Not Found
+      produces:
+        - application/json
+  /v3/me/backgrounds:
+    post:
+      description: Creates a new background (requires a pro plan or higher). Accepts
+        multipart/form-data only.
+      parameters:
+        - required: true
+          type: file
+          description: JPG or PNG image. Max 4mb
+          in: formData
+          name: image
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - me
+        - backgrounds
+      consumes:
+        - multipart/form-data
+      responses:
+        "201":
+          headers:
+            Location:
+              type: string
+          description: Created
+          schema:
+            $ref: "#/definitions/CreateResponse"
+        "400":
+          description: Bad Request
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+    get:
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/BackgroundResponse"
+      parameters:
+        - required: false
+          type: string
+          name: sort_by
+          enum:
+            - createdAt
+            - -createdAt
+          in: query
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - me
+        - backgrounds
+      description: Returns available backgrounds for your models
+  /v3/models/{uid}/options:
+    parameters:
+      - required: true
+        type: string
+        description: The model UID
+        in: path
+        name: uid
+    patch:
+      responses:
+        "204":
+          description: No-Content
+        "400":
+          description: Bad Request
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+      parameters:
+        - required: false
+          description: Defines the shading type
+          in: formData
+          enum:
+            - lit
+            - shadeless
+          type: string
+          name: shading
+        - required: false
+          type: string
+          description: >
+            Defines the background used. Either a color, a <a
+            href="#/backgrounds" target="_blank">background</a> (uid), an <a
+            href="#/environment" target="_blank">environment</a> (uid) or
+            transparent.
+
+            eg: {"color": "#ffffff"}, {"environment": "uid"}, {"image": "uid"}
+            or {"transparent": 1}
+          in: formData
+          name: background
+        - required: false
+          type: string
+          description: >
+            Either a 4x4 matrix or an angle with an axis.
+
+            eg: {"axis": [1, 1, 0], "angle": 34} or {"matrix": [0.1, 0.2, 0.3
+            ... ], "axis": [1, 1, 0], "angle": 34.42}
+          in: formData
+          name: orientation
+      produces:
+        - application/json
+      tags:
+        - models
+      consumes:
+        - multipart/form-data
+      description: Updates the 3D options of a model
+  /v3/tags/{slug}:
+    parameters:
+      - required: true
+        type: string
+        description: The tag slug
+        in: path
+        name: slug
+    get:
+      tags:
+        - tags
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/TagRelated"
+      description: Returns the detail of a tag
+  /v3/me/subscriptions:
+    post:
+      description: Subscribes to a collection.
+      parameters:
+        - required: true
+          type: string
+          description: The <a href="#/collections" target="_blank">collection</a> (uid) to
+            subscribe to
+          in: formData
+          name: collection
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - me
+        - collections
+      consumes:
+        - multipart/form-data
+      responses:
+        "201":
+          headers:
+            Location:
+              type: string
+          description: Created
+          schema:
+            $ref: "#/definitions/CreateResponse"
+        "400":
+          description: Bad Request
+        "401":
+          description: Authentication credentials were not provided or do not match
+    get:
+      security:
+        - Token: []
+      description: Returns collections you subscribed to.
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/CollectionResponse"
+        "401":
+          description: Authentication credentials were not provided or do not match
+      tags:
+        - me
+        - collections
+      produces:
+        - application/json
+  /v3/orgs/{orgUid}/environments/{environmentUid}:
+    patch:
+      description: Updates an environment in the given organization. Can take either
+        the organization UID (orgUid) or name preceded by a @ (@orgName).
+      parameters:
+        - description: Updates the name
+          in: formData
+          maxLength: 64
+          required: true
+          type: string
+          name: name
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - orgs
+        - environments
+      consumes:
+        - multipart/form-data
+      responses:
+        "204":
+          description: No Content
+    delete:
+      security:
+        - Token: []
+      description: Deletes an environment in the given organization. Can take either
+        the organization UID (orgUid) or name preceded by a @ (@orgName).
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+      tags:
+        - orgs
+        - environments
+      produces:
+        - application/json
+    parameters:
+      - required: true
+        type: string
+        description: The organization UID
+        in: path
+        name: orgUid
+      - required: true
+        type: string
+        description: The environment UID
+        in: path
+        name: environmentUid
+    get:
+      security:
+        - Token: []
+      description: Retrieve an environment in the given organization. Can take either
+        the organization UID (orgUid) or name preceded by a @ (@orgName).
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/OrgEnvironmentDetail"
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+      tags:
+        - orgs
+        - environments
+      produces:
+        - application/json
+  /v3/collections/{uid}:
+    get:
+      description: Returns the detail of a collection
+      tags:
+        - collections
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/CollectionDetail"
+      produces:
+        - application/json
+    parameters:
+      - required: true
+        type: string
+        description: The collection UID
+        in: path
+        name: uid
+    patch:
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+        "401":
+          description: Authentication credentials were not provided or do not match
+      parameters:
+        - description: Updates the name
+          in: formData
+          maxLength: 50
+          required: true
+          type: string
+          name: name
+        - description: Updates the description
+          in: formData
+          maxLength: 1024
+          required: false
+          type: string
+          name: description
+        - description: Sets <a href="#/models" target="_blank">models</a> (uid)
+          items:
+            type: string
+          required: false
+          name: models
+          in: formData
+          maxLength: 1024
+          type: array
+          collectionFormat: multi
+      produces:
+        - application/json
+      tags:
+        - collections
+      consumes:
+        - multipart/form-data
+      description: Updates a collection
+  /v3/comments/{uid}:
+    parameters:
+      - required: true
+        type: string
+        description: The comment UID
+        in: path
+        name: uid
+    delete:
+      security:
+        - Token: []
+      tags:
+        - comments
+      responses:
+        "204":
+          description: No Content
+      description: Deletes one of your comments
+  /v3/me/likes:
+    post:
+      description: Likes a model
+      parameters:
+        - required: true
+          type: string
+          description: <a href="#/models" target="_blank">Model</a> (uid) to like
+          in: formData
+          name: model
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - me
+        - models
+        - likes
+      consumes:
+        - multipart/form-data
+      responses:
+        "201":
+          headers:
+            Location:
+              type: string
+          description: Created
+          schema:
+            $ref: "#/definitions/CreateResponse"
+        "401":
+          description: Authentication credentials were not provided or do not match
+    get:
+      security:
+        - Token: []
+      tags:
+        - me
+        - models
+        - likes
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/LikeModelResponse"
+      parameters:
+        - required: false
+          description: Sorts results.
+          in: query
+          enum:
+            - likedAt
+            - -likedAt
+          type: string
+          name: sort_by
+      produces:
+        - application/json
+  /v3/licenses:
+    get:
+      description: Returns a list of licenses
+      tags:
+        - licenses
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/LicensesResponse"
+      produces:
+        - application/json
+  /v3/models:
+    post:
+      responses:
+        "201":
+          headers:
+            Location:
+              type: string
+          description: Created
+          schema:
+            $ref: "#/definitions/CreateResponse"
+        "401":
+          description: Authentication credentials were not provided or do not match
+      parameters:
+        - description: Sets a name
+          in: formData
+          maxLength: 48
+          required: false
+          type: string
+          name: name
+        - required: false
+          type: boolean
+          description: Sets private (requires a pro plan or higher)
+          in: formData
+          name: private
+        - description: Enables 2D view in model inspector. All <a
+            href="https://help.sketchfab.com/hc/en-us/articles/115004862686-Inspector">downloadable
+            models must have isInspectable enabled</a>.
+          in: formData
+          default: false
+          required: false
+          type: boolean
+          name: isInspectable
+        - description: Sets a password (requires a pro plan or higher)
+          in: formData
+          maxLength: 64
+          required: false
+          type: string
+          name: password
+        - in: formData
+          description: Sets a <a href=#!/licenses/ target='_blank'>license</a> (slug).
+            This makes the model downloadable to others. All <a
+            href="https://help.sketchfab.com/hc/en-us/articles/115004862686-Inspector">downloadable
+            models must have isInspectable enabled</a>.
+          format: test
+          required: false
+          type: string
+          name: license
+        - description: Sets <a href=#!/tags/ target='_blank'>tags</a> (slug)
+          name: tags
+          in: formData
+          items:
+            type: string
+          required: false
+          type: array
+          collectionFormat: multi
+        - description: Sets <a href=#!/categories/ target='_blank'>categories</a> (slug)
+          name: categories
+          in: formData
+          items:
+            type: string
+          required: false
+          type: array
+          collectionFormat: multi
+        - description: Enables AR for a model (requires a premium plan or higher)
+          in: formData
+          default: false
+          required: false
+          type: boolean
+          name: isArEnabled
+        - description: Sets published after it is processed
+          in: formData
+          default: true
+          required: false
+          type: boolean
+          name: isPublished
+        - description: Sets a description
+          in: formData
+          maxLength: 1024
+          required: false
+          type: string
+          name: description
+        - required: true
+          type: file
+          description: Model archive. Max 50mb for basic users, 200mb for pro users, 500mb
+            for biz users
+          in: formData
+          name: modelFile
+        - required: false
+          type: string
+          description: Sets <a href=#!/models/patch_v3_models_uid_options
+            target='_blank'>options</a> after it is processed
+          in: formData
+          name: options
+      tags:
+        - models
+      security:
+        - Token: []
+      consumes:
+        - multipart/form-data
+      description: Uploads a new model. Accepts multipart/form-data only.
+    get:
+      description: Returns a public, published list of models.
+      tags:
+        - models
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/ModelResponse"
+      parameters:
+        - required: false
+          description: Sorts results (likedAt is only usable with liked_by).
+          in: query
+          enum:
+            - createdAt
+            - -createdAt
+            - viewCount
+            - -viewCount
+            - likedAt
+            - -likedAt
+          type: string
+          name: sort_by
+        - required: false
+          type: string
+          description: Retrieves models filtered by a <a href="#!/users/"
+            target="_blank">user</a> (username)
+          in: query
+          name: user
+        - description: Retrieves models filtered by <a href="#!/tags/"
+            target="_blank">tags</a> (slug)
+          name: tags
+          in: query
+          items:
+            type: string
+          required: false
+          type: array
+          collectionFormat: multi
+        - description: Retrieves models filtered by <a
+            href=#!/categories/get_v3_categories target='_blank'>categories</a>
+            (uid)
+          name: categories
+          in: query
+          items:
+            type: string
+          required: false
+          type: array
+          collectionFormat: multi
+        - required: false
+          type: string
+          description: Retrieves models liked by a <a href="#!/users/"
+            target="_blank">user</a> (username). This can't be used with other
+            filters.
+          in: query
+          name: liked_by
+        - required: false
+          type: integer
+          name: max_face_count
+          in: query
+        - required: false
+          type: integer
+          name: max_vertex_count
+          in: query
+        - in: query
+          description: Retrieves the models published after published_since (ISO 8601
+            format)
+          format: date
+          required: false
+          type: string
+          name: published_since
+        - required: false
+          type: boolean
+          description: Retrieves staffpicked models
+          in: query
+          name: staffpicked
+        - required: false
+          type: boolean
+          description: Retrieves downloadable models
+          in: query
+          name: downloadable
+        - required: false
+          type: boolean
+          description: Retrieves animated models
+          in: query
+          name: animated
+        - required: false
+          type: boolean
+          description: Retrieves models with sound
+          in: query
+          name: has_sound
+        - required: false
+          type: boolean
+          description: Retrieves age restricted models (off by default)
+          in: query
+          name: restricted
+        - $ref: "#/parameters/archivesFlavoursFilter"
+        - $ref: "#/parameters/searchParamAvailableArchiveType"
+        - $ref: "#/parameters/searchParamArchivesMaxSize"
+        - $ref: "#/parameters/searchParamArchivesMaxFaceCount"
+        - $ref: "#/parameters/searchParamArchivesMaxVertexCount"
+        - $ref: "#/parameters/searchParamArchivesMaxTextureCount"
+        - $ref: "#/parameters/searchParamArchivesTextureMaxResolution"
+      produces:
+        - application/json
+  /v3/me/account:
+    get:
+      security:
+        - Token: []
+      description: Returns account information of the logged user
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/MeAccount"
+      tags:
+        - users
+      produces:
+        - application/json
+  /v3/orgs/{orgUid}/environments:
+    post:
+      description: Creates a new environment in the given organization. Can take
+        either the organization UID (orgUid) or name preceded by a @ (@orgName).
+      parameters:
+        - description: Sets a name
+          in: formData
+          maxLength: 64
+          required: true
+          type: string
+          name: name
+        - required: true
+          type: file
+          name: environmentFile
+          in: formData
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - orgs
+        - environments
+      consumes:
+        - multipart/form-data
+      responses:
+        "201":
+          headers:
+            Location:
+              type: string
+          description: Created
+          schema:
+            $ref: "#/definitions/CreateResponse"
+        "400":
+          description: Bad Request
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+    parameters:
+      - required: true
+        type: string
+        description: The organization UID
+        in: path
+        name: orgUid
+    get:
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/OrgEnvironmentListResponse"
+      parameters:
+        - required: false
+          type: string
+          name: sort_by
+          enum:
+            - createdAt
+            - -createdAt
+          in: query
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - orgs
+        - environments
+      description: Returns a list of environments from the given organization. Can
+        take either the organization UID (orgUid) or name preceded by a @
+        (@orgName).
+  /v3/orgs/{orgUid}/tags:
+    parameters:
+      - required: true
+        type: string
+        description: The organization UID
+        in: path
+        name: orgUid
+    get:
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/OrgTagsListResponse"
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+      parameters:
+        - required: false
+          description: Sorts projects by this param.
+          in: query
+          enum:
+            - createdAt
+            - -createdAt
+          type: string
+          name: sort_by
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - orgs
+        - tags
+      description: Returns a list of tags used by the given organization. Can take
+        either the organization UID (orgUid) or name preceded by a @ (@orgName).
+  /v3/categories/{uid}:
+    parameters:
+      - required: true
+        type: string
+        description: The category UID
+        in: path
+        name: uid
+    get:
+      description: Return the details of a category
+      tags:
+        - categories
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/CategoriesRelated"
+      produces:
+        - application/json
+  /v3/skills:
+    get:
+      description: Returns the list of skills
+      tags:
+        - skills
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/SkillsResponse"
+      produces:
+        - application/json
+  /v3/me/models/purchases:
+    get:
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/MeModelResponse"
+        "401":
+          description: Authentication credentials were not provided or do not match
+      parameters:
+        - required: false
+          type: string
+          description: Space separated keywords.
+          in: query
+          name: q
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - me
+        - models
+        - purchases
+      description: Returns the list of models you bought on sketchfab's store
+  /v3/collections/{uid}/models:
+    post:
+      responses:
+        "201":
+          headers:
+            Location:
+              type: string
+          description: Created
+          schema:
+            $ref: "#/definitions/CreateResponse"
+        "400":
+          description: Bad Request
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not found
+      parameters:
+        - description: Adds <a href="#/models" target="_blank">models</a> (uid)
+          items:
+            type: string
+          required: false
+          name: models
+          in: formData
+          maxLength: 1024
+          type: array
+          collectionFormat: multi
+      produces:
+        - application/json
+      tags:
+        - collections
+        - models
+      consumes:
+        - multipart/form-data
+      description: Adds models to a collection.
+    get:
+      description: Returns a list of models for a collection
+      tags:
+        - collections
+        - models
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/CollectionModelResponse"
+        "404":
+          description: Not found
+      parameters:
+        - required: false
+          type: string
+          name: sort_by
+          enum:
+            - createdAt
+            - -createdAt
+            - collectedAt
+            - -collectedAt
+          in: query
+      produces:
+        - application/json
+    parameters:
+      - required: true
+        type: string
+        description: The collection UID
+        in: path
+        name: uid
+    delete:
+      responses:
+        "204":
+          description: Success
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not found
+      parameters:
+        - description: Removes <a href="#/models" target="_blank">models</a> (uid)
+          name: models
+          in: query
+          items:
+            type: string
+          required: false
+          type: array
+          collectionFormat: multi
+      produces:
+        - application/json
+      tags:
+        - collections
+        - models
+      consumes:
+        - multipart/form-data
+      description: Removes models from a collection
+  /v3/users/{uid}/followings:
+    parameters:
+      - required: true
+        type: string
+        description: The user UID
+        in: path
+        name: uid
+    get:
+      description: Returns users followed by a user.
+      tags:
+        - users
+        - relationships
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/UserResponse"
+        "404":
+          description: Not Found
+      produces:
+        - application/json
+  /v3/models/{uid}/download:
+    parameters:
+      - required: true
+        type: string
+        description: The model UID
+        in: path
+        name: uid
+    get:
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/ModelDownload"
+        "400":
+          description: Bad Request. Model is not downloadable.
+        "401":
+          description: Unauthorized. User token is not valid or missing.
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found. Model does not exist.
+        "429":
+          description: Too many requests. You must wait before making requests again.
+      parameters:
+        - required: false
+          type: string
+          description: Model password when the model is password-protected
+          in: header
+          name: x-skfb-model-pwd
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - models
+      description: Returns download information for downloadable models
+  /v3/me/orgs:
+    get:
+      security:
+        - Token: []
+      description: Returns the list of orgs the current user belongs to
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/MeOrgs"
+      tags:
+        - users
+        - orgs
+      produces:
+        - application/json
+  /v3/search?type=collections:
+    get:
+      tags:
+        - search
+        - collections
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/CollectionSearchResponse"
+      parameters:
+        - required: false
+          type: string
+          name: q
+          in: query
+        - required: false
+          type: string
+          description: Searches collections by <a href="#!/users/"
+            target="_blank">user</a> (username)
+          in: query
+          name: user
+        - required: false
+          description: Limit search to a specific period only (in days)
+          in: query
+          enum:
+            - 1
+            - 7
+            - 31
+          type: integer
+          name: date
+        - required: false
+          type: string
+          name: sort_by
+          enum:
+            - createdAt
+            - -createdAt
+            - modelCount
+            - subscriberCount
+          in: query
+      description: Search in collections
+  /v3/orgs/{orgUid}/models/{modelUid}/options:
+    parameters:
+      - required: true
+        type: string
+        description: TThe organization UID
+        in: path
+        name: orgUid
+      - required: true
+        type: string
+        description: The model UID
+        in: path
+        name: modelUid
+    patch:
+      description: Updates the 3D options of a model. Can take either the organization
+        UID (orgUid) or name preceded by a @ (@orgName).
+      parameters:
+        - required: false
+          description: Defines the shading type
+          in: formData
+          enum:
+            - lit
+            - shadeless
+          type: string
+          name: shading
+        - required: false
+          type: string
+          description: >
+            Defines the background used. Either a color, a <a
+            href="#/backgrounds" target="_blank">background</a> (uid), an <a
+            href="#/environment" target="_blank">environment</a> (uid) or
+            transparent.
+
+            eg: {"color": "#ffffff"}, {"environment": "uid"}, {"image": "uid"}
+            or {"transparent": 1}
+          in: formData
+          name: background
+        - required: false
+          type: string
+          description: >
+            Either a 4x4 matrix or an angle with an axis.
+
+            eg: {"axis": [1, 1, 0], "angle": 34} or {"matrix": [0.1, 0.2, 0.3
+            ... ], "axis": [1, 1, 0], "angle": 34.42}
+          in: formData
+          name: orientation
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - orgs
+      consumes:
+        - multipart/form-data
+      responses:
+        "204":
+          description: No-Content
+        "400":
+          description: Bad Request
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+  /v3/me/matcaps:
+    post:
+      description: Creates a new matcap
+      parameters:
+        - required: true
+          type: file
+          description: JPG or PNG image. Max 4mb
+          in: formData
+          name: image
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - me
+        - matcaps
+      consumes:
+        - multipart/form-data
+      responses:
+        "201":
+          headers:
+            Location:
+              type: string
+          description: Created
+          schema:
+            $ref: "#/definitions/CreateResponse"
+        "400":
+          description: Bad Request
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+    get:
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/MatcapsList"
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+      parameters:
+        - required: false
+          type: string
+          name: sort_by
+          enum:
+            - createdAt
+            - -createdAt
+          in: query
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - me
+        - matcaps
+      description: Returns a list of matcaps for your models
+  /v3/avatars/{uid}:
+    parameters:
+      - required: true
+        type: string
+        description: The avatar UID
+        in: path
+        name: uid
+    get:
+      description: Returns a user avatar
+      tags:
+        - avatars
+        - users
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/AvatarRelated"
+      produces:
+        - application/json
+  /v3/me/environments/{uid}:
+    patch:
+      description: Updates an environment (requires a pro plan or higher).
+      parameters:
+        - description: Updates the name
+          in: formData
+          maxLength: 64
+          required: true
+          type: string
+          name: name
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - me
+        - environments
+      consumes:
+        - multipart/form-data
+      responses:
+        "204":
+          description: No Content
+    parameters:
+      - required: true
+        type: string
+        description: The environment UID
+        in: path
+        name: uid
+    delete:
+      security:
+        - Token: []
+      description: Deletes an environment (requires a pro plan or higher)
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+      tags:
+        - me
+        - environments
+      produces:
+        - application/json
+  /v3/skills/{slug}:
+    parameters:
+      - required: true
+        type: string
+        description: The skill slug
+        in: path
+        name: slug
+    get:
+      tags:
+        - skills
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/SkillDetail"
+      description: Returns the detail of a skill
+  /v3/orgs/{orgUid}/matcaps:
+    post:
+      description: Creates a new matcap in the given organization. Can take either the
+        organization UID (orgUid) or name preceded by a @ (@orgName).
+      parameters:
+        - required: true
+          type: file
+          description: JPG or PNG image. Max 4mb
+          in: formData
+          name: image
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - orgs
+        - matcaps
+      consumes:
+        - multipart/form-data
+      responses:
+        "201":
+          headers:
+            Location:
+              type: string
+          description: Created
+          schema:
+            $ref: "#/definitions/CreateResponse"
+        "400":
+          description: Bad Request
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+    parameters:
+      - required: true
+        type: string
+        description: The organization UID
+        in: path
+        name: orgUid
+    get:
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/OrgMatcapsListResponse"
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+      parameters:
+        - required: false
+          type: string
+          name: sort_by
+          enum:
+            - createdAt
+            - -createdAt
+          in: query
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - orgs
+        - matcaps
+      description: Returns a list of matcaps from the given organization. Can take
+        either the organization UID (orgUid) or name preceded by a @ (@orgName).
+  /v3/users/{uid}/followers:
+    parameters:
+      - required: true
+        type: string
+        description: The user UID
+        in: path
+        name: uid
+    get:
+      description: Returns the followers of a user.
+      tags:
+        - users
+        - relationships
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/UserResponse"
+        "404":
+          description: Not Found
+      produces:
+        - application/json
+  /v3/me/search?type=models:
+    get:
+      description: Search and filters in your own models
+      tags:
+        - me
+        - models
+      responses:
+        "200":
+          description: Models matching the search
+          schema:
+            $ref: "#/definitions/ModelSearchResponse"
+      parameters:
+        - $ref: "#/parameters/searchParamQ"
+        - $ref: "#/parameters/searchParamTags"
+        - $ref: "#/parameters/searchParamCategories"
+        - $ref: "#/parameters/searchParamProcessingStatus"
+        - $ref: "#/parameters/searchParamDate"
+        - $ref: "#/parameters/searchParamDownloadable"
+        - $ref: "#/parameters/searchParamAnimated"
+        - $ref: "#/parameters/searchParamStaffpicked"
+        - $ref: "#/parameters/searchParamSound"
+        - $ref: "#/parameters/searchParamMinFaceCount"
+        - $ref: "#/parameters/searchParamMaxFaceCount"
+        - $ref: "#/parameters/searchParamPbrType"
+        - $ref: "#/parameters/searchParamRigged"
+        - $ref: "#/parameters/searchParamCollection"
+        - $ref: "#/parameters/searchParamSortBy"
+        - $ref: "#/parameters/searchParamFileFormat"
+        - $ref: "#/parameters/searchParamLicense"
+        - $ref: "#/parameters/searchParamMaxUvLayerCount"
+        - $ref: "#/parameters/searchParamMaxFilesizes"
+        - $ref: "#/parameters/archivesFlavoursFilter"
+      consumes:
+        - multipart/form-data
+  /v3/orgs/{orgUid}/backgrounds/{backgroundUid}:
+    delete:
+      security:
+        - Token: []
+      description: Deletes a background in the given organization. Can take either the
+        organization UID (orgUid) or name preceded by a @ (@orgName).
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+      tags:
+        - orgs
+        - backgrounds
+      produces:
+        - application/json
+    parameters:
+      - required: true
+        type: string
+        description: The organization UID
+        in: path
+        name: orgUid
+      - required: true
+        type: string
+        description: The background UID
+        in: path
+        name: backgroundUid
+    get:
+      security:
+        - Token: []
+      description: Retrieve a background in the given organization. Can take either
+        the organization UID (orgUid) or name preceded by a @ (@orgName).
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/OrgBackgroundDetail"
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+      tags:
+        - orgs
+        - backgrounds
+      produces:
+        - application/json
+  /v3/me/followings/{uid}:
+    parameters:
+      - required: true
+        type: string
+        description: The user UID
+        in: path
+        name: uid
+    delete:
+      security:
+        - Token: []
+      description: Un-follows a user.
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Authentication credentials were not provided or do not match
+      tags:
+        - me
+        - users
+        - relationships
+      produces:
+        - application/json
+  /v3/models/{uid}/archives/extra/latest:
+    get:
+      security:
+        - Token: []
+      description: Retrieve a model's extra archive.
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/ArchiveExtra"
+        "400":
+          description: Bad Request
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+      tags:
+        - models
+      produces:
+        - application/json
+    parameters:
+      - required: true
+        type: string
+        description: The model UID
+        in: path
+        name: uid
+    delete:
+      security:
+        - Token: []
+      description: Delete a model's extra archive, only for orgs and users with a paid plan.
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+      tags:
+        - models
+      produces:
+        - application/json
+  /v3/search?type=models:
+    get:
+      description: Search and filters in models
+      tags:
+        - search
+        - models
+      responses:
+        "200":
+          description: Models matching the search
+          schema:
+            $ref: "#/definitions/ModelSearchResponse"
+      parameters:
+        - $ref: "#/parameters/searchParamQ"
+        - $ref: "#/parameters/searchParamUser"
+        - $ref: "#/parameters/searchParamTags"
+        - $ref: "#/parameters/searchParamCategories"
+        - $ref: "#/parameters/searchParamDate"
+        - $ref: "#/parameters/searchParamDownloadable"
+        - $ref: "#/parameters/searchParamAnimated"
+        - $ref: "#/parameters/searchParamStaffpicked"
+        - $ref: "#/parameters/searchParamSound"
+        - $ref: "#/parameters/searchParamMinFaceCount"
+        - $ref: "#/parameters/searchParamMaxFaceCount"
+        - $ref: "#/parameters/searchParamPbrType"
+        - $ref: "#/parameters/searchParamRigged"
+        - $ref: "#/parameters/searchParamCollection"
+        - $ref: "#/parameters/searchParamSortBy"
+        - $ref: "#/parameters/searchParamFileFormat"
+        - $ref: "#/parameters/searchParamLicense"
+        - $ref: "#/parameters/searchParamMaxUvLayerCount"
+        - $ref: "#/parameters/searchParamAvailableArchiveType"
+        - $ref: "#/parameters/searchParamArchivesMaxSize"
+        - $ref: "#/parameters/searchParamArchivesMaxFaceCount"
+        - $ref: "#/parameters/searchParamArchivesMaxVertexCount"
+        - $ref: "#/parameters/searchParamArchivesMaxTextureCount"
+        - $ref: "#/parameters/searchParamArchivesTextureMaxResolution"
+        - $ref: "#/parameters/archivesFlavoursFilter"
+        - required: false
+          description: "DEPRECATED: This filter will have no impact on the returned results"
+          in: query
+          items:
+            type: string
+          enum:
+            - pending
+            - processing
+            - succeeded
+            - failed
+          type: string
+          name: processing_status
+      consumes:
+        - multipart/form-data
+  /v3/me/collections:
+    get:
+      security:
+        - Token: []
+      description: Returns a list of your collections
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/CollectionResponse"
+        "401":
+          description: Authentication credentials were not provided or do not match
+      tags:
+        - me
+        - collections
+      produces:
+        - application/json
+  /v3/orgs/{orgUid}/models/{modelUid}:
+    put:
+      description: Reuploads an organization model. Can take either the organization
+        UID (orgUid) or name preceded by a @ (@orgName).
+      parameters:
+        - description: Sets a model name
+          in: formData
+          maxLength: 48
+          required: false
+          type: string
+          name: name
+        - description: Define the organization project you want to upload to
+          in: formData
+          maxLength: 48
+          required: true
+          type: string
+          name: orgProject
+        - description: Define the upload source
+          in: formData
+          maxLength: 48
+          required: false
+          type: string
+          name: source
+        - required: false
+          name: visibility
+          in: formData
+          default: org
+          enum:
+            - public
+            - private
+            - protected
+            - org
+          type: string
+          description: Sets the model visibility
+        - description: Enables 2D view in model inspector. All <a
+            href="https://help.sketchfab.com/hc/en-us/articles/115004862686-Inspector">downloadable
+            models must have isInspectable enabled</a>.
+          in: formData
+          default: false
+          required: false
+          type: boolean
+          name: isInspectable
+        - in: formData
+          type: string
+          description: Sets a password. This option can only be used when visibility is
+            protected.
+          name: password
+          maxLength: 64
+        - required: false
+          type: string
+          description: Sets a <a href=#!/licenses/ target='_blank'>license</a> (slug).
+            This makes the model downloadable to others. All <a
+            href="https://help.sketchfab.com/hc/en-us/articles/115004862686-Inspector">downloadable
+            models must have isInspectable enabled</a>.
+          in: formData
+          name: license
+        - name: tags
+          in: formData
+          items:
+            type: string
+          required: false
+          type: array
+          collectionFormat: multi
+          description: Sets <a href=#!/tags/ target='_blank'>tags</a> (slug)
+        - name: categories
+          in: formData
+          items:
+            type: string
+          required: false
+          type: array
+          collectionFormat: multi
+          description: Sets <a href=#!/categories/ target='_blank'>categories</a> (slug).
+            Two categories max for a model.
+        - description: Sets the model description
+          in: formData
+          maxLength: 1024
+          required: false
+          type: string
+          name: description
+        - required: true
+          type: file
+          description: Archive of the model to be processed.
+          in: formData
+          name: modelFile
+        - required: false
+          type: string
+          description: Sets <a href=#!/models/patch_v3_models_uid_options
+            target='_blank'>options</a> after it is processed
+          in: formData
+          name: options
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - orgs
+        - models
+      consumes:
+        - multipart/form-data
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/OrgModelDetailResponse"
+        "400":
+          description: Bad Request
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+    get:
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/OrgModelDetailResponse"
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+      parameters:
+        - required: false
+          type: string
+          description: Password when the model is password-protected
+          in: header
+          name: x-skfb-model-pwd
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - orgs
+        - models
+      description: Returns the detail of an organization model. Can take either the
+        organization UID (orgUid) or name preceded by a @ (@orgName).
+    patch:
+      description: Updates organization model information. Can take either the
+        organization UID (orgUid) or name preceded by a @ (@orgName).
+      parameters:
+        - description: Sets a model name
+          in: formData
+          maxLength: 48
+          required: false
+          type: string
+          name: name
+        - description: Define the organization project you want to upload to
+          in: formData
+          maxLength: 48
+          required: true
+          type: string
+          name: orgProject
+        - description: Define the upload source
+          in: formData
+          maxLength: 48
+          required: false
+          type: string
+          name: source
+        - required: false
+          name: visibility
+          in: formData
+          default: org
+          enum:
+            - public
+            - private
+            - protected
+            - org
+          type: string
+          description: Sets the model visibility
+        - description: Enables 2D view in model inspector. All <a
+            href="https://help.sketchfab.com/hc/en-us/articles/115004862686-Inspector">downloadable
+            models must have isInspectable enabled</a>.
+          in: formData
+          default: false
+          required: false
+          type: boolean
+          name: isInspectable
+        - description: Whether the model has restricted content.
+          in: formData
+          default: false
+          required: false
+          type: boolean
+          name: isAgeRestricted
+        - in: formData
+          type: string
+          description: Sets a password. This option can only be used when visibility is
+            protected.
+          name: password
+          maxLength: 64
+        - required: false
+          type: string
+          description: Sets a <a href=#!/licenses/ target='_blank'>license</a> (slug).
+            This makes the model downloadable to others. All <a
+            href="https://help.sketchfab.com/hc/en-us/articles/115004862686-Inspector">downloadable
+            models must have isInspectable enabled</a>.
+          in: formData
+          name: license
+        - name: tags
+          in: formData
+          items:
+            type: string
+          required: false
+          type: array
+          collectionFormat: multi
+          description: Sets <a href=#!/tags/ target='_blank'>tags</a> (slug)
+        - name: categories
+          in: formData
+          items:
+            type: string
+          required: false
+          type: array
+          collectionFormat: multi
+          description: Sets <a href=#!/categories/ target='_blank'>categories</a> (slug).
+            Two categories max for a model.
+        - description: Sets the model description
+          in: formData
+          maxLength: 1024
+          required: false
+          type: string
+          name: description
+        - required: true
+          type: file
+          description: Archive of the model to be processed.
+          in: formData
+          name: modelFile
+        - required: false
+          type: string
+          description: Sets <a href=#!/models/patch_v3_models_uid_options
+            target='_blank'>options</a> after it is processed
+          in: formData
+          name: options
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - orgs
+        - models
+      consumes:
+        - multipart/form-data
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/OrgModelDetailResponse"
+        "400":
+          description: Bad Request
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+    parameters:
+      - required: true
+        type: string
+        description: The organization UID
+        in: path
+        name: orgUid
+      - required: true
+        type: string
+        description: The model UID
+        in: path
+        name: modelUid
+    delete:
+      security:
+        - Token: []
+      tags:
+        - orgs
+        - models
+      responses:
+        "204":
+          description: No Content
+      description: Deletes an organization model. Can take either the organization UID
+        (orgUid) or name preceded by a @ (@orgName).
+  /v3/search:
+    get:
+      tags:
+        - search
+        - models
+        - users
+        - collections
+      responses:
+        "200":
+          description: Models, collections, users matching the search
+          schema:
+            $ref: "#/definitions/GlobalSearchResponse"
+      parameters:
+        - required: false
+          type: string
+          description: Space separated keywords.
+          in: query
+          name: q
+      description: Search in models, collections, users
+  /v3/orgs/{orgUid}/projects:
+    post:
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: "#/definitions/OrgProjectListResponse"
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+      parameters:
+        - required: true
+          type: string
+          name: name
+          in: query
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - orgs
+        - projects
+      description: Creates projects within the given organization. Can take either the
+        organization UID (orgUid) or name preceded by a @ (@orgName).
+    parameters:
+      - required: true
+        type: string
+        description: The organization UID
+        in: path
+        name: orgUid
+    get:
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/OrgProjectListResponse"
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+      parameters:
+        - $ref: "#/parameters/queryFilter"
+        - required: false
+          description: Sorts projects by this param.
+          in: query
+          enum:
+            - name
+            - updatedAt
+          type: string
+          name: sort_by
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - orgs
+        - projects
+      description: Returns a list of projects from the given organization. Can take
+        either the organization UID (orgUid) or name preceded by a @ (@orgName).
+  /v3/licences/{uid}:
+    parameters:
+      - required: true
+        type: string
+        description: The license UID
+        in: path
+        name: uid
+    get:
+      description: Returns the detail of a license.
+      tags:
+        - licenses
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/LicensesDetail"
+        "404":
+          description: Not Found
+      produces:
+        - application/json
+  /v3/me/backgrounds/{uid}:
+    parameters:
+      - required: true
+        type: string
+        description: The background UID
+        in: path
+        name: uid
+    delete:
+      security:
+        - Token: []
+      description: Deletes a background (requires a pro plan or higher)
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+      tags:
+        - me
+        - backgrounds
+      produces:
+        - application/json
+  /v3/orgs/{orgUid}/search?type=projects:
+    parameters:
+      - required: true
+        type: string
+        description: Can take either the organization UID (orgUid) or name preceded by a
+          @ (@orgName).
+        in: path
+        name: orgUid
+    get:
+      description: Search and filters in given org projects
+      tags:
+        - orgs
+        - projects
+        - search
+      responses:
+        "200":
+          description: Projects matching the search
+          schema:
+            $ref: "#/definitions/ProjectSearchResponse"
+      parameters:
+        - $ref: "#/parameters/queryFilter"
+        - $ref: "#/parameters/parentProjectFilter"
+        - $ref: "#/parameters/projectDepthFilter"
+      consumes:
+        - multipart/form-data
+  /v3/orgs/{orgUid}/search?type=models:
+    parameters:
+      - required: true
+        type: string
+        description: Can take either the organization UID (orgUid) or name preceded by a
+          @ (@orgName).
+        in: path
+        name: orgUid
+    get:
+      description: Search and filters in given org models
+      tags:
+        - orgs
+        - models
+        - search
+      responses:
+        "200":
+          description: Models matching the search
+          schema:
+            $ref: "#/definitions/ModelSearchResponse"
+      parameters:
+        - $ref: "#/parameters/queryFilter"
+        - $ref: "#/parameters/usersFilter"
+        - $ref: "#/parameters/foldersFilter"
+        - $ref: "#/parameters/projectsFilter"
+        - $ref: "#/parameters/minFaceCountFilter"
+        - $ref: "#/parameters/maxFaceCountFilter"
+        - $ref: "#/parameters/animatedFilter"
+        - $ref: "#/parameters/pbrFilter"
+        - $ref: "#/parameters/riggedFilter"
+        - $ref: "#/parameters/allVisibilitiesFilter"
+        - $ref: "#/parameters/downloadableFilter"
+        - $ref: "#/parameters/orgTagsFilter"
+        - $ref: "#/parameters/searchParamAvailableArchiveType"
+        - $ref: "#/parameters/searchParamArchivesMaxSize"
+        - $ref: "#/parameters/searchParamArchivesMaxFaceCount"
+        - $ref: "#/parameters/searchParamArchivesMaxVertexCount"
+        - $ref: "#/parameters/searchParamArchivesMaxTextureCount"
+        - $ref: "#/parameters/searchParamArchivesTextureMaxResolution"
+        - $ref: "#/parameters/searchParamFileFormat"
+        - $ref: "#/parameters/archivesFlavoursFilter"
+      consumes:
+        - multipart/form-data
+  /v3/me/matcaps/{matcapUid}:
+    delete:
+      security:
+        - Token: []
+      description: Deletes a matcap
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+      tags:
+        - me
+        - matcaps
+      produces:
+        - application/json
+    parameters:
+      - required: true
+        type: string
+        description: The matcap UID
+        in: path
+        name: matcapUid
+    get:
+      security:
+        - Token: []
+      description: Retrieve a matcap
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/MatcapDetail"
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+      tags:
+        - me
+        - matcaps
+      produces:
+        - application/json
+  /v3/me/followings:
+    post:
+      description: Follows a new user.
+      parameters:
+        - required: true
+          type: string
+          description: <a href="#/users" target="_blank">User</a> (uid) to follow
+          in: formData
+          name: toUser
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - me
+        - users
+        - relationships
+      consumes:
+        - multipart/form-data
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Authentication credentials were not provided or do not match
+    get:
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/UserResponse"
+        "401":
+          description: Authentication credentials were not provided or do not match
+      parameters:
+        - required: false
+          type: string
+          name: sort_by
+          enum:
+            - dateJoined
+            - -dateJoined
+            - followerCount
+            - -followerCount
+          in: query
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - me
+        - users
+        - relationships
+      description: Returns a list of users you follow.
+  /v3/categories:
+    get:
+      description: Returns a list of categories
+      tags:
+        - categories
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/CategoriesResponse"
+      parameters:
+        - required: false
+          type: string
+          name: sort_by
+          enum:
+            - slug
+            - -slug
+          in: query
+      produces:
+        - application/json
+  /v3/models/{uid}/archives/extra:
+    post:
+      description: Adds or replace a model's extra archive, only for orgs and users
+        with a paid plan.
+      parameters:
+        - required: true
+          type: file
+          description: Model's extra archive. Max 2Gb.
+          in: formData
+          name: extraFile
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - models
+      consumes:
+        - multipart/form-data
+      responses:
+        "201":
+          description: Created
+        "400":
+          description: Bad Request
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+    parameters:
+      - required: true
+        type: string
+        description: The model UID
+        in: path
+        name: uid
+  /v3/me/models:
+    get:
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/MeModelResponse"
+        "401":
+          description: Authentication credentials were not provided or do not match
+      parameters:
+        - required: false
+          type: boolean
+          description: Retrieves downloadable models
+          in: query
+          name: downloadable
+        - $ref: "#/parameters/archivesFlavoursFilter"
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - me
+        - models
+      description: Returns a list of your models
+  /v3/me/likes/{uid}:
+    parameters:
+      - required: true
+        type: string
+        description: <a href="#/models" target="_blank">Model</a> (uid) to un-like
+        in: path
+        name: uid
+    delete:
+      security:
+        - Token: []
+      description: Un-likes a model
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+        "401":
+          description: Authentication credentials were not provided or do not match
+      tags:
+        - users
+        - me
+        - likes
+      produces:
+        - application/json
+  /v3/orgs/{orgUid}/models:
+    post:
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: "#/definitions/OrgModelDetailResponse"
+        "401":
+          description: Authentication credentials were not provided or do not match.
+        "403":
+          description: You're not allowed to post in this organization.
+      parameters:
+        - description: Sets a model name
+          in: formData
+          maxLength: 48
+          required: false
+          type: string
+          name: name
+        - description: Define the organization project you want to upload to
+          in: formData
+          maxLength: 48
+          required: true
+          type: string
+          name: orgProject
+        - description: Define the upload source
+          in: formData
+          maxLength: 48
+          required: false
+          type: string
+          name: source
+        - required: false
+          name: visibility
+          in: formData
+          default: org
+          enum:
+            - public
+            - private
+            - protected
+            - org
+          type: string
+          description: Sets the model visibility
+        - description: Enables 2D view in model inspector. All <a
+            href="https://help.sketchfab.com/hc/en-us/articles/115004862686-Inspector">downloadable
+            models must have isInspectable enabled</a>.
+          in: formData
+          default: false
+          required: false
+          type: boolean
+          name: isInspectable
+        - description: Whether the model has restricted content.
+          in: formData
+          default: false
+          required: false
+          type: boolean
+          name: isAgeRestricted
+        - in: formData
+          type: string
+          description: Sets a password. This option can only be used when visibility is
+            protected.
+          name: password
+          maxLength: 64
+        - required: false
+          type: string
+          description: Sets a <a href=#!/licenses/ target='_blank'>license</a> (slug).
+            This makes the model downloadable to others. All <a
+            href="https://help.sketchfab.com/hc/en-us/articles/115004862686-Inspector">downloadable
+            models must have isInspectable enabled</a>.
+          in: formData
+          name: license
+        - name: tags
+          in: formData
+          items:
+            type: string
+          required: false
+          type: array
+          collectionFormat: multi
+          description: Sets <a href=#!/tags/ target='_blank'>tags</a> (slug)
+        - name: categories
+          in: formData
+          items:
+            type: string
+          required: false
+          type: array
+          collectionFormat: multi
+          description: Sets <a href=#!/categories/ target='_blank'>categories</a> (slug).
+            Two categories max for a model.
+        - description: Sets the model description
+          in: formData
+          maxLength: 1024
+          required: false
+          type: string
+          name: description
+        - required: true
+          type: file
+          description: Archive of the model to be processed.
+          in: formData
+          name: modelFile
+        - required: false
+          type: string
+          description: Sets <a href=#!/models/patch_v3_models_uid_options
+            target='_blank'>options</a> after it is processed
+          in: formData
+          name: options
+      tags:
+        - orgs
+        - models
+      security:
+        - Token: []
+      consumes:
+        - multipart/form-data
+      description: Uploads a new model to the given organization. Can take either the
+        organization UID (orgUid) or name preceded by a @ (@orgName).
+    parameters:
+      - required: true
+        type: string
+        description: The organization UID
+        in: path
+        name: orgUid
+    get:
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/OrgModelListResponse"
+      parameters:
+        - $ref: "#/parameters/queryFilter"
+        - $ref: "#/parameters/usersFilter"
+        - $ref: "#/parameters/foldersFilter"
+        - $ref: "#/parameters/projectsFilter"
+        - $ref: "#/parameters/minFaceCountFilter"
+        - $ref: "#/parameters/maxFaceCountFilter"
+        - $ref: "#/parameters/animatedFilter"
+        - $ref: "#/parameters/pbrFilter"
+        - $ref: "#/parameters/riggedFilter"
+        - $ref: "#/parameters/allVisibilitiesFilter"
+        - $ref: "#/parameters/downloadableFilter"
+        - $ref: "#/parameters/orgTagsFilter"
+        - $ref: "#/parameters/searchParamAvailableArchiveType"
+        - $ref: "#/parameters/searchParamArchivesMaxSize"
+        - $ref: "#/parameters/searchParamArchivesMaxFaceCount"
+        - $ref: "#/parameters/searchParamArchivesMaxVertexCount"
+        - $ref: "#/parameters/searchParamArchivesMaxTextureCount"
+        - $ref: "#/parameters/searchParamArchivesTextureMaxResolution"
+        - $ref: "#/parameters/archivesFlavoursFilter"
+        - required: false
+          description: Sorts models by this param.
+          in: query
+          enum:
+            - createdAt
+            - faceCount
+            - likeCount
+            - title
+            - orgCommentCount
+            - processedAt
+            - publicCommentCount
+            - publishedAt
+            - staffpickedAt
+            - user
+            - vertexCount
+            - viewCount
+            - privacy
+          type: string
+          name: sort_by
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - orgs
+        - models
+      description: Returns a list of models from the given organization. Can take
+        either the organization UID (orgUid) or name preceded by a @ (@orgName).
+  /v3/orgs/{orgUid}/projects/{projectUid}:
+    get:
+      security:
+        - Token: []
+      description: Retrieve a project within the given organization. Can take either
+        the organization UID (orgUid) or name preceded by a @ (@orgName).
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/OrgProjectListResponse"
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+      tags:
+        - orgs
+        - projects
+      produces:
+        - application/json
+    patch:
+      security:
+        - Token: []
+      description: Update a project within the given organization. Can take either the
+        organization UID (orgUid) or name preceded by a @ (@orgName).
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/OrgProjectListResponse"
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+      tags:
+        - orgs
+        - projects
+      produces:
+        - application/json
+    parameters:
+      - required: true
+        type: string
+        description: The organization UID
+        in: path
+        name: orgUid
+      - required: true
+        type: string
+        description: The project UID
+        in: path
+        name: projectUid
+    delete:
+      security:
+        - Token: []
+      description: Remove a project within the given organization. Can take either the
+        organization UID (orgUid) or name preceded by a @ (@orgName).
+      responses:
+        "204":
+          description: No content
+        "401":
+          description: Authentication credentials were not provided or do not match
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+      tags:
+        - orgs
+        - projects
+      produces:
+        - application/json
+  /v3/search?type=users:
+    get:
+      description: Search and filters in users
+      tags:
+        - search
+        - users
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/UserSearchResponse"
+        "400":
+          description: Bad Request
+      parameters:
+        - required: false
+          type: string
+          description: Space separated keywords
+          in: query
+          name: q
+        - required: false
+          type: string
+          description: Searches users by username
+          in: query
+          name: username
+        - required: false
+          type: string
+          description: Searches users by country or city
+          in: query
+          name: location
+        - required: false
+          description: Searches users by account type
+          in: query
+          enum:
+            - free
+            - pro
+            - biz
+          type: string
+          name: account
+        - description: Searches users by skills (slug)
+          name: skills
+          in: query
+          items:
+            type: string
+          required: false
+          type: array
+          collectionFormat: multi
+        - required: false
+          type: string
+          name: sort_by
+          enum:
+            - followerCount
+            - -followerCount
+            - modelCount
+            - -modelCount
+            - username
+          in: query
+      consumes:
+        - multipart/form-data
+  /v3/orgs/{orgUid}/models/{modelUid}/download:
+    parameters:
+      - required: true
+        type: string
+        description: The organization UID
+        in: path
+        name: orgUid
+      - required: true
+        type: string
+        description: The model UID
+        in: path
+        name: modelUid
+    get:
+      description: Returns download information for downloadable models. Can take
+        either the organization UID (orgUid) or name preceded by a @ (@orgName).
+      tags:
+        - orgs
+        - models
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/ModelDownload"
+        "403":
+          description: Permission Denied
+        "404":
+          description: Not Found
+      produces:
+        - application/json
+  /v3/tags:
+    get:
+      tags:
+        - tags
+      responses:
+        "200":
+          description: Returns the list of tags
+          schema:
+            $ref: "#/definitions/TagsResponse"
+      description: Returns a list of tags
+  /v3/collections/thumbnails:
+    get:
+      tags:
+        - collections
+        - thumbnails
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/CollectionsThumbnailsResponse"
+      parameters:
+        - name: uids
+          in: query
+          items:
+            type: string
+          required: true
+          type: array
+          collectionFormat: multi
+      description: Returns the popular thumbnails of collections
+  /v3/me/followers:
+    get:
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: "#/definitions/UserResponse"
+        "401":
+          description: Authentication credentials were not provided or do not match
+      parameters:
+        - required: false
+          type: string
+          name: sort_by
+          enum:
+            - dateJoined
+            - -dateJoined
+            - followerCount
+            - -followerCount
+          in: query
+      produces:
+        - application/json
+      security:
+        - Token: []
+      tags:
+        - me
+        - users
+        - relationships
+      description: Returns a list of users following you.
+schemes:
+  - https
+parameters:
+  riggedFilter:
+    required: false
+    type: boolean
+    description: Retrieves rigged models.
+    in: query
+    name: rigged
+  searchParamStaffpicked:
+    required: false
+    type: boolean
+    name: staffpicked
+    in: query
+  projectsFilter:
+    name: projects
+    in: query
+    items:
+      type: string
+    required: false
+    type: array
+    collectionFormat: multi
+    description: Retrieve models uploaded to projects (uids).
+  searchParamRigged:
+    required: false
+    type: boolean
+    description: false by default. Set to true to search rigged models only. Set to
+      false to search all models
+    in: query
+    name: rigged
+  searchParamDate:
+    required: false
+    description: Limit search to a specific period only (in days)
+    in: query
+    enum:
+      - 1
+      - 7
+      - 31
+    type: integer
+    name: date
+  allVisibilitiesFilter:
+    enum:
+      - public
+      - private
+      - protected
+      - org
+    type: string
+    description: Sets the model visibility
+    in: query
+    name: visibility
+  searchParamPbrType:
+    required: false
+    description: Filter by PBR type. Set to `metalness` to search
+      Metalness/Roughness models only. Set to `specular` to search
+      Specular/Glossiness models only. Set to `true` to search PBR models only.
+      Set to `false` to search non-PBR models only.
+    in: query
+    enum:
+      - "false"
+      - "true"
+      - metalness
+      - specular
+    type: string
+    name: pbr_type
+  minFaceCountFilter:
+    required: false
+    type: integer
+    description: Retrieve models with at most x face count.
+    in: query
+    name: min_face_count
+  maxFaceCountFilter:
+    required: false
+    type: integer
+    description: Retrieve models with at least x face count.
+    in: query
+    name: max_face_count
+  searchParamDownloadable:
+    required: false
+    type: boolean
+    name: downloadable
+    in: query
+  usersFilter:
+    name: users
+    in: query
+    items:
+      type: string
+    required: false
+    type: array
+    collectionFormat: multi
+    description: Retrieve models uploaded by the given <a href="#!/users/"
+      target="_blank">users</a> (username).
+  pbrFilter:
+    required: false
+    type: boolean
+    description: Retrieves pbr models.
+    in: query
+    name: pbr
+  animatedFilter:
+    required: false
+    type: boolean
+    description: Retrieves animated models.
+    in: query
+    name: animated
+  downloadableFilter:
+    enum:
+      - free
+      - org
+    type: string
+    description: Retrieves models by download type
+    in: query
+    name: downloadable
+  foldersFilter:
+    name: folders
+    in: query
+    items:
+      type: string
+    required: false
+    type: array
+    collectionFormat: multi
+    description: Retrieve models uploaded to folders (uids).
+  searchParamUser:
+    required: false
+    type: string
+    description: Searches models by a <a href="#!/users/" target="_blank">user</a>
+      (username)
+    in: query
+    name: user
+  orgTagsFilter:
+    description: Retrieves models given a list of tags
+    name: orgTags
+    in: query
+    items:
+      type: string
+    type: array
+    collectionFormat: multi
+  queryFilter:
+    required: false
+    type: string
+    description: "The search query: words separated by spaces."
+    in: query
+    name: q
+  searchParamArchivesMaxTextureCount:
+    required: false
+    type: integer
+    name: archives_max_texture_count
+    in: query
+  searchParamMaxFilesizes:
+    required: false
+    type: string
+    description: "DEPRECATED: Use available_archive_type and archives_max_size filters."
+    in: query
+    name: max_filesizes
+  searchParamProcessingStatus:
+    required: false
+    description: Searches models by processing status
+    in: query
+    items:
+      type: string
+    enum:
+      - pending
+      - processing
+      - succeeded
+      - failed
+    type: string
+    name: processing_status
+  searchParamMaxUvLayerCount:
+    required: false
+    type: integer
+    name: max_uv_layer_count
+    in: query
+  searchParamCollection:
+    required: false
+    type: string
+    description: Searches models by collection (uid)
+    in: query
+    name: collection
+  searchParamTags:
+    description: Searches models by <a href="#!/tags/" target="_blank">tags</a> (slug)
+    in: query
+    items:
+      type: string
+    required: false
+    type: array
+    name: tags
+  searchParamSound:
+    required: false
+    type: boolean
+    name: sound
+    in: query
+  searchParamLicense:
+    required: false
+    type: string
+    name: license
+    enum:
+      - by
+      - by-sa
+      - by-nd
+      - by-nc
+      - by-nc-sa
+      - by-nc-nd
+      - cc0
+      - ed
+      - st
+    in: query
+  searchParamArchivesMaxVertexCount:
+    required: false
+    type: integer
+    name: archives_max_vertex_count
+    in: query
+  searchParamArchivesMaxFaceCount:
+    required: false
+    type: integer
+    name: archives_max_face_count
+    in: query
+  parentProjectFilter:
+    items:
+      type: string
+    in: query
+    type: string
+    description: Retrieves projects by parent (uid)
+    name: parent
+  searchParamQ:
+    required: false
+    type: string
+    description: Space separated keywords
+    in: query
+    name: q
+  searchParamMinFaceCount:
+    required: false
+    type: integer
+    description: Minimum number of faces
+    in: query
+    name: min_face_count
+  searchParamArchivesTextureMaxResolution:
+    required: false
+    type: integer
+    name: archives_texture_max_resolution
+    in: query
+  searchParamSortBy:
+    required: false
+    description: How to sort results. When omitted, results are sorted by relevance
+    in: query
+    enum:
+      - likeCount
+      - -likeCount
+      - viewCount
+      - -viewCount
+      - publishedAt
+      - -publishedAt
+      - processedAt
+      - -processedAt
+    type: string
+    name: sort_by
+  archivesFlavoursFilter:
+    description: If true, returns all archives flavours, listed by archive type, and
+      sorted by texture resolution (descending). If false, only the texture with
+      the highest reslution is returned for each archive type.
+    in: query
+    default: false
+    required: false
+    type: boolean
+    name: archives_flavours
+  searchParamArchivesMaxSize:
+    required: false
+    type: integer
+    name: archives_max_size
+    in: query
+  searchParamAnimated:
+    required: false
+    type: boolean
+    name: animated
+    in: query
+  searchParamCategories:
+    description: Searches models by categories (slug)
+    in: query
+    items:
+      type: string
+    required: false
+    type: array
+    name: categories
+  searchParamAvailableArchiveType:
+    required: false
+    type: string
+    name: available_archive_type
+    in: query
+  searchParamFileFormat:
+    required: false
+    type: string
+    description: "Searches models by <a
+      href='https://help.sketchfab.com/hc/en-us/articles/202508396-3D-File-Form\
+      ats' target='_blank'>file format</a>. Ex: obj, fbx, blend..."
+    in: query
+    name: file_format
+  searchParamMaxFaceCount:
+    required: false
+    type: integer
+    description: Maximum number of faces
+    in: query
+    name: max_face_count
+  projectDepthFilter:
+    items:
+      type: string
+    in: query
+    type: integer
+    description: Retrieves projects by depth
+    name: depth
+tags:
+  - name: models
+  - name: users
+  - name: me
+  - name: collections
+  - name: avatars
+  - name: categories
+  - name: skills
+  - name: environments
+  - name: tags
+  - name: relationships
+  - name: backgrounds
+  - name: matcaps
+  - name: thumbnails
+  - name: likes
+  - name: search
+  - name: comments
+  - name: licenses
+  - name: purchases
+  - name: orgs
+  - name: projects
+securityDefinitions:
+  Token:
+    type: apiKey
+    name: Authorization
+    in: header
+host: api.sketchfab.com
+definitions:
+  CollectionList:
+    type: object
+    properties:
+      createdAt:
+        type: string
+        format: date
+      description:
+        type:
+          - string
+          - "null"
+      hasRestrictedContent:
+        type: boolean
+      models:
+        type: string
+      isAgeRestricted:
+        type: boolean
+      uri:
+        type: string
+      modelCount:
+        type: integer
+      user:
+        type: string
+      updatedAt:
+        type: string
+        format: date
+      owner:
+        $ref: "#/definitions/UserDetail"
+      embedUrl:
+        type: string
+      uid:
+        type: string
+      slug:
+        type: string
+      thumbnails:
+        items:
+          $ref: "#/definitions/ThumbnailsRelated"
+        type: object
+      name:
+        type: string
+  MeDetail:
+    type: object
+    properties:
+      subscriptionCount:
+        type: integer
+      followerCount:
+        type: integer
+      uid:
+        type: string
+      modelsUrl:
+        type: string
+      likeCount:
+        type: integer
+      facebookUsername:
+        type: string
+      biography:
+        type: string
+      city:
+        type: string
+      tagline:
+        type: string
+      modelCount:
+        type: integer
+      twitterUsername:
+        type: string
+      email:
+        type: string
+      website:
+        type: string
+      billingCycle:
+        type: string
+      followersUrl:
+        type: string
+      collectionCount:
+        type: integer
+      dateJoined:
+        type: string
+        format: date
+      account:
+        type: string
+      displayName:
+        type: string
+      profileUrl:
+        type: string
+      followingsUrl:
+        type: string
+      skills:
+        items:
+          $ref: "#/definitions/SkillDetail"
+        type: array
+      country:
+        type: string
+      uri:
+        type: string
+      apiToken:
+        type: string
+      username:
+        type: string
+      linkedinUsername:
+        type: string
+      likesUrl:
+        type: string
+      avatar:
+        $ref: "#/definitions/AvatarRelated"
+      isLimited:
+        type: boolean
+      followingCount:
+        type: integer
+      collectionsUrl:
+        type: string
+  MePrivateModelsLimit:
+    type: object
+    properties:
+      count:
+        type: integer
+      since:
+        type: string
+      until:
+        type: string
+  OrgMatcapsListResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/OrgMatcapDetail"
+        type: array
+  TagsResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/TagRelated"
+        type: array
+  CollectionsThumbnailsResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/ThumbnailsRelated"
+        type: array
+  EnvironmentResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/Environment"
+        type: array
+  OrgBackgroundListResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/OrgBackgroundDetail"
+        type: array
+  Environment:
+    type: object
+    properties:
+      uid:
+        type: string
+      brightness:
+        type: integer
+      processing:
+        type: string
+      uri:
+        type: string
+      isDefault:
+        type: boolean
+      diffuseSPH:
+        type: string
+      createdAt:
+        type: string
+        format: date
+      name:
+        type: string
+  UserRelated:
+    type: object
+    properties:
+      username:
+        type: string
+      profileUrl:
+        type: string
+      account:
+        type: string
+      displayName:
+        type: string
+      uid:
+        type: string
+      uri:
+        type: string
+      avatar:
+        $ref: "#/definitions/AvatarRelated"
+  LicensesDetail:
+    type: object
+    properties:
+      slug:
+        type: string
+      requirements:
+        type: string
+      url:
+        type: string
+      fullName:
+        type: string
+      uri:
+        type: string
+      label:
+        type: string
+  OrgTextureImageDetail:
+    type: object
+    properties:
+      width:
+        type: integer
+      name:
+        type: string
+      uid:
+        type: string
+      file:
+        type: string
+      height:
+        type: integer
+  OrgModelDetailResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/OrgModelDetail"
+        type: array
+  OrgEnvironmentDetail:
+    type: object
+    properties:
+      textures:
+        $ref: "#/definitions/OrgTextureList"
+      uid:
+        type: string
+      brightness:
+        type: number
+      processing:
+        $ref: "#/definitions/ProcessingStatus"
+      uri:
+        type: string
+      lights:
+        $ref: "#/definitions/OrgLightList"
+      isDefault:
+        type: boolean
+      diffuseSPH:
+        items:
+          type: number
+        type: array
+      createdAt:
+        type: string
+        format: date
+      name:
+        type: string
+  UserDetail:
+    type: object
+    properties:
+      website:
+        type:
+          - string
+          - "null"
+      subscriptionCount:
+        type: integer
+      followerCount:
+        type: integer
+      uid:
+        type: string
+      modelsUrl:
+        type: string
+      portfolioUrl:
+        type: string
+      likeCount:
+        type: integer
+      facebookUsername:
+        type:
+          - string
+          - "null"
+      biography:
+        type:
+          - string
+          - "null"
+      dateJoined:
+        type: string
+        format: date
+      city:
+        type:
+          - string
+          - "null"
+      account:
+        type: string
+      displayName:
+        type: string
+      profileUrl:
+        type: string
+      followingsUrl:
+        type: string
+      skills:
+        items:
+          $ref: "#/definitions/SkillDetail"
+        type: array
+      tagline:
+        type:
+          - string
+          - "null"
+      uri:
+        type: string
+      modelCount:
+        type: integer
+      username:
+        type: string
+      linkedinUsername:
+        type:
+          - string
+          - "null"
+      likesUrl:
+        type: string
+      followersUrl:
+        type: string
+      collectionCount:
+        type: integer
+      country:
+        type:
+          - string
+          - "null"
+      followingCount:
+        type: integer
+      twitterUsername:
+        type:
+          - string
+          - "null"
+      collectionsUrl:
+        type: string
+      avatar:
+        $ref: "#/definitions/AvatarRelated"
+  OrgEnvironmentListResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/OrgEnvironmentDetail"
+        type: array
+  ModelResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/ModelList"
+        type: array
+  CollectionModelList:
+    type: object
+    properties:
+      uid:
+        type: string
+      tags:
+        items:
+          $ref: "#/definitions/TagRelated"
+        type: array
+      viewerUrl:
+        type: string
+      isProtected:
+        type: boolean
+      categories:
+        items:
+          $ref: "#/definitions/CategoriesRelated"
+        type: array
+      publishedAt:
+        type: string
+        format: date
+      likeCount:
+        type: integer
+      commentCount:
+        type: integer
+      viewCount:
+        type: integer
+      vertexCount:
+        type: integer
+      user:
+        $ref: "#/definitions/UserRelated"
+      isDownloadable:
+        type: boolean
+      description:
+        type:
+          - string
+          - "null"
+      animationCount:
+        type: integer
+      name:
+        type: string
+      soundCount:
+        type: integer
+      isAgeRestricted:
+        type: boolean
+      uri:
+        type: string
+      faceCount:
+        type: integer
+      staffpickedAt:
+        type:
+          - string
+          - "null"
+        format: date
+      createdAt:
+        type: string
+        format: date
+      thumbnails:
+        $ref: "#/definitions/ThumbnailsRelated"
+      embedUrl:
+        type: string
+  CollectionModelResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/CollectionModelList"
+        type: array
+  OrgTagsListResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/OrgTagList"
+        type: array
+  ModelList:
+    type: object
+    properties:
+      uid:
+        type: string
+      tags:
+        items:
+          $ref: "#/definitions/TagRelated"
+        type: array
+      viewerUrl:
+        type: string
+      isProtected:
+        type: boolean
+      price:
+        type: integer
+      categories:
+        items:
+          $ref: "#/definitions/CategoriesRelated"
+        type: array
+      publishedAt:
+        type: string
+        format: date
+      likeCount:
+        type: integer
+      commentCount:
+        type: integer
+      viewCount:
+        type: integer
+      vertexCount:
+        type: integer
+      user:
+        $ref: "#/definitions/UserRelated"
+      isDownloadable:
+        type: boolean
+      description:
+        type:
+          - string
+          - "null"
+      animationCount:
+        type: integer
+      name:
+        type: string
+      license:
+        type: string
+      soundCount:
+        type: integer
+      isAgeRestricted:
+        type: boolean
+      uri:
+        type: string
+      faceCount:
+        type: integer
+      staffpickedAt:
+        type:
+          - string
+          - "null"
+        format: date
+      createdAt:
+        type: string
+        format: date
+      thumbnails:
+        $ref: "#/definitions/ThumbnailsRelated"
+      embedUrl:
+        type: string
+      archives:
+        type: object
+        properties:
+          source:
+            $ref: "#/definitions/ArchiveNested"
+          glb:
+            $ref: "#/definitions/ArchiveNested"
+          usdz:
+            $ref: "#/definitions/ArchiveNested"
+          gltf:
+            $ref: "#/definitions/ArchiveNested"
+  OrgLightDetail:
+    type: object
+    properties:
+      direction:
+        items:
+          type: number
+        type: array
+      area:
+        type: object
+        properties:
+          y:
+            type: number
+          h:
+            type: number
+          z:
+            type: number
+          w:
+            type: number
+          x:
+            type: number
+      color:
+        items:
+          type: number
+        type: array
+      luminosity:
+        type: number
+      sum:
+        type: number
+      lum_ratio:
+        type: number
+      error:
+        type: integer
+      variance:
+        type: number
+  LikeModelList:
+    type: object
+    properties:
+      uid:
+        type: string
+      tags:
+        items:
+          $ref: "#/definitions/TagRelated"
+        type: array
+      viewerUrl:
+        type: string
+      isProtected:
+        type: boolean
+      categories:
+        items:
+          $ref: "#/definitions/CategoriesRelated"
+        type: array
+      publishedAt:
+        type: string
+        format: date
+      likeCount:
+        type: integer
+      commentCount:
+        type: integer
+      viewCount:
+        type: integer
+      vertexCount:
+        type: integer
+      user:
+        $ref: "#/definitions/UserRelated"
+      isDownloadable:
+        type: boolean
+      description:
+        type:
+          - string
+          - "null"
+      animationCount:
+        type: integer
+      name:
+        type: string
+      soundCount:
+        type: integer
+      isAgeRestricted:
+        type: boolean
+      uri:
+        type: string
+      faceCount:
+        type: integer
+      staffpickedAt:
+        type:
+          - string
+          - "null"
+        format: date
+      createdAt:
+        type: string
+        format: date
+      thumbnails:
+        $ref: "#/definitions/ThumbnailsRelated"
+      embedUrl:
+        type: string
+  ArchiveNested:
+    type: object
+    properties:
+      faceCount:
+        type: integer
+      textureCount:
+        type: integer
+      size:
+        type: integer
+        description: archive size (in bytes)
+      vertexCount:
+        type: integer
+      textureMaxResolution:
+        type: integer
+  ProcessingStatus:
+    enum:
+      - pending
+      - processing
+      - succeeded
+      - failed
+    type: string
+  CategoriesRelated:
+    type: object
+    properties:
+      uri:
+        type: string
+      uid:
+        type: string
+      name:
+        type: string
+      slug:
+        type: string
+  MatcapDetail:
+    type: object
+    properties:
+      uid:
+        type: string
+      name:
+        type: string
+      updatedAt:
+        type: string
+        format: date
+      images:
+        $ref: "#/definitions/ImagesList"
+      uri:
+        type:
+          - string
+          - "null"
+      createdAt:
+        type: string
+        format: date
+      isDefault:
+        type: boolean
+  ModelDetail:
+    type: object
+    properties:
+      uid:
+        type: string
+      publishedAt:
+        type: string
+        format: date
+      likeCount:
+        type: integer
+      commentCount:
+        type: integer
+      updatedAt:
+        type: string
+        format: date
+      isDownloadable:
+        type: boolean
+      isAgeRestricted:
+        type: boolean
+      pbrType:
+        type: string
+      materialCount:
+        type: integer
+      name:
+        type: string
+      source:
+        type: string
+      staffpickedAt:
+        type:
+          - string
+          - "null"
+        format: date
+      createdAt:
+        type: string
+        format: date
+      embedUrl:
+        type: string
+      status:
+        type: object
+      description:
+        type:
+          - string
+          - "null"
+      tags:
+        items:
+          $ref: "#/definitions/TagRelated"
+        type: array
+      viewerUrl:
+        type: string
+      isProtected:
+        type: boolean
+      price:
+        type: integer
+      textureCount:
+        type: integer
+      vertexCount:
+        type: integer
+      user:
+        $ref: "#/definitions/UserRelated"
+      categories:
+        items:
+          $ref: "#/definitions/CategoriesRelated"
+        type: array
+      animationCount:
+        type: integer
+      viewCount:
+        type: integer
+      thumbnails:
+        $ref: "#/definitions/ThumbnailsRelated"
+      license:
+        type: object
+      editorUrl:
+        type: string
+      soundCount:
+        type: integer
+      uri:
+        type: string
+      faceCount:
+        type: integer
+      hasCommentsDisabled:
+        type: boolean
+      downloadCount:
+        type: integer
+  CommentResponse:
+    type: object
+    properties:
+      body:
+        type: string
+      uid:
+        type: string
+      uri:
+        type: string
+      createdAt:
+        type: string
+        format: date
+      user:
+        $ref: "#/definitions/UserRelated"
+      updatedAt:
+        type: string
+        format: date
+      model:
+        $ref: "#/definitions/ModelRelated"
+      isDeleted:
+        type: boolean
+  GlobalSearchResponse:
+    type: object
+    properties:
+      results:
+        type: object
+        properties:
+          models:
+            items:
+              $ref: "#/definitions/ModelSearchList"
+            type: array
+          collections:
+            items:
+              $ref: "#/definitions/CollectionSearchList"
+            type: array
+          users:
+            items:
+              $ref: "#/definitions/UserSearchResponse"
+            type: array
+  MeAccount:
+    type: object
+    properties:
+      account:
+        type: string
+      uploadSizeLimit:
+        type: integer
+      viewOnlyLimit:
+        $ref: "#/definitions/MeViewOnlyLimit"
+      privateModelsLimit:
+        $ref: "#/definitions/MePrivateModelsLimit"
+      canProtectModels:
+        type: string
+      renewsAt:
+        type: string
+        format: date
+      joinedAt:
+        type: string
+        format: date
+      billingCycle:
+        type: string
+  CategoriesResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/CategoriesRelated"
+        type: array
+  CollectionSearchList:
+    type: object
+    properties:
+      description:
+        type:
+          - string
+          - "null"
+      collectionUrl:
+        type: string
+      modelCount:
+        type: integer
+      user:
+        $ref: "#/definitions/UserRelated"
+      updatedAt:
+        type: string
+        format: date
+      uid:
+        type: string
+      embedUrl:
+        type: string
+      slug:
+        type: string
+      createdAt:
+        type: string
+        format: date
+      name:
+        type: string
+  ModelSearchResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/ModelSearchList"
+        type: array
+  ArchiveExtra:
+    type: object
+    properties:
+      status:
+        type: string
+      size:
+        type: integer
+      uid:
+        type: string
+      name:
+        type: string
+      metadata:
+        type: object
+        properties:
+          count:
+            type: integer
+          image:
+            type: array
+          3d:
+            type: array
+          misc:
+            type: array
+          summary:
+            type: array
+  MeOrgs:
+    type: object
+    properties:
+      username:
+        type: string
+      membership:
+        items:
+          $ref: "#/definitions/MeOrgMembership"
+        type: array
+      orgUrl:
+        type: string
+      displayName:
+        type: string
+      uid:
+        type: string
+      publicProfileUrl:
+        type: string
+  OrgImagesList:
+    items:
+      $ref: "#/definitions/OrgImageDetail"
+    type: array
+  CollectionResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/CollectionList"
+        type: array
+  ModelRelated:
+    type: object
+    properties:
+      uid:
+        type: string
+  MeOrgMembership:
+    type: object
+    properties:
+      status:
+        type: string
+      role:
+        type: string
+      joinedAt:
+        type: string
+        format: date
+      uid:
+        type: string
+  SkillsResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/SkillDetail"
+        type: array
+  UserNested:
+    type: object
+    properties:
+      username:
+        type: string
+      account:
+        type: string
+      displayName:
+        type: string
+      uid:
+        type: string
+      avatar:
+        type: string
+  ProjectSearchList:
+    type: object
+    properties:
+      uid:
+        type: string
+      latestMembers:
+        type: object
+        properties:
+          status:
+            type: string
+          projectCount:
+            type: integer
+          uid:
+            type: string
+          modelCount:
+            type: integer
+          inviteEmail:
+            type: string
+          role:
+            type: string
+          user:
+            $ref: "#/definitions/UserRelated"
+          joinedAt:
+            type: string
+            format: date
+      memberCount:
+        type: integer
+      breadcrumbs:
+        type: object
+        properties:
+          url:
+            type: string
+          slug:
+            type: string
+          name:
+            type: string
+          uid:
+            type: string
+      depth:
+        type: integer
+      modelCount:
+        type: integer
+      name:
+        type: string
+      folderCount:
+        type: integer
+      updatedAt:
+        type: string
+        format: date
+      slug:
+        type: string
+      thumbnails:
+        $ref: "#/definitions/ThumbnailsRelated"
+  UserSearchList:
+    type: object
+    properties:
+      username:
+        type: string
+      city:
+        type:
+          - string
+          - "null"
+      followerCount:
+        type: integer
+      displayName:
+        type: string
+      uid:
+        type: string
+      skills:
+        items:
+          $ref: "#/definitions/SkillDetail"
+        type: array
+      country:
+        type:
+          - string
+          - "null"
+      account:
+        type: string
+      modelCount:
+        type: integer
+      profileUrl:
+        type: string
+      avatar:
+        $ref: "#/definitions/AvatarRelated"
+  MeModelResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/MeModelList"
+        type: array
+  OrgNested:
+    type: object
+    properties:
+      username:
+        type: string
+      project:
+        $ref: "#/definitions/OrgProjectNested"
+      displayName:
+        type: string
+      uid:
+        type: string
+      viewerUrl:
+        type: string
+      commentCount:
+        type: integer
+  ProjectSearchResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/ProjectSearchList"
+        type: array
+  ImagesList:
+    items:
+      $ref: "#/definitions/ImageDetail"
+    type: array
+  AvatarRelated:
+    type: object
+    properties:
+      images:
+        items:
+          type: object
+          properties:
+            url:
+              type: string
+            width:
+              type: integer
+            height:
+              type: integer
+            size:
+              type: integer
+        type: array
+      uid:
+        type: string
+      uri:
+        type: string
+  UserSearchResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/UserSearchList"
+        type: array
+  OrgModelList:
+    type: object
+    properties:
+      downloadType:
+        type: string
+      uid:
+        type: string
+      tags:
+        type: string
+      viewerUrl:
+        type: string
+      orgTags:
+        type: string
+      categories:
+        type: string
+      publishedAt:
+        type: string
+        format: date
+      likeCount:
+        type: integer
+      commentCount:
+        type: integer
+      visibility:
+        type: string
+      vertexCount:
+        type: integer
+      isArchivesReady:
+        type: boolean
+      org:
+        $ref: "#/definitions/OrgNested"
+      slug:
+        type: string
+      createdAt:
+        type: string
+        format: date
+      animationCount:
+        type: integer
+      viewCount:
+        type: integer
+      thumbnails:
+        type: string
+      license:
+        type: string
+      processingStatus:
+        type: string
+      soundCount:
+        type: integer
+      isAgeRestricted:
+        type: boolean
+      uri:
+        type: string
+      name:
+        type: string
+      faceCount:
+        type: integer
+      staffpickedAt:
+        type: string
+        format: date
+      archives:
+        type: object
+        properties:
+          source:
+            $ref: "#/definitions/ArchiveNested"
+          glb:
+            $ref: "#/definitions/ArchiveNested"
+          usdz:
+            $ref: "#/definitions/ArchiveNested"
+          gltf:
+            $ref: "#/definitions/ArchiveNested"
+      downloadCount:
+        type: integer
+      embedUrl:
+        type: string
+      user:
+        $ref: "#/definitions/UserNested"
+  ModelSearchList:
+    type: object
+    properties:
+      uid:
+        type: string
+      animationCount:
+        type: integer
+      viewerUrl:
+        type: string
+      publishedAt:
+        type: string
+        format: date
+      likeCount:
+        type: integer
+      commentCount:
+        type: integer
+      user:
+        $ref: "#/definitions/UserRelated"
+      isDownloadable:
+        type: boolean
+      name:
+        type: string
+      viewCount:
+        type: integer
+      thumbnails:
+        $ref: "#/definitions/ThumbnailsRelated"
+      license:
+        type: string
+      isPublished:
+        type: boolean
+      staffpickedAt:
+        type:
+          - string
+          - "null"
+        format: date
+      archives:
+        type: object
+        properties:
+          source:
+            $ref: "#/definitions/ArchiveNested"
+          glb:
+            $ref: "#/definitions/ArchiveNested"
+          usdz:
+            $ref: "#/definitions/ArchiveNested"
+          gltf:
+            $ref: "#/definitions/ArchiveNested"
+      embedUrl:
+        type: string
+  OrgDetailResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/OrgDetail"
+        type: array
+  MatcapsList:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/MatcapDetail"
+        type: array
+  BackgroundResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/BackgroundList"
+        type: array
+  LikeModelResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/LikeModelList"
+        type: array
+  OrgTextureList:
+    items:
+      $ref: "#/definitions/OrgTextureDetail"
+    type: array
+  OrgDetail:
+    type: object
+    properties:
+      username:
+        type: string
+      publicProfileUrl:
+        type: string
+      orgUrl:
+        type: string
+      displayName:
+        type: string
+      uid:
+        type: string
+  CollectionSearchResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/CollectionSearchList"
+        type: array
+  SkillDetail:
+    type: object
+    properties:
+      name:
+        type: string
+      uri:
+        type: string
+  UserList:
+    type: object
+    properties:
+      website:
+        type:
+          - string
+          - "null"
+      subscriptionCount:
+        type: integer
+      followerCount:
+        type: integer
+      uid:
+        type: string
+      modelsUrl:
+        type: string
+      portfolioUrl:
+        type: string
+      likeCount:
+        type: integer
+      facebookUsername:
+        type:
+          - string
+          - "null"
+      biography:
+        type:
+          - string
+          - "null"
+      dateJoined:
+        type: string
+        format: date
+      city:
+        type:
+          - string
+          - "null"
+      account:
+        type: string
+      displayName:
+        type: string
+      profileUrl:
+        type: string
+      followingsUrl:
+        type: string
+      skills:
+        items:
+          $ref: "#/definitions/SkillDetail"
+        type: array
+      tagline:
+        type:
+          - string
+          - "null"
+      uri:
+        type: string
+      modelCount:
+        type: integer
+      username:
+        type: string
+      linkedinUsername:
+        type:
+          - string
+          - "null"
+      likesUrl:
+        type: string
+      followersUrl:
+        type: string
+      collectionCount:
+        type: integer
+      country:
+        type:
+          - string
+          - "null"
+      followingCount:
+        type: integer
+      twitterUsername:
+        type:
+          - string
+          - "null"
+      collectionsUrl:
+        type: string
+      avatar:
+        $ref: "#/definitions/AvatarRelated"
+  OrgTagList:
+    type: object
+    properties:
+      slug:
+        type: string
+      name:
+        type: string
+  LicensesResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/Licenses"
+        type: array
+  ModelDownload:
+    type: object
+    properties:
+      gltf:
+        type: object
+        properties:
+          url:
+            type: string
+            description: temporary URL where the archive can be downloaded
+            example: <download_link>
+          expires:
+            type: integer
+            description: when the temporary URL will expire (in seconds)
+            example: 300
+  ImageDetail:
+    type: object
+    properties:
+      width:
+        type: string
+      updatedAt:
+        type: string
+        format: date
+      size:
+        type: string
+      uri:
+        type: string
+      createdAt:
+        type: string
+        format: date
+      height:
+        type: string
+  MeModelList:
+    type: object
+    properties:
+      uid:
+        type: string
+      tags:
+        items:
+          $ref: "#/definitions/TagRelated"
+        type: array
+      viewerUrl:
+        type: string
+      isProtected:
+        type: boolean
+      categories:
+        items:
+          $ref: "#/definitions/CategoriesRelated"
+        type: array
+      publishedAt:
+        type: string
+        format: date
+      likeCount:
+        type: integer
+      commentCount:
+        type: integer
+      viewCount:
+        type: integer
+      vertexCount:
+        type: integer
+      user:
+        $ref: "#/definitions/UserRelated"
+      isDownloadable:
+        type: boolean
+      description:
+        type:
+          - string
+          - "null"
+      animationCount:
+        type: integer
+      name:
+        type: string
+      soundCount:
+        type: integer
+      isAgeRestricted:
+        type: boolean
+      uri:
+        type: string
+      faceCount:
+        type: integer
+      staffpickedAt:
+        type:
+          - string
+          - "null"
+        format: date
+      createdAt:
+        type: string
+        format: date
+      thumbnails:
+        $ref: "#/definitions/ThumbnailsRelated"
+      embedUrl:
+        type: string
+      archives:
+        type: object
+        properties:
+          source:
+            $ref: "#/definitions/ArchiveNested"
+          glb:
+            $ref: "#/definitions/ArchiveNested"
+          usdz:
+            $ref: "#/definitions/ArchiveNested"
+          gltf:
+            $ref: "#/definitions/ArchiveNested"
+  OrgProjectListResponse:
+    type: object
+    properties:
+      uid:
+        type: string
+      updatedAt:
+        type: string
+      memberCount:
+        type: string
+      org:
+        $ref: "#/definitions/OrgDetail"
+      slug:
+        type: string
+      modelCount:
+        type: string
+      name:
+        type: string
+  OrgBackgroundDetail:
+    type: object
+    properties:
+      uid:
+        type: string
+      name:
+        type: string
+      updatedAt:
+        type: string
+        format: date
+      images:
+        $ref: "#/definitions/OrgImagesList"
+      uri:
+        type: string
+      createdAt:
+        type: string
+        format: date
+      isDefault:
+        type: boolean
+  CreateResponse:
+    type: object
+    properties:
+      uid:
+        type: string
+      uri:
+        type: string
+  OrgModelDetail:
+    type: object
+    properties:
+      uid:
+        type: string
+      publishedAt:
+        type: string
+        format: date
+      likeCount:
+        type: integer
+      commentCount:
+        type: integer
+      isArchivesReady:
+        type: boolean
+      isDownloadable:
+        type: boolean
+      processingStatus:
+        type: string
+      isAgeRestricted:
+        type: boolean
+      pbrType:
+        type: string
+      materialCount:
+        type: integer
+      name:
+        type: string
+      staffpickedAt:
+        type: string
+        format: date
+      createdAt:
+        type: string
+        format: date
+      embedUrl:
+        type: string
+      downloadType:
+        type: string
+      description:
+        type: string
+      tags:
+        type: string
+      viewerUrl:
+        type: string
+      isProtected:
+        type: boolean
+      orgTags:
+        type: string
+      visibility:
+        type: string
+      textureCount:
+        type: integer
+      vertexCount:
+        type: integer
+      user:
+        $ref: "#/definitions/UserNested"
+      org:
+        $ref: "#/definitions/OrgNested"
+      categories:
+        type: string
+      animationCount:
+        type: integer
+      viewCount:
+        type: integer
+      thumbnails:
+        type: string
+      license:
+        type: string
+      soundCount:
+        type: integer
+      uri:
+        type: string
+      faceCount:
+        type: integer
+      hasCommentsDisabled:
+        type: boolean
+      downloadCount:
+        type: string
+  OrgLightList:
+    items:
+      $ref: "#/definitions/OrgLightDetail"
+    type: array
+  OrgImageDetail:
+    type: object
+    properties:
+      width:
+        type: string
+      updatedAt:
+        type: string
+        format: date
+      size:
+        type: string
+      uri:
+        type: string
+      createdAt:
+        type: string
+        format: date
+      height:
+        type: string
+  ThumbnailsRelated:
+    type: object
+    properties:
+      images:
+        items:
+          type: object
+          properties:
+            url:
+              type: string
+            width:
+              type: integer
+            size:
+              type:
+                - integer
+                - "null"
+            uid:
+              type: string
+            height:
+              type: integer
+        type: array
+  OrgModelListResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/OrgModelList"
+        type: array
+  OrgMatcapDetail:
+    type: object
+    properties:
+      uid:
+        type: string
+      name:
+        type: string
+      updatedAt:
+        type: string
+        format: date
+      images:
+        $ref: "#/definitions/OrgImagesList"
+      uri:
+        type:
+          - string
+          - "null"
+      createdAt:
+        type: string
+        format: date
+      isDefault:
+        type: boolean
+  BackgroundList:
+    type: object
+    properties:
+      name:
+        type: string
+      updatedAt:
+        type: string
+        format: date
+      images:
+        type: string
+      uri:
+        type: string
+      createdAt:
+        type: string
+        format: date
+      isDefault:
+        type: boolean
+  MeViewOnlyLimit:
+    type: object
+    properties:
+      type:
+        type: string
+      remaining:
+        type: integer
+      renews_at:
+        type: string
+        format: date
+  UserResponse:
+    type: object
+    properties:
+      results:
+        items:
+          $ref: "#/definitions/UserList"
+        type: array
+  CollectionDetail:
+    type: object
+    properties:
+      createdAt:
+        type: string
+        format: date
+      description:
+        type:
+          - string
+          - "null"
+      hasRestrictedContent:
+        type: boolean
+      models:
+        type: string
+      isAgeRestricted:
+        type: boolean
+      uri:
+        type: string
+      modelCount:
+        type: integer
+      user:
+        type: string
+      updatedAt:
+        type: string
+        format: date
+      owner:
+        $ref: "#/definitions/UserDetail"
+      embedUrl:
+        type: string
+      uid:
+        type: string
+      slug:
+        type: string
+      thumbnails:
+        items:
+          $ref: "#/definitions/ThumbnailsRelated"
+        type: object
+      name:
+        type: string
+  OrgTextureDetail:
+    type: object
+    properties:
+      images:
+        items:
+          $ref: "#/definitions/OrgTextureImageDetail"
+        type: array
+      format:
+        type: string
+      type:
+        type: string
+      encoding:
+        type: string
+  TagRelated:
+    type: object
+    properties:
+      slug:
+        type: string
+      uri:
+        type: string
+  OrgProjectNested:
+    type: object
+    properties:
+      uid:
+        type: string
+      name:
+        type: string
+  Licenses:
+    type: object
+    properties:
+      slug:
+        type: string
+      requirements:
+        type: string
+      url:
+        type: string
+      fullName:
+        type: string
+      uri:
+        type: string
+      label:
+        type: string
+swagger: "2.0"
