@@ -207,6 +207,9 @@ pub struct FabSearchWindow {
     download_state: HashMap<String, DownloadState>,
     show_download_manager: bool,
 
+    // ── Gallery selection ────────────────────────────────────────────────
+    selected_gallery_idx: usize,
+
     // ── Likes ────────────────────────────────────────────────────────────
     liked_uids: HashSet<String>,
     like_inflight: HashSet<String>,
@@ -273,6 +276,7 @@ impl FabSearchWindow {
 
             download_state: HashMap::new(),
             show_download_manager: false,
+            selected_gallery_idx: 0,
             liked_uids: HashSet::new(),
             like_inflight: HashSet::new(),
 
@@ -654,6 +658,7 @@ impl FabSearchWindow {
         self.item_detail = None;
         self.detail_loading = true;
         self.detail_error = None;
+        self.selected_gallery_idx = 0;
         cx.notify();
 
         let (tx, rx) = smol::channel::bounded::<(Vec<String>, Result<Box<SketchfabModelDetail>, String>)>(1);
@@ -670,7 +675,7 @@ impl FabSearchWindow {
                             Ok(detail) => {
                                 // preload all thumbnail sizes as gallery images
                                 let urls: Vec<String> = detail.all_thumbnail_urls()
-                                    .into_iter().take(8).map(|s| s.to_string()).collect();
+                                    .into_iter().take(12).map(|s| s.to_string()).collect();
                                 for url in urls {
                                     view.ensure_image_loaded(url, cx);
                                 }
@@ -1102,6 +1107,17 @@ impl Render for FabSearchWindow {
                     } else {
                         view
                     }
+                })
+                .map(|view| {
+                    // Attach gallery image selection
+                    let idx = self.selected_gallery_idx;
+                    let entity3 = cx.entity().clone();
+                    view.with_selected_image(idx, move |new_idx, _, cx| {
+                        entity3.update(cx, |this, cx| {
+                            this.selected_gallery_idx = new_idx;
+                            cx.notify();
+                        });
+                    })
                 })
                 .into_any_element()
 
