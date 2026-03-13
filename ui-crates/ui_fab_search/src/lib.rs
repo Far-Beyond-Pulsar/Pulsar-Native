@@ -10,13 +10,13 @@ use gpui::{prelude::*, *};
 use ui::{
     ActiveTheme,
     Root,
-    Sizable,
     TitleBar,
     v_flex,
     h_flex,
     button::{Button, ButtonVariants as _},
     input::{InputState, TextInput},
     scroll::{Scrollbar, ScrollbarState},
+    skeleton::Skeleton,
     IconName,
     StyledExt,
 };
@@ -161,7 +161,7 @@ impl FabSearchWindow {
 
         cx.subscribe(&search_input, |this, _input, event: &ui::input::InputEvent, cx| {
             if let ui::input::InputEvent::PressEnter { .. } = event {
-                this.begin_search(None, cx);
+                this.begin_search(cx);
             }
         }).detach();
 
@@ -742,7 +742,7 @@ impl Render for FabSearchWindow {
                             if this.is_loading || this.is_loading_more || this.next_url.is_none() {
                                 return;
                             }
-                            let max_off = this.results_scroll_handle.max_offset().y;
+                            let max_off = this.results_scroll_handle.max_offset().height;
                             let cur_off = this.results_scroll_handle.offset().y;
                             if max_off - cur_off < px(600.0) {
                                 this.load_more(cx);
@@ -751,8 +751,23 @@ impl Render for FabSearchWindow {
                         .p_4()
                         .child(div().flex().flex_wrap().gap_4().children(cards))
                         .when(is_loading_more, |el| el.child(
-                            h_flex().w_full().justify_center().py_4()
-                                .child(div().text_xs().text_color(muted_fg).child("Loading more…"))
+                            div().flex().flex_wrap().gap_4().pt_4()
+                                .children((0..6).map(|i| {
+                                    div()
+                                        .id(SharedString::from(format!("skel-{}", i)))
+                                        .w(px(260.0)).rounded_lg()
+                                        .border_1().border_color(border_col)
+                                        .overflow_hidden().flex().flex_col()
+                                        .child(Skeleton::new().w_full().h(px(146.0)))
+                                        .child(
+                                            div().p_3().child(
+                                                v_flex().gap_2()
+                                                    .child(Skeleton::new().w(px(160.0)).h_4())
+                                                    .child(Skeleton::new().secondary(true).w(px(100.0)).h_3())
+                                                    .child(Skeleton::new().secondary(true).w(px(120.0)).h_3())
+                                            )
+                                        )
+                                }))
                         ))
                         .when(!is_loading_more && !has_next && !self.results.is_empty(), |el| el.child(
                             h_flex().w_full().justify_center().py_3()
@@ -789,7 +804,7 @@ impl Render for FabSearchWindow {
                     .child(lbl)
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.sort_by = s;
-                        if !this.search_query.is_empty() { this.begin_search(None, cx); }
+                        if !this.search_query.is_empty() { this.begin_search(cx); }
                         else { cx.notify(); }
                     }))
             }))
@@ -801,7 +816,7 @@ impl Render for FabSearchWindow {
                 .child("↓ Download")
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.filter_downloadable = !this.filter_downloadable;
-                    if !this.search_query.is_empty() { this.begin_search(None, cx); }
+                    if !this.search_query.is_empty() { this.begin_search(cx); }
                     else { cx.notify(); }
                 }))
             )
@@ -812,7 +827,7 @@ impl Render for FabSearchWindow {
                 .child("▶ Animated")
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.filter_animated = !this.filter_animated;
-                    if !this.search_query.is_empty() { this.begin_search(None, cx); }
+                    if !this.search_query.is_empty() { this.begin_search(cx); }
                     else { cx.notify(); }
                 }))
             )
@@ -823,7 +838,7 @@ impl Render for FabSearchWindow {
                 .child("★ Staff Pick")
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.filter_staffpicked = !this.filter_staffpicked;
-                    if !this.search_query.is_empty() { this.begin_search(None, cx); }
+                    if !this.search_query.is_empty() { this.begin_search(cx); }
                     else { cx.notify(); }
                 }))
             )
@@ -851,7 +866,7 @@ impl Render for FabSearchWindow {
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.filter_license = lic;
                         this.show_license_menu = false;
-                        if !this.search_query.is_empty() { this.begin_search(None, cx); }
+                        if !this.search_query.is_empty() { this.begin_search(cx); }
                         else { cx.notify(); }
                     }))
             })));
@@ -870,7 +885,7 @@ impl Render for FabSearchWindow {
                                     .size_4().text_color(muted_fg))))
                         .child(Button::new("search-btn")
                             .label("Search")
-                            .on_click(cx.listener(|this, _, _, cx| this.begin_search(None, cx))))
+                            .on_click(cx.listener(|this, _, _, cx| this.begin_search(cx))))
                     )
             )
             .child(filter_bar)
