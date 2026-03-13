@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use ui::{v_flex, ActiveTheme};
+use ui::{v_flex, ActiveTheme, StyledExt};
 
 /// A single gallery image entry.
 pub struct GalleryImage {
@@ -41,8 +41,6 @@ impl RenderOnce for GalleryStrip {
                     .text_xs()
                     .font_bold()
                     .text_color(muted)
-                    .uppercase()
-                    .tracking_wide()
                     .child(format!("Gallery ({} images)", self.images.len())),
             )
             // ── image grid ───────────────────────────────────────────────
@@ -53,6 +51,8 @@ impl RenderOnce for GalleryStrip {
                     .flex_wrap()
                     .gap_2()
                     .children(self.images.into_iter().enumerate().map(|(i, img_data)| {
+                        let url = img_data.url.clone();
+                        let has_url = !url.is_empty();
                         div()
                             .id(SharedString::from(format!("gallery-img-{}", i)))
                             .w(px(180.0))
@@ -65,15 +65,15 @@ impl RenderOnce for GalleryStrip {
                             .border_color(border)
                             .cursor_pointer()
                             // Use a real img element when a URL is present
-                            .when(!img_data.url.is_empty(), |el| {
+                            .when(has_url, |el| {
                                 el.child(
-                                    img(img_data.url)
+                                    img(url)
                                         .w_full()
                                         .h_full()
                                         .object_fit(gpui::ObjectFit::Cover),
                                 )
                             })
-                            .when(img_data.url.is_empty(), |el| {
+                            .when(!has_url, |el| {
                                 el.flex()
                                     .items_center()
                                     .justify_center()

@@ -1,7 +1,7 @@
 use gpui::{prelude::*, *};
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, ActiveTheme, Icon, IconName, Sizable as _,
+    h_flex, ActiveTheme, Icon, IconName, Sizable as _, StyledExt,
 };
 
 /// The sticky top-bar of the item detail page.
@@ -58,7 +58,7 @@ impl RenderOnce for DetailHeader {
                     .text_base()
                     .font_bold()
                     .text_color(fg)
-                    .line_clamp(1)
+                    .truncate()
                     .child(self.title),
             )
             // ── open on fab ──────────────────────────────────────────────

@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use ui::{tag::Tag, v_flex, ActiveTheme};
+use ui::{tag::Tag, v_flex, ActiveTheme, Sizable as _, StyledExt};
 
 /// Engine/file format codes mapped to a friendly display name.
 const FORMAT_DISPLAY: &[(&str, &str)] = &[
@@ -14,7 +14,7 @@ const FORMAT_DISPLAY: &[(&str, &str)] = &[
     ("3ds-max", "3ds Max"),
 ];
 
-fn display_name(code: &str, raw_name: &str) -> &'static str {
+fn display_name(code: &str, _raw_name: &str) -> &'static str {
     FORMAT_DISPLAY
         .iter()
         .find(|(k, _)| *k == code)
@@ -61,8 +61,6 @@ impl RenderOnce for FormatTagsSection {
                                 .text_xs()
                                 .font_bold()
                                 .text_color(muted)
-                                .uppercase()
-                                .tracking_wide()
                                 .child("Compatible Formats"),
                         )
                         .child(
@@ -94,8 +92,6 @@ impl RenderOnce for FormatTagsSection {
                                 .text_xs()
                                 .font_bold()
                                 .text_color(muted)
-                                .uppercase()
-                                .tracking_wide()
                                 .child("Tags"),
                         )
                         .child(

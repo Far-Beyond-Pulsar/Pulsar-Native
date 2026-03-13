@@ -3,7 +3,7 @@ use ui::{
     avatar::Avatar,
     divider::Divider,
     h_flex, v_flex,
-    ActiveTheme, Icon, IconName, Sizable as _, Size,
+    ActiveTheme, Icon, IconName, Sizable as _, Size, StyledExt,
 };
 
 /// Rating data shown in the meta bar.

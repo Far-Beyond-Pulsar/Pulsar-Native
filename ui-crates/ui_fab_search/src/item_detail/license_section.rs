@@ -3,7 +3,7 @@ use ui::{
     button::{Button, ButtonVariants as _},
     divider::Divider,
     h_flex, v_flex,
-    ActiveTheme, Sizable as _,
+    ActiveTheme, Sizable as _, StyledExt,
 };
 
 /// One purchasable license tier.
@@ -48,8 +48,7 @@ impl RenderOnce for LicenseSection {
                     .text_xs()
                     .font_bold()
                     .text_color(muted)
-                    .uppercase()
-                    .tracking_wide()
+
                     .child("Licensing"),
             )
             // ── license rows ─────────────────────────────────────────────
