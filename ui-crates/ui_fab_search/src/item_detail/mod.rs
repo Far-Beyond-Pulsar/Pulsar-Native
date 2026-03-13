@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use gpui::{prelude::*, *};
-use ui::{v_flex, ActiveTheme};
+use ui::{v_flex, ActiveTheme, scroll::{Scrollbar, ScrollbarState}};
 
 use crate::parser::{strip_html, FabItemDetail};
 
@@ -31,6 +31,8 @@ pub struct ItemDetailView {
     detail: Box<FabItemDetail>,
     /// Pre-decoded images ready for synchronous rendering, keyed by their original download URL.
     images: HashMap<String, Arc<gpui::RenderImage>>,
+    scroll_handle: ScrollHandle,
+    scroll_state: ScrollbarState,
     on_back: Box<dyn Fn(&mut Window, &mut App) + 'static>,
 }
 
@@ -38,11 +40,15 @@ impl ItemDetailView {
     pub fn new(
         detail: Box<FabItemDetail>,
         images: HashMap<String, Arc<gpui::RenderImage>>,
+        scroll_handle: ScrollHandle,
+        scroll_state: ScrollbarState,
         on_back: impl Fn(&mut Window, &mut App) + 'static,
     ) -> Self {
         Self {
             detail,
             images,
+            scroll_handle,
+            scroll_state,
             on_back: Box::new(on_back),
         }
     }
@@ -197,6 +203,7 @@ impl RenderOnce for ItemDetailView {
         div()
             .id("item-detail-root")
             .flex_1()
+            .min_h_0()
             .flex()
             .flex_col()
             .overflow_hidden()
@@ -207,8 +214,11 @@ impl RenderOnce for ItemDetailView {
             .child(
                 div()
                     .id("item-detail-scroll")
+                    .relative()
                     .flex_1()
+                    .min_h_0()
                     .overflow_y_scroll()
+                    .track_scroll(&self.scroll_handle)
                     .child(
                         v_flex()
                             .w_full()
@@ -218,6 +228,12 @@ impl RenderOnce for ItemDetailView {
                             .when(show_format_tags, |el| el.child(format_tags))
                             .when(show_desc, |el| el.child(description))
                             .when(show_changelog, |el| el.child(changelog)),
+                    )
+                    .child(
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .child(Scrollbar::vertical(&self.scroll_state, &self.scroll_handle)),
                     ),
             )
     }

@@ -15,6 +15,7 @@ use ui::{
     h_flex,
     button::Button,
     input::{ InputState, TextInput },
+    scroll::{Scrollbar, ScrollbarState},
     IconName,
     StyledExt,
 };
@@ -32,6 +33,7 @@ pub struct FabSearchWindow {
     error: Option<String>,
     /// Last URL fetched — used for the "Open in Browser" fallback button.
     last_url: Option<String>,
+
     // ── item detail state ──────────────────────────────────────────────────
     selected_item_uid: Option<String>,
     item_detail: Option<Box<FabItemDetail>>,
@@ -40,6 +42,13 @@ pub struct FabSearchWindow {
     // ── image cache ────────────────────────────────────────────────────────
     /// None = download in progress; Some(path) = file sitting in disk cache.
     image_cache: HashMap<String, Option<std::sync::Arc<gpui::RenderImage>>>,
+    // ── scrollbars ─────────────────────────────────────────────────────────
+    log_scroll_handle: ScrollHandle,
+    log_scroll_state: ScrollbarState,
+    results_scroll_handle: ScrollHandle,
+    results_scroll_state: ScrollbarState,
+    detail_scroll_handle: ScrollHandle,
+    detail_scroll_state: ScrollbarState,
 }
 
 impl FabSearchWindow {
@@ -70,6 +79,12 @@ impl FabSearchWindow {
             detail_loading: false,
             detail_error: None,
             image_cache: HashMap::new(),
+            log_scroll_handle: ScrollHandle::new(),
+            log_scroll_state: ScrollbarState::default(),
+            results_scroll_handle: ScrollHandle::new(),
+            results_scroll_state: ScrollbarState::default(),
+            detail_scroll_handle: ScrollHandle::new(),
+            detail_scroll_state: ScrollbarState::default(),
         }
     }
 
@@ -473,7 +488,7 @@ impl Render for FabSearchWindow {
         let log_panel = div()
             .w(px(260.0))
             .flex_shrink_0()
-            .h_full()
+            .min_h_0()
             .border_r_1()
             .border_color(border_col)
             .flex()
@@ -492,8 +507,11 @@ impl Render for FabSearchWindow {
             .child(
                 div()
                     .id("log-scroll")
+                    .relative()
                     .flex_1()
+                    .min_h_0()
                     .overflow_y_scroll()
+                    .track_scroll(&self.log_scroll_handle)
                     .p_2()
                     .child(
                         v_flex()
@@ -505,6 +523,12 @@ impl Render for FabSearchWindow {
                                     .font_family("monospace")
                                     .child(entry.clone())
                             }))
+                    )
+                    .child(
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .child(Scrollbar::vertical(&self.log_scroll_state, &self.log_scroll_handle))
                     )
             );
 
@@ -523,6 +547,7 @@ impl Render for FabSearchWindow {
 
             div()
                 .flex_1()
+                .min_h_0()
                 .flex()
                 .flex_col()
                 .items_center()
@@ -545,7 +570,7 @@ impl Render for FabSearchWindow {
             // ── item detail view ──────────────────────────────────────────────
             if self.detail_loading {
                 div()
-                    .flex_1()
+                    .flex_1()                    .min_h_0()                    .min_h_0()
                     .flex()
                     .items_center()
                     .justify_center()
@@ -555,6 +580,7 @@ impl Render for FabSearchWindow {
                 let err_text = err.clone();
                 div()
                     .flex_1()
+                    .min_h_0()
                     .flex()
                     .flex_col()
                     .items_center()
@@ -599,6 +625,8 @@ impl Render for FabSearchWindow {
                 item_detail::ItemDetailView::new(
                     detail.clone(),
                     loaded_images,
+                    self.detail_scroll_handle.clone(),
+                    self.detail_scroll_state.clone(),
                     move |_window, cx| {
                         entity.update(cx, |this, cx| this.go_back(cx));
                     },
@@ -608,6 +636,7 @@ impl Render for FabSearchWindow {
                 // selected but no detail yet (shouldn't happen, but guard)
                 div()
                     .flex_1()
+                    .min_h_0()
                     .flex()
                     .items_center()
                     .justify_center()
@@ -617,6 +646,7 @@ impl Render for FabSearchWindow {
         } else if self.results.is_empty() {
             div()
                 .flex_1()
+                .min_h_0()
                 .flex()
                 .items_center()
                 .justify_center()
@@ -771,8 +801,11 @@ impl Render for FabSearchWindow {
 
             div()
                 .id("results-scroll")
+                .relative()
                 .flex_1()
+                .min_h_0()
                 .overflow_y_scroll()
+                .track_scroll(&self.results_scroll_handle)
                 .p_4()
                 .child(
                     div()
@@ -780,6 +813,12 @@ impl Render for FabSearchWindow {
                         .flex_wrap()
                         .gap_4()
                         .children(cards)
+                )
+                .child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .child(Scrollbar::vertical(&self.results_scroll_state, &self.results_scroll_handle))
                 )
                 .into_any_element()
         };
@@ -828,6 +867,7 @@ impl Render for FabSearchWindow {
             .child(
                 div()
                     .flex_1()
+                    .min_h_0()
                     .flex()
                     .flex_row()
                     .child(log_panel)
