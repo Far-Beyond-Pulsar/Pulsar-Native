@@ -547,6 +547,12 @@ impl Render for FabSearchWindow {
                     .collect();
 
                 let card_uid = listing.uid.clone();
+                let listing_type = listing.listing_type.clone().unwrap_or_default();
+                let thumb_url: Option<SharedString> = listing
+                    .thumbnails
+                    .first()
+                    .and_then(|t| t.best_image_url(260))
+                    .map(|u| SharedString::from(u.to_string()));
 
                 div()
                     .id(SharedString::from(format!("fab-card-{}", idx)))
@@ -562,21 +568,34 @@ impl Render for FabSearchWindow {
                     .on_click(cx.listener(move |this, _ev, _win, cx| {
                         this.open_item_detail(card_uid.clone(), cx);
                     }))
-                    // thumbnail placeholder
+                    // thumbnail — real image when available, muted placeholder otherwise
                     .child(
                         div()
                             .w_full()
                             .h(px(140.0))
-                            .bg(border_col)
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(muted_fg)
-                                    .child(listing.listing_type.clone().unwrap_or_default())
-                            )
+                            .bg(card_bg)
+                            .overflow_hidden()
+                            .map(|el| {
+                                if let Some(url) = thumb_url {
+                                    el.child(
+                                        img(url)
+                                            .w_full()
+                                            .h_full()
+                                            .object_fit(gpui::ObjectFit::Cover),
+                                    )
+                                } else {
+                                    el.bg(border_col)
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(muted_fg)
+                                                .child(listing_type),
+                                        )
+                                }
+                            }),
                     )
                     // card body
                     .child(
