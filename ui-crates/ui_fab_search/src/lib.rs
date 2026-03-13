@@ -1127,11 +1127,13 @@ impl Render for FabSearchWindow {
             const ROW_H:  f32 = CARD_H + GAP;
 
             // Derive column count from available viewport width.
-            // Formula: cols = floor((avail_w - PAD + GAP) / (CARD_W + GAP))
-            // where avail_w = total_w - 2*PAD (removes left+right padding).
+            // Formula: cols = floor((avail_w + GAP) / (CARD_W + GAP))
+            // where avail_w = viewport_w - 2*PAD (removes left+right padding).
             let avail_w: f32 = window.viewport_size().width.into();
             let avail_w = avail_w - 2.0 * PAD;
             let cols: usize = (((avail_w + GAP) / (CARD_W + GAP)).floor() as usize).max(1);
+            // Scale cards uniformly to fill the row (no empty trailing space).
+            let actual_card_w: f32 = (avail_w - (cols - 1) as f32 * GAP) / cols as f32;
 
             let entity = self.entity.clone().unwrap();
             let total_results = self.results.len();
@@ -1202,7 +1204,7 @@ impl Render for FabSearchWindow {
                                         div()
                                             .id(SharedString::from(format!("skfb-card-{}", idx)))
                                             .cursor_pointer()
-                                            .w(px(260.0)).rounded_lg().bg(card_bg)
+                                            .w(px(actual_card_w)).rounded_lg().bg(card_bg)
                                             .border_1().border_color(border_col)
                                             .overflow_hidden().flex().flex_col()
                                             .on_click(cx.listener(move |this, _, _, cx| {
@@ -1279,7 +1281,7 @@ impl Render for FabSearchWindow {
                                         .children((0..cols).map(|i| {
                                             div()
                                                 .id(SharedString::from(format!("skel-{}-{}", row_idx, i)))
-                                                .w(px(260.0)).rounded_lg()
+                                                .w(px(actual_card_w)).rounded_lg()
                                                 .border_1().border_color(border_col)
                                                 .overflow_hidden().flex().flex_col()
                                                 .child(Skeleton::new().w_full().h(px(146.0)))
