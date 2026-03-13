@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use gpui::{ prelude::*, * };
 use ui::{
     ActiveTheme,
+    Root,
     Sizable,
     TitleBar,
     v_flex,
@@ -49,6 +50,8 @@ pub struct FabSearchWindow {
     results_scroll_state: ScrollbarState,
     detail_scroll_handle: ScrollHandle,
     detail_scroll_state: ScrollbarState,
+    gallery_scroll_handle: ScrollHandle,
+    gallery_scroll_state: ScrollbarState,
 }
 
 impl FabSearchWindow {
@@ -85,6 +88,8 @@ impl FabSearchWindow {
             results_scroll_state: ScrollbarState::default(),
             detail_scroll_handle: ScrollHandle::new(),
             detail_scroll_state: ScrollbarState::default(),
+            gallery_scroll_handle: ScrollHandle::new(),
+            gallery_scroll_state: ScrollbarState::default(),
         }
     }
 
@@ -470,7 +475,7 @@ impl Focusable for FabSearchWindow {
 }
 
 impl Render for FabSearchWindow {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let current_input = self.search_input.read(cx).value().to_string();
         if current_input != self.search_query {
             self.search_query = current_input;
@@ -506,23 +511,28 @@ impl Render for FabSearchWindow {
             )
             .child(
                 div()
-                    .id("log-scroll")
                     .relative()
                     .flex_1()
                     .min_h_0()
-                    .overflow_y_scroll()
-                    .track_scroll(&self.log_scroll_handle)
-                    .p_2()
+                    .overflow_hidden()
                     .child(
-                        v_flex()
-                            .gap_1()
-                            .children(self.request_log.iter().rev().map(|entry| {
-                                div()
-                                    .text_xs()
-                                    .text_color(muted_fg)
-                                    .font_family("monospace")
-                                    .child(entry.clone())
-                            }))
+                        div()
+                            .id("log-scroll")
+                            .size_full()
+                            .overflow_y_scroll()
+                            .track_scroll(&self.log_scroll_handle)
+                            .p_2()
+                            .child(
+                                v_flex()
+                                    .gap_1()
+                                    .children(self.request_log.iter().rev().map(|entry| {
+                                        div()
+                                            .text_xs()
+                                            .text_color(muted_fg)
+                                            .font_family("monospace")
+                                            .child(entry.clone())
+                                    }))
+                            )
                     )
                     .child(
                         div()
@@ -627,6 +637,8 @@ impl Render for FabSearchWindow {
                     loaded_images,
                     self.detail_scroll_handle.clone(),
                     self.detail_scroll_state.clone(),
+                    self.gallery_scroll_handle.clone(),
+                    self.gallery_scroll_state.clone(),
                     move |_window, cx| {
                         entity.update(cx, |this, cx| this.go_back(cx));
                     },
@@ -800,19 +812,24 @@ impl Render for FabSearchWindow {
             }).collect();
 
             div()
-                .id("results-scroll")
                 .relative()
                 .flex_1()
                 .min_h_0()
-                .overflow_y_scroll()
-                .track_scroll(&self.results_scroll_handle)
-                .p_4()
+                .overflow_hidden()
                 .child(
                     div()
-                        .flex()
-                        .flex_wrap()
-                        .gap_4()
-                        .children(cards)
+                        .id("results-scroll")
+                        .size_full()
+                        .overflow_y_scroll()
+                        .track_scroll(&self.results_scroll_handle)
+                        .p_4()
+                        .child(
+                            div()
+                                .flex()
+                                .flex_wrap()
+                                .gap_4()
+                                .children(cards)
+                        )
                 )
                 .child(
                     div()
@@ -824,7 +841,7 @@ impl Render for FabSearchWindow {
         };
 
         // ── root layout ────────────────────────────────────────────────────
-        v_flex()
+        let layout = v_flex()
             .size_full()
             .bg(bg)
             .child(TitleBar::new().child("Fab Search"))
@@ -872,6 +889,13 @@ impl Render for FabSearchWindow {
                     .flex_row()
                     .child(log_panel)
                     .child(body)
-            )
+            );
+
+        let modal_layer = Root::render_modal_layer(window, cx);
+
+        div()
+            .size_full()
+            .child(layout)
+            .children(modal_layer)
     }
 }

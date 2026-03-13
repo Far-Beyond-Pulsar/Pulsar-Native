@@ -33,6 +33,8 @@ pub struct ItemDetailView {
     images: HashMap<String, Arc<gpui::RenderImage>>,
     scroll_handle: ScrollHandle,
     scroll_state: ScrollbarState,
+    gallery_scroll_handle: ScrollHandle,
+    gallery_scroll_state: ScrollbarState,
     on_back: Box<dyn Fn(&mut Window, &mut App) + 'static>,
 }
 
@@ -42,6 +44,8 @@ impl ItemDetailView {
         images: HashMap<String, Arc<gpui::RenderImage>>,
         scroll_handle: ScrollHandle,
         scroll_state: ScrollbarState,
+        gallery_scroll_handle: ScrollHandle,
+        gallery_scroll_state: ScrollbarState,
         on_back: impl Fn(&mut Window, &mut App) + 'static,
     ) -> Self {
         Self {
@@ -49,6 +53,8 @@ impl ItemDetailView {
             images,
             scroll_handle,
             scroll_state,
+            gallery_scroll_handle,
+            gallery_scroll_state,
             on_back: Box::new(on_back),
         }
     }
@@ -122,7 +128,7 @@ impl RenderOnce for ItemDetailView {
             .collect();
 
         let show_gallery = !gallery_images.is_empty();
-        let gallery = GalleryStrip::new(gallery_images);
+        let gallery = GalleryStrip::new(gallery_images, self.gallery_scroll_handle.clone(), self.gallery_scroll_state.clone());
 
         // ── licenses ────────────────────────────────────────────────────────
         let is_free = d.is_free;
@@ -213,21 +219,26 @@ impl RenderOnce for ItemDetailView {
             // scrollable body
             .child(
                 div()
-                    .id("item-detail-scroll")
                     .relative()
                     .flex_1()
                     .min_h_0()
-                    .overflow_y_scroll()
-                    .track_scroll(&self.scroll_handle)
+                    .overflow_hidden()
                     .child(
-                        v_flex()
-                            .w_full()
-                            .child(meta)
-                            .when(show_gallery, |el| el.child(gallery))
-                            .when(show_licenses, |el| el.child(license_sec))
-                            .when(show_format_tags, |el| el.child(format_tags))
-                            .when(show_desc, |el| el.child(description))
-                            .when(show_changelog, |el| el.child(changelog)),
+                        div()
+                            .id("item-detail-scroll")
+                            .size_full()
+                            .overflow_y_scroll()
+                            .track_scroll(&self.scroll_handle)
+                            .child(
+                                v_flex()
+                                    .w_full()
+                                    .child(meta)
+                                    .when(show_gallery, |el| el.child(gallery))
+                                    .when(show_licenses, |el| el.child(license_sec))
+                                    .when(show_format_tags, |el| el.child(format_tags))
+                                    .when(show_desc, |el| el.child(description))
+                                    .when(show_changelog, |el| el.child(changelog)),
+                            )
                     )
                     .child(
                         div()
