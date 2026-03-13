@@ -12266,9 +12266,11 @@ name = "ui_fab_search"
 version = "0.1.0"
 dependencies = [
  "gpui-ce",
+ "image",
  "rquest",
  "serde",
  "serde_json",
+ "smallvec",
  "smol 2.0.2",
  "tokio",
  "ui",

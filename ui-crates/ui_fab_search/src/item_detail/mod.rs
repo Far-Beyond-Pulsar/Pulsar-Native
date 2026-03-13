@@ -7,7 +7,7 @@ pub mod license_section;
 pub mod meta_bar;
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::sync::Arc;
 
 use gpui::{prelude::*, *};
 use ui::{v_flex, ActiveTheme};
@@ -29,15 +29,15 @@ use meta_bar::{MetaBar, RatingInfo};
 #[derive(IntoElement)]
 pub struct ItemDetailView {
     detail: Box<FabItemDetail>,
-    /// Paths to locally-cached image files, keyed by their original download URL.
-    images: HashMap<String, PathBuf>,
+    /// Pre-decoded images ready for synchronous rendering, keyed by their original download URL.
+    images: HashMap<String, Arc<gpui::RenderImage>>,
     on_back: Box<dyn Fn(&mut Window, &mut App) + 'static>,
 }
 
 impl ItemDetailView {
     pub fn new(
         detail: Box<FabItemDetail>,
-        images: HashMap<String, PathBuf>,
+        images: HashMap<String, Arc<gpui::RenderImage>>,
         on_back: impl Fn(&mut Window, &mut App) + 'static,
     ) -> Self {
         Self {

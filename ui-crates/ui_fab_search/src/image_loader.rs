@@ -1,46 +1,19 @@
 //! Background image downloader for Fab asset thumbnails and gallery images.
 //!
-//! Downloads image bytes via rquest + Chrome TLS impersonation and saves them
-//! to a local disk cache under `{TEMP}/pulsar-fab-cache/`.  The cached path is
-//! then passed directly to `gpui::img()` as a `PathBuf`, which GPUI loads with
-//! a plain `fs::read` — no HTTP client registration required.
+//! Downloads image bytes via rquest + Chrome TLS impersonation, decodes them
+//! into a BGRA8 `image::Frame`, and wraps the result in a `gpui::RenderImage`.
+//!
+//! Using `ImageSource::Render(Arc<RenderImage>)` is fully synchronous on the
+//! GPUI render path — it bypasses the async asset loader entirely and returns
+//! the decoded pixel data on every render call, guaranteeing the image is
+//! always visible once stored in the cache.
 
-use std::path::PathBuf;
+use std::sync::Arc;
+use gpui::RenderImage;
 
-/// Return the per-user temporary cache directory for Fab images, creating it
-/// on first call if needed.
-fn cache_dir() -> Result<PathBuf, String> {
-    let dir = std::env::temp_dir().join("pulsar-fab-cache");
-    println!("Using image cache directory: {}", dir.display());
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir)
-}
-
-/// Guess a file extension from the leading magic bytes.
-fn ext_for_bytes(bytes: &[u8]) -> Option<&'static str> {
-    match bytes {
-        [0x89, 0x50, 0x4e, 0x47, ..] => Some("png"),
-        [0xff, 0xd8, ..] => Some("jpg"),
-        [b'G', b'I', b'F', ..] => Some("gif"),
-        [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P', ..] => Some("webp"),
-        [b'B', b'M', ..] => Some("bmp"),
-        _ => None,
-    }
-}
-
-/// Derive a stable filename from the URL using a 64-bit FNV-like hash.
-fn url_hash(url: &str) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    url.hash(&mut h);
-    h.finish()
-}
-
-/// Download `url`, save the bytes to the disk cache, and return the `PathBuf`.
-///
-/// If a file for this URL already exists on disk it is returned immediately
-/// without re-downloading.  Always called from an OS thread.
-pub fn download_to_cache(url: &str) -> Result<PathBuf, String> {
+/// Download `url` and decode it into a `RenderImage` ready for
+/// `ImageSource::Render`.  Always called from an OS thread.
+pub fn fetch_and_decode(url: &str) -> Result<Arc<RenderImage>, String> {
     use rquest::Impersonate;
 
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -68,13 +41,16 @@ pub fn download_to_cache(url: &str) -> Result<PathBuf, String> {
             .map_err(|e| e.to_string())
     })?;
 
-    let ext = ext_for_bytes(&bytes).unwrap_or("bin");
-    let path = cache_dir()?.join(format!("{}.{}", url_hash(url), ext));
+    // Decode to RGBA8
+    let mut rgba = image::load_from_memory(&bytes)
+        .map_err(|e| format!("image decode: {e}"))?
+        .into_rgba8();
 
-    // Skip writing if already on disk from a previous run.
-    if !path.exists() {
-        std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    // GPUI expects BGRA8, so swap R and B channels in-place.
+    for pixel in rgba.chunks_exact_mut(4) {
+        pixel.swap(0, 2);
     }
 
-    Ok(path)
+    let frame = image::Frame::new(rgba);
+    Ok(Arc::new(RenderImage::new(smallvec::smallvec![frame])))
 }

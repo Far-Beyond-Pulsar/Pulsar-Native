@@ -39,7 +39,7 @@ pub struct FabSearchWindow {
     detail_error: Option<String>,
     // ── image cache ────────────────────────────────────────────────────────
     /// None = download in progress; Some(path) = file sitting in disk cache.
-    image_cache: HashMap<String, Option<std::path::PathBuf>>,
+    image_cache: HashMap<String, Option<std::sync::Arc<gpui::RenderImage>>>,
 }
 
 impl FabSearchWindow {
@@ -90,11 +90,11 @@ impl FabSearchWindow {
         self.image_cache.insert(url.clone(), None); // mark as in-flight
 
         let (tx, rx) =
-            smol::channel::bounded::<Option<std::path::PathBuf>>(1);
+            smol::channel::bounded::<Option<std::sync::Arc<gpui::RenderImage>>>(1);
         let url_for_thread = url.clone();
 
         std::thread::spawn(move || {
-            let maybe = image_loader::download_to_cache(&url_for_thread).ok();
+            let maybe = image_loader::fetch_and_decode(&url_for_thread).ok();
             smol::block_on(tx.send(maybe)).ok();
         });
 
@@ -570,7 +570,7 @@ impl Render for FabSearchWindow {
             } else if let Some(ref detail) = self.item_detail {
                 let entity = cx.entity().clone();
                 // Collect only the fully-loaded images for this detail view
-                let loaded_images: std::collections::HashMap<String, std::path::PathBuf> = detail
+                let loaded_images: std::collections::HashMap<String, std::sync::Arc<gpui::RenderImage>> = detail
                     .medias
                     .iter()
                     .filter(|m| m.media_type == "image" || m.media_type.is_empty())
@@ -644,8 +644,8 @@ impl Render for FabSearchWindow {
                     .first()
                     .and_then(|t| t.best_image_url(260))
                     .map(|s| s.to_string());
-                // Look up the cached path — None-value = still downloading
-                let thumb_path: Option<std::path::PathBuf> = thumb_url
+                // Look up the cached RenderImage — None-value = still downloading
+                let thumb_image: Option<std::sync::Arc<gpui::RenderImage>> = thumb_url
                     .as_deref()
                     .and_then(|u| self.image_cache.get(u))
                     .and_then(|opt| opt.clone());
@@ -672,9 +672,9 @@ impl Render for FabSearchWindow {
                             .bg(card_bg)
                             .overflow_hidden()
                             .map(|el| {
-                                if let Some(path) = thumb_path {
+                                if let Some(arc) = thumb_image {
                                     el.child(
-                                        img(path)
+                                        img(gpui::ImageSource::Render(arc))
                                             .w_full()
                                             .h_full()
                                             .object_fit(gpui::ObjectFit::Cover),

@@ -6,8 +6,8 @@ pub struct GalleryImage {
     pub url: SharedString,
     pub width: u32,
     pub height: u32,
-    /// Path to the locally-cached image file; renders a placeholder while downloading.
-    pub image: Option<std::path::PathBuf>,
+    /// Pre-decoded image ready for synchronous rendering; `None` while downloading.
+    pub image: Option<std::sync::Arc<gpui::RenderImage>>,
 }
 
 /// Horizontally-wrapping grid of preview images for an asset.
@@ -65,10 +65,10 @@ impl RenderOnce for GalleryStrip {
                             .border_1()
                             .border_color(border)
                             .cursor_pointer()
-                            // Use a real img element when the file is on disk
+                            // Use a real img element when the image is ready
                             .when(has_image, |el| {
                                 el.child(
-                                    img(img_data.image.unwrap())
+                                    img(gpui::ImageSource::Render(img_data.image.unwrap()))
                                         .w_full()
                                         .h_full()
                                         .object_fit(gpui::ObjectFit::Cover),
