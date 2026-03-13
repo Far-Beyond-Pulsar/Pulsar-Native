@@ -1,7 +1,8 @@
+pub mod image_loader;
 pub mod item_detail;
 pub mod parser;
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -16,7 +17,6 @@ use ui::{
     input::{ InputState, TextInput },
     IconName,
     StyledExt,
-    scroll::ScrollbarAxis,
 };
 use parser::{FabItemDetail, FabListing};
 
@@ -37,6 +37,9 @@ pub struct FabSearchWindow {
     item_detail: Option<Box<FabItemDetail>>,
     detail_loading: bool,
     detail_error: Option<String>,
+    // ── image cache ────────────────────────────────────────────────────────
+    /// None = download in progress; Some(path) = file sitting in disk cache.
+    image_cache: HashMap<String, Option<std::path::PathBuf>>,
 }
 
 impl FabSearchWindow {
@@ -66,6 +69,7 @@ impl FabSearchWindow {
             item_detail: None,
             detail_loading: false,
             detail_error: None,
+            image_cache: HashMap::new(),
         }
     }
 
@@ -75,6 +79,38 @@ impl FabSearchWindow {
         self.detail_loading = false;
         self.detail_error = None;
         cx.notify();
+    }
+
+    /// Kick off a background download for `url` if not already cached/loading.
+    /// Stores `None` immediately (= loading) then updates to `Some(arc)` once done.
+    fn ensure_image_loaded(&mut self, url: String, cx: &mut Context<Self>) {
+        if url.is_empty() || self.image_cache.contains_key(&url) {
+            return;
+        }
+        self.image_cache.insert(url.clone(), None); // mark as in-flight
+
+        let (tx, rx) =
+            smol::channel::bounded::<Option<std::path::PathBuf>>(1);
+        let url_for_thread = url.clone();
+
+        std::thread::spawn(move || {
+            let maybe = image_loader::download_to_cache(&url_for_thread).ok();
+            smol::block_on(tx.send(maybe)).ok();
+        });
+
+        cx.spawn(async move |this, cx| {
+            if let Ok(maybe) = rx.recv().await {
+                cx.update(|cx| {
+                    this.update(cx, |view, cx| {
+                        view.image_cache.insert(url, maybe);
+                        cx.notify();
+                    })
+                    .ok();
+                })
+                .ok();
+            }
+        })
+        .detach();
     }
 
     fn open_item_detail(&mut self, uid: String, cx: &mut Context<Self>) {
@@ -103,6 +139,28 @@ impl FabSearchWindow {
                         match result {
                             Ok(detail) => {
                                 view.request_log.push(format!("  ✓ detail: {}", detail.title));
+                                // kick off gallery image downloads
+                                let gallery_urls: Vec<String> = detail.medias.iter()
+                                    .filter(|m| m.media_type == "image" || m.media_type.is_empty())
+                                    .take(12)
+                                    .map(|m| {
+                                        m.images.iter()
+                                            .max_by_key(|i| i.width)
+                                            .map(|i| i.url.as_str())
+                                            .filter(|s: &&str| !s.is_empty())
+                                            .unwrap_or(m.media_url.as_str())
+                                            .to_string()
+                                    })
+                                    .collect();
+                                for url in gallery_urls {
+                                    view.ensure_image_loaded(url, cx);
+                                }
+                                // seller avatar
+                                if let Some(ref avatar_url) = detail.user.profile_image_url {
+                                    if !avatar_url.is_empty() {
+                                        view.ensure_image_loaded(avatar_url.clone(), cx);
+                                    }
+                                }
                                 view.item_detail = Some(detail);
                             }
                             Err(e) => {
@@ -156,6 +214,17 @@ impl FabSearchWindow {
                                     format!("  ✓ {} result(s)", listings.len())
                                 );
                                 view.results = listings;
+                                // kick off thumbnail downloads
+                                let thumb_urls: Vec<String> = view.results.iter()
+                                    .filter_map(|l| {
+                                        l.thumbnails.first()
+                                            .and_then(|t| t.best_image_url(260))
+                                            .map(|s| s.to_string())
+                                    })
+                                    .collect();
+                                for url in thumb_urls {
+                                    view.ensure_image_loaded(url, cx);
+                                }
                             }
                             Err(e) => {
                                 view.request_log.push(format!("  ✗ {}", e));
@@ -500,8 +569,30 @@ impl Render for FabSearchWindow {
                     .into_any_element()
             } else if let Some(ref detail) = self.item_detail {
                 let entity = cx.entity().clone();
+                // Collect only the fully-loaded images for this detail view
+                let loaded_images: std::collections::HashMap<String, std::path::PathBuf> = detail
+                    .medias
+                    .iter()
+                    .filter(|m| m.media_type == "image" || m.media_type.is_empty())
+                    .take(12)
+                    .filter_map(|m| {
+                        let url = m
+                            .images
+                            .iter()
+                            .max_by_key(|i| i.width)
+                            .map(|i| i.url.as_str())
+                            .filter(|s: &&str| !s.is_empty())
+                            .unwrap_or(m.media_url.as_str())
+                            .to_string();
+                        self.image_cache
+                            .get(&url)
+                            .and_then(|opt| opt.clone())
+                            .map(|path| (url, path))
+                    })
+                    .collect();
                 item_detail::ItemDetailView::new(
                     detail.clone(),
+                    loaded_images,
                     move |_window, cx| {
                         entity.update(cx, |this, cx| this.go_back(cx));
                     },
@@ -548,11 +639,16 @@ impl Render for FabSearchWindow {
 
                 let card_uid = listing.uid.clone();
                 let listing_type = listing.listing_type.clone().unwrap_or_default();
-                let thumb_url: Option<SharedString> = listing
+                let thumb_url: Option<String> = listing
                     .thumbnails
                     .first()
                     .and_then(|t| t.best_image_url(260))
-                    .map(|u| SharedString::from(u.to_string()));
+                    .map(|s| s.to_string());
+                // Look up the cached path — None-value = still downloading
+                let thumb_path: Option<std::path::PathBuf> = thumb_url
+                    .as_deref()
+                    .and_then(|u| self.image_cache.get(u))
+                    .and_then(|opt| opt.clone());
 
                 div()
                     .id(SharedString::from(format!("fab-card-{}", idx)))
@@ -576,9 +672,9 @@ impl Render for FabSearchWindow {
                             .bg(card_bg)
                             .overflow_hidden()
                             .map(|el| {
-                                if let Some(url) = thumb_url {
+                                if let Some(path) = thumb_path {
                                     el.child(
-                                        img(url)
+                                        img(path)
                                             .w_full()
                                             .h_full()
                                             .object_fit(gpui::ObjectFit::Cover),

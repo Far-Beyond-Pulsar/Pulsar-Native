@@ -6,6 +6,9 @@ pub mod header;
 pub mod license_section;
 pub mod meta_bar;
 
+use std::collections::HashMap;
+use std::path::PathBuf;
+
 use gpui::{prelude::*, *};
 use ui::{v_flex, ActiveTheme};
 
@@ -26,16 +29,20 @@ use meta_bar::{MetaBar, RatingInfo};
 #[derive(IntoElement)]
 pub struct ItemDetailView {
     detail: Box<FabItemDetail>,
+    /// Paths to locally-cached image files, keyed by their original download URL.
+    images: HashMap<String, PathBuf>,
     on_back: Box<dyn Fn(&mut Window, &mut App) + 'static>,
 }
 
 impl ItemDetailView {
     pub fn new(
         detail: Box<FabItemDetail>,
+        images: HashMap<String, PathBuf>,
         on_back: impl Fn(&mut Window, &mut App) + 'static,
     ) -> Self {
         Self {
             detail,
+            images,
             on_back: Box::new(on_back),
         }
     }
@@ -44,6 +51,7 @@ impl ItemDetailView {
 impl RenderOnce for ItemDetailView {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let d = self.detail;
+        let images = self.images;
 
         // ── URL ─────────────────────────────────────────────────────────────
         let fab_url = SharedString::from(format!("https://www.fab.com/listings/{}", d.uid));
@@ -95,9 +103,10 @@ impl RenderOnce for ItemDetailView {
                     .map(|i| (i.width, i.height))
                     .unwrap_or((1280, 720));
                 GalleryImage {
-                    url: SharedString::from(url),
+                    url: SharedString::from(url.clone()),
                     width: w,
                     height: h,
+                    image: images.get(&url).cloned(),
                 }
             })
             .collect();

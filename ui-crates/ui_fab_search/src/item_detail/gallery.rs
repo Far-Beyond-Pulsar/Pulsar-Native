@@ -6,6 +6,8 @@ pub struct GalleryImage {
     pub url: SharedString,
     pub width: u32,
     pub height: u32,
+    /// Path to the locally-cached image file; renders a placeholder while downloading.
+    pub image: Option<std::path::PathBuf>,
 }
 
 /// Horizontally-wrapping grid of preview images for an asset.
@@ -51,8 +53,7 @@ impl RenderOnce for GalleryStrip {
                     .flex_wrap()
                     .gap_2()
                     .children(self.images.into_iter().enumerate().map(|(i, img_data)| {
-                        let url = img_data.url.clone();
-                        let has_url = !url.is_empty();
+                        let has_image = img_data.image.is_some();
                         div()
                             .id(SharedString::from(format!("gallery-img-{}", i)))
                             .w(px(180.0))
@@ -64,16 +65,16 @@ impl RenderOnce for GalleryStrip {
                             .border_1()
                             .border_color(border)
                             .cursor_pointer()
-                            // Use a real img element when a URL is present
-                            .when(has_url, |el| {
+                            // Use a real img element when the file is on disk
+                            .when(has_image, |el| {
                                 el.child(
-                                    img(url)
+                                    img(img_data.image.unwrap())
                                         .w_full()
                                         .h_full()
                                         .object_fit(gpui::ObjectFit::Cover),
                                 )
                             })
-                            .when(!has_url, |el| {
+                            .when(!has_image, |el| {
                                 el.flex()
                                     .items_center()
                                     .justify_center()
