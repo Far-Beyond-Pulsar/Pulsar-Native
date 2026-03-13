@@ -10,9 +10,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use gpui::{prelude::*, *};
-use ui::{v_flex, ActiveTheme, scroll::{Scrollbar, ScrollbarState}};
+use ui::{v_flex, h_flex, ActiveTheme, scroll::{Scrollbar, ScrollbarState}, button::Button};
 
 use crate::parser::{strip_html, SketchfabModelDetail};
+use crate::DownloadState;
 
 use changelog::ModelStatsSection;
 use description::DescriptionSection;
@@ -33,6 +34,10 @@ pub struct ItemDetailView {
     gallery_scroll_handle: ScrollHandle,
     gallery_scroll_state: ScrollbarState,
     on_back: Box<dyn Fn(&mut Window, &mut App) + 'static>,
+    /// Present when user is authenticated and the model is downloadable.
+    on_download: Option<Box<dyn Fn(&mut Window, &mut App) + 'static>>,
+    /// Current download state, if any.
+    download_status: Option<DownloadState>,
 }
 
 impl ItemDetailView {
@@ -53,7 +58,19 @@ impl ItemDetailView {
             gallery_scroll_handle,
             gallery_scroll_state,
             on_back: Box::new(on_back),
+            on_download: None,
+            download_status: None,
         }
+    }
+
+    pub(crate) fn with_download(
+        mut self,
+        on_download: impl Fn(&mut Window, &mut App) + 'static,
+        status: Option<DownloadState>,
+    ) -> Self {
+        self.on_download = Some(Box::new(on_download));
+        self.download_status = status;
+        self
     }
 }
 
@@ -61,6 +78,8 @@ impl RenderOnce for ItemDetailView {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let d = self.detail;
         let images = self.images;
+        let on_download = self.on_download;
+        let download_status = self.download_status;
 
         // ── URL ─────────────────────────────────────────────────────────────
         let viewer_url = SharedString::from(d.viewer_url.clone());
@@ -190,6 +209,60 @@ impl RenderOnce for ItemDetailView {
                                 v_flex()
                                     .w_full()
                                     .child(meta)
+                                    .map(|el| {
+                                        let muted_fg = cx.theme().muted_foreground;
+                                        let green: gpui::Hsla = gpui::rgb(0x22C55E).into();
+                                        if let Some(dl_fn) = on_download {
+                                            el.child(
+                                                h_flex().px_4().py_3().gap_3().items_center()
+                                                    .border_b_1().border_color(cx.theme().border)
+                                                    .map(|row| match &download_status {
+                                                        Some(crate::DownloadState::InProgress {
+                                                            bytes_received,
+                                                            total_bytes,
+                                                            speed_bps,
+                                                            ..
+                                                        }) => {
+                                                            let prog = total_bytes
+                                                                .filter(|&t| t > 0)
+                                                                .map(|t| format!("{:.0}%", *bytes_received as f64 / t as f64 * 100.0))
+                                                                .unwrap_or_else(|| format!("{} KB", bytes_received / 1024));
+                                                            let speed_label = if *speed_bps > 0.0 {
+                                                                format!(" · {}", ui::fmt_speed(*speed_bps))
+                                                            } else { String::new() };
+                                                            row.child(div().text_sm().text_color(muted_fg)
+                                                                .child(format!("Downloading… {}{}", prog, speed_label)))
+                                                        }
+                                                        Some(crate::DownloadState::Done { path, .. }) => {
+                                                            let file_path = path.clone();
+                                                            row
+                                                                .child(div().text_sm().text_color(green)
+                                                                    .child("Downloaded ✓"))
+                                                                .child(Button::new("open-folder")
+                                                                    .label("📂 Open Folder")
+                                                                    .on_click(move |_, _, _cx| {
+                                                                        ui::reveal_in_file_manager(&file_path);
+                                                                    }))
+                                                        }
+                                                        Some(crate::DownloadState::Error { message, .. }) => {
+                                                            let msg = message.clone();
+                                                            row.child(div().text_sm().text_color(gpui::red())
+                                                                .child(format!("Error: {}", msg)))
+                                                                .child(Button::new("retry-dl")
+                                                                    .label("Retry")
+                                                                    .on_click(move |_, window, cx| { (dl_fn)(window, cx); }))
+                                                        }
+                                                        None => {
+                                                            row.child(Button::new("download-gltf")
+                                                                .label("↓ Download glTF")
+                                                                .on_click(move |_, window, cx| { (dl_fn)(window, cx); }))
+                                                        }
+                                                    })
+                                            )
+                                        } else {
+                                            el
+                                        }
+                                    })
                                     .when(show_gallery, |el| el.child(gallery))
                                     .when(show_license, |el| el.child(license_sec))
                                     .when(show_format_tags, |el| el.child(format_tags))

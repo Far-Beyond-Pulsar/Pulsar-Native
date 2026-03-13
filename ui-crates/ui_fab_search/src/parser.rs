@@ -1,9 +1,12 @@
 //! Serde structs for the Sketchfab REST API v3.
 //!
 //! Endpoints used:
-//!   GET https://api.sketchfab.com/v3/search?type=models   – model search
-//!   GET https://api.sketchfab.com/v3/models/{uid}         – model detail
-//!   GET https://api.sketchfab.com/v3/categories           – category list
+//!   GET  https://api.sketchfab.com/v3/search?type=models   – model search
+//!   GET  https://api.sketchfab.com/v3/models/{uid}          – model detail
+//!   GET  https://api.sketchfab.com/v3/models/{uid}/download – download URLs
+//!   GET  https://api.sketchfab.com/v3/me                    – authenticated profile
+//!   POST https://api.sketchfab.com/v3/me/likes              – like a model
+//!   DELETE https://api.sketchfab.com/v3/me/likes/{uid}      – unlike a model
 
 use serde::{Deserialize, Serialize};
 
@@ -365,8 +368,6 @@ pub fn fmt_count(n: i64) -> String {
     }
 }
 
-use std::cmp::Reverse;
-
 
 /// Top-level API response.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -570,4 +571,54 @@ pub struct FabMedia {
     pub preview_uid: Option<String>,
 }
 
+// ── Download info (GET /v3/models/{uid}/download) ────────────────────────────
+
+/// Response from GET /v3/models/{uid}/download (requires auth).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SketchfabDownloadInfo {
+    pub gltf:   Option<SketchfabDownloadFormat>,
+    pub usdz:   Option<SketchfabDownloadFormat>,
+    pub source: Option<SketchfabDownloadFormat>,
+    pub glb:    Option<SketchfabDownloadFormat>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SketchfabDownloadFormat {
+    pub url:     String,
+    pub expires: Option<u32>,
+    pub size:    Option<u64>,
+}
+
+// ── Me (authenticated profile, GET /v3/me) ───────────────────────────────────
+
+/// Response from GET /v3/me (requires auth).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SketchfabMe {
+    pub uid:          Option<String>,
+    pub username:     String,
+    pub display_name: Option<String>,
+    pub email:        Option<String>,
+    /// Account plan: "basic", "plus", "pro", "business".
+    pub account:      Option<String>,
+    pub api_token:    Option<String>,
+    pub avatar:       Option<SketchfabAvatar>,
+    #[serde(default)]
+    pub model_count:  i32,
+    #[serde(default)]
+    pub like_count:   i64,
+    pub profile_url:  Option<String>,
+}
+
+impl SketchfabMe {
+    pub fn display(&self) -> &str {
+        self.display_name.as_deref()
+            .filter(|s| !s.is_empty())
+            .unwrap_or(&self.username)
+    }
+
+    pub fn avatar_url(&self, target_width: u32) -> Option<&str> {
+        self.avatar.as_ref()?.best_image_url(target_width)
+    }
+}
 

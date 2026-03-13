@@ -1,8 +1,10 @@
 pub mod image_loader;
 pub mod item_detail;
 pub mod parser;
+pub mod auth;
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -14,15 +16,60 @@ use ui::{
     TitleBar,
     v_flex,
     h_flex,
-    button::{Button, ButtonVariants as _},
+    button::Button,
     input::{InputState, TextInput},
     scroll::{Scrollbar, ScrollbarState},
     skeleton::Skeleton,
+    spinner::Spinner,
+    Sizable,
     v_virtual_list, VirtualListScrollHandle,
     IconName,
     StyledExt,
+    download_item::DownloadItemStatus,
+    download_manager::{DownloadEntry, DownloadManagerDrawer},
 };
-use parser::{fmt_count, SketchfabModel, SketchfabModelDetail};
+use parser::{fmt_count, SketchfabModel, SketchfabModelDetail, SketchfabDownloadInfo, SketchfabMe};
+
+// ── Download state ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub(crate) enum DownloadState {
+    InProgress {
+        filename: String,
+        bytes_received: u64,
+        total_bytes: Option<u64>,
+        /// Transfer rate samples in bytes/s (oldest → newest, capped at 60).
+        speed_history: Vec<f64>,
+        /// Most recent sample (bytes/s) — kept separately for quick access.
+        speed_bps: f64,
+    },
+    Done {
+        filename: String,
+        path: PathBuf,
+        total_bytes: u64,
+    },
+    Error {
+        filename: String,
+        message: String,
+    },
+}
+
+impl DownloadState {
+    pub(crate) fn filename(&self) -> &str {
+        match self {
+            DownloadState::InProgress { filename, .. } => filename,
+            DownloadState::Done { filename, .. } => filename,
+            DownloadState::Error { filename, .. } => filename,
+        }
+    }
+}
+
+/// Progress messages streamed from the download thread back to the UI.
+enum DownloadMsg {
+    Progress { bytes_received: u64, total: Option<u64>, speed_bps: f64 },
+    Done { path: PathBuf, total: u64 },
+    Error(String),
+}
 
 // ── Sort options ─────────────────────────────────────────────────────────────
 
@@ -142,9 +189,27 @@ pub struct FabSearchWindow {
 
     // image cache: None = in-flight, Some(arc) = ready
     image_cache: HashMap<String, Option<std::sync::Arc<gpui::RenderImage>>>,
+    // concurrency cap for image downloads
+    image_inflight: usize,
+    image_queue: std::collections::VecDeque<String>,
 
     // entity ref (needed for v_virtual_list)
     entity: Option<Entity<Self>>,
+
+    // ── Auth ─────────────────────────────────────────────────────────────
+    api_token: Option<String>,
+    me: Option<Box<SketchfabMe>>,
+    me_loading: bool,
+    show_token_input: bool,
+    token_input: Entity<InputState>,
+
+    // ── Downloads ────────────────────────────────────────────────────────
+    download_state: HashMap<String, DownloadState>,
+    show_download_manager: bool,
+
+    // ── Likes ────────────────────────────────────────────────────────────
+    liked_uids: HashSet<String>,
+    like_inflight: HashSet<String>,
 
     // scrollbars
 
@@ -162,12 +227,17 @@ impl FabSearchWindow {
         let search_input = cx.new(|cx| {
             InputState::new(_window, cx).placeholder("Search Sketchfab models…")
         });
+        let token_input = cx.new(|cx| {
+            InputState::new(_window, cx).placeholder("Paste your Sketchfab API token…")
+        });
 
         cx.subscribe(&search_input, |this, _input, event: &ui::input::InputEvent, cx| {
             if let ui::input::InputEvent::PressEnter { .. } = event {
                 this.begin_search(cx);
             }
         }).detach();
+
+        let saved_token = auth::load_saved_token();
 
         let mut this = Self {
             focus_handle,
@@ -191,7 +261,20 @@ impl FabSearchWindow {
             detail_loading: false,
             detail_error: None,
             image_cache: HashMap::new(),
+            image_inflight: 0,
+            image_queue: std::collections::VecDeque::new(),
             entity: None,
+
+            api_token: saved_token.clone(),
+            me: None,
+            me_loading: false,
+            show_token_input: false,
+            token_input,
+
+            download_state: HashMap::new(),
+            show_download_manager: false,
+            liked_uids: HashSet::new(),
+            like_inflight: HashSet::new(),
 
             results_scroll_handle: VirtualListScrollHandle::new(),
             results_scroll_state: ScrollbarState::default(),
@@ -203,6 +286,10 @@ impl FabSearchWindow {
         // Store self-entity reference so v_virtual_list can capture it
         let entity = cx.entity();
         this.entity = Some(entity);
+        // If we have a saved token, verify it immediately
+        if saved_token.is_some() {
+            this.fetch_me(cx);
+        }
         this
     }
 
@@ -214,12 +301,294 @@ impl FabSearchWindow {
         cx.notify();
     }
 
+    // ── Auth methods ─────────────────────────────────────────────────────────
+
+    fn set_token(&mut self, token: String, cx: &mut Context<Self>) {
+        let token = token.trim().to_string();
+        if token.is_empty() { return; }
+        auth::save_token(&token);
+        self.api_token = Some(token);
+        self.me = None;
+        self.show_token_input = false;
+        self.fetch_me(cx);
+    }
+
+    fn clear_token(&mut self, cx: &mut Context<Self>) {
+        auth::delete_token();
+        self.api_token = None;
+        self.me = None;
+        self.me_loading = false;
+        self.liked_uids.clear();
+        self.like_inflight.clear();
+        cx.notify();
+    }
+
+    fn fetch_me(&mut self, cx: &mut Context<Self>) {
+        let token = match &self.api_token {
+            Some(t) => t.clone(),
+            None => return,
+        };
+        self.me_loading = true;
+        cx.notify();
+
+        let (tx, rx) = smol::channel::bounded::<Result<Box<SketchfabMe>, String>>(1);
+        std::thread::spawn(move || {
+            smol::block_on(tx.send(fetch_sketchfab_me(&token))).ok();
+        });
+
+        cx.spawn(async move |this, cx| {
+            if let Ok(result) = rx.recv().await {
+                cx.update(|cx| {
+                    this.update(cx, |view, cx| {
+                        view.me_loading = false;
+                        match result {
+                            Ok(me) => {
+                                // Pre-load avatar image
+                                if let Some(url) = me.avatar_url(64).map(|s| s.to_string()) {
+                                    view.ensure_image_loaded(url, cx);
+                                }
+                                view.me = Some(me);
+                            }
+                            Err(_) => {
+                                // Token is invalid; clear it
+                                view.api_token = None;
+                                auth::delete_token();
+                            }
+                        }
+                        cx.notify();
+                    }).ok();
+                }).ok();
+            }
+        }).detach();
+    }
+
+    // ── Download methods ─────────────────────────────────────────────────────
+
+    fn start_download(&mut self, uid: String, cx: &mut Context<Self>) {
+        // Don't restart an in-progress download.
+        if matches!(self.download_state.get(&uid), Some(DownloadState::InProgress { .. })) {
+            return;
+        }
+        let token = match &self.api_token {
+            Some(t) => t.clone(),
+            None => return,
+        };
+
+        let filename = format!("{}.zip", uid);
+        self.download_state.insert(
+            uid.clone(),
+            DownloadState::InProgress {
+                filename: filename.clone(),
+                bytes_received: 0,
+                total_bytes: None,
+                speed_history: Vec::new(),
+                speed_bps: 0.0,
+            },
+        );
+        cx.notify();
+
+        let (tx, rx) = smol::channel::unbounded::<DownloadMsg>();
+        let uid_thread = uid.clone();
+        let filename_thread = filename.clone();
+
+        std::thread::spawn(move || {
+            let run = || -> Result<(), String> {
+                // 1. Resolve download URL
+                let info = fetch_sketchfab_download_info(&uid_thread, &token)?;
+                let fmt = info
+                    .gltf
+                    .or(info.glb)
+                    .or(info.source)
+                    .ok_or_else(|| "No downloadable format available".to_string())?;
+
+                // 2. Prepare destination
+                let dest_dir = dirs::download_dir()
+                    .unwrap_or_else(|| PathBuf::from("."))
+                    .join("Sketchfab");
+                std::fs::create_dir_all(&dest_dir).map_err(|e| format!("mkdir: {e}"))?;
+                let dest = dest_dir.join(&filename_thread);
+
+                // 3. Stream download, reporting progress every 500ms
+                let client = reqwest::blocking::Client::builder()
+                    .timeout(std::time::Duration::from_secs(600))
+                    .user_agent("Pulsar-Native/1.0")
+                    .build()
+                    .map_err(|e| e.to_string())?;
+
+                let resp = client.get(&fmt.url).send().map_err(|e| e.to_string())?;
+                let status = resp.status();
+                if !status.is_success() {
+                    return Err(format!("HTTP {} downloading file", status));
+                }
+                let total = resp.content_length();
+
+                let mut file = std::fs::File::create(&dest).map_err(|e| format!("create: {e}"))?;
+                let mut bytes_total: u64 = 0;
+                let mut last_sample = std::time::Instant::now();
+                let mut bytes_since_sample: u64 = 0;
+                let mut buf = vec![0u8; 64 * 1024]; // 64 KiB chunks
+                let mut reader = std::io::BufReader::new(resp);
+                use std::io::{Read, Write};
+
+                loop {
+                    let n = reader.read(&mut buf).map_err(|e| format!("read: {e}"))?;
+                    if n == 0 { break; }
+                    file.write_all(&buf[..n]).map_err(|e| format!("write: {e}"))?;
+                    bytes_total += n as u64;
+                    bytes_since_sample += n as u64;
+
+                    let elapsed = last_sample.elapsed();
+                    if elapsed >= std::time::Duration::from_millis(500) {
+                        let speed = bytes_since_sample as f64 / elapsed.as_secs_f64();
+                        smol::block_on(tx.send(DownloadMsg::Progress {
+                            bytes_received: bytes_total,
+                            total,
+                            speed_bps: speed,
+                        }))
+                        .ok();
+                        last_sample = std::time::Instant::now();
+                        bytes_since_sample = 0;
+                    }
+                }
+
+                file.flush().map_err(|e| format!("flush: {e}"))?;
+                smol::block_on(tx.send(DownloadMsg::Done { path: dest, total: bytes_total })).ok();
+                Ok(())
+            };
+
+            if let Err(e) = run() {
+                smol::block_on(tx.send(DownloadMsg::Error(e))).ok();
+            }
+        });
+
+        cx.spawn(async move |this, cx| {
+            while let Ok(msg) = rx.recv().await {
+                match msg {
+                    DownloadMsg::Progress { bytes_received, total, speed_bps } => {
+                        cx.update(|cx| {
+                            this.update(cx, |view, cx| {
+                                if let Some(DownloadState::InProgress {
+                                    bytes_received: br,
+                                    total_bytes: tb,
+                                    speed_bps: sb,
+                                    speed_history: sh,
+                                    ..
+                                }) = view.download_state.get_mut(&uid)
+                                {
+                                    *br = bytes_received;
+                                    *tb = total;
+                                    *sb = speed_bps;
+                                    sh.push(speed_bps);
+                                    if sh.len() > 60 { sh.remove(0); }
+                                }
+                                cx.notify();
+                            })
+                            .ok();
+                        })
+                        .ok();
+                    }
+                    DownloadMsg::Done { path, total } => {
+                        cx.update(|cx| {
+                            this.update(cx, |view, cx| {
+                                let filename = view
+                                    .download_state
+                                    .get(&uid)
+                                    .map(|s| s.filename().to_string())
+                                    .unwrap_or_default();
+                                view.download_state.insert(
+                                    uid.clone(),
+                                    DownloadState::Done { filename, path, total_bytes: total },
+                                );
+                                cx.notify();
+                            })
+                            .ok();
+                        })
+                        .ok();
+                        break;
+                    }
+                    DownloadMsg::Error(msg) => {
+                        cx.update(|cx| {
+                            this.update(cx, |view, cx| {
+                                let filename = view
+                                    .download_state
+                                    .get(&uid)
+                                    .map(|s| s.filename().to_string())
+                                    .unwrap_or_default();
+                                view.download_state.insert(
+                                    uid.clone(),
+                                    DownloadState::Error { filename, message: msg },
+                                );
+                                cx.notify();
+                            })
+                            .ok();
+                        })
+                        .ok();
+                        break;
+                    }
+                }
+            }
+        })
+        .detach();
+    }
+
+    // ── Like methods ─────────────────────────────────────────────────────────
+
+    #[allow(dead_code)]
+    fn is_liked(&self, uid: &str) -> bool { self.liked_uids.contains(uid) }
+
+    fn toggle_like(&mut self, uid: String, cx: &mut Context<Self>) {
+        let token = match &self.api_token {
+            Some(t) => t.clone(),
+            None => return,
+        };
+        if self.like_inflight.contains(&uid) { return; }
+        let currently_liked = self.liked_uids.contains(&uid);
+        // Optimistic update
+        if currently_liked { self.liked_uids.remove(&uid); } else { self.liked_uids.insert(uid.clone()); }
+        self.like_inflight.insert(uid.clone());
+        cx.notify();
+
+        let (tx, rx) = smol::channel::bounded::<Result<(), String>>(1);
+        let uid_thread = uid.clone();
+        std::thread::spawn(move || {
+            let result = if currently_liked {
+                sketchfab_unlike_model(&uid_thread, &token)
+            } else {
+                sketchfab_like_model(&uid_thread, &token)
+            };
+            smol::block_on(tx.send(result)).ok();
+        });
+
+        cx.spawn(async move |this, cx| {
+            if let Ok(result) = rx.recv().await {
+                cx.update(|cx| {
+                    this.update(cx, |view, cx| {
+                        view.like_inflight.remove(&uid);
+                        if let Err(_) = result {
+                            // Revert optimistic update on error
+                            if currently_liked { view.liked_uids.insert(uid); } else { view.liked_uids.remove(&uid); }
+                        }
+                        cx.notify();
+                    }).ok();
+                }).ok();
+            }
+        }).detach();
+    }
+
     fn ensure_image_loaded(&mut self, url: String, cx: &mut Context<Self>) {
         if url.is_empty() || self.image_cache.contains_key(&url) {
             return;
         }
         self.image_cache.insert(url.clone(), None);
+        if self.image_inflight < 20 {
+            self.start_image_fetch(url, cx);
+        } else {
+            self.image_queue.push_back(url);
+        }
+    }
 
+    fn start_image_fetch(&mut self, url: String, cx: &mut Context<Self>) {
+        self.image_inflight += 1;
         let (tx, rx) = smol::channel::bounded::<Option<std::sync::Arc<gpui::RenderImage>>>(1);
         let url_thread = url.clone();
         std::thread::spawn(move || {
@@ -232,6 +601,10 @@ impl FabSearchWindow {
                 cx.update(|cx| {
                     this.update(cx, |view, cx| {
                         view.image_cache.insert(url, maybe);
+                        view.image_inflight -= 1;
+                        if let Some(next_url) = view.image_queue.pop_front() {
+                            view.start_image_fetch(next_url, cx);
+                        }
                         cx.notify();
                     }).ok();
                 }).ok();
@@ -395,6 +768,7 @@ struct SearchPage {
     next: Option<String>,
 }
 
+#[allow(dead_code)]
 enum CacheValue {
     Page { models: Vec<SketchfabModel>, next: Option<String> },
     Detail(Box<SketchfabModelDetail>),
@@ -530,6 +904,74 @@ fn fetch_sketchfab_model_detail(uid: &str) -> (Vec<String>, Result<Box<Sketchfab
     (log, result)
 }
 
+// ── Auth / download / like fetch functions ───────────────────────────────────
+
+fn make_auth_client(token: &str) -> Result<reqwest::blocking::Client, String> {
+    let mut headers = reqwest::header::HeaderMap::new();
+    let auth_value = reqwest::header::HeaderValue::from_str(&format!("Token {}", token))
+        .map_err(|e| format!("invalid token: {e}"))?;
+    headers.insert(reqwest::header::AUTHORIZATION, auth_value);
+    reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .user_agent("Pulsar-Native/1.0")
+        .default_headers(headers)
+        .build()
+        .map_err(|e| e.to_string())
+}
+
+fn fetch_sketchfab_me(token: &str) -> Result<Box<SketchfabMe>, String> {
+    let client = make_auth_client(token)?;
+    let resp = client.get("https://api.sketchfab.com/v3/me")
+        .send().map_err(|e| e.to_string())?;
+    let status = resp.status();
+    let text = resp.text().map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        return Err(format!("HTTP {} — {}", status, &text[..text.len().min(120)]));
+    }
+    serde_json::from_str::<SketchfabMe>(&text)
+        .map(Box::new)
+        .map_err(|e| format!("parse /me: {e}"))
+}
+
+fn fetch_sketchfab_download_info(uid: &str, token: &str) -> Result<SketchfabDownloadInfo, String> {
+    let client = make_auth_client(token)?;
+    let url = format!("https://api.sketchfab.com/v3/models/{}/download", uid);
+    let resp = client.get(&url).send().map_err(|e| e.to_string())?;
+    let status = resp.status();
+    let text = resp.text().map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        return Err(format!("HTTP {} — {}", status, &text[..text.len().min(200)]));
+    }
+    serde_json::from_str::<SketchfabDownloadInfo>(&text)
+        .map_err(|e| format!("parse download info: {e}"))
+}
+
+fn sketchfab_like_model(uid: &str, token: &str) -> Result<(), String> {
+    let client = make_auth_client(token)?;
+    let params = [("model", uid)];
+    let resp = client.post("https://api.sketchfab.com/v3/me/likes")
+        .form(&params)
+        .send().map_err(|e| e.to_string())?;
+    let status = resp.status();
+    if !status.is_success() && status.as_u16() != 204 {
+        let text = resp.text().unwrap_or_default();
+        return Err(format!("HTTP {} — {}", status, &text[..text.len().min(120)]));
+    }
+    Ok(())
+}
+
+fn sketchfab_unlike_model(uid: &str, token: &str) -> Result<(), String> {
+    let client = make_auth_client(token)?;
+    let url = format!("https://api.sketchfab.com/v3/me/likes/{}", uid);
+    let resp = client.delete(&url).send().map_err(|e| e.to_string())?;
+    let status = resp.status();
+    if !status.is_success() && status.as_u16() != 204 {
+        let text = resp.text().unwrap_or_default();
+        return Err(format!("HTTP {} — {}", status, &text[..text.len().min(120)]));
+    }
+    Ok(())
+}
+
 // ── Focusable + Render ───────────────────────────────────────────────────────
 
 impl Focusable for FabSearchWindow {
@@ -542,7 +984,7 @@ impl Render for FabSearchWindow {
         if current_input != self.search_query { self.search_query = current_input; }
 
         let bg         = cx.theme().background;
-        let card_bg    = cx.theme().sidebar;
+        let _card_bg   = cx.theme().sidebar;
         let border_col = cx.theme().border;
         let fg         = cx.theme().foreground;
         let muted_fg   = cx.theme().muted_foreground;
@@ -610,7 +1052,24 @@ impl Render for FabSearchWindow {
                     self.gallery_scroll_handle.clone(),
                     self.gallery_scroll_state.clone(),
                     move |_window, cx| { entity.update(cx, |this, cx| this.go_back(cx)); },
-                ).into_any_element()
+                )
+                .map(|view| {
+                    // Attach download callback if user is logged in and model is downloadable
+                    if detail.is_downloadable && self.api_token.is_some() {
+                        let uid = detail.uid.clone();
+                        let dl_status = self.download_state.get(&uid).cloned();
+                        let entity2 = cx.entity().clone();
+                        view.with_download(
+                            move |_window, cx| {
+                                entity2.update(cx, |this, cx| this.start_download(uid.clone(), cx));
+                            },
+                            dl_status,
+                        )
+                    } else {
+                        view
+                    }
+                })
+                .into_any_element()
 
             } else {
                 div().flex_1().min_h_0().flex().items_center().justify_center()
@@ -626,13 +1085,23 @@ impl Render for FabSearchWindow {
 
         } else {
             // ── Virtual results grid ──────────────────────────────────────
-            const COLS: usize = 3;
+            // Card dimensions and spacing (must match the rendered card)
+            const CARD_W: f32 = 260.0;
             const CARD_H: f32 = 260.0; // thumb(146) + body(114)
-            const ROW_H: f32 = CARD_H + 16.0; // + row gap
+            const GAP:    f32 = 16.0;  // gap_4
+            const PAD:    f32 = 16.0;  // px_4 padding on each side
+            const ROW_H:  f32 = CARD_H + GAP;
+
+            // Derive column count from available viewport width.
+            // Formula: cols = floor((avail_w - PAD + GAP) / (CARD_W + GAP))
+            // where avail_w = total_w - 2*PAD (removes left+right padding).
+            let avail_w: f32 = window.viewport_size().width.into();
+            let avail_w = avail_w - 2.0 * PAD;
+            let cols: usize = (((avail_w + GAP) / (CARD_W + GAP)).floor() as usize).max(1);
 
             let entity = self.entity.clone().unwrap();
             let total_results = self.results.len();
-            let result_rows = total_results.div_ceil(COLS);
+            let result_rows = total_results.div_ceil(cols);
             let skel_rows: usize = if self.is_loading_more { 2 } else { 0 };
             let end_row: usize = if !self.is_loading_more && self.next_url.is_none() { 1 } else { 0 };
             let total_items = result_rows + skel_rows + end_row;
@@ -655,7 +1124,7 @@ impl Render for FabSearchWindow {
                             let border_col = theme.border;
 
                             let total_res = view.results.len();
-                            let res_rows = total_res.div_ceil(COLS);
+                            let res_rows = total_res.div_ceil(cols);
                             let s_rows: usize = if view.is_loading_more { 2 } else { 0 };
 
                             // Near-bottom detection: kick off load_more when
@@ -670,8 +1139,8 @@ impl Render for FabSearchWindow {
                             range.map(|row_idx| -> AnyElement {
                                 if row_idx < res_rows {
                                     // ── Real card row ─────────────────────
-                                    let start = row_idx * COLS;
-                                    let end = (start + COLS).min(view.results.len());
+                                    let start = row_idx * cols;
+                                    let end = (start + cols).min(view.results.len());
                                     let row_cards: Vec<AnyElement> = (start..end).map(|idx| {
                                         let model = &view.results[idx];
                                         let name     = model.name.clone();
@@ -684,9 +1153,17 @@ impl Render for FabSearchWindow {
                                         let is_anim  = model.animation_count > 0;
                                         let is_sp    = model.staffpicked_at.as_ref().map(|v| !v.is_null()).unwrap_or(false);
                                         let card_uid = model.uid.clone();
-                                        let thumb_arc = model.thumb_url(260)
-                                            .and_then(|u| view.image_cache.get(u))
-                                            .and_then(|o| o.clone());
+                                        let like_uid = card_uid.clone();
+                                        let is_liked  = view.liked_uids.contains(&card_uid);
+                                        let like_busy = view.like_inflight.contains(&card_uid);
+                                        let show_like = view.api_token.is_some();
+                                        let thumb_state = model.thumb_url(260)
+                                            .map(|u| view.image_cache.get(u).and_then(|o| o.clone()));
+                                        // None          = no URL
+                                        // Some(None)    = in-flight
+                                        // Some(Some(…)) = loaded
+                                        let thumb_loading = matches!(thumb_state, None | Some(None));
+                                        let thumb_arc = thumb_state.flatten();
 
                                         div()
                                             .id(SharedString::from(format!("skfb-card-{}", idx)))
@@ -703,9 +1180,12 @@ impl Render for FabSearchWindow {
                                                         if let Some(arc) = thumb_arc {
                                                             el.child(img(gpui::ImageSource::Render(arc))
                                                                 .w_full().h_full().object_fit(gpui::ObjectFit::Cover))
-                                                        } else {
+                                                        } else if thumb_loading {
                                                             el.bg(border_col).flex().items_center().justify_center()
-                                                                .child(div().text_xs().text_color(muted_fg).child(""))
+                                                                .child(Spinner::new().with_size(ui::Size::Medium)
+                                                                    .color(muted_fg))
+                                                        } else {
+                                                            el.bg(border_col)
                                                         }
                                                     })
                                                     .when(is_sp, |el| el.child(
@@ -736,6 +1216,20 @@ impl Render for FabSearchWindow {
                                                 .child(h_flex().gap_3().items_center().mt_1()
                                                     .child(div().text_xs().text_color(muted_fg).child(format!("👁 {}", views)))
                                                     .child(div().text_xs().text_color(muted_fg).child(format!("♥ {}", likes)))
+                                                    .when(show_like, |el| el.child(
+                                                        div()
+                                                            .id(SharedString::from(format!("like-{}", idx)))
+                                                            .ml_auto()
+                                                            .cursor_pointer()
+                                                            .text_sm()
+                                                            .text_color(if is_liked { gpui::Hsla::from(gpui::rgb(0xEF4444)) } else { muted_fg })
+                                                            .opacity(if like_busy { 0.4 } else { 1.0 })
+                                                            .child(if is_liked { "♥" } else { "♡" })
+                                                            .on_click(cx.listener(move |this, _event, _, cx| {
+                                                                cx.stop_propagation();
+                                                                this.toggle_like(like_uid.clone(), cx);
+                                                            }))
+                                                    ))
                                                 )
                                             ))
                                             .into_any_element()
@@ -748,7 +1242,7 @@ impl Render for FabSearchWindow {
                                 } else if row_idx < res_rows + s_rows {
                                     // ── Skeleton row ──────────────────────
                                     h_flex().px_4().py(px(8.0)).gap_4().items_start()
-                                        .children((0..COLS).map(|i| {
+                                        .children((0..cols).map(|i| {
                                             div()
                                                 .id(SharedString::from(format!("skel-{}-{}", row_idx, i)))
                                                 .w(px(260.0)).rounded_lg()
@@ -870,7 +1364,124 @@ impl Render for FabSearchWindow {
                     }))
             })));
 
+        // ── Auth bar ──────────────────────────────────────────────────────
+        let logged_in   = self.api_token.is_some();
+        let me_name     = self.me.as_ref().map(|m| m.display().to_string());
+        let me_avatar   = self.me.as_ref()
+            .and_then(|m| m.avatar_url(64).map(|s| s.to_string()))
+            .and_then(|url| self.image_cache.get(&url).and_then(|o| o.clone()));
+        let me_loading  = self.me_loading;
+        let show_tok    = self.show_token_input;
+        let account_tier = self.me.as_ref().and_then(|m| m.account.clone());
+
+        let auth_section: AnyElement = if me_loading {
+            div().text_xs().text_color(muted_fg).child("Verifying…").into_any_element()
+        } else if logged_in {
+            h_flex().gap_2().items_center()
+                .map(|el| {
+                    if let Some(arc) = me_avatar {
+                        el.child(img(gpui::ImageSource::Render(arc))
+                            .w_6().h_6().rounded_full().overflow_hidden())
+                    } else {
+                        el.child(div().w_6().h_6().rounded_full().bg(border_col))
+                    }
+                })
+                .when_some(me_name, |el, name| {
+                    el.child(div().text_xs().font_medium().text_color(fg).child(name))
+                })
+                .when_some(account_tier, |el, tier| {
+                    el.child(div().text_xs().px_2().py(px(2.0)).rounded_full()
+                        .bg(gpui::rgb(0x6366F1)).text_color(gpui::rgb(0xFFFFFF))
+                        .child(tier))
+                })
+                .child(Button::new("logout-btn").label("Logout")
+                    .on_click(cx.listener(|this, _, _, cx| this.clear_token(cx))))
+                .into_any_element()
+        } else if show_tok {
+            h_flex().gap_2().items_center()
+                .child(div().w(px(300.0))
+                    .child(TextInput::new(&self.token_input).w_full()))
+                .child(Button::new("verify-tok").label("Verify & Save")
+                    .on_click(cx.listener(|this, _, _window, cx| {
+                        let tok = this.token_input.read(cx).value().to_string();
+                        this.set_token(tok, cx);
+                    })))
+                .child(Button::new("cancel-tok").label("Cancel")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.show_token_input = false;
+                        cx.notify();
+                    })))
+                .child(div().text_xs().text_color(muted_fg)
+                    .child("Get your token at sketchfab.com/settings/password"))
+                .into_any_element()
+        } else {
+            Button::new("login-btn").label("Login with API Token")
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.show_token_input = true;
+                    cx.notify();
+                }))
+                .into_any_element()
+        };
+
         // ── Root ──────────────────────────────────────────────────────────
+        let dl_count = self.download_state.len();
+        let active_dl = self.download_state.values()
+            .filter(|s| matches!(s, DownloadState::InProgress { .. }))
+            .count();
+        let show_dl_btn = dl_count > 0;
+        let show_dl_mgr = self.show_download_manager;
+
+        // Build download manager entries for the drawer
+        let dl_entries: Vec<DownloadEntry> = self.download_state.iter().map(|(uid, state)| {
+            match state {
+                DownloadState::InProgress { filename, bytes_received, total_bytes, speed_bps, speed_history } => {
+                    let progress_pct = total_bytes
+                        .filter(|&t| t > 0)
+                        .map(|t| (*bytes_received as f32 / t as f32 * 100.0).min(100.0))
+                        .unwrap_or(0.0);
+                    DownloadEntry {
+                        uid: SharedString::from(uid.clone()),
+                        filename: SharedString::from(filename.clone()),
+                        progress_pct,
+                        speed_bps: *speed_bps,
+                        speed_history: speed_history.clone(),
+                        status: DownloadItemStatus::InProgress,
+                        bytes_received: *bytes_received,
+                        total_bytes: *total_bytes,
+                        path: None,
+                    }
+                }
+                DownloadState::Done { filename, path, total_bytes } => {
+                    DownloadEntry {
+                        uid: SharedString::from(uid.clone()),
+                        filename: SharedString::from(filename.clone()),
+                        progress_pct: 100.0,
+                        speed_bps: 0.0,
+                        speed_history: Vec::new(),
+                        status: DownloadItemStatus::Done,
+                        bytes_received: *total_bytes,
+                        total_bytes: Some(*total_bytes),
+                        path: Some(path.clone()),
+                    }
+                }
+                DownloadState::Error { filename, message } => {
+                    DownloadEntry {
+                        uid: SharedString::from(uid.clone()),
+                        filename: SharedString::from(filename.clone()),
+                        progress_pct: 0.0,
+                        speed_bps: 0.0,
+                        speed_history: Vec::new(),
+                        status: DownloadItemStatus::Error(message.clone()),
+                        bytes_received: 0,
+                        total_bytes: None,
+                        path: None,
+                    }
+                }
+            }
+        }).collect();
+
+        let entity_for_drawer = cx.entity().clone();
+
         let layout = v_flex()
             .size_full().bg(bg)
             .child(TitleBar::new().child("Sketchfab"))
@@ -885,6 +1496,22 @@ impl Render for FabSearchWindow {
                         .child(Button::new("search-btn")
                             .label("Search")
                             .on_click(cx.listener(|this, _, _, cx| this.begin_search(cx))))
+                        .child(div().w(px(1.0)).h(px(20.0)).bg(border_col))
+                        .child(auth_section)
+                        .when(show_dl_btn, |el| {
+                            let dl_label = if active_dl > 0 {
+                                format!("↓ {} active", active_dl)
+                            } else {
+                                format!("↓ {} done", dl_count)
+                            };
+                            el.child(div().w(px(1.0)).h(px(20.0)).bg(border_col))
+                              .child(Button::new("dl-mgr-btn")
+                                .label(dl_label)
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.show_download_manager = !this.show_download_manager;
+                                    cx.notify();
+                                })))
+                        })
                     )
             )
             .child(filter_bar)
@@ -892,6 +1519,17 @@ impl Render for FabSearchWindow {
 
         div().size_full()
             .child(layout)
+            .when(show_dl_mgr, |el| {
+                el.child(
+                    DownloadManagerDrawer::new(dl_entries)
+                        .on_close(move |_, _, cx| {
+                            entity_for_drawer.update(cx, |view, cx| {
+                                view.show_download_manager = false;
+                                cx.notify();
+                            });
+                        }),
+                )
+            })
             .children(Root::render_modal_layer(window, cx))
     }
 }

@@ -48,6 +48,9 @@ pub mod breadcrumb;
 pub mod button;
 pub mod chart;
 pub mod checkbox;
+pub mod download_item;
+pub mod download_manager;
+pub mod speed_graph;
 pub mod clipboard;
 pub mod code_editor; // Studio-quality virtualized code editor
 pub mod color_picker;
@@ -133,6 +136,11 @@ pub use graph::*;
 pub use compiler::*;
 pub use settings::*;
 pub use themes::*;
+
+// Download manager components
+pub use download_item::{DownloadItem, DownloadItemStatus, reveal_in_file_manager};
+pub use download_manager::{DownloadEntry, DownloadManagerDrawer};
+pub use speed_graph::{SpeedGraph, fmt_speed, fmt_bytes};
 
 // Engine constants (will be set by engine binary)
 pub const ENGINE_NAME: &str = "Pulsar Engine";

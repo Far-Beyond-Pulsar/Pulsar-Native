@@ -10,11 +10,12 @@ ui_common = { workspace = true }
 urlencoding = "2.1.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-reqwest = { version = "0.12", features = ["json", "gzip", "brotli"] }
+reqwest = { version = "0.12", features = ["json", "gzip", "brotli", "blocking"] }
 tokio = { version = "1", features = ["rt"] }
 smol = "2"
 image = "0.25"
 smallvec = "1"
+dirs = "5"
 
 [lints]
 workspace = true
