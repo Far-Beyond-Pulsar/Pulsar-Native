@@ -311,7 +311,20 @@ fn main() {
             if let Some(path) = launch.uri_project_path.take() {
                 tracing::info!("Opening project splash from URI: {}", path.display());
                 let pathbuf = PathBuf::from(path);
-                ui_common::open_window::open_pulsar_window::<ui_loading_screen::LoadingScreen>(pathbuf, cx);
+                let on_complete: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
+                    std::sync::Arc::new(|path, cx| {
+                        let opts = make_window_options(
+                            Some("Pulsar Engine"),
+                            gpui::point(gpui::px(50.0), gpui::px(50.0)),
+                            gpui::size(gpui::px(1600.0), gpui::px(900.0)),
+                            Some(gpui::Size { width: gpui::px(800.), height: gpui::px(600.) }),
+                        );
+                        let _ = cx.open_window(opts, move |window, cx| {
+                            let app = cx.new(|cx| ui_core::PulsarApp::new_with_project(path.clone(), window, cx));
+                            cx.new(|cx| ui::Root::new(app.into(), window, cx))
+                        });
+                    });
+                ui_common::open_window::open_pulsar_window::<ui_loading_screen::LoadingScreen>((pathbuf, on_complete), cx);
             } else {
                 tracing::info!("Opening main entry window");
                 let ec = engine_context.clone();
@@ -329,7 +342,20 @@ fn main() {
                         move |window, cx| {
                             let project_cb: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
                                 std::sync::Arc::new(move |pathbuf, cx| {
-                                    ui_common::open_window::open_pulsar_window::<ui_loading_screen::LoadingScreen>(pathbuf, cx);
+                                    let on_complete: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
+                                        std::sync::Arc::new(|path, cx| {
+                                            let opts = make_window_options(
+                                                Some("Pulsar Engine"),
+                                                gpui::point(gpui::px(50.0), gpui::px(50.0)),
+                                                gpui::size(gpui::px(1600.0), gpui::px(900.0)),
+                                                Some(gpui::Size { width: gpui::px(800.), height: gpui::px(600.) }),
+                                            );
+                                            let _ = cx.open_window(opts, move |window, cx| {
+                                                let app = cx.new(|cx| ui_core::PulsarApp::new_with_project(path.clone(), window, cx));
+                                                cx.new(|cx| ui::Root::new(app.into(), window, cx))
+                                            });
+                                        });
+                                    ui_common::open_window::open_pulsar_window::<ui_loading_screen::LoadingScreen>((pathbuf, on_complete), cx);
                                 });
 
                             let git_cb: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
