@@ -192,7 +192,7 @@ fn render_template_grid(
                         .text_color(muted_fg)
                         .child(desc),
                 )
-                .child(div().w_full().h(px(1.0)).bg(theme.border))
+                .child(div().w_full().h(px(1.0)).bg(border_col))
                 .child(
                     h_flex()
                         .items_center()
