@@ -37,7 +37,7 @@ use crate::input::{
 use crate::input::{RopeExt as _, Selection};
 use crate::{highlighter::DiagnosticSet, input::text_wrapper::LineItem};
 use crate::{history::History, scroll::ScrollbarState, Root};
-use super::core::InputState;
+use super::*;
 
 impl InputState {
     pub(crate) fn replace_text_in_range_silent(
