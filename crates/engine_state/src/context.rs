@@ -391,16 +391,6 @@ impl EngineContext {
         }
     }
 
-    /// Legacy metadata setter (for backward compatibility)
-    ///
-    /// **Deprecated**: Use typed context fields instead.
-    /// This method exists only for compatibility during migration.
-    #[deprecated(since = "0.2.0", note = "Use typed context fields instead (e.g., engine_context.project.write())")]
-    pub fn set_metadata(&self, _key: String, _value: String) {
-        // No-op: metadata system has been replaced with typed contexts
-        // Calling code should be migrated to use typed fields
-    }
-
     /// Set as global instance (for GPUI views that need global access)
     pub fn set_global(self) {
         GLOBAL_CONTEXT.set(self).ok();

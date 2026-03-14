@@ -137,60 +137,6 @@ pub struct GpuRenderer {
 }
 
 impl GpuRenderer {
-    /// Create with a new empty SceneDb. Callers that want to share the db should use
-    /// `new_with_scene_db` instead.
-    #[deprecated(note = "Use GpuRendererBuilder instead")]
-    pub fn new(display_width: u32, display_height: u32) -> Self {
-        GpuRendererBuilder::new(display_width, display_height).build()
-    }
-
-    #[deprecated(note = "Use GpuRendererBuilder instead")]
-    pub fn new_with_game_thread(
-        display_width: u32,
-        display_height: u32,
-        game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
-    ) -> Self {
-        let mut builder = GpuRendererBuilder::new(display_width, display_height);
-        if let Some(gt) = game_thread_state {
-            builder = builder.game_thread(gt);
-        }
-        builder.build()
-    }
-
-    /// Create the renderer sharing an existing SceneDb Arc. Pass the same Arc to the
-    /// UI SceneDatabase so both sides read/write the same live data.
-    #[deprecated(note = "Use GpuRendererBuilder instead")]
-    pub fn new_with_scene_db(
-        display_width: u32,
-        display_height: u32,
-        scene_db: Arc<SceneDb>,
-        game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
-    ) -> Self {
-        let mut builder = GpuRendererBuilder::new(display_width, display_height).scene_db(scene_db);
-        if let Some(gt) = game_thread_state {
-            builder = builder.game_thread(gt);
-        }
-        builder.build()
-    }
-
-    #[deprecated(note = "Use GpuRendererBuilder instead")]
-    pub fn new_with_scene_db_and_physics(
-        display_width: u32,
-        display_height: u32,
-        scene_db: Arc<SceneDb>,
-        game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
-        physics_query: Option<Arc<crate::services::PhysicsQueryService>>,
-    ) -> Self {
-        let mut builder = GpuRendererBuilder::new(display_width, display_height).scene_db(scene_db);
-        if let Some(gt) = game_thread_state {
-            builder = builder.game_thread(gt);
-        }
-        if let Some(pq) = physics_query {
-            builder = builder.physics(pq);
-        }
-        builder.build()
-    }
-
     pub fn render(&mut self, _framebuffer: &mut ViewportFramebuffer) {
         self.frame_count += 1;
 
