@@ -7,9 +7,15 @@ use crate::{
 };
 use gpui::{
     anchored, deferred, div, prelude::FluentBuilder, px, App, AppContext as _, ClickEvent, Context,
-    DismissEvent, Entity, Focusable, InteractiveElement as _, IntoElement, KeyBinding, OwnedMenu,
-    ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Subscription, Window,
+    DismissEvent, Entity, Focusable, Global, InteractiveElement as _, IntoElement, KeyBinding,
+    OwnedMenu, ParentElement, Render, SharedString, StatefulInteractiveElement, Styled,
+    Subscription, Window,
 };
+
+/// Global cache for app menus — used as fallback on platforms where
+/// `cx.get_menus()` returns `None` (e.g. Windows cross-platform backend).
+pub struct AppMenusCache(pub Vec<OwnedMenu>);
+impl Global for AppMenusCache {}
 
 const CONTEXT: &str = "AppMenuBar";
 pub fn init(cx: &mut App) {
@@ -28,12 +34,22 @@ pub struct AppMenuBar {
 
 impl AppMenuBar {
     /// Create a new app menu bar.
+    ///
+    /// Reads menus from `cx.get_menus()` and falls back to [`AppMenusCache`]
+    /// for platforms (e.g. Windows) where the platform backend discards them.
     pub fn new(window: &mut Window, cx: &mut App) -> Entity<Self> {
+        let owned_menus = cx
+            .get_menus()
+            .or_else(|| cx.try_global::<AppMenusCache>().map(|c| c.0.clone()))
+            .unwrap_or_default();
+        Self::new_with_menus(owned_menus, window, cx)
+    }
+
+    /// Create a new app menu bar from a pre-built list of [`OwnedMenu`]s.
+    pub fn new_with_menus(menus: Vec<OwnedMenu>, window: &mut Window, cx: &mut App) -> Entity<Self> {
         cx.new(|cx| {
             let menu_bar = cx.entity();
-            let menus = cx
-                .get_menus()
-                .unwrap_or_default()
+            let menus = menus
                 .iter()
                 .enumerate()
                 .map(|(ix, menu)| AppMenu::new(ix, menu, menu_bar.clone(), window, cx))

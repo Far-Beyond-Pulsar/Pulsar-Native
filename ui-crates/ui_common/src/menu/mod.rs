@@ -355,10 +355,14 @@ ViewLogs,
 ReleaseNotes,
 ]);
 
-/// Initialize the app menus
-pub fn init_app_menus(title: impl Into<SharedString>, cx: &mut App) {
-    cx.set_menus(
-        vec![
+/// Build the application menu list.
+///
+/// This is separated from [`init_app_menus`] so the same menu tree can be
+/// built twice — once for the platform native menu bar (macOS) and once
+/// converted to [`gpui::OwnedMenu`] for the custom in-window menu bar on
+/// Windows / Linux where `cx.get_menus()` always returns `None`.
+fn build_app_menus(title: SharedString) -> Vec<Menu> {
+    vec![
             // Pulsar Menu
             Menu {
                 name: title.into(),
@@ -946,7 +950,25 @@ pub fn init_app_menus(title: impl Into<SharedString>, cx: &mut App) {
                 ],
             }
         ]
-    );
+}
+
+/// Initialize the app menus.
+///
+/// Calls `cx.set_menus` (native macOS menu bar) **and** stores an
+/// [`ui::AppMenusCache`] global so that [`ui::AppMenuBar`] can render the
+/// in-window menu bar on Windows / Linux where `cx.get_menus()` returns `None`.
+pub fn init_app_menus(title: impl Into<SharedString>, cx: &mut App) {
+    let title_str: SharedString = title.into();
+
+    // macOS: platform-level native menu bar
+    cx.set_menus(build_app_menus(title_str.clone()));
+
+    // Windows / Linux: cache as OwnedMenu for the custom in-window AppMenuBar
+    let owned: Vec<gpui::OwnedMenu> = build_app_menus(title_str)
+        .into_iter()
+        .map(|m| m.owned())
+        .collect();
+    cx.set_global(ui::AppMenusCache(owned));
 }
 
 pub struct AppTitleBar {

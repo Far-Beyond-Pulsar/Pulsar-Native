@@ -110,7 +110,7 @@ pub use index_path::IndexPath;
 pub use selection::{IndexPathSelection, IndexSelection, Selection};
 #[cfg(any(feature = "inspector", debug_assertions))]
 pub use inspector::*;
-pub use menu::{ context_menu, popup_menu };
+pub use menu::{ context_menu, popup_menu, AppMenusCache };
 pub use root::{ ContextModal, Root };
 pub use styled::*;
 pub use time::*;
