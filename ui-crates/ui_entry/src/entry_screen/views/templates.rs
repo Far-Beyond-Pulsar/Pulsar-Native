@@ -2,7 +2,7 @@ use gpui::{ prelude::*, * };
 use ui::{
     h_flex, v_flex, Icon, IconName, ActiveTheme as _, StyledExt,
     progress::Progress,
-    tag::{Tag, TagVariant},
+    tag::Tag,
 };
  use ui::Sizable;
 use crate::entry_screen::{ EntryScreen, Template, virtual_grid::render_card_grid };
@@ -181,14 +181,14 @@ fn render_template_grid(
                                         .child(name),
                                 )
                                 .child(
-                                    Tag::with_variant(match category.as_str() {
-                                        "2D"       => TagVariant::Success,
-                                        "3D"       => TagVariant::Primary,
-                                        "Strategy" => TagVariant::Warning,
-                                        "RPG"      => TagVariant::Info,
-                                        "Racing"   => TagVariant::Danger,
-                                        _          => TagVariant::Secondary,
-                                    })
+                                    match category.as_str() {
+                                        "2D"       => Tag::success(),
+                                        "3D"       => Tag::primary(),
+                                        "Strategy" => Tag::warning(),
+                                        "RPG"      => Tag::info(),
+                                        "Racing"   => Tag::danger(),
+                                        _          => Tag::secondary(),
+                                    }
                                     .xsmall()
                                     .rounded_full()
                                     .child(category),
