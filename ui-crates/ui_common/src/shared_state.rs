@@ -15,9 +15,15 @@ use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 /// let cpu = m.with_read(|pm| pm.current_cpu);
 /// m.with_write(|pm| pm.update_system_metrics());
 /// ```
-#[derive(Clone)]
+#[derive(Default)]
 pub struct SharedState<T> {
     inner: Arc<RwLock<T>>,
+}
+
+impl<T> Clone for SharedState<T> {
+    fn clone(&self) -> Self {
+        Self { inner: Arc::clone(&self.inner) }
+    }
 }
 
 impl<T> SharedState<T> {

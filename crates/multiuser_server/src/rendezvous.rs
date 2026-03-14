@@ -25,6 +25,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::metrics::METRICS;
 use peer_discovery::{PeerSession, RendezvousSession};
+use session_manager::TokenClaims;
 
 impl RendezvousCoordinator {
     /// Handle WebSocket upgrade

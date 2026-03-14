@@ -24,11 +24,11 @@ pub struct RendezvousCoordinator {
 
 /// JWT Claims structure for session tokens
 #[derive(Debug, Serialize, Deserialize)]
-struct TokenClaims {
-    sub: String,      // Subject (peer_id)
-    session: String,  // Session ID
-    exp: usize,       // Expiration time
-    iat: usize,       // Issued at
+pub(super) struct TokenClaims {
+    pub(super) sub: String,
+    pub(super) session: String,
+    exp: usize,
+    iat: usize,
 }
 
 impl RendezvousCoordinator {
