@@ -321,7 +321,8 @@ fn main() {
                         );
                         let _ = cx.open_window(opts, move |window, cx| {
                             let app = cx.new(|cx| ui_core::PulsarApp::new_with_project(path.clone(), window, cx));
-                            cx.new(|cx| ui::Root::new(app.into(), window, cx))
+                            let root = cx.new(|cx| ui_core::PulsarRoot::new("Pulsar Engine", app, window, cx));
+                            cx.new(|cx| ui::Root::new(root.into(), window, cx))
                         });
                     });
                 ui_common::open_window::open_pulsar_window::<ui_loading_screen::LoadingScreen>((pathbuf, on_complete), cx);
@@ -352,7 +353,8 @@ fn main() {
                                             );
                                             let _ = cx.open_window(opts, move |window, cx| {
                                                 let app = cx.new(|cx| ui_core::PulsarApp::new_with_project(path.clone(), window, cx));
-                                                cx.new(|cx| ui::Root::new(app.into(), window, cx))
+                                                let root = cx.new(|cx| ui_core::PulsarRoot::new("Pulsar Engine", app, window, cx));
+                                                cx.new(|cx| ui::Root::new(root.into(), window, cx))
                                             });
                                         });
                                     ui_common::open_window::open_pulsar_window::<ui_loading_screen::LoadingScreen>((pathbuf, on_complete), cx);
