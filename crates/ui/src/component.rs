@@ -55,7 +55,7 @@ pub trait Component: Render + Sized + 'static {
             display_id: window_config.display_id,
             app_id: None,
             window_min_size: None,
-            window_decorations: None,
+            window_decorations: Some(gpui::WindowDecorations::Client),
             tabbing_identifier: None,
         };
 

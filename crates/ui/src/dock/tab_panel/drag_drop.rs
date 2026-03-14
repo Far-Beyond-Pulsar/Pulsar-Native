@@ -61,9 +61,6 @@ impl TabPanel {
                 height: px(300.),
             }),
             kind: WindowKind::Normal,
-            #[cfg(target_os = "linux")]
-            window_background: gpui::WindowBackgroundAppearance::Opaque,
-            #[cfg(target_os = "linux")]
             window_decorations: Some(gpui::WindowDecorations::Client),
             ..Default::default()
         };
