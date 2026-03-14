@@ -14,7 +14,6 @@ use engine_backend::subsystems::networking::multiuser::{ClientMessage, Multiuser
 
 
 impl MultiplayerWindow {
-impl MultiplayerWindow {
     pub(super) fn create_session(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let server_address = self.server_address_input.read(cx).text().to_string();
 
