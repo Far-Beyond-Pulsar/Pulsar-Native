@@ -33,14 +33,6 @@ pub(super) struct RendezvousSession {
     pub(super) host_id: String,
     peers: DashMap<String, PeerSession>,
     pub(super) created_at: SystemTime,
-}
-
-impl RendezvousSession {
-    pub(super) fn new(session_id: String, host_id: String) -> Self {
-        Self {
-            session_id,
-            host_id,
-            peers: DashMap::new(),
             created_at: SystemTime::now(),
         }
     }
