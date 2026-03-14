@@ -11,6 +11,7 @@ rustup.workspace = true
 # UI framework
 gpui-ce.workspace = true
 ui.workspace = true
+ui_common.workspace = true
 # Engine
 engine_state.workspace = true
 

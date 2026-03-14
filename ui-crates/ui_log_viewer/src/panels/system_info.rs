@@ -35,6 +35,8 @@ impl SystemInfoPanel {
 
 impl EventEmitter<PanelEvent> for SystemInfoPanel {}
 
+ui_common::panel_boilerplate!(SystemInfoPanel);
+
 impl Render for SystemInfoPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         use ui::{h_flex, scroll::ScrollbarAxis};
@@ -90,10 +92,6 @@ impl Render for SystemInfoPanel {
                     .child(Self::info_row("Backend", "Blade", cx))
             )
     }
-}
-
-impl Focusable for SystemInfoPanel {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle { self.focus_handle.clone() }
 }
 
 impl Panel for SystemInfoPanel {

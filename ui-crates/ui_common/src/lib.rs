@@ -25,13 +25,19 @@ pub fn set_locale(locale: &str) {
 
 pub mod command_palette;
 pub mod file_utils;
+pub mod generic_window;
 pub mod helpers;
 pub mod menu;
+pub mod panel;
 pub mod shared;
+pub mod shared_state;
+
+pub use shared_state::SharedState;
 
 // Re-export commonly used types
 pub use menu::AppTitleBar;
 pub use file_utils::{FileInfo, FileType, find_openable_files};
+pub use panel::{PanelBase, PanelEvent};
 pub use shared::{StatusBar, ViewportControls, Toolbar, ToolbarButton, PropertyField};
 
 // Re-export diagnostics from ui crate

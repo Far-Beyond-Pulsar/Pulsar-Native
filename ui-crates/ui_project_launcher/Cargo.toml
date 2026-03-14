@@ -1,7 +1,0 @@
-[package]
-name = "ui_project_launcher"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-ui_entry.workspace = true

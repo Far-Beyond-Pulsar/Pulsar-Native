@@ -1,9 +1,8 @@
 //! Performance metrics tracking for Mission Control
 
 use std::collections::VecDeque;
-use std::sync::Arc;
 use sysinfo::{System, Networks, Components};
-use parking_lot::RwLock;
+use ui_common::SharedState;
 use crate::gpu_info;
 
 /// Maximum number of data points to keep in history
@@ -390,9 +389,9 @@ impl Default for PerformanceMetrics {
 }
 
 /// Shared performance metrics accessible across the application
-pub type SharedPerformanceMetrics = Arc<RwLock<PerformanceMetrics>>;
+pub type SharedPerformanceMetrics = SharedState<PerformanceMetrics>;
 
 /// Create a new shared performance metrics instance
 pub fn create_shared_metrics() -> SharedPerformanceMetrics {
-    Arc::new(RwLock::new(PerformanceMetrics::new()))
+    SharedState::new(PerformanceMetrics::new())
 }

@@ -23,6 +23,24 @@ use super::gizmo_types::{
     ViewportMouseInput, GizmoInteractionState, ActiveRaycastTask, RaycastResult,
 };
 
+/// All shared state passed to the renderer thread.
+///
+/// Consolidating these into one struct lets the thread-spawn site do a
+/// single `.clone()` instead of 10 individual Arc clones.
+#[derive(Clone)]
+struct RendererSharedState {
+    shared_textures: Arc<Mutex<Option<SharedGpuTextures>>>,
+    camera_input: Arc<Mutex<CameraInput>>,
+    metrics: Arc<Mutex<RenderMetrics>>,
+    gpu_profiler: Arc<Mutex<GpuProfilerData>>,
+    gizmo_state: Arc<Mutex<GizmoStateResource>>,
+    viewport_mouse_input: Arc<parking_lot::Mutex<ViewportMouseInput>>,
+    scene_db: Arc<crate::scene::SceneDb>,
+    shutdown: Arc<AtomicBool>,
+    game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
+    physics_query: Option<Arc<crate::services::PhysicsQueryService>>,
+}
+
 /// Command sent from UI to renderer thread
 pub enum RendererCommand {
     ToggleFeature(String), // feature name
@@ -75,38 +93,27 @@ impl HelioRenderer {
         let (command_sender, command_receiver) = mpsc::channel();
         let shutdown = Arc::new(AtomicBool::new(false));
 
-        let shared_textures_clone = shared_textures.clone();
-        let camera_input_clone = camera_input.clone();
-        let metrics_clone = metrics.clone();
-        let gpu_profiler_clone = gpu_profiler.clone();
-        let gizmo_state_clone = gizmo_state.clone();
-        let viewport_mouse_input_clone = viewport_mouse_input.clone();
-        let scene_db_clone = scene_db.clone();
-        let shutdown_clone = shutdown.clone();
-        let game_thread_clone = game_thread_state.clone();
-        let physics_query_clone = physics_query.clone();
+        let shared_state = RendererSharedState {
+            shared_textures: shared_textures.clone(),
+            camera_input: camera_input.clone(),
+            metrics: metrics.clone(),
+            gpu_profiler: gpu_profiler.clone(),
+            gizmo_state: gizmo_state.clone(),
+            viewport_mouse_input: viewport_mouse_input.clone(),
+            scene_db: scene_db.clone(),
+            shutdown: shutdown.clone(),
+            game_thread_state: game_thread_state.clone(),
+            physics_query: physics_query.clone(),
+        };
 
         let render_thread = std::thread::Builder::new()
             .name("helio-render".to_string())
             .spawn(move || {
                 profiling::set_thread_name("Helio Render Thread");
-                Self::run_helio_renderer(
-                    width,
-                    height,
-                    shared_textures_clone,
-                    camera_input_clone,
-                    metrics_clone,
-                    gpu_profiler_clone,
-                    gizmo_state_clone,
-                    viewport_mouse_input_clone,
-                    command_receiver,
-                    scene_db_clone,
-                    shutdown_clone,
-                    game_thread_clone,
-                    physics_query_clone,
-                );
+                Self::run_helio_renderer(width, height, shared_state, command_receiver);
             })
-            .expect("Failed to spawn Helio render thread");
+            .map_err(|e| tracing::error!("[HELIO] Failed to spawn render thread: {}", e))
+            .ok();
 
         Self {
             shared_textures,
@@ -118,25 +125,28 @@ impl HelioRenderer {
             scene_db,
             command_sender,
             shutdown,
-            _render_thread: Some(render_thread),
+            _render_thread: render_thread,
         }
     }
 
     fn run_helio_renderer(
         width: u32,
         height: u32,
-        shared_textures: Arc<Mutex<Option<SharedGpuTextures>>>,
-        camera_input: Arc<Mutex<CameraInput>>,
-        metrics: Arc<Mutex<RenderMetrics>>,
-        gpu_profiler: Arc<Mutex<GpuProfilerData>>,
-        _gizmo_state: Arc<Mutex<GizmoStateResource>>,
-        _viewport_mouse_input: Arc<parking_lot::Mutex<ViewportMouseInput>>,
+        state: RendererSharedState,
         command_receiver: mpsc::Receiver<RendererCommand>,
-        scene_db: Arc<crate::scene::SceneDb>,
-        shutdown: Arc<AtomicBool>,
-        _game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
-        physics_query: Option<Arc<crate::services::PhysicsQueryService>>,
     ) {
+        let RendererSharedState {
+            shared_textures,
+            camera_input,
+            metrics,
+            gpu_profiler,
+            gizmo_state: _gizmo_state,
+            viewport_mouse_input: _viewport_mouse_input,
+            scene_db,
+            shutdown,
+            game_thread_state: _game_thread_state,
+            physics_query,
+        } = state;
         profiling::profile_scope!("HelioRenderer::Run");
         tracing::info!("[HELIO] 🚀 Step 1/10: Starting headless renderer {}x{}", width, height);
 
@@ -241,7 +251,7 @@ impl HelioRenderer {
         
         // Add sun as directional light - matches sky shader sun direction
         let sun_dir = Vec3::new(0.4, 0.6, -0.5).normalize();
-        shadows.add_light(helio_feature_procedural_shadows::LightConfig {
+        if let Err(e) = shadows.add_light(helio_feature_procedural_shadows::LightConfig {
             light_type: helio_feature_procedural_shadows::LightType::Directional,
             position: Vec3::ZERO, // Not used for directional lights
             direction: -sun_dir,  // Light direction is opposite to sun position
@@ -249,10 +259,12 @@ impl HelioRenderer {
             color: Vec3::new(1.0, 0.95, 0.9), // Warm daylight
             attenuation_radius: 0.0,  // Infinite range for sun
             attenuation_falloff: 0.0,
-        }).expect("Failed to add sun light");
+        }) {
+            tracing::warn!("[HELIO] Could not add sun light: {:?}", e);
+        }
         
         // Initial static lights (will be replaced by animated lights in loop)
-        shadows.add_light(helio_feature_procedural_shadows::LightConfig {
+        if let Err(e) = shadows.add_light(helio_feature_procedural_shadows::LightConfig {
             light_type: helio_feature_procedural_shadows::LightType::Spot {
                 inner_angle: 25.0_f32.to_radians(),
                 outer_angle: 40.0_f32.to_radians(),
@@ -263,9 +275,11 @@ impl HelioRenderer {
             color: Vec3::new(1.0, 0.2, 0.2),
             attenuation_radius: 12.0,
             attenuation_falloff: 2.0,
-        }).expect("Failed to add light");
+        }) {
+            tracing::warn!("[HELIO] Could not add spot light: {:?}", e);
+        }
         
-        shadows.add_light(helio_feature_procedural_shadows::LightConfig {
+        if let Err(e) = shadows.add_light(helio_feature_procedural_shadows::LightConfig {
             light_type: helio_feature_procedural_shadows::LightType::Point,
             position: Vec3::new(-4.0, 3.0, -4.0),
             direction: Vec3::new(0.0, -1.0, 0.0),
@@ -273,9 +287,11 @@ impl HelioRenderer {
             color: Vec3::new(0.2, 1.0, 0.2),
             attenuation_radius: 10.0,
             attenuation_falloff: 2.5,
-        }).expect("Failed to add light");
+        }) {
+            tracing::warn!("[HELIO] Could not add point light: {:?}", e);
+        }
         
-        shadows.add_light(helio_feature_procedural_shadows::LightConfig {
+        if let Err(e) = shadows.add_light(helio_feature_procedural_shadows::LightConfig {
             light_type: helio_feature_procedural_shadows::LightType::Point,
             position: Vec3::new(4.0, 3.0, -4.0),
             direction: Vec3::new(0.0, -1.0, 0.0),
@@ -283,7 +299,9 @@ impl HelioRenderer {
             color: Vec3::new(0.2, 0.2, 1.0),
             attenuation_radius: 10.0,
             attenuation_falloff: 2.5,
-        }).expect("Failed to add light");
+        }) {
+            tracing::warn!("[HELIO] Could not add point light: {:?}", e);
+        }
         
         tracing::info!("[HELIO] ✅ Shadow system configured with ambient=0.0 (pure black)");
         
@@ -365,14 +383,20 @@ impl HelioRenderer {
         tracing::info!("[HELIO] ✅ Step 8.5/10: Depth texture created");
 
         tracing::info!("[HELIO] 🚀 Step 9/10: Creating FeatureRenderer...");
-        let mut renderer = FeatureRenderer::new(
+        let mut renderer = match FeatureRenderer::new(
             Arc::clone(&context),
             blade_graphics::TextureFormat::Bgra8UnormSrgb,
             width,
             height,
             registry,
             &base_shader,
-        ).expect("Failed to create FeatureRenderer");
+        ) {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!("[HELIO] ❌ FATAL: Failed to create FeatureRenderer: {:?}", e);
+                return;
+            }
+        };
         tracing::info!("[HELIO] ✅ Step 9/10: FeatureRenderer created");
 
         tracing::info!("[HELIO] 🚀 Step 10/10: Creating command encoder...");
@@ -608,7 +632,7 @@ impl HelioRenderer {
                                 let radius = (scale[0] + scale[1] + scale[2]) / 3.0 * 0.707;
 
                                 if dist_to_ray < radius {
-                                    if closest_hit.is_none() || proj < closest_hit.as_ref().unwrap().1 {
+                                    if closest_hit.as_ref().map_or(true, |h| proj < h.1) {
                                         closest_hit = Some((entry.id.clone(), proj));
                                         closest_dist = proj;
                                     }
@@ -727,11 +751,23 @@ impl HelioRenderer {
                 // Use current write buffer from shared textures
                 shared_tex.get_write_texture()
             } else {
-                fallback_render_target.unwrap()
+                match fallback_render_target {
+                    Some(rt) => rt,
+                    None => {
+                        tracing::error!("[HELIO] No render target available, skipping frame");
+                        continue;
+                    }
+                }
             };
             
             #[cfg(not(target_os = "windows"))]
-            let render_target = fallback_render_target.unwrap();
+            let render_target = match fallback_render_target {
+                Some(rt) => rt,
+                None => {
+                    tracing::error!("[HELIO] No render target available, skipping frame");
+                    continue;
+                }
+            };
             
             command_encoder.start();
             command_encoder.init_texture(render_target);
@@ -924,11 +960,11 @@ impl HelioRenderer {
     }
 
     pub fn get_metrics(&self) -> RenderMetrics {
-        self.metrics.lock().unwrap().clone()
+        self.metrics.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     pub fn get_gpu_profiler_data(&self) -> GpuProfilerData {
-        self.gpu_profiler.lock().unwrap().clone()
+        self.gpu_profiler.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     pub fn get_read_index(&self) -> usize {

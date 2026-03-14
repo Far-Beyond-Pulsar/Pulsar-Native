@@ -3,19 +3,63 @@ use std::sync::{Arc, Mutex};
 use crate::subsystems::framework::{Subsystem, SubsystemContext, SubsystemError, SubsystemId, subsystem_ids};
 use crate::services::PhysicsQueryService;
 
+/// All physics-engine-owned pipeline state consolidated into one lock.
+///
+/// `collider_set` and `rigid_body_set` are kept separate because they are
+/// shared with `PhysicsQueryService`.
+pub struct PhysicsWorld {
+    pipeline: PhysicsPipeline,
+    island_manager: IslandManager,
+    broad_phase: DefaultBroadPhase,
+    narrow_phase: NarrowPhase,
+    impulse_joint_set: ImpulseJointSet,
+    multibody_joint_set: MultibodyJointSet,
+    ccd_solver: CCDSolver,
+}
+
+impl PhysicsWorld {
+    fn new() -> Self {
+        Self {
+            pipeline: PhysicsPipeline::new(),
+            island_manager: IslandManager::new(),
+            broad_phase: DefaultBroadPhase::new(),
+            narrow_phase: NarrowPhase::new(),
+            impulse_joint_set: ImpulseJointSet::new(),
+            multibody_joint_set: MultibodyJointSet::new(),
+            ccd_solver: CCDSolver::new(),
+        }
+    }
+
+    /// Advance the simulation by one step.
+    fn step(
+        &mut self,
+        gravity: &rapier3d::math::Vector,
+        integration_parameters: &IntegrationParameters,
+        bodies: &mut RigidBodySet,
+        colliders: &mut ColliderSet,
+    ) {
+        self.pipeline.step(
+            *gravity,
+            integration_parameters,
+            &mut self.island_manager,
+            &mut self.broad_phase,
+            &mut self.narrow_phase,
+            bodies,
+            colliders,
+            &mut self.impulse_joint_set,
+            &mut self.multibody_joint_set,
+            &mut self.ccd_solver,
+            &(),
+            &(),
+        );
+    }
+}
+
 pub struct PhysicsEngine {
-    // Gravity as rapier3d::math::Vector (which is an alias for Vec3)
     gravity: rapier3d::math::Vector,
     integration_parameters: IntegrationParameters,
-    physics_pipeline: Arc<Mutex<PhysicsPipeline>>,
-    island_manager: Arc<Mutex<IslandManager>>,
-    broad_phase: Arc<Mutex<DefaultBroadPhase>>,
-    narrow_phase: Arc<Mutex<NarrowPhase>>,
-    impulse_joint_set: Arc<Mutex<ImpulseJointSet>>,
-    multibody_joint_set: Arc<Mutex<MultibodyJointSet>>,
-    ccd_solver: Arc<Mutex<CCDSolver>>,
-    physics_hooks: (),
-    event_handler: (),
+    /// All pipeline-owned state behind a single lock.
+    world: Arc<Mutex<PhysicsWorld>>,
     collider_set: Arc<Mutex<ColliderSet>>,
     rigid_body_set: Arc<Mutex<RigidBodySet>>,
 
@@ -31,42 +75,21 @@ impl PhysicsEngine {
         let rigid_body_set = RigidBodySet::new();
         let collider_set = ColliderSet::new();
 
-        /* Create other structures necessary for the simulation. */
         let gravity = rapier3d::math::Vector::new(0.0, -9.81, 0.0);
         let integration_parameters = IntegrationParameters::default();
-        let physics_pipeline = PhysicsPipeline::new();
-        let island_manager = IslandManager::new();
-        let broad_phase = DefaultBroadPhase::new();
-        let narrow_phase = NarrowPhase::new();
-        let impulse_joint_set = ImpulseJointSet::new();
-        let multibody_joint_set = MultibodyJointSet::new();
-        let ccd_solver = CCDSolver::new();
-        let physics_hooks = ();
-        let event_handler = ();
 
         let collider_set_arc = Arc::new(Mutex::new(collider_set));
         let rigid_body_set_arc = Arc::new(Mutex::new(rigid_body_set));
-        
-        let island_manager_arc = Arc::new(Mutex::new(island_manager));
-        
-        let query_service = Arc::new(PhysicsQueryService::new_with_island_manager(
+
+        let query_service = Arc::new(PhysicsQueryService::new(
             collider_set_arc.clone(),
             rigid_body_set_arc.clone(),
-            island_manager_arc.clone(),
         ));
 
         PhysicsEngine {
             gravity,
             integration_parameters,
-            physics_pipeline: Arc::new(Mutex::new(physics_pipeline)),
-            island_manager: island_manager_arc,
-            broad_phase: Arc::new(Mutex::new(broad_phase)),
-            narrow_phase: Arc::new(Mutex::new(narrow_phase)),
-            impulse_joint_set: Arc::new(Mutex::new(impulse_joint_set)),
-            multibody_joint_set: Arc::new(Mutex::new(multibody_joint_set)),
-            ccd_solver: Arc::new(Mutex::new(ccd_solver)),
-            physics_hooks,
-            event_handler,
+            world: Arc::new(Mutex::new(PhysicsWorld::new())),
             collider_set: collider_set_arc,
             rigid_body_set: rigid_body_set_arc,
             query_service,
@@ -96,8 +119,8 @@ impl Subsystem for PhysicsEngine {
 
         // Setup test scene
         {
-            let mut rigid_body_set = self.rigid_body_set.lock().unwrap();
-            let mut collider_set = self.collider_set.lock().unwrap();
+            let mut rigid_body_set = self.rigid_body_set.lock().unwrap_or_else(|e| e.into_inner());
+            let mut collider_set = self.collider_set.lock().unwrap_or_else(|e| e.into_inner());
 
             let rigid_body = RigidBodyBuilder::dynamic()
                 .translation([0.0, 10.0, 0.0].into())
@@ -116,13 +139,7 @@ impl Subsystem for PhysicsEngine {
         // Clone Arc pointers for the async task
         let gravity = self.gravity;
         let integration_parameters = self.integration_parameters.clone();
-        let physics_pipeline = self.physics_pipeline.clone();
-        let island_manager = self.island_manager.clone();
-        let broad_phase = self.broad_phase.clone();
-        let narrow_phase = self.narrow_phase.clone();
-        let impulse_joint_set = self.impulse_joint_set.clone();
-        let multibody_joint_set = self.multibody_joint_set.clone();
-        let ccd_solver = self.ccd_solver.clone();
+        let world = self.world.clone();
         let rigid_body_set = self.rigid_body_set.clone();
         let collider_set = self.collider_set.clone();
 
@@ -133,32 +150,11 @@ impl Subsystem for PhysicsEngine {
             loop {
                 profiling::profile_scope!("Physics::Step");
 
-                // Lock all components and perform physics step
                 {
-                    let mut pipeline = physics_pipeline.lock().unwrap();
-                    let mut islands = island_manager.lock().unwrap();
-                    let mut broad = broad_phase.lock().unwrap();
-                    let mut narrow = narrow_phase.lock().unwrap();
-                    let mut bodies = rigid_body_set.lock().unwrap();
-                    let mut colliders = collider_set.lock().unwrap();
-                    let mut impulse_joints = impulse_joint_set.lock().unwrap();
-                    let mut multibody_joints = multibody_joint_set.lock().unwrap();
-                    let mut ccd = ccd_solver.lock().unwrap();
-
-                    pipeline.step(
-                        gravity,
-                        &integration_parameters,
-                        &mut islands,
-                        &mut broad,
-                        &mut narrow,
-                        &mut bodies,
-                        &mut colliders,
-                        &mut impulse_joints,
-                        &mut multibody_joints,
-                        &mut ccd,
-                        &(),
-                        &()
-                    );
+                    let mut w = world.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut bodies = rigid_body_set.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut colliders = collider_set.lock().unwrap_or_else(|e| e.into_inner());
+                    w.step(&gravity, &integration_parameters, &mut bodies, &mut colliders);
                 }
 
                 tokio::time::sleep(std::time::Duration::from_millis(8)).await; // Approx ~120 FPS

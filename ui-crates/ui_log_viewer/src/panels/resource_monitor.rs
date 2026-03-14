@@ -62,6 +62,8 @@ impl ResourceMonitorPanel {
 
 impl EventEmitter<PanelEvent> for ResourceMonitorPanel {}
 
+ui_common::panel_boilerplate!(ResourceMonitorPanel);
+
 impl Render for ResourceMonitorPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         use ui::{h_flex, chart::AreaChart, scroll::ScrollbarAxis};
@@ -227,10 +229,6 @@ impl Render for ResourceMonitorPanel {
                 theme.danger, cx,
             ))
     }
-}
-
-impl Focusable for ResourceMonitorPanel {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle { self.focus_handle.clone() }
 }
 
 impl Panel for ResourceMonitorPanel {

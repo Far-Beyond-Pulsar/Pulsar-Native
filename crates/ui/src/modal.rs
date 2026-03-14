@@ -23,6 +23,14 @@ pub(crate) fn init(cx: &mut App) {
     ]);
 }
 
+struct ModalInit;
+impl crate::registry::UiComponentInit for ModalInit {
+    fn init(&self, cx: &mut App) {
+        init(cx);
+    }
+}
+crate::register_ui_component!(ModalInit);
+
 type RenderButtonFn = Box<dyn FnOnce(&mut Window, &mut App) -> AnyElement>;
 type FooterFn =
     Box<dyn Fn(RenderButtonFn, RenderButtonFn, &mut Window, &mut App) -> Vec<AnyElement>>;

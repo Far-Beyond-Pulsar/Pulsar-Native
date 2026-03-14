@@ -67,13 +67,8 @@ pub trait ListDelegate: Sized + 'static {
     }
 
     /// Return a Element to show when list is empty.
-    fn render_empty(&self, window: &mut Window, cx: &mut Context<List<Self>>) -> impl IntoElement {
-        h_flex()
-            .size_full()
-            .justify_center()
-            .text_color(cx.theme().muted_foreground.opacity(0.6))
-            .child(Icon::new(IconName::Inbox).size_12())
-            .into_any_element()
+    fn render_empty(&self, _window: &mut Window, cx: &mut Context<List<Self>>) -> impl IntoElement {
+        crate::states::empty_state_placeholder(cx)
     }
 
     /// Returns Some(AnyElement) to render the initial state of the list.

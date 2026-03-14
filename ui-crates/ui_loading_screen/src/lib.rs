@@ -30,19 +30,13 @@ struct RecentProjectsList {
 
 impl RecentProjectsList {
     fn load(path: &std::path::Path) -> Self {
-        std::fs::read_to_string(path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
+        use ui_common::file_utils;
+        file_utils::read_json(path).unwrap_or_default()
     }
 
     fn save(&self, path: &std::path::Path) {
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        if let Ok(json) = serde_json::to_string_pretty(self) {
-            let _ = std::fs::write(path, json);
-        }
+        use ui_common::file_utils;
+        let _ = file_utils::write_json(path, self);
     }
 
     fn add_or_update(&mut self, project: RecentProject) {

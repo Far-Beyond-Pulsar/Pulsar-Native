@@ -29,70 +29,65 @@ fn get_runtime() -> &'static tokio::runtime::Runtime {
     }
 }
 
-/// OPTIMIZED GPU Renderer - uses Helio with blade-graphics
+/// Builder for `GpuRenderer`.
 ///
-/// Migrated from Bevy to Helio for:
-/// - Better performance with blade-graphics
-/// - More direct control over rendering pipeline
-/// - Simplified architecture
-pub struct GpuRenderer {
-    pub helio_renderer: Option<HelioRenderer>,
-    render_width: u32,
-    render_height: u32,
+/// ```rust,ignore
+/// let renderer = GpuRendererBuilder::new(1920, 1080)
+///     .scene_db(scene_db)
+///     .game_thread(game_state)
+///     .physics(physics_query)
+///     .build();
+/// ```
+pub struct GpuRendererBuilder {
     display_width: u32,
     display_height: u32,
-    frame_count: u64,
-    start_time: Instant,
-    last_metrics_print: Instant,
+    scene_db: Option<Arc<SceneDb>>,
+    game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
+    physics_query: Option<Arc<crate::services::PhysicsQueryService>>,
 }
 
-impl GpuRenderer {
-    /// Create with a new empty SceneDb. Callers that want to share the db should use
-    /// `new_with_scene_db` instead.
-    pub fn new(display_width: u32, display_height: u32) -> Self {
-        Self::new_with_scene_db(display_width, display_height, Arc::new(SceneDb::new()), None)
+impl GpuRendererBuilder {
+    pub fn new(width: u32, height: u32) -> Self {
+        Self {
+            display_width: width,
+            display_height: height,
+            scene_db: None,
+            game_thread_state: None,
+            physics_query: None,
+        }
     }
 
-    pub fn new_with_game_thread(
-        display_width: u32,
-        display_height: u32,
-        game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
-    ) -> Self {
-        Self::new_with_scene_db(display_width, display_height, Arc::new(SceneDb::new()), game_thread_state)
+    pub fn scene_db(mut self, db: Arc<SceneDb>) -> Self {
+        self.scene_db = Some(db);
+        self
     }
 
-    /// Create the renderer sharing an existing SceneDb Arc. Pass the same Arc to the
-    /// UI SceneDatabase so both sides read/write the same live data.
-    pub fn new_with_scene_db(
-        display_width: u32,
-        display_height: u32,
-        scene_db: Arc<SceneDb>,
-        game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
-    ) -> Self {
-        Self::new_with_scene_db_and_physics(display_width, display_height, scene_db, game_thread_state, None)
+    pub fn game_thread(mut self, gt: Arc<Mutex<crate::subsystems::game::GameState>>) -> Self {
+        self.game_thread_state = Some(gt);
+        self
     }
-    
-    pub fn new_with_scene_db_and_physics(
-        display_width: u32,
-        display_height: u32,
-        scene_db: Arc<SceneDb>,
-        game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
-        physics_query: Option<Arc<crate::services::PhysicsQueryService>>,
-    ) -> Self {
-        let width = display_width;
-        let height = display_height;
+
+    pub fn physics(mut self, pq: Arc<crate::services::PhysicsQueryService>) -> Self {
+        self.physics_query = Some(pq);
+        self
+    }
+
+    pub fn build(self) -> GpuRenderer {
+        let width = self.display_width;
+        let height = self.display_height;
+        let scene_db = self.scene_db.unwrap_or_else(|| Arc::new(SceneDb::new()));
+        let game_thread_state = self.game_thread_state;
+        let physics_query = self.physics_query;
 
         tracing::info!("[GPU-RENDERER] 🚀 Initializing Helio renderer (blade-graphics) at {}x{}", width, height);
 
         let runtime = get_runtime();
-        let game_state_for_renderer = game_thread_state.clone();
         let scene_db_clone = scene_db.clone();
-        let physics_query_clone = physics_query.clone();
         let helio_renderer = runtime.block_on(async move {
             tracing::debug!("[GPU-RENDERER] Creating Helio renderer asynchronously...");
             match tokio::time::timeout(
                 tokio::time::Duration::from_secs(10),
-                HelioRenderer::new_with_all(width, height, game_state_for_renderer, scene_db_clone, physics_query_clone)
+                HelioRenderer::new_with_all(width, height, game_thread_state, scene_db_clone, physics_query)
             ).await {
                 Ok(renderer) => {
                     tracing::info!("[GPU-RENDERER] ✅ Helio renderer created successfully!");
@@ -109,16 +104,91 @@ impl GpuRenderer {
             tracing::error!("[GPU-RENDERER] Failed to create Helio renderer!");
         }
 
-        Self {
+        GpuRenderer {
             helio_renderer,
             render_width: width,
             render_height: height,
-            display_width,
-            display_height,
+            display_width: width,
+            display_height: height,
             frame_count: 0,
             start_time: Instant::now(),
             last_metrics_print: Instant::now(),
         }
+    }
+}
+
+/// OPTIMIZED GPU Renderer - uses Helio with blade-graphics.
+///
+/// Migrated from Bevy to Helio for:
+/// - Better performance with blade-graphics
+/// - More direct control over rendering pipeline
+/// - Simplified architecture
+///
+/// Prefer constructing via [`GpuRendererBuilder`].
+pub struct GpuRenderer {
+    pub helio_renderer: Option<HelioRenderer>,
+    render_width: u32,
+    render_height: u32,
+    display_width: u32,
+    display_height: u32,
+    frame_count: u64,
+    start_time: Instant,
+    last_metrics_print: Instant,
+}
+
+impl GpuRenderer {
+    /// Create with a new empty SceneDb. Callers that want to share the db should use
+    /// `new_with_scene_db` instead.
+    #[deprecated(note = "Use GpuRendererBuilder instead")]
+    pub fn new(display_width: u32, display_height: u32) -> Self {
+        GpuRendererBuilder::new(display_width, display_height).build()
+    }
+
+    #[deprecated(note = "Use GpuRendererBuilder instead")]
+    pub fn new_with_game_thread(
+        display_width: u32,
+        display_height: u32,
+        game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
+    ) -> Self {
+        let mut builder = GpuRendererBuilder::new(display_width, display_height);
+        if let Some(gt) = game_thread_state {
+            builder = builder.game_thread(gt);
+        }
+        builder.build()
+    }
+
+    /// Create the renderer sharing an existing SceneDb Arc. Pass the same Arc to the
+    /// UI SceneDatabase so both sides read/write the same live data.
+    #[deprecated(note = "Use GpuRendererBuilder instead")]
+    pub fn new_with_scene_db(
+        display_width: u32,
+        display_height: u32,
+        scene_db: Arc<SceneDb>,
+        game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
+    ) -> Self {
+        let mut builder = GpuRendererBuilder::new(display_width, display_height).scene_db(scene_db);
+        if let Some(gt) = game_thread_state {
+            builder = builder.game_thread(gt);
+        }
+        builder.build()
+    }
+
+    #[deprecated(note = "Use GpuRendererBuilder instead")]
+    pub fn new_with_scene_db_and_physics(
+        display_width: u32,
+        display_height: u32,
+        scene_db: Arc<SceneDb>,
+        game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
+        physics_query: Option<Arc<crate::services::PhysicsQueryService>>,
+    ) -> Self {
+        let mut builder = GpuRendererBuilder::new(display_width, display_height).scene_db(scene_db);
+        if let Some(gt) = game_thread_state {
+            builder = builder.game_thread(gt);
+        }
+        if let Some(pq) = physics_query {
+            builder = builder.physics(pq);
+        }
+        builder.build()
     }
 
     pub fn render(&mut self, _framebuffer: &mut ViewportFramebuffer) {
