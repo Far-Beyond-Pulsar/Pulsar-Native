@@ -8,7 +8,7 @@ mod views;
 
 use gpui::*;
 use gpui::ClipboardItem;
-use ui::{Root, v_flex, h_flex, TitleBar, ActiveTheme as _, input::{InputState, InputEvent}};
+use ui::{v_flex, h_flex, TitleBar, ActiveTheme as _, input::{InputState, InputEvent}};
 use std::path::PathBuf;
 use std::collections::HashSet;
 use parking_lot::RwLock;
@@ -591,16 +591,6 @@ impl Render for GitManager {
                     )
             )
     }
-}
-
-/// Create a Git Manager window component
-pub fn create_git_manager_component(
-    window: &mut Window,
-    cx: &mut App,
-    project_path: PathBuf,
-) -> Entity<Root> {
-    let git_manager = cx.new(|cx| GitManager::new(project_path, window, cx));
-    cx.new(|cx| Root::new(git_manager.into(), window, cx))
 }
 
 /// Type alias for use in the PulsarWindow system.

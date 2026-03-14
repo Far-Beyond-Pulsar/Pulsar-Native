@@ -4,11 +4,11 @@
 
 use gpui::*;
 use gpui::Hsla;
-use ui::{ActiveTheme, Colorize, Root};
+use ui::{ActiveTheme, Colorize};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use engine_backend::services::rust_analyzer_manager::{RustAnalyzerManager, AnalyzerStatus, AnalyzerEvent};
-use engine_state::{EngineContext, WindowRequest, WindowContext};
+use engine_state::EngineContext;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
@@ -53,17 +53,6 @@ impl RecentProjectsList {
     fn remove(&mut self, path: &str) {
         self.projects.retain(|p| p.path != path);
     }
-}
-
-/// Helper function to create a loading screen component wrapped in Root
-pub fn create_loading_component(
-    project_path: PathBuf,
-    window_id: u64,
-    window: &mut Window,
-    cx: &mut App,
-) -> Entity<Root> {
-    let loading_screen = cx.new(|cx| LoadingScreen::new_with_window_id(project_path, window_id, window, cx));
-    cx.new(|cx| Root::new(loading_screen.into(), window, cx))
 }
 
 pub struct LoadingScreen {
@@ -219,49 +208,18 @@ impl Render for LoadingScreen {
         // once all tasks done, open editor & schedule closing
         if self.initial_tasks_complete && !self.opened_editor {
             self.opened_editor = true;
-            if let Some(engine_context) = EngineContext::global() {
-                let pathbuf = self.project_path.clone();
-                let ec = engine_context.clone();
-                let wid2 = ec.next_window_id();
-                ec.register_window(
-                    wid2,
-                    WindowContext::new(
-                        wid2,
-                        WindowRequest::ProjectEditor { project_path: pathbuf.to_string_lossy().to_string() },
-                    ),
-                );
-                let opts = WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(Bounds::new(
-                        point(px(100.0), px(100.0)),
-                        size(px(800.0), px(600.0)),
-                    ))),
-                    titlebar: None,
-                    kind: WindowKind::Normal,
-                    is_resizable: true,
-                    window_decorations: Some(gpui::WindowDecorations::Client),
-                    ..Default::default()
-                };
-                // Replace direct cx.open_window with window_manager::WindowManager::global().create_window
-                let _ = window_manager::WindowManager::update_global(cx, |wm, cx| {
-                    wm.create_window(
-                        engine_state::WindowRequest::ProjectSplash { project_path: pathbuf.clone().to_string_lossy().to_string() },
-                        opts,
-                        move |window: &mut gpui::Window, cx: &mut gpui::App| {
-                            crate::create_loading_component(pathbuf.clone(), wid2, window, cx)
-                        },
-                        cx,
-                    )
-                });
+            let pathbuf = self.project_path.clone();
+            ui_common::open_window::open_pulsar_window::<LoadingScreen>(pathbuf, cx);
 
-                let close_id = self.window_id;
-                let ec2 = engine_context.clone();
-                let ptr = self.window_ptr;
-                cx.spawn(async move |_, cx| {
-                    cx.background_executor().timer(Duration::from_millis(100)).await;
-                    unsafe { (&mut *ptr).remove_window(); }
-                    ec2.unregister_window(&close_id);
-                });
-            }
+            let close_id = self.window_id;
+            let ptr = self.window_ptr;
+            cx.spawn(async move |_, cx| {
+                cx.background_executor().timer(Duration::from_millis(100)).await;
+                unsafe { (&mut *ptr).remove_window(); }
+                if let Some(ec) = engine_state::EngineContext::global() {
+                    ec.unregister_window(&close_id);
+                }
+            });
         }
         // request a frame every render call to keep loop alive
         _window.request_animation_frame();
@@ -454,4 +412,18 @@ fn update_recent_projects(project_path: &Path) {
     recent_projects.add_or_update(project);
     recent_projects.save(&recent_projects_path);
     tracing::debug!("Updated recent projects for: {}", project_path.display());
+}
+
+impl window_manager::PulsarWindow for LoadingScreen {
+    type Params = PathBuf;
+
+    fn window_name() -> &'static str { "LoadingScreen" }
+
+    fn window_options(_: &PathBuf) -> gpui::WindowOptions {
+        window_manager::default_window_options(900.0, 600.0)
+    }
+
+    fn build(params: PathBuf, window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {
+        cx.new(|cx| LoadingScreen::new(params, window, cx))
+    }
 }

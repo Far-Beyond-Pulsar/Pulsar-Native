@@ -123,105 +123,73 @@ impl WindowManager {
         Ok(())
     }
 
-    /// Focus a window.
-    pub fn focus_window(&self, window_id: WindowId, window: &mut Window) -> WindowResult<()> {
-        let command = WindowCommand::Focus(FocusWindowCommand { window_id });
+    /// Shared pipeline for the 6 simple window operations:
+    /// validate → before-hooks → op (actual work + result) → after-hooks.
+    fn run_operation<F>(&self, command: WindowCommand, op: F) -> WindowResult<()>
+    where
+        F: FnOnce() -> WindowCommandResult,
+    {
         self.telemetry.record_command_executed(&command);
         self.validator.validate(&command, &self.state)?;
         let before = HookContext::from_command(&command);
         self.hooks.execute_before(&before)?;
 
-        // Activate the window to bring it to the foreground
-        window.activate_window();
+        let result = op();
 
-        let result = WindowCommandResult::Focused { window_id };
         self.telemetry.record_command_result(&result);
         let after = HookContext::from_result(&result);
         self.hooks.execute_after(&after)?;
         Ok(())
+    }
+
+    /// Focus a window.
+    pub fn focus_window(&self, window_id: WindowId, window: &mut Window) -> WindowResult<()> {
+        let command = WindowCommand::Focus(FocusWindowCommand { window_id });
+        self.run_operation(command, || {
+            window.activate_window();
+            WindowCommandResult::Focused { window_id }
+        })
     }
 
     pub fn minimize_window(&self, window_id: WindowId, window: &mut Window) -> WindowResult<()> {
         let command = WindowCommand::Minimize(MinimizeWindowCommand { window_id });
-        self.telemetry.record_command_executed(&command);
-        self.validator.validate(&command, &self.state)?;
-        let before = HookContext::from_command(&command);
-        self.hooks.execute_before(&before)?;
-
-        window.minimize_window();
-
-        let result = WindowCommandResult::Minimized { window_id };
-        self.telemetry.record_command_result(&result);
-        let after = HookContext::from_result(&result);
-        self.hooks.execute_after(&after)?;
-        Ok(())
+        self.run_operation(command, || {
+            window.minimize_window();
+            WindowCommandResult::Minimized { window_id }
+        })
     }
 
     pub fn maximize_window(&self, window_id: WindowId, restore: bool, window: &mut Window) -> WindowResult<()> {
         let command = WindowCommand::Maximize(MaximizeWindowCommand { window_id, restore });
-        self.telemetry.record_command_executed(&command);
-        self.validator.validate(&command, &self.state)?;
-        let before = HookContext::from_command(&command);
-        self.hooks.execute_before(&before)?;
-
-        window.zoom_window();
-
-        let result = WindowCommandResult::Maximized { window_id };
-        self.telemetry.record_command_result(&result);
-        let after = HookContext::from_result(&result);
-        self.hooks.execute_after(&after)?;
-        Ok(())
+        self.run_operation(command, || {
+            window.zoom_window();
+            WindowCommandResult::Maximized { window_id }
+        })
     }
 
     pub fn move_window(&self, window_id: WindowId, position: gpui::Point<gpui::Pixels>, window: &mut Window) -> WindowResult<()> {
         let command = WindowCommand::Move(MoveWindowCommand { window_id, position });
-        self.telemetry.record_command_executed(&command);
-        self.validator.validate(&command, &self.state)?;
-        let before = HookContext::from_command(&command);
-        self.hooks.execute_before(&before)?;
-
-        // Note: gpui does not expose a direct set_position API; position change is a no-op here.
-        let _ = position;
-
-        let result = WindowCommandResult::Moved { window_id };
-        self.telemetry.record_command_result(&result);
-        let after = HookContext::from_result(&result);
-        self.hooks.execute_after(&after)?;
-        Ok(())
+        self.run_operation(command, || {
+            // Note: gpui does not expose a direct set_position API; position change is a no-op here.
+            let _ = (position, window);
+            WindowCommandResult::Moved { window_id }
+        })
     }
 
     pub fn resize_window(&self, window_id: WindowId, size: gpui::Size<gpui::Pixels>, window: &mut Window) -> WindowResult<()> {
         let command = WindowCommand::Resize(ResizeWindowCommand { window_id, size });
-        self.telemetry.record_command_executed(&command);
-        self.validator.validate(&command, &self.state)?;
-        let before = HookContext::from_command(&command);
-        self.hooks.execute_before(&before)?;
-
-        // Fix .set_rem_size(size) call to use a value convertible to Pixels
-        window.set_rem_size(size.width);
-
-        let result = WindowCommandResult::Resized { window_id };
-        self.telemetry.record_command_result(&result);
-        let after = HookContext::from_result(&result);
-        self.hooks.execute_after(&after)?;
-        Ok(())
+        self.run_operation(command, || {
+            window.set_rem_size(size.width);
+            WindowCommandResult::Resized { window_id }
+        })
     }
 
     pub fn update_title(&self, window_id: WindowId, title: String, window: &mut Window) -> WindowResult<()> {
         let command = WindowCommand::UpdateTitle(UpdateTitleCommand { window_id, title: title.clone() });
-        self.telemetry.record_command_executed(&command);
-        self.validator.validate(&command, &self.state)?;
-        let before = HookContext::from_command(&command);
-        self.hooks.execute_before(&before)?;
-
-        // Fix .set_window_title() call to match gpui API
-        window.set_window_title(&title);
-
-        let result = WindowCommandResult::TitleUpdated { window_id };
-        self.telemetry.record_command_result(&result);
-        let after = HookContext::from_result(&result);
-        self.hooks.execute_after(&after)?;
-        Ok(())
+        self.run_operation(command, || {
+            window.set_window_title(&title);
+            WindowCommandResult::TitleUpdated { window_id }
+        })
     }
 
     pub fn window_count(&self) -> usize {

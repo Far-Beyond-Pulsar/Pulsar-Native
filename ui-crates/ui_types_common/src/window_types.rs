@@ -3,20 +3,12 @@
 #[derive(Debug, Clone)]
 pub enum WindowRequest {
     Entry,
-    Settings,
     About,
     Documentation,
     ProjectEditor { project_path: String },
     ProjectSplash { project_path: String },
-    GitManager { project_path: String },
     /// Open FAB asset marketplace search
     FabSearch,
-    Problems,
-    TypeDebugger,
-    LogViewer,
-    Multiplayer,
-    PluginManager,
-    Flamegraph,
     FileManager { project_path: Option<String> },
     DetachedPanel,
     Component,

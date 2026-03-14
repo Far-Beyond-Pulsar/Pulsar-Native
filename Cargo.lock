@@ -11978,6 +11978,7 @@ dependencies = [
  "pulsar_graph",
  "pulsar_lsp",
  "pulsar_macros 0.1.0",
+ "pulsar_replication",
  "regex",
  "ropey",
  "rust-embed 6.8.1",
@@ -12139,6 +12140,7 @@ dependencies = [
  "ui",
  "ui_common",
  "urlencoding",
+ "window_manager",
 ]
 
 [[package]]

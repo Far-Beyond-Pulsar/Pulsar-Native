@@ -9,6 +9,7 @@ use ui::{
 use ui_common::translate;
 use std::path::PathBuf;
 
+pub mod doc_source;
 mod engine_docs;
 mod project_docs;
 mod manual_docs;

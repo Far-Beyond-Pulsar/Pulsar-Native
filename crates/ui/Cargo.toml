@@ -138,6 +138,7 @@ pulsar_diagnostics.workspace = true
 pulsar_lsp.workspace = true
 pulsar_macros = { path = "../pulsar_macros" }
 pulsar_graph = { path = "../pulsar_graph" }
+pulsar_replication.workspace = true
 
 # Windows DirectX for shared texture opening (zero-copy DX12<->DX11)
 [target.'cfg(windows)'.dependencies]

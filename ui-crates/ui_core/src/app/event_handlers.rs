@@ -659,7 +659,7 @@ pub fn on_popout_file_manager(
 ) {
     use gpui::{px, size, Bounds, Point, WindowBounds, WindowKind, WindowOptions};
     use ui::Root;
-    use engine_state::{EngineContext, WindowContext, WindowRequest};
+    use engine_state::WindowRequest;
 
     // Get project path from the drawer
     let project_path = drawer.read(cx).project_path.clone();
@@ -667,44 +667,42 @@ pub fn on_popout_file_manager(
     app.state.drawer_open = false;
     cx.notify();
 
-    // Register with engine context
-    if let Some(ec) = EngineContext::global() {
-        let wid = ec.next_window_id();
-        ec.register_window(wid, WindowContext::new(wid, WindowRequest::FileManager {
-            project_path: project_path.as_ref().map(|p| p.to_string_lossy().to_string()),
-        }));
-        tracing::debug!("opening file manager popout window id={}", wid);
-    }
-
     // Use mouse position from event for window placement
     let window_origin = Point {
         x: event.position.x - px(500.0), // Center window at mouse
         y: event.position.y - px(350.0),
     };
 
-    // Open the file manager window
-    let _ = cx.open_window(
-        WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(Bounds {
-                origin: window_origin,
-                size: size(px(1000.0), px(700.0)),
-            })),
-            titlebar: None,
-            kind: WindowKind::Normal,
-            is_resizable: true,
-            window_decorations: Some(gpui::WindowDecorations::Client),
-            window_min_size: Some(gpui::Size {
-                width: px(600.),
-                height: px(400.),
-            }),
-            ..Default::default()
-        },
-        move |window, cx| {
-            let new_drawer = cx.new(|cx| FileManagerDrawer::new_in_window(project_path.clone(), window, cx));
-            let file_manager_window = cx.new(|cx| ui_file_manager::FileManagerWindow::new(new_drawer, window, cx));
-            cx.new(|cx| Root::new(file_manager_window.into(), window, cx))
-        },
-    );
+    let opts = WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(Bounds {
+            origin: window_origin,
+            size: size(px(1000.0), px(700.0)),
+        })),
+        titlebar: None,
+        kind: WindowKind::Normal,
+        is_resizable: true,
+        window_decorations: Some(gpui::WindowDecorations::Client),
+        window_min_size: Some(gpui::Size {
+            width: px(600.),
+            height: px(400.),
+        }),
+        ..Default::default()
+    };
+
+    let _ = window_manager::WindowManager::update_global(cx, |wm, cx| {
+        wm.create_window(
+            WindowRequest::FileManager {
+                project_path: project_path.as_ref().map(|p| p.to_string_lossy().to_string()),
+            },
+            opts,
+            move |window, cx| {
+                let new_drawer = cx.new(|cx| FileManagerDrawer::new_in_window(project_path.clone(), window, cx));
+                let file_manager_window = cx.new(|cx| ui_file_manager::FileManagerWindow::new(new_drawer, window, cx));
+                cx.new(|cx| Root::new(file_manager_window.into(), window, cx))
+            },
+            cx,
+        )
+    });
 }
 
 pub fn on_navigate_to_diagnostic(

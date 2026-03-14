@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::fs;
 use std::collections::HashSet;
 use regex::Regex;
+use crate::doc_source::DocSource;
 
 #[derive(Clone, Debug)]
 pub struct FileEntry {
@@ -31,6 +32,16 @@ pub struct ManualDocsState {
     pub markdown_preview: String,
     pub editor_input_state: Entity<InputState>,
     pub view_mode: ViewMode,
+}
+
+impl DocSource for ManualDocsState {
+    fn placeholder() -> &'static str {
+        ""
+    }
+
+    fn initial_content() -> String {
+        String::new()
+    }
 }
 
 impl ManualDocsState {

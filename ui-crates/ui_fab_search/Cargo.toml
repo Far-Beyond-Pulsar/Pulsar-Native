@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 gpui-ce.workspace = true
+window_manager = { workspace = true }
 ui = { path = "../../crates/ui" }
 ui_common = { workspace = true }
 urlencoding = "2.1.3"

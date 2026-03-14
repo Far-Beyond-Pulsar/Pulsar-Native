@@ -85,6 +85,20 @@ pub struct FabSearchWindow {
     pub(crate) gallery_scroll_state: ScrollbarState,
 }
 
+impl window_manager::PulsarWindow for FabSearchWindow {
+    type Params = ();
+
+    fn window_name() -> &'static str { "FabSearchWindow" }
+
+    fn window_options(_: &()) -> gpui::WindowOptions {
+        window_manager::default_window_options(900.0, 650.0)
+    }
+
+    fn build(_: (), window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {
+        cx.new(|cx| FabSearchWindow::new(window, cx))
+    }
+}
+
 // ── Focusable + Render ───────────────────────────────────────────────────────
 
 impl Focusable for FabSearchWindow {
