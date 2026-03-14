@@ -1,6 +1,6 @@
 //! Event handler implementations
 
-use gpui::{AppContext, Context, DismissEvent, Entity, Focusable, Window};
+use gpui::{AppContext, Context, DismissEvent, Entity, Focusable, UpdateGlobal, Window};
 use ui::{ContextModal, dock::PanelEvent};
 use ui_file_manager::{FileManagerDrawer, FileSelected, PopoutFileManagerEvent};
 use ui_problems::ProblemsDrawer;
