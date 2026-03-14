@@ -5,7 +5,7 @@ use gpui::ElementId;
 /// Represents an index path in a list, which consists of a section index,
 ///
 /// The default values for section, row, and column are all set to 0.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct IndexPath {
     /// The section index.
     pub section: usize,

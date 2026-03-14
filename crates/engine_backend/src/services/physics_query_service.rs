@@ -3,9 +3,10 @@
 //! Provides viewport picking and gizmo interaction using Rapier3d QueryPipeline.
 
 use std::sync::{Arc, Mutex};
+use dashmap::DashMap;
 use rapier3d::prelude::*;
 use rapier3d::na::{Point3, Vector3, Isometry3};
-use glam::{Vec3, Vec2};
+use glam::Vec3;
 use crate::scene::{SceneDb, ObjectId};
 
 /// Result of a raycast query
@@ -30,13 +31,12 @@ pub enum ColliderTag {
 pub struct PhysicsQueryService {
     collider_set: Arc<Mutex<ColliderSet>>,
     rigid_body_set: Arc<Mutex<RigidBodySet>>,
-    island_manager: Arc<Mutex<IslandManager>>,
-    
-    /// Maps collider handles back to object IDs
-    collider_to_object: Arc<Mutex<std::collections::HashMap<ColliderHandle, ObjectId>>>,
-    
-    /// Maps collider handles to gizmo axis tags
-    collider_to_gizmo: Arc<Mutex<std::collections::HashMap<ColliderHandle, ColliderTag>>>,
+
+    /// Maps collider handles back to object IDs (lock-free)
+    collider_to_object: Arc<DashMap<ColliderHandle, ObjectId>>,
+
+    /// Maps collider handles to gizmo axis tags (lock-free)
+    collider_to_gizmo: Arc<DashMap<ColliderHandle, ColliderTag>>,
 }
 
 impl PhysicsQueryService {
@@ -44,21 +44,22 @@ impl PhysicsQueryService {
         collider_set: Arc<Mutex<ColliderSet>>,
         rigid_body_set: Arc<Mutex<RigidBodySet>>,
     ) -> Self {
-        Self::new_with_island_manager(collider_set, rigid_body_set, Arc::new(Mutex::new(IslandManager::new())))
-    }
-    
-    pub fn new_with_island_manager(
-        collider_set: Arc<Mutex<ColliderSet>>,
-        rigid_body_set: Arc<Mutex<RigidBodySet>>,
-        island_manager: Arc<Mutex<IslandManager>>,
-    ) -> Self {
         Self {
             collider_set,
             rigid_body_set,
-            island_manager,
-            collider_to_object: Arc::new(Mutex::new(std::collections::HashMap::new())),
-            collider_to_gizmo: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            collider_to_object: Arc::new(DashMap::new()),
+            collider_to_gizmo: Arc::new(DashMap::new()),
         }
+    }
+
+    /// Compatibility shim — `island_manager` is no longer stored here.
+    #[deprecated(note = "island_manager is no longer used by PhysicsQueryService; use `new` instead")]
+    pub fn new_with_island_manager(
+        collider_set: Arc<Mutex<ColliderSet>>,
+        rigid_body_set: Arc<Mutex<RigidBodySet>>,
+        _island_manager: Arc<Mutex<IslandManager>>,
+    ) -> Self {
+        Self::new(collider_set, rigid_body_set)
     }
 
     /// Perform a raycast from origin in direction
@@ -74,13 +75,10 @@ impl PhysicsQueryService {
             Vector3::new(direction.x, direction.y, direction.z).into(),
         );
 
-        let rigid_body_set = self.rigid_body_set.lock().unwrap();
-        let collider_set = self.collider_set.lock().unwrap();
-        let collider_to_object = self.collider_to_object.lock().unwrap();
+        let rigid_body_set = self.rigid_body_set.lock().ok()?;
+        let collider_set = self.collider_set.lock().ok()?;
         
         tracing::info!("[PHYSICS] Checking {} colliders", collider_set.len());
-
-        let filter = QueryFilter::default();
 
         // Perform raycast directly on collider set
         let mut closest_hit: Option<(ColliderHandle, f32)> = None;
@@ -88,7 +86,7 @@ impl PhysicsQueryService {
         let mut tested_count = 0;
         for (handle, collider) in collider_set.iter() {
             // Only test colliders that are registered as scene objects
-            if !collider_to_object.contains_key(&handle) {
+            if !self.collider_to_object.contains_key(&handle) {
                 continue;
             }
             tested_count += 1;
@@ -111,7 +109,7 @@ impl PhysicsQueryService {
 
         closest_hit.and_then(|(handle, toi)| {
             // Get object ID for this collider
-            let object_id = collider_to_object.get(&handle)?;
+            let object_id = self.collider_to_object.get(&handle).map(|r| r.value().clone())?;
             
             // Get hit point and normal
             let hit_point_rapier = ray.point_at(toi);
@@ -135,7 +133,7 @@ impl PhysicsQueryService {
             };
 
             Some(RaycastHit {
-                object_id: object_id.clone(),
+                object_id,
                 point: hit_point,
                 normal: hit_normal,
                 distance: toi,
@@ -156,14 +154,14 @@ impl PhysicsQueryService {
             Vector3::new(direction.x, direction.y, direction.z).into(),
         );
 
-        let collider_set = self.collider_set.lock().unwrap();
-        let collider_to_gizmo = self.collider_to_gizmo.lock().unwrap();
+        let collider_set = self.collider_set.lock().ok()?;
 
         // Iterate gizmo colliders and find closest hit
         let mut closest_hit: Option<(ColliderHandle, f32)> = None;
         
-        for (handle, _tag) in collider_to_gizmo.iter() {
-            if let Some(collider) = collider_set.get(*handle) {
+        for entry in self.collider_to_gizmo.iter() {
+            let handle = *entry.key();
+            if let Some(collider) = collider_set.get(handle) {
                 if let Some(toi) = collider.shape().cast_ray(
                     collider.position(),
                     &ray,
@@ -171,56 +169,46 @@ impl PhysicsQueryService {
                     true,
                 ) {
                     if closest_hit.is_none() || toi < closest_hit.unwrap().1 {
-                        closest_hit = Some((*handle, toi));
+                        closest_hit = Some((handle, toi));
                     }
                 }
             }
         }
 
         closest_hit.and_then(|(handle, _)| {
-            collider_to_gizmo.get(&handle).copied()
+            self.collider_to_gizmo.get(&handle).map(|r| *r.value())
         })
     }
 
     /// Register a scene object's collider for raycasting
     pub fn register_scene_collider(&self, handle: ColliderHandle, object_id: ObjectId) {
-        let mut mapping = self.collider_to_object.lock().unwrap();
-        mapping.insert(handle, object_id);
+        self.collider_to_object.insert(handle, object_id);
     }
 
     /// Register a gizmo collider
     pub fn register_gizmo_collider(&self, handle: ColliderHandle, tag: ColliderTag) {
-        let mut mapping = self.collider_to_gizmo.lock().unwrap();
-        mapping.insert(handle, tag);
+        self.collider_to_gizmo.insert(handle, tag);
     }
 
     /// Remove a collider from tracking
     pub fn unregister_collider(&self, handle: ColliderHandle) {
-        let mut obj_mapping = self.collider_to_object.lock().unwrap();
-        let mut gizmo_mapping = self.collider_to_gizmo.lock().unwrap();
-        obj_mapping.remove(&handle);
-        gizmo_mapping.remove(&handle);
+        self.collider_to_object.remove(&handle);
+        self.collider_to_gizmo.remove(&handle);
     }
 
     /// Sync colliders from SceneDB (recreate all scene colliders)
     pub fn sync_from_scene(&self, scene_db: &crate::scene::SceneDb) {
-        let start_count = {
-            let obj_mapping = self.collider_to_object.lock().unwrap();
-            obj_mapping.len()
-        };
+        let start_count = self.collider_to_object.len();
         
         // Clear existing scene colliders (but not gizmo colliders)
         {
-            let mut obj_mapping = self.collider_to_object.lock().unwrap();
-            let mut collider_set = self.collider_set.lock().unwrap();
-            let mut island_manager = self.island_manager.lock().unwrap();
-            let mut rigid_body_set = self.rigid_body_set.lock().unwrap();
-            
-            // Remove all scene object colliders
-            let handles_to_remove: Vec<ColliderHandle> = obj_mapping.keys().copied().collect();
+            let handles_to_remove: Vec<ColliderHandle> =
+                self.collider_to_object.iter().map(|r| *r.key()).collect();
+            let mut collider_set = self.collider_set.lock().unwrap_or_else(|e| e.into_inner());
+            let mut rigid_body_set = self.rigid_body_set.lock().unwrap_or_else(|e| e.into_inner());
             for handle in handles_to_remove {
-                collider_set.remove(handle, &mut island_manager, &mut rigid_body_set, false);
-                obj_mapping.remove(&handle);
+                collider_set.remove(handle, &mut Default::default(), &mut rigid_body_set, false);
+                self.collider_to_object.remove(&handle);
             }
         }
         
@@ -262,8 +250,10 @@ impl PhysicsQueryService {
             
             if let Some(shape) = shape {
                 let collider = ColliderBuilder::new(shape).position(position.into()).build();
-                let mut collider_set = self.collider_set.lock().unwrap();
-                let handle = collider_set.insert(collider);
+                let handle = {
+                    let mut collider_set = self.collider_set.lock().unwrap_or_else(|e| e.into_inner());
+                    collider_set.insert(collider)
+                };
                 self.register_scene_collider(handle, entry.id.clone());
                 created_count += 1;
                 
@@ -289,7 +279,7 @@ impl PhysicsQueryService {
             return;
         }
 
-        let mut collider_set = self.collider_set.lock().unwrap();
+        let mut collider_set = self.collider_set.lock().unwrap_or_else(|e| e.into_inner());
 
         match gizmo_type {
             super::GizmoType::Translate => {
@@ -400,27 +390,16 @@ impl PhysicsQueryService {
             }
             super::GizmoType::None => {}
         }
-
-        // Update complete
-        drop(collider_set);
     }
 
     /// Remove all gizmo colliders
     pub fn clear_gizmo_colliders(&self) {
-        let mut collider_set = self.collider_set.lock().unwrap();
-        let mut gizmo_mapping = self.collider_to_gizmo.lock().unwrap();
-
-        // Find all gizmo collider handles
-        let gizmo_handles: Vec<_> = gizmo_mapping.keys().copied().collect();
-
-        // Remove them from collider set
+        let gizmo_handles: Vec<ColliderHandle> = self.collider_to_gizmo.iter().map(|r| *r.key()).collect();
+        let mut collider_set = self.collider_set.lock().unwrap_or_else(|e| e.into_inner());
         for handle in gizmo_handles {
             collider_set.remove(handle, &mut Default::default(), &mut Default::default(), false);
-            gizmo_mapping.remove(&handle);
+            self.collider_to_gizmo.remove(&handle);
         }
-
-        drop(collider_set);
-        drop(gizmo_mapping);
     }
 }
 

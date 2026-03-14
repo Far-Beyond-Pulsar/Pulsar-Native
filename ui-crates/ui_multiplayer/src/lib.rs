@@ -11,6 +11,8 @@ mod file_sync_ui;
 mod presence;
 mod session;
 mod state;
+mod sync_protocol;
+mod peer_state;
 mod traits;
 mod types;
 mod ui;

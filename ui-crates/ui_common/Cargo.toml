@@ -11,3 +11,4 @@ ui.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 rust-i18n.workspace = true
 tracing.workspace = true
+parking_lot = "0.12"

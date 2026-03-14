@@ -11965,6 +11965,7 @@ dependencies = [
  "indoc",
  "itertools 0.13.0",
  "lazy_static",
+ "linkme",
  "lsp-types",
  "markdown",
  "markup5ever_rcdom",
@@ -12042,6 +12043,7 @@ name = "ui_common"
 version = "0.1.0"
 dependencies = [
  "gpui-ce",
+ "parking_lot",
  "rust-i18n",
  "serde",
  "tracing",

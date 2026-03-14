@@ -36,6 +36,8 @@ mod virtual_list;
 mod window_border;
 mod window_wrapper;
 pub mod component; // Component-based UI architecture
+pub mod registry;
+pub mod selection;
 
 pub(crate) mod actions;
 
@@ -104,6 +106,7 @@ pub use wry;
 pub use crate::Disableable;
 pub use event::InteractiveElementExt;
 pub use index_path::IndexPath;
+pub use selection::{IndexPathSelection, IndexSelection, Selection};
 #[cfg(any(feature = "inspector", debug_assertions))]
 pub use inspector::*;
 pub use menu::{ context_menu, popup_menu };
@@ -166,24 +169,17 @@ pub fn translate(key: &str) -> String {
 ///
 /// You must initialize the components at your application's entry point.
 pub fn init(cx: &mut App) {
+    // Ordering-sensitive: these must run before auto-registered components.
     theme::init(cx);
     global_state::init(cx);
     replication::init(cx);
     #[cfg(any(feature = "inspector", debug_assertions))]
     inspector::init(cx);
     root::init(cx);
-    date_picker::init(cx);
-    color_picker::init(cx);
     dock::init(cx);
-    drawer::init(cx);
-    dropdown::init(cx);
     input::init(cx);
-    list::init(cx);
-    modal::init(cx);
-    popover::init(cx);
-    menu::init(cx);
-    table::init(cx);
-    text::init(cx);
+    // All components registered via `register_ui_component!` are initialized here.
+    registry::init_all_components(cx);
 }
 
 #[inline]
