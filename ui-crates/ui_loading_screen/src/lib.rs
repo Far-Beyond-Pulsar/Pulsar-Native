@@ -71,6 +71,8 @@ pub struct LoadingScreen {
     opened_editor: bool,
     // background thread channel receiver for progress events
     progress_rx: std::sync::mpsc::Receiver<LoadingEvent>,
+    // called (once, deferred) when all tasks complete
+    on_complete: std::sync::Arc<dyn Fn(PathBuf, &mut gpui::App) + Send + Sync>,
 }
 
 #[derive(Clone)]
@@ -105,7 +107,26 @@ impl LoadingScreen {
         Self::new_with_window_id(project_path, 0, window, cx)
     }
 
+    pub fn new_with_on_complete(
+        project_path: PathBuf,
+        on_complete: std::sync::Arc<dyn Fn(PathBuf, &mut gpui::App) + Send + Sync>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        Self::new_internal(project_path, 0, on_complete, window, cx)
+    }
+
     pub fn new_with_window_id(project_path: PathBuf, window_id: u64, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_internal(project_path, window_id, std::sync::Arc::new(|_, _| {}), window, cx)
+    }
+
+    fn new_internal(
+        project_path: PathBuf,
+        window_id: u64,
+        on_complete: std::sync::Arc<dyn Fn(PathBuf, &mut gpui::App) + Send + Sync>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let project_name = project_path
             .file_name()
             .and_then(|n| n.to_str())
@@ -143,6 +164,7 @@ impl LoadingScreen {
             window_id,
             opened_editor: false,
             progress_rx: rx,
+            on_complete,
         };
 
         let analyzer = cx.new(|cx| RustAnalyzerManager::new(window, cx));
@@ -207,8 +229,10 @@ impl Render for LoadingScreen {
         // cx.defer so it runs after the current render pass completes.
         if self.initial_tasks_complete && !self.opened_editor {
             self.opened_editor = true;
-            cx.defer(|cx| {
-                ui_common::open_window::open_pulsar_window::<ui_level_editor::LevelEditorPanel>((), cx);
+            let project_path = self.project_path.clone();
+            let on_complete = self.on_complete.clone();
+            cx.defer(move |cx| {
+                on_complete(project_path, cx);
             });
         }
         // request a frame every render call to keep loop alive
@@ -405,15 +429,16 @@ fn update_recent_projects(project_path: &Path) {
 }
 
 impl window_manager::PulsarWindow for LoadingScreen {
-    type Params = PathBuf;
+    type Params = (PathBuf, std::sync::Arc<dyn Fn(PathBuf, &mut gpui::App) + Send + Sync>);
 
     fn window_name() -> &'static str { "LoadingScreen" }
 
-    fn window_options(_: &PathBuf) -> gpui::WindowOptions {
+    fn window_options(_: &Self::Params) -> gpui::WindowOptions {
         window_manager::default_window_options(900.0, 600.0)
     }
 
-    fn build(params: PathBuf, window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {
-        cx.new(|cx| LoadingScreen::new(params, window, cx))
+    fn build(params: Self::Params, window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {
+        let (path, on_complete) = params;
+        cx.new(|cx| LoadingScreen::new_with_on_complete(path, on_complete, window, cx))
     }
 }
