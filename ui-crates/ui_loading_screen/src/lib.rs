@@ -155,19 +155,19 @@ impl LoadingScreen {
         loading_screen.analyzer_message = "Initializing renderer...".to_string();
         // spawn background thread for updates
         let tx_clone = tx.clone();
-        std::thread::spawn(move || {
+//        std::thread::spawn(move || {
             println!("[bg] task1 start");
-            std::thread::sleep(Duration::from_millis(100));
+//            std::thread::sleep(Duration::from_millis(100));
             tx_clone.send(LoadingEvent::TaskDone(0)).ok();
 
             println!("[bg] task2 start");
-            std::thread::sleep(Duration::from_millis(100));
+//            std::thread::sleep(Duration::from_millis(100));
             tx_clone.send(LoadingEvent::TaskDone(1)).ok();
 
             println!("[bg] task3 start");
-            std::thread::sleep(Duration::from_millis(100));
+//            std::thread::sleep(Duration::from_millis(100));
             tx_clone.send(LoadingEvent::TaskDone(2)).ok();
-        });
+//        });
 
         loading_screen
     }
