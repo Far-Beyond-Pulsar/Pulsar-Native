@@ -52,3 +52,19 @@ impl Render for SettingsWindow {
             )
     }
 }
+
+impl window_manager::PulsarWindow for SettingsWindow {
+    type Params = ();
+
+    fn window_name() -> &'static str {
+        "SettingsWindow"
+    }
+
+    fn window_options(_: &()) -> gpui::WindowOptions {
+        window_manager::default_window_options(700.0, 500.0)
+    }
+
+    fn build(_: (), _window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {
+        cx.new(|cx| SettingsWindow::new(cx))
+    }
+}

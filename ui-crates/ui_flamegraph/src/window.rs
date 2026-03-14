@@ -44,27 +44,9 @@ impl FlamegraphWindow {
         })
     }
 
+    /// Convenience: open the flamegraph window via the PulsarWindow system.
     pub fn open(cx: &mut App) {
-        let trace_data = Arc::new(TraceData::new());
-        let window_options = WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(Bounds {
-                origin: point(px(100.0), px(100.0)),
-                size: size(px(1200.0), px(800.0)),
-            })),
-            window_decorations: Some(WindowDecorations::default()),
-            ..WindowOptions::default()
-        };
-        let _ = window_manager::WindowManager::update_global(cx, |wm, cx| {
-            wm.create_window(
-                engine_state::WindowRequest::Flamegraph,
-                window_options,
-                move |window: &mut gpui::Window, cx: &mut gpui::App| {
-                    let flamegraph_window = FlamegraphWindow::new(trace_data.clone(), window, cx);
-                    cx.new(|cx| ui::Root::new(flamegraph_window.into(), window, cx))
-                },
-                cx,
-            )
-        });
+        ui_common::open_pulsar_window::<FlamegraphWindow>(Arc::new(TraceData::new()), cx);
     }
 
     fn start_profiling(&mut self, _cx: &mut Context<Self>) {
@@ -764,5 +746,25 @@ impl Render for FlamegraphWindow {
                         )
                     })
             )
+    }
+}
+
+impl window_manager::PulsarWindow for FlamegraphWindow {
+    type Params = std::sync::Arc<crate::TraceData>;
+
+    fn window_name() -> &'static str {
+        "FlamegraphWindow"
+    }
+
+    fn window_options(_params: &std::sync::Arc<crate::TraceData>) -> gpui::WindowOptions {
+        window_manager::default_window_options(1200.0, 800.0)
+    }
+
+    fn build(
+        params: std::sync::Arc<crate::TraceData>,
+        window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) -> gpui::Entity<Self> {
+        FlamegraphWindow::new(params, window, cx)
     }
 }

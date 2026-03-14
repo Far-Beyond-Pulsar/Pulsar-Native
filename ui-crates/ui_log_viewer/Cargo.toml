@@ -19,6 +19,7 @@ engine_state.workspace = true
 # Logging
 tracing.workspace = true
 
+window_manager.workspace = true
 # Utilities
 anyhow = "1.0"
 chrono = { version = "0.4" }

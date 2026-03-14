@@ -11,6 +11,7 @@ ui.workspace = true
 
 # UI crates
 ui_common.workspace = true
+window_manager.workspace = true
 
 # Engine dependencies
 type_db.workspace = true

@@ -8,6 +8,7 @@ publish = false
 # UI framework
 gpui-ce.workspace = true
 ui.workspace = true
+window_manager.workspace = true
 plugin_manager.workspace = true
 plugin_editor_api.workspace = true
 tracing.workspace = true

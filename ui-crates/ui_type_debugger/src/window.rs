@@ -2,10 +2,10 @@
 //! Similar to VS Code's type inspector as a separate window
 
 use gpui::EventEmitter;
-use ui_common::drawer_window;
+use ui_common::pulsar_drawer_window;
 
 use crate::{TypeDebuggerDrawer, NavigateToType};
 
-drawer_window!(TypeDebuggerWindow, TypeDebuggerDrawer, type_debugger_drawer, "Window.Title.TypeDebugger");
+pulsar_drawer_window!(TypeDebuggerWindow, TypeDebuggerDrawer, type_debugger_drawer, "Window.Title.TypeDebugger", 1000.0, 700.0);
 
 impl EventEmitter<NavigateToType> for TypeDebuggerWindow {}

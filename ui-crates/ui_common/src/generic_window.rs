@@ -1,26 +1,33 @@
-/// Creates a window wrapper type that delegates rendering to an inner drawer/panel entity
-/// via [`ui::drawer_window_entity`].
+//! Macros for defining window types with minimum boilerplate.
+
+/// Creates a drawer-wrapping window type that implements BOTH [`gpui::Render`] AND
+/// [`window_manager::PulsarWindow`].
 ///
-/// This eliminates boilerplate for the common pattern:
+/// Use this for the common pattern where a window just wraps a single inner drawer/panel
+/// entity with a fixed size and title.
+///
+/// # Parameters
+/// - `$window_type` — name for the new window struct (e.g. `ProblemsWindow`)
+/// - `$inner_type` — the inner drawer type (e.g. `ProblemsDrawer`)
+/// - `$inner_field` — field name for the drawer (e.g. `problems_drawer`)
+/// - `$title` — i18n key for the title bar (e.g. `"Window.Title.Problems"`)
+/// - `$width`, `$height` — default window size in logical pixels
+///
+/// # Generated items
+/// - `pub struct $window_type { $inner_field: Entity<$inner_type> }`
+/// - `impl $window_type { pub fn new(…) -> Self }`
+/// - `impl Render for $window_type`
+/// - `impl PulsarWindow for $window_type` (Params = Entity<$inner_type>)
+///
+/// # Example
 /// ```ignore
-/// pub struct FooWindow { foo: Entity<FooDrawer> }
-/// impl FooWindow { pub fn new(foo: Entity<FooDrawer>, _cx: &mut Context<Self>) -> Self { … } }
-/// impl Render for FooWindow { fn render(…) { drawer_window_entity("Key", self.foo.clone(), cx) } }
-/// ```
-///
-/// # Usage
-///
-/// ```ignore
-/// // Generates: struct, new(), field accessor, and Render impl.
-/// // EventEmitter (if needed) must be added separately.
-/// drawer_window!(ProblemsWindow, ProblemsDrawer, problems_drawer, "Window.Title.Problems");
+/// pulsar_drawer_window!(ProblemsWindow, ProblemsDrawer, problems_drawer, "Window.Title.Problems", 900.0, 600.0);
+/// // Add custom event emitters separately:
 /// impl gpui::EventEmitter<NavigateToDiagnostic> for ProblemsWindow {}
 /// ```
-///
-/// Parameters: `(TypeName, InnerType, field_name, "i18n-title-key")`
 #[macro_export]
-macro_rules! drawer_window {
-    ($window_type:ident, $inner_type:ty, $inner_field:ident, $title:expr) => {
+macro_rules! pulsar_drawer_window {
+    ($window_type:ident, $inner_type:ty, $inner_field:ident, $title:expr, $width:expr, $height:expr) => {
         pub struct $window_type {
             $inner_field: gpui::Entity<$inner_type>,
         }
@@ -47,5 +54,37 @@ macro_rules! drawer_window {
                 ui::drawer_window_entity($title, self.$inner_field.clone(), cx)
             }
         }
+
+        impl window_manager::PulsarWindow for $window_type {
+            type Params = gpui::Entity<$inner_type>;
+
+            fn window_name() -> &'static str {
+                stringify!($window_type)
+            }
+
+            fn window_options(_params: &gpui::Entity<$inner_type>) -> gpui::WindowOptions {
+                window_manager::default_window_options($width, $height)
+            }
+
+            fn build(
+                params: gpui::Entity<$inner_type>,
+                _window: &mut gpui::Window,
+                cx: &mut gpui::App,
+            ) -> gpui::Entity<Self> {
+                #[allow(unused_imports)]
+                use gpui::AppContext as _;
+                cx.new(|cx| Self::new(params, cx))
+            }
+        }
     };
 }
+
+/// Keep `drawer_window!` as an alias for backwards compat during migration.
+/// Prefer `pulsar_drawer_window!` for new code.
+#[macro_export]
+macro_rules! drawer_window {
+    ($window_type:ident, $inner_type:ty, $inner_field:ident, $title:expr) => {
+        $crate::pulsar_drawer_window!($window_type, $inner_type, $inner_field, $title, 900.0, 600.0);
+    };
+}
+

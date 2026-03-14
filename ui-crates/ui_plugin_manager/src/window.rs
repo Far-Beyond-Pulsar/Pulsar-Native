@@ -239,3 +239,19 @@ impl PluginManagerWindow {
             )
     }
 }
+
+impl window_manager::PulsarWindow for PluginManagerWindow {
+    type Params = ();
+
+    fn window_name() -> &'static str {
+        "PluginManagerWindow"
+    }
+
+    fn window_options(_: &()) -> gpui::WindowOptions {
+        window_manager::default_window_options(600.0, 500.0)
+    }
+
+    fn build(_: (), _window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {
+        cx.new(|cx| PluginManagerWindow::new_global(cx))
+    }
+}

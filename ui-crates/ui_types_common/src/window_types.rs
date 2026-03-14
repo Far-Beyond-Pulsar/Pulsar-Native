@@ -21,6 +21,8 @@ pub enum WindowRequest {
     DetachedPanel,
     Component,
     CloseWindow { window_id: u64 },
+    /// Any window opened via the PulsarWindow trait. type_name comes from PulsarWindow::window_name().
+    Custom { type_name: &'static str },
 }
 
 pub type WindowId = u64;

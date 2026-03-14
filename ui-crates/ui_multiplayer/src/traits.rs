@@ -68,3 +68,23 @@ impl Render for MultiplayerWindow {
             )
     }
 }
+
+impl window_manager::PulsarWindow for MultiplayerWindow {
+    type Params = Option<std::path::PathBuf>;
+
+    fn window_name() -> &'static str {
+        "MultiplayerWindow"
+    }
+
+    fn window_options(_params: &Option<std::path::PathBuf>) -> gpui::WindowOptions {
+        window_manager::default_window_options(500.0, 600.0)
+    }
+
+    fn build(
+        params: Option<std::path::PathBuf>,
+        window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) -> gpui::Entity<Self> {
+        cx.new(|cx| MultiplayerWindow::new(params, window, cx))
+    }
+}
