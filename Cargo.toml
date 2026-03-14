@@ -44,6 +44,7 @@ pulsar_std            = { path = "crates/pulsar_std" }
 engine_state          = { path = "crates/engine_state" }
 engine_backend        = { path = "crates/engine_backend" }
 pulsar_diagnostics    = { path = "crates/pulsar_diagnostics" }
+pulsar_lsp            = { path = "crates/pulsar_lsp" }
 window_manager        = { path = "crates/window_manager" }
 blueprint_compiler    = { path = "crates/blueprint_compiler" }
 pulsar_graph          = { path = "crates/pulsar_graph" }
@@ -59,7 +60,6 @@ ui_flamegraph       = { path = "ui-crates/ui_flamegraph" }
 ui_file_manager     = { path = "ui-crates/ui_file_manager" }
 ui_common           = { path = "ui-crates/ui_common" }
 ui_loading_screen   = { path = "ui-crates/ui_loading_screen" }
-ui_project_launcher = { path = "ui-crates/ui_project_launcher" }
 ui_about            = { path = "ui-crates/ui_about" }
 ui_documentation    = { path = "ui-crates/ui_documentation" }
 ui_types_common     = { path = "ui-crates/ui_types_common" }

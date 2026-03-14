@@ -2724,6 +2724,8 @@ dependencies = [
  "lsp-types",
  "parking_lot",
  "profiling 0.1.0",
+ "pulsar_diagnostics",
+ "pulsar_lsp",
  "rapier3d",
  "ropey",
  "serde",
@@ -8078,6 +8080,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_diagnostics"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "pulsar_docs"
 version = "0.1.0"
 dependencies = [
@@ -8138,6 +8149,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_graph"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "pulsar_lsp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "flume 0.11.1",
+ "gpui-ce",
+ "lsp-types",
+ "pulsar_diagnostics",
+ "ropey",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "pulsar_macros"
 version = "0.1.0"
 dependencies = [
@@ -8156,6 +8192,29 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "pulsar_render"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "glam 0.29.3",
+ "parking_lot",
+ "serde",
+ "thiserror 1.0.69",
+ "tracing",
+ "windows 0.58.0",
+]
+
+[[package]]
+name = "pulsar_replication"
+version = "0.1.0"
+dependencies = [
+ "gpui-ce",
+ "serde",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -11914,6 +11973,9 @@ dependencies = [
  "once_cell",
  "parking_lot",
  "paste",
+ "pulsar_diagnostics",
+ "pulsar_graph",
+ "pulsar_lsp",
  "pulsar_macros 0.1.0",
  "regex",
  "ropey",
@@ -12251,13 +12313,6 @@ dependencies = [
  "tracing",
  "ui",
  "ui_common",
-]
-
-[[package]]
-name = "ui_project_launcher"
-version = "0.1.0"
-dependencies = [
- "ui_entry",
 ]
 
 [[package]]

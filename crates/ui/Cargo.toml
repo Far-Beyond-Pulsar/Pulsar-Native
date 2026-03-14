@@ -134,6 +134,7 @@ rust-embed = { version = "6", features = ["interpolate-folder-path", "include-ex
 directories = "5"
 blueprint_compiler = { path = "../blueprint_compiler" }
 pulsar_diagnostics.workspace = true
+pulsar_lsp.workspace = true
 pulsar_macros = { path = "../pulsar_macros" }
 pulsar_graph = { path = "../pulsar_graph" }
 

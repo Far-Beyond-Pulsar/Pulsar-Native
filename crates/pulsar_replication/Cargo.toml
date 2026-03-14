@@ -1,0 +1,17 @@
+[package]
+name = "pulsar_replication"
+version = "0.1.0"
+edition = "2021"
+description = "Multi-user CRDT replication engine for Pulsar"
+
+[lib]
+doctest = false
+
+[dependencies]
+gpui-ce.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true
