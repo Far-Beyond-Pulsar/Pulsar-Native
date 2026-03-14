@@ -17,7 +17,6 @@ use ui::{
     Sizable,
 };
 use ui::popup_menu::PopupMenuExt as _;
-use gpui::WeakEntity;
 use crate::entry_screen::{
     EntryScreen,
     CloudServerStatus, CloudProject, CloudProjectStatus,
@@ -598,7 +597,12 @@ fn render_project_card(
 
     let hover_bg = sidebar.lighten(0.04);
 
-    let project_id = project.id.clone();
+    let project_id   = project.id.clone();
+    let is_running   = matches!(&project.status, CloudProjectStatus::Running { .. });
+    let is_preparing = matches!(&project.status, CloudProjectStatus::Preparing);
+
+    // Weak handle for popup-menu closures (must be 'static).
+    let weak = cx.entity().downgrade();
 
     // Status colours
     let (bar_color, status_tag): (Hsla, AnyElement) = match &project.status {
@@ -635,6 +639,62 @@ fn render_project_card(
 
     let size_str = format_bytes(project.size_bytes);
 
+    // ── "⋯" overflow menu ────────────────────────────────────────────────────
+    let pid_menu  = project_id.clone();
+    let weak_menu = weak.clone();
+    let more_button = Button::new(SharedString::from(format!("proj-more-{}", project.id)))
+        .icon(IconName::MoreHoriz)
+        .ghost()
+        .xsmall()
+        .popup_menu_with_anchor(Corner::BottomRight, move |menu, _window, _cx| {
+            let pid = pid_menu.clone();
+            let w   = weak_menu.clone();
+
+            // Open / Prepare — mutually exclusive depending on status
+            let menu = if is_running {
+                let (w2, pid2) = (w.clone(), pid.clone());
+                menu.menu_handler_with_icon("Open in Editor", IconName::OpenInWindow,
+                    move |_, app| {
+                        if let Some(e) = w2.upgrade() {
+                            e.update(app, |this, cx| this.open_cloud_project(server_idx, pid2.clone(), cx));
+                        }
+                    })
+            } else {
+                let (w2, pid2) = (w.clone(), pid.clone());
+                menu.menu_handler_with_icon("Prepare / Warm Up", IconName::Play,
+                    move |_, app| {
+                        if let Some(e) = w2.upgrade() {
+                            e.update(app, |this, cx| this.prepare_cloud_project(server_idx, pid2.clone(), cx));
+                        }
+                    })
+            };
+
+            // Stop — only when active
+            let menu = if is_running || is_preparing {
+                let (w2, pid2) = (w.clone(), pid.clone());
+                menu.menu_handler_with_icon("Stop Project", IconName::SystemShut,
+                    move |_, app| {
+                        if let Some(e) = w2.upgrade() {
+                            e.update(app, |this, cx| this.stop_cloud_project(server_idx, pid2.clone(), cx));
+                        }
+                    })
+            } else {
+                menu
+            };
+
+            // Separator + Delete (always available)
+            let (w2, pid2) = (w.clone(), pid.clone());
+            menu.separator()
+                .menu_handler_with_icon("Delete Project", IconName::Trash,
+                    move |_, app| {
+                        if let Some(e) = w2.upgrade() {
+                            e.update(app, |this, cx| this.delete_cloud_project(server_idx, pid2.clone(), cx));
+                        }
+                    })
+        });
+
+    // ── Card root ─────────────────────────────────────────────────────────────
+    let pid_click = project_id.clone();
     div()
         .id(SharedString::from(format!("cloud-proj-{}", project.id)))
         .w(px(300.))
@@ -645,7 +705,8 @@ fn render_project_card(
         .border_color(border)
         .bg(sidebar)
         .shadow_sm()
-        .cursor_pointer()
+        .when(!is_preparing, |this| this.cursor_pointer())
+        .when(is_preparing,  |this| this.cursor_default())
         .hover(|this| this.bg(hover_bg).shadow_md())
         // Accent bar
         .child(
@@ -656,6 +717,14 @@ fn render_project_card(
                 .w_full()
                 .h(px(3.))
                 .bg(bar_color),
+        )
+        // ⋯ button — top-right corner
+        .child(
+            div()
+                .absolute()
+                .top_1()
+                .right_1()
+                .child(more_button),
         )
         .child(
             v_flex()
@@ -749,7 +818,12 @@ fn render_project_card(
                 }),
         )
         .on_click(cx.listener(move |this, _, _, cx| {
-            this.prepare_cloud_project(server_idx, project_id.clone(), cx);
+            if is_preparing { return; }
+            if is_running {
+                this.open_cloud_project(server_idx, pid_click.clone(), cx);
+            } else {
+                this.prepare_cloud_project(server_idx, pid_click.clone(), cx);
+            }
         }))
 }
 
