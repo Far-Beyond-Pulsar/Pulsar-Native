@@ -915,134 +915,33 @@ default_scene = "scenes/main.scene"
         self.cloud_servers[server_idx].status = CloudServerStatus::Connecting;
         cx.notify();
 
+        // Use a separate OS thread with its own tokio runtime so that reqwest
+        // futures (which require tokio) are not run inside GPUI's smol executor.
+        let (tx, rx) = smol::channel::bounded::<Option<(CloudServerStatus, Vec<CloudProject>)>>(1);
+        std::thread::spawn(move || {
+            let result = fetch_cloud_server_info(base_url, token);
+            smol::block_on(tx.send(result)).ok();
+        });
+
         cx.spawn(async move |this, cx| {
-            let result: Option<(CloudServerStatus, Vec<CloudProject>)> =
-                cx.background_executor().spawn(async move {
-                    let info_url = format!("{}/api/v1/info", base_url);
-                    let projects_url = format!("{}/api/v1/projects", base_url);
-                    let tok: Option<String> = if token.is_empty() { None } else { Some(token) };
-
-                    let client = reqwest::Client::builder()
-                        .timeout(std::time::Duration::from_secs(6))
-                        .danger_accept_invalid_certs(true)
-                        .build()
-                        .ok()?;
-
-                    let started = std::time::Instant::now();
-
-                    // ── Fetch /api/v1/info ──
-                    let info_req = {
-                        let r = client.get(&info_url);
-                        if let Some(ref t) = tok { r.bearer_auth(t) } else { r }
-                    };
-                    let status: CloudServerStatus = match info_req.send().await {
-                        Err(_) => return Some((CloudServerStatus::Offline, vec![])),
-                        Ok(resp) if resp.status() == reqwest::StatusCode::UNAUTHORIZED => {
-                            return Some((CloudServerStatus::Unauthorized, vec![]));
-                        }
-                        Ok(resp) if !resp.status().is_success() => {
-                            return Some((CloudServerStatus::Offline, vec![]));
-                        }
-                        Ok(resp) => {
-                            let latency_ms = started.elapsed().as_millis() as u32;
-                            let info = resp.json::<serde_json::Value>().await.ok()?;
-                            CloudServerStatus::Online {
-                                latency_ms,
-                                version: info.get("version")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("?")
-                                    .to_string(),
-                                active_users: info.get("active_users")
-                                    .and_then(|v| v.as_u64())
-                                    .unwrap_or(0) as u32,
-                                active_projects: info.get("active_projects")
-                                    .and_then(|v| v.as_u64())
-                                    .unwrap_or(0) as u32,
+            if let Ok(result) = rx.recv().await {
+                cx.update(|cx| {
+                    this.update(cx, |screen, cx| {
+                        if server_idx < screen.cloud_servers.len() {
+                            match result {
+                                Some((s, p)) => {
+                                    screen.cloud_servers[server_idx].status = s;
+                                    screen.cloud_servers[server_idx].projects = p;
+                                }
+                                None => {
+                                    screen.cloud_servers[server_idx].status = CloudServerStatus::Offline;
+                                }
                             }
                         }
-                    };
-
-                    // ── Fetch /api/v1/projects ──
-                    let proj_req = {
-                        let r = client.get(&projects_url);
-                        if let Some(ref t) = tok { r.bearer_auth(t) } else { r }
-                    };
-                    let projects: Vec<CloudProject> = match proj_req.send().await {
-                        Ok(resp) if resp.status().is_success() => {
-                            resp.json::<serde_json::Value>().await.ok()
-                                .and_then(|v| {
-                                    if let serde_json::Value::Array(arr) = v {
-                                        Some(arr)
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .map(|arr| {
-                                    arr.into_iter().filter_map(|p| {
-                                        let id = p.get("id")?.as_str()?.to_string();
-                                        let name = p.get("name")?.as_str()?.to_string();
-                                        let description = p.get("description")
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or("")
-                                            .to_string();
-                                        let last_modified = p.get("last_modified")
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or("")
-                                            .to_string();
-                                        let size_bytes = p.get("size_bytes")
-                                            .and_then(|v| v.as_u64())
-                                            .unwrap_or(0);
-                                        let owner = p.get("owner")
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or("")
-                                            .to_string();
-                                        let user_count = p.get("user_count")
-                                            .and_then(|v| v.as_u64())
-                                            .unwrap_or(0) as u32;
-                                        let project_status = match p.get("status")
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or("idle")
-                                        {
-                                            "preparing" => CloudProjectStatus::Preparing,
-                                            "running"   => CloudProjectStatus::Running { user_count },
-                                            "error"     => CloudProjectStatus::Error(
-                                                p.get("error_msg")
-                                                    .and_then(|v| v.as_str())
-                                                    .unwrap_or("unknown")
-                                                    .to_string(),
-                                            ),
-                                            _ => CloudProjectStatus::Idle,
-                                        };
-                                        Some(CloudProject {
-                                            id, name, description, status: project_status,
-                                            last_modified, size_bytes, owner,
-                                        })
-                                    }).collect()
-                                })
-                                .unwrap_or_default()
-                        }
-                        _ => vec![],
-                    };
-
-                    Some((status, projects))
-                }).await;
-
-            let _ = cx.update(|cx| {
-                let _ = this.update(cx, |screen, cx| {
-                    if server_idx < screen.cloud_servers.len() {
-                        match result {
-                            Some((s, p)) => {
-                                screen.cloud_servers[server_idx].status = s;
-                                screen.cloud_servers[server_idx].projects = p;
-                            }
-                            None => {
-                                screen.cloud_servers[server_idx].status = CloudServerStatus::Offline;
-                            }
-                        }
-                    }
-                    cx.notify();
-                });
-            });
+                        cx.notify();
+                    }).ok();
+                }).ok();
+            }
         }).detach();
     }
 
@@ -1079,25 +978,32 @@ default_scene = "scenes/main.scene"
         }
         cx.notify();
 
-        cx.spawn(async move |this, cx| {
-            let tok: Option<String> = if token.is_empty() { None } else { Some(token) };
-            let _ = cx.background_executor().spawn(async move {
-                let Ok(client) = reqwest::Client::builder()
-                    .timeout(std::time::Duration::from_secs(10))
-                    .danger_accept_invalid_certs(true)
-                    .build()
-                else { return; };
-                let req = client.post(&post_url);
-                let req = if let Some(ref t) = tok { req.bearer_auth(t) } else { req };
-                let _ = req.send().await;
-            }).await;
-
-            // Refresh server state after prepare to pick up new status.
-            let _ = cx.update(|cx| {
-                let _ = this.update(cx, |screen, cx| {
-                    screen.refresh_cloud_server(server_idx, cx);
+        let tok: Option<String> = if token.is_empty() { None } else { Some(token) };
+        let (tx, rx) = smol::channel::bounded::<()>(1);
+        std::thread::spawn(move || {
+            if let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() {
+                rt.block_on(async move {
+                    let Ok(client) = reqwest::Client::builder()
+                        .timeout(std::time::Duration::from_secs(10))
+                        .danger_accept_invalid_certs(true)
+                        .build()
+                    else { return; };
+                    let req = client.post(&post_url);
+                    let req = if let Some(ref t) = tok { req.bearer_auth(t) } else { req };
+                    let _ = req.send().await;
                 });
-            });
+            }
+            smol::block_on(tx.send(())).ok();
+        });
+
+        cx.spawn(async move |this, cx| {
+            rx.recv().await.ok();
+            // Refresh server state after prepare to pick up new status.
+            cx.update(|cx| {
+                this.update(cx, |screen, cx| {
+                    screen.refresh_cloud_server(server_idx, cx);
+                }).ok();
+            }).ok();
         }).detach();
     }
 
@@ -1124,28 +1030,157 @@ default_scene = "scenes/main.scene"
         self.show_create_project = false;
         cx.notify();
 
-        cx.spawn(async move |this, cx| {
-            let tok: Option<String> = if token.is_empty() { None } else { Some(token) };
-            let _ = cx.background_executor().spawn(async move {
-                let Ok(client) = reqwest::Client::builder()
-                    .timeout(std::time::Duration::from_secs(10))
-                    .danger_accept_invalid_certs(true)
-                    .build()
-                else { return; };
-                let body = serde_json::json!({ "name": name, "description": description });
-                let req = client.post(&post_url).json(&body);
-                let req = if let Some(ref t) = tok { req.bearer_auth(t) } else { req };
-                let _ = req.send().await;
-            }).await;
-
-            // Refresh to surface the newly created project.
-            let _ = cx.update(|cx| {
-                let _ = this.update(cx, |screen, cx| {
-                    screen.refresh_cloud_server(server_idx, cx);
+        let tok: Option<String> = if token.is_empty() { None } else { Some(token) };
+        let (tx, rx) = smol::channel::bounded::<()>(1);
+        std::thread::spawn(move || {
+            if let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() {
+                rt.block_on(async move {
+                    let Ok(client) = reqwest::Client::builder()
+                        .timeout(std::time::Duration::from_secs(10))
+                        .danger_accept_invalid_certs(true)
+                        .build()
+                    else { return; };
+                    let body = serde_json::json!({ "name": name, "description": description });
+                    let req = client.post(&post_url).json(&body);
+                    let req = if let Some(ref t) = tok { req.bearer_auth(t) } else { req };
+                    let _ = req.send().await;
                 });
-            });
+            }
+            smol::block_on(tx.send(())).ok();
+        });
+
+        cx.spawn(async move |this, cx| {
+            rx.recv().await.ok();
+            // Refresh to surface the newly created project.
+            cx.update(|cx| {
+                this.update(cx, |screen, cx| {
+                    screen.refresh_cloud_server(server_idx, cx);
+                }).ok();
+            }).ok();
         }).detach();
     }
+}
+
+/// Synchronously fetch server connectivity info and project list.
+/// Creates its own single-threaded tokio runtime so reqwest futures (which
+/// require a tokio context) are not run inside GPUI's smol-based executor.
+fn fetch_cloud_server_info(
+    base_url: String,
+    token: String,
+) -> Option<(CloudServerStatus, Vec<CloudProject>)> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .ok()?;
+    rt.block_on(async move {
+        let info_url = format!("{}/api/v1/info", base_url);
+        let projects_url = format!("{}/api/v1/projects", base_url);
+        let tok: Option<String> = if token.is_empty() { None } else { Some(token) };
+
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(6))
+            .danger_accept_invalid_certs(true)
+            .build()
+            .ok()?;
+
+        let started = std::time::Instant::now();
+
+        // ── Fetch /api/v1/info ──
+        let info_req = {
+            let r = client.get(&info_url);
+            if let Some(ref t) = tok { r.bearer_auth(t) } else { r }
+        };
+        let status: CloudServerStatus = match info_req.send().await {
+            Err(_) => return Some((CloudServerStatus::Offline, vec![])),
+            Ok(resp) if resp.status() == reqwest::StatusCode::UNAUTHORIZED => {
+                return Some((CloudServerStatus::Unauthorized, vec![]));
+            }
+            Ok(resp) if !resp.status().is_success() => {
+                return Some((CloudServerStatus::Offline, vec![]));
+            }
+            Ok(resp) => {
+                let latency_ms = started.elapsed().as_millis() as u32;
+                let info = resp.json::<serde_json::Value>().await.ok()?;
+                CloudServerStatus::Online {
+                    latency_ms,
+                    version: info.get("version")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("?")
+                        .to_string(),
+                    active_users: info.get("active_users")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as u32,
+                    active_projects: info.get("active_projects")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as u32,
+                }
+            }
+        };
+
+        // ── Fetch /api/v1/projects ──
+        let proj_req = {
+            let r = client.get(&projects_url);
+            if let Some(ref t) = tok { r.bearer_auth(t) } else { r }
+        };
+        let projects: Vec<CloudProject> = match proj_req.send().await {
+            Ok(resp) if resp.status().is_success() => {
+                resp.json::<serde_json::Value>().await.ok()
+                    .and_then(|v| {
+                        if let serde_json::Value::Array(arr) = v {
+                            Some(arr)
+                        } else {
+                            None
+                        }
+                    })
+                    .map(|arr| {
+                        arr.into_iter().filter_map(|p| {
+                            let id = p.get("id")?.as_str()?.to_string();
+                            let name = p.get("name")?.as_str()?.to_string();
+                            let description = p.get("description")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let last_modified = p.get("last_modified")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let size_bytes = p.get("size_bytes")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0);
+                            let owner = p.get("owner")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let user_count = p.get("user_count")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0) as u32;
+                            let project_status = match p.get("status")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("idle")
+                            {
+                                "preparing" => CloudProjectStatus::Preparing,
+                                "running"   => CloudProjectStatus::Running { user_count },
+                                "error"     => CloudProjectStatus::Error(
+                                    p.get("error_msg")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("unknown")
+                                        .to_string(),
+                                ),
+                                _ => CloudProjectStatus::Idle,
+                            };
+                            Some(CloudProject {
+                                id, name, description, status: project_status,
+                                last_modified, size_bytes, owner,
+                            })
+                        }).collect()
+                    })
+                    .unwrap_or_default()
+            }
+            _ => vec![],
+        };
+
+        Some((status, projects))
+    })
 }
 
 impl EventEmitter<crate::entry_screen::project_selector::ProjectSelected> for EntryScreen {}

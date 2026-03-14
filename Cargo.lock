@@ -12141,6 +12141,8 @@ dependencies = [
  "rustup",
  "serde",
  "serde_json",
+ "smol 2.0.2",
+ "tokio",
  "toml 0.8.23",
  "tracing",
  "ui",
