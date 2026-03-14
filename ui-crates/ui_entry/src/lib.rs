@@ -49,10 +49,8 @@ pub fn create_entry_component(
     on_fab_search: Arc<dyn Fn(&mut App) + Send + Sync>,
 ) -> Entity<Root> {
     
-    // take a raw pointer now so we don't capture `window` itself in any of the
-    // `move` callbacks below. `*mut Window` is `Copy` and `'static`, whereas the
-    // `&mut Window` reference is tied to the local stack frame.
-    let window_ptr = window as *mut Window;
+    // Capture a window handle that can be safely sent across closures.
+    let window_handle = window.window_handle();
 
     // Check if we should show OOBE intro first
     let seen_intro = has_seen_intro();
@@ -78,11 +76,11 @@ pub fn create_entry_component(
             if window_id != 0 {
                 let ec2 = engine_context_clone.clone();
                 let close_id = window_id;
-                // use the precomputed raw pointer instead of capturing `window`
-                cx.spawn(async move |cx| {
+                // use the precomputed window handle to safely close from the async task
+                cx.spawn(async move |mut cx| {
                     cx.background_executor().timer(Duration::from_millis(100)).await;
                     tracing::debug!("🗑️ (delayed) Closing OOBE window {}", close_id);
-                    unsafe { (&mut *window_ptr).remove_window(); }
+                    let _ = cx.update_window(window_handle, |_, window, _| window.remove_window());
                     ec2.unregister_window(&close_id);
                 });
             }
@@ -109,11 +107,11 @@ pub fn create_entry_component(
         if window_id != 0 {
             let ec2 = engine_context_clone.clone();
             let close_id = window_id;
-            // use the previously computed pointer rather than capturing `window`
-            cx.spawn(async move |cx| {
+            // use the previously computed handle rather than capturing `window`
+            cx.spawn(async move |mut cx| {
                 cx.background_executor().timer(Duration::from_millis(100)).await;
                 tracing::debug!("🗑️ (delayed) Closing entry window {}", close_id);
-                unsafe { (&mut *window_ptr).remove_window(); }
+                let _ = cx.update_window(window_handle, |_, window, _| window.remove_window());
                 ec2.unregister_window(&close_id);
             });
         }
