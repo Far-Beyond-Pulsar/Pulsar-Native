@@ -1,15 +1,10 @@
 use gpui::{ prelude::*, * };
 use ui::{
-    h_flex,
-    v_flex,
-    Icon,
-    IconName,
-    ActiveTheme as _,
-    StyledExt,
-    divider::Divider,
-    scroll::ScrollbarAxis,
+    h_flex, v_flex, Icon, IconName, ActiveTheme as _, StyledExt,
     progress::Progress,
+    tag::{Tag, TagVariant},
 };
+ use ui::Sizable;
 use crate::entry_screen::{ EntryScreen, Template, virtual_grid::render_card_grid };
 
 pub fn render_templates(
@@ -92,8 +87,8 @@ fn render_template_grid(
     let primary_h = theme.primary.h;
     let primary_s = theme.primary.s;
     let primary_l = theme.primary.l;
-    let mut fg = theme.foreground;
-    let mut muted_fg = theme.muted_foreground;
+    let fg = theme.foreground;
+    let muted_fg = theme.muted_foreground;
     let sidebar_hover_bg = hsla(
         theme.sidebar.h,
         theme.sidebar.s,
@@ -124,11 +119,22 @@ fn render_template_grid(
             let category = template.category.clone();
             let icon = template.icon.clone();
 
+            let category_accent = match category.as_str() {
+                "2D"       => cx.theme().success,
+                "3D"       => cx.theme().primary,
+                "Strategy" => cx.theme().warning,
+                "RPG"      => cx.theme().info,
+                "Racing"   => cx.theme().danger,
+                _          => cx.theme().muted,
+            };
+
             v_flex()
                 .id(SharedString::from(format!("template-{}", name)))
                 .w(px(card_w))
                 .h(px(CARD_HEIGHT))
-                .gap_4()
+                .relative()
+                .overflow_hidden()
+                .gap_3()
                 .p_5()
                 .border_1()
                 .border_color(border_col)
@@ -144,6 +150,9 @@ fn render_template_grid(
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.clone_template(&template, window, cx);
                 }))
+                .child(
+                    div().absolute().top_0().left_0().w_full().h(px(3.0)).bg(category_accent)
+                )
                 .child(
                     h_flex()
                         .items_start()
@@ -172,15 +181,17 @@ fn render_template_grid(
                                         .child(name),
                                 )
                                 .child(
-                                    div()
-                                        .px_2p5()
-                                        .py_1()
-                                        .rounded_md()
-                                        .bg(hsla(primary_h, primary_s, primary_l, 0.15))
-                                        .text_xs()
-                                        .font_weight(gpui::FontWeight::MEDIUM)
-                                        .text_color(fg)
-                                        .child(category),
+                                    Tag::with_variant(match category.as_str() {
+                                        "2D"       => TagVariant::Success,
+                                        "3D"       => TagVariant::Primary,
+                                        "Strategy" => TagVariant::Warning,
+                                        "RPG"      => TagVariant::Info,
+                                        "Racing"   => TagVariant::Danger,
+                                        _          => TagVariant::Secondary,
+                                    })
+                                    .xsmall()
+                                    .rounded_full()
+                                    .child(category),
                                 ),
                         ),
                 )

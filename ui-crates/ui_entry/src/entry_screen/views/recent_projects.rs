@@ -1,9 +1,10 @@
 use gpui::{prelude::*, *};
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, Icon, IconName, ActiveTheme as _, StyledExt, divider::Divider,
-    scroll::ScrollbarAxis,
+    h_flex, v_flex, Icon, IconName, ActiveTheme as _, StyledExt, Colorize as _,
+    tag::Tag, spinner::Spinner,
 };
+use ui::Sizable;
 use crate::entry_screen::{EntryScreen, GitFetchStatus, recent_projects::RecentProjectsList, virtual_grid::render_card_grid};
 
 pub fn render_recent_projects(screen: &mut EntryScreen, available_width: f32, cx: &mut Context<EntryScreen>) -> impl IntoElement {
@@ -32,10 +33,14 @@ pub fn render_recent_projects(screen: &mut EntryScreen, available_width: f32, cx
                                         .child("Recent Projects")
                                 )
                                 .when(screen.is_fetching_updates, |this| {
+                                    this.child(Spinner::new().small())
+                                })
+                                .when(!screen.recent_projects.projects.is_empty(), |this| {
                                     this.child(
-                                        Icon::new(IconName::ArrowUp)
-                                            .size(px(18.))
-                                            .text_color(theme.accent)
+                                        Tag::secondary()
+                                            .xsmall()
+                                            .rounded_full()
+                                            .child(format!("{}", screen.recent_projects.projects.len()))
                                     )
                                 })
                         )
@@ -192,11 +197,20 @@ fn render_project_grid(
             let (preferred_editor, preferred_git_tool) =
                 crate::entry_screen::views::load_project_tool_preferences(&std::path::PathBuf::from(&proj_path));
 
+            let accent_color = match (&git_status, is_git) {
+                (GitFetchStatus::UpdatesAvailable(_), true) => cx.theme().info,
+                (GitFetchStatus::Error(_), true) => cx.theme().danger,
+                (_, true) => { let p = cx.theme().primary; hsla(p.h, p.s, p.l, 0.85) },
+                _ => cx.theme().muted,
+            };
+
             v_flex()
                 .id(SharedString::from(format!("project-{}", proj_path)))
                 .w(px(card_w))
                 .h(px(CARD_HEIGHT))
-                .gap_4()
+                .relative()
+                .overflow_hidden()
+                .gap_3()
                 .p_5()
                 .border_1()
                 .border_color(theme.border)
@@ -215,14 +229,12 @@ fn render_project_grid(
                 })
                 .cursor_pointer()
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    // Normalize path by removing redundant folder name duplication
-                    // This occurs when recent projects are saved with the project folder
-                    // included twice in the path (e.g., "parent/blank_project/blank_project")
-                    // This happens because some project creation workflows append the project
-                    // name to an already-named directory. We detect and fix this pattern.
                     let path_buf = normalize_project_path(&proj_path_for_click);
                     this.launch_project(path_buf, cx);
                 }))
+                .child(
+                    div().absolute().top_0().left_0().w_full().h(px(3.0)).bg(accent_color)
+                )
                 .child(
                     h_flex()
                         .items_start()
@@ -275,30 +287,13 @@ fn render_project_grid(
                                         .child(proj_path.clone()),
                                 )
                         )
-                        .when(is_git, |this| {
-                            this.child(
-                                match &git_status {
-                                    GitFetchStatus::Fetching => {
-                                        Icon::new(IconName::ArrowUp)
-                                            .size(px(14.))
-                                            .text_color(theme.muted_foreground)
-                                            .into_any_element()
-                                    }
-                                    GitFetchStatus::UpdatesAvailable(_) => {
-                                        Icon::new(IconName::ArrowUp)
-                                            .size(px(14.))
-                                            .text_color(theme.accent)
-                                            .into_any_element()
-                                    }
-                                    _ => {
-                                        Icon::new(IconName::Github)
-                                            .size(px(14.))
-                                            .text_color(theme.muted_foreground)
-                                            .into_any_element()
-                                    }
-                                }
-                            )
-                        })
+                        .child(
+                            if is_git {
+                                Tag::secondary().xsmall().rounded_full().child("GIT").into_any_element()
+                            } else {
+                                Tag::secondary().xsmall().rounded_full().child("LOCAL").into_any_element()
+                            }
+                        )
                 )
                 .child(
                     v_flex()

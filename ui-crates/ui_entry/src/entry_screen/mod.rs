@@ -333,11 +333,11 @@ impl EntryScreen {
     }
     
     pub(crate) fn calculate_columns(&self, width: Pixels) -> usize {
-        // Account for sidebar width (72px) + container padding (.p_12() = 48px each side = 96px total) + card width (320px) + gap (24px between cards)
-        let sidebar_width = 72.0;
-        let container_padding = 96.0; // 48px left + 48px right from .p_12()
+        // Account for sidebar width (220px) + container padding (p_8 = 32px each side = 64px total)
+        let sidebar_width = 220.0;
+        let container_padding = 64.0;
         let card_width = 320.0;
-        let gap_size = 24.0; // .gap_6() = 6 * 4 = 24px
+        let gap_size = 24.0;
         
         // Convert Pixels to f32
         let width_f32: f32 = width.into();
@@ -784,9 +784,9 @@ impl EventEmitter<FabSearchRequested> for EntryScreen {}
 impl Render for EntryScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let bounds = window.viewport_size();
-        // Match columns calculation in `calculate_columns`
+        // Account for 220px sidebar + 64px container padding (p_8 = 32px each side)
         let width: f32 = f32::from(bounds.width);
-        let available_width: f32 = (width - 72.0 - 96.0).max(0.0);
+        let available_width: f32 = (width - 220.0 - 64.0).max(0.0);
         let view = self.view;
         
         // Trigger git fetch when viewing recent projects
