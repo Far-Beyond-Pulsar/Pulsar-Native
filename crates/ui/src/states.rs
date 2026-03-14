@@ -1,4 +1,4 @@
-use gpui::{App, IntoElement, Styled as _, prelude::FluentBuilder};
+use gpui::{App, IntoElement, ParentElement as _, Styled as _, prelude::FluentBuilder};
 
 use crate::{h_flex, ActiveTheme as _, Icon, IconName, StyledExt as _};
 
