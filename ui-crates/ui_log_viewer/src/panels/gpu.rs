@@ -168,9 +168,9 @@ fn info_row(label: &str, value: String, theme: &ui::ThemeColor) -> impl IntoElem
         .child(div().text_size(px(11.0)).text_color(theme.foreground).child(value))
 }
 
-impl Focusable for GpuMetricsPanel {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle { self.focus_handle.clone() }
-}
+impl EventEmitter<PanelEvent> for GpuMetricsPanel {}
+
+ui_common::panel_boilerplate!(GpuMetricsPanel);
 
 impl Panel for GpuMetricsPanel {
     fn panel_name(&self) -> &'static str { "gpu_metrics" }
@@ -178,5 +178,3 @@ impl Panel for GpuMetricsPanel {
     fn closable(&self, _cx: &App) -> bool { false }
     fn zoomable(&self, _cx: &App) -> Option<ui::dock::PanelControl> { None }
 }
-
-impl EventEmitter<PanelEvent> for GpuMetricsPanel {}

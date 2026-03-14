@@ -12042,10 +12042,12 @@ dependencies = [
 name = "ui_common"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "gpui-ce",
  "parking_lot",
  "rust-i18n",
  "serde",
+ "serde_json",
  "tracing",
  "ui",
 ]
@@ -12115,6 +12117,7 @@ dependencies = [
  "toml 0.8.23",
  "tracing",
  "ui",
+ "ui_common",
  "ui_git_manager",
  "ui_loading_screen",
 ]
@@ -12179,6 +12182,7 @@ dependencies = [
  "serde",
  "tracing",
  "ui",
+ "ui_common",
  "window_manager",
 ]
 
@@ -12247,6 +12251,7 @@ dependencies = [
  "serde_json",
  "tracing",
  "ui",
+ "ui_common",
  "window_manager",
 ]
 

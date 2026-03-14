@@ -8,6 +8,9 @@
 
 use std::path::{Path, PathBuf};
 
+use anyhow::Result;
+use serde::{de::DeserializeOwned, Serialize};
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum FileType {
     Folder,
@@ -117,6 +120,43 @@ fn find_files_recursive(
             }
         }
     }
+}
+
+/// Read a file and deserialize it as JSON.
+pub fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
+    let content = std::fs::read_to_string(path)?;
+    serde_json::from_str(&content).map_err(Into::into)
+}
+
+/// Serialize `value` as pretty-printed JSON and write it to `path`, creating parent dirs.
+pub fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let json = serde_json::to_string_pretty(value)?;
+    std::fs::write(path, json)?;
+    Ok(())
+}
+
+/// Ensure a directory exists, creating it and all parents if needed.
+pub fn ensure_dir(path: &Path) -> Result<()> {
+    std::fs::create_dir_all(path)?;
+    Ok(())
+}
+
+/// Recursively copy a directory tree from `src` to `dst`.
+pub fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let dest = dst.join(entry.file_name());
+        if entry.path().is_dir() {
+            copy_dir_recursive(&entry.path(), &dest)?;
+        } else {
+            std::fs::copy(&entry.path(), &dest)?;
+        }
+    }
+    Ok(())
 }
 
 /// Search for files matching a query string

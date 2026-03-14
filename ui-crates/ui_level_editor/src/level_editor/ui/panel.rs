@@ -754,11 +754,7 @@ impl Panel for LevelEditorPanel {
     }
 }
 
-impl Focusable for LevelEditorPanel {
-    fn focus_handle(&self, _: &App) -> FocusHandle {
-        self.focus_handle.clone()
-    }
-}
+ui_common::panel_boilerplate!(LevelEditorPanel);
 
 impl EventEmitter<PanelEvent> for LevelEditorPanel {}
 

@@ -39,7 +39,7 @@ impl PhysicsWorld {
         colliders: &mut ColliderSet,
     ) {
         self.pipeline.step(
-            gravity,
+            *gravity,
             integration_parameters,
             &mut self.island_manager,
             &mut self.broad_phase,

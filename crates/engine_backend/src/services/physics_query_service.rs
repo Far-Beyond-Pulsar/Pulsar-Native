@@ -98,7 +98,7 @@ impl PhysicsQueryService {
                 true,
             ) {
                 tracing::debug!("[PHYSICS] Hit collider at distance {:.2}", toi);
-                if closest_hit.is_none() || toi < closest_hit.unwrap().1 {
+                if closest_hit.map_or(true, |h| toi < h.1) {
                     closest_hit = Some((handle, toi));
                 }
             }
@@ -168,7 +168,7 @@ impl PhysicsQueryService {
                     max_distance,
                     true,
                 ) {
-                    if closest_hit.is_none() || toi < closest_hit.unwrap().1 {
+                    if closest_hit.map_or(true, |h| toi < h.1) {
                         closest_hit = Some((handle, toi));
                     }
                 }

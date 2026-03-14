@@ -8,6 +8,7 @@ publish = false
 # UI framework
 gpui-ce.workspace = true
 ui.workspace = true
+ui_common.workspace = true
 window_manager.workspace = true
 
 # Profiling - instrumentation-based (Unreal Insights style)
