@@ -36,8 +36,8 @@ impl RendezvousCoordinator {
     pub fn new(config: Config) -> Self {
         let jwt_secret = config.jwt_secret.as_bytes();
         Self {
-            pub(super) jwt_encoding_key: EncodingKey::from_secret(jwt_secret),
-            pub(super) jwt_decoding_key: DecodingKey::from_secret(jwt_secret),
+            jwt_encoding_key: EncodingKey::from_secret(jwt_secret),
+            jwt_decoding_key: DecodingKey::from_secret(jwt_secret),
             config,
             sessions: Arc::new(DashMap::new()),
         }
@@ -109,3 +109,4 @@ impl RendezvousCoordinator {
         Ok(())
     }
 
+}

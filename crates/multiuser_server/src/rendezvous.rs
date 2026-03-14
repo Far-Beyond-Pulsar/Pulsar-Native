@@ -27,7 +27,7 @@ use peer_discovery::{PeerSession, RendezvousSession};
 use sync_protocol::{ClientMessage, ServerMessage};
 use session_manager::RendezvousCoordinator;
 
-
+impl RendezvousCoordinator {
     /// Handle WebSocket upgrade
     pub async fn handle_websocket(
         State(coordinator): State<Arc<Self>>,
