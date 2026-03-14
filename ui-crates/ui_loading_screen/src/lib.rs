@@ -67,8 +67,6 @@ pub struct LoadingScreen {
     _analyzer_subscription: Option<Subscription>,
     analyzer_message: String,
     window_id: u64,
-    // handle used to close this window once the editor opens
-    window_handle: gpui::AnyWindowHandle,
     // flag to open editor only once
     opened_editor: bool,
     // background thread channel receiver for progress events
@@ -143,7 +141,6 @@ impl LoadingScreen {
             _analyzer_subscription: None,
             analyzer_message: String::new(),
             window_id,
-            window_handle: window.window_handle(),
             opened_editor: false,
             progress_rx: rx,
         };
@@ -205,22 +202,10 @@ impl Render for LoadingScreen {
                 }
             }
         }
-        // once all tasks done, open editor & schedule closing
+        // once all tasks done, open editor
         if self.initial_tasks_complete && !self.opened_editor {
             self.opened_editor = true;
             ui_common::open_window::open_pulsar_window::<ui_level_editor::LevelEditorPanel>((), cx);
-
-            let close_id = self.window_id;
-            let handle = self.window_handle;
-            cx.spawn(async move |_, mut cx| {
-                cx.background_executor().timer(Duration::from_millis(100)).await;
-                cx.update_window(handle, |_, window, _cx| {
-                    window.remove_window();
-                }).ok();
-                if let Some(ec) = engine_state::EngineContext::global() {
-                    ec.unregister_window(&close_id);
-                }
-            });
         }
         // request a frame every render call to keep loop alive
         _window.request_animation_frame();
