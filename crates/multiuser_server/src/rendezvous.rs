@@ -19,13 +19,12 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
 use crate::metrics::METRICS;
 use peer_discovery::{PeerSession, RendezvousSession};
-use sync_protocol::{ClientMessage, ServerMessage};
-use session_manager::RendezvousCoordinator;
 
 impl RendezvousCoordinator {
     /// Handle WebSocket upgrade

@@ -44,7 +44,7 @@ impl RendezvousCoordinator {
     }
 
     /// Validate JWT token
-    fn validate_jwt_token(&self, token: &str) -> Result<TokenClaims> {
+    pub(super) fn validate_jwt_token(&self, token: &str) -> Result<TokenClaims> {
         let mut validation = Validation::new(Algorithm::HS256);
         validation.validate_exp = true;
         
