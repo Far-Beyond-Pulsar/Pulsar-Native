@@ -12268,6 +12268,7 @@ dependencies = [
  "ui",
  "ui_common",
  "winapi",
+ "window_manager",
 ]
 
 [[package]]
@@ -12284,6 +12285,7 @@ dependencies = [
  "tracing",
  "ui",
  "ui_common",
+ "ui_level_editor",
  "window_manager",
 ]
 

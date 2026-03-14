@@ -8,6 +8,7 @@ gpui-ce.workspace = true
 ui.workspace = true
 ui_common.workspace = true
 window_manager.workspace = true
+ui_level_editor.workspace = true
 engine_backend.workspace = true
 engine_state.workspace = true
 directories.workspace = true

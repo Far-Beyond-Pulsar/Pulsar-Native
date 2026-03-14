@@ -208,8 +208,7 @@ impl Render for LoadingScreen {
         // once all tasks done, open editor & schedule closing
         if self.initial_tasks_complete && !self.opened_editor {
             self.opened_editor = true;
-            let pathbuf = self.project_path.clone();
-            ui_common::open_window::open_pulsar_window::<LoadingScreen>(pathbuf, cx);
+            ui_common::open_window::open_pulsar_window::<ui_level_editor::LevelEditorPanel>((), cx);
 
             let close_id = self.window_id;
             let ptr = self.window_ptr;
