@@ -67,8 +67,8 @@ pub struct LoadingScreen {
     _analyzer_subscription: Option<Subscription>,
     analyzer_message: String,
     window_id: u64,
-    // raw pointer to allow closing window from async task
-    window_ptr: *mut Window,
+    // handle used to close this window once the editor opens
+    window_handle: gpui::AnyWindowHandle,
     // flag to open editor only once
     opened_editor: bool,
     // background thread channel receiver for progress events
@@ -143,7 +143,7 @@ impl LoadingScreen {
             _analyzer_subscription: None,
             analyzer_message: String::new(),
             window_id,
-            window_ptr: window as *mut Window,
+            window_handle: window.window_handle(),
             opened_editor: false,
             progress_rx: rx,
         };
@@ -211,10 +211,12 @@ impl Render for LoadingScreen {
             ui_common::open_window::open_pulsar_window::<ui_level_editor::LevelEditorPanel>((), cx);
 
             let close_id = self.window_id;
-            let ptr = self.window_ptr;
-            cx.spawn(async move |_, cx| {
+            let handle = self.window_handle;
+            cx.spawn(async move |_, mut cx| {
                 cx.background_executor().timer(Duration::from_millis(100)).await;
-                unsafe { (&mut *ptr).remove_window(); }
+                cx.update_window(handle, |_, window, _cx| {
+                    window.remove_window();
+                }).ok();
                 if let Some(ec) = engine_state::EngineContext::global() {
                     ec.unregister_window(&close_id);
                 }
