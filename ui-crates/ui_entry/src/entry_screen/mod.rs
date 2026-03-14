@@ -785,7 +785,8 @@ impl Render for EntryScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let bounds = window.viewport_size();
         // Match columns calculation in `calculate_columns`
-        let available_width: f32 = (bounds.width.into() - 72.0 - 96.0).max(0.0);
+        let width: f32 = f32::from(bounds.width);
+        let available_width: f32 = (width - 72.0 - 96.0).max(0.0);
         let view = self.view;
         
         // Trigger git fetch when viewing recent projects
