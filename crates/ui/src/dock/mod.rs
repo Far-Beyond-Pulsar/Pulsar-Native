@@ -3,7 +3,7 @@ mod invalid_panel;
 mod panel;
 mod stack_panel;
 mod state;
-mod tab_panel;
+pub mod tab_panel;
 mod tiles;
 
 use anyhow::Result;
@@ -39,6 +39,19 @@ pub(crate) fn init(cx: &mut App) {
 }
 
 actions!(dock, [ToggleZoom, ClosePanel]);
+
+#[derive(Debug)]
+pub enum DockError {
+    InvalidPanelType(&'static str),
+}
+
+impl std::fmt::Display for DockError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DockError::InvalidPanelType(msg) => write!(f, "Invalid panel type: {}", msg),
+        }
+    }
+}
 
 pub enum DockEvent {
     /// The layout of the dock has changed, subscribers this to save the layout.
@@ -225,13 +238,17 @@ impl DockItem {
                         let meta: TileMeta = metas[ix].into();
                         let tile_item =
                             TileItem::new(Arc::new(view), meta.bounds).z_index(meta.z_index);
-                        tiles.add_item(tile_item, dock_area, window, cx);
+                        if let Err(e) = tiles.add_item(tile_item, dock_area, window, cx) {
+                            tracing::warn!("Failed to add tile item: {}", e);
+                        }
                     }
                     DockItem::Panel { view } => {
                         let meta: TileMeta = metas[ix].into();
                         let tile_item =
                             TileItem::new(view.clone(), meta.bounds).z_index(meta.z_index);
-                        tiles.add_item(tile_item, dock_area, window, cx);
+                        if let Err(e) = tiles.add_item(tile_item, dock_area, window, cx) {
+                            tracing::warn!("Failed to add tile item: {}", e);
+                        }
                     }
                     _ => {
                         // Ignore non-tabs items
@@ -384,7 +401,9 @@ impl DockItem {
 
                 items.push(tile_item.clone());
                 view.update(cx, |tiles, cx| {
-                    tiles.add_item(tile_item, dock_area, window, cx);
+                    if let Err(e) = tiles.add_item(tile_item, dock_area, window, cx) {
+                        tracing::warn!("Failed to add tile item: {}", e);
+                    }
                 });
             }
             Self::Panel { .. } => {}

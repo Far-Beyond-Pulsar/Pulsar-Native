@@ -1,19 +1,22 @@
 //! Multi-user editing and state replication system
 //!
 //! Re-exports the canonical [`pulsar_replication`] crate and provides
-//! UI-specific extension traits for existing UI components.
+//! UI-specific presence components and extension traits.
 
 pub use pulsar_replication::*;
 
-// ── UI-specific extension traits ────────────────────────────────────────────
+// ── UI-specific presence components ─────────────────────────────────────────
 
-use crate::input::{InputState, RopeExt};
-use gpui::{App, Window};
-use pulsar_replication::{
-    ReplicationConfig, ReplicationMessageBuilder, ReplicationMode, ReplicationRegistry,
-    SessionContext,
+use crate::{h_flex, ActiveTheme, Icon, IconName, Sizable, StyledExt};
+use gpui::{
+    div, prelude::FluentBuilder, px, App, AnyElement, IntoElement, ParentElement, RenderOnce,
+    Styled, Window,
 };
 use serde_json::{json, Value};
+
+// ── UI-specific extension traits ─────────────────────────────────────────────
+
+use crate::input::{InputState, RopeExt};
 
 /// Extension trait for [`InputState`] to add replication support.
 ///
@@ -154,5 +157,239 @@ impl InputStateReplicationExt for gpui::Entity<InputState> {
         });
 
         Ok(())
+    }
+}
+
+// ── UI-specific presence components ─────────────────────────────────────────
+// These render components depend on GPUI UI primitives and cannot live in
+// the engine-level pulsar_replication crate.
+
+/// Size variant for presence pill display
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PresencePillSize {
+    Small,
+    Medium,
+    Large,
+}
+
+/// A small colored badge representing a connected user
+#[derive(IntoElement)]
+pub struct PresencePill {
+    presence: UserPresence,
+    show_name: bool,
+    show_status: bool,
+    size: PresencePillSize,
+}
+
+impl PresencePill {
+    pub fn new(presence: UserPresence) -> Self {
+        Self { presence, show_name: true, show_status: false, size: PresencePillSize::Medium }
+    }
+
+    pub fn small(mut self) -> Self { self.size = PresencePillSize::Small; self.show_name = false; self }
+    pub fn medium(mut self) -> Self { self.size = PresencePillSize::Medium; self.show_name = false; self }
+    pub fn large(mut self) -> Self { self.size = PresencePillSize::Large; self.show_name = true; self }
+    pub fn with_name(mut self, show: bool) -> Self { self.show_name = show; self }
+    pub fn with_status(mut self, show: bool) -> Self { self.show_status = show; self }
+}
+
+impl RenderOnce for PresencePill {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let color = self.presence.color;
+        let is_idle = self.presence.is_idle;
+        match self.size {
+            PresencePillSize::Small => div()
+                .size_2()
+                .rounded_full()
+                .bg(color)
+                .when(is_idle, |this| this.opacity(0.4)),
+            PresencePillSize::Medium => div()
+                .flex()
+                .items_center()
+                .justify_center()
+                .size_6()
+                .rounded_full()
+                .bg(color)
+                .text_color(gpui::white())
+                .text_xs()
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .when(is_idle, |this| this.opacity(0.5))
+                .child(self.presence.initials()),
+            PresencePillSize::Large => h_flex()
+                .items_center()
+                .gap_2()
+                .px_2()
+                .py_1()
+                .rounded_full()
+                .bg(color.opacity(0.15))
+                .border_1()
+                .border_color(color)
+                .when(is_idle, |this| this.opacity(0.6))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .size_5()
+                        .rounded_full()
+                        .bg(color)
+                        .text_color(gpui::white())
+                        .text_xs()
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .child(self.presence.initials()),
+                )
+                .when(self.show_name, |this| {
+                    this.child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().foreground)
+                            .child(self.presence.short_name()),
+                    )
+                })
+                .when(self.show_status && self.presence.status.is_some(), |this| {
+                    this.child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(self.presence.status.as_ref().unwrap().clone()),
+                    )
+                }),
+        }
+    }
+}
+
+/// Overlapping stack of presence pills showing multiple connected users
+#[derive(IntoElement)]
+pub struct PresenceStack {
+    presences: Vec<UserPresence>,
+    max_visible: usize,
+    show_count: bool,
+    size: PresencePillSize,
+}
+
+impl PresenceStack {
+    pub fn new(presences: Vec<UserPresence>) -> Self {
+        Self { presences, max_visible: 3, show_count: true, size: PresencePillSize::Medium }
+    }
+
+    pub fn max_visible(mut self, max: usize) -> Self { self.max_visible = max; self }
+    pub fn show_count(mut self, show: bool) -> Self { self.show_count = show; self }
+    pub fn small(mut self) -> Self { self.size = PresencePillSize::Small; self }
+}
+
+impl RenderOnce for PresenceStack {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let total = self.presences.len();
+        let overflow = total.saturating_sub(self.max_visible);
+
+        h_flex()
+            .items_center()
+            .gap_0p5()
+            .children(self.presences.iter().take(self.max_visible).map(|presence| {
+                let pill = PresencePill::new(presence.clone());
+                match self.size {
+                    PresencePillSize::Small => pill.small(),
+                    PresencePillSize::Medium => pill.medium(),
+                    PresencePillSize::Large => pill.large(),
+                }
+            }))
+            .when(self.show_count && overflow > 0, |this| {
+                this.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .size_6()
+                        .rounded_full()
+                        .bg(cx.theme().muted)
+                        .border_1()
+                        .border_color(cx.theme().border)
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(format!("+{}", overflow)),
+                )
+            })
+    }
+}
+
+/// A 2px colored bar at the top of a tab showing who is present
+#[derive(IntoElement)]
+pub struct TabPresenceIndicator {
+    presences: Vec<UserPresence>,
+    show_count: bool,
+}
+
+impl TabPresenceIndicator {
+    pub fn new(presences: Vec<UserPresence>) -> Self {
+        Self { presences, show_count: true }
+    }
+
+    pub fn show_count(mut self, show: bool) -> Self { self.show_count = show; self }
+}
+
+impl RenderOnce for TabPresenceIndicator {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        if self.presences.is_empty() {
+            return div().into_any_element();
+        }
+
+        div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .right_0()
+            .h(px(2.0))
+            .bg(self.presences[0].color)
+            .into_any_element()
+    }
+}
+
+/// Inline indicator on an input field showing who is editing (and if locked)
+#[derive(IntoElement)]
+pub struct FieldPresenceIndicator {
+    presence: UserPresence,
+    is_locked: bool,
+}
+
+impl FieldPresenceIndicator {
+    pub fn new(presence: UserPresence) -> Self {
+        Self { presence, is_locked: false }
+    }
+
+    pub fn locked(mut self, locked: bool) -> Self { self.is_locked = locked; self }
+}
+
+impl RenderOnce for FieldPresenceIndicator {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let color = self.presence.color;
+        h_flex()
+            .items_center()
+            .gap_1()
+            .px_2()
+            .py_0p5()
+            .rounded(cx.theme().radius)
+            .bg(color.opacity(0.1))
+            .border_1()
+            .border_color(color)
+            .when(self.is_locked, |this| {
+                this.child(Icon::new(IconName::Lock).size_3().text_color(color))
+            })
+            .child(
+                div()
+                    .size_4()
+                    .rounded_full()
+                    .bg(color)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .text_xs()
+                    .child(self.presence.initials()),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().foreground)
+                    .child(self.presence.short_name()),
+            )
     }
 }
