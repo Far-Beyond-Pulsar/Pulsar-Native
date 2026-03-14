@@ -48,5 +48,3 @@ impl MultiplayerWindow {
     }
 
 }
-}
-

@@ -1,6 +1,6 @@
-use gpui::{App, IntoElement, prelude::FluentBuilder};
+use gpui::{App, IntoElement, Styled as _, prelude::FluentBuilder};
 
-use crate::{h_flex, ActiveTheme, Icon, IconName};
+use crate::{h_flex, ActiveTheme as _, Icon, IconName, StyledExt as _};
 
 /// Standard empty-state placeholder used by list, table, and other collection views.
 pub fn empty_state_placeholder(cx: &App) -> impl IntoElement {

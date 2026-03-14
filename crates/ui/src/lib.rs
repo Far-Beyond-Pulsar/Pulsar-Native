@@ -16,6 +16,7 @@ mod global_state;
 mod icon;
 mod index_path;
 pub mod utils;
+pub mod states;
 #[cfg(any(feature = "inspector", debug_assertions))]
 mod inspector;
 mod kbd;
@@ -144,6 +145,7 @@ pub use themes::*;
 pub use download_item::{DownloadItem, DownloadItemStatus, reveal_in_file_manager};
 pub use download_manager::{DownloadEntry, DownloadManagerDrawer};
 pub use speed_graph::{SpeedGraph, fmt_speed, fmt_bytes};
+pub use states::empty_state_placeholder;
 
 // Engine constants (will be set by engine binary)
 pub const ENGINE_NAME: &str = "Pulsar Engine";
