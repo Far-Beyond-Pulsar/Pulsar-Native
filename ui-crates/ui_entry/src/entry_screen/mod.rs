@@ -6,7 +6,7 @@ mod virtual_grid;
 pub mod views;
 pub mod project_selector;
 
-use types::{EntryScreenView, Template, CloneProgress, SharedCloneProgress, GitFetchStatus, get_default_templates};
+use types::{EntryScreenView, Template, CloneProgress, SharedCloneProgress, GitFetchStatus, get_default_templates, CloudServer, CloudServerStatus, CloudProject, CloudProjectStatus};
 use git_operations::{clone_repository, setup_template_remotes, add_user_upstream, init_repository, is_git_repo, check_for_updates, pull_updates};
 
 use gpui::{prelude::*, *};
@@ -44,6 +44,23 @@ pub struct EntryScreen {
     pub(crate) git_repo_url_input: Entity<InputState>,
     pub(crate) git_upstream_url_input: Entity<InputState>,
     pub(crate) new_project_name_input: Entity<InputState>,
+    // Cloud Projects
+    pub(crate) cloud_servers: Vec<CloudServer>,
+    pub(crate) selected_cloud_server: Option<usize>,
+    pub(crate) cloud_servers_path: std::path::PathBuf,
+    pub(crate) show_add_server: bool,
+    pub(crate) add_server_alias_input: Entity<InputState>,
+    pub(crate) add_server_url_input: Entity<InputState>,
+    pub(crate) add_server_token_input: Entity<InputState>,
+    pub(crate) add_server_alias: String,
+    pub(crate) add_server_url: String,
+    pub(crate) add_server_token: String,
+    // Cloud project creation dialog
+    pub(crate) show_create_project: bool,
+    pub(crate) create_project_name: String,
+    pub(crate) create_project_description: String,
+    pub(crate) create_project_name_input: Entity<InputState>,
+    pub(crate) create_project_description_input: Entity<InputState>,
 }
 
 #[derive(Clone, Debug)]
@@ -92,6 +109,34 @@ impl EntryScreen {
                 .placeholder("my_awesome_game")
         });
 
+        // Cloud servers — load from disk
+        let cloud_servers_path = directories::ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
+            .map(|d| d.data_dir().join("cloud_servers.json"))
+            .unwrap_or_else(|| PathBuf::from("cloud_servers.json"));
+        let cloud_servers: Vec<CloudServer> = if cloud_servers_path.exists() {
+            std::fs::read_to_string(&cloud_servers_path)
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let add_server_alias_input = cx.new(|cx| {
+            InputState::new(_window, cx).placeholder("My Studio Server")
+        });
+        let add_server_url_input = cx.new(|cx| {
+            InputState::new(_window, cx).placeholder("https://studio.example.com")
+        });
+        let add_server_token_input = cx.new(|cx| {
+            InputState::new(_window, cx).placeholder("Bearer token (leave blank for open servers)")
+        });
+        let create_project_name_input = cx.new(|cx| {
+            InputState::new(_window, cx).placeholder("My Awesome Game")
+        });
+        let create_project_description_input = cx.new(|cx| {
+            InputState::new(_window, cx).placeholder("Optional project description")
+        });
+
         let mut screen = Self {
             entity: None,
             view: EntryScreenView::Recent,
@@ -117,6 +162,21 @@ impl EntryScreen {
             git_repo_url_input: git_repo_url_input.clone(),
             git_upstream_url_input: git_upstream_url_input.clone(),
             new_project_name_input: new_project_name_input.clone(),
+            cloud_servers,
+            selected_cloud_server: None,
+            cloud_servers_path,
+            show_add_server: false,
+            add_server_alias_input: add_server_alias_input.clone(),
+            add_server_url_input: add_server_url_input.clone(),
+            add_server_token_input: add_server_token_input.clone(),
+            add_server_alias: String::new(),
+            add_server_url: String::new(),
+            add_server_token: String::new(),
+            show_create_project: false,
+            create_project_name: String::new(),
+            create_project_description: String::new(),
+            create_project_name_input: create_project_name_input.clone(),
+            create_project_description_input: create_project_description_input.clone(),
         };
 
         // Store own entity for virtualization helpers.
@@ -160,6 +220,32 @@ impl EntryScreen {
                     // Note: Will need window parameter for create_new_project - will be handled via button click
                 }
                 _ => {}
+            }
+        }).detach();
+
+        cx.subscribe(&add_server_alias_input, |this, _input, event: &ui::input::InputEvent, cx| {
+            if let ui::input::InputEvent::Change = event {
+                this.add_server_alias = this.add_server_alias_input.read(cx).text().to_string();
+            }
+        }).detach();
+        cx.subscribe(&add_server_url_input, |this, _input, event: &ui::input::InputEvent, cx| {
+            if let ui::input::InputEvent::Change = event {
+                this.add_server_url = this.add_server_url_input.read(cx).text().to_string();
+            }
+        }).detach();
+        cx.subscribe(&add_server_token_input, |this, _input, event: &ui::input::InputEvent, cx| {
+            if let ui::input::InputEvent::Change = event {
+                this.add_server_token = this.add_server_token_input.read(cx).text().to_string();
+            }
+        }).detach();
+        cx.subscribe(&create_project_name_input, |this, _input, event: &ui::input::InputEvent, cx| {
+            if let ui::input::InputEvent::Change = event {
+                this.create_project_name = this.create_project_name_input.read(cx).text().to_string();
+            }
+        }).detach();
+        cx.subscribe(&create_project_description_input, |this, _input, event: &ui::input::InputEvent, cx| {
+            if let ui::input::InputEvent::Change = event {
+                this.create_project_description = this.create_project_description_input.read(cx).text().to_string();
             }
         }).detach();
 
@@ -757,6 +843,309 @@ default_scene = "scenes/main.scene"
             }).ok();
         }).detach();
     }
+
+    // ── Cloud Projects ────────────────────────────────────────────────────────
+
+    /// Persist the cloud server list to disk.
+    pub(crate) fn save_cloud_servers(&self) {
+        if let Ok(json) = serde_json::to_string_pretty(&self.cloud_servers) {
+            if let Some(parent) = self.cloud_servers_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(&self.cloud_servers_path, json);
+        }
+    }
+
+    /// Add a new server entry, persist it, and immediately start a connectivity poll.
+    pub(crate) fn add_cloud_server(&mut self, alias: String, url: String, token: String, cx: &mut Context<Self>) {
+        if url.trim().is_empty() {
+            return;
+        }
+        let id = format!("{:x}", std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0));
+        let server = CloudServer {
+            id,
+            alias: if alias.trim().is_empty() { url.clone() } else { alias },
+            url: url.trim_end_matches('/').to_string(),
+            auth_token: token,
+            status: CloudServerStatus::Unknown,
+            projects: Vec::new(),
+        };
+        self.cloud_servers.push(server);
+        self.save_cloud_servers();
+        self.show_add_server = false;
+        let new_idx = self.cloud_servers.len() - 1;
+        self.refresh_cloud_server(new_idx, cx);
+        cx.notify();
+    }
+
+    /// Remove a server entry by index and persist.
+    pub(crate) fn remove_cloud_server(&mut self, idx: usize, cx: &mut Context<Self>) {
+        if idx >= self.cloud_servers.len() {
+            return;
+        }
+        self.cloud_servers.remove(idx);
+        // Adjust selection
+        match self.selected_cloud_server {
+            Some(sel) if sel == idx => self.selected_cloud_server = None,
+            Some(sel) if sel > idx => self.selected_cloud_server = Some(sel - 1),
+            _ => {}
+        }
+        self.save_cloud_servers();
+        cx.notify();
+    }
+
+    /// Poll a single server for connectivity info and project list.
+    pub(crate) fn refresh_cloud_server(&mut self, server_idx: usize, cx: &mut Context<Self>) {
+        if server_idx >= self.cloud_servers.len() {
+            return;
+        }
+        // Normalise URL: add http:// if no scheme is provided so bare
+        // "localhost:7700" entries work without the user having to type a scheme.
+        let raw = self.cloud_servers[server_idx].url.trim().trim_end_matches('/');
+        let base_url = if raw.starts_with("http://") || raw.starts_with("https://") {
+            raw.to_string()
+        } else {
+            format!("http://{}", raw)
+        };
+        let token = self.cloud_servers[server_idx].auth_token.clone();
+
+        self.cloud_servers[server_idx].status = CloudServerStatus::Connecting;
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let result: Option<(CloudServerStatus, Vec<CloudProject>)> =
+                cx.background_executor().spawn(async move {
+                    let info_url = format!("{}/api/v1/info", base_url);
+                    let projects_url = format!("{}/api/v1/projects", base_url);
+                    let tok: Option<String> = if token.is_empty() { None } else { Some(token) };
+
+                    let client = reqwest::Client::builder()
+                        .timeout(std::time::Duration::from_secs(6))
+                        .danger_accept_invalid_certs(true)
+                        .build()
+                        .ok()?;
+
+                    let started = std::time::Instant::now();
+
+                    // ── Fetch /api/v1/info ──
+                    let info_req = {
+                        let r = client.get(&info_url);
+                        if let Some(ref t) = tok { r.bearer_auth(t) } else { r }
+                    };
+                    let status: CloudServerStatus = match info_req.send().await {
+                        Err(_) => return Some((CloudServerStatus::Offline, vec![])),
+                        Ok(resp) if resp.status() == reqwest::StatusCode::UNAUTHORIZED => {
+                            return Some((CloudServerStatus::Unauthorized, vec![]));
+                        }
+                        Ok(resp) if !resp.status().is_success() => {
+                            return Some((CloudServerStatus::Offline, vec![]));
+                        }
+                        Ok(resp) => {
+                            let latency_ms = started.elapsed().as_millis() as u32;
+                            let info = resp.json::<serde_json::Value>().await.ok()?;
+                            CloudServerStatus::Online {
+                                latency_ms,
+                                version: info.get("version")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("?")
+                                    .to_string(),
+                                active_users: info.get("active_users")
+                                    .and_then(|v| v.as_u64())
+                                    .unwrap_or(0) as u32,
+                                active_projects: info.get("active_projects")
+                                    .and_then(|v| v.as_u64())
+                                    .unwrap_or(0) as u32,
+                            }
+                        }
+                    };
+
+                    // ── Fetch /api/v1/projects ──
+                    let proj_req = {
+                        let r = client.get(&projects_url);
+                        if let Some(ref t) = tok { r.bearer_auth(t) } else { r }
+                    };
+                    let projects: Vec<CloudProject> = match proj_req.send().await {
+                        Ok(resp) if resp.status().is_success() => {
+                            resp.json::<serde_json::Value>().await.ok()
+                                .and_then(|v| {
+                                    if let serde_json::Value::Array(arr) = v {
+                                        Some(arr)
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .map(|arr| {
+                                    arr.into_iter().filter_map(|p| {
+                                        let id = p.get("id")?.as_str()?.to_string();
+                                        let name = p.get("name")?.as_str()?.to_string();
+                                        let description = p.get("description")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("")
+                                            .to_string();
+                                        let last_modified = p.get("last_modified")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("")
+                                            .to_string();
+                                        let size_bytes = p.get("size_bytes")
+                                            .and_then(|v| v.as_u64())
+                                            .unwrap_or(0);
+                                        let owner = p.get("owner")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("")
+                                            .to_string();
+                                        let user_count = p.get("user_count")
+                                            .and_then(|v| v.as_u64())
+                                            .unwrap_or(0) as u32;
+                                        let project_status = match p.get("status")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("idle")
+                                        {
+                                            "preparing" => CloudProjectStatus::Preparing,
+                                            "running"   => CloudProjectStatus::Running { user_count },
+                                            "error"     => CloudProjectStatus::Error(
+                                                p.get("error_msg")
+                                                    .and_then(|v| v.as_str())
+                                                    .unwrap_or("unknown")
+                                                    .to_string(),
+                                            ),
+                                            _ => CloudProjectStatus::Idle,
+                                        };
+                                        Some(CloudProject {
+                                            id, name, description, status: project_status,
+                                            last_modified, size_bytes, owner,
+                                        })
+                                    }).collect()
+                                })
+                                .unwrap_or_default()
+                        }
+                        _ => vec![],
+                    };
+
+                    Some((status, projects))
+                }).await;
+
+            let _ = cx.update(|cx| {
+                let _ = this.update(cx, |screen, cx| {
+                    if server_idx < screen.cloud_servers.len() {
+                        match result {
+                            Some((s, p)) => {
+                                screen.cloud_servers[server_idx].status = s;
+                                screen.cloud_servers[server_idx].projects = p;
+                            }
+                            None => {
+                                screen.cloud_servers[server_idx].status = CloudServerStatus::Offline;
+                            }
+                        }
+                    }
+                    cx.notify();
+                });
+            });
+        }).detach();
+    }
+
+    /// Refresh every server that hasn't been polled yet (status == Unknown).
+    pub(crate) fn refresh_all_unknown_cloud_servers(&mut self, cx: &mut Context<Self>) {
+        let indices: Vec<usize> = self.cloud_servers.iter().enumerate()
+            .filter(|(_, s)| s.status == CloudServerStatus::Unknown)
+            .map(|(i, _)| i)
+            .collect();
+        for idx in indices {
+            self.refresh_cloud_server(idx, cx);
+        }
+    }
+
+    /// Signal a specific project on a server to warm up (prepare), then refresh.
+    pub(crate) fn prepare_cloud_project(&mut self, server_idx: usize, project_id: String, cx: &mut Context<Self>) {
+        if server_idx >= self.cloud_servers.len() {
+            return;
+        }
+        let raw = self.cloud_servers[server_idx].url.trim().trim_end_matches('/');
+        let base_url = if raw.starts_with("http://") || raw.starts_with("https://") {
+            raw.to_string()
+        } else {
+            format!("http://{}", raw)
+        };
+        let token = self.cloud_servers[server_idx].auth_token.clone();
+        let post_url = format!("{}/api/v1/projects/{}/prepare", base_url, project_id);
+
+        // Optimistic status update
+        if let Some(proj) = self.cloud_servers[server_idx].projects.iter_mut()
+            .find(|p| p.id == project_id)
+        {
+            proj.status = CloudProjectStatus::Preparing;
+        }
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let tok: Option<String> = if token.is_empty() { None } else { Some(token) };
+            let _ = cx.background_executor().spawn(async move {
+                let Ok(client) = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(10))
+                    .danger_accept_invalid_certs(true)
+                    .build()
+                else { return; };
+                let req = client.post(&post_url);
+                let req = if let Some(ref t) = tok { req.bearer_auth(t) } else { req };
+                let _ = req.send().await;
+            }).await;
+
+            // Refresh server state after prepare to pick up new status.
+            let _ = cx.update(|cx| {
+                let _ = this.update(cx, |screen, cx| {
+                    screen.refresh_cloud_server(server_idx, cx);
+                });
+            });
+        }).detach();
+    }
+
+    /// Create a new project on a remote server via `POST /api/v1/projects`, then refresh.
+    pub(crate) fn create_cloud_project(
+        &mut self,
+        server_idx: usize,
+        name: String,
+        description: String,
+        cx: &mut Context<Self>,
+    ) {
+        if server_idx >= self.cloud_servers.len() || name.trim().is_empty() {
+            return;
+        }
+        let raw = self.cloud_servers[server_idx].url.trim().trim_end_matches('/');
+        let base_url = if raw.starts_with("http://") || raw.starts_with("https://") {
+            raw.to_string()
+        } else {
+            format!("http://{}", raw)
+        };
+        let token = self.cloud_servers[server_idx].auth_token.clone();
+        let post_url = format!("{}/api/v1/projects", base_url);
+
+        self.show_create_project = false;
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let tok: Option<String> = if token.is_empty() { None } else { Some(token) };
+            let _ = cx.background_executor().spawn(async move {
+                let Ok(client) = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(10))
+                    .danger_accept_invalid_certs(true)
+                    .build()
+                else { return; };
+                let body = serde_json::json!({ "name": name, "description": description });
+                let req = client.post(&post_url).json(&body);
+                let req = if let Some(ref t) = tok { req.bearer_auth(t) } else { req };
+                let _ = req.send().await;
+            }).await;
+
+            // Refresh to surface the newly created project.
+            let _ = cx.update(|cx| {
+                let _ = this.update(cx, |screen, cx| {
+                    screen.refresh_cloud_server(server_idx, cx);
+                });
+            });
+        }).detach();
+    }
 }
 
 impl EventEmitter<crate::entry_screen::project_selector::ProjectSelected> for EntryScreen {}
@@ -792,6 +1181,10 @@ impl Render for EntryScreen {
         // Trigger git fetch when viewing recent projects
         if view == EntryScreenView::Recent && !self.is_fetching_updates {
             self.start_git_fetch_all(cx);
+        }
+        // Refresh cloud servers that haven't been polled yet
+        if view == EntryScreenView::CloudProjects {
+            self.refresh_all_unknown_cloud_servers(cx);
         }
         
         // Show dependency setup if needed
@@ -831,6 +1224,7 @@ impl Render for EntryScreen {
                                     EntryScreenView::Templates => views::render_templates(self, available_width, cx).into_any_element(),
                                     EntryScreenView::NewProject => views::render_new_project(self, cx).into_any_element(),
                                     EntryScreenView::CloneGit => views::render_clone_git(self, cx).into_any_element(),
+                                    EntryScreenView::CloudProjects => views::render_cloud_projects(self, cx).into_any_element(),
                                 }
                             )
                     )

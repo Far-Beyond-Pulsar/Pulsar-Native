@@ -8,6 +8,7 @@ pub enum EntryScreenView {
     Templates,
     NewProject,
     CloneGit,
+    CloudProjects,
 }
 
 /// Template definition with Git repository info
@@ -61,6 +62,88 @@ pub struct ProjectWithGitStatus {
     pub last_opened: Option<String>,
     pub is_git: bool,
     pub fetch_status: GitFetchStatus,
+}
+
+// ── Cloud Projects ─────────────────────────────────────────────────────────
+
+/// Runtime connection status of a cloud server (not persisted to disk).
+#[derive(Clone, Debug, PartialEq)]
+pub enum CloudServerStatus {
+    /// Initial / never polled
+    Unknown,
+    /// Poll in progress
+    Connecting,
+    /// Server replied successfully with these stats
+    Online {
+        latency_ms: u32,
+        version: String,
+        active_users: u32,
+        active_projects: u32,
+    },
+    /// Could not reach server
+    Offline,
+    /// Server returned 401 / 403
+    Unauthorized,
+}
+
+impl Default for CloudServerStatus {
+    fn default() -> Self {
+        Self::Unknown
+    }
+}
+
+/// Status of a single project on a remote server.
+#[derive(Clone, Debug, PartialEq)]
+pub enum CloudProjectStatus {
+    Idle,
+    Preparing,
+    Running { user_count: u32 },
+    Error(String),
+}
+
+/// A project hosted on a remote Pulsar Host server.
+#[derive(Clone, Debug)]
+pub struct CloudProject {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub status: CloudProjectStatus,
+    pub last_modified: String,
+    pub size_bytes: u64,
+    pub owner: String,
+}
+
+/// A user-configured remote Pulsar Host server entry.
+/// Only the four identifying fields are persisted to disk; runtime state is skipped.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct CloudServer {
+    /// Stable opaque ID generated at creation time
+    pub id: String,
+    /// Human-friendly label chosen by the user
+    pub alias: String,
+    /// Base URL, e.g. "https://studio.example.com"
+    pub url: String,
+    /// Optional bearer token for authenticated servers
+    pub auth_token: String,
+    /// Connection status — filled in at runtime, not stored
+    #[serde(skip)]
+    pub status: CloudServerStatus,
+    /// Projects currently loaded from this server — not stored
+    #[serde(skip)]
+    pub projects: Vec<CloudProject>,
+}
+
+impl Default for CloudServer {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            alias: String::new(),
+            url: String::new(),
+            auth_token: String::new(),
+            status: CloudServerStatus::Unknown,
+            projects: Vec::new(),
+        }
+    }
 }
 
 /// Get default templates list

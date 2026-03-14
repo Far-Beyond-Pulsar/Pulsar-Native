@@ -34,7 +34,7 @@ toml = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 parking_lot = "0.12"
 open = "5.0"
-reqwest = { version = "0.12", features = ["blocking"] }
+reqwest = { version = "0.12", features = ["json"] }
 tracing.workspace = true
 
 # Audio

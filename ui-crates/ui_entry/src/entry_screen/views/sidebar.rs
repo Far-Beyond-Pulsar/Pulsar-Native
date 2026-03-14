@@ -21,6 +21,7 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
     let is_templates = screen.view == EntryScreenView::Templates;
     let is_new = screen.view == EntryScreenView::NewProject;
     let is_clone = screen.view == EntryScreenView::CloneGit;
+    let is_cloud = screen.view == EntryScreenView::CloudProjects;
 
     v_flex()
         .w(px(220.))
@@ -203,6 +204,54 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                         )
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.view = EntryScreenView::CloneGit;
+                            cx.notify();
+                        }))
+                )
+        )
+        // ── Cloud section ────────────────────────────────────────
+        .child(
+            v_flex()
+                .w_full()
+                .px_3()
+                .pt_2()
+                .pb_2()
+                .gap_0p5()
+                .child(div().w_full().h(px(1.0)).bg(border).mb_2())
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(muted_fg)
+                        .px_2()
+                        .pb_1p5()
+                        .child("CLOUD")
+                )
+                .child(
+                    h_flex()
+                        .id("nav-cloud")
+                        .w_full()
+                        .gap_2p5()
+                        .items_center()
+                        .px_3()
+                        .py_2()
+                        .rounded_lg()
+                        .cursor_pointer()
+                        .when(is_cloud, |this| this.bg(accent_bg))
+                        .hover(|this| this.bg(hover_bg))
+                        .child(
+                            Icon::new(IconName::Cloud)
+                                .size(px(15.))
+                                .text_color(if is_cloud { accent } else { muted_fg })
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_weight(if is_cloud { gpui::FontWeight::SEMIBOLD } else { gpui::FontWeight::NORMAL })
+                                .text_color(if is_cloud { foreground } else { muted_fg })
+                                .child("Cloud Projects")
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.view = EntryScreenView::CloudProjects;
                             cx.notify();
                         }))
                 )
