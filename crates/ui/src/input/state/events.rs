@@ -618,14 +618,14 @@ impl InputState {
         }
         self.history.ignore = false;
     }
-    fn on_focus(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::input) fn on_focus(&mut self, _: &mut Window, cx: &mut Context<Self>) {
         self.blink_cursor.update(cx, |cursor, cx| {
             cursor.start(cx);
         });
         cx.emit(InputEvent::Focus);
     }
 
-    fn on_blur(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::input) fn on_blur(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.is_context_menu_open(cx) {
             return;
         }

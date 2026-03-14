@@ -1,10 +1,10 @@
 use std::{collections::HashMap, ops::Range};
 
 use gpui::{
-    div, img, prelude::FluentBuilder as _, px, relative, rems, AnyElement, App, DefiniteLength,
-    Div, ElementId, Entity, FontStyle, FontWeight, Half, HighlightStyle, InteractiveElement as _,
-    IntoElement, Length, ObjectFit, ParentElement, SharedString, SharedUri,
-    StatefulInteractiveElement, Styled, StyledImage as _, Window,
+    div, img, prelude::FluentBuilder as _, px, relative, rems, AnyElement, App, AppContext as _,
+    DefiniteLength, Div, ElementId, Entity, FontStyle, FontWeight, Half, HighlightStyle,
+    InteractiveElement as _, IntoElement, Length, ObjectFit, ParentElement, SharedString,
+    SharedUri, StatefulInteractiveElement, Styled, StyledImage as _, Window,
 };
 use markdown::mdast;
 use ropey::Rope;
