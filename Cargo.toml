@@ -43,8 +43,10 @@ engine_fs             = { path = "crates/engine_fs" }
 pulsar_std            = { path = "crates/pulsar_std" }
 engine_state          = { path = "crates/engine_state" }
 engine_backend        = { path = "crates/engine_backend" }
+pulsar_diagnostics    = { path = "crates/pulsar_diagnostics" }
 window_manager        = { path = "crates/window_manager" }
 blueprint_compiler    = { path = "crates/blueprint_compiler" }
+pulsar_graph          = { path = "crates/pulsar_graph" }
 
 # ---------- UI Component Crates ----------
 ui_core             = { path = "ui-crates/ui_core" }
