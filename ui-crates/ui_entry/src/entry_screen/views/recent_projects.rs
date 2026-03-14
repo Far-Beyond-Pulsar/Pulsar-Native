@@ -12,7 +12,7 @@ pub fn render_recent_projects(screen: &mut EntryScreen, available_width: f32, cx
     v_flex()
         .size_full()
         .gap_8()
-        .p_12()
+        .p_8()
         .child(
             v_flex()
                 .gap_2()
@@ -154,7 +154,7 @@ fn render_project_grid(
     const CARD_WIDTH: f32 = 320.0;
     const CARD_HEIGHT: f32 = 200.0;
     const GAP: f32 = 24.0;
-    const PADDING: f32 = 48.0;
+    const PADDING: f32 = 24.0;
 
     render_card_grid(
         screen.entity.clone().unwrap(),
