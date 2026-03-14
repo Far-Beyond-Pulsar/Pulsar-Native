@@ -202,10 +202,14 @@ impl Render for LoadingScreen {
                 }
             }
         }
-        // once all tasks done, open editor
+        // once all tasks done, open editor.
+        // Must NOT call cx.open_window directly from render() — deferred via
+        // cx.defer so it runs after the current render pass completes.
         if self.initial_tasks_complete && !self.opened_editor {
             self.opened_editor = true;
-            ui_common::open_window::open_pulsar_window::<ui_level_editor::LevelEditorPanel>((), cx);
+            cx.defer(|cx| {
+                ui_common::open_window::open_pulsar_window::<ui_level_editor::LevelEditorPanel>((), cx);
+            });
         }
         // request a frame every render call to keep loop alive
         _window.request_animation_frame();
