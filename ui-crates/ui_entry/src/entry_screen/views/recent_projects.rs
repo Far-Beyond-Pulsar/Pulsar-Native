@@ -4,16 +4,15 @@ use ui::{
     h_flex, v_flex, Icon, IconName, ActiveTheme as _, StyledExt, divider::Divider,
     scroll::ScrollbarAxis,
 };
-use crate::entry_screen::{EntryScreen, GitFetchStatus, recent_projects::RecentProjectsList};
+use crate::entry_screen::{EntryScreen, GitFetchStatus, recent_projects::RecentProjectsList, virtual_grid::render_card_grid};
 
-pub fn render_recent_projects(screen: &mut EntryScreen, cols: usize, cx: &mut Context<EntryScreen>) -> impl IntoElement {
+pub fn render_recent_projects(screen: &mut EntryScreen, available_width: f32, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();
 
     v_flex()
         .size_full()
-        .scrollable(ScrollbarAxis::Vertical)
-        .p_12()
         .gap_8()
+        .p_12()
         .child(
             v_flex()
                 .gap_2()
@@ -141,341 +140,350 @@ pub fn render_recent_projects(screen: &mut EntryScreen, cols: usize, cx: &mut Co
                     )
                     .into_any_element()
             } else {
-                render_project_grid(screen, cols, cx).into_any_element()
+                render_project_grid(screen, available_width, cx).into_any_element()
             }
         })
 }
 
-fn render_project_grid(screen: &mut EntryScreen, cols: usize, cx: &mut Context<EntryScreen>) -> impl IntoElement {
-    let theme = cx.theme();
-    let mut container = v_flex().gap_8();
-    let mut row = h_flex().gap_8();
-    let mut count = 0;
-    
-    for project in screen.recent_projects.projects.clone() {
-        let proj_path = project.path.clone();
-        let is_git = project.is_git;
-        let proj_name = project.name.clone();
-        let proj_name_for_settings = proj_name.clone();
-        let last_opened = project.last_opened.clone()
-            .map(|ts| format_timestamp(&ts))
-            .unwrap_or_else(|| "Never opened".to_string());
-        
-        // Get git fetch status
-        let git_status = screen.git_fetch_statuses.lock().get(&proj_path).cloned()
-            .unwrap_or(GitFetchStatus::NotStarted);
-        
-        // Load tool preferences for this project
-        let (preferred_editor, preferred_git_tool) = crate::entry_screen::views::load_project_tool_preferences(&std::path::PathBuf::from(&proj_path));
-        
-        let card = v_flex()
-            .id(SharedString::from(format!("project-{}", proj_path)))
-            .w(px(340.))
-            .h(px(200.))
-            .gap_4()
-            .p_5()
-            .border_1()
-            .border_color(theme.border)
-            .rounded_xl()
-            .bg(theme.sidebar)
-            .shadow_sm()
-            .hover(|this| {
-                this.border_color(theme.primary)
-                    .shadow_lg()
-                    .bg(hsla(
-                        theme.sidebar.h,
-                        theme.sidebar.s,
-                        theme.sidebar.l * 1.05,
-                        theme.sidebar.a
-                    ))
-            })
-            .cursor_pointer()
-            .on_click(cx.listener({
-                let path = proj_path.clone();
-                move |this, _, _, cx| {
+fn render_project_grid(
+    screen: &mut EntryScreen,
+    available_width: f32,
+    cx: &mut Context<EntryScreen>
+) -> impl IntoElement {
+    // Match the layout used by `EntryScreen::calculate_columns`
+    const CARD_WIDTH: f32 = 320.0;
+    const CARD_HEIGHT: f32 = 200.0;
+    const GAP: f32 = 24.0;
+    const PADDING: f32 = 48.0;
+
+    render_card_grid(
+        screen.entity.clone().unwrap(),
+        "recent-projects-grid",
+        available_width,
+        screen.recent_projects.projects.len(),
+        CARD_WIDTH,
+        CARD_HEIGHT,
+        GAP,
+        PADDING,
+        &screen.recent_projects_scroll_handle,
+        move |view, idx, card_w, _window, cx| {
+            let theme = cx.theme();
+            let project = view.recent_projects.projects[idx].clone();
+            let proj_path = project.path.clone();
+            let proj_path_for_click = proj_path.clone();
+            let is_git = project.is_git;
+            let proj_name = project.name.clone();
+            let proj_name_for_settings = proj_name.clone();
+            let last_opened = project
+                .last_opened
+                .clone()
+                .map(|ts| format_timestamp(&ts))
+                .unwrap_or_else(|| "Never opened".to_string());
+
+            // Get git fetch status
+            let git_status = view
+                .git_fetch_statuses
+                .lock()
+                .get(&proj_path)
+                .cloned()
+                .unwrap_or(GitFetchStatus::NotStarted);
+
+            // Load tool preferences for this project
+            let (preferred_editor, preferred_git_tool) =
+                crate::entry_screen::views::load_project_tool_preferences(&std::path::PathBuf::from(&proj_path));
+
+            v_flex()
+                .id(SharedString::from(format!("project-{}", proj_path)))
+                .w(px(card_w))
+                .h(px(CARD_HEIGHT))
+                .gap_4()
+                .p_5()
+                .border_1()
+                .border_color(theme.border)
+                .rounded_xl()
+                .bg(theme.sidebar)
+                .shadow_sm()
+                .hover(|this| {
+                    this.border_color(theme.primary)
+                        .shadow_lg()
+                        .bg(hsla(
+                            theme.sidebar.h,
+                            theme.sidebar.s,
+                            theme.sidebar.l * 1.05,
+                            theme.sidebar.a,
+                        ))
+                })
+                .cursor_pointer()
+                .on_click(cx.listener(move |this, _, _, cx| {
                     // Normalize path by removing redundant folder name duplication
                     // This occurs when recent projects are saved with the project folder
                     // included twice in the path (e.g., "parent/blank_project/blank_project")
                     // This happens because some project creation workflows append the project
                     // name to an already-named directory. We detect and fix this pattern.
-                    let path_buf = normalize_project_path(&path);
-                    
+                    let path_buf = normalize_project_path(&proj_path_for_click);
                     this.launch_project(path_buf, cx);
-                }
-            }))
-            .child(
-                h_flex()
-                    .items_start()
-                    .gap_3()
-                    .w_full()
-                    .overflow_hidden()
-                    .child(
-                        div()
-                            .flex_shrink_0()
-                            .w(px(48.))
-                            .h(px(48.))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded_lg()
-                            .bg(hsla(
-                                theme.primary.h,
-                                theme.primary.s,
-                                theme.primary.l,
-                                0.15
-                            ))
-                            .child(
-                                Icon::new(IconName::Folder)
-                                    .size(px(28.))
-                                    .text_color(theme.primary)
-                            )
-                    )
-                    .child(
-                        v_flex()
-                            .flex_1()
-                            .gap_1()
-                            .min_w_0()
-                            .child(
-                                div()
-                                    .text_lg()
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(theme.foreground)
-                                    .overflow_hidden()
-                                    .text_ellipsis()
-                                    .whitespace_nowrap()
-                                    .child(proj_name)
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme.muted_foreground)
-                                    .overflow_hidden()
-                                    .text_ellipsis()
-                                    .whitespace_nowrap()
-                                    .child(proj_path.clone())
-                            )
-                    )
-                    .when(is_git, |this| {
-                        this.child(
-                            match &git_status {
-                                GitFetchStatus::Fetching => {
-                                    Icon::new(IconName::ArrowUp)
-                                        .size(px(14.))
-                                        .text_color(theme.muted_foreground)
-                                        .into_any_element()
-                                }
-                                GitFetchStatus::UpdatesAvailable(_) => {
-                                    Icon::new(IconName::ArrowUp)
-                                        .size(px(14.))
-                                        .text_color(theme.accent)
-                                        .into_any_element()
-                                }
-                                _ => {
-                                    Icon::new(IconName::Github)
-                                        .size(px(14.))
-                                        .text_color(theme.muted_foreground)
-                                        .into_any_element()
-                                }
-                            }
+                }))
+                .child(
+                    h_flex()
+                        .items_start()
+                        .gap_3()
+                        .w_full()
+                        .overflow_hidden()
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .w(px(48.))
+                                .h(px(48.))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded_lg()
+                                .bg(hsla(
+                                    theme.primary.h,
+                                    theme.primary.s,
+                                    theme.primary.l,
+                                    0.15,
+                                ))
+                                .child(
+                                    Icon::new(IconName::Folder)
+                                        .size(px(28.))
+                                        .text_color(theme.primary),
+                                )
                         )
-                    })
-            )
-            .child(
-                v_flex()
-                    .flex_1()
-                    .justify_end()
-                    .gap_2()
-                    .when(is_git, |this| {
-                        match &git_status {
-                            GitFetchStatus::UpdatesAvailable(count) => {
-                                this.child(
+                        .child(
+                            v_flex()
+                                .flex_1()
+                                .gap_1()
+                                .min_w_0()
+                                .child(
                                     div()
-                                        .px_3()
-                                        .py_1p5()
-                                        .rounded_md()
-                                        .bg(hsla(
-                                            theme.accent_foreground.h,
-                                            theme.accent_foreground.s,
-                                            theme.accent_foreground.l,
-                                            0.3
-                                        ))
-                                        .child(
-                                            h_flex()
-                                                .gap_1p5()
-                                                .items_center()
-                                                .child(
-                                                    Icon::new(IconName::ArrowUp)
-                                                        .size(px(12.))
-                                                        .text_color(theme.accent)
-                                                )
-                                                .child(
-                                                    div()
-                                                        .text_xs()
-                                                        .font_weight(gpui::FontWeight::MEDIUM)
-                                                        .text_color(theme.accent)
-                                                        .child(format!("{} update{} available", count, if *count == 1 { "" } else { "s" }))
-                                                )
-                                        )
+                                        .text_lg()
+                                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                                        .text_color(theme.foreground)
+                                        .overflow_hidden()
+                                        .text_ellipsis()
+                                        .whitespace_nowrap()
+                                        .child(proj_name),
                                 )
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(theme.muted_foreground)
+                                        .overflow_hidden()
+                                        .text_ellipsis()
+                                        .whitespace_nowrap()
+                                        .child(proj_path.clone()),
+                                )
+                        )
+                        .when(is_git, |this| {
+                            this.child(
+                                match &git_status {
+                                    GitFetchStatus::Fetching => {
+                                        Icon::new(IconName::ArrowUp)
+                                            .size(px(14.))
+                                            .text_color(theme.muted_foreground)
+                                            .into_any_element()
+                                    }
+                                    GitFetchStatus::UpdatesAvailable(_) => {
+                                        Icon::new(IconName::ArrowUp)
+                                            .size(px(14.))
+                                            .text_color(theme.accent)
+                                            .into_any_element()
+                                    }
+                                    _ => {
+                                        Icon::new(IconName::Github)
+                                            .size(px(14.))
+                                            .text_color(theme.muted_foreground)
+                                            .into_any_element()
+                                    }
+                                }
+                            )
+                        })
+                )
+                .child(
+                    v_flex()
+                        .flex_1()
+                        .justify_end()
+                        .gap_2()
+                        .when(is_git, |this| {
+                            match &git_status {
+                                GitFetchStatus::UpdatesAvailable(count) => {
+                                    this.child(
+                                        div()
+                                            .px_3()
+                                            .py_1p5()
+                                            .rounded_md()
+                                            .bg(hsla(
+                                                theme.accent_foreground.h,
+                                                theme.accent_foreground.s,
+                                                theme.accent_foreground.l,
+                                                0.3,
+                                            ))
+                                            .child(
+                                                h_flex()
+                                                    .gap_1p5()
+                                                    .items_center()
+                                                    .child(
+                                                        Icon::new(IconName::ArrowUp)
+                                                            .size(px(12.))
+                                                            .text_color(theme.accent),
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .text_xs()
+                                                            .font_weight(gpui::FontWeight::MEDIUM)
+                                                            .text_color(theme.accent)
+                                                            .child(format!(
+                                                                "{} update{} available",
+                                                                count,
+                                                                if *count == 1 { "" } else { "s" }
+                                                            )),
+                                                    ),
+                                            ),
+                                    )
+                                }
+                                _ => this,
                             }
-                            _ => this
-                        }
-                    })
-            )
-            .child(
-                div()
-                    .w_full()
-                    .h(px(1.))
-                    .bg(theme.border)
-            )
-            .child(
-                h_flex()
-                    .justify_between()
-                    .items_center()
-                    .child(
-                        h_flex()
-                            .gap_1p5()
-                            .items_center()
-                            .child(
-                                Icon::new(IconName::Clock)
-                                    .size(px(12.))
-                                    .text_color(theme.muted_foreground)
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme.muted_foreground)
-                                    .child(last_opened)
-                            )
-                    )
-                    .child(
-                        h_flex()
-                            .gap_1p5()
-                            // Add integration buttons if defaults are set
-                            .when_some(preferred_editor.clone(), |this, editor: String| {
-                                this.child(
-                                    Button::new(SharedString::from(format!("open-editor-{}", proj_path)))
-                                        .icon(IconName::Code)
-                                        .tooltip(format!("Open in {}", get_tool_display_name(&editor)))
-                                        .with_variant(ui::button::ButtonVariant::Ghost)
-                                        .on_click({
-                                            let cmd = editor.clone();
-                                            let path = std::path::PathBuf::from(proj_path.clone());
-                                            move |_, _, _| {
-                                                use crate::entry_screen::integration_launcher;
-                                                let _ = integration_launcher::launch_editor(&cmd, &path);
-                                            }
-                                        })
+                        })
+                )
+                .child(div().w_full().h(px(1.)).bg(theme.border))
+                .child(
+                    h_flex()
+                        .justify_between()
+                        .items_center()
+                        .child(
+                            h_flex()
+                                .gap_1p5()
+                                .items_center()
+                                .child(
+                                    Icon::new(IconName::Clock)
+                                        .size(px(12.))
+                                        .text_color(theme.muted_foreground),
                                 )
-                            })
-                            .when(is_git, |this| {
-                                this.when_some(preferred_git_tool.clone(), |this2, git_tool: String| {
-                                    this2.child(
-                                        Button::new(SharedString::from(format!("open-git-{}", proj_path)))
-                                            .icon(IconName::Github)
-                                            .tooltip(format!("Open in {}", get_tool_display_name(&git_tool)))
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(theme.muted_foreground)
+                                        .child(last_opened),
+                                )
+                        )
+                        .child(
+                            h_flex()
+                                .gap_1p5()
+                                // Add integration buttons if defaults are set
+                                .when_some(preferred_editor.clone(), |this, editor: String| {
+                                    this.child(
+                                        Button::new(SharedString::from(format!("open-editor-{}", proj_path)))
+                                            .icon(IconName::Code)
+                                            .tooltip(format!("Open in {}", get_tool_display_name(&editor)))
                                             .with_variant(ui::button::ButtonVariant::Ghost)
                                             .on_click({
-                                                let cmd = git_tool.clone();
+                                                let cmd = editor.clone();
                                                 let path = std::path::PathBuf::from(proj_path.clone());
                                                 move |_, _, _| {
                                                     use crate::entry_screen::integration_launcher;
-                                                    let _ = integration_launcher::launch_git_tool(&cmd, &path);
+                                                    let _ = integration_launcher::launch_editor(&cmd, &path);
                                                 }
-                                            })
+                                            }),
                                     )
                                 })
-                            })
-                            .when(is_git, |this| {
-                                match &git_status {
-                                    GitFetchStatus::UpdatesAvailable(count) => {
-                                        this.child(
-                                            Button::new(SharedString::from(format!("update-{}", proj_path)))
-                                                .label(format!("Pull {} update{}", count, if *count == 1 { "" } else { "s" }))
-                                                .icon(IconName::ArrowUp)
-                                                .with_variant(ui::button::ButtonVariant::Primary)
-                                                .on_click(cx.listener({
-                                                    let path = proj_path.clone();
-                                                    move |this, _, _, cx| {
-                                                        this.pull_project_updates(path.clone(), cx);
+                                .when(is_git, |this| {
+                                    this.when_some(preferred_git_tool.clone(), |this2, git_tool: String| {
+                                        this2.child(
+                                            Button::new(SharedString::from(format!("open-git-{}", proj_path)))
+                                                .icon(IconName::Github)
+                                                .tooltip(format!("Open in {}", get_tool_display_name(&git_tool)))
+                                                .with_variant(ui::button::ButtonVariant::Ghost)
+                                                .on_click({
+                                                    let cmd = git_tool.clone();
+                                                    let path = std::path::PathBuf::from(proj_path.clone());
+                                                    move |_, _, _| {
+                                                        use crate::entry_screen::integration_launcher;
+                                                        let _ = integration_launcher::launch_git_tool(&cmd, &path);
                                                     }
-                                                }))
+                                                }),
                                         )
-                                    }
-                                    _ => this
-                                }
-                            })
-                            .child(
-                                Button::new(SharedString::from(format!("settings-{}", proj_path)))
-                                    .icon(IconName::Settings)
-                                    .tooltip("Project settings")
-                                    .with_variant(ui::button::ButtonVariant::Ghost)
-                                    .on_click(cx.listener({
-                                        let path = proj_path.clone();
-                                        let name = proj_name_for_settings.clone();
-                                        move |this, _, _, cx| {
-                                            this.open_project_settings(std::path::PathBuf::from(&path), name.clone(), cx);
+                                    })
+                                })
+                                .when(is_git, |this| {
+                                    match &git_status {
+                                        GitFetchStatus::UpdatesAvailable(count) => {
+                                            this.child(
+                                                Button::new(SharedString::from(format!("update-{}", proj_path)))
+                                                    .label(format!(
+                                                        "Pull {} update{}",
+                                                        count,
+                                                        if *count == 1 { "" } else { "s" }
+                                                    ))
+                                                    .icon(IconName::ArrowUp)
+                                                    .with_variant(ui::button::ButtonVariant::Primary)
+                                                    .on_click(cx.listener({
+                                                        let path = proj_path.clone();
+                                                        move |this, _, _, cx| {
+                                                            this.pull_project_updates(path.clone(), cx);
+                                                        }
+                                                    })),
+                                            )
                                         }
-                                    }))
-                            )
-                            .when(is_git, |this| {
-                                this.child(
-                                    Button::new(SharedString::from(format!("git-manager-{}", proj_path)))
-                                        .icon(IconName::GitBranch)
-                                        .tooltip("Open Git Manager")
+                                        _ => this,
+                                    }
+                                })
+                                .child(
+                                    Button::new(SharedString::from(format!("settings-{}", proj_path)))
+                                        .icon(IconName::Settings)
+                                        .tooltip("Project settings")
+                                        .with_variant(ui::button::ButtonVariant::Ghost)
+                                        .on_click(cx.listener({
+                                            let path = proj_path.clone();
+                                            let name = proj_name_for_settings.clone();
+                                            move |this, _, _, cx| {
+                                                this.open_project_settings(std::path::PathBuf::from(&path), name.clone(), cx);
+                                            }
+                                        })),
+                                )
+                                .when(is_git, |this| {
+                                    this.child(
+                                        Button::new(SharedString::from(format!("git-manager-{}", proj_path)))
+                                            .icon(IconName::GitBranch)
+                                            .tooltip("Open Git Manager")
+                                            .with_variant(ui::button::ButtonVariant::Ghost)
+                                            .on_click(cx.listener({
+                                                let path = proj_path.clone();
+                                                move |this, _, _, cx| {
+                                                    this.open_git_manager(std::path::PathBuf::from(&path), cx);
+                                                }
+                                            })),
+                                    )
+                                })
+                                .child(
+                                    Button::new(SharedString::from(format!("location-{}", proj_path)))
+                                        .icon(IconName::FolderOpen)
+                                        .tooltip("Open in file manager")
+                                        .with_variant(ui::button::ButtonVariant::Ghost)
+                                        .on_click({
+                                            let path = std::path::PathBuf::from(proj_path.clone());
+                                            move |_, _, _| {
+                                                use crate::entry_screen::integration_launcher;
+                                                let _ = integration_launcher::launch_file_manager(&path);
+                                            }
+                                        }),
+                                )
+                                .child(
+                                    Button::new(SharedString::from(format!("remove-{}", proj_path)))
+                                        .icon(IconName::Trash)
+                                        .tooltip("Remove from recent")
                                         .with_variant(ui::button::ButtonVariant::Ghost)
                                         .on_click(cx.listener({
                                             let path = proj_path.clone();
                                             move |this, _, _, cx| {
-                                                this.open_git_manager(std::path::PathBuf::from(&path), cx);
+                                                this.remove_recent_project(path.clone(), cx);
                                             }
-                                        }))
+                                        })),
                                 )
-                            })
-                            .child(
-                                Button::new(SharedString::from(format!("location-{}", proj_path)))
-                                    .icon(IconName::FolderOpen)
-                                    .tooltip("Open in file manager")
-                                    .with_variant(ui::button::ButtonVariant::Ghost)
-                                    .on_click({
-                                        let path = std::path::PathBuf::from(proj_path.clone());
-                                        move |_, _, _| {
-                                            use crate::entry_screen::integration_launcher;
-                                            let _ = integration_launcher::launch_file_manager(&path);
-                                        }
-                                    })
-                            )
-                            .child(
-                                Button::new(SharedString::from(format!("remove-{}", proj_path)))
-                                    .icon(IconName::Trash)
-                                    .tooltip("Remove from recent")
-                                    .with_variant(ui::button::ButtonVariant::Ghost)
-                                    .on_click(cx.listener({
-                                        let path = proj_path.clone();
-                                        move |this, _, _, cx| {
-                                            this.remove_recent_project(path.clone(), cx);
-                                        }
-                                    }))
-                            )
-                    )
-            );
-        
-        row = row.child(card);
-        count += 1;
-
-
-        if count >= cols {
-            container = container.child(row);
-            row = h_flex().gap_8();
-            count = 0;
+                        ),
+                )
         }
-    }
-
-    if count > 0 {
-        container = container.child(row);
-    }
-
-    container
+    )
 }
 
 fn get_tool_display_name(command: &str) -> String {

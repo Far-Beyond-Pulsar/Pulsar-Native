@@ -2,6 +2,7 @@ mod types;
 mod git_operations;
 pub mod recent_projects;
 mod integration_launcher;
+mod virtual_grid;
 pub mod views;
 pub mod project_selector;
 
@@ -9,7 +10,7 @@ use types::{EntryScreenView, Template, CloneProgress, SharedCloneProgress, GitFe
 use git_operations::{clone_repository, setup_template_remotes, add_user_upstream, init_repository, is_git_repo, check_for_updates, pull_updates};
 
 use gpui::{prelude::*, *};
-use ui::{h_flex, v_flex, TitleBar, ActiveTheme as _, input::InputState};
+use ui::{h_flex, v_flex, TitleBar, ActiveTheme as _, input::InputState, VirtualListScrollHandle};
 use std::path::PathBuf;
 use std::collections::HashMap;
 use recent_projects::{RecentProject, RecentProjectsList};
@@ -18,6 +19,7 @@ use parking_lot::Mutex;
 
 /// EntryScreen: AAA-quality project manager
 pub struct EntryScreen {
+    pub(crate) entity: Option<Entity<EntryScreen>>,
     pub(crate) view: EntryScreenView,
     pub(crate) recent_projects: RecentProjectsList,
     pub(crate) templates: Vec<Template>,
@@ -33,6 +35,8 @@ pub struct EntryScreen {
     pub(crate) show_git_upstream_prompt: Option<(PathBuf, String)>, // (project_path, template_url_if_template)
     pub(crate) git_upstream_url: String,
     pub(crate) project_settings: Option<views::ProjectSettings>,
+    pub(crate) recent_projects_scroll_handle: VirtualListScrollHandle,
+    pub(crate) templates_scroll_handle: VirtualListScrollHandle,
     pub(crate) show_dependency_setup: bool,
     pub(crate) dependency_status: Option<DependencyStatus>,
     pub(crate) install_progress: Option<InstallProgress>,
@@ -89,6 +93,7 @@ impl EntryScreen {
         });
 
         let mut screen = Self {
+            entity: None,
             view: EntryScreenView::Recent,
             recent_projects,
             templates,
@@ -104,6 +109,8 @@ impl EntryScreen {
             show_git_upstream_prompt: None,
             git_upstream_url: String::new(),
             project_settings: None,
+            recent_projects_scroll_handle: VirtualListScrollHandle::new(),
+            templates_scroll_handle: VirtualListScrollHandle::new(),
             show_dependency_setup: false,
             dependency_status: None,
             install_progress: None,
@@ -111,6 +118,9 @@ impl EntryScreen {
             git_upstream_url_input: git_upstream_url_input.clone(),
             new_project_name_input: new_project_name_input.clone(),
         };
+
+        // Store own entity for virtualization helpers.
+        screen.entity = Some(cx.entity().clone());
 
         // Subscribe to input events
         cx.subscribe(&git_repo_url_input, |this, _input, event: &ui::input::InputEvent, cx| {
@@ -774,7 +784,8 @@ impl EventEmitter<FabSearchRequested> for EntryScreen {}
 impl Render for EntryScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let bounds = window.viewport_size();
-        let cols = self.calculate_columns(bounds.width);
+        // Match columns calculation in `calculate_columns`
+        let available_width: f32 = (bounds.width.into() - 72.0 - 96.0).max(0.0);
         let view = self.view;
         
         // Trigger git fetch when viewing recent projects
@@ -815,8 +826,8 @@ impl Render for EntryScreen {
                             .bg(cx.theme().background)
                             .child(
                                 match view {
-                                    EntryScreenView::Recent => views::render_recent_projects(self, cols, cx).into_any_element(),
-                                    EntryScreenView::Templates => views::render_templates(self, cols, cx).into_any_element(),
+                                    EntryScreenView::Recent => views::render_recent_projects(self, available_width, cx).into_any_element(),
+                                    EntryScreenView::Templates => views::render_templates(self, available_width, cx).into_any_element(),
                                     EntryScreenView::NewProject => views::render_new_project(self, cx).into_any_element(),
                                     EntryScreenView::CloneGit => views::render_clone_git(self, cx).into_any_element(),
                                 }
