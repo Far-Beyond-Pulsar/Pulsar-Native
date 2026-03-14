@@ -18,7 +18,7 @@ use std::rc::Rc;
 use gpui_sum_tree::Bias;
 use unicode_segmentation::*;
 
-use super::{
+use crate::input::{
     blink_cursor::BlinkCursor,
     change::Change,
     element::TextElement,
@@ -327,7 +327,7 @@ pub struct InputState {
     pub(in crate::input) show_minimap: bool,
 
     /// Popover
-    diagnostic_popover: Option<Entity<DiagnosticPopover>>,
+    pub(in crate::input) diagnostic_popover: Option<Entity<DiagnosticPopover>>,
     /// Completion/CodeAction context menu
     pub(in crate::input) context_menu: Option<ContextMenu>,
     pub(in crate::input) mouse_context_menu: Entity<MouseContextMenu>,

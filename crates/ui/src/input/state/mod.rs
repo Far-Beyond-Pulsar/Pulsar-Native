@@ -5,7 +5,7 @@ mod lsp;
 mod ime;
 
 pub use core::{
-    LineHighlight, Enter, InputEvent, InputState, CONTEXT, init, LastLayout,
+    LineHighlight, Enter, InputEvent, InputState,
     Backspace, Delete, DeleteToBeginningOfLine, DeleteToEndOfLine,
     DeleteToPreviousWordStart, DeleteToNextWordEnd, Indent, Outdent,
     IndentInline, OutdentInline, MoveUp, MoveDown, MoveLeft, MoveRight,
@@ -17,3 +17,5 @@ pub use core::{
     MoveToStartOfLine, MoveToEndOfLine, MoveToStart, MoveToEnd,
     MoveToPreviousWord, MoveToNextWord, Escape, ToggleCodeActions, Search, GoToDefinition,
 };
+pub(in crate::input) use core::{CONTEXT, LastLayout};
+pub(crate) use core::init;

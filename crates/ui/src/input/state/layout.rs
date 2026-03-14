@@ -18,7 +18,7 @@ use std::rc::Rc;
 use gpui_sum_tree::Bias;
 use unicode_segmentation::*;
 
-use super::{
+use crate::input::{
     blink_cursor::BlinkCursor,
     change::Change,
     element::TextElement,
