@@ -15,7 +15,6 @@ use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 /// let cpu = m.with_read(|pm| pm.current_cpu);
 /// m.with_write(|pm| pm.update_system_metrics());
 /// ```
-#[derive(Default)]
 pub struct SharedState<T> {
     inner: Arc<RwLock<T>>,
 }
