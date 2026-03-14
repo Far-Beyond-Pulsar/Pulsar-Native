@@ -28,9 +28,12 @@ pub mod file_utils;
 pub mod generic_window;
 pub mod helpers;
 pub mod menu;
+pub mod open_window;
 pub mod panel;
 pub mod shared;
 pub mod shared_state;
+
+pub use open_window::open_pulsar_window;
 
 pub use shared_state::SharedState;
 
