@@ -4,6 +4,7 @@ use axum::{
     middleware::Next,
     response::Response,
 };
+use tracing::{debug, warn};
 
 use crate::state::AppState;
 
@@ -34,12 +35,20 @@ pub async fn require_auth(
         return Ok(next.run(request).await);
     }
 
+    let path = request.uri().path().to_owned();
+    let method = request.method().clone();
+
     let token = extract_token(request.headers())
-        .ok_or(StatusCode::UNAUTHORIZED)?;
+        .ok_or_else(|| {
+            warn!("{method} {path} — auth rejected: no Bearer token");
+            StatusCode::UNAUTHORIZED
+        })?;
 
     if state.config.verify_token(token) {
+        debug!("{method} {path} — auth OK");
         Ok(next.run(request).await)
     } else {
+        warn!("{method} {path} — auth rejected: invalid token");
         Err(StatusCode::UNAUTHORIZED)
     }
 }

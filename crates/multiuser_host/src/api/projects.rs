@@ -5,7 +5,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tracing::warn;
+use tracing::{debug, error, info, warn};
 
 use crate::projects::ProjectStatus;
 use crate::state::AppState;
@@ -43,6 +43,7 @@ fn project_to_json(p: &crate::projects::ProjectRecord, user_count: usize) -> Val
 /// `GET /api/v1/projects`
 pub async fn list_projects(State(state): State<AppState>) -> Json<Value> {
     let projects = state.projects.list();
+    debug!("GET /projects — {} project(s) in store", projects.len());
     let items: Vec<Value> = projects
         .iter()
         .map(|p| project_to_json(p, state.sessions.user_count(&p.id)))
@@ -57,8 +58,13 @@ pub async fn get_project(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, StatusCode> {
-    let project = state.projects.get(&id).ok_or(StatusCode::NOT_FOUND)?;
+    debug!("GET /projects/{id}");
+    let project = state.projects.get(&id).ok_or_else(|| {
+        debug!("GET /projects/{id} — not found");
+        StatusCode::NOT_FOUND
+    })?;
     let user_count = state.sessions.user_count(&id);
+    debug!("GET /projects/{id} — '{}' [{}] {} user(s)", project.name, project.status.as_str(), user_count);
     Ok(Json(project_to_json(&project, user_count)))
 }
 
@@ -78,21 +84,32 @@ pub async fn create_project(
     State(state): State<AppState>,
     Json(body): Json<CreateProjectBody>,
 ) -> Result<(StatusCode, Json<Value>), StatusCode> {
+    info!("POST /projects — name={:?} owner={:?}", body.name, body.owner);
+
     if body.name.trim().is_empty() {
+        warn!("POST /projects — rejected empty name");
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    if state.projects.count() >= state.config.max_projects {
+    let current = state.projects.count();
+    if current >= state.config.max_projects {
+        warn!(
+            "POST /projects — rejected: at project limit {}/{}",
+            current, state.config.max_projects
+        );
         return Err(StatusCode::INSUFFICIENT_STORAGE);
     }
 
-    match state.projects.create(body.name, body.description, body.owner) {
-        Ok(record) => Ok((
-            StatusCode::CREATED,
-            Json(project_to_json(&record, 0)),
-        )),
+    match state.projects.create(body.name.clone(), body.description, body.owner) {
+        Ok(record) => {
+            info!("POST /projects — created '{}' ({})", record.name, record.id);
+            Ok((
+                StatusCode::CREATED,
+                Json(project_to_json(&record, 0)),
+            ))
+        }
         Err(e) => {
-            warn!("Failed to create project: {e}");
+            error!("POST /projects — failed to create '{}': {e}", body.name);
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
@@ -110,15 +127,20 @@ pub async fn prepare_project(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, StatusCode> {
+    info!("POST /projects/{id}/prepare");
+
     if state.projects.get(&id).is_none() {
+        warn!("POST /projects/{id}/prepare — project not found");
         return Err(StatusCode::NOT_FOUND);
     }
 
     match state.projects.begin_prepare(&id) {
         Ok(false) => {
             // Already preparing / running — idempotent success.
+            debug!("POST /projects/{id}/prepare — already active, skipping");
         }
         Ok(true) => {
+            info!("POST /projects/{id}/prepare — starting preparation background task");
             // Spawn a background task to complete the "prepare" work.
             // In a real implementation this would load project state into
             // memory.  For now we transition immediately to Running.
@@ -129,17 +151,48 @@ pub async fn prepare_project(
                 tokio::time::sleep(std::time::Duration::from_millis(200)).await;
                 pm.mark_running(&project_id);
                 pm.update_size(&project_id);
+                info!("POST /projects/{project_id}/prepare — project is now running");
             });
         }
         Err(e) => {
-            warn!("prepare_project error: {e}");
+            error!("POST /projects/{id}/prepare — begin_prepare failed: {e}");
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
     }
 
     let project = state.projects.get(&id).ok_or(StatusCode::NOT_FOUND)?;
     let user_count = state.sessions.user_count(&id);
+    debug!("POST /projects/{id}/prepare — returning status={}", project.status.as_str());
     Ok(Json(project_to_json(&project, user_count)))
+}
+
+// ── Stop project ──────────────────────────────────────────────────────────────
+
+/// `POST /api/v1/projects/:id/stop`
+///
+/// Forces the project back to `Idle`, disconnecting any active preparation.
+/// Returns the updated project record.
+pub async fn stop_project(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, StatusCode> {
+    info!("POST /projects/{id}/stop");
+
+    let project = state.projects.get(&id).ok_or_else(|| {
+        warn!("POST /projects/{id}/stop — project not found");
+        StatusCode::NOT_FOUND
+    })?;
+
+    let prev_status = project.status.as_str();
+    if state.projects.stop(&id) {
+        info!("POST /projects/{id}/stop — {prev_status} → idle");
+    } else {
+        debug!("POST /projects/{id}/stop — already idle, no-op");
+    }
+
+    let updated = state.projects.get(&id).ok_or(StatusCode::NOT_FOUND)?;
+    let user_count = state.sessions.user_count(&id);
+    Ok(Json(project_to_json(&updated, user_count)))
 }
 
 // ── Delete project ────────────────────────────────────────────────────────────
@@ -149,11 +202,18 @@ pub async fn delete_project(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> StatusCode {
+    info!("DELETE /projects/{id}");
     match state.projects.delete(&id) {
-        Ok(true)  => StatusCode::NO_CONTENT,
-        Ok(false) => StatusCode::NOT_FOUND,
+        Ok(true)  => {
+            info!("DELETE /projects/{id} — deleted");
+            StatusCode::NO_CONTENT
+        }
+        Ok(false) => {
+            warn!("DELETE /projects/{id} — not found");
+            StatusCode::NOT_FOUND
+        }
         Err(e) => {
-            warn!("delete_project error: {e}");
+            error!("DELETE /projects/{id} — failed: {e}");
             StatusCode::INTERNAL_SERVER_ERROR
         }
     }

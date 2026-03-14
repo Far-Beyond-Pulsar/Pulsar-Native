@@ -24,6 +24,7 @@ pub fn router(state: AppState) -> Router {
     let protected = Router::new()
         .route("/projects", post(projects::create_project))
         .route("/projects/:id/prepare", post(projects::prepare_project))
+        .route("/projects/:id/stop", post(projects::stop_project))
         .route("/projects/:id", delete(projects::delete_project))
         .layer(middleware::from_fn_with_state(state.clone(), require_auth));
 

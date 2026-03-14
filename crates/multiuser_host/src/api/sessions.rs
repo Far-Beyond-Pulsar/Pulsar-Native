@@ -9,7 +9,7 @@ use axum::{
     response::IntoResponse,
 };
 use futures::{SinkExt as _, StreamExt as _};
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::auth::extract_token;
 use crate::sessions::WsMessage;
@@ -28,6 +28,14 @@ pub async fn join_session(
     ws: WebSocketUpgrade,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
+    // Extract username early so it can be used in log messages.
+    let username = params
+        .get("user")
+        .cloned()
+        .unwrap_or_else(|| "anonymous".to_string());
+
+    debug!("WS /projects/{project_id}/session — connection attempt from '{username}'");
+
     // Auth check — token can arrive as a query param or Authorization header.
     if state.config.auth_required() {
         let token = params
@@ -36,21 +44,27 @@ pub async fn join_session(
             .or_else(|| extract_token(&headers));
 
         match token {
-            Some(t) if state.config.verify_token(t) => {}
-            _ => return StatusCode::UNAUTHORIZED.into_response(),
+            Some(t) if state.config.verify_token(t) => {
+                debug!("WS /projects/{project_id}/session — auth OK for '{username}'");
+            }
+            Some(_) => {
+                warn!("WS /projects/{project_id}/session — invalid token from '{username}'");
+                return StatusCode::UNAUTHORIZED.into_response();
+            }
+            None => {
+                warn!("WS /projects/{project_id}/session — no token provided by '{username}'");
+                return StatusCode::UNAUTHORIZED.into_response();
+            }
         }
     }
 
     // Project must exist.
     if state.projects.get(&project_id).is_none() {
+        warn!("WS /projects/{project_id}/session — project not found (user '{username}')");
         return StatusCode::NOT_FOUND.into_response();
     }
 
-    let username = params
-        .get("user")
-        .cloned()
-        .unwrap_or_else(|| "anonymous".to_string());
-
+    info!("WS /projects/{project_id}/session — upgrading connection for '{username}'");
     ws.on_upgrade(move |socket| handle_socket(socket, state, project_id, username))
 }
 
@@ -65,6 +79,8 @@ async fn handle_socket(
     // Register the user and get the broadcast channel + current user list.
     let (tx, user_list) = state.sessions.user_joined(&project_id, &username);
     let mut rx = tx.subscribe();
+
+    info!("WS '{username}' joined project '{project_id}' — {} user(s) now present", user_list.len());
 
     // Send the initial user list to the newly joined member.
     let list_msg = WsMessage::UserList { users: user_list };
@@ -92,22 +108,28 @@ async fn handle_socket(
             Message::Text(text) => {
                 match serde_json::from_str::<WsMessage>(&text) {
                     Ok(WsMessage::Ping) => {
+                        debug!("WS ping from '{username}' in project '{project_id}'");
                         let _ = tx.send(WsMessage::Pong);
                     }
                     Ok(WsMessage::StatePatch { patch }) => {
+                        debug!("WS state-patch from '{username}' in project '{project_id}'");
                         let _ = tx.send(WsMessage::StatePatch { patch });
                     }
                     Ok(WsMessage::Chat { text: chat_text, .. }) => {
+                        info!("WS chat from '{username}' in project '{project_id}': {chat_text:?}");
                         let _ = tx.send(WsMessage::Chat {
                             user:  username.clone(),
                             text:  chat_text,
                         });
                     }
-                    Err(e) => warn!("Unparseable WS message from '{}': {e}", username),
+                    Err(e) => warn!("WS unparseable message from '{username}' in project '{project_id}': {e}"),
                     _ => {}
                 }
             }
-            Message::Close(_) => break,
+            Message::Close(_) => {
+                debug!("WS close frame from '{username}' in project '{project_id}'");
+                break;
+            }
             _ => {}
         }
     }
@@ -117,9 +139,11 @@ async fn handle_socket(
     state.sessions.user_left(&project_id, &username);
 
     let users_remaining = state.sessions.user_count(&project_id);
+    info!("WS '{username}' left project '{project_id}' — {} user(s) remaining", users_remaining);
+
     if users_remaining == 0 {
         state.sessions.cleanup_if_empty(&project_id);
         state.projects.mark_idle(&project_id);
-        info!("No users left in project '{}' — marked idle", project_id);
+        info!("No users left in project '{project_id}' — marked idle");
     }
 }

@@ -2,7 +2,7 @@ use std::{path::PathBuf, sync::Arc};
 use anyhow::{Context as _, Result};
 use chrono::Utc;
 use parking_lot::RwLock;
-use tracing::info;
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use super::types::{ProjectRecord, ProjectStatus};
@@ -144,6 +144,7 @@ impl ProjectManager {
 
         project.status = ProjectStatus::Preparing;
         project.error_msg.clear();
+        info!("Project '{id}' status → Preparing");
         Ok(true)
     }
 
@@ -152,6 +153,7 @@ impl ProjectManager {
         let mut guard = self.inner.write();
         if let Some(p) = guard.projects.iter_mut().find(|p| p.id == id) {
             p.status = ProjectStatus::Running;
+            info!("Project '{id}' status → Running");
         }
     }
 
@@ -159,6 +161,7 @@ impl ProjectManager {
     pub fn mark_error(&self, id: &str, msg: &str) {
         let mut guard = self.inner.write();
         if let Some(p) = guard.projects.iter_mut().find(|p| p.id == id) {
+            warn!("Project '{id}' status → Error: {msg}");
             p.status = ProjectStatus::Error(msg.to_string());
             p.error_msg = msg.to_string();
         }
@@ -170,9 +173,28 @@ impl ProjectManager {
         if let Some(p) = guard.projects.iter_mut().find(|p| p.id == id) {
             if matches!(p.status, ProjectStatus::Running) {
                 p.status = ProjectStatus::Idle;
+                info!("Project '{id}' status → Idle (all users left)");
                 let _ = Self::persist_locked(&guard);
             }
         }
+    }
+
+    /// Force a project to `Idle` from any active state (explicit stop request).
+    ///
+    /// Returns `true` if the status changed, `false` if already idle.
+    pub fn stop(&self, id: &str) -> bool {
+        let mut guard = self.inner.write();
+        if let Some(p) = guard.projects.iter_mut().find(|p| p.id == id) {
+            if !matches!(p.status, ProjectStatus::Idle) {
+                let prev = p.status.as_str();
+                p.status = ProjectStatus::Idle;
+                p.error_msg.clear();
+                info!("Project '{id}' status → Idle (force-stopped from {prev})");
+                let _ = Self::persist_locked(&guard);
+                return true;
+            }
+        }
+        false
     }
 
     /// Update the cached disk size for a project.
@@ -182,6 +204,7 @@ impl ProjectManager {
         drop(guard);
 
         let size = dir_size(&dir).unwrap_or(0);
+        debug!("Project '{id}' disk size: {} byte(s)", size);
 
         let mut guard = self.inner.write();
         if let Some(p) = guard.projects.iter_mut().find(|p| p.id == id) {

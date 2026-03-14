@@ -1059,6 +1059,113 @@ default_scene = "scenes/main.scene"
             }).ok();
         }).detach();
     }
+
+    /// Send `DELETE /api/v1/projects/{id}` to the server, then refresh.
+    pub(crate) fn delete_cloud_project(&mut self, server_idx: usize, project_id: String, cx: &mut Context<Self>) {
+        if server_idx >= self.cloud_servers.len() {
+            return;
+        }
+        let raw = self.cloud_servers[server_idx].url.trim().trim_end_matches('/');
+        let base_url = if raw.starts_with("http://") || raw.starts_with("https://") {
+            raw.to_string()
+        } else {
+            format!("http://{}", raw)
+        };
+        let token = self.cloud_servers[server_idx].auth_token.clone();
+        let delete_url = format!("{}/api/v1/projects/{}", base_url, project_id);
+
+        let (tx, rx) = smol::channel::bounded::<()>(1);
+        std::thread::spawn(move || {
+            if let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() {
+                rt.block_on(async move {
+                    let Ok(client) = reqwest::Client::builder()
+                        .timeout(std::time::Duration::from_secs(10))
+                        .danger_accept_invalid_certs(true)
+                        .build()
+                    else { return; };
+                    let req = client.delete(&delete_url);
+                    let req = if token.is_empty() { req } else { req.bearer_auth(&token) };
+                    let _ = req.send().await;
+                });
+            }
+            smol::block_on(tx.send(())).ok();
+        });
+
+        cx.spawn(async move |this, cx| {
+            rx.recv().await.ok();
+            cx.update(|cx| {
+                this.update(cx, |screen, cx| {
+                    screen.refresh_cloud_server(server_idx, cx);
+                }).ok();
+            }).ok();
+        }).detach();
+    }
+
+    /// Send `POST /api/v1/projects/{id}/stop` to the server, then refresh.
+    pub(crate) fn stop_cloud_project(&mut self, server_idx: usize, project_id: String, cx: &mut Context<Self>) {
+        if server_idx >= self.cloud_servers.len() {
+            return;
+        }
+        let raw = self.cloud_servers[server_idx].url.trim().trim_end_matches('/');
+        let base_url = if raw.starts_with("http://") || raw.starts_with("https://") {
+            raw.to_string()
+        } else {
+            format!("http://{}", raw)
+        };
+        let token = self.cloud_servers[server_idx].auth_token.clone();
+        let stop_url = format!("{}/api/v1/projects/{}/stop", base_url, project_id);
+
+        if let Some(proj) = self.cloud_servers[server_idx].projects.iter_mut()
+            .find(|p| p.id == project_id)
+        {
+            proj.status = CloudProjectStatus::Idle;
+        }
+        cx.notify();
+
+        let (tx, rx) = smol::channel::bounded::<()>(1);
+        std::thread::spawn(move || {
+            if let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() {
+                rt.block_on(async move {
+                    let Ok(client) = reqwest::Client::builder()
+                        .timeout(std::time::Duration::from_secs(10))
+                        .danger_accept_invalid_certs(true)
+                        .build()
+                    else { return; };
+                    let req = client.post(&stop_url);
+                    let req = if token.is_empty() { req } else { req.bearer_auth(&token) };
+                    let _ = req.send().await;
+                });
+            }
+            smol::block_on(tx.send(())).ok();
+        });
+
+        cx.spawn(async move |this, cx| {
+            rx.recv().await.ok();
+            cx.update(|cx| {
+                this.update(cx, |screen, cx| {
+                    screen.refresh_cloud_server(server_idx, cx);
+                }).ok();
+            }).ok();
+        }).detach();
+    }
+
+    /// Open a Running cloud project in the editor by emitting a ProjectSelected event.
+    pub(crate) fn open_cloud_project(&mut self, server_idx: usize, project_id: String, cx: &mut Context<Self>) {
+        if server_idx >= self.cloud_servers.len() {
+            return;
+        }
+        let base_url = {
+            let raw = self.cloud_servers[server_idx].url.trim().trim_end_matches('/');
+            if raw.starts_with("http://") || raw.starts_with("https://") {
+                raw.to_string()
+            } else {
+                format!("http://{}", raw)
+            }
+        };
+        // Encode as a virtual cloud path that the editor can parse.
+        let virtual_path = PathBuf::from(format!("cloud+pulsar://{}/{}", base_url.trim_start_matches("http://").trim_start_matches("https://"), project_id));
+        cx.emit(crate::entry_screen::project_selector::ProjectSelected { path: virtual_path });
+    }
 }
 
 /// Synchronously fetch server connectivity info and project list.

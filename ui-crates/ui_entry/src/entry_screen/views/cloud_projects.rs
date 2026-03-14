@@ -16,6 +16,8 @@ use ui::{
     spinner::Spinner,
     Sizable,
 };
+use ui::popup_menu::PopupMenuExt as _;
+use gpui::WeakEntity;
 use crate::entry_screen::{
     EntryScreen,
     CloudServerStatus, CloudProject, CloudProjectStatus,
