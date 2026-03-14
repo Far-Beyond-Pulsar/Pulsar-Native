@@ -8,11 +8,11 @@ use super::sync_protocol::ServerMessage;
 
 /// Peer session information
 #[derive(Debug, Clone)]
-struct PeerSession {
-    peer_id: String,
-    session_id: String,
-    tx: mpsc::Sender<ServerMessage>,
-    joined_at: SystemTime,
+pub(super) struct PeerSession {
+    pub(super) peer_id: String,
+    pub(super) session_id: String,
+    pub(super) tx: mpsc::Sender<ServerMessage>,
+    pub(super) joined_at: SystemTime,
 }
 
 impl PeerSession {
@@ -28,11 +28,11 @@ impl PeerSession {
 
 /// Rendezvous session
 #[derive(Debug)]
-struct RendezvousSession {
-    session_id: String,
-    host_id: String,
+pub(super) struct RendezvousSession {
+    pub(super) session_id: String,
+    pub(super) host_id: String,
     peers: DashMap<String, PeerSession>,
-    created_at: SystemTime,
+    pub(super) created_at: SystemTime,
 }
 
 impl RendezvousSession {
@@ -65,4 +65,3 @@ impl RendezvousSession {
         self.peers.len()
     }
 }
-
