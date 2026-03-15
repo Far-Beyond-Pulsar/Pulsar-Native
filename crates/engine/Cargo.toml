@@ -12,10 +12,9 @@ path = "src/main.rs"
 [dependencies]
 # horizon.workspace = true
 anyhow.workspace = true
-gpui.workspace = true
+gpui-ce.workspace = true
 ui = { workspace = true, features = ["tree-sitter-languages"] }
 winit.workspace = true
-raw-window-handle.workspace = true
 thiserror = "2.0"
 image = "0.25"  # For loading window icon
 
@@ -39,13 +38,13 @@ ui_about.workspace = true
 ui_documentation.workspace = true
 ui_log_viewer.workspace = true
 ui_git_manager.workspace = true
+ui_fab_search.workspace = true
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 rust-embed = { version = "6", features = ["interpolate-folder-path", "include-exclude"] }
 tokio = { version = "1", features = ["full"] }
-windows.workspace = true
 chrono = { version = "0.4", features = ["serde"] }
 directories = "5"
 toml = "0.8"
@@ -54,8 +53,12 @@ once_cell = "1.20"
 sysuri.workspace = true
 urlencoding.workspace = true
 dotenv = "0.15"
+window_manager.workspace = true
 pulsar_std = { path = "../pulsar_std" }
 tracing-appender = "0.2.4"
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true }
 
 [build-dependencies]
 winresource = "0.1"

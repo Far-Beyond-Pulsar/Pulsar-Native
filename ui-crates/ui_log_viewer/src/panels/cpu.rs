@@ -70,6 +70,8 @@ impl AdvancedMetricsPanel {
 
 impl EventEmitter<PanelEvent> for AdvancedMetricsPanel {}
 
+ui_common::panel_boilerplate!(AdvancedMetricsPanel);
+
 impl Render for AdvancedMetricsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         use ui::{h_flex, scroll::ScrollbarAxis};
@@ -147,10 +149,6 @@ impl Render for AdvancedMetricsPanel {
             )
             .scrollable(ScrollbarAxis::Vertical)
     }
-}
-
-impl Focusable for AdvancedMetricsPanel {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle { self.focus_handle.clone() }
 }
 
 impl Panel for AdvancedMetricsPanel {

@@ -232,11 +232,7 @@ impl StatisticsPanel {
 
 impl EventEmitter<PanelEvent> for StatisticsPanel {}
 
-impl Focusable for StatisticsPanel {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle {
-        self.focus_handle.clone()
-    }
-}
+ui_common::panel_boilerplate!(StatisticsPanel);
 
 impl Panel for StatisticsPanel {
     fn panel_name(&self) -> &'static str {

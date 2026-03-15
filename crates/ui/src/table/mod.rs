@@ -6,6 +6,7 @@ use crate::{
     h_flex,
     popup_menu::PopupMenu,
     scroll::{ScrollableMask, Scrollbar, ScrollbarState},
+    selection::IndexSelection,
     v_flex, ActiveTheme, Icon, IconName, Sizable, Size, StyleSized as _, StyledExt,
     VirtualListScrollHandle,
 };
@@ -37,8 +38,17 @@ pub(crate) fn init(cx: &mut App) {
     ]);
 }
 
+struct TableInit;
+impl crate::registry::UiComponentInit for TableInit {
+    fn init(&self, cx: &mut App) {
+        init(cx);
+    }
+}
+crate::register_ui_component!(TableInit);
+
+/// Tracks which dimension (rows vs columns) currently holds focus.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum SelectionState {
+enum SelectionMode {
     Column,
     Row,
 }
@@ -108,10 +118,10 @@ pub struct Table<D: TableDelegate> {
     pub horizontal_scroll_state: ScrollbarState,
 
     scrollbar_visible: Edges<bool>,
-    selected_row: Option<usize>,
-    selection_state: SelectionState,
+    selected_row: IndexSelection,
+    selection_state: SelectionMode,
     right_clicked_row: Option<usize>,
-    selected_col: Option<usize>,
+    selected_col: IndexSelection,
 
     /// The column index that is being resized.
     resizing_col: Option<usize>,
@@ -142,10 +152,10 @@ where
             vertical_scroll_handle: UniformListScrollHandle::new(),
             vertical_scroll_state: ScrollbarState::default(),
             horizontal_scroll_state: ScrollbarState::default(),
-            selection_state: SelectionState::Row,
-            selected_row: None,
+            selection_state: SelectionMode::Row,
+            selected_row: IndexSelection::default(),
             right_clicked_row: None,
-            selected_col: None,
+            selected_col: IndexSelection::default(),
             resizing_col: None,
             bounds: Bounds::default(),
             fixed_head_cols_bounds: Bounds::default(),
@@ -299,15 +309,15 @@ where
 
     /// Returns the selected row index.
     pub fn selected_row(&self) -> Option<usize> {
-        self.selected_row
+        self.selected_row.selected_single().copied()
     }
 
     /// Sets the selected row to the given index.
     pub fn set_selected_row(&mut self, row_ix: usize, cx: &mut Context<Self>) {
-        self.selection_state = SelectionState::Row;
+        self.selection_state = SelectionMode::Row;
         self.right_clicked_row = None;
-        self.selected_row = Some(row_ix);
-        if let Some(row_ix) = self.selected_row {
+        self.selected_row = IndexSelection::Single(row_ix);
+        if let Some(row_ix) = self.selected_row.selected_single().copied() {
             self.vertical_scroll_handle
                 .scroll_to_item(row_ix, ScrollStrategy::Top);
         }
@@ -317,14 +327,14 @@ where
 
     /// Returns the selected column index.
     pub fn selected_col(&self) -> Option<usize> {
-        self.selected_col
+        self.selected_col.selected_single().copied()
     }
 
     /// Sets the selected col to the given index.
     pub fn set_selected_col(&mut self, col_ix: usize, cx: &mut Context<Self>) {
-        self.selection_state = SelectionState::Column;
-        self.selected_col = Some(col_ix);
-        if let Some(col_ix) = self.selected_col {
+        self.selection_state = SelectionMode::Column;
+        self.selected_col = IndexSelection::Single(col_ix);
+        if let Some(col_ix) = self.selected_col.selected_single().copied() {
             self.scroll_to_col(col_ix, cx);
         }
         cx.emit(TableEvent::SelectColumn(col_ix));
@@ -333,9 +343,9 @@ where
 
     /// Clear the selection of the table.
     pub fn clear_selection(&mut self, cx: &mut Context<Self>) {
-        self.selection_state = SelectionState::Row;
-        self.selected_row = None;
-        self.selected_col = None;
+        self.selection_state = SelectionMode::Row;
+        self.selected_row.clear();
+        self.selected_col.clear();
         cx.notify();
     }
 
@@ -379,7 +389,7 @@ where
     }
 
     fn has_selection(&self) -> bool {
-        self.selected_row.is_some() || self.selected_col.is_some()
+        !self.selected_row.is_empty() || !self.selected_col.is_empty()
     }
 
     fn action_cancel(&mut self, _: &Cancel, _: &mut Window, cx: &mut Context<Self>) {
@@ -396,7 +406,7 @@ where
             return;
         }
 
-        let mut selected_row = self.selected_row.unwrap_or(0);
+        let mut selected_row = self.selected_row.selected_single().copied().unwrap_or(0);
         if selected_row > 0 {
             selected_row = selected_row.saturating_sub(1);
         } else {
@@ -414,7 +424,7 @@ where
             return;
         }
 
-        let selected_row = match self.selected_row {
+        let selected_row = match self.selected_row.selected_single().copied() {
             Some(selected_row) if selected_row < rows_count.saturating_sub(1) => selected_row + 1,
             Some(selected_row) => {
                 if self.loop_selection {
@@ -435,7 +445,7 @@ where
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let mut selected_col = self.selected_col.unwrap_or(0);
+        let mut selected_col = self.selected_col.selected_single().copied().unwrap_or(0);
         let columns_count = self.delegate.columns_count(cx);
         if selected_col > 0 {
             selected_col = selected_col.saturating_sub(1);
@@ -453,7 +463,7 @@ where
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let mut selected_col = self.selected_col.unwrap_or(0);
+        let mut selected_col = self.selected_col.selected_single().copied().unwrap_or(0);
         if selected_col < self.delegate.columns_count(cx).saturating_sub(1) {
             selected_col += 1;
         } else {
@@ -665,8 +675,8 @@ where
                 .unwrap_or(false);
 
         if selectable
-            && self.selected_col == Some(col_ix)
-            && self.selection_state == SelectionState::Column
+            && self.selected_col.is_selected(&col_ix)
+            && self.selection_state == SelectionMode::Column
         {
             el.bg(cx.theme().table_active)
         } else {
@@ -1046,7 +1056,7 @@ where
     ) -> impl IntoElement {
         let horizontal_scroll_handle = self.horizontal_scroll_handle.clone();
         let is_stripe_row = self.stripe && row_ix % 2 != 0;
-        let is_selected = self.selected_row == Some(row_ix);
+        let is_selected = self.selected_row.is_selected(&row_ix);
         let view = cx.entity().clone();
 
         if row_ix < rows_count {
@@ -1163,9 +1173,9 @@ where
                         .child(self.delegate.render_last_empty_col(window, cx)),
                 )
                 // Row selected style
-                .when_some(self.selected_row, |this, _| {
+                .when_some(self.selected_row.selected_single().copied(), |this, _| {
                     this.when(
-                        is_selected && self.selection_state == SelectionState::Row,
+                        is_selected && self.selection_state == SelectionMode::Row,
                         |this| {
                             this.border_color(gpui::transparent_white()).child(
                                 div()
@@ -1436,7 +1446,7 @@ where
                             .flex_grow()
                             .size_full()
                             .with_sizing_behavior(ListSizingBehavior::Auto)
-                            .track_scroll(self.vertical_scroll_handle.clone())
+                            .track_scroll(&self.vertical_scroll_handle)
                             .into_any_element(),
                         ),
                     )

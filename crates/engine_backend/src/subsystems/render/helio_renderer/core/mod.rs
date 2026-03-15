@@ -3,4 +3,4 @@
 
 pub mod types;
 
-pub use types::{RenderMetrics, GpuProfilerData, DiagnosticMetric, CameraInput, SharedGpuTextures};
+pub use types::{RenderMetrics, GpuProfilerData, DiagnosticMetric, CameraInput};

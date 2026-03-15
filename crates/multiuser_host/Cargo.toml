@@ -1,0 +1,52 @@
+[package]
+name = "pulsar-host"
+version = "0.1.0"
+edition = "2021"
+description = "Dedicated multi-user project server for Pulsar Engine game studios"
+authors = []
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "pulsar-host"
+path = "src/main.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+
+# HTTP server
+axum = { version = "0.7", features = ["ws", "macros"] }
+tower = { version = "0.4", features = ["util"] }
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Logging / tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# CLI / config
+clap = { version = "4", features = ["derive", "env"] }
+
+# IDs & time
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# Concurrency
+parking_lot = "0.12"
+dashmap = "5"
+
+# File I/O
+tokio-util = { version = "0.7", features = ["io"] }
+
+# Password / token hashing  (for optional auth token storage)
+sha2 = "0.10"
+hex = "0.4"
+base64 = "0.22"

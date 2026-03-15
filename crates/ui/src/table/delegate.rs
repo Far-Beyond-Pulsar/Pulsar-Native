@@ -81,13 +81,8 @@ pub trait TableDelegate: Sized + 'static {
     }
 
     /// Return a Element to show when table is empty.
-    fn render_empty(&self, window: &mut Window, cx: &mut Context<Table<Self>>) -> impl IntoElement {
-        h_flex()
-            .size_full()
-            .justify_center()
-            .text_color(cx.theme().muted_foreground.opacity(0.6))
-            .child(Icon::new(IconName::Inbox).size_12())
-            .into_any_element()
+    fn render_empty(&self, _window: &mut Window, cx: &mut Context<Table<Self>>) -> impl IntoElement {
+        crate::states::empty_state_placeholder(cx)
     }
 
     /// Return true to show the loading view.

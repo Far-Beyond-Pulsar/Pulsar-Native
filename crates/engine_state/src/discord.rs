@@ -125,7 +125,7 @@ impl DiscordPresence {
 
     /// Update the Discord presence with current state
     fn update_presence(&self) {
-        let inner = self.inner.read();
+        let mut inner = self.inner.write();
         
         if !inner.enabled || inner.client.is_none() {
             tracing::debug!("⚠️  Discord presence update skipped: enabled={}, client={}", 
@@ -212,18 +212,11 @@ impl DiscordPresence {
         let payload = Payload::new(EventName::Activity, EventData::Activity(activity));
 
         // Send the update
-        if let Some(ref client) = inner.client {
-            // Clone client to avoid holding the lock during send
-            let client_ptr = client as *const DiscordClient as *mut DiscordClient;
-            drop(inner);
-            
-            // SAFETY: We're just sending data, not modifying the client state in a conflicting way
-            unsafe {
-                if let Err(e) = (*client_ptr).send_payload(payload) {
-                    tracing::debug!("❌ Failed to update Discord presence: {:?}", e);
-                } else {
-                    tracing::debug!("✅ Discord presence updated successfully!");
-                }
+        if let Some(ref mut client) = inner.client {
+            if let Err(e) = client.send_payload(payload) {
+                tracing::debug!("❌ Failed to update Discord presence: {:?}", e);
+            } else {
+                tracing::debug!("✅ Discord presence updated successfully!");
             }
         }
     }

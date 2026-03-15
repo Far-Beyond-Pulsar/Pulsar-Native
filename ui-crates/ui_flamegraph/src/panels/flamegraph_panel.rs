@@ -22,11 +22,7 @@ impl FlamegraphPanel {
 
 impl EventEmitter<PanelEvent> for FlamegraphPanel {}
 
-impl Focusable for FlamegraphPanel {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle {
-        self.focus_handle.clone()
-    }
-}
+ui_common::panel_boilerplate!(FlamegraphPanel);
 
 impl Panel for FlamegraphPanel {
     fn panel_name(&self) -> &'static str {

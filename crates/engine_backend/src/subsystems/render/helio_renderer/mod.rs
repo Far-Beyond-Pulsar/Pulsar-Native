@@ -1,57 +1,22 @@
-//! Helio Renderer with DIRECT rendering to DXGI shared textures
-//! Matches BevyRenderer's architecture but uses blade-graphics + Helio features
-//!
-//! ## Architecture
-//!
-//! This renderer mirrors bevy_renderer's structure but uses:
-//! - blade-graphics instead of wgpu/bevy
-//! - Helio's feature-driven rendering system
-//! - glam for math types instead of bevy math
+//! Helio Renderer v2 — wgpu-native renderer integrated with WGPUI WgpuSurfaceHandle
 
 // Core data structures
 pub mod core;
 
-// Gizmo stub types
+// Gizmo stub types (no rendering, just type definitions)
 pub mod gizmo_types;
 
-// Gizmo generation (disabled)
-pub mod gizmos;
-
-// Gizmo overlay renderer (renders on top of scene)
-pub mod gizmo_overlay;
-
-// Gizmo procedural rendering feature
-pub mod gizmo_feature;
-
-// Scene building system
-pub mod scene_builder;
-
-// DXGI shared texture management
-#[cfg(target_os = "windows")]
-pub mod dxgi_textures;
-
-// DXGI unsafe operations for raw D3D12 access
-#[cfg(target_os = "windows")]
-pub mod dxgi_unsafe;
-
-// D3D12 extensions for blade-graphics integration
-#[cfg(target_os = "windows")]
-pub mod blade_d3d12_ext;
-
-// Helio-specific D3D12 integration
-#[cfg(target_os = "windows")]
-pub mod helio_d3d12_ext;
-
-// Debug line overlay renderer (raycasts, physics queries, etc.)
-pub mod debug_line_renderer;
+// Disabled blade-graphics modules (kept as files for future reference):
+// - gizmos, scene_builder: used helio_core/helio_render which are removed
+// - gizmo_overlay, gizmo_feature, debug_line_renderer: use helio_render_v2::debug_draw when re-implemented
+// - dxgi_textures, dxgi_unsafe, blade_d3d12_ext, helio_d3d12_ext: blade/DXGI path removed
 
 // Main renderer implementation
 pub mod renderer;
 
 // Re-export public API
-pub use core::{CameraInput, RenderMetrics, GpuProfilerData, DiagnosticMetric, SharedGpuTextures};
+pub use core::{CameraInput, RenderMetrics, GpuProfilerData, DiagnosticMetric};
 pub use renderer::{HelioRenderer, RendererCommand};
-pub use gizmo_overlay::GizmoFeature;
 
 // Re-export gizmo stub types
 pub use gizmo_types::{
@@ -59,6 +24,6 @@ pub use gizmo_types::{
     ViewportMouseInput, GizmoInteractionState, ActiveRaycastTask, RaycastResult,
 };
 
-// Render dimensions (match bevy_renderer)
+// Render dimensions
 pub const RENDER_WIDTH: u32 = 1600;
 pub const RENDER_HEIGHT: u32 = 900;

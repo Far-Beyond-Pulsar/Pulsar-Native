@@ -4,23 +4,55 @@
 
 use gpui::*;
 use gpui::Hsla;
-use ui::{ActiveTheme, Colorize, Root};
+use ui::{ActiveTheme, Colorize};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use engine_backend::services::rust_analyzer_manager::{RustAnalyzerManager, AnalyzerStatus, AnalyzerEvent};
-use engine_state::{EngineContext, WindowRequest};
-use ui_entry::entry_screen::recent_projects::{RecentProjectsList, RecentProject};
+use engine_state::EngineContext;
 use directories::ProjectDirs;
+use serde::{Deserialize, Serialize};
 
-/// Helper function to create a loading screen component wrapped in Root
-pub fn create_loading_component(
-    project_path: PathBuf,
-    window_id: u64,
-    window: &mut Window,
-    cx: &mut App,
-) -> Entity<Root> {
-    let loading_screen = cx.new(|cx| LoadingScreen::new_with_window_id(project_path, window_id, window, cx));
-    cx.new(|cx| Root::new(loading_screen.into(), window, cx))
+// we used to pull these types from ui_entry, but that created a cyclic
+// dependency. The definitions are small so we duplicate them here.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RecentProject {
+    pub name: String,
+    pub path: String,
+    pub last_opened: Option<String>,
+    pub is_git: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+struct RecentProjectsList {
+    pub projects: Vec<RecentProject>,
+}
+
+impl RecentProjectsList {
+    fn load(path: &std::path::Path) -> Self {
+        use ui_common::file_utils;
+        file_utils::read_json(path).unwrap_or_default()
+    }
+
+    fn save(&self, path: &std::path::Path) {
+        use ui_common::file_utils;
+        let _ = file_utils::write_json(path, self);
+    }
+
+    fn add_or_update(&mut self, project: RecentProject) {
+        if let Some(existing) = self.projects.iter_mut().find(|p| p.path == project.path) {
+            *existing = project;
+        } else {
+            self.projects.insert(0, project);
+        }
+        if self.projects.len() > 20 {
+            self.projects.truncate(20);
+        }
+    }
+
+    fn remove(&mut self, path: &str) {
+        self.projects.retain(|p| p.path != path);
+    }
 }
 
 pub struct LoadingScreen {
@@ -35,12 +67,25 @@ pub struct LoadingScreen {
     _analyzer_subscription: Option<Subscription>,
     analyzer_message: String,
     window_id: u64,
+    // flag to open editor only once
+    opened_editor: bool,
+    // background thread channel receiver for progress events
+    progress_rx: std::sync::mpsc::Receiver<LoadingEvent>,
+    // called (once, deferred) when all tasks complete
+    on_complete: std::sync::Arc<dyn Fn(PathBuf, &mut gpui::App) + Send + Sync>,
 }
 
 #[derive(Clone)]
 struct LoadingTask {
     name: String,
     status: TaskStatus,
+}
+
+// message sent from the timer thread to the UI
+#[derive(Debug)]
+enum LoadingEvent {
+    TaskDone(usize),
+    FrameRequest,
 }
 
 #[derive(Clone, PartialEq)]
@@ -62,7 +107,26 @@ impl LoadingScreen {
         Self::new_with_window_id(project_path, 0, window, cx)
     }
 
+    pub fn new_with_on_complete(
+        project_path: PathBuf,
+        on_complete: std::sync::Arc<dyn Fn(PathBuf, &mut gpui::App) + Send + Sync>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        Self::new_internal(project_path, 0, on_complete, window, cx)
+    }
+
     pub fn new_with_window_id(project_path: PathBuf, window_id: u64, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_internal(project_path, window_id, std::sync::Arc::new(|_, _| {}), window, cx)
+    }
+
+    fn new_internal(
+        project_path: PathBuf,
+        window_id: u64,
+        on_complete: std::sync::Arc<dyn Fn(PathBuf, &mut gpui::App) + Send + Sync>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let project_name = project_path
             .file_name()
             .and_then(|n| n.to_str())
@@ -84,6 +148,8 @@ impl LoadingScreen {
             },
         ];
 
+        // create progress channel
+        let (tx, rx) = std::sync::mpsc::channel();
         let mut loading_screen = Self {
             project_path: project_path.clone(),
             project_name,
@@ -96,84 +162,82 @@ impl LoadingScreen {
             _analyzer_subscription: None,
             analyzer_message: String::new(),
             window_id,
+            opened_editor: false,
+            progress_rx: rx,
+            on_complete,
         };
 
         let analyzer = cx.new(|cx| RustAnalyzerManager::new(window, cx));
         loading_screen.rust_analyzer = Some(analyzer.clone());
-        loading_screen.start_loading(window, cx);
+        // mark first task
+        loading_screen.loading_tasks[0].status = TaskStatus::InProgress;
+        loading_screen.analyzer_message = "Initializing renderer...".to_string();
+        // spawn background thread for updates
+        let tx_clone = tx.clone();
+//        std::thread::spawn(move || {
+            println!("[bg] task1 start");
+//            std::thread::sleep(Duration::from_millis(100));
+            tx_clone.send(LoadingEvent::TaskDone(0)).ok();
+
+            println!("[bg] task2 start");
+//            std::thread::sleep(Duration::from_millis(100));
+            tx_clone.send(LoadingEvent::TaskDone(1)).ok();
+
+            println!("[bg] task3 start");
+//            std::thread::sleep(Duration::from_millis(100));
+            tx_clone.send(LoadingEvent::TaskDone(2)).ok();
+//        });
+
         loading_screen
-    }
-
-    fn start_loading(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.start_init_tasks(window, cx);
-    }
-
-    fn start_init_tasks(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.loading_tasks[0].status = TaskStatus::InProgress;
-        self.progress = 0.0;
-        self.analyzer_message = "Initializing renderer...".to_string();
-        cx.notify();
-        
-        cx.spawn_in(window, async move |this, cx| {
-            cx.background_executor().timer(Duration::from_millis(100)).await;
-            let _ = this.update(cx, |this, cx| {
-                this.loading_tasks[0].status = TaskStatus::Completed;
-                this.progress = 33.0;
-                this.loading_tasks[1].status = TaskStatus::InProgress;
-                this.analyzer_message = "Loading project data...".to_string();
-                cx.notify();
-            });
-            
-            cx.background_executor().timer(Duration::from_millis(100)).await;
-            let _ = this.update(cx, |this, cx| {
-                this.loading_tasks[1].status = TaskStatus::Completed;
-                this.progress = 66.0;
-                this.loading_tasks[2].status = TaskStatus::InProgress;
-                this.analyzer_message = "Opening editor...".to_string();
-                cx.notify();
-            });
-            
-            cx.background_executor().timer(Duration::from_millis(100)).await;
-            let _ = this.update(cx, |this, cx| {
-                this.loading_tasks[2].status = TaskStatus::Completed;
-                this.progress = 100.0;
-                this.initial_tasks_complete = true;
-                this.analyzer_message = "Ready!".to_string();
-                cx.notify();
-                this.check_completion(cx);
-            });
-        }).detach();
-    }
-
-
-    fn check_completion(&mut self, cx: &mut Context<Self>) {
-        if self.initial_tasks_complete {
-            let project_path = self.project_path.clone();
-            let rust_analyzer = self.rust_analyzer.clone().expect("Rust Analyzer should be initialized");
-
-            // Update recent projects list
-            update_recent_projects(&project_path);
-
-            if let Some(engine_context) = EngineContext::global() {
-                engine_context.request_window(WindowRequest::ProjectEditor {
-                    project_path: project_path.to_string_lossy().to_string(),
-                });
-
-                engine_context.request_window(WindowRequest::CloseWindow {
-                    window_id: self.window_id,
-                });
-            }
-
-            cx.emit(LoadingComplete {
-                project_path,
-                rust_analyzer,
-            });
-        }
     }
 }
 
 impl Render for LoadingScreen {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // keep the animation loop running regardless of events
+        _window.request_animation_frame();
+        println!("[render] called, progress={} task={} initial_done={}", self.progress, self.current_task_index, self.initial_tasks_complete);
+        // process any pending progress events
+        while let Ok(ev) = self.progress_rx.try_recv() {
+            println!("[render] got event {:?}", ev);
+            match ev {
+                LoadingEvent::TaskDone(idx) => {
+                    if idx < self.loading_tasks.len() {
+                        self.loading_tasks[idx].status = TaskStatus::Completed;
+                        if idx + 1 < self.loading_tasks.len() {
+                            self.loading_tasks[idx + 1].status = TaskStatus::InProgress;
+                        }
+                        self.progress = ((idx + 1) as f32 / self.loading_tasks.len() as f32) * 100.0;
+                        self.analyzer_message = if idx + 1 < self.loading_tasks.len() {
+                            self.loading_tasks[idx + 1].name.clone()
+                        } else {
+                            "Ready!".to_string()
+                        };
+                        cx.notify();
+                    }
+                    if idx + 1 == self.loading_tasks.len() {
+                        self.initial_tasks_complete = true;
+                    }
+                }
+                LoadingEvent::FrameRequest => {
+                    _window.request_animation_frame();
+                }
+            }
+        }
+        // once all tasks done, open editor.
+        // Must NOT call cx.open_window directly from render() — deferred via
+        // cx.defer so it runs after the current render pass completes.
+        if self.initial_tasks_complete && !self.opened_editor {
+            self.opened_editor = true;
+            let project_path = self.project_path.clone();
+            let on_complete = self.on_complete.clone();
+            cx.defer(move |cx| {
+                on_complete(project_path, cx);
+            });
+        }
+        // request a frame every render call to keep loop alive
+        _window.request_animation_frame();
+
         let theme = cx.theme();
         
         let relative_w = relative(match self.progress {
@@ -362,4 +426,19 @@ fn update_recent_projects(project_path: &Path) {
     recent_projects.add_or_update(project);
     recent_projects.save(&recent_projects_path);
     tracing::debug!("Updated recent projects for: {}", project_path.display());
+}
+
+impl window_manager::PulsarWindow for LoadingScreen {
+    type Params = (PathBuf, std::sync::Arc<dyn Fn(PathBuf, &mut gpui::App) + Send + Sync>);
+
+    fn window_name() -> &'static str { "LoadingScreen" }
+
+    fn window_options(_: &Self::Params) -> gpui::WindowOptions {
+        window_manager::default_window_options(900.0, 600.0)
+    }
+
+    fn build(params: Self::Params, window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {
+        let (path, on_complete) = params;
+        cx.new(|cx| LoadingScreen::new_with_on_complete(path, on_complete, window, cx))
+    }
 }

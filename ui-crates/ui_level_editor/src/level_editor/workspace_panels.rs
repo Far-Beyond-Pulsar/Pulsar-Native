@@ -53,6 +53,8 @@ impl WorldSettingsPanel {
 
 impl EventEmitter<PanelEvent> for WorldSettingsPanel {}
 
+ui_common::panel_boilerplate!(WorldSettingsPanel);
+
 impl Render for WorldSettingsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.state.read();
@@ -61,12 +63,6 @@ impl Render for WorldSettingsPanel {
             .size_full()
             .bg(cx.theme().sidebar)
             .child(self.world_settings.render(&*state, self.state.clone(), &collapsed_sections, cx))
-    }
-}
-
-impl Focusable for WorldSettingsPanel {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle {
-        self.focus_handle.clone()
     }
 }
 
@@ -99,6 +95,8 @@ impl HierarchyPanelWrapper {
 
 impl EventEmitter<PanelEvent> for HierarchyPanelWrapper {}
 
+ui_common::panel_boilerplate!(HierarchyPanelWrapper);
+
 impl Render for HierarchyPanelWrapper {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.state.read();
@@ -107,12 +105,6 @@ impl Render for HierarchyPanelWrapper {
             .bg(cx.theme().sidebar)
             .p_1()
             .child(self.hierarchy.render(&*state, self.state.clone(), cx))
-    }
-}
-
-impl Focusable for HierarchyPanelWrapper {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle {
-        self.focus_handle.clone()
     }
 }
 
@@ -241,6 +233,8 @@ impl PropertiesPanelWrapper {
 
 impl EventEmitter<PanelEvent> for PropertiesPanelWrapper {}
 
+ui_common::panel_boilerplate!(PropertiesPanelWrapper);
+
 impl Render for PropertiesPanelWrapper {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.state.read();
@@ -330,12 +324,6 @@ impl Render for PropertiesPanelWrapper {
     }
 }
 
-impl Focusable for PropertiesPanelWrapper {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle {
-        self.focus_handle.clone()
-    }
-}
-
 impl Panel for PropertiesPanelWrapper {
     fn panel_name(&self) -> &'static str {
         "properties"
@@ -378,6 +366,8 @@ impl ViewportPanelWrapper {
 
 impl EventEmitter<PanelEvent> for ViewportPanelWrapper {}
 
+ui_common::panel_boilerplate!(ViewportPanelWrapper);
+
 impl Render for ViewportPanelWrapper {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mut state = self.state.write();
@@ -394,12 +384,6 @@ impl Render for ViewportPanelWrapper {
                     cx
                 )
             )
-    }
-}
-
-impl Focusable for ViewportPanelWrapper {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle {
-        self.focus_handle.clone()
     }
 }
 

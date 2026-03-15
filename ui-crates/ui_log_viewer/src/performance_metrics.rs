@@ -1,9 +1,8 @@
 //! Performance metrics tracking for Mission Control
 
 use std::collections::VecDeque;
-use std::sync::Arc;
 use sysinfo::{System, Networks, Components};
-use parking_lot::RwLock;
+use ui_common::SharedState;
 use crate::gpu_info;
 
 /// Maximum number of data points to keep in history
@@ -234,13 +233,12 @@ impl PerformanceMetrics {
         // kernel driver. We surface a UI note instead of showing garbage data.
         #[cfg(not(windows))]
         {
-            self.components.refresh(false);
+            // sysinfo's `refresh` now takes no arguments (the old boolean flag
+            // was removed), and `temperature()` returns an `f32` directly.
+            self.components.refresh();
             for comp in self.components.iter() {
                 let label = comp.label().to_string();
-                let temp = match comp.temperature() {
-                    Some(t) => t as f64,
-                    None => continue,
-                };
+                let temp = comp.temperature() as f64;
                 if let Some(entry) = self.temp_histories.iter_mut().find(|(l, _)| *l == label) {
                     if entry.1.len() >= MAX_HISTORY_SIZE { entry.1.pop_front(); }
                     entry.1.push_back(temp);
@@ -391,9 +389,9 @@ impl Default for PerformanceMetrics {
 }
 
 /// Shared performance metrics accessible across the application
-pub type SharedPerformanceMetrics = Arc<RwLock<PerformanceMetrics>>;
+pub type SharedPerformanceMetrics = SharedState<PerformanceMetrics>;
 
 /// Create a new shared performance metrics instance
 pub fn create_shared_metrics() -> SharedPerformanceMetrics {
-    Arc::new(RwLock::new(PerformanceMetrics::new()))
+    SharedState::new(PerformanceMetrics::new())
 }

@@ -6,6 +6,7 @@ pub mod new_project;
 pub mod clone_git;
 pub mod project_settings;
 pub mod dependency_setup;
+pub mod cloud_projects;
 
 pub use sidebar::render_sidebar;
 pub use upstream_prompt::render_upstream_prompt;
@@ -20,3 +21,4 @@ pub use project_settings::{
     types::load_project_tool_preferences,
 };
 pub use dependency_setup::render_dependency_setup;
+pub use cloud_projects::render_cloud_projects;

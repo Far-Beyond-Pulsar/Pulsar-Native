@@ -35,6 +35,14 @@ pub(crate) fn init(cx: &mut App) {
     ]);
 }
 
+struct ListInit;
+impl crate::registry::UiComponentInit for ListInit {
+    fn init(&self, cx: &mut gpui::App) {
+        init(cx);
+    }
+}
+crate::register_ui_component!(ListInit);
+
 #[derive(Clone)]
 pub enum ListEvent {
     /// Move to select item.

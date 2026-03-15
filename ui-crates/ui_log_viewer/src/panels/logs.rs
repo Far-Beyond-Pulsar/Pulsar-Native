@@ -17,6 +17,8 @@ impl LogsPanel {
 
 impl EventEmitter<PanelEvent> for LogsPanel {}
 
+ui_common::panel_boilerplate!(LogsPanel);
+
 impl Render for LogsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
@@ -24,10 +26,6 @@ impl Render for LogsPanel {
             .bg(cx.theme().sidebar)
             .child(self.log_drawer.clone())
     }
-}
-
-impl Focusable for LogsPanel {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle { self.focus_handle.clone() }
 }
 
 impl Panel for LogsPanel {

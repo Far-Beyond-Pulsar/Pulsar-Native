@@ -30,6 +30,14 @@ pub(crate) fn init(cx: &mut App) {
     ])
 }
 
+struct DatePickerInit;
+impl crate::registry::UiComponentInit for DatePickerInit {
+    fn init(&self, cx: &mut App) {
+        init(cx);
+    }
+}
+crate::register_ui_component!(DatePickerInit);
+
 #[derive(Clone)]
 pub enum DatePickerEvent {
     Change(Date),

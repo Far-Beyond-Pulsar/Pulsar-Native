@@ -20,7 +20,7 @@
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use crate::subsystems::framework::{Subsystem, SubsystemContext, SubsystemError, SubsystemId};
 
 #[cfg(target_os = "windows")]
@@ -123,9 +123,7 @@ impl Subsystem for ManagedGameThread {
 
                     if tps_timer.elapsed() >= Duration::from_secs(1) {
                         let measured_tps = tick_count as f32 / tps_timer.elapsed().as_secs_f32();
-                        if let Ok(mut tps_lock) = tps.lock() {
-                            *tps_lock = measured_tps;
-                        }
+                        tps.store((measured_tps * 100.0) as u32, Ordering::Relaxed);
                         tick_count = 0;
                         tps_timer = Instant::now();
                     }
@@ -246,7 +244,8 @@ pub struct GameThread {
     state: Arc<Mutex<GameState>>,
     enabled: Arc<AtomicBool>,
     target_tps: f32,
-    tps: Arc<Mutex<f32>>,
+    /// TPS × 100, stored atomically (e.g. 60.00 TPS → 6000).
+    tps: Arc<AtomicU32>,
     frame_count: Arc<AtomicU64>,
     thread_handle: Option<thread::JoinHandle<()>>,
 }
@@ -349,7 +348,7 @@ impl GameThread {
             state: Arc::new(Mutex::new(initial_state)),
             enabled: Arc::new(AtomicBool::new(true)),
             target_tps,
-            tps: Arc::new(Mutex::new(0.0)),
+            tps: Arc::new(AtomicU32::new(0)),
             frame_count: Arc::new(AtomicU64::new(0)),
             thread_handle: None,
         }
@@ -360,7 +359,7 @@ impl GameThread {
     }
 
     pub fn get_tps(&self) -> f32 {
-        *self.tps.lock().unwrap()
+        self.tps.load(Ordering::Relaxed) as f32 / 100.0
     }
 
     pub fn get_tick_count(&self) -> u64 {

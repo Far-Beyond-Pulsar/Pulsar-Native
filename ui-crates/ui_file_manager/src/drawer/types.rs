@@ -126,11 +126,27 @@ impl FileItem {
             found.cloned()
         };
 
-        let metadata = std::fs::metadata(path).ok();
-        let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
-        let modified = metadata.and_then(|m| m.modified().ok());
-
-        let is_folder = path.is_dir() && file_type_def.is_none();
+        // Fetch metadata — prefer the remote provider when in remote mode so we
+        // don't try to stat a `cloud+pulsar://` path with local `std::fs`.
+        let (size, modified, is_folder) = if engine_fs::virtual_fs::is_remote()
+            || engine_fs::is_cloud_path(path)
+        {
+            let (s, unix_secs, d) = engine_fs::virtual_fs::metadata(path)
+                .map(|meta| (meta.size, meta.modified, meta.is_dir))
+                .unwrap_or((0, None, false));
+            // Convert Option<u64> Unix seconds to Option<SystemTime>.
+            let m = unix_secs.map(|secs| {
+                std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs)
+            });
+            let is_folder_remote = d && file_type_def.is_none();
+            (s, m, is_folder_remote)
+        } else {
+            let meta = std::fs::metadata(path).ok();
+            let s = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+            let m = meta.and_then(|m| m.modified().ok());
+            let d = path.is_dir() && file_type_def.is_none();
+            (s, m, d)
+        };
 
         Some(FileItem {
             path: path.to_path_buf(),

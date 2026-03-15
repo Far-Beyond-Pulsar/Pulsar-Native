@@ -1,14 +1,10 @@
-use std::{
-    collections::HashMap,
-    ops::Range,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, ops::Range};
 
 use gpui::{
-    div, img, prelude::FluentBuilder as _, px, relative, rems, AnyElement, App, DefiniteLength,
-    Div, ElementId, FontStyle, FontWeight, Half, HighlightStyle, InteractiveElement as _,
-    IntoElement, Length, ObjectFit, ParentElement, SharedString, SharedUri,
-    StatefulInteractiveElement, Styled, StyledImage as _, Window,
+    div, img, prelude::FluentBuilder as _, px, relative, rems, AnyElement, App, AppContext as _,
+    DefiniteLength, Div, ElementId, Entity, FontStyle, FontWeight, Half, HighlightStyle,
+    InteractiveElement as _, IntoElement, Length, ObjectFit, ParentElement, SharedString,
+    SharedUri, StatefulInteractiveElement, Styled, StyledImage as _, Window,
 };
 use markdown::mdast;
 use ropey::Rope;
@@ -119,7 +115,7 @@ pub(crate) struct InlineNode {
     /// The text styles, each tuple contains the range of the text and the style.
     pub(crate) marks: Vec<(Range<usize>, TextMark)>,
 
-    state: Arc<Mutex<InlineState>>,
+    state: Option<Entity<InlineState>>,
 }
 
 impl PartialEq for InlineNode {
@@ -134,7 +130,7 @@ impl InlineNode {
             text: text.into(),
             image: None,
             marks: vec![],
-            state: Arc::new(Mutex::new(InlineState::default())),
+            state: None,
         }
     }
 
@@ -163,7 +159,7 @@ pub(crate) struct Paragraph {
     /// The key is the identifier, the value is the url.
     pub(super) link_refs: HashMap<SharedString, SharedString>,
 
-    pub(crate) state: Arc<Mutex<InlineState>>,
+    pub(crate) state: Option<Entity<InlineState>>,
 }
 
 impl PartialEq for Paragraph {
@@ -180,25 +176,29 @@ impl Paragraph {
             span: None,
             children: vec![InlineNode::new(&text)],
             link_refs: HashMap::new(),
-            state: Arc::new(Mutex::new(InlineState::default())),
+            state: None,
         }
     }
 
-    pub(super) fn selected_text(&self) -> String {
+    pub(super) fn selected_text(&self, cx: &App) -> String {
         let mut text = String::new();
 
         for c in self.children.iter() {
-            let state = c.state.lock().unwrap();
-            if let Some(selection) = &state.selection {
-                let part_text = state.text.clone();
-                text.push_str(&part_text[selection.start..selection.end]);
+            if let Some(state) = &c.state {
+                let state = state.read(cx);
+                if let Some(selection) = &state.selection {
+                    let part_text = state.text.clone();
+                    text.push_str(&part_text[selection.start..selection.end]);
+                }
             }
         }
 
-        let state = self.state.lock().unwrap();
-        if let Some(selection) = &state.selection {
-            let all_text = state.text.clone();
-            text.push_str(&all_text[selection.start..selection.end]);
+        if let Some(state) = &self.state {
+            let state = state.read(cx);
+            if let Some(selection) = &state.selection {
+                let all_text = state.text.clone();
+                text.push_str(&all_text[selection.start..selection.end]);
+            }
         }
 
         text
@@ -255,7 +255,7 @@ impl Paragraph {
                 span: None,
                 children: vec![],
                 link_refs: Default::default(),
-                state: Arc::new(Mutex::new(InlineState::default())),
+                state: None,
             },
         )
     }
@@ -307,7 +307,7 @@ impl Paragraph {
 pub(crate) struct CodeBlock {
     lang: Option<SharedString>,
     styles: Vec<(Range<usize>, HighlightStyle)>,
-    state: Arc<Mutex<InlineState>>,
+    code: SharedString,
 }
 
 impl PartialEq for CodeBlock {
@@ -330,28 +330,20 @@ impl CodeBlock {
             styles = highlighter.styles(&(0..code.len()), highlight_theme);
         };
 
-        let state = Arc::new(Mutex::new(InlineState::default()));
-        state.lock().unwrap().set_text(code);
-
         Self {
             lang,
             styles,
-            state,
+            code,
         }
     }
 
     fn code(&self) -> SharedString {
-        self.state.lock().unwrap().text.clone()
+        self.code.clone()
     }
 
     pub(super) fn selected_text(&self) -> String {
-        let mut text = String::new();
-        let state = self.state.lock().unwrap();
-        if let Some(selection) = &state.selection {
-            let part_text = state.text.clone();
-            text.push_str(&part_text[selection.start..selection.end]);
-        }
-        text
+        // Code block line selection is not tracked across renders.
+        String::new()
     }
 
     fn render(&self, node_cx: &NodeContext, _: &mut Window, cx: &mut App) -> AnyElement {
@@ -403,14 +395,19 @@ impl CodeBlock {
                 })
                 .collect();
             
-            // Create state for this line
-            let line_state = Arc::new(Mutex::new(InlineState::default()));
-            line_state.lock().unwrap().set_text(line.to_string().into());
-            
+            // Create entity for this line
+            let text: SharedString = line.to_string().into();
+            let line_entity = cx.new(|_| {
+                let mut s = InlineState::default();
+                s.set_text(text.clone());
+                s
+            });
+
             line_elements.push(
                 Inline::new(
                     ("code-line", line_idx),
-                    line_state,
+                    text,
+                    line_entity,
                     vec![],
                     line_highlights,
                 )
@@ -505,13 +502,13 @@ impl Node {
         }
     }
 
-    pub(super) fn selected_text(&self) -> String {
+    pub(super) fn selected_text(&self, cx: &App) -> String {
         let mut text = String::new();
         match self {
             Node::Root { children } => {
                 let mut block_text = String::new();
                 for c in children.iter() {
-                    block_text.push_str(&c.selected_text());
+                    block_text.push_str(&c.selected_text(cx));
                 }
                 if !block_text.is_empty() {
                     text.push_str(&block_text);
@@ -520,7 +517,7 @@ impl Node {
             }
             Node::Paragraph(paragraph) => {
                 let mut block_text = String::new();
-                block_text.push_str(&paragraph.selected_text());
+                block_text.push_str(&paragraph.selected_text(cx));
                 if !block_text.is_empty() {
                     text.push_str(&block_text);
                     text.push('\n');
@@ -528,7 +525,7 @@ impl Node {
             }
             Node::Heading { children, .. } => {
                 let mut block_text = String::new();
-                block_text.push_str(&children.selected_text());
+                block_text.push_str(&children.selected_text(cx));
                 if !block_text.is_empty() {
                     text.push_str(&block_text);
                     text.push('\n');
@@ -536,18 +533,18 @@ impl Node {
             }
             Node::List { children, .. } => {
                 for c in children.iter() {
-                    text.push_str(&c.selected_text());
+                    text.push_str(&c.selected_text(cx));
                 }
             }
             Node::ListItem { children, .. } => {
                 for c in children.iter() {
-                    text.push_str(&c.selected_text());
+                    text.push_str(&c.selected_text(cx));
                 }
             }
             Node::Blockquote { children } => {
                 let mut block_text = String::new();
                 for c in children.iter() {
-                    block_text.push_str(&c.selected_text());
+                    block_text.push_str(&c.selected_text(cx));
                 }
 
                 if !block_text.is_empty() {
@@ -560,7 +557,7 @@ impl Node {
                 for row in table.children.iter() {
                     let mut row_texts = vec![];
                     for cell in row.children.iter() {
-                        row_texts.push(cell.children.selected_text());
+                        row_texts.push(cell.children.selected_text(cx));
                     }
                     if !row_texts.is_empty() {
                         block_text.push_str(&row_texts.join(" "));
@@ -589,13 +586,12 @@ impl Node {
 
 impl Paragraph {
     fn render(
-        &self,
+        &mut self,
         node_cx: &NodeContext,
         _window: &mut Window,
         cx: &mut App,
     ) -> impl IntoElement {
         let span = self.span;
-        let children = &self.children;
 
         let mut child_nodes: Vec<AnyElement> = vec![];
 
@@ -605,21 +601,23 @@ impl Paragraph {
         let mut offset = 0;
 
         let mut ix = 0;
-        for inline_node in children {
+        for inline_node in self.children.iter_mut() {
             let text_len = inline_node.text.len();
             text.push_str(&inline_node.text);
 
             if let Some(image) = &inline_node.image {
                 if text.len() > 0 {
-                    inline_node
-                        .state
-                        .lock()
-                        .unwrap()
-                        .set_text(text.clone().into());
+                    if inline_node.state.is_none() {
+                        inline_node.state = Some(cx.new(|_| InlineState::default()));
+                    }
+                    let entity = inline_node.state.as_ref().unwrap();
+                    entity.update(cx, |s, _| s.set_text(text.clone().into()));
+                    let entity = entity.clone();
                     child_nodes.push(
                         Inline::new(
                             ix,
-                            inline_node.state.clone(),
+                            text.clone().into(),
+                            entity,
                             links.clone(),
                             highlights.clone(),
                         )
@@ -701,9 +699,13 @@ impl Paragraph {
 
         // Add the last text node
         if text.len() > 0 {
-            self.state.lock().unwrap().set_text(text.into());
-            child_nodes
-                .push(Inline::new(ix, self.state.clone(), links, highlights).into_any_element());
+            if self.state.is_none() {
+                self.state = Some(cx.new(|_| InlineState::default()));
+            }
+            let entity = self.state.as_ref().unwrap();
+            entity.update(cx, |s, _| s.set_text(text.clone().into()));
+            let entity = entity.clone();
+            child_nodes.push(Inline::new(ix, text.into(), entity, links, highlights).into_any_element());
         }
 
         div().id(span.unwrap_or_default()).children(child_nodes)
@@ -719,7 +721,7 @@ pub(crate) struct ListState {
 
 impl Node {
     fn render_list_item(
-        item: &Node,
+        item: &mut Node,
         ix: usize,
         state: ListState,
         node_cx: &NodeContext,
@@ -737,11 +739,15 @@ impl Node {
                 .children({
                     let mut items: Vec<Div> = Vec::with_capacity(children.len());
 
-                    for (child_ix, child) in children.iter().enumerate() {
+                    // Pre-compute last_not_list flags to avoid borrow conflict with iter_mut.
+                    let last_not_list_flags: Vec<bool> = (0..children.len())
+                        .map(|i| i > 0 && !matches!(children[i - 1], Node::List { .. }))
+                        .collect();
+
+                    for (child_ix, child) in children.iter_mut().enumerate() {
                         match child {
                             Node::Paragraph(_) => {
-                                let last_not_list = child_ix > 0
-                                    && !matches!(children[child_ix - 1], Node::List { .. });
+                                let last_not_list = last_not_list_flags[child_ix];
 
                                 let text = child.render(
                                     Some(ListState {
@@ -831,14 +837,14 @@ impl Node {
     }
 
     fn render_table(
-        item: &Node,
+        item: &mut Node,
         node_cx: &NodeContext,
         window: &mut Window,
         cx: &mut App,
     ) -> impl IntoElement {
         const DEFAULT_LENGTH: usize = 5;
         const MAX_LENGTH: usize = 150;
-        let col_lens = match item {
+        let (col_lens, col_aligns, rows_len) = match item {
             Node::Table(table) => {
                 let mut col_lens = vec![];
                 for row in table.children.iter() {
@@ -853,9 +859,12 @@ impl Node {
                         }
                     }
                 }
-                col_lens
+                let col_aligns: Vec<ColumnumnAlign> =
+                    (0..col_lens.len()).map(|i| table.column_align(i)).collect();
+                let rows_len = table.children.len();
+                (col_lens, col_aligns, rows_len)
             }
-            _ => vec![],
+            _ => (vec![], vec![], 0),
         };
 
         match item {
@@ -868,20 +877,21 @@ impl Node {
                 .rounded(cx.theme().radius)
                 .children({
                     let mut rows = Vec::with_capacity(table.children.len());
-                    for (row_ix, row) in table.children.iter().enumerate() {
+                    for (row_ix, row) in table.children.iter_mut().enumerate() {
+                        let cells_len = row.children.len();
                         rows.push(
                             div()
                                 .id("row")
                                 .w_full()
-                                .when(row_ix < table.children.len() - 1, |this| this.border_b_1())
+                                .when(row_ix < rows_len - 1, |this| this.border_b_1())
                                 .border_color(cx.theme().border)
                                 .flex()
                                 .flex_row()
                                 .children({
-                                    let mut cells = Vec::with_capacity(row.children.len());
-                                    for (ix, cell) in row.children.iter().enumerate() {
-                                        let align = table.column_align(ix);
-                                        let is_last_col = ix == row.children.len() - 1;
+                                    let mut cells = Vec::with_capacity(cells_len);
+                                    for (ix, cell) in row.children.iter_mut().enumerate() {
+                                        let align = col_aligns.get(ix).copied().unwrap_or_default();
+                                        let is_last_col = ix == cells_len - 1;
                                         let len = col_lens
                                             .get(ix)
                                             .copied()
@@ -921,7 +931,7 @@ impl Node {
     }
 
     pub(crate) fn render(
-        &self,
+        &mut self,
         list_state: Option<ListState>,
         is_root: bool,
         is_last_child: bool,
@@ -941,7 +951,7 @@ impl Node {
                 .id("div")
                 .children({
                     let children_len = children.len();
-                    children.into_iter().enumerate().map(move |(index, c)| {
+                    children.iter_mut().enumerate().map(move |(index, c)| {
                         let is_last_child = is_root && index == children_len - 1;
                         c.render(None, false, is_last_child, node_cx, window, cx)
                     })
@@ -987,7 +997,7 @@ impl Node {
                 .px_4()
                 .children({
                     let children_len = children.len();
-                    children.into_iter().enumerate().map(move |(index, c)| {
+                    children.iter_mut().enumerate().map(move |(index, c)| {
                         let is_last_child = is_root && index == children_len - 1;
                         c.render(None, false, is_last_child, node_cx, window, cx)
                     })
@@ -1000,7 +1010,7 @@ impl Node {
                     let mut items = Vec::with_capacity(children.len());
                     let list_state = list_state.unwrap_or_default();
                     let mut ix = 0;
-                    for item in children.into_iter() {
+                    for item in children.iter_mut() {
                         let is_item = item.is_list_item();
 
                         items.push(Self::render_list_item(

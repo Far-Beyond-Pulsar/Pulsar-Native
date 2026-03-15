@@ -22,6 +22,14 @@ pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([KeyBinding::new("escape", Cancel, Some(CONTEXT))])
 }
 
+struct DrawerInit;
+impl crate::registry::UiComponentInit for DrawerInit {
+    fn init(&self, cx: &mut App) {
+        init(cx);
+    }
+}
+crate::register_ui_component!(DrawerInit);
+
 #[derive(IntoElement)]
 pub struct Drawer {
     pub(crate) focus_handle: FocusHandle,

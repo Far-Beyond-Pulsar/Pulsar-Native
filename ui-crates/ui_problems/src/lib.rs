@@ -6,6 +6,8 @@
 rust_i18n::i18n!("locales", fallback = "en");
 
 mod problems_drawer;
+mod filter;
+mod diagnostic_item;
 pub mod window;
 
 // Re-export main types

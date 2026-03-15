@@ -6,6 +6,53 @@ use super::utils::copy_dir_all;
 // FILE OPERATIONS - Leverages engine_fs and extends with UI-specific ops
 // ============================================================================
 
+/// Route a write through either the remote VirtualFs or local std::fs.
+fn fs_write(path: &Path, content: &[u8]) -> Result<()> {
+    if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(path) {
+        engine_fs::virtual_fs::write_file(path, content)
+    } else {
+        std::fs::write(path, content).map_err(anyhow::Error::from)
+    }
+}
+
+/// Route a create-dir through either the remote VirtualFs or local std::fs.
+fn fs_mkdir(path: &Path) -> Result<()> {
+    if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(path) {
+        engine_fs::virtual_fs::create_dir_all(path)
+    } else {
+        std::fs::create_dir_all(path).map_err(anyhow::Error::from)
+    }
+}
+
+/// Route a delete through either the remote VirtualFs or local std::fs.
+fn fs_delete(path: &Path) -> Result<()> {
+    if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(path) {
+        engine_fs::virtual_fs::delete_path(path)
+    } else if path.is_dir() {
+        std::fs::remove_dir_all(path).map_err(anyhow::Error::from)
+    } else {
+        std::fs::remove_file(path).map_err(anyhow::Error::from)
+    }
+}
+
+/// Route a rename through either the remote VirtualFs or local std::fs.
+fn fs_rename(from: &Path, to: &Path) -> Result<()> {
+    if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(from) {
+        engine_fs::virtual_fs::rename(from, to)
+    } else {
+        std::fs::rename(from, to).map_err(anyhow::Error::from)
+    }
+}
+
+/// Route exists check through either VirtualFs or local std::fs.
+fn fs_exists(path: &Path) -> bool {
+    if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(path) {
+        engine_fs::virtual_fs::exists(path).unwrap_or(false)
+    } else {
+        path.exists()
+    }
+}
+
 pub struct FileOperations {
     engine_fs: Option<engine_fs::EngineFs>,
 }
@@ -13,6 +60,13 @@ pub struct FileOperations {
 impl FileOperations {
     pub fn new(project_root: Option<PathBuf>) -> Self {
         let engine_fs = project_root.and_then(|root| {
+            // Skip EngineFs initialisation for remote (cloud) projects — the
+            // global VirtualFs provider set up by ui_entry handles all I/O.
+            if engine_fs::is_cloud_path(&root) {
+                tracing::debug!("Remote project — skipping local EngineFs initialisation");
+                return None;
+            }
+
             match engine_fs::EngineFs::new(root) {
                 Ok(fs) => {
                     // Register the TypeDatabase with global EngineContext
@@ -38,12 +92,12 @@ impl FileOperations {
         let mut counter = 1;
         let mut new_path = base_path.join("NewFolder");
 
-        while new_path.exists() {
+        while fs_exists(&new_path) {
             new_path = base_path.join(format!("NewFolder{}", counter));
             counter += 1;
         }
 
-        std::fs::create_dir_all(&new_path)?;
+        fs_mkdir(&new_path)?;
         Ok(new_path)
     }
 
@@ -52,12 +106,12 @@ impl FileOperations {
         let mut counter = 1;
         let mut new_path = base_path.join("newfile.txt");
 
-        while new_path.exists() {
+        while fs_exists(&new_path) {
             new_path = base_path.join(format!("newfile{}.txt", counter));
             counter += 1;
         }
 
-        std::fs::write(&new_path, "")?;
+        fs_write(&new_path, b"")?;
         Ok(new_path)
     }
 
@@ -83,7 +137,7 @@ impl FileOperations {
         }
 
         // Create class folder and events subfolder
-        std::fs::create_dir_all(&new_path.join("events"))?;
+        fs_mkdir(&new_path.join("events"))?;
 
         // Create graph_save.json with template
         let now = chrono::Local::now();
@@ -114,7 +168,7 @@ impl FileOperations {
 
         let json = serde_json::to_string_pretty(&empty_graph)?;
         let content = format!("{}{}", header, json);
-        std::fs::write(new_path.join("graph_save.json"), content)?;
+        fs_write(&new_path.join("graph_save.json"), content.as_bytes())?;
 
         Ok(new_path)
     }
@@ -129,12 +183,7 @@ impl FileOperations {
         }
 
         // Fallback: direct filesystem deletion
-        if item_path.is_dir() {
-            std::fs::remove_dir_all(item_path)?;
-        } else {
-            std::fs::remove_file(item_path)?;
-        }
-        Ok(())
+        fs_delete(item_path)
     }
 
     /// Duplicate an item
@@ -155,7 +204,7 @@ impl FileOperations {
             parent.join(format!("{}_copy.{}", stem, extension))
         };
 
-        while new_path.exists() {
+        while fs_exists(&new_path) {
             new_path = if extension.is_empty() {
                 parent.join(format!("{}_copy{}", stem, counter))
             } else {
@@ -164,7 +213,11 @@ impl FileOperations {
             counter += 1;
         }
 
-        if item_path.is_dir() {
+        if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(item_path) {
+            // Remote: read source bytes and write to new path.
+            let data = engine_fs::virtual_fs::read_file(item_path)?;
+            engine_fs::virtual_fs::write_file(&new_path, &data)?;
+        } else if item_path.is_dir() {
             copy_dir_all(item_path, &new_path)?;
         } else {
             std::fs::copy(item_path, &new_path)?;
@@ -177,7 +230,14 @@ impl FileOperations {
     pub fn rename_item(&self, old_path: &Path, new_name: &str) -> Result<PathBuf> {
         let parent = old_path.parent()
             .ok_or_else(|| anyhow::anyhow!("No parent directory"))?;
-        let new_path = parent.join(new_name);
+        // Use forward-slash join for cloud paths to avoid Windows PathBuf::join
+        // inserting '\' which breaks the cloud+pulsar:// URI scheme.
+        let new_path = if engine_fs::is_cloud_path(parent) {
+            let base = parent.to_string_lossy().replace('\\', "/");
+            PathBuf::from(format!("{}/{}", base.trim_end_matches('/'), new_name))
+        } else {
+            parent.join(new_name)
+        };
 
         if old_path == new_path {
             return Ok(new_path);
@@ -194,7 +254,7 @@ impl FileOperations {
         }
 
         // Fallback: direct filesystem rename
-        std::fs::rename(old_path, &new_path)?;
+        fs_rename(old_path, &new_path)?;
         Ok(new_path)
     }
 
@@ -204,7 +264,10 @@ impl FileOperations {
             if let Some(file_name) = source_path.file_name() {
                 let target_path = target_folder.join(file_name);
 
-                if source_path.is_dir() {
+                if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(source_path) {
+                    let data = engine_fs::virtual_fs::read_file(source_path)?;
+                    engine_fs::virtual_fs::write_file(&target_path, &data)?;
+                } else if source_path.is_dir() {
                     copy_dir_all(source_path, &target_path)?;
                 } else {
                     std::fs::copy(source_path, &target_path)?;
@@ -228,7 +291,7 @@ impl FileOperations {
                 }
 
                 // Fallback: direct filesystem move
-                std::fs::rename(source_path, &target_path)?;
+                fs_rename(source_path, &target_path)?;
             }
         }
         Ok(())

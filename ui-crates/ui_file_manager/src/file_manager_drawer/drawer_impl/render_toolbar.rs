@@ -29,6 +29,22 @@ impl FileManagerDrawer {
                     .text_color(cx.theme().accent)
                     .child(t!("FileManager.Items", count => items.len()).to_string())
             )
+            // Remote provider badge — only shown when the VirtualFs is in remote mode.
+            .when(engine_fs::virtual_fs::is_remote(), |el| {
+                el.child(
+                    div()
+                        .px_2()
+                        .py_1()
+                        .rounded(px(6.))
+                        .bg(cx.theme().success.opacity(0.12))
+                        .border_1()
+                        .border_color(cx.theme().success.opacity(0.4))
+                        .text_xs()
+                        .font_medium()
+                        .text_color(cx.theme().success)
+                        .child(format!("☁ {}", engine_fs::virtual_fs::current_label()))
+                )
+            })
             // Divider
             .child(ui::divider::Divider::vertical().h(px(24.)))
             // View mode toggle group

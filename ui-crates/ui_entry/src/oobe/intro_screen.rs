@@ -820,10 +820,18 @@ impl Render for IntroScreen {
 static OOBE_SHOWN_THIS_SESSION: AtomicBool = AtomicBool::new(false);
 
 /// Check if the user has seen the intro before
-/// Returns false if --OOBE flag is passed (forces OOBE to show once per session)
+/// Returns false if --OOBE flag is passed (forces OOBE to show once per session).
+/// Returns true immediately if --skip-oobe / --no-oobe flag is passed (always skips).
 pub fn has_seen_intro() -> bool {
-    // Check for --OOBE flag to force OOBE display (but only once per session)
     let args: Vec<String> = std::env::args().collect();
+
+    // --skip-oobe / --no-oobe: always skip regardless of persistent state
+    if args.iter().any(|arg| arg == "--skip-oobe" || arg == "--no-oobe") {
+        tracing::debug!("🎯 [OOBE] --skip-oobe flag detected, skipping OOBE");
+        return true;
+    }
+
+    // Check for --OOBE flag to force OOBE display (but only once per session)
     if args.iter().any(|arg| arg == "--OOBE" || arg == "--oobe") {
         // Only show OOBE once per session even with the flag
         if !OOBE_SHOWN_THIS_SESSION.swap(true, Ordering::SeqCst) {

@@ -29,30 +29,20 @@ dashmap = "6.1.0"
 profiling = { path = "../profiling" }
 
 # UI dependencies needed for services
-gpui.workspace = true
+gpui-ce.workspace = true
 ui.workspace = true
+pulsar_diagnostics.workspace = true
+pulsar_lsp.workspace = true
 lsp-types.workspace = true
 ropey.workspace = true
 flume = "0.11"
 
-# Helio rendering (blade-graphics alternative)
-helio-core.workspace = true
-helio-render.workspace = true
-helio-features.workspace = true
-helio-feature-base-geometry.workspace = true
-helio-feature-lighting.workspace = true
-helio-feature-materials.workspace = true
-helio-feature-procedural-shadows.workspace = true
-helio-feature-bloom.workspace = true
-helio-feature-billboards.workspace = true
-helio-feature-skies = { path = "../helio-feature-skies" }
-blade-graphics.workspace = true
-blade-macros.workspace = true
+# Helio rendering (wgpu-based v2)
+helio-render-v2.workspace = true
 glam.workspace = true
 bytemuck = "1.14"
 
-wgpu = "27.0.0"
-wgpu-hal = "27.0.0"
+wgpu.workspace = true
 crossbeam-channel = "0.5"
 futures = "0.3"
 parking_lot = "0.12"
