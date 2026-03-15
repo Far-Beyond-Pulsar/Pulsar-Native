@@ -27,10 +27,13 @@ pub use remote_provider::{RemoteFsProvider, RemoteConfig};
 
 /// Return `true` when `path` carries the `cloud+pulsar://` scheme, indicating
 /// it refers to a file on a remote `pulsar-host` server rather than on disk.
+///
+/// Normalizes Windows backslashes to forward slashes before checking so that
+/// paths stored in a `PathBuf` on Windows still match the URI scheme prefix.
 pub fn is_cloud_path(path: &std::path::Path) -> bool {
-    path.to_str()
-        .map(|s| s.starts_with("cloud+pulsar://"))
-        .unwrap_or(false)
+    path.to_string_lossy()
+        .replace('\\', "/")
+        .starts_with("cloud+pulsar://")
 }
 
 use anyhow::Result;

@@ -230,7 +230,14 @@ impl FileOperations {
     pub fn rename_item(&self, old_path: &Path, new_name: &str) -> Result<PathBuf> {
         let parent = old_path.parent()
             .ok_or_else(|| anyhow::anyhow!("No parent directory"))?;
-        let new_path = parent.join(new_name);
+        // Use forward-slash join for cloud paths to avoid Windows PathBuf::join
+        // inserting '\' which breaks the cloud+pulsar:// URI scheme.
+        let new_path = if engine_fs::is_cloud_path(parent) {
+            let base = parent.to_string_lossy().replace('\\', "/");
+            PathBuf::from(format!("{}/{}", base.trim_end_matches('/'), new_name))
+        } else {
+            parent.join(new_name)
+        };
 
         if old_path == new_path {
             return Ok(new_path);

@@ -126,21 +126,26 @@ fn safe_join(root: &std::path::Path, rel: &str) -> Result<PathBuf, Response> {
     }
 
     // Normalise separators so Windows paths don't confuse things.
-    let rel = rel.trim_start_matches('/').replace('\\', "/");
+    let rel = rel.trim_start_matches('/').trim_start_matches('\\').replace('\\', "/");
     let candidate = root.join(&rel);
 
-    // After joining, canonicalize if the path exists; otherwise check prefix
-    // lexicographically (the file may not exist yet for write operations).
+    // After joining, canonicalize both paths if the target exists; otherwise
+    // compare lexicographically with both normalized to forward slashes to
+    // prevent false negatives on Windows where PathBuf::join inserts '\'.
     let is_safe = if candidate.exists() {
-        match candidate.canonicalize() {
-            Ok(canon) => canon.starts_with(root),
-            Err(_) => false,
+        match (candidate.canonicalize(), root.canonicalize()) {
+            (Ok(canon_candidate), Ok(canon_root)) => canon_candidate.starts_with(&canon_root),
+            _ => false,
         }
     } else {
-        // For non-existent paths use a simplified prefix check.
-        let joined_str = candidate.to_string_lossy();
-        let root_str = root.to_string_lossy();
-        joined_str.starts_with(root_str.as_ref())
+        // Normalize both strings to forward slashes.  On Windows PathBuf::join
+        // produces backslashes while the root may have been configured with
+        // forward slashes, so a naive starts_with would fail.
+        let joined_str = candidate.to_string_lossy().replace('\\', "/");
+        let root_str = root.to_string_lossy().replace('\\', "/");
+        // Ensure a trailing '/' so "workspace_extra" can't match "workspace".
+        let root_prefix = format!("{}/", root_str.trim_end_matches('/'));
+        joined_str.starts_with(&root_prefix)
     };
 
     if !is_safe {
@@ -178,6 +183,14 @@ pub async fn list_dir(
         },
         _ => root.clone(),
     };
+
+    // Ensure the workspace directory exists (auto-create on first access, same
+    // as the manifest endpoint does).
+    if !root.exists() {
+        if let Err(e) = std::fs::create_dir_all(&root) {
+            return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response();
+        }
+    }
 
     // Ensure workspace exists.
     if !target.is_dir() {

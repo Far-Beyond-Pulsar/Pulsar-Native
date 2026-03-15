@@ -71,15 +71,16 @@ impl FolderNode {
     pub fn from_cloud_path(cloud_root: &Path) -> Option<Self> {
         let entries = engine_fs::virtual_fs::manifest(cloud_root).ok()?;
 
-        let root_name = {
-            let s = cloud_root.to_string_lossy();
-            // Extract the project ID as the display name.
-            s.trim_start_matches("cloud+pulsar://")
-                .splitn(3, '/')
-                .nth(1)
-                .unwrap_or("Remote Project")
-                .to_string()
-        };
+        // Normalize to forward slashes once so all subsequent string operations
+        // work correctly on Windows where PathBuf stores backslashes.
+        let cloud_root_s = cloud_root.to_string_lossy().replace('\\', "/");
+
+        let root_name = cloud_root_s
+            .trim_start_matches("cloud+pulsar://")
+            .splitn(3, '/')
+            .nth(1)
+            .unwrap_or("Remote Project")
+            .to_string();
 
         // Build the tree from the flat manifest.
         // Only include directories (files are shown in the content panel).
@@ -91,10 +92,11 @@ impl FolderNode {
         };
 
         for entry in entries.iter().filter(|e| e.is_dir) {
-            // Build a cloud+pulsar:// path for this subdirectory.
+            // Build a cloud+pulsar:// path for this subdirectory using the
+            // already-normalized string so no '\\' ever appears in the URI.
             let child_cloud = PathBuf::from(format!(
                 "{}/{}",
-                cloud_root.to_string_lossy().trim_end_matches('/'),
+                cloud_root_s.trim_end_matches('/'),
                 entry.path.trim_start_matches('/')
             ));
             let name = entry.path
@@ -104,7 +106,7 @@ impl FolderNode {
                 .to_string();
             Self::insert_at_depth(
                 &mut root,
-                cloud_root,
+                &cloud_root_s,
                 &entry.path,
                 child_cloud,
                 name,
@@ -115,9 +117,12 @@ impl FolderNode {
     }
 
     /// Recursively insert a directory node at the correct position.
+    ///
+    /// `cloud_root_s` is the cloud root URI as a forward-slash-normalized
+    /// string (never a Windows `PathBuf` representation).
     fn insert_at_depth(
         node: &mut FolderNode,
-        cloud_root: &Path,
+        cloud_root_s: &str,
         rel_path: &str,
         abs_cloud: PathBuf,
         name: String,
@@ -137,11 +142,12 @@ impl FolderNode {
             let rest = parts[1];
             let parent_cloud = PathBuf::from(format!(
                 "{}/{}",
-                cloud_root.to_string_lossy().trim_end_matches('/'),
+                cloud_root_s.trim_end_matches('/'),
                 first
             ));
+            let parent_cloud_s = format!("{}/{}", cloud_root_s.trim_end_matches('/'), first);
             if let Some(child) = node.children.iter_mut().find(|c| c.path == parent_cloud) {
-                Self::insert_at_depth(child, &parent_cloud, rest, abs_cloud, name);
+                Self::insert_at_depth(child, &parent_cloud_s, rest, abs_cloud, name);
             }
         }
     }

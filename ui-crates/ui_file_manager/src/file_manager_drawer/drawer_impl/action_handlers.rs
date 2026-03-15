@@ -3,7 +3,7 @@ impl FileManagerDrawer {
         if let Some(folder) = &self.selected_folder {
             // Create file name with extension
             let file_name = format!("New{}.{}", action.display_name.replace(" ", ""), action.extension);
-            let file_path = folder.join(&file_name);
+            let file_path = cloud_join(folder, &file_name);
 
             // Check if file already exists and generate unique name
             let mut counter = 1;
@@ -12,7 +12,7 @@ impl FileManagerDrawer {
                 || !engine_fs::virtual_fs::is_remote() && final_path.exists()
             {
                 let file_name = format!("New{}_{}.{}", action.display_name.replace(" ", ""), counter, action.extension);
-                final_path = folder.join(&file_name);
+                final_path = cloud_join(folder, &file_name);
                 counter += 1;
             }
 
@@ -64,13 +64,13 @@ impl FileManagerDrawer {
         // Create folder with unique name
         let mut counter = 1;
         let mut folder_name = "NewFolder".to_string();
-        let mut folder_path = folder.join(&folder_name);
+        let mut folder_path = cloud_join(&folder, &folder_name);
 
         while engine_fs::virtual_fs::is_remote() && engine_fs::virtual_fs::exists(&folder_path).unwrap_or(false)
             || !engine_fs::virtual_fs::is_remote() && folder_path.exists()
         {
             folder_name = format!("NewFolder_{}", counter);
-            folder_path = folder.join(&folder_name);
+            folder_path = cloud_join(&folder, &folder_name);
             counter += 1;
         }
 
@@ -139,13 +139,13 @@ impl FileManagerDrawer {
                     // Generate unique name
                     let mut counter = 1;
                     let mut new_name = format!("{}_copy", name_str);
-                    let mut new_path = parent.join(&new_name);
+                    let mut new_path = cloud_join(parent, &new_name);
 
                     while engine_fs::virtual_fs::is_remote() && engine_fs::virtual_fs::exists(&new_path).unwrap_or(false)
                         || !engine_fs::virtual_fs::is_remote() && new_path.exists()
                     {
                         new_name = format!("{}_copy_{}", name_str, counter);
-                        new_path = parent.join(&new_name);
+                        new_path = cloud_join(parent, &new_name);
                         counter += 1;
                     }
 
@@ -188,7 +188,8 @@ impl FileManagerDrawer {
             if let Some(target_folder) = &self.selected_folder {
                 for item in items.iter() {
                     if let Some(name) = item.file_name() {
-                        let target_path = target_folder.join(name);
+                        let name_str = name.to_string_lossy();
+                        let target_path = cloud_join(target_folder, &name_str);
 
                         if *is_cut {
                             // Move operation

@@ -71,7 +71,9 @@ impl RemoteConfig {
     ///
     /// Returns `None` when the scheme does not match.
     pub fn from_cloud_path(path: &Path) -> Option<Self> {
-        let s = path.to_str()?;
+        // Normalize backslashes so the URI scheme prefix check works on Windows
+        // where PathBuf may have stored "cloud+pulsar:\\host\\proj".
+        let s = path.to_string_lossy().replace('\\', "/");
         let without_scheme = s.strip_prefix("cloud+pulsar://")?;
         let slash = without_scheme.find('/')?;
         let host = &without_scheme[..slash];
@@ -137,16 +139,20 @@ impl RemoteFsProvider {
     ///
     /// Also rejects path-traversal attempts (`..`).
     fn to_rel(&self, path: &Path) -> Result<String> {
-        let s = path.to_string_lossy();
+        // Normalise Windows backslashes → forward slashes *before* any string
+        // comparisons.  PathBuf::join() on Windows inserts '\' between
+        // components, which would otherwise cause the scheme-prefix strip and
+        // subsequent '/' searches to silently produce an empty relative path.
+        let s = path.to_string_lossy().replace('\\', "/");
 
         let rel = if let Some(tail) = s.strip_prefix("cloud+pulsar://") {
-            // strip  HOST / PROJECT_ID /
+            // Strip  HOST / PROJECT_ID /  to get the bare relative path.
             let after_host = tail.find('/').map(|i| &tail[i + 1..]).unwrap_or("");
             let after_proj = after_host.find('/').map(|i| &after_host[i + 1..]).unwrap_or("");
-            after_proj.replace('\\', "/")
+            after_proj.to_string()
         } else {
-            // Treat as an already-relative path.
-            s.replace('\\', "/")
+            // Already a relative path (or some other non-cloud form).
+            s
         };
 
         if rel.split('/').any(|seg| seg == "..") {
