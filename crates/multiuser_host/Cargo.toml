@@ -49,3 +49,4 @@ tokio-util = { version = "0.7", features = ["io"] }
 # Password / token hashing  (for optional auth token storage)
 sha2 = "0.10"
 hex = "0.4"
+base64 = "0.22"

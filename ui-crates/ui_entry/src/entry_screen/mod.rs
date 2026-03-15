@@ -1154,6 +1154,7 @@ default_scene = "scenes/main.scene"
         if server_idx >= self.cloud_servers.len() {
             return;
         }
+
         let base_url = {
             let raw = self.cloud_servers[server_idx].url.trim().trim_end_matches('/');
             if raw.starts_with("http://") || raw.starts_with("https://") {
@@ -1162,8 +1163,50 @@ default_scene = "scenes/main.scene"
                 format!("http://{}", raw)
             }
         };
+
+        let auth_token = {
+            let t = self.cloud_servers[server_idx].auth_token.trim().to_string();
+            if t.is_empty() { None } else { Some(t) }
+        };
+
+        // ── Set up remote virtual filesystem ─────────────────────────────────
+        let remote_config = engine_fs::RemoteConfig {
+            server_url: base_url.clone(),
+            project_id: project_id.clone(),
+            auth_token: auth_token.clone(),
+        };
+        engine_fs::virtual_fs::set_provider(
+            std::sync::Arc::new(engine_fs::RemoteFsProvider::new(remote_config))
+        );
+        tracing::info!(
+            "🌐 RemoteFsProvider configured for project '{}' at {}",
+            project_id, base_url
+        );
+
+        // ── Record connection details in engine state ─────────────────────────
+        let ctx = engine_state::MultiuserContext::new(
+            base_url.clone(),
+            project_id.clone(),   // session_id == project_id on pulsar-host
+            "local",              // peer_id (populated later on WS connect)
+            "remote",             // host_peer_id
+        )
+        .with_status(engine_state::MultiuserStatus::Connecting)
+        .with_project_id(project_id.clone());
+
+        let ctx = if let Some(ref t) = auth_token {
+            ctx.with_auth_token(t.clone())
+        } else {
+            ctx
+        };
+
+        engine_state::set_multiuser_context(ctx);
+
         // Encode as a virtual cloud path that the editor can parse.
-        let virtual_path = PathBuf::from(format!("cloud+pulsar://{}/{}", base_url.trim_start_matches("http://").trim_start_matches("https://"), project_id));
+        let virtual_path = PathBuf::from(format!(
+            "cloud+pulsar://{}/{}",
+            base_url.trim_start_matches("http://").trim_start_matches("https://"),
+            project_id
+        ));
         cx.emit(crate::entry_screen::project_selector::ProjectSelected { path: virtual_path });
     }
 }

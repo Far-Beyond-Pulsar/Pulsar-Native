@@ -54,6 +54,16 @@ pub struct MultiuserContext {
 
     /// Session join token (for inviting others)
     pub join_token: Option<String>,
+
+    /// Optional Bearer token for the `pulsar-host` file API.
+    ///
+    /// When set, the remote filesystem provider will include this token in
+    /// every `Authorization: Bearer …` header sent to the host server.
+    pub auth_token: Option<String>,
+
+    /// The project UUID on the `pulsar-host` server, if this is a cloud
+    /// session opened from the project launcher.
+    pub project_id: Option<String>,
 }
 
 impl MultiuserContext {
@@ -77,6 +87,8 @@ impl MultiuserContext {
             is_host,
             participants: Vec::new(),
             join_token: None,
+            auth_token: None,
+            project_id: None,
         }
     }
 
@@ -95,6 +107,18 @@ impl MultiuserContext {
     /// Builder: Set participants list
     pub fn with_participants(mut self, participants: Vec<String>) -> Self {
         self.participants = participants;
+        self
+    }
+
+    /// Builder: Set the Bearer auth token for the file API.
+    pub fn with_auth_token(mut self, token: impl Into<String>) -> Self {
+        self.auth_token = Some(token.into());
+        self
+    }
+
+    /// Builder: Set the project ID on the host server.
+    pub fn with_project_id(mut self, id: impl Into<String>) -> Self {
+        self.project_id = Some(id.into());
         self
     }
 

@@ -24,6 +24,10 @@ pub enum WsMessage {
     Chat { user: String, text: String },
     /// Server-level error notification.
     Error { message: String },
+    /// A file in the project workspace was created, modified, or deleted.
+    ///
+    /// `kind` is one of `"created"`, `"modified"`, or `"deleted"`.
+    FileChanged { path: String, kind: String },
 }
 
 #[allow(dead_code)]

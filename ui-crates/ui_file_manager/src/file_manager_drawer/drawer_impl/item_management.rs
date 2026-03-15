@@ -2,7 +2,12 @@ impl FileManagerDrawer {
     pub fn start_new_file(&mut self, cx: &mut Context<Self>) {
         if let Some(ref folder) = self.selected_folder {
             let new_path = folder.join("untitled.txt");
-            if let Err(e) = std::fs::write(&new_path, "") {
+            let result = if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(folder) {
+                engine_fs::virtual_fs::write_file(&new_path, b"")
+            } else {
+                std::fs::write(&new_path, "").map_err(Into::into)
+            };
+            if let Err(e) = result {
                 tracing::error!("Failed to create file: {}", e);
                 return;
             }
@@ -14,7 +19,12 @@ impl FileManagerDrawer {
     pub fn start_new_folder(&mut self, cx: &mut Context<Self>) {
         if let Some(ref folder) = self.selected_folder {
             let new_path = folder.join("New Folder");
-            if let Err(e) = std::fs::create_dir(&new_path) {
+            let result = if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(folder) {
+                engine_fs::virtual_fs::create_dir_all(&new_path)
+            } else {
+                std::fs::create_dir(&new_path).map_err(Into::into)
+            };
+            if let Err(e) = result {
                 tracing::error!("Failed to create folder: {}", e);
                 return;
             }
@@ -28,15 +38,31 @@ impl FileManagerDrawer {
             return Vec::new();
         };
 
-        let Ok(entries) = std::fs::read_dir(folder) else {
-            return Vec::new();
+        // List directory — either locally or remotely depending on the active provider.
+        let remote = engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(folder);
+        let items_raw: Vec<std::path::PathBuf> = if remote {
+            match engine_fs::virtual_fs::list_dir(folder) {
+                Ok(entries) => entries.iter().map(|e| {
+                    // Reconstruct a path from the filename returned by the provider.
+                    let name = e.name.trim_start_matches('/');
+                    PathBuf::from(format!("{}/{}",
+                        folder.to_string_lossy().trim_end_matches('/'), name))
+                }).collect(),
+                Err(e) => {
+                    tracing::error!("Failed to list remote dir: {}", e);
+                    return Vec::new();
+                }
+            }
+        } else {
+            let Ok(read) = std::fs::read_dir(folder) else {
+                return Vec::new();
+            };
+            read.filter_map(|e| e.ok()).map(|e| e.path()).collect()
         };
 
-        let mut items: Vec<FileItem> = entries
-            .filter_map(|entry| entry.ok())
-            .filter_map(|entry| {
-                let path = entry.path();
-
+        let mut items: Vec<FileItem> = items_raw
+            .into_iter()
+            .filter_map(|path| {
                 // Filter hidden files
                 if !self.show_hidden_files {
                     if let Some(name) = path.file_name().and_then(|n| n.to_str()) {

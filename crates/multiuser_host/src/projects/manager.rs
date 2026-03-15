@@ -101,7 +101,10 @@ impl ProjectManager {
         };
 
         let mut guard = self.inner.write();
-        std::fs::create_dir_all(guard.project_dir(&id))?;
+        let project_dir = guard.project_dir(&id);
+        std::fs::create_dir_all(&project_dir)?;
+        // Create the workspace directory that the file API will serve from.
+        std::fs::create_dir_all(project_dir.join("workspace"))?;
         guard.projects.push(record.clone());
         Self::persist_locked(&guard)?;
 

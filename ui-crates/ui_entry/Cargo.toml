@@ -14,6 +14,7 @@ ui.workspace = true
 ui_common.workspace = true
 # Engine
 engine_state.workspace = true
+engine_fs.workspace = true
 
 # Git manager window dependency
 ui_git_manager.workspace = true

@@ -2,13 +2,36 @@
 //!
 //! Centralized asset management and indexing system for Pulsar Engine.
 //! Handles all file operations and maintains up-to-date indexes for quick lookups.
+//!
+//! ## Remote file editing
+//!
+//! When the editor opens a cloud project the active provider is swapped to a
+//! [`RemoteFsProvider`] via [`virtual_fs::set_provider`].  All code that
+//! previously called `std::fs` can instead call the free functions in
+//! [`virtual_fs`] (or use [`virtual_fs::provider()`] for bulk access) and
+//! will automatically target the right backend.
 
 pub mod watchers;
 pub mod operations;
 pub mod asset_templates;
+pub mod provider;
+pub mod remote_provider;
+pub mod virtual_fs;
 
 pub use operations::AssetOperations;
 pub use asset_templates::{AssetKind, AssetCategory};
+pub use provider::{FsProvider, FsEntry, FsMetadata, ManifestEntry, LocalFsProvider};
+pub use remote_provider::{RemoteFsProvider, RemoteConfig};
+
+// ── Cloud-path helpers ────────────────────────────────────────────────────────
+
+/// Return `true` when `path` carries the `cloud+pulsar://` scheme, indicating
+/// it refers to a file on a remote `pulsar-host` server rather than on disk.
+pub fn is_cloud_path(path: &std::path::Path) -> bool {
+    path.to_str()
+        .map(|s| s.starts_with("cloud+pulsar://"))
+        .unwrap_or(false)
+}
 
 use anyhow::Result;
 use std::path::PathBuf;

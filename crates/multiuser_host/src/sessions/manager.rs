@@ -110,4 +110,14 @@ impl SessionManager {
     pub fn users_in_project(&self, project_id: &str) -> Vec<String> {
         self.inner.read().users.get(project_id).cloned().unwrap_or_default()
     }
+
+    /// Broadcast a [`WsMessage::FileChanged`] event to all subscribers of
+    /// `project_id`.  Silently does nothing when there is no active session
+    /// (i.e. no connected users).
+    pub fn broadcast_file_change(&self, project_id: &str, path: String, kind: String) {
+        let guard = self.inner.read();
+        if let Some(handle) = guard.sessions.get(project_id) {
+            let _ = handle.tx.send(WsMessage::FileChanged { path, kind });
+        }
+    }
 }

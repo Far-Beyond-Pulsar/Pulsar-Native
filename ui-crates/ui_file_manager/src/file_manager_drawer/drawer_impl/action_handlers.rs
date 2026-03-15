@@ -8,7 +8,9 @@ impl FileManagerDrawer {
             // Check if file already exists and generate unique name
             let mut counter = 1;
             let mut final_path = file_path.clone();
-            while final_path.exists() {
+            while engine_fs::virtual_fs::is_remote() && engine_fs::virtual_fs::exists(&final_path).unwrap_or(false)
+                || !engine_fs::virtual_fs::is_remote() && final_path.exists()
+            {
                 let file_name = format!("New{}_{}.{}", action.display_name.replace(" ", ""), counter, action.extension);
                 final_path = folder.join(&file_name);
                 counter += 1;
@@ -30,7 +32,12 @@ impl FileManagerDrawer {
                 action.default_content.to_string().into_bytes()
             };
 
-            if let Err(e) = std::fs::write(&final_path, content) {
+            let write_result = if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(&final_path) {
+                engine_fs::virtual_fs::write_file(&final_path, &content)
+            } else {
+                std::fs::write(&final_path, &content).map_err(Into::into)
+            };
+            if let Err(e) = write_result {
                 tracing::error!("Failed to create file {:?}: {}", final_path, e);
             } else {
                 // Refresh the folder tree
@@ -49,14 +56,21 @@ impl FileManagerDrawer {
             let mut folder_name = "NewFolder".to_string();
             let mut folder_path = folder.join(&folder_name);
 
-            while folder_path.exists() {
+            while engine_fs::virtual_fs::is_remote() && engine_fs::virtual_fs::exists(&folder_path).unwrap_or(false)
+                || !engine_fs::virtual_fs::is_remote() && folder_path.exists()
+            {
                 folder_name = format!("NewFolder_{}", counter);
                 folder_path = folder.join(&folder_name);
                 counter += 1;
             }
 
             // Create the folder
-            if let Err(e) = std::fs::create_dir(&folder_path) {
+            let mkdir_result = if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(&folder_path) {
+                engine_fs::virtual_fs::create_dir_all(&folder_path)
+            } else {
+                std::fs::create_dir(&folder_path).map_err(Into::into)
+            };
+            if let Err(e) = mkdir_result {
                 tracing::error!("Failed to create folder {:?}: {}", folder_path, e);
             } else {
                 // Refresh the folder tree
@@ -72,14 +86,15 @@ impl FileManagerDrawer {
         let items_to_delete: Vec<PathBuf> = self.selected_items.iter().cloned().collect();
 
         for item in items_to_delete {
-            if item.is_dir() {
-                if let Err(e) = std::fs::remove_dir_all(&item) {
-                    tracing::error!("Failed to delete folder {:?}: {}", item, e);
-                }
+            let del_result = if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(&item) {
+                engine_fs::virtual_fs::delete_path(&item)
+            } else if item.is_dir() {
+                std::fs::remove_dir_all(&item).map_err(Into::into)
             } else {
-                if let Err(e) = std::fs::remove_file(&item) {
-                    tracing::error!("Failed to delete file {:?}: {}", item, e);
-                }
+                std::fs::remove_file(&item).map_err(Into::into)
+            };
+            if let Err(e) = del_result {
+                tracing::error!("Failed to delete {:?}: {}", item, e);
             }
         }
 
@@ -112,21 +127,25 @@ impl FileManagerDrawer {
                     let mut new_name = format!("{}_copy", name_str);
                     let mut new_path = parent.join(&new_name);
 
-                    while new_path.exists() {
+                    while engine_fs::virtual_fs::is_remote() && engine_fs::virtual_fs::exists(&new_path).unwrap_or(false)
+                        || !engine_fs::virtual_fs::is_remote() && new_path.exists()
+                    {
                         new_name = format!("{}_copy_{}", name_str, counter);
                         new_path = parent.join(&new_name);
                         counter += 1;
                     }
 
                     // Copy the item
-                    if item.is_dir() {
-                        if let Err(e) = Self::copy_dir_recursive(&item, &new_path) {
-                            tracing::error!("Failed to duplicate folder {:?}: {}", item, e);
-                        }
+                    let copy_result = if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(&item) {
+                        engine_fs::virtual_fs::read_file(&item)
+                            .and_then(|data| engine_fs::virtual_fs::write_file(&new_path, &data))
+                    } else if item.is_dir() {
+                        Self::copy_dir_recursive(&item, &new_path).map_err(Into::into)
                     } else {
-                        if let Err(e) = std::fs::copy(&item, &new_path) {
-                            tracing::error!("Failed to duplicate file {:?}: {}", item, e);
-                        }
+                        std::fs::copy(&item, &new_path).map(|_| ()).map_err(Into::into)
+                    };
+                    if let Err(e) = copy_result {
+                        tracing::error!("Failed to duplicate {:?}: {}", item, e);
                     }
                 }
             }
@@ -159,19 +178,26 @@ impl FileManagerDrawer {
 
                         if *is_cut {
                             // Move operation
-                            if let Err(e) = std::fs::rename(item, &target_path) {
+                            let mv_result = if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(item) {
+                                engine_fs::virtual_fs::rename(item, &target_path)
+                            } else {
+                                std::fs::rename(item, &target_path).map_err(Into::into)
+                            };
+                            if let Err(e) = mv_result {
                                 tracing::error!("Failed to move {:?} to {:?}: {}", item, target_path, e);
                             }
                         } else {
                             // Copy operation
-                            if item.is_dir() {
-                                if let Err(e) = Self::copy_dir_recursive(item, &target_path) {
-                                    tracing::error!("Failed to copy folder {:?}: {}", item, e);
-                                }
+                            let copy_result = if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(item) {
+                                engine_fs::virtual_fs::read_file(item)
+                                    .and_then(|data| engine_fs::virtual_fs::write_file(&target_path, &data))
+                            } else if item.is_dir() {
+                                Self::copy_dir_recursive(item, &target_path).map_err(Into::into)
                             } else {
-                                if let Err(e) = std::fs::copy(item, &target_path) {
-                                    tracing::error!("Failed to copy file {:?}: {}", item, e);
-                                }
+                                std::fs::copy(item, &target_path).map(|_| ()).map_err(Into::into)
+                            };
+                            if let Err(e) = copy_result {
+                                tracing::error!("Failed to copy {:?}: {}", item, e);
                             }
                         }
                     }
