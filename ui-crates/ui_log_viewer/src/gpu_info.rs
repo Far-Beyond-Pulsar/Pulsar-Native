@@ -34,10 +34,10 @@ pub fn detect_primary_gpu() -> GpuInfo {
         ..Default::default()
     });
 
-    let adapters = instance.enumerate_adapters(Backends::all());
+    let adapters: Vec<wgpu::Adapter> = smol::block_on(instance.enumerate_adapters(Backends::all()));
 
     // Prefer discrete GPU, then integrated, then anything else.
-    let best = adapters.into_iter().max_by_key(|a| match a.get_info().device_type {
+    let best = adapters.into_iter().max_by_key(|a: &wgpu::Adapter| match a.get_info().device_type {
         wgpu::DeviceType::DiscreteGpu => 3,
         wgpu::DeviceType::IntegratedGpu => 2,
         wgpu::DeviceType::VirtualGpu => 1,

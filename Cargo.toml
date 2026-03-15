@@ -3,6 +3,9 @@ members = [
     "crates/*",
     "ui-crates/*",
 ]
+exclude = [
+    "crates/helio-feature-skies",  # blade-graphics based, replaced by helio-render-v2
+]
 
 default-members = ["crates/engine"]
 resolver = "2"
@@ -74,20 +77,9 @@ ui_fab_search         = { path = "ui-crates/ui_fab_search" }
 plugin_editor_api = { path = "crates/plugin_editor_api"}
 plugin_manager    = { path = "crates/plugin_manager" }
 
-# ---------- Helio Renderer (blade-graphics based) ----------
-helio-core                       = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "03e1e3d9693329b2ea0c5367e648d45b2e04dde7" }
-helio-render                     = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "03e1e3d9693329b2ea0c5367e648d45b2e04dde7" }
-helio-features                   = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "03e1e3d9693329b2ea0c5367e648d45b2e04dde7" }
-helio-feature-base-geometry      = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "03e1e3d9693329b2ea0c5367e648d45b2e04dde7" }
-helio-feature-lighting           = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "03e1e3d9693329b2ea0c5367e648d45b2e04dde7" }
-helio-feature-materials          = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "03e1e3d9693329b2ea0c5367e648d45b2e04dde7" }
-helio-feature-procedural-shadows = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "03e1e3d9693329b2ea0c5367e648d45b2e04dde7" }
-helio-feature-bloom              = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "03e1e3d9693329b2ea0c5367e648d45b2e04dde7" }
-helio-feature-billboards         = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "03e1e3d9693329b2ea0c5367e648d45b2e04dde7" }
-
-blade-graphics = { git = "https://github.com/tristanpoland/blade", rev = "d85bd14a78ed7729abc298906e87332257674a02"}
-blade-macros   = { git = "https://github.com/tristanpoland/blade", rev = "d85bd14a78ed7729abc298906e87332257674a02"}
-glam           = { version = "0.29", features = ["bytemuck"] }
+# ---------- Helio Renderer (wgpu-based v2) ----------
+helio-render-v2 = { path = "D:/Documents/GitHub/Helio/crates/helio-render-v2" }
+glam            = { version = "0.29", features = ["bytemuck"] }
 
 # ---------- Installer ----------
 # Local rustup fork used as a library to drive platform-native Rust installation.
@@ -95,7 +87,7 @@ glam           = { version = "0.29", features = ["bytemuck"] }
 rustup = { git = "https://github.com/tristanpoland/rustup", default-features = false, features = ["reqwest-native-tls"] }
 
 # ---------- Third-party ----------
-wgpu = "0.20.1"
+wgpu = { git = "https://github.com/gfx-rs/wgpu", rev = "fce5b80e8017304449124b12637ec324417e40c8" }
 anyhow = "1.0.100"
 log = "0.4.29"
 serde = { version = "1.0.228", features = ["derive"] }
@@ -122,6 +114,15 @@ ropey = { version = "=2.0.0-beta.1", features = ["metric_utf16", "metric_lines_l
 ###################################
 
 windows = {version = "0.62.2",features = ["Wdk","Wdk_System","Wdk_System_SystemServices","Win32_System_Threading","Win32_System_SystemInformation","Win32_Graphics_Direct3D","Win32_Graphics_Direct3D_Fxc","Win32_Graphics_Direct3D11","Win32_Graphics_Dxgi","Win32_Graphics_Dxgi_Common","Win32_Foundation",]}
+
+###################################
+# Patch: unify wgpu forks
+###################################
+
+# helio-render-v2 references Far-Beyond-Pulsar/wgpu; redirect to the same
+# gfx-rs/wgpu revision that WGPUI uses so all types are identical.
+[patch."https://github.com/Far-Beyond-Pulsar/wgpu"]
+wgpu = { git = "https://github.com/gfx-rs/wgpu", rev = "fce5b80e8017304449124b12637ec324417e40c8" }
 
 ###################################
 # Clippy Lints
