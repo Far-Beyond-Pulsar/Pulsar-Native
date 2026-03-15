@@ -6,8 +6,8 @@ use ui::{
     resizable::ResizableState,
     v_flex,
 };
-// Zero-copy Bevy viewport for 3D rendering
-use ui::bevy_viewport::{BevyViewport, BevyViewportState};
+// Bevy viewport — renders via WGPUI WgpuSurfaceHandle
+use ui::bevy_viewport::BevyViewport;
 
 use ui::settings::EngineSettings;
 use engine_backend::services::gpu_renderer::{GpuRenderer, GpuRendererBuilder};
@@ -37,9 +37,8 @@ pub struct LevelEditorPanel {
     // UI Components
     toolbar: ToolbarPanel,
 
-    // Zero-copy Bevy viewport for 3D rendering
+    // Bevy viewport — renders via WGPUI WgpuSurfaceHandle
     viewport: Entity<BevyViewport>,
-    viewport_state: Arc<parking_lot::RwLock<BevyViewportState>>,
     gpu_engine: Arc<Mutex<GpuRenderer>>, // Full GPU renderer from backend
     render_enabled: Arc<std::sync::atomic::AtomicBool>,
     
@@ -73,9 +72,8 @@ impl LevelEditorPanel {
 
         let _max_viewport_fps = settings.advanced.max_viewport_fps;
 
-        // Create Bevy viewport with zero-copy shared textures
-        let viewport = cx.new(|cx| BevyViewport::new(1600, 900, cx));
-        let viewport_state = viewport.read(cx).shared_state();
+        // Create the Bevy viewport — surface assigned below after wgpu surface creation.
+        let viewport = cx.new(|cx| BevyViewport::new(cx));
         
         // Get the central GameThread from the global EngineBackend
         let (game_thread, physics_query) = match engine_backend::EngineBackend::global() {
@@ -103,9 +101,18 @@ impl LevelEditorPanel {
         // panels hold the same Arc. All reads/writes go to the same atomic storage.
         let scene_db = Arc::new(SceneDb::new());
 
+        // Create WGPUI wgpu surface so helio-render-v2 can render into WGPUI's compositor.
+        let surface_handle = window
+            .create_wgpu_surface(1600, 900, wgpu::TextureFormat::Bgra8UnormSrgb)
+            .expect("Failed to create WGPUI wgpu surface for the 3D viewport");
+
+        // Wire the surface into the viewport element.
+        viewport.update(cx, |vp, _cx| vp.set_surface(surface_handle.clone()));
+
         // Create GPU render engine sharing the scene_db Arc and physics query service
         let mut renderer_builder = GpuRendererBuilder::new(1600, 900)
-            .scene_db(scene_db.clone());
+            .scene_db(scene_db.clone())
+            .surface(surface_handle);
         if let Some(pq) = physics_query {
             renderer_builder = renderer_builder.physics(pq);
         }
@@ -142,7 +149,6 @@ impl LevelEditorPanel {
             fps_graph_is_line: Rc::new(RefCell::new(true)),
             toolbar: ToolbarPanel::new(),
             viewport,
-            viewport_state,
             gpu_engine: gpu_engine.clone(),
             render_enabled,
             game_thread: game_thread.clone(),
@@ -766,43 +772,9 @@ impl Render for LevelEditorPanel {
         // Initialize workspace on first render
         self.initialize_workspace(window, cx);
         
-        // Sync viewport buffer index with Bevy's read index each frame
-        // ALSO sync selection state from Bevy back to GPUI
+        // Sync selection / gizmo tool state to the backend renderer each frame.
         if let Ok(engine_guard) = self.gpu_engine.try_lock() {
             if let Some(ref helio_renderer) = engine_guard.helio_renderer {
-                let read_idx = helio_renderer.get_read_index();
-                let mut state = self.viewport_state.write();
-                state.set_active_buffer(read_idx);
-
-                // BIDIRECTIONAL SYNC: Poll Bevy's gizmo state for selection changes
-                // DISABLED: Gizmo interaction is currently disabled, and this was causing
-                // Bevy's None selection to override GPUI selections on every frame
-                /*
-                if let Ok(bevy_gizmo) = helio_renderer.gizmo_state.try_lock() {
-                    let bevy_selected_id = bevy_gizmo.selected_object_id.clone();
-                    let bevy_updated_flag = bevy_gizmo.updated_object_id.clone(); // Check if Bevy made a change
-                    drop(bevy_gizmo); // Release lock immediately
-                    
-                    // Only sync FROM Bevy if Bevy actually updated something
-                    // This prevents overwriting GPUI-initiated selections
-                    if bevy_updated_flag.is_some() {
-                        let gpui_selected_id = self.shared_state.read().selected_object();
-                        
-                        if bevy_selected_id != gpui_selected_id {
-                            // Bevy has a different selection - sync to GPUI!
-                            if let Some(ref new_id) = bevy_selected_id {
-                                                                self.shared_state.write().select_object(Some(new_id.clone()));
-                                cx.notify(); // Trigger UI update
-                            } else {
-                                // Bevy deselected
-                                                                self.shared_state.write().select_object(None);
-                                cx.notify();
-                            }
-                        }
-                    }
-                }
-                */
-                
                 // TRANSFORM SYNC: Poll for transform updates from Bevy (e.g., from gizmo dragging)
                 if let Ok(bevy_gizmo) = helio_renderer.gizmo_state.try_lock() {
                     // Handle transform updates from gizmo (disabled - gizmos removed)
