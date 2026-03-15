@@ -18,11 +18,12 @@ pub fn folder_context_menu(
 ) -> impl Fn(ui::popup_menu::PopupMenu, &mut Window, &mut Context<ui::popup_menu::PopupMenu>) -> ui::popup_menu::PopupMenu + 'static {
     move |menu, window, cx| {
         let file_types_clone = file_types.clone();
+        let path_str = path.to_string_lossy().to_string();
         
         let mut menu = menu
             .submenu_with_icon(Some(ui::Icon::new(ui::IconName::Plus)), &t!("FileManager.NewFolder").to_string(), window, cx, move |submenu, window, cx| {
                 let mut submenu = submenu
-                    .menu_with_icon(&t!("FileManager.NewFolder").to_string(), ui::Icon::new(ui::IconName::FolderPlus), Box::new(NewFolder::default()))
+                    .menu_with_icon(&t!("FileManager.NewFolder").to_string(), ui::Icon::new(ui::IconName::FolderPlus), Box::new(NewFolder { folder_path: path_str.clone() }))
                     .separator();
 
                 // Build category tree structure

@@ -49,36 +49,50 @@ impl FileManagerDrawer {
         }
     }
 
-    pub fn handle_new_folder(&mut self, _action: &NewFolder, cx: &mut Context<Self>) {
-        if let Some(folder) = &self.selected_folder {
-            // Create folder with unique name
-            let mut counter = 1;
-            let mut folder_name = "NewFolder".to_string();
-            let mut folder_path = folder.join(&folder_name);
+    pub fn handle_new_folder(&mut self, action: &NewFolder, cx: &mut Context<Self>) {
+        // Resolve the target folder: prefer the path embedded in the action (set by
+        // the context-menu builder) so the creation always goes to the right place
+        // even if `selected_folder` has drifted due to tree selection.
+        let base_folder = if !action.folder_path.is_empty() {
+            Some(std::path::PathBuf::from(&action.folder_path))
+        } else {
+            self.selected_folder.clone()
+        };
 
-            while engine_fs::virtual_fs::is_remote() && engine_fs::virtual_fs::exists(&folder_path).unwrap_or(false)
-                || !engine_fs::virtual_fs::is_remote() && folder_path.exists()
-            {
-                folder_name = format!("NewFolder_{}", counter);
-                folder_path = folder.join(&folder_name);
-                counter += 1;
-            }
+        let Some(folder) = base_folder else { return; };
 
-            // Create the folder
-            let mkdir_result = if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(&folder_path) {
-                engine_fs::virtual_fs::create_dir_all(&folder_path)
-            } else {
-                std::fs::create_dir(&folder_path).map_err(Into::into)
-            };
-            if let Err(e) = mkdir_result {
-                tracing::error!("Failed to create folder {:?}: {}", folder_path, e);
-            } else {
-                // Refresh the folder tree
-                if let Some(ref path) = self.project_path {
-                    self.folder_tree = FolderNode::from_path(path);
-                }
-                cx.notify();
-            }
+        // Create folder with unique name
+        let mut counter = 1;
+        let mut folder_name = "NewFolder".to_string();
+        let mut folder_path = folder.join(&folder_name);
+
+        while engine_fs::virtual_fs::is_remote() && engine_fs::virtual_fs::exists(&folder_path).unwrap_or(false)
+            || !engine_fs::virtual_fs::is_remote() && folder_path.exists()
+        {
+            folder_name = format!("NewFolder_{}", counter);
+            folder_path = folder.join(&folder_name);
+            counter += 1;
+        }
+
+        // Ensure the selected_folder tracks the creation target so the content
+        // panel shows the right directory when rename mode opens.
+        self.selected_folder = Some(folder.clone());
+
+        // Create the folder
+        let mkdir_result = if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(&folder_path) {
+            engine_fs::virtual_fs::create_dir_all(&folder_path)
+        } else {
+            std::fs::create_dir(&folder_path).map_err(Into::into)
+        };
+        if let Err(e) = mkdir_result {
+            tracing::error!("Failed to create folder {:?}: {}", folder_path, e);
+        } else {
+            // Enter inline-rename mode so the user names it immediately.
+            // Do NOT rebuild the folder tree here — the content panel reads its
+            // directory fresh each frame via `get_filtered_items`, so the new
+            // folder appears automatically without wiping the tree expansion state.
+            self.renaming_item = Some(folder_path);
+            cx.notify();
         }
     }
 
