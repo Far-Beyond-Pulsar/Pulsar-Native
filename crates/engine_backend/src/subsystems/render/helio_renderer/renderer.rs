@@ -4,15 +4,8 @@ use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}, mpsc};
 use std::time::Instant;
 use glam::{Vec3, Quat, Mat4};
 
-use helio_render_v2::{
-    Renderer as HelioV2,
-    RendererConfig,
-    Camera,
-    FeatureRegistry,
-    LightingFeature, BloomFeature, ShadowsFeature, BillboardsFeature,
-    SceneLight,
-    GpuMesh,
-};
+use helio_render_v2::{Renderer as HelioV2, RendererConfig, Camera, SceneLight, GpuMesh};
+use helio_render_v2::features::{FeatureRegistry, LightingFeature, BloomFeature, ShadowsFeature, BillboardsFeature};
 use gpui::WgpuSurfaceHandle;
 
 use super::core::{CameraInput, RenderMetrics, GpuProfilerData};
@@ -173,7 +166,7 @@ impl HelioRenderer {
 
         // Create a ground plane mesh
         let ground_mesh = renderer.create_mesh_plane([0.0, -0.01, 0.0], 50.0);
-        renderer.add_object(ground_mesh.clone(), glam::Mat4::IDENTITY);
+        renderer.add_object(&ground_mesh, None, glam::Mat4::IDENTITY);
 
         // Camera state
         let mut cam_pos   = Vec3::new(0.0, 5.0, 15.0);

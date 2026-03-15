@@ -6,13 +6,8 @@ pub mod core;
 // Gizmo stub types (no rendering, just type definitions)
 pub mod gizmo_types;
 
-// Gizmo generation definitions
-pub mod gizmos;
-
-// Scene building system
-pub mod scene_builder;
-
 // Disabled blade-graphics modules (kept as files for future reference):
+// - gizmos, scene_builder: used helio_core/helio_render which are removed
 // - gizmo_overlay, gizmo_feature, debug_line_renderer: use helio_render_v2::debug_draw when re-implemented
 // - dxgi_textures, dxgi_unsafe, blade_d3d12_ext, helio_d3d12_ext: blade/DXGI path removed
 
