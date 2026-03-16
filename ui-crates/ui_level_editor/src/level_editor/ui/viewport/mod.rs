@@ -55,6 +55,9 @@ pub struct ViewportPanel {
     /// Render enable/disable flag
     render_enabled: Arc<AtomicBool>,
 
+    /// Element bounds for coordinate conversion
+    element_bounds: Rc<RefCell<Option<Bounds<Pixels>>>>,
+
     /// Performance metrics tracking
     metrics: RefCell<PerformanceMetrics>,
 
@@ -105,6 +108,7 @@ impl ViewportPanel {
             viewport,
             viewport_controls: ViewportControls::new(),
             render_enabled,
+            element_bounds: Rc::new(RefCell::new(None)),
             metrics: RefCell::new(PerformanceMetrics::new()),
             input_state,
             input_thread_spawned: Arc::new(AtomicBool::new(false)),
@@ -406,6 +410,7 @@ impl ViewportPanel {
         V: EventEmitter<ui::dock::PanelEvent> + Render,
     {
         let viewport_hovered = self.viewport_hovered.clone();
+        let element_bounds = self.element_bounds.clone();
         let viewport_entity = self.viewport.clone();
 
         // Get performance data
@@ -435,14 +440,19 @@ impl ViewportPanel {
         let mouse_right_captured = self.mouse_right_captured.clone();
         let mouse_middle_captured = self.mouse_middle_captured.clone();
         let gpu_engine_for_click = gpu_engine.clone();
+        let element_bounds_for_prepaint = self.element_bounds.clone();
+        let element_bounds_for_click = self.element_bounds.clone();
         let state_arc_scroll = state_arc.clone();
+        let gpu_engine_clone = gpu_engine.clone();
         let locked_cursor_x = self.locked_cursor_x.clone();
         let locked_cursor_y = self.locked_cursor_y.clone();
         let locked_cursor_screen_x = self.locked_cursor_screen_x.clone();
         let locked_cursor_screen_y = self.locked_cursor_screen_y.clone();
 
         // For mouse move tracking
+        let element_bounds_move = self.element_bounds.clone();
         let gpu_engine_move = gpu_engine.clone();
+        let last_mouse_pos = Rc::new(RefCell::new(None::<(f32, f32)>));
 
         // Main viewport container
         div()
@@ -451,7 +461,48 @@ impl ViewportPanel {
             .flex_1()
             .size_full()
             .relative()
+            // TRANSPARENT - no background! This creates the "hole" to see Bevy rendering
             .rounded(cx.theme().radius)
+            // CRITICAL: Capture element bounds and update Bevy camera viewport
+            .on_children_prepainted(move |children_bounds: Vec<Bounds<Pixels>>, _window, _cx| {
+                if !children_bounds.is_empty() {
+                    let mut min_x = f32::MAX;
+                    let mut min_y = f32::MAX;
+                    let mut max_x = f32::MIN;
+                    let mut max_y = f32::MIN;
+
+                    for bounds in &children_bounds {
+                        let bounds_min_x: f32 = bounds.origin.x.into();
+                        let bounds_min_y: f32 = bounds.origin.y.into();
+                        let bounds_width: f32 = bounds.size.width.into();
+                        let bounds_height: f32 = bounds.size.height.into();
+
+                        min_x = min_x.min(bounds_min_x);
+                        min_y = min_y.min(bounds_min_y);
+                        max_x = max_x.max(bounds_min_x + bounds_width);
+                        max_y = max_y.max(bounds_min_y + bounds_height);
+                    }
+
+                    let bounds = Bounds {
+                        origin: point(px(min_x), px(min_y)),
+                        size: size(px(max_x - min_x), px(max_y - min_y)),
+                    };
+
+                    *element_bounds_for_prepaint.borrow_mut() = Some(bounds);
+
+                    // Update Bevy camera viewport to match GPUI viewport bounds
+                    if let Ok(engine) = gpu_engine_clone.try_lock() {
+                        if let Some(ref helio_renderer) = engine.helio_renderer {
+                            if let Ok(mut camera_input) = helio_renderer.camera_input.try_lock() {
+                                camera_input.viewport_x = min_x;
+                                camera_input.viewport_y = min_y;
+                                camera_input.viewport_width = max_x - min_x;
+                                camera_input.viewport_height = max_y - min_y;
+                            }
+                        }
+                    }
+                }
+            })
             // Track mouse movement and update Bevy input
             .on_mouse_move({
                 let input_state_clone = self.input_state.clone();
@@ -524,19 +575,52 @@ impl ViewportPanel {
                     drop(state);
 
                     // Update Bevy mouse input
-                    let window_size = window.viewport_size();
-                    let viewport_width: f32 = window_size.width.into();
-                    let viewport_height: f32 = window_size.height.into();
-                    let pos_x: f32 = event.position.x.into();
-                    let pos_y: f32 = event.position.y.into();
-                    let normalized_x = (pos_x / viewport_width).clamp(0.0, 1.0);
-                    let normalized_y = (pos_y / viewport_height).clamp(0.0, 1.0);
+                    let bounds_opt = element_bounds_move.borrow();
+                    let (element_x, element_y, viewport_width, viewport_height) = if let Some(ref bounds) = *bounds_opt {
+                        let origin_x: f32 = bounds.origin.x.into();
+                        let origin_y: f32 = bounds.origin.y.into();
+                        let width: f32 = bounds.size.width.into();
+                        let height: f32 = bounds.size.height.into();
+                        let pos_x: f32 = event.position.x.into();
+                        let pos_y: f32 = event.position.y.into();
+                        (pos_x - origin_x, pos_y - origin_y, width, height)
+                    } else {
+                        return;
+                    };
+
+                    let normalized_x = (element_x / viewport_width).clamp(0.0, 1.0);
+                    let normalized_y = (element_y / viewport_height).clamp(0.0, 1.0);
+
+                    let mut last_pos = last_mouse_pos.borrow_mut();
+                    let (delta_x, delta_y) = if let Some((last_x, last_y)) = *last_pos {
+                        (normalized_x - last_x, normalized_y - last_y)
+                    } else {
+                        (0.0, 0.0)
+                    };
+
+                    *last_pos = Some((normalized_x, normalized_y));
+                    drop(last_pos);
 
                     if let Ok(engine) = gpu_engine_move.try_lock() {
                         if let Some(ref helio_renderer) = engine.helio_renderer {
+                            // Get viewport bounds from element_bounds if available
+                            let viewport_bounds = if let Some(ref bounds) = *bounds_opt {
+                                Some(engine_backend::subsystems::render::helio_renderer::gizmo_types::ViewportBounds {
+                                    x: bounds.origin.x.into(),
+                                    y: bounds.origin.y.into(),
+                                    width: bounds.size.width.into(),
+                                    height: bounds.size.height.into(),
+                                })
+                            } else {
+                                None
+                            };
+                            
                             let mut mouse_input = helio_renderer.viewport_mouse_input.lock();
                             mouse_input.mouse_pos.x = normalized_x;
                             mouse_input.mouse_pos.y = normalized_y;
+                            mouse_input.mouse_delta.x = delta_x;
+                            mouse_input.mouse_delta.y = delta_y;
+                            mouse_input.viewport_bounds = viewport_bounds;
                         }
                     }
                 }
@@ -621,26 +705,66 @@ impl ViewportPanel {
             // Left-click for object selection
             .on_mouse_down(gpui::MouseButton::Left, {
                 let gpu_engine_click = gpu_engine_for_click.clone();
+                let element_bounds = element_bounds_for_click.clone();
 
                 move |event: &gpui::MouseDownEvent, window: &mut gpui::Window, _cx: &mut gpui::App| {
-                    let window_size = window.viewport_size();
-                    let pos_x: f32 = event.position.x.into();
-                    let pos_y: f32 = event.position.y.into();
-                    let viewport_width: f32 = window_size.width.into();
-                    let viewport_height: f32 = window_size.height.into();
-                    let normalized_x = (pos_x / viewport_width).clamp(0.0, 1.0);
-                    let normalized_y = (pos_y / viewport_height).clamp(0.0, 1.0);
+                    let bounds_opt = element_bounds.borrow();
+                    let (element_x, element_y, gpui_width, gpui_height) = if let Some(ref bounds) = *bounds_opt {
+                        let origin_x: f32 = bounds.origin.x.into();
+                        let origin_y: f32 = bounds.origin.y.into();
+                        let width: f32 = bounds.size.width.into();
+                        let height: f32 = bounds.size.height.into();
+                        let pos_x: f32 = event.position.x.into();
+                        let pos_y: f32 = event.position.y.into();
+                        (pos_x - origin_x, pos_y - origin_y, width, height)
+                    } else {
+                        let window_size = window.viewport_size();
+                        let pos_x: f32 = event.position.x.into();
+                        let pos_y: f32 = event.position.y.into();
+                        let width: f32 = window_size.width.into();
+                        let height: f32 = window_size.height.into();
+                        (pos_x, pos_y, width, height)
+                    };
 
                     if let Ok(engine) = gpu_engine_click.try_lock() {
                         if let Some(ref helio_renderer) = engine.helio_renderer {
+                            // The Bevy renderer draws to the full window (e.g. 1920x1080)
+                            // while the GPUI viewport is just a "hole" in the UI that shows it
+                            // We need to map from the click position within the GPUI viewport bounds
+                            // to normalized coordinates (0-1) within the GPUI viewport area
+                            let normalized_x = (element_x / gpui_width).clamp(0.0, 1.0);
+                            let normalized_y = (element_y / gpui_height).clamp(0.0, 1.0);
+                            
+                            // Get viewport bounds from element_bounds if available
+                            let viewport_bounds = if let Some(ref bounds) = *bounds_opt {
+                                Some(engine_backend::subsystems::render::helio_renderer::gizmo_types::ViewportBounds {
+                                    x: bounds.origin.x.into(),
+                                    y: bounds.origin.y.into(),
+                                    width: bounds.size.width.into(),
+                                    height: bounds.size.height.into(),
+                                })
+                            } else {
+                                None
+                            };
+                            
+                            tracing::info!(
+                                "[VIEWPORT] 🖱️ Left click:\n  Screen: ({}, {})\n  GPUI element: ({:.2}, {:.2}) in viewport {}x{}\n  Normalized: ({:.4}, {:.4})",
+                                event.position.x, event.position.y, 
+                                element_x, element_y, gpui_width, gpui_height,
+                                normalized_x, normalized_y
+                            );
+                            
                             // TODO: Check for gizmo interaction first
                             // If a gizmo axis is clicked, start drag operation
                             // Otherwise, do object selection raycast
+                            
                             let mut mouse_input = helio_renderer.viewport_mouse_input.lock();
                             mouse_input.left_clicked = true;
                             mouse_input.left_down = true;
                             mouse_input.mouse_pos.x = normalized_x;
                             mouse_input.mouse_pos.y = normalized_y;
+                            mouse_input.viewport_bounds = viewport_bounds;
+                            tracing::info!("[VIEWPORT] 🎯 Sent mouse input to Bevy: pos=({:.4}, {:.4}), clicked=true", normalized_x, normalized_y);
                         }
                     }
                 }

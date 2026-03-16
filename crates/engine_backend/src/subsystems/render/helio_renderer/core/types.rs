@@ -1,7 +1,10 @@
 //! Core data types for the Helio renderer
+//! These match BevyRenderer's API but use glam instead of Bevy types
 
 use glam::Vec3;
 use std::sync::{Arc, Mutex};
+// compatibility shim: gpui no longer exports these types
+use ui::GpuTextureHandle;
 
 /// Rendering metrics
 #[derive(Debug, Clone, Default)]
@@ -107,4 +110,19 @@ impl CameraInput {
             needs_resize: false,
         }
     }
+}
+
+
+/// Shared GPU textures for double-buffered rendering
+/// Uses blade-graphics textures instead of Bevy Image handles
+#[derive(Clone)]
+pub struct SharedGpuTextures {
+    // We'll store blade_graphics::Texture handles here
+    // For now, use placeholder type that we'll fill in during DXGI integration
+    pub native_handles: Arc<Mutex<Option<[GpuTextureHandle; 2]>>>,
+    pub write_index: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    pub read_index: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    pub frame_number: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    pub width: u32,
+    pub height: u32,
 }

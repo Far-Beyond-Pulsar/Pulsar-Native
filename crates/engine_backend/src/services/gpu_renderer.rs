@@ -1,12 +1,13 @@
-// GPU Renderer — thin wrapper around HelioRenderer v2 (helio-render-v2 + WGPUI surface)
+// OPTIMIZED: Wrapper around the Helio renderer (blade-graphics)
+// Migrated from Bevy to Helio for better performance and control
 
-use crate::subsystems::render::{HelioRenderer, RenderMetrics, GpuProfilerData, CameraInput};
+use crate::subsystems::render::{HelioRenderer, RenderMetrics};
 use crate::scene::SceneDb;
-use gpui::WgpuSurfaceHandle;
 use std::sync::{Arc, Mutex, Once};
+use ui::GpuTextureHandle;
 use std::time::Instant;
 
-/// Simple framebuffer structure kept for API compatibility (no longer used for rendering).
+/// Simple framebuffer structure for compatibility
 pub struct ViewportFramebuffer {
     pub buffer: Vec<u8>,
     pub width: u32,
@@ -33,7 +34,8 @@ fn get_runtime() -> &'static tokio::runtime::Runtime {
 /// ```rust,ignore
 /// let renderer = GpuRendererBuilder::new(1920, 1080)
 ///     .scene_db(scene_db)
-///     .surface(surface_handle)
+///     .game_thread(game_state)
+///     .physics(physics_query)
 ///     .build();
 /// ```
 pub struct GpuRendererBuilder {
@@ -42,7 +44,6 @@ pub struct GpuRendererBuilder {
     scene_db: Option<Arc<SceneDb>>,
     game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
     physics_query: Option<Arc<crate::services::PhysicsQueryService>>,
-    surface_handle: Option<WgpuSurfaceHandle>,
 }
 
 impl GpuRendererBuilder {
@@ -53,7 +54,6 @@ impl GpuRendererBuilder {
             scene_db: None,
             game_thread_state: None,
             physics_query: None,
-            surface_handle: None,
         }
     }
 
@@ -72,61 +72,44 @@ impl GpuRendererBuilder {
         self
     }
 
-    /// Provide the WGPUI surface handle. If not provided the renderer thread will
-    /// spin until one is supplied via `GpuRenderer::set_surface_handle`.
-    pub fn surface(mut self, handle: WgpuSurfaceHandle) -> Self {
-        self.surface_handle = Some(handle);
-        self
-    }
-
     pub fn build(self) -> GpuRenderer {
         let width = self.display_width;
         let height = self.display_height;
         let scene_db = self.scene_db.unwrap_or_else(|| Arc::new(SceneDb::new()));
         let game_thread_state = self.game_thread_state;
         let physics_query = self.physics_query;
-        let surface_handle = self.surface_handle;
 
-        tracing::info!("[GPU-RENDERER] 🚀 Initializing Helio v2 renderer at {}x{}", width, height);
-
-        let pending_surface: Arc<Mutex<Option<WgpuSurfaceHandle>>> =
-            Arc::new(Mutex::new(surface_handle));
-
-        let pending_clone = pending_surface.clone();
-        let scene_db_clone = scene_db.clone();
+        tracing::info!("[GPU-RENDERER] 🚀 Initializing Helio renderer (blade-graphics) at {}x{}", width, height);
 
         let runtime = get_runtime();
+        let scene_db_clone = scene_db.clone();
         let helio_renderer = runtime.block_on(async move {
-            // Wait up to 30 s for a surface to appear
-            let surface = {
-                let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(30);
-                loop {
-                    {
-                        let mut guard = pending_clone.lock().unwrap();
-                        if let Some(h) = guard.take() {
-                            break h;
-                        }
-                    }
-                    if tokio::time::Instant::now() > deadline {
-                        tracing::error!("[GPU-RENDERER] ❌ Timed out waiting for WgpuSurfaceHandle");
-                        return None;
-                    }
-                    tokio::time::sleep(tokio::time::Duration::from_millis(16)).await;
+            tracing::debug!("[GPU-RENDERER] Creating Helio renderer asynchronously...");
+            match tokio::time::timeout(
+                tokio::time::Duration::from_secs(10),
+                HelioRenderer::new_with_all(width, height, game_thread_state, scene_db_clone, physics_query)
+            ).await {
+                Ok(renderer) => {
+                    tracing::info!("[GPU-RENDERER] ✅ Helio renderer created successfully!");
+                    Some(renderer)
                 }
-            };
-
-            tracing::info!("[GPU-RENDERER] ✅ WgpuSurfaceHandle received, creating renderer");
-            Some(HelioRenderer::new_with_all(
-                width, height, surface,
-                game_thread_state, scene_db_clone, physics_query,
-            ).await)
+                Err(_) => {
+                    tracing::error!("[GPU-RENDERER] ⚠️  Helio renderer creation timed out!");
+                    None
+                }
+            }
         });
+
+        if helio_renderer.is_none() {
+            tracing::error!("[GPU-RENDERER] Failed to create Helio renderer!");
+        }
 
         GpuRenderer {
             helio_renderer,
-            pending_surface,
             render_width: width,
             render_height: height,
+            display_width: width,
+            display_height: height,
             frame_count: 0,
             start_time: Instant::now(),
             last_metrics_print: Instant::now(),
@@ -134,39 +117,122 @@ impl GpuRendererBuilder {
     }
 }
 
-/// GPU Renderer — proxy to the HelioRenderer v2 render thread.
+/// OPTIMIZED GPU Renderer - uses Helio with blade-graphics.
+///
+/// Migrated from Bevy to Helio for:
+/// - Better performance with blade-graphics
+/// - More direct control over rendering pipeline
+/// - Simplified architecture
+///
+/// Prefer constructing via [`GpuRendererBuilder`].
 pub struct GpuRenderer {
     pub helio_renderer: Option<HelioRenderer>,
-    /// Receives a WgpuSurfaceHandle after construction when needed.
-    pending_surface: Arc<Mutex<Option<WgpuSurfaceHandle>>>,
     render_width: u32,
     render_height: u32,
+    display_width: u32,
+    display_height: u32,
     frame_count: u64,
     start_time: Instant,
     last_metrics_print: Instant,
 }
 
 impl GpuRenderer {
-    /// Supply the surface handle after construction (used when `panel.rs` calls
-    /// `window.create_wgpu_surface()` and then needs to hand the handle to the renderer).
-    pub fn set_surface_handle(&self, handle: WgpuSurfaceHandle) {
-        if let Ok(mut guard) = self.pending_surface.lock() {
-            *guard = Some(handle);
-        }
-    }
-
-    /// Tick — logs metrics periodically.
     pub fn render(&mut self, _framebuffer: &mut ViewportFramebuffer) {
         self.frame_count += 1;
 
+        // IMMEDIATE MODE: No rendering here!
+        // Viewport should call get_native_texture_handle() and use GPUI's immediate mode
+        // This method is just a stub for compatibility
+
         if let Some(ref renderer) = self.helio_renderer {
+            // Print metrics periodically
             if self.last_metrics_print.elapsed().as_secs() >= 5 {
-                let m = renderer.get_metrics();
-                tracing::info!(
-                    "[GPU-RENDERER] FPS: {:.1}  frame: {:.2}ms  total: {}",
-                    m.fps, m.frame_time_ms, m.frames_rendered
-                );
+                let metrics = renderer.get_metrics();
+                let fps = self.get_fps();
+                tracing::info!("\n[GPU-RENDERER] 🚀 Helio Renderer Stats:");
+                tracing::info!("  Frames rendered: {}", metrics.frames_rendered);
+                tracing::info!("  FPS: {:.1}", metrics.fps);
+                tracing::info!("  Frame time: {:.2}ms", metrics.frame_time_ms);
                 self.last_metrics_print = Instant::now();
+            }
+        }
+    }
+
+    /// TRUE ZERO-COPY: Get native GPU texture handle for immediate-mode rendering
+    /// NO buffers, NO copies - just a raw pointer for GPUI to display!
+    pub fn get_native_texture_handle(&self) -> Option<GpuTextureHandle> {
+        let renderer = self.helio_renderer.as_ref()?;
+        let shared_textures = renderer.shared_textures.lock().ok()?;
+        let textures = shared_textures.as_ref()?;
+        
+        // Get the read handle from the double-buffered array
+        let handles = textures.native_handles.lock().ok()?;
+        let handle_array = handles.as_ref()?;
+        
+        let read_idx = textures.read_index.load(std::sync::atomic::Ordering::Relaxed);
+        let handle = handle_array[read_idx].clone();
+        
+        tracing::debug!("[GPU-RENDERER] Returning DXGI handle[{}]: {:?}", read_idx, handle);
+        Some(handle)
+    }
+
+    /// DEPRECATED: Use get_native_texture_handle() + immediate mode instead!
+    /// This method does NOTHING in zero-copy mode
+    pub fn render_to_buffer(&mut self, _gpu_buffer: &mut [u8]) {
+        // NO-OP in TRUE zero-copy mode
+        // Viewport should use get_native_texture_handle() and GPUI immediate rendering
+    }
+
+    fn render_fallback(&self, framebuffer: &mut ViewportFramebuffer) {
+        // Render a simple animated pattern to show the system works
+        let time = self.frame_count as f32 * 0.016;
+
+        for y in 0..framebuffer.height {
+            for x in 0..framebuffer.width {
+                let idx = ((y * framebuffer.width + x) * 4) as usize;
+
+                let u = x as f32 / framebuffer.width as f32;
+                let v = y as f32 / framebuffer.height as f32;
+
+                // Create a moving gradient pattern
+                let r = ((u + time.sin() * 0.5).sin() * 128.0 + 127.0) as u8;
+                let g = ((v + time.cos() * 0.5).cos() * 128.0 + 127.0) as u8;
+                let b = (((u + v) * 2.0 + time).sin() * 128.0 + 127.0) as u8;
+
+                if idx + 3 < framebuffer.buffer.len() {
+                    framebuffer.buffer[idx] = r;
+                    framebuffer.buffer[idx + 1] = g;
+                    framebuffer.buffer[idx + 2] = b;
+                    framebuffer.buffer[idx + 3] = 255;
+                }
+            }
+        }
+
+        framebuffer.generation += 1;
+    }
+
+    fn render_fallback_to_buffer(&self, buffer: &mut [u8]) {
+        let time = self.frame_count as f32 * 0.016;
+        let pixel_count = buffer.len() / 4;
+        let width = self.display_width;
+
+        for i in 0..pixel_count {
+            let idx = i * 4;
+            let x = (i as u32 % width) as f32;
+            let y = (i as u32 / width) as f32;
+
+            let u = x / width as f32;
+            let v = y / self.display_height as f32;
+
+            let r = ((u + time.sin() * 0.5).sin() * 128.0 + 127.0) as u8;
+            let g = ((v + time.cos() * 0.5).cos() * 128.0 + 127.0) as u8;
+            let b = (((u + v) * 2.0 + time).sin() * 128.0 + 127.0) as u8;
+
+            if idx + 3 < buffer.len() {
+                buffer[idx] = r;
+                buffer[idx + 1] = g;
+                buffer[idx + 2] = b;
+                buffer[idx + 3] = 255;
             }
         }
     }
@@ -177,47 +243,82 @@ impl GpuRenderer {
 
     pub fn get_fps(&self) -> f32 {
         let elapsed = self.start_time.elapsed().as_secs_f32();
-        if elapsed > 0.0 { self.frame_count as f32 / elapsed } else { 0.0 }
+        if elapsed > 0.0 {
+            self.frame_count as f32 / elapsed
+        } else {
+            0.0
+        }
     }
-
+    
+    /// Get Helio renderer FPS (actual render engine frame rate)
     pub fn get_helio_fps(&self) -> f32 {
-        self.helio_renderer.as_ref().map_or(0.0, |r| r.get_metrics().fps)
+        if let Some(ref renderer) = self.helio_renderer {
+            let metrics = renderer.get_metrics();
+            metrics.fps
+        } else {
+            0.0
+        }
     }
-
+    
+    /// Get comprehensive render metrics
     pub fn get_render_metrics(&self) -> Option<RenderMetrics> {
         self.helio_renderer.as_ref().map(|r| r.get_metrics())
     }
-
-    pub fn get_gpu_profiler_data(&self) -> Option<GpuProfilerData> {
+    
+    /// Get pipeline time in microseconds
+    pub fn get_pipeline_time_us(&self) -> u64 {
+        if let Some(ref renderer) = self.helio_renderer {
+            renderer.get_metrics().pipeline_time_us as u64
+        } else {
+            0
+        }
+    }
+    
+    /// Get GPU time in microseconds
+    pub fn get_gpu_time_us(&self) -> u64 {
+        if let Some(ref renderer) = self.helio_renderer {
+            renderer.get_metrics().gpu_time_us as u64
+        } else {
+            0
+        }
+    }
+    
+    /// Get CPU time in microseconds
+    pub fn get_cpu_time_us(&self) -> u64 {
+        if let Some(ref renderer) = self.helio_renderer {
+            renderer.get_metrics().cpu_time_us as u64
+        } else {
+            0
+        }
+    }
+    
+    /// Get detailed GPU pipeline profiling data
+    pub fn get_gpu_profiler_data(&self) -> Option<crate::subsystems::render::GpuProfilerData> {
         self.helio_renderer.as_ref().map(|r| r.get_gpu_profiler_data())
     }
 
-    /// Returns the last GPU pipeline execution time in microseconds.
-    /// With helio-render-v2, detailed pipeline timing comes from `GpuProfilerData`;
-    /// this convenience method returns the total frame time converted to µs.
-    pub fn get_pipeline_time_us(&self) -> u64 {
-        self.helio_renderer
-            .as_ref()
-            .map(|r| {
-                let m = r.get_metrics();
-                (m.frame_time_ms * 1000.0) as u64
-            })
-            .unwrap_or(0)
-    }
-
-    pub fn update_camera_input(&mut self, input: CameraInput) {
+    /// Update camera input for Unreal-style controls
+    pub fn update_camera_input(&mut self, input: crate::subsystems::render::CameraInput) {
         if let Some(ref renderer) = self.helio_renderer {
-            if let Ok(mut cam) = renderer.camera_input.lock() {
-                *cam = input;
+            // Update camera input in shared state
+            if let Ok(mut camera_input) = renderer.camera_input.lock() {
+                *camera_input = input;
             }
         }
     }
 
-    pub fn resize(&mut self, width: u32, height: u32) {
-        self.render_width  = width;
-        self.render_height = height;
-        tracing::info!("[GPU-RENDERER] Resize to {}x{}", width, height);
-        // Surface handle resize is handled by the WgpuSurface element in WGPUI
+    pub fn resize(&mut self, display_width: u32, display_height: u32) {
+        if self.display_width != display_width || self.display_height != display_height {
+            self.render_width = display_width;
+            self.render_height = display_height;
+            self.display_width = display_width;
+            self.display_height = display_height;
+            
+            tracing::info!("[GPU-RENDERER] Resizing to {}x{}", display_width, display_height);
+            
+            // TODO: Implement resize for Helio renderer
+            // Need to recreate render targets at new resolution
+        }
     }
 }
 
