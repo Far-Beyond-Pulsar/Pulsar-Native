@@ -6,11 +6,12 @@ publish = false
 
 [dependencies]
 # UI framework
-gpui.workspace = true
+gpui-ce.workspace = true
 ui.workspace = true
 
 # UI crates
 ui_common.workspace = true
+window_manager.workspace = true
 tracing = "0.1.44"
 similar = "2.6"
 rust-i18n.workspace = true

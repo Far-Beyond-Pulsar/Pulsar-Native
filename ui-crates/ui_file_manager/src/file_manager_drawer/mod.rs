@@ -84,6 +84,27 @@ include!("drawer_impl/event_handlers.rs");
 include!("drawer_impl/rename_operations.rs");
 include!("drawer_impl/drag_drop_handlers.rs");
 
+// ── Path helpers ────────────────────────────────────────────────────────────
+
+/// Join `component` onto `base`, preserving forward-slash separators for
+/// `cloud+pulsar://` URIs.
+///
+/// On Windows, `PathBuf::join` inserts `\` between components which breaks the
+/// URI scheme parsing in `RemoteFsProvider::to_rel`.  For local paths the
+/// standard `Path::join` is used unchanged.
+fn cloud_join(base: &Path, component: &str) -> PathBuf {
+    if engine_fs::is_cloud_path(base) {
+        let base_s = base.to_string_lossy().replace('\\', "/");
+        PathBuf::from(format!(
+            "{}/{}",
+            base_s.trim_end_matches('/'),
+            component
+        ))
+    } else {
+        base.join(component)
+    }
+}
+
 // ============================================================================
 // CUSTOM EVENTS FOR INTERNAL USE
 // ============================================================================

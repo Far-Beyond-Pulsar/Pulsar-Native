@@ -1,0 +1,20 @@
+[package]
+name = "pulsar_lsp"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "LSP service layer crate for Pulsar — process lifecycle, protocol, and traits"
+
+[lints]
+workspace = true
+
+[dependencies]
+gpui-ce.workspace = true
+pulsar_diagnostics.workspace = true
+lsp-types.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+ropey.workspace = true
+flume = "0.11"

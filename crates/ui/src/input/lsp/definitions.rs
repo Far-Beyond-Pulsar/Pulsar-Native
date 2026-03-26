@@ -10,21 +10,8 @@ use crate::{
     ActiveTheme,
 };
 
-/// Definition provider
-///
-/// https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_definition
-pub trait DefinitionProvider {
-    /// textDocument/definition
-    ///
-    /// https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_definition
-    fn definitions(
-        &self,
-        _text: &Rope,
-        _offset: usize,
-        _window: &mut Window,
-        _cx: &mut App,
-    ) -> Task<Result<Vec<lsp_types::LocationLink>>>;
-}
+// The DefinitionProvider trait lives in pulsar_lsp to avoid circular dependencies.
+pub use pulsar_lsp::traits::DefinitionProvider;
 
 #[derive(Clone, Default)]
 pub(crate) struct HoverDefinition {

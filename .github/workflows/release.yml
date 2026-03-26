@@ -1,5 +1,25 @@
 name: Release
 
+# ============================================================================
+# RELEASE CONFIGURATION - Modify these to customize the release
+# ============================================================================
+env:
+  # Crates to build on each platform (newline-separated list)
+  # Examples: "crates/engine", "crates/plugin_manager", etc.
+  # First crate is used for version checking
+  CRATES_TO_BUILD: |
+    crates/engine
+  
+  # Crates to build examples for (newline-separated list)
+  CRATES_WITH_EXAMPLES: |
+    crates/examples
+  
+  # Enable/disable crate building (set to 'false' to skip crate builds)
+  BUILD_CRATES: 'true'
+  
+  # Generate example binaries for each platform (set to 'true' to enable)
+  BUILD_EXAMPLES: 'false'
+
 on:
   push:
     branches:
@@ -19,10 +39,23 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Get package name from crates/engine/Cargo.toml
+      - name: Get first crate path
+        id: get-crate
+        run: |
+          FIRST_CRATE=$(echo "${{ env.CRATES_TO_BUILD }}" | head -n1 | xargs)
+          echo "first_crate=$FIRST_CRATE" >> $GITHUB_OUTPUT
+
+      - name: Display crate path for debugging
+        run: |
+          echo "First crate: ${{ steps.get-crate.outputs.first_crate }}"
+          echo "Cargo.toml content:"
+          head -5 "${{ steps.get-crate.outputs.first_crate }}/Cargo.toml"
+
+      - name: Get package name from Cargo.toml
         id: get-name
         run: |
-          PACKAGE_NAME=$(grep -m1 '^name' crates/engine/Cargo.toml | sed 's/name\s*=\s*"\(.*\)"/\1/')
+          CRATE_PATH="${{ steps.get-crate.outputs.first_crate }}"
+          PACKAGE_NAME=$(grep -m1 '^name' "$CRATE_PATH/Cargo.toml" | sed 's/name[[:space:]]*=[[:space:]]*"\(.*\)"/\1/')
           PACKAGE_NAME=$(echo "$PACKAGE_NAME" | tr -d '[:space:]')
           echo "package_name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
           echo "Package name: [$PACKAGE_NAME]"
@@ -30,9 +63,10 @@ jobs:
       - name: Check if Cargo.toml version changed
         id: check
         run: |
-          CURRENT_VERSION=$(grep -m1 version crates/engine/Cargo.toml | cut -d '"' -f2)
+          CRATE_PATH="${{ steps.get-crate.outputs.first_crate }}"
+          CURRENT_VERSION=$(grep -m1 version "$CRATE_PATH/Cargo.toml" | cut -d '"' -f2)
           git checkout HEAD^1
-          PREVIOUS_VERSION=$(grep -m1 version crates/engine/Cargo.toml | cut -d '"' -f2)
+          PREVIOUS_VERSION=$(grep -m1 version "$CRATE_PATH/Cargo.toml" | cut -d '"' -f2)
           if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
             echo "should_release=true" >> $GITHUB_OUTPUT
             echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
@@ -219,14 +253,26 @@ jobs:
           sudo apt-get install -y pkg-config libssl-dev libglib2.0-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libxkbcommon-x11-0 libxkbcommon-x11-dev libasound2-dev
 
       - name: Build native
-        uses: actions-rs/cargo@v1
+        if: ${{ env.BUILD_CRATES == 'true' }}
+        shell: bash
+        run: |
+          ARGS="--release --target ${{ matrix.target }}"
+          while IFS= read -r crate_path; do
+            crate_path=$(echo "$crate_path" | xargs)
+            if [ -n "$crate_path" ]; then
+              crate_name=$(grep -m1 '^name' "$crate_path/Cargo.toml" | sed 's/name[[:space:]]*=[[:space:]]*"\(.*\)"/\1/' | tr -d '[:space:]')
+              ARGS="$ARGS -p $crate_name"
+              echo "Added crate: $crate_name from $crate_path"
+            fi
+          done <<< "${{ env.CRATES_TO_BUILD }}"
+          
+          echo "Building with args: $ARGS"
+          cargo build $ARGS
         env:
           RUST_BACKTRACE: 1
-        with:
-          command: build
-          args: --release --target ${{ matrix.target }} -p ${{ needs.check-version.outputs.package_name }}
 
       - name: Set binary path variables
+        if: ${{ env.BUILD_CRATES == 'true' }}
         shell: bash
         run: |
           PACKAGE_NAME="${{ needs.check-version.outputs.package_name }}"
@@ -253,6 +299,7 @@ jobs:
           fi
 
       - name: Generate SHA256
+        if: ${{ env.BUILD_CRATES == 'true' }}
         shell: bash
         run: |
           echo "Checking binary at: [$FULL_BIN_PATH]"
@@ -267,6 +314,7 @@ jobs:
           cat "$FULL_BIN_PATH.sha256"
 
       - name: Upload Binary
+        if: ${{ env.BUILD_CRATES == 'true' }}
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -278,6 +326,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload SHA256
+        if: ${{ env.BUILD_CRATES == 'true' }}
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -286,6 +335,83 @@ jobs:
           asset_path: ${{ env.FULL_BIN_PATH }}.sha256
           asset_name: ${{ env.FULL_ASSET_NAME }}.sha256
           asset_content_type: text/plain
+        continue-on-error: true
+
+      - name: Build examples
+        if: ${{ env.BUILD_EXAMPLES == 'true' }}
+        shell: bash
+        run: |
+          ARGS="--release --target ${{ matrix.target }}"
+          while IFS= read -r crate_path; do
+            crate_path=$(echo "$crate_path" | xargs)
+            if [ -n "$crate_path" ]; then
+              crate_name=$(grep -m1 '^name' "$crate_path/Cargo.toml" | sed 's/name[[:space:]]*=[[:space:]]*"\(.*\)"/\1/' | tr -d '[:space:]')
+              ARGS="$ARGS -p $crate_name"
+              echo "Added crate for examples: $crate_name from $crate_path"
+            fi
+          done <<< "${{ env.CRATES_WITH_EXAMPLES }}"
+          
+          echo "Building examples with args: $ARGS"
+          cargo build $ARGS
+        env:
+          RUST_BACKTRACE: 1
+
+      - name: Create examples archive
+        if: ${{ env.BUILD_EXAMPLES == 'true' }}
+        shell: bash
+        run: |
+          BIN_DIR="target/${{ matrix.target }}/release"
+          ARCHIVE_NAME="examples${{ matrix.asset_name }}.tar.gz"
+          
+          if [ -d "$BIN_DIR" ]; then
+            echo "Found release directory: $BIN_DIR"
+            echo "Looking for example binaries..."
+            
+            # Find example binaries (handle both with and without .exe extension)
+            BINARIES=()
+            for pattern in "render_v2_basic" "render_v2_sky"; do
+              if [ -f "$BIN_DIR/$pattern.exe" ]; then
+                BINARIES+=("$pattern.exe")
+              elif [ -f "$BIN_DIR/$pattern" ]; then
+                BINARIES+=("$pattern")
+              fi
+            done
+            
+            if [ ${#BINARIES[@]} -eq 0 ]; then
+              echo "⚠️ No example binaries found!"
+              echo "Available files in $BIN_DIR:"
+              ls -lh "$BIN_DIR" | grep -E "render_v2"
+              exit 1
+            fi
+            
+            echo "Found binaries: ${BINARIES[@]}"
+            cd "$BIN_DIR"
+            tar -czf "../../../$ARCHIVE_NAME" "${BINARIES[@]}"
+            cd - > /dev/null
+            
+            if [ -f "$ARCHIVE_NAME" ] && [ -s "$ARCHIVE_NAME" ]; then
+              echo "✅ Created archive: $ARCHIVE_NAME"
+              ls -lh "$ARCHIVE_NAME"
+              echo "EXAMPLES_ARCHIVE=$ARCHIVE_NAME" >> $GITHUB_ENV
+            else
+              echo "⚠️ Archive creation failed or is empty"
+              exit 1
+            fi
+          else
+            echo "⚠️ No release directory found at: $BIN_DIR"
+            exit 1
+          fi
+
+      - name: Upload examples archive
+        if: ${{ env.BUILD_EXAMPLES == 'true' && env.EXAMPLES_ARCHIVE != '' }}
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ env.EXAMPLES_ARCHIVE }}
+          asset_name: ${{ env.EXAMPLES_ARCHIVE }}
+          asset_content_type: application/gzip
         continue-on-error: true
 
   cross-builds:
@@ -347,23 +473,42 @@ jobs:
           pre-build = [
               "dpkg --add-architecture ${{ matrix.openssl_arch }}",
               "apt-get update",
-              "apt-get install -y libssl-dev:${{ matrix.openssl_arch }} libglib2.0-dev:${{ matrix.openssl_arch }} libgtk-3-dev:${{ matrix.openssl_arch }} libsoup-3.0-dev:${{ matrix.openssl_arch }} libjavascriptcoregtk-4.1-dev:${{ matrix.openssl_arch }} libxkbcommon-x11-0:${{ matrix.openssl_arch }} libxkbcommon-x11-dev:${{ matrix.openssl_arch }}"
+              "apt-get install -y libssl-dev:${{ matrix.openssl_arch }} libglib2.0-dev:${{ matrix.openssl_arch }} libxkbcommon-x11-0:${{ matrix.openssl_arch }} libxkbcommon-x11-dev:${{ matrix.openssl_arch }} || true"
           ]
           EOF
           cat Cross.toml
 
       - name: Build WebAssembly
-        if: matrix.target == 'wasm32-unknown-unknown'
+        if: ${{ matrix.target == 'wasm32-unknown-unknown' && env.BUILD_CRATES == 'true' }}
         run: |
           rustup target add wasm32-unknown-unknown
-          cargo build --release --target wasm32-unknown-unknown -p ${{ needs.check-version.outputs.package_name }}
+          ARGS="--release --target wasm32-unknown-unknown"
+          while IFS= read -r crate_path; do
+            crate_path=$(echo "$crate_path" | xargs)
+            if [ -n "$crate_path" ]; then
+              crate_name=$(grep -m1 '^name' "$crate_path/Cargo.toml" | sed 's/name[[:space:]]*=[[:space:]]*"\(.*\)"/\1/' | tr -d '[:space:]')
+              ARGS="$ARGS -p $crate_name"
+              echo "Added crate: $crate_name from $crate_path"
+            fi
+          done <<< "${{ env.CRATES_TO_BUILD }}"
+          cargo build $ARGS
 
       - name: Build with cross
-        if: matrix.target != 'wasm32-unknown-unknown'
+        if: ${{ matrix.target != 'wasm32-unknown-unknown' && env.BUILD_CRATES == 'true' }}
         run: |
-          cross build --release --target ${{ matrix.target }} -p ${{ needs.check-version.outputs.package_name }}
+          ARGS="--release --target ${{ matrix.target }}"
+          while IFS= read -r crate_path; do
+            crate_path=$(echo "$crate_path" | xargs)
+            if [ -n "$crate_path" ]; then
+              crate_name=$(grep -m1 '^name' "$crate_path/Cargo.toml" | sed 's/name[[:space:]]*=[[:space:]]*"\(.*\)"/\1/' | tr -d '[:space:]')
+              ARGS="$ARGS -p $crate_name"
+              echo "Added crate: $crate_name from $crate_path"
+            fi
+          done <<< "${{ env.CRATES_WITH_EXAMPLES }}"
+          cross build $ARGS
 
       - name: Generate SHA256
+        if: ${{ env.BUILD_CRATES == 'true' }}
         run: |
           echo "Checking binary at: [$BIN_PATH]"
           ls -l "$BIN_PATH" || (echo "❌ ERROR: Binary not found at $BIN_PATH" && find target -type f | grep -E "(\\.exe$|\\.wasm$|/${PACKAGE_NAME}$)" | sort && exit 1)
@@ -373,6 +518,7 @@ jobs:
           cat "$BIN_PATH.sha256"
 
       - name: Upload Binary
+        if: ${{ env.BUILD_CRATES == 'true' }}
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -383,6 +529,7 @@ jobs:
           asset_content_type: application/octet-stream
 
       - name: Upload SHA256
+        if: ${{ env.BUILD_CRATES == 'true' }}
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -391,3 +538,75 @@ jobs:
           asset_path: ${{ env.BIN_PATH }}.sha256
           asset_name: ${{ env.ASSET_NAME }}.sha256
           asset_content_type: text/plain
+
+      - name: Build examples
+        if: ${{ env.BUILD_EXAMPLES == 'true' }}
+        run: |
+          ARGS="--release --target ${{ matrix.target }}"
+          while IFS= read -r crate_path; do
+            crate_path=$(echo "$crate_path" | xargs)
+            if [ -n "$crate_path" ]; then
+              crate_name=$(grep -m1 '^name' "$crate_path/Cargo.toml" | sed 's/name[[:space:]]*=[[:space:]]*"\(.*\)"/\1/' | tr -d '[:space:]')
+              ARGS="$ARGS -p $crate_name"
+              echo "Added crate for examples: $crate_name from $crate_path"
+            fi
+          done <<< "${{ env.CRATES_WITH_EXAMPLES }}"
+          cross build $ARGS
+
+      - name: Create examples archive
+        if: ${{ env.BUILD_EXAMPLES == 'true' }}
+        shell: bash
+        run: |
+          BIN_DIR="target/${{ matrix.target }}/release"
+          ARCHIVE_NAME="examples${{ matrix.asset_suffix }}.tar.gz"
+          
+          if [ -d "$BIN_DIR" ]; then
+            echo "Found release directory: $BIN_DIR"
+            echo "Looking for example binaries..."
+            
+            # Find example binaries (handle both with and without .exe extension)
+            BINARIES=()
+            for pattern in "render_v2_basic" "render_v2_sky"; do
+              if [ -f "$BIN_DIR/$pattern.exe" ]; then
+                BINARIES+=("$pattern.exe")
+              elif [ -f "$BIN_DIR/$pattern" ]; then
+                BINARIES+=("$pattern")
+              fi
+            done
+            
+            if [ ${#BINARIES[@]} -eq 0 ]; then
+              echo "⚠️ No example binaries found!"
+              echo "Available files in $BIN_DIR:"
+              ls -lh "$BIN_DIR" | grep -E "render_v2"
+              exit 1
+            fi
+            
+            echo "Found binaries: ${BINARIES[@]}"
+            cd "$BIN_DIR"
+            tar -czf "../../../$ARCHIVE_NAME" "${BINARIES[@]}"
+            cd - > /dev/null
+            
+            if [ -f "$ARCHIVE_NAME" ] && [ -s "$ARCHIVE_NAME" ]; then
+              echo "✅ Created archive: $ARCHIVE_NAME"
+              ls -lh "$ARCHIVE_NAME"
+              echo "EXAMPLES_ARCHIVE=$ARCHIVE_NAME" >> $GITHUB_ENV
+            else
+              echo "⚠️ Archive creation failed or is empty"
+              exit 1
+            fi
+          else
+            echo "⚠️ No release directory found at: $BIN_DIR"
+            exit 1
+          fi
+
+      - name: Upload examples archive
+        if: ${{ env.BUILD_EXAMPLES == 'true' && env.EXAMPLES_ARCHIVE != '' }}
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ env.EXAMPLES_ARCHIVE }}
+          asset_name: ${{ env.EXAMPLES_ARCHIVE }}
+          asset_content_type: application/gzip
+

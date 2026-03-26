@@ -44,32 +44,9 @@ impl FlamegraphWindow {
         })
     }
 
-    pub fn open(cx: &mut App) -> WindowHandle<Self> {
-        let trace_data = Arc::new(TraceData::new());
-        
-        let window_options = WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(Bounds {
-                origin: point(px(100.0), px(100.0)),
-                size: size(px(1200.0), px(800.0)),
-            })),
-            titlebar: Some(TitleBar::title_bar_options()),
-            window_background: WindowBackgroundAppearance::Opaque,
-            focus: true,
-            show: true,
-            kind: WindowKind::Normal,
-            is_movable: true,
-            is_minimizable: true,
-            is_resizable: true,
-            window_decorations: Some(WindowDecorations::Client),
-            display_id: None,
-            window_min_size: Some(size(px(800.0), px(600.0))),
-            tabbing_identifier: None,
-            app_id: None,
-        };
-
-        cx.open_window(window_options, |_window, cx| {
-            Self::new(trace_data, _window, cx)
-        }).unwrap()
+    /// Convenience: open the flamegraph window via the PulsarWindow system.
+    pub fn open(cx: &mut App) {
+        ui_common::open_pulsar_window::<FlamegraphWindow>(Arc::new(TraceData::new()), cx);
     }
 
     fn start_profiling(&mut self, _cx: &mut Context<Self>) {
@@ -769,5 +746,25 @@ impl Render for FlamegraphWindow {
                         )
                     })
             )
+    }
+}
+
+impl window_manager::PulsarWindow for FlamegraphWindow {
+    type Params = std::sync::Arc<crate::TraceData>;
+
+    fn window_name() -> &'static str {
+        "FlamegraphWindow"
+    }
+
+    fn window_options(_params: &std::sync::Arc<crate::TraceData>) -> gpui::WindowOptions {
+        window_manager::default_window_options(1200.0, 800.0)
+    }
+
+    fn build(
+        params: std::sync::Arc<crate::TraceData>,
+        window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) -> gpui::Entity<Self> {
+        FlamegraphWindow::new(params, window, cx)
     }
 }

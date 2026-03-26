@@ -10,7 +10,7 @@ use ui::{
 use ui::bevy_viewport::{BevyViewport, BevyViewportState};
 
 use ui::settings::EngineSettings;
-use engine_backend::services::gpu_renderer::GpuRenderer;
+use engine_backend::services::gpu_renderer::{GpuRenderer, GpuRendererBuilder};
 use ui_common::StatusBar;
 use engine_backend::GameThread;
 use std::sync::{Arc, Mutex};
@@ -104,9 +104,12 @@ impl LevelEditorPanel {
         let scene_db = Arc::new(SceneDb::new());
 
         // Create GPU render engine sharing the scene_db Arc and physics query service
-        let gpu_engine = Arc::new(Mutex::new(
-            GpuRenderer::new_with_scene_db_and_physics(1600, 900, scene_db.clone(), None, physics_query)
-        ));
+        let mut renderer_builder = GpuRendererBuilder::new(1600, 900)
+            .scene_db(scene_db.clone());
+        if let Some(pq) = physics_query {
+            renderer_builder = renderer_builder.physics(pq);
+        }
+        let gpu_engine = Arc::new(Mutex::new(renderer_builder.build()));
         let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
 
         // Store GPU renderer in global EngineContext using a marker that the render loop will pick up
@@ -754,11 +757,7 @@ impl Panel for LevelEditorPanel {
     }
 }
 
-impl Focusable for LevelEditorPanel {
-    fn focus_handle(&self, _: &App) -> FocusHandle {
-        self.focus_handle.clone()
-    }
-}
+ui_common::panel_boilerplate!(LevelEditorPanel);
 
 impl EventEmitter<PanelEvent> for LevelEditorPanel {}
 

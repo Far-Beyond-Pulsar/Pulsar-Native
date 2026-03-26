@@ -242,3 +242,22 @@ impl Render for MissionControlPanel {
             )
     }
 }
+
+impl window_manager::PulsarWindow for MissionControlPanel {
+    type Params = ();
+
+    fn window_name() -> &'static str { "MissionControlPanel" }
+
+    fn window_options(_: &()) -> gpui::WindowOptions {
+        window_manager::default_window_options(1920.0, 1080.0)
+    }
+
+    fn build(_: (), _window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {
+        let panel = cx.new(|cx| MissionControlPanel::new(cx));
+        panel.update(cx, |p, cx| p.start_monitoring(cx));
+        panel
+    }
+}
+
+/// Type alias for use in the PulsarWindow system.
+pub type LogViewerWindow = MissionControlPanel;

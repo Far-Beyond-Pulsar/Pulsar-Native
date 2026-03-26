@@ -1,31 +1,32 @@
 use gpui::{ prelude::*, * };
 use ui::{
-    h_flex,
-    v_flex,
-    Icon,
-    IconName,
-    ActiveTheme as _,
-    StyledExt,
-    divider::Divider,
-    scroll::ScrollbarAxis,
+    h_flex, v_flex, Icon, IconName, ActiveTheme as _, StyledExt,
     progress::Progress,
+    tag::Tag,
 };
-use crate::entry_screen::{ EntryScreen, Template };
+ use ui::Sizable;
+use crate::entry_screen::{ EntryScreen, Template, virtual_grid::render_card_grid };
 
 pub fn render_templates(
     screen: &mut EntryScreen,
-    cols: usize,
+    available_width: f32,
     cx: &mut Context<EntryScreen>
 ) -> impl IntoElement {
     let theme = cx.theme();
-    let templates = screen.templates.clone();
+    let border_col = theme.border;
+    let muted_fg = theme.muted_foreground;
+    let fg = theme.foreground;
+    let sidebar_bg = theme.sidebar;
+    let primary = theme.primary;
+    let accent = theme.accent;
+    let accent_fg = theme.accent_foreground;
+
     let has_progress = screen.clone_progress.is_some();
 
     v_flex()
         .size_full()
-        .scrollable(ScrollbarAxis::Vertical)
-        .p_12()
         .gap_8()
+        .p_8()
         .child(
             v_flex()
                 .gap_2()
@@ -33,13 +34,13 @@ pub fn render_templates(
                     div()
                         .text_3xl()
                         .font_weight(gpui::FontWeight::BOLD)
-                        .text_color(theme.foreground)
+                        .text_color(fg)
                         .child("Project Templates")
                 )
                 .child(
                     div()
                         .text_sm()
-                        .text_color(theme.muted_foreground)
+                        .text_color(muted_fg)
                         .child("Choose a template to start your project quickly")
                 )
         )
@@ -50,19 +51,19 @@ pub fn render_templates(
                         .gap_4()
                         .p_6()
                         .border_1()
-                        .border_color(theme.primary)
+                        .border_color(primary)
                         .rounded_lg()
-                        .bg(theme.sidebar)
+                        .bg(sidebar_bg)
                         .child(
                             div()
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .text_color(theme.foreground)
+                                .text_color(fg)
                                 .child("Cloning Repository...")
                         )
                         .child(
                             div()
                                 .text_sm()
-                                .text_color(theme.muted_foreground)
+                                .text_color(muted_fg)
                                 .child("Please wait while we clone the template...")
                         )
                         .child(Progress::new().value(50.0))
@@ -71,144 +72,154 @@ pub fn render_templates(
                 None
             }
         )
-        .child(render_template_grid(screen, templates, cols, cx))
+        .child(render_template_grid(screen, available_width, cx))
 }
 
 fn render_template_grid(
     screen: &mut EntryScreen,
-    templates: Vec<Template>,
-    cols: usize,
+    available_width: f32,
     cx: &mut Context<EntryScreen>
 ) -> impl IntoElement {
     let theme = cx.theme();
-    let mut container = v_flex().gap_8();
-    let mut row = h_flex().gap_8();
-    let mut count = 0;
+    let border_col = theme.border;
+    let sidebar_bg = theme.sidebar;
+    let primary = theme.primary;
+    let primary_h = theme.primary.h;
+    let primary_s = theme.primary.s;
+    let primary_l = theme.primary.l;
+    let fg = theme.foreground;
+    let muted_fg = theme.muted_foreground;
+    let sidebar_hover_bg = hsla(
+        theme.sidebar.h,
+        theme.sidebar.s,
+        theme.sidebar.l * 1.05,
+        theme.sidebar.a,
+    );
 
-    for template in templates {
-        let template_clone = template.clone();
-        let template_name = template.name.clone();
-        let template_desc = template.description.clone();
-        let template_category = template.category.clone();
-        let template_icon = template.icon;
+    // Match the layout used by `EntryScreen::calculate_columns`
+    const CARD_WIDTH: f32 = 320.0;
+    const CARD_HEIGHT: f32 = 220.0;
+    const GAP: f32 = 24.0;
+    const PADDING: f32 = 24.0;
 
-        let card = v_flex()
-            .id(SharedString::from(format!("template-{}", template_name)))
-            .w(px(340.0))
-            .h(px(220.0))
-            .gap_4()
-            .p_5()
-            .border_1()
-            .border_color(theme.border)
-            .rounded_xl()
-            .bg(theme.sidebar)
-            .shadow_sm()
-            .hover(|this| {
-                this.border_color(theme.primary)
-                    .shadow_lg()
-                    .bg(
-                        hsla(
-                            theme.sidebar.h,
-                            theme.sidebar.s,
-                            theme.sidebar.l * 1.05,
-                            theme.sidebar.a
-                        )
-                    )
-            })
-            .cursor_pointer()
-            .on_click(
-                cx.listener(move |this, _, window, cx| {
-                    this.clone_template(&template_clone, window, cx);
+    render_card_grid(
+        screen.entity.clone().unwrap(),
+        "templates-grid",
+        available_width,
+        screen.templates.len(),
+        CARD_WIDTH,
+        CARD_HEIGHT,
+        GAP,
+        PADDING,
+        &screen.templates_scroll_handle,
+        move |view, idx, card_w, _window, cx| {
+            let template = view.templates[idx].clone();
+            let name = template.name.clone();
+            let desc = template.description.clone();
+            let category = template.category.clone();
+            let icon = template.icon.clone();
+
+            let category_accent = match category.as_str() {
+                "2D"       => cx.theme().success,
+                "3D"       => cx.theme().primary,
+                "Strategy" => cx.theme().warning,
+                "RPG"      => cx.theme().info,
+                "Racing"   => cx.theme().danger,
+                _          => cx.theme().muted,
+            };
+
+            v_flex()
+                .id(SharedString::from(format!("template-{}", name)))
+                .w(px(card_w))
+                .h(px(CARD_HEIGHT))
+                .relative()
+                .overflow_hidden()
+                .gap_3()
+                .p_5()
+                .border_1()
+                .border_color(border_col)
+                .rounded_xl()
+                .bg(sidebar_bg)
+                .shadow_sm()
+                .hover(|this| {
+                    this.border_color(primary)
+                        .shadow_lg()
+                        .bg(sidebar_hover_bg)
                 })
-            )
-            .child(
-                h_flex()
-                    .items_start()
-                    .gap_3()
-                    .child(
-                        div()
-                            .flex_shrink_0()
-                            .w(px(56.0))
-                            .h(px(56.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded_xl()
-                            .bg(hsla(theme.primary.h, theme.primary.s, theme.primary.l, 0.15))
-                            .child(
-                                Icon::new(template_icon).size(px(32.0)).text_color(theme.primary)
-                            )
-                    )
-                    .child(
-                        v_flex()
-                            .flex_1()
-                            .gap_1p5()
-                            .child(
-                                div()
-                                    .text_lg()
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(theme.foreground)
-                                    .child(template_name)
-                            )
-                            .child(
-                                div()
-                                    .px_2p5()
-                                    .py_1()
-                                    .rounded_md()
-                                    .bg(
-                                        hsla(
-                                            theme.primary.h,
-                                            theme.primary.s,
-                                            theme.primary.l,
-                                            0.15
-                                        )
-                                    )
-                                    .text_xs()
-                                    .font_weight(gpui::FontWeight::MEDIUM)
-                                    .text_color(theme.foreground)
-                                    .child(template_category)
-                            )
-                    )
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .text_sm()
-                    .line_height(rems(1.4))
-                    .text_color(theme.muted_foreground)
-                    .child(template_desc)
-            )
-            .child(div().w_full().h(px(1.0)).bg(theme.border))
-            .child(
-                h_flex()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        Icon::new(IconName::Github)
-                            .size(px(14.0))
-                            .text_color(theme.muted_foreground)
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(theme.muted_foreground)
-                            .child("Click to clone from template")
-                    )
-            );
-
-        row = row.child(card);
-        count += 1;
-
-        if count >= cols {
-            container = container.child(row);
-            row = h_flex().gap_8();
-            count = 0;
-        }
-    }
-
-    if count > 0 {
-        container = container.child(row);
-    }
-
-    container
+                .cursor_pointer()
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.clone_template(&template, window, cx);
+                }))
+                .child(
+                    div().absolute().top_0().left_0().w_full().h(px(3.0)).bg(category_accent)
+                )
+                .child(
+                    h_flex()
+                        .items_start()
+                        .gap_3()
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .w(px(56.0))
+                                .h(px(56.0))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded_xl()
+                                .bg(hsla(primary_h, primary_s, primary_l, 0.15))
+                                .child(Icon::new(icon).size(px(32.0)).text_color(primary)),
+                        )
+                        .child(
+                            v_flex()
+                                .flex_1()
+                                .gap_1p5()
+                                .child(
+                                    div()
+                                        .text_lg()
+                                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                                        .text_color(fg)
+                                        .child(name),
+                                )
+                                .child(
+                                    match category.as_str() {
+                                        "2D"       => Tag::success(),
+                                        "3D"       => Tag::primary(),
+                                        "Strategy" => Tag::warning(),
+                                        "RPG"      => Tag::info(),
+                                        "Racing"   => Tag::danger(),
+                                        _          => Tag::secondary(),
+                                    }
+                                    .xsmall()
+                                    .rounded_full()
+                                    .child(category),
+                                ),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .text_sm()
+                        .line_height(rems(1.4))
+                        .text_color(muted_fg)
+                        .child(desc),
+                )
+                .child(div().w_full().h(px(1.0)).bg(border_col))
+                .child(
+                    h_flex()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            Icon::new(IconName::Github)
+                                .size(px(14.0))
+                                .text_color(muted_fg),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(muted_fg)
+                                .child("Click to clone from template"),
+                        ),
+                )
+        },
+    )
 }

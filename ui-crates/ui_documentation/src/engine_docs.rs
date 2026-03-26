@@ -2,6 +2,7 @@ use gpui::{prelude::*, *};
 use ui::input::InputState;
 use pulsar_docs::{get_doc_content, get_crate_index, list_crates, CrateIndex};
 use std::collections::HashSet;
+use crate::doc_source::{DocSource, make_search_input};
 
 #[derive(Clone, Debug)]
 pub enum TreeNode {
@@ -36,20 +37,26 @@ pub struct EngineDocsState {
     pub search_input_state: Entity<InputState>,
 }
 
+impl DocSource for EngineDocsState {
+    fn placeholder() -> &'static str {
+        "Search engine docs..."
+    }
+
+    fn initial_content() -> String {
+        "# Engine Documentation\n\nSelect an item from the sidebar to view its documentation.".to_string()
+    }
+}
+
 impl EngineDocsState {
     pub fn new(window: &mut Window, cx: &mut App) -> Self {
-        let search_input_state = cx.new(|cx| {
-            let mut state = InputState::new(window, cx);
-            state.set_placeholder("Search engine docs...", window, cx);
-            state
-        });
+        let search_input_state = make_search_input::<Self>(window, cx);
 
         let mut state = Self {
             tree_items: Vec::new(),
             flat_visible_items: Vec::new(),
             expanded_paths: HashSet::new(),
             current_path: None,
-            markdown_content: "# Engine Documentation\n\nSelect an item from the sidebar to view its documentation.".to_string(),
+            markdown_content: Self::initial_content(),
             search_query: String::new(),
             search_input_state,
         };

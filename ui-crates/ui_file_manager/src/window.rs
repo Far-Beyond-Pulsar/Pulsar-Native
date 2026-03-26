@@ -47,7 +47,27 @@ impl FileManagerWindow {
 impl EventEmitter<FileSelected> for FileManagerWindow {}
 
 impl Render for FileManagerWindow {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         drawer_window_entity("Window.Title.FileManager", self.file_manager.clone(), cx)
+    }
+}
+
+impl window_manager::PulsarWindow for FileManagerWindow {
+    type Params = gpui::Entity<FileManagerDrawer>;
+
+    fn window_name() -> &'static str {
+        "FileManagerWindow"
+    }
+
+    fn window_options(_: &gpui::Entity<FileManagerDrawer>) -> gpui::WindowOptions {
+        window_manager::default_window_options(900.0, 600.0)
+    }
+
+    fn build(
+        params: gpui::Entity<FileManagerDrawer>,
+        window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) -> gpui::Entity<Self> {
+        cx.new(|cx| FileManagerWindow::new(params, window, cx))
     }
 }

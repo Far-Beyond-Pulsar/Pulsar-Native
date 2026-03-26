@@ -16,6 +16,7 @@ mod global_state;
 mod icon;
 mod index_path;
 pub mod utils;
+pub mod states;
 #[cfg(any(feature = "inspector", debug_assertions))]
 mod inspector;
 mod kbd;
@@ -25,10 +26,19 @@ mod styled;
 mod time;
 mod title_bar;
 pub mod bevy_viewport; // Production-ready zero-copy Bevy viewport using GPUI's gpu_canvas
+
+// Compatibility types for legacy GPUI APIs that were removed upstream.
+pub mod gpu_compat;
+
+// Re-export compatibility types at crate root so other crates can import them
+// using `ui::GpuTextureHandle`/`ui::GpuCanvasSource` just like before.
+pub use gpu_compat::{GpuTextureHandle, GpuCanvasSource, gpu_canvas as gpu_canvas_element};
 mod virtual_list;
 mod window_border;
 mod window_wrapper;
 pub mod component; // Component-based UI architecture
+pub mod registry;
+pub mod selection;
 
 pub(crate) mod actions;
 
@@ -41,6 +51,9 @@ pub mod breadcrumb;
 pub mod button;
 pub mod chart;
 pub mod checkbox;
+pub mod download_item;
+pub mod download_manager;
+pub mod speed_graph;
 pub mod clipboard;
 pub mod code_editor; // Studio-quality virtualized code editor
 pub mod color_picker;
@@ -94,9 +107,10 @@ pub use wry;
 pub use crate::Disableable;
 pub use event::InteractiveElementExt;
 pub use index_path::IndexPath;
+pub use selection::{IndexPathSelection, IndexSelection, Selection};
 #[cfg(any(feature = "inspector", debug_assertions))]
 pub use inspector::*;
-pub use menu::{ context_menu, popup_menu };
+pub use menu::{ context_menu, popup_menu, AppMenusCache };
 pub use root::{ ContextModal, Root };
 pub use styled::*;
 pub use time::*;
@@ -127,6 +141,12 @@ pub use compiler::*;
 pub use settings::*;
 pub use themes::*;
 
+// Download manager components
+pub use download_item::{DownloadItem, DownloadItemStatus, reveal_in_file_manager};
+pub use download_manager::{DownloadEntry, DownloadManagerDrawer};
+pub use speed_graph::{SpeedGraph, fmt_speed, fmt_bytes};
+pub use states::empty_state_placeholder;
+
 // Engine constants (will be set by engine binary)
 pub const ENGINE_NAME: &str = "Pulsar Engine";
 pub const ENGINE_VERSION: &str = "0.1.45";
@@ -151,24 +171,17 @@ pub fn translate(key: &str) -> String {
 ///
 /// You must initialize the components at your application's entry point.
 pub fn init(cx: &mut App) {
+    // Ordering-sensitive: these must run before auto-registered components.
     theme::init(cx);
     global_state::init(cx);
     replication::init(cx);
     #[cfg(any(feature = "inspector", debug_assertions))]
     inspector::init(cx);
     root::init(cx);
-    date_picker::init(cx);
-    color_picker::init(cx);
     dock::init(cx);
-    drawer::init(cx);
-    dropdown::init(cx);
     input::init(cx);
-    list::init(cx);
-    modal::init(cx);
-    popover::init(cx);
-    menu::init(cx);
-    table::init(cx);
-    text::init(cx);
+    // All components registered via `register_ui_component!` are initialized here.
+    registry::init_all_components(cx);
 }
 
 #[inline]

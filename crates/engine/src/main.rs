@@ -13,7 +13,8 @@
 //!
 //! - **Typed Context System** (`EngineContext`) - Type-safe state management
 //! - **Dependency Graph Init** (`InitGraph`) - Declarative startup ordering
-//! - **Window System** (`WinitGpuiApp`) - Multi-window management with GPUI + D3D11
+//! - **Window System** (now internal to GPUI) - windows are managed by GPUI; the engine
+//!   no longer provides its own multi-window handler
 //! - **Profiling** - Per-task timing and performance analysis
 //!
 //! ## Initialization Tasks
@@ -23,7 +24,7 @@
 //! 3. **Settings** - Load engine configuration
 //! 4. **Runtime** - Tokio async runtime
 //! 5. **Backend** - Engine backend subsystems (physics, etc.)
-//! 6. **Channels** - Window request communication
+//! 6. **Channels** - (deprecated; windows opened directly via GPUI)
 //! 7. **Engine Context** - Global typed state
 //! 8. **Set Global** - Register context globally
 //! 9. **Discord** - Rich presence initialization
@@ -31,8 +32,11 @@
 //!
 //! Each task is profiled with `Engine::Init::{TaskName}` scope.
 
+use gpui::IntoElement;
 // --- Global Allocator Setup ---
 use ui_log_viewer::TrackingAllocator;
+use std::time::Duration;
+use gpui::AppContext;
 
 #[global_allocator]
 static GLOBAL_ALLOCATOR: TrackingAllocator = TrackingAllocator::new();
@@ -53,7 +57,7 @@ pub use ui::OpenSettings;
 
 // --- External and engine imports ---
 use crate::settings::EngineSettings;
-use std::sync::mpsc::channel;
+use std::path::PathBuf;
 
 // --- Internal modules ---
 
@@ -66,8 +70,9 @@ pub mod appdata;    // App data and resource directory management
 pub mod consts;     // Engine constants (name, version, authors, etc.)
 pub mod discord;    // Discord Rich Presence integration
 pub mod runtime;    // Async runtime setup and management
-pub mod event_loop; // Main event loop handling
-pub mod window;     // Winit integration (Winit + GPUI coordination)
+// Window integration was previously handled by the `window` module, but
+// GPUI now manages its own windows.  The event loop lives in
+// `event_loop.rs` and the engine no longer exposes a dedicated window API.
 pub mod uri;        // URI scheme handling
 pub mod init;       // Initialization dependency graph (Phase 1 - new)
 
@@ -75,9 +80,7 @@ pub mod init;       // Initialization dependency graph (Phase 1 - new)
 pub use engine_state::{
     EngineContext,
     WindowRequest,
-    WindowRequestSender,
-    WindowRequestReceiver,
-    window_request_channel,
+    // sender/receiver removed as messaging is no longer used
     LaunchContext,
 };
 
@@ -189,7 +192,8 @@ fn main() {
     )).unwrap();
 
     // Task 6: Channels (no dependencies)
-    graph.add_task(InitTask::new(
+    // (disabled – window management will be done directly via GPUI)
+    /*graph.add_task(InitTask::new(
         CHANNELS,
         "Window Channels",
         vec![],
@@ -199,18 +203,15 @@ fn main() {
             ctx.window_rx = Some(window_rx);
             Ok(())
         })
-    )).unwrap();
+    )).unwrap();*/
 
     // Task 7: Engine Context (depends on channels)
     graph.add_task(InitTask::new(
         ENGINE_CONTEXT,
         "Engine Context",
-        vec![CHANNELS],
+        vec![], // no dependency now
         Box::new(|ctx| {
-            let window_tx = ctx.window_tx.as_ref()
-                .ok_or_else(|| init::InitError::MissingContext("Window sender not initialized"))?
-                .clone();
-            let engine_context = EngineContext::new().with_window_sender(window_tx);
+            let engine_context = EngineContext::new();
 
             // Handle URI project path if present
             if let Some(uri::UriCommand::OpenProject { path }) = &ctx.launch_args.uri_command {
@@ -283,9 +284,124 @@ fn main() {
 
     // Extract initialized components
     let engine_context = init_ctx.engine_context.expect("Engine context should be initialized");
-    let window_rx = init_ctx.window_rx.expect("Window receiver should be initialized");
 
-    // Run the main event loop
+    // Run the main event loop via GPUI's `App::run` API.
     profiling::profile_scope!("Engine::EventLoop");
-    event_loop::run_event_loop(engine_context, window_rx);
+
+    // create and run GPUI application
+    let gpui_app = gpui::Application::new().with_assets(Assets);
+
+    gpui_app.run(move |cx: &mut gpui::App| {
+        cx.activate(true);
+        ui::init(cx);
+        // ensure themes registry is initialized and state.json applied
+        ui::themes::init(cx);
+
+        // install window manager (if compiled with the feature)
+
+        {
+            use window_manager::WindowManager;
+            let wm = WindowManager::new();
+            cx.set_global(wm);
+        }
+
+        // decide initial window once the UI context is ready
+        let mut launch = engine_context.launch.write();
+        {
+            if let Some(path) = launch.uri_project_path.take() {
+                tracing::info!("Opening project splash from URI: {}", path.display());
+                let pathbuf = PathBuf::from(path);
+                let on_complete: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
+                    std::sync::Arc::new(|path, cx| {
+                        let opts = make_window_options(
+                            Some("Pulsar Engine"),
+                            gpui::point(gpui::px(50.0), gpui::px(50.0)),
+                            gpui::size(gpui::px(1600.0), gpui::px(900.0)),
+                            Some(gpui::Size { width: gpui::px(800.), height: gpui::px(600.) }),
+                        );
+                        let _ = cx.open_window(opts, move |window, cx| {
+                            let app = cx.new(|cx| ui_core::PulsarApp::new_with_project(path.clone(), window, cx));
+                            let root = cx.new(|cx| ui_core::PulsarRoot::new("Pulsar Engine", app, window, cx));
+                            cx.new(|cx| ui::Root::new(root.into(), window, cx))
+                        });
+                    });
+                ui_common::open_window::open_pulsar_window::<ui_loading_screen::LoadingScreen>((pathbuf, on_complete), cx);
+            } else {
+                tracing::info!("Opening main entry window");
+                let ec = engine_context.clone();
+                let opts = make_window_options(
+                    Some("Pulsar Engine"),
+                    gpui::point(gpui::px(100.0), gpui::px(100.0)),
+                    gpui::size(gpui::px(800.0), gpui::px(600.0)),
+                    Some(gpui::Size { width: gpui::px(600.), height: gpui::px(400.) }),
+                );
+
+                {
+                    match engine_context.create_window(
+                        WindowRequest::Entry,
+                        opts,
+                        move |window, cx| {
+                            let project_cb: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
+                                std::sync::Arc::new(move |pathbuf, cx| {
+                                    let on_complete: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
+                                        std::sync::Arc::new(|path, cx| {
+                                            let opts = make_window_options(
+                                                Some("Pulsar Engine"),
+                                                gpui::point(gpui::px(50.0), gpui::px(50.0)),
+                                                gpui::size(gpui::px(1600.0), gpui::px(900.0)),
+                                                Some(gpui::Size { width: gpui::px(800.), height: gpui::px(600.) }),
+                                            );
+                                            let _ = cx.open_window(opts, move |window, cx| {
+                                                let app = cx.new(|cx| ui_core::PulsarApp::new_with_project(path.clone(), window, cx));
+                                                let root = cx.new(|cx| ui_core::PulsarRoot::new("Pulsar Engine", app, window, cx));
+                                                cx.new(|cx| ui::Root::new(root.into(), window, cx))
+                                            });
+                                        });
+                                    ui_common::open_window::open_pulsar_window::<ui_loading_screen::LoadingScreen>((pathbuf, on_complete), cx);
+                                });
+
+                            let git_cb: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
+                                std::sync::Arc::new(move |pathbuf, cx| {
+                                    ui_common::open_window::open_pulsar_window::<ui_git_manager::GitManager>(pathbuf, cx);
+                                });
+
+                            let settings_cb: std::sync::Arc<dyn Fn(&mut gpui::App) + Send + Sync> =
+                                std::sync::Arc::new(move |cx| {
+                                    ui_common::open_window::open_pulsar_window::<ui_settings::SettingsWindow>((), cx);
+                                });
+
+                            let fab_cb: std::sync::Arc<dyn Fn(&mut gpui::App) + Send + Sync> =
+                                std::sync::Arc::new(move |cx| {
+                                    ui_common::open_window::open_pulsar_window::<ui_fab_search::FabSearchWindow>((), cx);
+                                });
+
+                            ui_entry::create_entry_component(window, cx, &ec, 0, project_cb, git_cb, settings_cb, fab_cb)
+                        },
+                        cx,
+                    ) {
+                        Ok((wid, _)) => tracing::info!("Entry window opened successfully id={}", wid),
+                        Err(e) => tracing::error!("Failed to open entry window: {}", e),
+                    }
+                }
+            }
+        }
+    });
+}
+
+/// Build common `WindowOptions` to reduce boilerplate.
+fn make_window_options(
+    title: Option<&'static str>,
+    origin: gpui::Point<gpui::Pixels>,
+    win_size: gpui::Size<gpui::Pixels>,
+    min_size: Option<gpui::Size<gpui::Pixels>>,
+) -> gpui::WindowOptions {
+    gpui::WindowOptions {
+        window_bounds: Some(gpui::WindowBounds::Windowed(gpui::Bounds::new(origin, win_size))),
+        titlebar: None,
+        kind: gpui::WindowKind::Normal,
+        is_resizable: true,
+        window_decorations: Some(gpui::WindowDecorations::Client),
+        window_min_size: min_size,
+        ..Default::default()
+    }
 }

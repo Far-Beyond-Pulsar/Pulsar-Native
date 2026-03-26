@@ -27,6 +27,15 @@
         naersk' = pkgs.callPackage naersk { };
 
         buildInputs = with pkgs; [
+          fontconfig
+          glib
+          gdk-pixbuf
+          gtk3
+          wayland
+          wayland-protocols
+          libxkbcommon
+          vulkan-loader
+          mesa
         ];
 
         nativeBuildInputs =
@@ -43,6 +52,22 @@
             pkg-config
             protobuf
             openssl
+            fontconfig
+             glib
+             gdk-pixbuf
+             gtk3
+             wayland
+             wayland-protocols
+                       xorg.libX11
+          xorg.libXcursor
+          xorg.libXi
+          xorg.libXrandr
+          xorg.libxcb
+          xorg.libXrender
+          xorg.libXfixes
+             libxkbcommon
+               vulkan-loader
+               mesa
           ]
           # TODO(mdeand): Add support for macOS 
           ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
@@ -72,6 +97,7 @@
         };
 
         devShell = pkgs.mkShell {
+          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath buildInputs;
           RUST_SRC_PATH = "${
             pkgs.rust-bin.stable.latest.default.override {
               extensions = [ "rust-src" ];

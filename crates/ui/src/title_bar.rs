@@ -269,7 +269,10 @@ impl RenderOnce for TitleBar {
                         .flex_shrink_0()
                         .flex_1()
                         .when(is_linux || is_windows, |this| {
-                            this.on_mouse_down(MouseButton::Left, |_, window, cx| {
+                            this.on_mouse_down(MouseButton::Left, |_, window, _cx| {
+                                if window.is_fullscreen() {
+                                    window.toggle_fullscreen();
+                                }
                                 window.start_window_move();
                             })
                             .on_double_click(|_, window, _| {

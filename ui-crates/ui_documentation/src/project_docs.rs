@@ -2,6 +2,7 @@ use gpui::{prelude::*, *};
 use ui::input::InputState;
 use std::path::PathBuf;
 use std::collections::HashSet;
+use crate::doc_source::{DocSource, make_search_input};
 
 #[derive(Clone, Debug)]
 pub enum ProjectTreeNode {
@@ -32,17 +33,23 @@ pub struct ProjectDocsState {
     pub full_docs: Option<pulsar_docs::project_parser::ProjectDocumentation>,
 }
 
+impl DocSource for ProjectDocsState {
+    fn placeholder() -> &'static str {
+        "Search project docs..."
+    }
+
+    fn initial_content() -> String {
+        "# Project Documentation\n\nLoading project documentation...".to_string()
+    }
+}
+
 impl ProjectDocsState {
     pub fn new(window: &mut Window, cx: &mut App, project_root: Option<PathBuf>) -> Self {
-        let search_input_state = cx.new(|cx| {
-            let mut state = InputState::new(window, cx);
-            state.set_placeholder("Search project docs...", window, cx);
-            state
-        });
+        let search_input_state = make_search_input::<Self>(window, cx);
 
         let mut state = Self {
             project_root: project_root.clone(),
-            markdown_content: "# Project Documentation\n\nLoading project documentation...".to_string(),
+            markdown_content: Self::initial_content(),
             search_query: String::new(),
             search_input_state,
             is_loading: false,

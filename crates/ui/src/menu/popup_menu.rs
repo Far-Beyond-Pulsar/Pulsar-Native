@@ -296,6 +296,64 @@ impl PopupMenu {
         self
     }
 
+    /// Add a Menu Item backed by a plain closure instead of a GPUI action.
+    /// Useful when the handler needs to capture arbitrary state (e.g. view-
+    /// specific indices) that cannot be encoded in a static action type.
+    pub fn menu_handler(
+        mut self,
+        label: impl Into<SharedString>,
+        handler: impl Fn(&mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.menu_items.push(PopupMenuItem::Item {
+            icon: None,
+            label: label.into(),
+            disabled: false,
+            is_link: false,
+            action: None,
+            handler: Some(Rc::new(handler)),
+        });
+        self
+    }
+
+    /// Add a Menu Item with icon backed by a plain closure.
+    pub fn menu_handler_with_icon(
+        mut self,
+        label: impl Into<SharedString>,
+        icon: impl Into<Icon>,
+        handler: impl Fn(&mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.has_icon = true;
+        self.menu_items.push(PopupMenuItem::Item {
+            icon: Some(icon.into()),
+            label: label.into(),
+            disabled: false,
+            is_link: false,
+            action: None,
+            handler: Some(Rc::new(handler)),
+        });
+        self
+    }
+
+    /// Add a Menu Item with icon backed by a plain closure with optional disabled state.
+    pub fn menu_handler_with_icon_and_disabled(
+        mut self,
+        label: impl Into<SharedString>,
+        icon: impl Into<Icon>,
+        disabled: bool,
+        handler: impl Fn(&mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.has_icon = true;
+        self.menu_items.push(PopupMenuItem::Item {
+            icon: Some(icon.into()),
+            label: label.into(),
+            disabled,
+            is_link: false,
+            action: None,
+            handler: Some(Rc::new(handler)),
+        });
+        self
+    }
+
     /// Add Menu Item with Icon.
     pub fn menu_with_icon(
         self,

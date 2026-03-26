@@ -12,7 +12,7 @@ use crate::{
 };
 
 use super::{
-    DockArea, Panel, PanelEvent, PanelInfo, PanelState, PanelView, StackPanel, TabPanel, TileMeta,
+    DockArea, DockError, Panel, PanelEvent, PanelInfo, PanelState, PanelView, StackPanel, TabPanel, TileMeta,
 };
 use gpui::{
     actions, canvas, div, point, px, size, AnyElement, App, AppContext, Bounds, Context,
@@ -370,9 +370,9 @@ impl Tiles {
         dock_area: &WeakEntity<DockArea>,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) {
+    ) -> Result<(), DockError> {
         let Ok(tab_panel) = item.panel.view().downcast::<TabPanel>() else {
-            panic!("only allows to add TabPanel type")
+            return Err(DockError::InvalidPanelType("only allows to add TabPanel type"));
         };
 
         tab_panel.update(cx, |tab_panel, _| {
@@ -396,6 +396,7 @@ impl Tiles {
 
         cx.emit(PanelEvent::LayoutChanged);
         cx.notify();
+        Ok(())
     }
 
     /// Find the panel at a given position, considering z-index

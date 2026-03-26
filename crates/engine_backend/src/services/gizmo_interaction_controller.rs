@@ -127,17 +127,15 @@ impl GizmoInteractionController {
         };
 
         // Get selected object
-        let selected_id = self.scene_db.get_selected_id();
-        if selected_id.is_none() {
-            return false;
-        }
+        let selected_id = match self.scene_db.get_selected_id() {
+            Some(id) => id,
+            None => return false,
+        };
 
-        let entry = self.scene_db.get_entry(&selected_id.unwrap());
-        if entry.is_none() {
-            return false;
-        }
-
-        let entry = entry.unwrap();
+        let entry = match self.scene_db.get_entry(&selected_id) {
+            Some(e) => e,
+            None => return false,
+        };
         let gizmo_state = self.scene_db.get_gizmo_state();
         
         // Store initial transform

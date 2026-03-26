@@ -284,14 +284,14 @@ impl TextViewState {
         )
     }
 
-    fn selection_text(&self) -> Option<String> {
+    fn selection_text(&self, cx: &App) -> Option<String> {
         Some(
             self.parsed_result
                 .as_ref()?
                 .as_ref()
                 .ok()?
                 .root_node
-                .selected_text(),
+                .selected_text(cx),
         )
     }
 }
@@ -474,10 +474,10 @@ impl TextView {
     }
 
     fn on_action_copy(state: &Entity<TextViewState>, cx: &mut App) {
-        let Some(selected_text) = state.read(cx).selection_text() else {
+        let selected_text = state.update(cx, |state, cx| state.selection_text(cx));
+        let Some(selected_text) = selected_text else {
             return;
         };
-
         cx.write_to_clipboard(ClipboardItem::new_string(selected_text.trim().to_string()));
     }
 }

@@ -15,6 +15,14 @@ pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([KeyBinding::new("escape", Cancel, Some(CONTEXT))])
 }
 
+struct PopoverInit;
+impl crate::registry::UiComponentInit for PopoverInit {
+    fn init(&self, cx: &mut App) {
+        init(cx);
+    }
+}
+crate::register_ui_component!(PopoverInit);
+
 pub struct PopoverContent {
     style: StyleRefinement,
     focus_handle: FocusHandle,

@@ -145,9 +145,7 @@ impl CallerSitesPanel {
 
 impl EventEmitter<PanelEvent> for CallerSitesPanel {}
 
-impl Focusable for CallerSitesPanel {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle { self.focus_handle.clone() }
-}
+ui_common::panel_boilerplate!(CallerSitesPanel);
 
 impl Panel for CallerSitesPanel {
     fn panel_name(&self) -> &'static str { "caller_sites" }

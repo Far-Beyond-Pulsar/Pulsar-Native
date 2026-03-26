@@ -9,10 +9,19 @@ publish = false
 rustup.workspace = true
 
 # UI framework
-gpui.workspace = true
+gpui-ce.workspace = true
 ui.workspace = true
+ui_common.workspace = true
 # Engine
 engine_state.workspace = true
+engine_fs.workspace = true
+
+# Git manager window dependency
+ui_git_manager.workspace = true
+
+# Loading screen is used by entry for splash/progress
+ui_loading_screen.workspace = true
+
 
 # Git operations
 git2 = "0.19"
@@ -26,7 +35,9 @@ toml = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 parking_lot = "0.12"
 open = "5.0"
-reqwest = { version = "0.12", features = ["blocking"] }
+reqwest = { version = "0.12", features = ["json"] }
+tokio = { version = "1", features = ["rt"] }
+smol = "2"
 tracing.workspace = true
 
 # Audio

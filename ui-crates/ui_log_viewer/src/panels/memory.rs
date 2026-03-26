@@ -30,6 +30,8 @@ impl MemoryBreakdownPanel {
 
 impl EventEmitter<PanelEvent> for MemoryBreakdownPanel {}
 
+ui_common::panel_boilerplate!(MemoryBreakdownPanel);
+
 impl Render for MemoryBreakdownPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         use ui::{h_flex, v_virtual_list, chart::AreaChart, scroll::ScrollbarAxis};
@@ -215,10 +217,6 @@ impl Render for MemoryBreakdownPanel {
                 .track_scroll(&self.scroll_handle)
             )
     }
-}
-
-impl Focusable for MemoryBreakdownPanel {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle { self.focus_handle.clone() }
 }
 
 impl Panel for MemoryBreakdownPanel {

@@ -41,6 +41,14 @@ pub(crate) fn init(cx: &mut App) {
     ])
 }
 
+struct DropdownInit;
+impl crate::registry::UiComponentInit for DropdownInit {
+    fn init(&self, cx: &mut App) {
+        init(cx);
+    }
+}
+crate::register_ui_component!(DropdownInit);
+
 /// A trait for items that can be displayed in a dropdown.
 pub trait DropdownItem: Clone {
     type Value: Clone;

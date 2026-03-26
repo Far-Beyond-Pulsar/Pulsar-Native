@@ -1,11 +1,7 @@
-use std::{
-    ops::Range,
-    rc::Rc,
-    sync::{Arc, Mutex},
-};
+use std::{ops::Range, rc::Rc};
 
 use gpui::{
-    point, px, quad, App, BorderStyle, Bounds, CursorStyle, Edges, Element, ElementId,
+    point, px, quad, App, BorderStyle, Bounds, CursorStyle, Edges, Element, ElementId, Entity,
     GlobalElementId, Half, HighlightStyle, Hitbox, HitboxBehavior, InspectorElementId, IntoElement,
     LayoutId, MouseMoveEvent, MouseUpEvent, Pixels, Point, SharedString, StyledText, TextLayout,
     Window,
@@ -23,7 +19,7 @@ pub(super) struct Inline {
     highlights: Vec<(Range<usize>, HighlightStyle)>,
     styled_text: StyledText,
 
-    state: Arc<Mutex<InlineState>>,
+    state: Entity<InlineState>,
 }
 
 /// The inline text state, used RefCell to keep the selection state.
@@ -45,11 +41,11 @@ impl InlineState {
 impl Inline {
     pub(super) fn new(
         id: impl Into<ElementId>,
-        state: Arc<Mutex<InlineState>>,
+        text: SharedString,
+        state: Entity<InlineState>,
         links: Vec<(Range<usize>, LinkMark)>,
         highlights: Vec<(Range<usize>, HighlightStyle)>,
     ) -> Self {
-        let text = state.lock().unwrap().text.clone();
         Self {
             id: id.into(),
             links: Rc::new(links),
@@ -295,7 +291,6 @@ impl Element for Inline {
     ) {
         let current_view = window.current_view();
         let hitbox = prepaint;
-        let mut state = self.state.lock().unwrap();
 
         let text_layout = self.styled_text.layout().clone();
         self.styled_text
@@ -305,7 +300,7 @@ impl Element for Inline {
         let (is_selectable, is_selection, selection) =
             self.layout_selections(&text_layout, window, cx);
 
-        state.selection = selection;
+        self.state.update(cx, |s, _| s.selection = selection);
 
         if is_selection || is_selectable {
             window.set_cursor_style(CursorStyle::IBeam, &hitbox);
@@ -317,15 +312,17 @@ impl Element for Inline {
             window.set_cursor_style(CursorStyle::PointingHand, &hitbox);
         }
 
-        if let Some(selection) = &state.selection {
+        let selection = self.state.read(cx).selection.clone();
+        if let Some(selection) = &selection {
             Self::paint_selection(selection, &text_layout, &bounds, window, cx);
         }
 
         // mouse move, update hovered link
+        let hovered_index = self.state.read(cx).hovered_index;
         window.on_mouse_event({
             let hitbox = hitbox.clone();
             let text_layout = text_layout.clone();
-            let mut hovered_index = state.hovered_index;
+            let mut hovered_index = hovered_index;
             move |event: &MouseMoveEvent, phase, window, cx| {
                 if !phase.bubble() || !hitbox.is_hovered(window) {
                     return;

@@ -143,21 +143,14 @@ impl AvailableTools {
     
     /// Load cached tools from file
     pub fn load_from_cache() -> Option<Self> {
-        let cache_path = Self::cache_path();
-        if !cache_path.exists() {
-            return None;
-        }
-        
-        let content = std::fs::read_to_string(cache_path).ok()?;
-        serde_json::from_str(&content).ok()
+        use ui_common::file_utils;
+        file_utils::read_json(&Self::cache_path()).ok()
     }
     
     /// Save tools to cache file
     pub fn save_to_cache(&self) {
-        let cache_path = Self::cache_path();
-        if let Ok(json) = serde_json::to_string_pretty(self) {
-            let _ = std::fs::write(cache_path, json);
-        }
+        use ui_common::file_utils;
+        let _ = file_utils::write_json(&Self::cache_path(), self);
     }
 }
 

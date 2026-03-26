@@ -6,10 +6,11 @@ use ui::{
 
 pub struct SettingsWindow {
     settings_screen: Option<Entity<SettingsScreenV2>>,
+    window_id: Option<engine_state::WindowId>,
 }
 
 impl SettingsWindow {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
         // Initialize default settings in the registry if not already done
         engine_state::register_default_settings();
 
@@ -21,22 +22,21 @@ impl SettingsWindow {
                     .map(|project| project.path.clone())
             });
 
-        let settings_screen = cx.new(|cx| SettingsScreenV2::new(
+        let settings_screen = cx.new(|_cx| SettingsScreenV2::new(
             SettingsScreenV2Props {
                 project_path,
             },
-            window,
-            cx
         ));
 
         Self {
             settings_screen: Some(settings_screen),
+            window_id: None,
         }
     }
 }
 
 impl Render for SettingsWindow {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
 
         v_flex()
@@ -50,5 +50,21 @@ impl Render for SettingsWindow {
                     div().into_any_element()
                 }
             )
+    }
+}
+
+impl window_manager::PulsarWindow for SettingsWindow {
+    type Params = ();
+
+    fn window_name() -> &'static str {
+        "SettingsWindow"
+    }
+
+    fn window_options(_: &()) -> gpui::WindowOptions {
+        window_manager::default_window_options(700.0, 500.0)
+    }
+
+    fn build(_: (), _window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {
+        cx.new(|cx| SettingsWindow::new(cx))
     }
 }

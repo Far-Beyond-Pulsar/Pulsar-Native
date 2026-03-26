@@ -22,7 +22,7 @@ pub struct PluginManagerWindow {
 
 impl PluginManagerWindow {
     /// Create a new plugin manager window using the global plugin manager
-    pub fn new_global(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new_global(cx: &mut Context<Self>) -> Self {
         // Load initial plugin list from global
         let plugins = if let Some(pm_lock) = plugin_manager::global() {
             if let Ok(pm) = pm_lock.read() {
@@ -237,5 +237,21 @@ impl PluginManagerWindow {
                             }))
                     })
             )
+    }
+}
+
+impl window_manager::PulsarWindow for PluginManagerWindow {
+    type Params = ();
+
+    fn window_name() -> &'static str {
+        "PluginManagerWindow"
+    }
+
+    fn window_options(_: &()) -> gpui::WindowOptions {
+        window_manager::default_window_options(600.0, 500.0)
+    }
+
+    fn build(_: (), _window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {
+        cx.new(|cx| PluginManagerWindow::new_global(cx))
     }
 }

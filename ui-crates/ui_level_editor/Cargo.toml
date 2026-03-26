@@ -6,11 +6,12 @@ publish = false
 
 [dependencies]
 # UI framework
-gpui.workspace = true
+gpui-ce.workspace = true
 ui.workspace = true
 
 # UI crates
 ui_common.workspace = true
+window_manager.workspace = true
 
 # Engine
 engine_state.workspace = true
@@ -25,6 +26,12 @@ schemars = "1.0"
 device_query = "4.0.1"
 raw-window-handle = "0.6"
 rust-i18n.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-graphics2 = "0.5"
+objc2 = "0.6"
+objc2-app-kit = "0.3"
+objc2-foundation = "0.3"  # separate crate for Foundation types
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winuser", "shellapi"] }
