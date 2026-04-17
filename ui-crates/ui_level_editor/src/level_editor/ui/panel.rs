@@ -109,7 +109,7 @@ impl LevelEditorPanel {
 
         // Temporary debug toggle: replace viewport with a solid yellow panel to
         // verify layout/overlap issues independently of GPU rendering.
-        let debug_replace_with_yellow = true;
+        let debug_replace_with_yellow = false;
 
         // Create HelioViewport — renders via WgpuSurfaceHandle every GPUI frame.
         // Must be created AFTER gpu_engine so we can share the Arc.
