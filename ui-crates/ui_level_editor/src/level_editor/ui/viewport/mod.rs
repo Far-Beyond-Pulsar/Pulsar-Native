@@ -313,13 +313,12 @@ impl ViewportPanel {
         if let Ok(engine) = gpu_engine.try_lock() {
             let ui_fps = engine.get_fps() as f64;
             let bevy_fps = engine.get_helio_fps() as f64;
-            let pipeline_us = engine.get_pipeline_time_us();
             
             let metrics_opt = engine.get_render_metrics();
-            let (memory_mb, draw_calls, vertices) = if let Some(ref m) = metrics_opt {
-                (m.memory_usage_mb, m.draw_calls, m.vertices_drawn)
+            let (memory_mb, draw_calls, vertices, frame_time_ms) = if let Some(ref m) = metrics_opt {
+                (m.memory_usage_mb, m.draw_calls, m.vertices_drawn, m.frame_time_ms)
             } else {
-                (0.0, 0, 0)
+                (0.0, 0, 0, 0.0)
             };
 
             let mut metrics = self.metrics.borrow_mut();
@@ -333,8 +332,7 @@ impl ViewportPanel {
             metrics.add_tps(game_tps);
             
             // Update frame time
-            let frame_time_ms = pipeline_us as f64 / 1000.0;
-            metrics.add_frame_time(frame_time_ms);
+            metrics.add_frame_time(frame_time_ms as f64);
             
             // Update memory
             metrics.add_memory(memory_mb as f64);
@@ -417,15 +415,14 @@ impl ViewportPanel {
         let viewport_entity = self.viewport.clone();
 
         // Get performance data
-        let (ui_fps, bevy_fps, render_fps, pipeline_us, renderer_ready) = if let Ok(engine) = gpu_engine.try_lock() {
+        let (ui_fps, bevy_fps, render_fps, renderer_ready) = if let Ok(engine) = gpu_engine.try_lock() {
             let ui_fps = engine.get_fps() as f64;
             let bevy_fps = engine.get_helio_fps() as f64;
             let render_fps = engine.get_render_fps() as f64;
-            let pipeline = engine.get_pipeline_time_us();
             let renderer_ready = engine.is_initialized();
-            (ui_fps, bevy_fps, render_fps, pipeline, renderer_ready)
+            (ui_fps, bevy_fps, render_fps, renderer_ready)
         } else {
-            (0.0, 0.0, 0.0, 0, false)
+            (0.0, 0.0, 0.0, false)
         };
 
         // Collect metric histories
@@ -809,7 +806,7 @@ impl ViewportPanel {
                     .child(viewport_entity)
             )
             // Overlays
-            .child(self.render_overlays(state, state_arc, fps_graph_state, ui_fps, bevy_fps, render_fps, renderer_ready, pipeline_us, fps_data, tps_data, frame_time_data, memory_data, draw_calls_data, vertices_data, input_latency_data, ui_consistency_data, gpu_engine, cx))
+            .child(self.render_overlays(state, state_arc, fps_graph_state, ui_fps, bevy_fps, render_fps, renderer_ready, fps_data, tps_data, frame_time_data, memory_data, draw_calls_data, vertices_data, input_latency_data, ui_consistency_data, gpu_engine, cx))
     }
 
     /// Render all viewport overlays.
@@ -822,7 +819,6 @@ impl ViewportPanel {
         bevy_fps: f64,
         render_fps: f64,
         renderer_ready: bool,
-        pipeline_us: u64,
         fps_data: Vec<FpsDataPoint>,
         tps_data: Vec<TpsDataPoint>,
         frame_time_data: Vec<FrameTimeDataPoint>,
@@ -885,7 +881,6 @@ impl ViewportPanel {
                         state_arc.clone(),
                         ui_fps,
                         render_fps,
-                        pipeline_us,
                         fps_data,
                         tps_data,
                         frame_time_data,

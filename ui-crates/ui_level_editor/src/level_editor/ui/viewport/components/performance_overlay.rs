@@ -72,7 +72,6 @@ pub fn render_performance_overlay<V: 'static>(
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     ui_fps: f64,
     render_fps: f64,
-    pipeline_us: u64,
     fps_data: Vec<FpsDataPoint>,
     tps_data: Vec<TpsDataPoint>,
     frame_time_data: Vec<FrameTimeDataPoint>,
@@ -98,7 +97,7 @@ where
             .into_any_element();
     }
 
-    let frame_time_ms = pipeline_us as f64 / 1000.0;
+    let frame_time_ms = frame_time_data.last().map(|d| d.frame_time_ms).unwrap_or(0.0);
     
     // Color coding for FPS
     let ui_fps_color = if ui_fps >= 240.0 {

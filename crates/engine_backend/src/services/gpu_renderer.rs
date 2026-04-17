@@ -99,10 +99,6 @@ impl GpuRenderer {
         self.helio_renderer.as_ref().map(|r| r.get_metrics())
     }
 
-    pub fn get_pipeline_time_us(&self) -> u64 { 0 }
-    pub fn get_gpu_time_us(&self)      -> u64 { 0 }
-    pub fn get_cpu_time_us(&self)      -> u64 { 0 }
-
     pub fn get_gpu_profiler_data(&self) -> Option<crate::subsystems::render::GpuProfilerData> {
         self.helio_renderer.as_ref().map(|r| r.get_gpu_profiler_data())
     }

@@ -8045,19 +8045,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pulsar_render"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "glam 0.29.3",
- "parking_lot",
- "serde",
- "thiserror 1.0.69",
- "tracing",
- "windows 0.58.0",
-]
-
-[[package]]
 name = "pulsar_replication"
 version = "0.1.0"
 dependencies = [
