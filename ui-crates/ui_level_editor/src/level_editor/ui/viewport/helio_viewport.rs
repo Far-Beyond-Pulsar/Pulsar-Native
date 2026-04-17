@@ -102,16 +102,8 @@ impl Render for HelioViewport {
         // Element tree fills the parent panel. The WGPU surface is composited
         // as an absolute layer inside this full-size container.
         if let Some(ref surface) = self.surface {
-            div()
-                .relative()
+            wgpu_surface(surface.clone())
                 .size_full()
-                .track_focus(&self.focus_handle)
-                .id("helio_viewport")
-                .child(
-                    wgpu_surface(surface.clone())
-                        .absolute()
-                        .inset_0(),
-                )
                 .into_any_element()
         } else {
             div()

@@ -802,7 +802,12 @@ impl ViewportPanel {
                     }
                 }
             })
-            .child(viewport_entity)
+            .child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .child(viewport_entity)
+            )
             // Overlays
             .child(self.render_overlays(state, state_arc, fps_graph_state, ui_fps, bevy_fps, render_fps, renderer_ready, pipeline_us, fps_data, tps_data, frame_time_data, memory_data, draw_calls_data, vertices_data, input_latency_data, ui_consistency_data, gpu_engine, cx))
     }
