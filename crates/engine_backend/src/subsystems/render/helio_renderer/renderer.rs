@@ -69,8 +69,7 @@ fn box_mesh(half_extents: [f32; 3]) -> MeshUpload {
                 corners[ci].to_array(), *normal, uvs[i], *tangent, 1.0,
             ));
         }
-        // CCW winding from outside: reverse to (0,2,1) and (0,3,2)
-        indices.extend_from_slice(&[base, base+2, base+1, base, base+3, base+2]);
+        indices.extend_from_slice(&[base, base+1, base+2, base, base+2, base+3]);
     }
     MeshUpload { vertices, indices }
 }
@@ -120,8 +119,8 @@ fn sphere_mesh(radius: f32) -> MeshUpload {
             let a = (i * (lon_steps + 1) + j) as u32;
             let b = a + (lon_steps + 1) as u32;
             // CCW winding when viewed from outside (outward normals).
-            indices.extend_from_slice(&[a, b, a + 1]);
-            indices.extend_from_slice(&[b, b + 1, a + 1]);
+            indices.extend_from_slice(&[a, a + 1, b]);
+            indices.extend_from_slice(&[b, a + 1, b + 1]);
         }
     }
 
