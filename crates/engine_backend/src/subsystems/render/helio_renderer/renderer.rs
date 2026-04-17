@@ -261,7 +261,13 @@ impl HelioRenderer {
         if self.inner.is_none() {
             let device = Arc::new(device.clone());
             let queue  = Arc::new(queue.clone());
-            let mut r  = Renderer::new(device, queue, RendererConfig::new(width, height, format));
+            // GPUI owns the wgpu device/queue, so Helio must use the
+            // external-device path (same as working wgpu_surface examples).
+            let mut r  = Renderer::new_with_external_device(
+                device,
+                queue,
+                RendererConfig::new(width, height, format),
+            );
             r.set_editor_mode(true);
             r.set_clear_color([0.15, 0.18, 0.25, 1.0]);
             r.set_ambient([0.4, 0.45, 0.55], 0.6);
