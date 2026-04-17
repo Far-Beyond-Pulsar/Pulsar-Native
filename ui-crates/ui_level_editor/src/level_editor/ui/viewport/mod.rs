@@ -615,7 +615,10 @@ impl ViewportPanel {
                                 None
                             };
                             
-                            let mut mouse_input = helio_renderer.viewport_mouse_input.lock();
+                            let mut mouse_input = match helio_renderer.viewport_mouse_input.lock() {
+                                Ok(guard) => guard,
+                                Err(poisoned) => poisoned.into_inner(),
+                            };
                             mouse_input.mouse_pos.x = normalized_x;
                             mouse_input.mouse_pos.y = normalized_y;
                             mouse_input.mouse_delta.x = delta_x;
@@ -758,7 +761,10 @@ impl ViewportPanel {
                             // If a gizmo axis is clicked, start drag operation
                             // Otherwise, do object selection raycast
                             
-                            let mut mouse_input = helio_renderer.viewport_mouse_input.lock();
+                            let mut mouse_input = match helio_renderer.viewport_mouse_input.lock() {
+                                Ok(guard) => guard,
+                                Err(poisoned) => poisoned.into_inner(),
+                            };
                             mouse_input.left_clicked = true;
                             mouse_input.left_down = true;
                             mouse_input.mouse_pos.x = normalized_x;
@@ -784,7 +790,10 @@ impl ViewportPanel {
 
                     if let Ok(engine) = gpu_engine_up.try_lock() {
                         if let Some(ref helio_renderer) = engine.helio_renderer {
-                            let mut mouse_input = helio_renderer.viewport_mouse_input.lock();
+                            let mut mouse_input = match helio_renderer.viewport_mouse_input.lock() {
+                                Ok(guard) => guard,
+                                Err(poisoned) => poisoned.into_inner(),
+                            };
                             mouse_input.left_clicked = false;
                             mouse_input.left_down = false;
                         }

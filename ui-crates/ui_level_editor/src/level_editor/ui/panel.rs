@@ -332,37 +332,8 @@ impl LevelEditorPanel {
                 tracing::info!("[GIZMO SYNC] Synced to backend SceneDB - tool: {:?}, selected: {:?}", 
                     state.current_tool, selected_id);
             
-                // Then sync to old Bevy resource (for backwards compatibility)
-                if let Ok(mut bevy_gizmo) = helio_renderer.gizmo_state.try_lock() {
-                    let gpui_gizmo = state.gizmo_state.read();
-
-                    // Map GPUI GizmoType to Bevy GizmoType
-                    use engine_backend::subsystems::render::helio_renderer::BevyGizmoType;
-                    use crate::level_editor::GizmoType;
-                    bevy_gizmo.gizmo_type = match gpui_gizmo.gizmo_type {
-                        GizmoType::None => BevyGizmoType::None,
-                        GizmoType::Translate => BevyGizmoType::Translate,
-                        GizmoType::Rotate => BevyGizmoType::Rotate,
-                        GizmoType::Scale => BevyGizmoType::Scale,
-                    };
-
-                    // Sync selected object and position
-                    if let Some(ref target_id) = gpui_gizmo.target_object_id {
-                        bevy_gizmo.selected_object_id = Some(target_id.clone());
-
-                        // Update gizmo position from selected object's transform
-                        if let Some(obj) = state.scene_database.get_object(target_id) {
-                            bevy_gizmo.target_position.x = obj.transform.position[0];
-                            bevy_gizmo.target_position.y = obj.transform.position[1];
-                            bevy_gizmo.target_position.z = obj.transform.position[2];
-                        }
-                    } else {
-                        bevy_gizmo.selected_object_id = None;
-                    }
-
-                    // Sync editor mode
-                    bevy_gizmo.enabled = state.is_edit_mode();
-                }
+                // Old Bevy gizmo sync is deprecated. The editor state is now driven
+                // through the shared SceneDb and Helio's own gizmo handling.
             }
         }
     }
@@ -803,13 +774,8 @@ impl Render for LevelEditorPanel {
                 }
                 */
                 
-                // TRANSFORM SYNC: Poll for transform updates from Bevy (e.g., from gizmo dragging)
-                if let Ok(bevy_gizmo) = helio_renderer.gizmo_state.try_lock() {
-                    // Handle transform updates from gizmo (disabled - gizmos removed)
-                    if let Some(ref _updated_id) = bevy_gizmo.updated_object_id {
-                        // Gizmo interaction is disabled
-                    }
-                }
+                // TRANSFORM SYNC: Transform updates are now handled through the shared
+                // SceneDb / Helio runtime, so old Bevy-only gizmo state is disabled.
                 
                 // SELECTION SYNC: Sync GPUI selection to backend SceneDB every frame
                 let state = self.shared_state.read();
