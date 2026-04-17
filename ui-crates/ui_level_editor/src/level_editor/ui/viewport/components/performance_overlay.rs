@@ -71,7 +71,7 @@ pub fn render_performance_overlay<V: 'static>(
     state: &LevelEditorState,
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     ui_fps: f64,
-    bevy_fps: f64,
+    render_fps: f64,
     pipeline_us: u64,
     fps_data: Vec<FpsDataPoint>,
     tps_data: Vec<TpsDataPoint>,
@@ -111,11 +111,11 @@ where
         cx.theme().danger
     };
 
-    let bevy_fps_color = if bevy_fps >= 144.0 {
+    let render_fps_color = if render_fps >= 144.0 {
         cx.theme().success
-    } else if bevy_fps >= 60.0 {
+    } else if render_fps >= 60.0 {
         cx.theme().accent
-    } else if bevy_fps >= 30.0 {
+    } else if render_fps >= 30.0 {
         cx.theme().warning
     } else {
         cx.theme().danger
@@ -206,7 +206,7 @@ where
                 .border_1()
                 .border_color(cx.theme().border.opacity(0.3))
                 .child(stat_line("UI FPS", format!("{:.0}", ui_fps), ui_fps_color, cx))
-                .child(stat_line("Render FPS", format!("{:.0}", bevy_fps), bevy_fps_color, cx))
+                .child(stat_line("Render FPS", format!("{:.0}", render_fps), render_fps_color, cx))
                 .child(stat_line("Frame Time", format!("{:.2}ms", frame_time_ms), frame_color, cx))
         )
         // Rendering stats

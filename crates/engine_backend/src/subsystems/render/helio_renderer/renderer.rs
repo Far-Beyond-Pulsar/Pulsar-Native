@@ -1,1000 +1,533 @@
-//! Main HelioRenderer struct and initialization logic
-//! Matches BevyRenderer's API but uses blade-graphics + Helio features
+//! Main HelioRenderer — wgpu + Helio scene renderer with built-in editor state.
 
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering}, mpsc};
-use std::time::{Duration, Instant};
-use glam::{Vec3, Mat4};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, mpsc};
+use std::time::Instant;
+use glam::{EulerRot, Mat4, Quat, Vec2, Vec3};
 
-use helio_core::{create_cube_mesh, create_sphere_mesh, create_plane_mesh, MeshBuffer, TextureManager};
-use helio_render::{FpsCamera, FeatureRenderer, TransformUniforms};
-use helio_features::FeatureRegistry;
-use helio_feature_base_geometry::BaseGeometry;
-use helio_feature_lighting::BasicLighting;
-use helio_feature_materials::BasicMaterials;
-use helio_feature_procedural_shadows::ProceduralShadows;
-use helio_feature_bloom::Bloom;
-use helio_feature_billboards::BillboardFeature;
-use helio_feature_skies::HelioSkies;
-use ui::GpuTextureHandle;
-
-use super::core::{CameraInput, RenderMetrics, GpuProfilerData, SharedGpuTextures};
-use super::gizmo_types::{
-    BevyGizmoType, BevyGizmoAxis, GizmoStateResource,
-    ViewportMouseInput, GizmoInteractionState, ActiveRaycastTask, RaycastResult,
+use helio::{
+    Camera, GroupMask, GpuLight, GpuMaterial, LightType,
+    MaterialId, MeshId, MeshUpload, Movability, ObjectDescriptor, ObjectId,
+    PackedVertex, Renderer, RendererConfig, SceneActor, SkyActor,
 };
 
-/// All shared state passed to the renderer thread.
-///
-/// Consolidating these into one struct lets the thread-spawn site do a
-/// single `.clone()` instead of 10 individual Arc clones.
-#[derive(Clone)]
-struct RendererSharedState {
-    shared_textures: Arc<Mutex<Option<SharedGpuTextures>>>,
-    camera_input: Arc<Mutex<CameraInput>>,
-    metrics: Arc<Mutex<RenderMetrics>>,
-    gpu_profiler: Arc<Mutex<GpuProfilerData>>,
-    gizmo_state: Arc<Mutex<GizmoStateResource>>,
-    viewport_mouse_input: Arc<parking_lot::Mutex<ViewportMouseInput>>,
-    scene_db: Arc<crate::scene::SceneDb>,
-    shutdown: Arc<AtomicBool>,
-    game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
-    physics_query: Option<Arc<crate::services::PhysicsQueryService>>,
+use crate::scene::{GizmoState, MeshType, ObjectType, SceneObjectSnapshot};
+
+use super::core::{CameraInput, RenderMetrics, GpuProfilerData};
+
+pub mod gizmo_types {
+    /// Normalized viewport bounds used by level editor mouse input.
+    #[derive(Debug, Clone)]
+    pub struct ViewportBounds {
+        pub x: f32,
+        pub y: f32,
+        pub width: f32,
+        pub height: f32,
+    }
 }
 
-/// Command sent from UI to renderer thread
+#[derive(Debug, Clone)]
 pub enum RendererCommand {
-    ToggleFeature(String), // feature name
+    ToggleFeature(String),
 }
 
-/// Helio-based renderer matching BevyRenderer's API
+#[derive(Debug, Clone)]
+pub struct ViewportMouseInput {
+    pub left_clicked: bool,
+    pub left_down: bool,
+    pub mouse_pos: glam::Vec2,
+    pub mouse_delta: glam::Vec2,
+    pub viewport_bounds: Option<gizmo_types::ViewportBounds>,
+}
+
+impl Default for ViewportMouseInput {
+    fn default() -> Self {
+        Self {
+            left_clicked: false,
+            left_down: false,
+            mouse_pos: glam::Vec2::ZERO,
+            mouse_delta: glam::Vec2::ZERO,
+            viewport_bounds: None,
+        }
+    }
+}
+
+// ── Mesh helpers ─────────────────────────────────────────────────────────────
+
+fn box_mesh(half_extents: [f32; 3]) -> MeshUpload {
+    let e = glam::Vec3::from_array(half_extents);
+    let corners = [
+        glam::Vec3::new(-e.x, -e.y,  e.z), glam::Vec3::new( e.x, -e.y,  e.z),
+        glam::Vec3::new( e.x,  e.y,  e.z), glam::Vec3::new(-e.x,  e.y,  e.z),
+        glam::Vec3::new(-e.x, -e.y, -e.z), glam::Vec3::new( e.x, -e.y, -e.z),
+        glam::Vec3::new( e.x,  e.y, -e.z), glam::Vec3::new(-e.x,  e.y, -e.z),
+    ];
+    let faces: [([usize; 4], [f32; 3], [f32; 3]); 6] = [
+        ([0,1,2,3], [0.,0.,1.],  [1.,0.,0.]),
+        ([5,4,7,6], [0.,0.,-1.], [-1.,0.,0.]),
+        ([4,0,3,7], [-1.,0.,0.], [0.,0.,1.]),
+        ([1,5,6,2], [1.,0.,0.],  [0.,0.,-1.]),
+        ([3,2,6,7], [0.,1.,0.],  [1.,0.,0.]),
+        ([4,5,1,0], [0.,-1.,0.], [1.,0.,0.]),
+    ];
+    let mut vertices = Vec::with_capacity(24);
+    let mut indices  = Vec::with_capacity(36);
+    for (fi, (quad, normal, tangent)) in faces.iter().enumerate() {
+        let base = (fi * 4) as u32;
+        let uvs = [[0.0f32, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]];
+        for (i, &ci) in quad.iter().enumerate() {
+            vertices.push(PackedVertex::from_components(
+                corners[ci].to_array(), *normal, uvs[i], *tangent, 1.0,
+            ));
+        }
+        indices.extend_from_slice(&[base, base+1, base+2, base, base+2, base+3]);
+    }
+    MeshUpload { vertices, indices }
+}
+
+fn sphere_mesh(radius: f32, stacks: u32, slices: u32) -> MeshUpload {
+    let mut vertices = Vec::new();
+    let mut indices  = Vec::new();
+    for s in 0..=stacks {
+        let phi = std::f32::consts::PI * s as f32 / stacks as f32;
+        let (sp, cp) = phi.sin_cos();
+        for sl in 0..=slices {
+            let theta = 2.0 * std::f32::consts::PI * sl as f32 / slices as f32;
+            let (st, ct) = theta.sin_cos();
+            let n = [sp * ct, cp, sp * st];
+            let p = [n[0] * radius, n[1] * radius, n[2] * radius];
+            let uv = [sl as f32 / slices as f32, s as f32 / stacks as f32];
+            let t = [-st, 0.0, ct];
+            vertices.push(PackedVertex::from_components(p, n, uv, t, 1.0));
+        }
+    }
+    for s in 0..stacks {
+        for sl in 0..slices {
+            let a = s * (slices + 1) + sl;
+            let b = a + slices + 1;
+            indices.extend_from_slice(&[a, b, a+1, b, b+1, a+1]);
+        }
+    }
+    MeshUpload { vertices, indices }
+}
+
+fn plane_mesh(half_extent: f32) -> MeshUpload {
+    let e = half_extent;
+    let normal  = [0.0, 1.0, 0.0];
+    let tangent = [1.0, 0.0, 0.0];
+    let positions = [
+        [-e, 0.0, -e], [ e, 0.0, -e], [ e, 0.0,  e], [-e, 0.0,  e],
+    ];
+    let uvs = [[0.0f32, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+    let vertices = positions.iter().zip(uvs.iter())
+        .map(|(p, uv)| PackedVertex::from_components(*p, normal, *uv, tangent, 1.0))
+        .collect();
+    MeshUpload { vertices, indices: vec![0, 1, 2, 0, 2, 3] }
+}
+
+fn make_material(base_color: [f32; 4], roughness: f32, metallic: f32) -> GpuMaterial {
+    GpuMaterial {
+        base_color,
+        emissive: [0.0, 0.0, 0.0, 0.0],
+        roughness_metallic: [roughness, metallic, 1.5, 0.5],
+        tex_base_color: GpuMaterial::NO_TEXTURE,
+        tex_normal:     GpuMaterial::NO_TEXTURE,
+        tex_roughness:  GpuMaterial::NO_TEXTURE,
+        tex_emissive:   GpuMaterial::NO_TEXTURE,
+        tex_occlusion:  GpuMaterial::NO_TEXTURE,
+        workflow: 0,
+        flags: 0,
+        _pad: 0,
+    }
+}
+
+fn build_transform(snap: &SceneObjectSnapshot) -> Mat4 {
+    let pos   = Vec3::from_array(snap.position);
+    let rot   = snap.rotation;
+    let scale = Vec3::from_array(snap.scale);
+    let quat  = Quat::from_euler(EulerRot::YXZ,
+        rot[1].to_radians(), rot[0].to_radians(), rot[2].to_radians());
+    Mat4::from_scale_rotation_translation(scale, quat, pos)
+}
+
+// ── Per-mesh-type cache ───────────────────────────────────────────────────────
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum MeshKey { Cube, Sphere, Plane, Cylinder }
+
+impl From<MeshType> for MeshKey {
+    fn from(t: MeshType) -> Self {
+        match t {
+            MeshType::Cube | MeshType::Custom => MeshKey::Cube,
+            MeshType::Sphere                  => MeshKey::Sphere,
+            MeshType::Plane                   => MeshKey::Plane,
+            MeshType::Cylinder                => MeshKey::Cylinder,
+        }
+    }
+}
+
+fn mesh_for_key(key: MeshKey) -> MeshUpload {
+    match key {
+        MeshKey::Cube | MeshKey::Cylinder => box_mesh([0.5, 0.5, 0.5]),
+        MeshKey::Sphere                   => sphere_mesh(0.5, 16, 16),
+        MeshKey::Plane                    => plane_mesh(5.0),
+    }
+}
+
+// ── HelioRenderer ─────────────────────────────────────────────────────────────
+
+/// Shared camera input written by the dedicated input thread.
 pub struct HelioRenderer {
-    pub shared_textures: Arc<Mutex<Option<SharedGpuTextures>>>,
+    /// Written by the input thread, read each frame in `render_frame`.
     pub camera_input: Arc<Mutex<CameraInput>>,
-    pub metrics: Arc<Mutex<RenderMetrics>>,
-    pub gpu_profiler: Arc<Mutex<GpuProfilerData>>,
-    pub gizmo_state: Arc<Mutex<GizmoStateResource>>,
-    pub viewport_mouse_input: Arc<parking_lot::Mutex<ViewportMouseInput>>,
-    /// Shared scene database - the renderer reads from this directly each frame.
-    /// The same Arc is held by all UI panels; writes are immediately visible to the renderer.
+    /// Shared scene database owned by the UI and level editor.
     pub scene_db: Arc<crate::scene::SceneDb>,
-    /// Channel to send commands to renderer thread
+
     pub command_sender: mpsc::Sender<RendererCommand>,
-    shutdown: Arc<AtomicBool>,
-    _render_thread: Option<std::thread::JoinHandle<()>>,
+    pub command_receiver: mpsc::Receiver<RendererCommand>,
+    pub viewport_mouse_input: Arc<Mutex<ViewportMouseInput>>,
+    pub gizmo_state: Arc<Mutex<GizmoState>>,
+
+    // Lazily initialised on the first `render_frame` call.
+    inner: Option<HelioInner>,
+
+    // Camera state driven by `camera_input` each frame.
+    cam_pos:   Vec3,
+    cam_yaw:   f32,
+    cam_pitch: f32,
+
+    // Viewport-local cursor position set from GPUI events.
+    cursor_pos: (f32, f32),
+    viewport_size: (u32, u32),
+
+    pub metrics:     Arc<Mutex<RenderMetrics>>,
+    pub gpu_profiler: Arc<Mutex<GpuProfilerData>>,
+    last_frame:  Instant,
+    frame_count: u64,
+}
+
+struct HelioInner {
+    renderer: Renderer,
+    device: Arc<wgpu::Device>,
+    queue: Arc<wgpu::Queue>,
+    /// SceneDb id → (helio ObjectId, mesh used)
+    object_map: HashMap<String, (ObjectId, MeshId)>,
+    /// MeshKey → (MeshId, MaterialId) shared across all objects of that type
+    mesh_cache: HashMap<MeshKey, (MeshId, MaterialId)>,
 }
 
 impl HelioRenderer {
-    pub async fn new(width: u32, height: u32) -> Self {
-        Self::new_with_all(width, height, None, Arc::new(crate::scene::SceneDb::new()), None).await
-    }
-
-    pub async fn new_with_game_thread(
-        width: u32,
-        height: u32,
-        game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
-        scene_db: Arc<crate::scene::SceneDb>,
-    ) -> Self {
-        Self::new_with_all(width, height, game_thread_state, scene_db, None).await
-    }
-
-    pub async fn new_with_all(
-        width: u32,
-        height: u32,
-        game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
-        scene_db: Arc<crate::scene::SceneDb>,
-        physics_query: Option<Arc<crate::services::PhysicsQueryService>>,
-    ) -> Self {
-        let shared_textures = Arc::new(Mutex::new(None));
-        let camera_input = Arc::new(Mutex::new(CameraInput::new()));
-        let metrics = Arc::new(Mutex::new(RenderMetrics::default()));
-        let gpu_profiler = Arc::new(Mutex::new(GpuProfilerData::default()));
-        let gizmo_state = Arc::new(Mutex::new(GizmoStateResource::default()));
-        let viewport_mouse_input = Arc::new(parking_lot::Mutex::new(ViewportMouseInput::default()));
+    pub fn new(scene_db: Arc<crate::scene::SceneDb>) -> Self {
         let (command_sender, command_receiver) = mpsc::channel();
-        let shutdown = Arc::new(AtomicBool::new(false));
-
-        let shared_state = RendererSharedState {
-            shared_textures: shared_textures.clone(),
-            camera_input: camera_input.clone(),
-            metrics: metrics.clone(),
-            gpu_profiler: gpu_profiler.clone(),
-            gizmo_state: gizmo_state.clone(),
-            viewport_mouse_input: viewport_mouse_input.clone(),
-            scene_db: scene_db.clone(),
-            shutdown: shutdown.clone(),
-            game_thread_state: game_thread_state.clone(),
-            physics_query: physics_query.clone(),
-        };
-
-        let render_thread = std::thread::Builder::new()
-            .name("helio-render".to_string())
-            .spawn(move || {
-                profiling::set_thread_name("Helio Render Thread");
-                Self::run_helio_renderer(width, height, shared_state, command_receiver);
-            })
-            .map_err(|e| tracing::error!("[HELIO] Failed to spawn render thread: {}", e))
-            .ok();
-
         Self {
-            shared_textures,
-            camera_input,
-            metrics,
-            gpu_profiler,
-            gizmo_state,
-            viewport_mouse_input,
+            camera_input: Arc::new(Mutex::new(CameraInput::new())),
             scene_db,
             command_sender,
-            shutdown,
-            _render_thread: render_thread,
+            command_receiver,
+            viewport_mouse_input: Arc::new(Mutex::new(ViewportMouseInput::default())),
+            gizmo_state: Arc::new(Mutex::new(GizmoState::default())),
+            inner: None,
+            cam_pos:   Vec3::new(0.0, 5.0, 15.0),
+            cam_yaw:   0.0,
+            cam_pitch: -0.2,
+            cursor_pos: (0.0, 0.0),
+            viewport_size: (0, 0),
+            metrics:      Arc::new(Mutex::new(RenderMetrics::default())),
+            gpu_profiler: Arc::new(Mutex::new(GpuProfilerData::default())),
+            last_frame:  Instant::now(),
+            frame_count: 0,
         }
-    }
-
-    fn run_helio_renderer(
-        width: u32,
-        height: u32,
-        state: RendererSharedState,
-        command_receiver: mpsc::Receiver<RendererCommand>,
-    ) {
-        let RendererSharedState {
-            shared_textures,
-            camera_input,
-            metrics,
-            gpu_profiler,
-            gizmo_state: _gizmo_state,
-            viewport_mouse_input: _viewport_mouse_input,
-            scene_db,
-            shutdown,
-            game_thread_state: _game_thread_state,
-            physics_query,
-        } = state;
-        profiling::profile_scope!("HelioRenderer::Run");
-        tracing::info!("[HELIO] 🚀 Step 1/10: Starting headless renderer {}x{}", width, height);
-
-        // Initialize blade-graphics context (headless)
-        tracing::info!("[HELIO] 🚀 Step 2/10: Initializing blade-graphics context...");
-        let context = Arc::new(unsafe {
-            match blade_graphics::Context::init(blade_graphics::ContextDesc {
-                presentation: false, // Headless - we'll handle presentation via DXGI
-                validation: cfg!(debug_assertions),
-                timing: false,
-                capture: false,
-                overlay: false,
-                device_id: 0,
-            }) {
-                Ok(ctx) => {
-                    tracing::info!("[HELIO] ✅ Step 2/10: blade-graphics context initialized!");
-                    ctx
-                }
-                Err(e) => {
-                    tracing::error!("[HELIO] ❌ FATAL: Failed to initialize blade-graphics: {:?}", e);
-                    panic!("Cannot continue without graphics context");
-                }
-            }
-        });
-
-        // Create DXGI shared textures
-        tracing::info!("[HELIO] 🚀 Step 3/10: Creating DXGI shared textures...");
-        #[cfg(target_os = "windows")]
-        let helio_shared_textures = match super::dxgi_textures::HelioSharedTextures::new(&context) {
-            Ok(textures) => {
-                tracing::info!("[HELIO] ✅ Step 3/10: DXGI shared textures created successfully!");
-                
-                // Store in shared state for GPUI access
-                if let Ok(mut lock) = shared_textures.lock() {
-                    *lock = Some(textures.to_shared_gpu_textures());
-                    tracing::info!("[HELIO] ✅ Shared textures stored for GPUI access");
-                } else {
-                    tracing::error!("[HELIO] ❌ Failed to lock shared_textures mutex");
-                }
-                
-                Some(textures)
-            }
-            Err(e) => {
-                tracing::error!("[HELIO] ❌ Failed to create DXGI shared textures: {}", e);
-                tracing::warn!("[HELIO] Continuing without texture sharing - viewport won't display");
-                None
-            }
-        };
-
-        #[cfg(not(target_os = "windows"))]
-        let helio_shared_textures: Option<()> = None;
-
-        // Create test meshes
-        tracing::info!("[HELIO] 🚀 Step 4/10: Creating meshes...");
-        let cube_mesh = MeshBuffer::from_mesh(&*context, "cube", &create_cube_mesh(1.0));
-        let sphere_mesh = MeshBuffer::from_mesh(&*context, "sphere", &create_sphere_mesh(0.5, 32, 32));
-        let plane_mesh = MeshBuffer::from_mesh(&*context, "plane", &create_plane_mesh(20.0, 20.0));
-        
-        // Create inverted sky sphere (flipped winding order for inside-out rendering)
-        let mut sky_sphere_data = create_sphere_mesh(1.0, 32, 32); // Unit sphere, scaled by transform
-        // Flip winding order so backfaces become front faces
-        for i in (0..sky_sphere_data.indices.len()).step_by(3) {
-            sky_sphere_data.indices.swap(i, i + 2);
-        }
-        let sky_sphere_mesh = MeshBuffer::from_mesh(&*context, "sky_sphere_inverted", &sky_sphere_data);
-        tracing::info!("[HELIO] ✅ Step 4/10: Test meshes created (including inverted sky sphere)");
-
-        // Create TextureManager and load spotlight billboard texture
-        tracing::info!("[HELIO] 🚀 Step 5/10: Creating TextureManager and loading textures...");
-        let mut texture_manager = TextureManager::new(Arc::clone(&context));
-        
-        // Load spotlight.png for light billboards
-        let spotlight_texture_id = match texture_manager.load_png("assets/editor_assets/spotlight.png") {
-            Ok(id) => {
-                tracing::info!("[HELIO] ✅ Loaded spotlight.png for light billboards");
-                Some(id)
-            }
-            Err(e) => {
-                tracing::warn!("[HELIO] ⚠️ Failed to load spotlight.png: {} - light billboards will not be visible", e);
-                None
-            }
-        };
-        
-        let texture_manager = Arc::new(texture_manager);
-        tracing::info!("[HELIO] ✅ Step 5/10: TextureManager created");
-
-        // Initialize features with game scene lighting
-        tracing::info!("[HELIO] 🚀 Step 6/10: Initializing rendering features...");
-        let mut base_geometry = BaseGeometry::new();
-        base_geometry.set_texture_manager(texture_manager.clone());
-        let base_shader = base_geometry.shader_template().to_string();
-
-        // Setup shadow system EXACTLY like lighting showcase
-        let mut shadows = ProceduralShadows::new().with_ambient(0.0); // NO ambient light!
-        shadows.set_texture_manager(texture_manager.clone());
-        
-        // Configure spotlight billboard icon
-        if let Some(texture_id) = spotlight_texture_id {
-            shadows.set_spotlight_icon(texture_id);
-            tracing::info!("[HELIO] ✅ Spotlight billboard icon configured");
-        }
-        
-        // Add sun as directional light - matches sky shader sun direction
-        let sun_dir = Vec3::new(0.4, 0.6, -0.5).normalize();
-        if let Err(e) = shadows.add_light(helio_feature_procedural_shadows::LightConfig {
-            light_type: helio_feature_procedural_shadows::LightType::Directional,
-            position: Vec3::ZERO, // Not used for directional lights
-            direction: -sun_dir,  // Light direction is opposite to sun position
-            intensity: 1.0,
-            color: Vec3::new(1.0, 0.95, 0.9), // Warm daylight
-            attenuation_radius: 0.0,  // Infinite range for sun
-            attenuation_falloff: 0.0,
-        }) {
-            tracing::warn!("[HELIO] Could not add sun light: {:?}", e);
-        }
-        
-        // Initial static lights (will be replaced by animated lights in loop)
-        if let Err(e) = shadows.add_light(helio_feature_procedural_shadows::LightConfig {
-            light_type: helio_feature_procedural_shadows::LightType::Spot {
-                inner_angle: 25.0_f32.to_radians(),
-                outer_angle: 40.0_f32.to_radians(),
-            },
-            position: Vec3::new(0.0, 8.0, 0.0),
-            direction: Vec3::new(0.0, -1.0, 0.0),
-            intensity: 1.5,
-            color: Vec3::new(1.0, 0.2, 0.2),
-            attenuation_radius: 12.0,
-            attenuation_falloff: 2.0,
-        }) {
-            tracing::warn!("[HELIO] Could not add spot light: {:?}", e);
-        }
-        
-        if let Err(e) = shadows.add_light(helio_feature_procedural_shadows::LightConfig {
-            light_type: helio_feature_procedural_shadows::LightType::Point,
-            position: Vec3::new(-4.0, 3.0, -4.0),
-            direction: Vec3::new(0.0, -1.0, 0.0),
-            intensity: 1.2,
-            color: Vec3::new(0.2, 1.0, 0.2),
-            attenuation_radius: 10.0,
-            attenuation_falloff: 2.5,
-        }) {
-            tracing::warn!("[HELIO] Could not add point light: {:?}", e);
-        }
-        
-        if let Err(e) = shadows.add_light(helio_feature_procedural_shadows::LightConfig {
-            light_type: helio_feature_procedural_shadows::LightType::Point,
-            position: Vec3::new(4.0, 3.0, -4.0),
-            direction: Vec3::new(0.0, -1.0, 0.0),
-            intensity: 1.2,
-            color: Vec3::new(0.2, 0.2, 1.0),
-            attenuation_radius: 10.0,
-            attenuation_falloff: 2.5,
-        }) {
-            tracing::warn!("[HELIO] Could not add point light: {:?}", e);
-        }
-        
-        tracing::info!("[HELIO] ✅ Shadow system configured with ambient=0.0 (pure black)");
-        
-        let mut billboards = BillboardFeature::new();
-        billboards.set_texture_manager(texture_manager.clone());
-
-        // Build feature registry
-        let registry = FeatureRegistry::builder()
-            .with_feature(base_geometry)
-            .with_feature(BasicLighting::new())
-            .with_feature(BasicMaterials::new())
-            .with_feature(shadows)
-            .with_feature(Bloom::new())
-            .with_feature(billboards)
-            // .with_feature(HelioSkies::new())  // Disabled - using emissive materials instead
-            .build();
-        tracing::info!("[HELIO] ✅ Feature registry built with emissive material support");
-        
-        // Create gizmo renderer separately (not part of feature registry)
-        let mut gizmo_renderer = super::gizmo_feature::GizmoRenderer::new(Arc::clone(&scene_db));
-        gizmo_renderer.init(&context, blade_graphics::TextureFormat::Bgra8UnormSrgb, blade_graphics::TextureFormat::Depth32Float);
-        tracing::info!("[HELIO] ✅ Gizmo renderer initialized");
-
-        // Create debug line renderer for visualizing raycasts
-        let mut debug_line_renderer = super::debug_line_renderer::DebugLineRenderer::new();
-        debug_line_renderer.init(&context, blade_graphics::TextureFormat::Bgra8UnormSrgb, blade_graphics::TextureFormat::Depth32Float);
-        tracing::info!("[HELIO] ✅ Debug line renderer initialized");
-
-        tracing::info!("[HELIO] ✅ Step 6/10: Feature registry built with gizmo overlay feature!");
-
-        // Use shared textures if available, otherwise create regular render target
-        tracing::info!("[HELIO] 🚀 Step 7/10: Setting up render targets...");
-        #[cfg(target_os = "windows")]
-        let use_shared_textures = helio_shared_textures.is_some();
-        
-        #[cfg(not(target_os = "windows"))]
-        let use_shared_textures = false;
-
-        let fallback_render_target = if !use_shared_textures {
-            tracing::warn!("[HELIO] Using fallback render target (no DXGI sharing)");
-            Some(context.create_texture(blade_graphics::TextureDesc {
-                name: "helio_render_target",
-                format: blade_graphics::TextureFormat::Bgra8UnormSrgb,
-                size: blade_graphics::Extent {
-                    width,
-                    height,
-                    depth: 1,
-                },
-                dimension: blade_graphics::TextureDimension::D2,
-                array_layer_count: 1,
-                mip_level_count: 1,
-                sample_count: 1,
-                usage: blade_graphics::TextureUsage::TARGET | blade_graphics::TextureUsage::RESOURCE,
-                external: None,
-            }))
-        } else {
-            tracing::info!("[HELIO] Using DXGI shared textures for rendering");
-            None
-        };
-        tracing::info!("[HELIO] ✅ Step 8/10: Render targets configured");
-
-        // Create depth texture for the render pipeline
-        tracing::info!("[HELIO] 🚀 Step 8.5/10: Creating depth texture...");
-        let depth_texture = context.create_texture(blade_graphics::TextureDesc {
-            name: "helio_depth_buffer",
-            format: blade_graphics::TextureFormat::Depth32Float,
-            size: blade_graphics::Extent {
-                width,
-                height,
-                depth: 1,
-            },
-            dimension: blade_graphics::TextureDimension::D2,
-            array_layer_count: 1,
-            mip_level_count: 1,
-            sample_count: 1,
-            usage: blade_graphics::TextureUsage::TARGET,
-            external: None,
-        });
-        tracing::info!("[HELIO] ✅ Step 8.5/10: Depth texture created");
-
-        tracing::info!("[HELIO] 🚀 Step 9/10: Creating FeatureRenderer...");
-        let mut renderer = match FeatureRenderer::new(
-            Arc::clone(&context),
-            blade_graphics::TextureFormat::Bgra8UnormSrgb,
-            width,
-            height,
-            registry,
-            &base_shader,
-        ) {
-            Ok(r) => r,
-            Err(e) => {
-                tracing::error!("[HELIO] ❌ FATAL: Failed to create FeatureRenderer: {:?}", e);
-                return;
-            }
-        };
-        tracing::info!("[HELIO] ✅ Step 9/10: FeatureRenderer created");
-
-        tracing::info!("[HELIO] 🚀 Step 10/10: Creating command encoder...");
-        let mut command_encoder = context.create_command_encoder(blade_graphics::CommandEncoderDesc {
-            name: "helio_main",
-            buffer_count: 2,
-        });
-        tracing::info!("[HELIO] ✅ Step 10/10: Command encoder created");
-
-        // Camera setup
-        let mut camera = FpsCamera::new(Vec3::new(0.0, 5.0, 15.0));
-        camera.pitch = -20.0_f32.to_radians();
-
-        let start_time = Instant::now();
-        let mut last_frame_time = Instant::now();
-        let mut frame_count: u64 = 0;
-
-        tracing::info!("[HELIO] ✅✅✅ ALL INITIALIZATION COMPLETE - ENTERING RENDER LOOP ✅✅✅");
-
-        // Add sky sphere to scene ONCE at startup
-        use crate::scene::{SceneObjectSnapshot, ObjectType, MeshType, Component};
-        let sky_sphere_obj = SceneObjectSnapshot {
-            id: "sky_sphere".to_string(),
-            name: "Sky Sphere".to_string(),
-            scene_path: "Sky Sphere".to_string(),
-            object_type: ObjectType::Mesh(MeshType::Sphere),
-            position: [0.0, 5.0, 0.0], // Will be updated to camera position each frame
-            rotation: [0.0, 0.0, 0.0],
-            scale: [500.0, 500.0, 500.0], // Huge sphere to encompass entire scene
-            parent: None,
-            children: vec![],
-            visible: true,
-            locked: false,
-            components: vec![
-                Component::Material {
-                    id: "sky_material".to_string(),
-                    color: [0.5, 0.8, 1.0, 1.0], // Sky blue
-                    metallic: 0.0,
-                    roughness: 1.0,
-                }
-            ],
-        };
-        scene_db.add_object(sky_sphere_obj, None);
-        tracing::info!("[HELIO] ✅ Sky sphere added at (0, 5, 0) with scale [50, 50, 50]");
-
-        // Main render loop
-        while !shutdown.load(Ordering::Relaxed) {
-            profiling::profile_scope!("Helio Frame");
-            
-            // Process renderer commands from UI (non-blocking)
-            while let Ok(cmd) = command_receiver.try_recv() {
-                match cmd {
-                    RendererCommand::ToggleFeature(feature_name) => {
-                        if let Ok(enabled) = renderer.toggle_and_rebuild(&feature_name) {
-                            tracing::info!("[HELIO] Feature '{}' toggled to: {}", feature_name, enabled);
-                        } else {
-                            tracing::warn!("[HELIO] Failed to toggle feature '{}'", feature_name);
-                        }
-                    }
-                }
-            }
-            
-            let now = Instant::now();
-            let delta_time = (now - last_frame_time).as_secs_f32();
-            last_frame_time = now;
-            
-            // Debug log every 60 frames
-            if frame_count % 60 == 0 {
-                tracing::debug!("[HELIO] Frame {} - FPS: {:.1}", frame_count, 1.0 / delta_time);
-            }
-
-            // Update camera from input
-            if let Ok(mut input) = camera_input.lock() {
-                // Apply movement with speed modifiers
-                let speed_multiplier = if input.boost { 3.0 } else { 1.0 };
-                let effective_speed = input.move_speed * speed_multiplier;
-                
-                camera.move_speed = effective_speed;
-                camera.look_speed = input.look_sensitivity;
-                
-                // WASD movement
-                camera.update_movement(input.forward, input.right, input.up, delta_time);
-                
-                // Mouse look - Use Helio's handle_mouse_delta method directly
-                if input.mouse_delta_x.abs() > 0.001 || input.mouse_delta_y.abs() > 0.001 {
-                    camera.handle_mouse_delta(input.mouse_delta_x, input.mouse_delta_y);
-                    input.mouse_delta_x = 0.0; // Clear after applying
-                    input.mouse_delta_y = 0.0;
-                }
-                
-                // Middle-mouse pan
-                if input.pan_delta_x.abs() > 0.001 || input.pan_delta_y.abs() > 0.001 {
-                    let pan_speed = 0.01;
-                    let right_offset = camera.right() * input.pan_delta_x * pan_speed;
-                    let up_offset = Vec3::Y * -input.pan_delta_y * pan_speed;
-                    camera.position += right_offset + up_offset;
-                    input.pan_delta_x = 0.0; // Clear after applying
-                    input.pan_delta_y = 0.0;
-                }
-                
-                // Scroll wheel zoom
-                if input.zoom_delta.abs() > 0.001 {
-                    camera.position += camera.forward() * input.zoom_delta * 0.5;
-                    input.zoom_delta = 0.0; // Clear after applying
-                }
-            }
-            
-            // Process mouse click for object selection with physics raycasting
-            if let Some(mut mouse_input) = _viewport_mouse_input.try_lock() {
-                if mouse_input.left_clicked {
-                    tracing::trace!("[RENDERER] 🖱  left_clicked fired — physics_query present: {}", physics_query.is_some());
-                    mouse_input.left_clicked = false; // Clear click flag
-                    
-                    // GPUI creates a transparent "hole" in the UI where the viewport element is
-                    // The renderer draws to the full surface (width x height) behind the UI
-                    // We need to map from viewport-relative coords [0,1] to surface coords [0,1]
-                    
-                    let (surface_x, surface_y) = if let Some(bounds) = mouse_input.viewport_bounds {
-                        tracing::info!("[VIEWPORT] 🖼️  Viewport bounds: pos=({:.1}, {:.1}) size=({:.1}x{:.1})",
-                            bounds.x, bounds.y, bounds.width, bounds.height);
-                        tracing::info!("[VIEWPORT] 🖼️  Renderer surface: {}x{}", width, height);
-                        
-                        // Step 1: Convert viewport-relative [0,1] to pixel position in viewport
-                        let pixel_x_in_viewport = mouse_input.mouse_pos.x * bounds.width;
-                        let pixel_y_in_viewport = mouse_input.mouse_pos.y * bounds.height;
-                        
-                        // Step 2: Add viewport's position to get pixel position in window/surface
-                        let pixel_x_in_surface = bounds.x + pixel_x_in_viewport;
-                        let pixel_y_in_surface = bounds.y + pixel_y_in_viewport;
-                        
-                        // Step 3: Normalize by surface dimensions to get [0,1] in rendered surface
-                        let surface_norm_x = pixel_x_in_surface / width as f32;
-                        let surface_norm_y = pixel_y_in_surface / height as f32;
-                        
-                        tracing::info!("[VIEWPORT] 📍 Viewport ({:.3}, {:.3}) -> Pixels ({:.1}, {:.1}) -> Surface ({:.3}, {:.3})",
-                            mouse_input.mouse_pos.x, mouse_input.mouse_pos.y,
-                            pixel_x_in_surface, pixel_y_in_surface,
-                            surface_norm_x, surface_norm_y);
-                        
-                        (surface_norm_x, surface_norm_y)
-                    } else {
-                        tracing::warn!("[VIEWPORT] ⚠️  No viewport bounds - using viewport coords as-is");
-                        (mouse_input.mouse_pos.x, mouse_input.mouse_pos.y)
-                    };
-                    
-                    // Convert surface-relative normalized coords [0,1] to NDC [-1, 1]
-                    let ndc_x = surface_x * 2.0 - 1.0;
-                    let ndc_y = 1.0 - surface_y * 2.0; // Flip Y
-                    
-                    // Create ray from camera through mouse position
-                    let aspect = width as f32 / height as f32;
-                    let fov = 60.0_f32.to_radians();
-                    let tan_half_fov = (fov * 0.5).tan();
-                    
-                    // Standard perspective projection raycast (like Unity, Unreal, etc.)
-                    // Ray originates from camera position and shoots through screen point
-                    
-                    // Compute camera basis vectors
-                    let cam_forward = camera.forward().normalize();
-                    let cam_right = camera.right().normalize();
-                    let cam_up = cam_right.cross(cam_forward).normalize();
-                    
-                    // Calculate ray direction from camera through screen point
-                    // This is the standard approach: ray from camera eye through NDC position on near plane
-                    let ray_dir_world = (
-                        cam_forward + 
-                        cam_right * (ndc_x * aspect * tan_half_fov) +
-                        cam_up * (ndc_y * tan_half_fov)
-                    ).normalize();
-                    
-                    let ray_origin = camera.position;
-                    
-                    tracing::info!("[VIEWPORT] 🎯 Camera at [{:.2}, {:.2}, {:.2}], forward=[{:.3}, {:.3}, {:.3}]",
-                        ray_origin.x, ray_origin.y, ray_origin.z,
-                        cam_forward.x, cam_forward.y, cam_forward.z);
-                    tracing::info!("[VIEWPORT] 🎯 Ray dir: [{:.3}, {:.3}, {:.3}] (should point toward scene)",
-                        ray_dir_world.x, ray_dir_world.y, ray_dir_world.z);
-                    
-                    // Use physics raycast if available, otherwise fallback to simple intersection
-                    if let Some(ref pq) = physics_query {
-                        tracing::info!("[VIEWPORT] Using physics raycast");
-                        // Start from camera origin for accurate debug visualization
-                        let line_start = ray_origin.to_array();
-
-                        if let Some(hit) = pq.raycast(ray_origin, ray_dir_world, 1000.0) {
-                            tracing::info!("[VIEWPORT] 🎯 Object selected via physics raycast: {} at distance {:.2}", hit.object_id, hit.distance);
-                            scene_db.select_object(Some(hit.object_id.clone()));
-                            // Solid red from camera → hit point (BRG format: RGB[1,0,0] = BRG[0,1,0])
-                            debug_line_renderer.add_line(
-                                line_start,
-                                hit.point.to_array(),
-                                [0.0, 1.0, 0.0, 1.0],  // BRG: Red
-                                u32::MAX,
-                            );
-                        } else {
-                            tracing::info!("[VIEWPORT] ❌ No object hit by physics raycast");
-                            scene_db.select_object(None);
-                            // Orange miss ray capped at 50 units (BRG format: RGB[1,0.4,0] = BRG[0,1,0.4])
-                            let miss_end = ray_origin + ray_dir_world * 50.0;
-                            debug_line_renderer.add_line(
-                                line_start,
-                                miss_end.to_array(),
-                                [0.0, 1.0, 0.4, 1.0],  // BRG: Orange
-                                u32::MAX,
-                            );
-                        }
-                    } else {
-                        tracing::trace!("[RENDERER] ⚠️  Using fallback raycast (no physics query service)");
-                        tracing::info!("[VIEWPORT] Using fallback raycast (no physics)");
-                        // Fallback: Simple sphere intersection test
-                        let mut closest_hit: Option<(String, f32)> = None;
-                        let mut closest_dist = f32::MAX;
-
-                        scene_db.for_each_entry(|entry| {
-                            if !entry.is_visible() {
-                                return;
-                            }
-
-                            let obj_pos = Vec3::new(
-                                entry.get_position()[0],
-                                entry.get_position()[1],
-                                entry.get_position()[2],
-                            );
-
-                            let to_obj = obj_pos - ray_origin;
-                            let proj = to_obj.dot(ray_dir_world);
-
-                            if proj > 0.0 {
-                                let closest_point = ray_origin + ray_dir_world * proj;
-                                let dist_to_ray = (obj_pos - closest_point).length();
-
-                                let scale = entry.get_scale();
-                                let radius = (scale[0] + scale[1] + scale[2]) / 3.0 * 0.707;
-
-                                if dist_to_ray < radius {
-                                    if closest_hit.as_ref().map_or(true, |h| proj < h.1) {
-                                        closest_hit = Some((entry.id.clone(), proj));
-                                        closest_dist = proj;
-                                    }
-                                }
-                            }
-                        });
-
-                        let line_start = ray_origin.to_array();
-
-                        if let Some((object_id, dist)) = closest_hit {
-                            tracing::info!("[VIEWPORT] 🎯 Object selected via fallback raycast: {}", object_id);
-                            scene_db.select_object(Some(object_id));
-                            let hit_point = ray_origin + ray_dir_world * dist;
-                            debug_line_renderer.add_line(
-                                line_start,
-                                hit_point.to_array(),
-                                [0.0, 1.0, 0.0, 1.0],  // BRG: Red
-                                u32::MAX,
-                            );
-                        } else {
-                            tracing::info!("[VIEWPORT] ❌ No object hit by fallback raycast");
-                            scene_db.select_object(None);
-                            let miss_end = ray_origin + ray_dir_world * 50.0;
-                            debug_line_renderer.add_line(
-                                line_start,
-                                miss_end.to_array(),
-                                [0.0, 1.0, 0.4, 1.0],  // BRG: Orange
-                                u32::MAX,
-                            );
-                        }
-                    }
-                }
-            }
-            
-            // Sync scene objects with physics colliders (for raycasting)
-            if let Some(ref pq) = physics_query {
-                // Only sync every 60 frames to avoid overhead
-                if frame_count % 60 == 0 {
-                    pq.sync_from_scene(&scene_db);
-                }
-            } else {
-                if frame_count % 300 == 0 {
-                    tracing::warn!("[RENDER] ⚠️  No PhysicsQueryService - viewport picking will use fallback");
-                }
-            }
-            
-            // === UPDATE DYNAMIC LIGHTS (RGB Multi-Light Dance) ===
-            {
-                profiling::profile_scope!("Update Lights");
-                if let Some(shadows_feature) = renderer.registry_mut()
-                    .get_feature_as_mut::<ProceduralShadows>("procedural_shadows") 
-                {
-                    shadows_feature.clear_lights();
-                    
-                    let time = (now - start_time).as_secs_f32();
-                    
-                    // Red spotlight (circling)
-                    let r_angle = time * 0.8;
-                    let _ = shadows_feature.add_light(helio_feature_procedural_shadows::LightConfig {
-                        light_type: helio_feature_procedural_shadows::LightType::Spot {
-                            inner_angle: 25.0_f32.to_radians(),
-                            outer_angle: 40.0_f32.to_radians(),
-                        },
-                        position: Vec3::new(r_angle.cos() * 3.0, 7.0, r_angle.sin() * 3.0),
-                        direction: Vec3::new(0.0, -1.0, 0.0),
-                        intensity: 1.5,
-                        color: Vec3::new(1.0, 0.1, 0.1),
-                        attenuation_radius: 12.0,
-                        attenuation_falloff: 2.0,
-                    });
-                    
-                    // Green point light (circling opposite)
-                    let g_angle = time * 1.2 + 2.0;
-                    let _ = shadows_feature.add_light(helio_feature_procedural_shadows::LightConfig {
-                        light_type: helio_feature_procedural_shadows::LightType::Point,
-                        position: Vec3::new(g_angle.cos() * 5.0, 3.0, g_angle.sin() * 5.0),
-                        direction: Vec3::new(0.0, -1.0, 0.0),
-                        intensity: 1.3,
-                        color: Vec3::new(0.1, 1.0, 0.1),
-                        attenuation_radius: 10.0,
-                        attenuation_falloff: 2.5,
-                    });
-                    
-                    // Blue point light (different speed)
-                    let b_angle = time * 1.0 + 4.0;
-                    let _ = shadows_feature.add_light(helio_feature_procedural_shadows::LightConfig {
-                        light_type: helio_feature_procedural_shadows::LightType::Point,
-                        position: Vec3::new(b_angle.cos() * 4.0, 4.0, b_angle.sin() * 4.0),
-                        direction: Vec3::new(0.0, -1.0, 0.0),
-                        intensity: 1.3,
-                        color: Vec3::new(0.1, 0.1, 1.0),
-                        attenuation_radius: 10.0,
-                        attenuation_falloff: 2.5,
-                    });
-                    
-                    // Cyan point light (fast orbiting center)
-                    let _ = shadows_feature.add_light(helio_feature_procedural_shadows::LightConfig {
-                        light_type: helio_feature_procedural_shadows::LightType::Point,
-                        position: Vec3::new(
-                            (time * 1.5).cos() * 2.0,
-                            2.0,
-                            (time * 1.5).sin() * 2.0,
-                        ),
-                        direction: Vec3::new(0.0, -1.0, 0.0),
-                        intensity: 0.8,
-                        color: Vec3::new(0.3, 1.0, 1.0),
-                        attenuation_radius: 6.0,
-                        attenuation_falloff: 3.0,
-                    });
-                }
-            }
-
-            // Start frame
-            #[cfg(target_os = "windows")]
-            let render_target = if let Some(ref shared_tex) = helio_shared_textures {
-                // Use current write buffer from shared textures
-                shared_tex.get_write_texture()
-            } else {
-                match fallback_render_target {
-                    Some(rt) => rt,
-                    None => {
-                        tracing::error!("[HELIO] No render target available, skipping frame");
-                        continue;
-                    }
-                }
-            };
-            
-            #[cfg(not(target_os = "windows"))]
-            let render_target = match fallback_render_target {
-                Some(rt) => rt,
-                None => {
-                    tracing::error!("[HELIO] No render target available, skipping frame");
-                    continue;
-                }
-            };
-            
-            command_encoder.start();
-            command_encoder.init_texture(render_target);
-
-            let aspect       = width as f32 / height as f32;
-            let elapsed_time = start_time.elapsed().as_secs_f32();
-            let camera_uniforms = camera.build_camera_uniforms(60.0, aspect, elapsed_time);
-
-            // Update sky sphere position to follow camera (always centered on viewer)
-            scene_db.apply_transform("sky_sphere", 
-                [camera.position.x, camera.position.y, camera.position.z],
-                [0.0, 0.0, 0.0],
-                [500.0, 500.0, 500.0]  // Huge so it's always far away
-            );
-
-            // === SCENE DATABASE - render what's actually in the scene ===
-            
-            // Ground plane (always present for orientation) - MUCH LARGER
-            let ground = Mat4::from_translation(Vec3::new(0.0, -0.01, 0.0))
-                * Mat4::from_scale(Vec3::new(100.0, 1.0, 100.0));
-            let mut meshes = vec![(TransformUniforms::from_matrix(ground), &plane_mesh)];
-
-            // Read all scene objects lock-free via DashMap + atomic transforms
-            scene_db.for_each_entry(|entry| {
-                use crate::scene::{ObjectType, MeshType};
-                if !entry.is_visible() {
-                    return;
-                }
-                let mat = entry.to_mat4();
-                let tu = TransformUniforms::from_matrix(mat);
-                match entry.object_type {
-                    ObjectType::Mesh(MeshType::Cube) => {
-                        meshes.push((tu, &cube_mesh));
-                    }
-                    ObjectType::Mesh(MeshType::Sphere) => {
-                        // Use inverted sky sphere mesh for the sky sphere object
-                        if entry.id == "sky_sphere" {
-                            meshes.push((tu, &sky_sphere_mesh));
-                        } else {
-                            meshes.push((tu, &sphere_mesh));
-                        }
-                    }
-                    ObjectType::Mesh(MeshType::Plane) => {
-                        meshes.push((tu, &plane_mesh));
-                    }
-                    // Cylinder falls back to cube for now; Camera/Light/Empty etc. not rendered as meshes
-                    ObjectType::Mesh(MeshType::Cylinder) | ObjectType::Mesh(MeshType::Custom) => {
-                        meshes.push((tu, &cube_mesh));
-                    }
-                    _ => {}
-                }
-            });
-
-            // Render gizmos if object is selected
-            if let Ok(gizmo_state_lock) = _gizmo_state.lock() {
-                if gizmo_state_lock.selected_object_id.is_some() {
-                    // Get gizmo target position (selected object position)
-                    let gizmo_position = Vec3::new(
-                        gizmo_state_lock.target_position[0],
-                        gizmo_state_lock.target_position[1],
-                        gizmo_state_lock.target_position[2],
-                    );
-                    
-                    let gizmo_scale = 0.5; // Scale down gizmo size
-                    
-                    // Gizmo rendering disabled
-                    /*
-                    use super::gizmos::{GizmoType, GizmoAxis, create_gizmo_arrow_transform, create_gizmo_torus_transform};
-                    
-                    match gizmo_state_lock.gizmo_type {
-                        BevyGizmoType::Translate => {
-                            // Render 3 arrows for X, Y, Z
-                            for axis in [GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z] {
-                                let transform = create_gizmo_arrow_transform(gizmo_position, axis, gizmo_scale);
-                                meshes.push((TransformUniforms::from_matrix(transform), &arrow_mesh));
-                            }
-                        }
-                        BevyGizmoType::Rotate => {
-                            // Render 3 toruses for X, Y, Z
-                            for axis in [GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z] {
-                                let transform = create_gizmo_torus_transform(gizmo_position, axis, gizmo_scale);
-                                meshes.push((TransformUniforms::from_matrix(transform), &torus_mesh));
-                            }
-                        }
-                        BevyGizmoType::Scale => {
-                            // Render 3 cubes for X, Y, Z scale handles
-                            for axis in [GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z] {
-                                let offset = match axis {
-                                    GizmoAxis::X => Vec3::new(1.0, 0.0, 0.0),
-                                    GizmoAxis::Y => Vec3::new(0.0, 1.0, 0.0),
-                                    GizmoAxis::Z => Vec3::new(0.0, 0.0, 1.0),
-                                    _ => Vec3::ZERO,
-                                } * gizmo_scale;
-                                
-                                let transform = Mat4::from_translation(gizmo_position + offset)
-                                    * Mat4::from_scale(Vec3::splat(0.2 * gizmo_scale));
-                                meshes.push((TransformUniforms::from_matrix(transform), &cube_mesh));
-                            }
-                        }
-                        _ => {}
-                    }
-                    */
-                }
-            }
-
-            // Render scene
-            let render_target_view = context.create_texture_view(
-                render_target,
-                blade_graphics::TextureViewDesc {
-                    name: "helio_render_view",
-                    format: blade_graphics::TextureFormat::Rgba8Unorm,
-                    dimension: blade_graphics::ViewDimension::D2,
-                    subresources: &blade_graphics::TextureSubresources::default(),
-                },
-            );
-            renderer.render(
-                &mut command_encoder,
-                render_target_view,
-                camera_uniforms,
-                &meshes,
-                delta_time,
-            );
-
-            // Render gizmos as overlay (after main scene, using InitOp::Load to preserve scene)
-            let depth_view = context.create_texture_view(
-                depth_texture,
-                blade_graphics::TextureViewDesc {
-                    name: "helio_depth_view",
-                    format: blade_graphics::TextureFormat::Depth32Float,
-                    dimension: blade_graphics::ViewDimension::D2,
-                    subresources: &blade_graphics::TextureSubresources::default(),
-                },
-            );
-            
-            gizmo_renderer.render(
-                &mut command_encoder,
-                render_target_view,
-                depth_view,
-                camera_uniforms.view_proj,
-                camera.position.to_array(),
-            );
-
-            // Render debug lines (raycasts) as overlay on top of everything
-            debug_line_renderer.render(
-                &mut command_encoder,
-                render_target_view,
-                camera_uniforms.view_proj,
-            );
-
-            // Submit and wait (for now - in real implementation we'd handle DXGI sync differently)
-            let sync_point = context.submit(&mut command_encoder);
-            context.wait_for(&sync_point, !0);
-
-            // Swap buffers for double-buffering
-            #[cfg(target_os = "windows")]
-            if let Some(ref shared_tex) = helio_shared_textures {
-                shared_tex.swap_buffers();
-                
-                // Debug log occasionally
-                if frame_count % 120 == 0 {
-                    tracing::debug!("[HELIO] Buffer swapped, frame {}", frame_count);
-                }
-            }
-
-            frame_count += 1;
-
-            // Update metrics
-            if let Ok(mut m) = metrics.lock() {
-                m.fps = if delta_time > 0.0 { 1.0 / delta_time } else { 0.0 };
-                m.frame_time_ms = delta_time * 1000.0;
-                m.frames_rendered = frame_count;
-            }
-
-            if let Ok(mut gp) = gpu_profiler.lock() {
-                gp.fps = if delta_time > 0.0 { 1.0 / delta_time } else { 0.0 };
-                gp.total_frame_ms = delta_time * 1000.0;
-                gp.frame_count = frame_count;
-            }
-
-            // No sleep - run at full display refresh rate!
-            // GPUI can read from the shared texture whenever it wants,
-            // we just keep rendering as fast as possible.
-        }
-
-        tracing::info!("[HELIO] 🛑 Render thread shutting down");
-    }
-
-    pub fn shutdown(&self) {
-        self.shutdown.store(true, Ordering::Relaxed);
-    }
-
-    pub fn get_metrics(&self) -> RenderMetrics {
-        self.metrics.lock().unwrap_or_else(|e| e.into_inner()).clone()
-    }
-
-    pub fn get_gpu_profiler_data(&self) -> GpuProfilerData {
-        self.gpu_profiler.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     pub fn get_read_index(&self) -> usize {
-        // Read from shared textures' read_index (GPUI reads from this buffer)
-        if let Ok(lock) = self.shared_textures.lock() {
-            if let Some(ref textures) = *lock {
-                return textures.read_index.load(std::sync::atomic::Ordering::Acquire);
-            }
-        }
         0
     }
 
-    pub fn get_current_native_handle(&self) -> Option<GpuTextureHandle> {
-        // Get the current readable texture handle for DXGI sharing
-        if let Ok(lock) = self.shared_textures.lock() {
-            if let Some(ref textures) = *lock {
-                let read_idx = textures.read_index.load(std::sync::atomic::Ordering::Acquire);
-                if let Ok(handles_lock) = textures.native_handles.lock() {
-                    if let Some(ref handles) = *handles_lock {
-                        return Some(handles[read_idx].clone());
-                    }
+    /// Called each GPUI frame from the viewport.
+    pub fn render_frame(
+        &mut self,
+        _device: &wgpu::Device,
+        _queue:  &wgpu::Queue,
+        view:   &wgpu::TextureView,
+        width:  u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+    ) {
+        println!("[HELIO-RENDERER] render_frame called: {}x{}, format={:?}", width, height, format);
+        println!("[HELIO-RENDERER] Frame {} - device ptr: {:p}, queue ptr: {:p}", 
+                 self.frame_count, _device as *const _, _queue as *const _);
+        
+        let now = Instant::now();
+        let dt  = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
+        self.last_frame   = now;
+        self.frame_count += 1;
+        self.viewport_size = (width, height);
+
+        // Lazy init
+        if self.inner.is_none() {
+            tracing::warn!("[HELIO-RENDERER] Initializing renderer...");
+
+            // Get device/queue from surface ONCE, not from parameters
+            // The parameters (_device/_queue) are ignored - we need to use fresh clones
+            let device_arc = Arc::new(_device.clone());
+            let queue_arc  = Arc::new(_queue.clone());
+            
+            println!("[HELIO-RENDERER] Init - device ptr: {:p}, queue ptr: {:p}", 
+                     _device as *const _, _queue as *const _);
+            println!("[HELIO-RENDERER] Init - device_arc ptr: {:p}, queue_arc ptr: {:p}", 
+                     Arc::as_ptr(&device_arc), Arc::as_ptr(&queue_arc));
+            println!("[HELIO-RENDERER] Init - format: {:?}, size: {}x{}", format, width, height);
+            
+            // GPUI owns the wgpu device/queue, so Helio must use the
+            // external-device path (same as working wgpu_surface examples).
+            let mut r  = Renderer::new_with_external_device(
+                device_arc.clone(),
+                queue_arc.clone(),
+                RendererConfig::new(width, height, format),
+            );
+            r.set_editor_mode(true);
+            r.set_clear_color([0.15, 0.18, 0.25, 1.0]);
+            r.set_ambient([0.4, 0.45, 0.55], 0.6);
+
+            let mut inner = HelioInner {
+                renderer:   r,
+                device: device_arc,
+                queue: queue_arc,
+                object_map: HashMap::new(),
+                mesh_cache: HashMap::new(),
+            };
+            self.populate_initial_scene(&mut inner);
+            self.inner = Some(inner);
+            println!("[HELIO-RENDERER] Renderer initialized!");
+        }
+
+        self.apply_camera_input(dt);
+
+        let inner = match self.inner.as_mut() {
+            Some(i) => i,
+            None    => return,
+        };
+
+        if self.viewport_size.0 != width || self.viewport_size.1 != height {
+            inner.renderer.set_render_size(width, height);
+        }
+
+        Self::sync_scene(&self.scene_db, inner);
+
+        // inner.renderer.debug_clear();  // TEMPORARILY DISABLED TO TEST
+
+        let (sy, cy) = self.cam_yaw.sin_cos();
+        let (sp, cp) = self.cam_pitch.sin_cos();
+        let fwd = Vec3::new(sy * cp, sp, -cy * cp);
+        let aspect = width as f32 / height.max(1) as f32;
+        let camera = Camera::perspective_look_at(
+            self.cam_pos, self.cam_pos + fwd, Vec3::Y,
+            std::f32::consts::FRAC_PI_4, aspect, 0.1, 10_000.0,
+        );
+
+        println!("[HELIO-RENDERER] About to call render(), cam_pos={:?}, fwd={:?}", self.cam_pos, fwd);
+        
+        if let Err(e) = inner.renderer.render(&camera, &view) {
+            println!("[HELIO] render error: {:?}", e);
+        } else {
+            println!("[HELIO-RENDERER] render() succeeded!");
+        }
+
+        if let Ok(mut m) = self.metrics.lock() {
+            m.fps            = if dt > 0.0 { 1.0 / dt } else { 0.0 };
+            m.frame_time_ms  = dt * 1000.0;
+            m.frames_rendered = self.frame_count;
+        }
+    }
+
+    fn apply_camera_input(&mut self, dt: f32) {
+        const LOOK: f32 = 0.0025;
+
+        let input = match self.camera_input.lock() {
+            Ok(mut lock) => {
+                let snap = lock.clone();
+                lock.mouse_delta_x = 0.0;
+                lock.mouse_delta_y = 0.0;
+                lock.pan_delta_x   = 0.0;
+                lock.pan_delta_y   = 0.0;
+                lock.zoom_delta    = 0.0;
+                snap
+            }
+            Err(_) => return,
+        };
+
+        self.cam_yaw   += input.mouse_delta_x * LOOK;
+        self.cam_pitch -= input.mouse_delta_y * LOOK;
+        self.cam_pitch  = self.cam_pitch.clamp(-1.5, 1.5);
+
+        let (sy, cy) = self.cam_yaw.sin_cos();
+        let fwd   = Vec3::new(sy, 0.0, -cy);
+        let right = Vec3::new(cy, 0.0,  sy);
+        let speed = if input.boost { input.move_speed * 3.0 } else { input.move_speed };
+
+        self.cam_pos += fwd   * input.forward * speed * dt;
+        self.cam_pos += right * input.right   * speed * dt;
+        self.cam_pos += Vec3::Y * input.up    * speed * dt;
+    }
+
+    /// Call on mouse move when not in camera fly mode.
+    pub fn update_cursor(&mut self, x: f32, y: f32) {
+        self.cursor_pos = (x, y);
+    }
+
+    /// Call on left mouse press when not in camera fly mode.
+    pub fn on_left_press(&mut self, _x: f32, _y: f32) {}
+
+    /// Call on left mouse release.
+    pub fn on_left_release(&mut self) {}
+
+    pub fn is_initialized(&self) -> bool {
+        self.inner.is_some()
+    }
+
+    pub fn get_metrics(&self) -> RenderMetrics {
+        self.metrics.lock().map(|m| m.clone()).unwrap_or_default()
+    }
+
+    pub fn get_gpu_profiler_data(&self) -> GpuProfilerData {
+        self.gpu_profiler.lock().map(|m| m.clone()).unwrap_or_default()
+    }
+
+    // ── Scene sync ────────────────────────────────────────────────────────────
+
+    fn populate_initial_scene(&self, inner: &mut HelioInner) {
+        // ── Sky ──────────────────────────────────────────────────────────────
+        inner.renderer.scene_mut().insert_actor(SceneActor::Sky(
+            SkyActor::new().with_sky_color([0.5, 0.7, 1.0]),
+        ));
+
+        // ── Sun (directional light) ──────────────────────────────────────────
+        let sun_dir = Vec3::new(-0.5, -1.0, -0.3).normalize();
+        inner.renderer.scene_mut().insert_actor(SceneActor::light(GpuLight {
+            position_range:  [0.0, 0.0, 0.0, f32::MAX],
+            direction_outer: [sun_dir.x, sun_dir.y, sun_dir.z, 0.0],
+            color_intensity: [1.0, 0.95, 0.9, 5.0],
+            shadow_index:    0,
+            light_type:      LightType::Directional as u32,
+            inner_angle:     0.0,
+            _pad:            0,
+        }));
+
+        // ── Fill light (softer, from the opposite side) ──────────────────────
+        inner.renderer.scene_mut().insert_actor(SceneActor::light(GpuLight {
+            position_range:  [0.0, 10.0, 0.0, 100.0],
+            direction_outer: [0.0, -1.0, 0.0, 0.0],
+            color_intensity: [0.4, 0.5, 0.7, 2.0],
+            shadow_index:    u32::MAX,
+            light_type:      LightType::Point as u32,
+            inner_angle:     0.0,
+            _pad:            0,
+        }));
+
+        // ── Ground plane ─────────────────────────────────────────────────────
+        let ground_upload = plane_mesh(50.0);
+        let ground_mesh = match inner.renderer.scene_mut()
+            .insert_actor(SceneActor::mesh(ground_upload.clone()))
+            .as_mesh()
+        {
+            Some(id) => id,
+            None     => return,
+        };
+        let ground_mat = inner.renderer.scene_mut()
+            .insert_material(make_material([0.35, 0.35, 0.35, 1.0], 0.9, 0.0));
+        let _ = inner.renderer.scene_mut()
+            .insert_actor(SceneActor::object(ObjectDescriptor {
+                mesh:       ground_mesh,
+                material:   ground_mat,
+                transform:  Mat4::IDENTITY,
+                bounds:     [0.0, 0.0, 0.0, 50.0],
+                flags:      0,
+                groups:     GroupMask::NONE,
+                movability: None,
+            }));
+
+        // ── Colored cubes around the origin ──────────────────────────────────
+        let cube_upload = box_mesh([0.5, 0.5, 0.5]);
+        let cube_mesh = match inner.renderer.scene_mut()
+            .insert_actor(SceneActor::mesh(cube_upload.clone()))
+            .as_mesh()
+        {
+            Some(id) => id,
+            None     => return,
+        };
+
+        let positions_and_colors: &[([f32; 3], [f32; 4])] = &[
+            ([ 0.0, 1.0,  0.0], [0.8, 0.2, 0.2, 1.0]),  // red center
+            ([ 3.0, 1.0,  0.0], [0.2, 0.7, 0.2, 1.0]),  // green right
+            ([-3.0, 1.0,  0.0], [0.2, 0.3, 0.9, 1.0]),  // blue left
+            ([ 0.0, 1.0,  5.0], [0.9, 0.9, 0.2, 1.0]),  // yellow front
+            ([ 0.0, 1.0, -5.0], [0.8, 0.3, 0.8, 1.0]),  // magenta back
+        ];
+
+        for &(pos, color) in positions_and_colors {
+            let mat = inner.renderer.scene_mut()
+                .insert_material(make_material(color, 0.5, 0.1));
+            let transform = Mat4::from_translation(Vec3::from_array(pos));
+            let _ = inner.renderer.scene_mut()
+                .insert_actor(SceneActor::object(ObjectDescriptor {
+                    mesh:       cube_mesh,
+                    material:   mat,
+                    transform,
+                    bounds:     [pos[0], pos[1], pos[2], 1.0],
+                    flags:      0,
+                    groups:     GroupMask::NONE,
+                    movability: None,
+                }));
+        }
+    }
+
+    fn sync_scene(scene_db: &crate::scene::SceneDb, inner: &mut HelioInner) {
+        let snapshots = scene_db.get_all_snapshots();
+
+        for snap in &snapshots {
+            let key = match snap.object_type {
+                ObjectType::Mesh(mt) => MeshKey::from(mt),
+                _ => continue,
+            };
+            if !snap.visible { continue; }
+
+            if let Some(&(obj_id, _)) = inner.object_map.get(&snap.id) {
+                // Update transform
+                let _ = inner.renderer.scene_mut()
+                    .update_object_transform(obj_id, build_transform(snap));
+            } else {
+                // Insert new object
+                let (mesh_id, mat_id) = *inner.mesh_cache.entry(key).or_insert_with(|| {
+                    let upload = mesh_for_key(key);
+                    let mid = inner.renderer.scene_mut()
+                        .insert_actor(SceneActor::mesh(upload.clone()))
+                        .as_mesh()
+                        .expect("mesh insert");
+                    let mat = make_material([0.6, 0.6, 0.65, 1.0], 0.7, 0.0);
+                    let matid = inner.renderer.scene_mut().insert_material(mat);
+                    (mid, matid)
+                });
+
+                let transform = build_transform(snap);
+                let radius = Vec3::from_array(snap.scale).length() * 0.5;
+                let pos    = transform.w_axis.truncate();
+
+                if let Some(obj_id) = inner.renderer.scene_mut()
+                    .insert_actor(SceneActor::object(ObjectDescriptor {
+                        mesh:       mesh_id,
+                        material:   mat_id,
+                        transform,
+                        bounds:     [pos.x, pos.y, pos.z, radius.max(0.1)],
+                        flags:      0,
+                        groups:     GroupMask::NONE,
+                        movability: Some(Movability::Movable),
+                    }))
+                    .as_object()
+                {
+                    inner.object_map.insert(snap.id.clone(), (obj_id, mesh_id));
                 }
             }
         }
-        None
-    }
-}
 
-impl Drop for HelioRenderer {
-    fn drop(&mut self) {
-        self.shutdown();
     }
 }

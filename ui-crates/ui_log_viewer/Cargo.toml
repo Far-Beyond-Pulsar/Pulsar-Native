@@ -35,6 +35,7 @@ crossbeam-channel = "0.5"
 backtrace = "0.3"
 
 # Async
+futures = "0.3"
 smol = "2.0"
 tokio = { version = "1", features = ["sync", "macros"] }
 

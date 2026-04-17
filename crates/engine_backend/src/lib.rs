@@ -8,7 +8,6 @@
 //! build high-performance games with ease.
 
 pub mod subsystems;
-pub mod gpu_interop;
 pub mod services;
 pub mod scene;
 

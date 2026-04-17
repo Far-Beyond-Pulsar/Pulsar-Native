@@ -1,12 +1,9 @@
 // Rendering subsystem for Pulsar Engine Backend
 
 pub mod helio_renderer;
-pub mod dxgi_shared_texture;
 pub mod handle_utils;
-// pub mod native_texture; // Obsolete - depends on bevy which is removed
 
 pub use helio_renderer::{HelioRenderer, CameraInput, RenderMetrics, GpuProfilerData};
-pub use dxgi_shared_texture::*;
 pub use handle_utils::{handle_to_usize, usize_to_handle};
 // pub use native_texture::{NativeTextureHandle, SharedTextureInfo, TextureFormat};
 
