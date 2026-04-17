@@ -4,7 +4,7 @@ pub mod core;
 pub mod renderer;
 
 pub use core::{CameraInput, RenderMetrics, GpuProfilerData, DiagnosticMetric};
-pub use renderer::HelioRenderer;
+pub use renderer::{gizmo_types, HelioRenderer, RendererCommand};
 
 pub const RENDER_WIDTH: u32  = 1600;
 pub const RENDER_HEIGHT: u32 = 900;
