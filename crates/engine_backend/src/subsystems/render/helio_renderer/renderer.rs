@@ -1,7 +1,7 @@
 //! Main HelioRenderer — wgpu + Helio scene renderer with built-in editor state.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::Instant;
 use glam::{EulerRot, Mat4, Quat, Vec3};
 
@@ -11,9 +11,46 @@ use helio::{
     PackedVertex, Renderer, RendererConfig, SceneActor,
 };
 
-use crate::scene::{MeshType, ObjectType, SceneObjectSnapshot};
+use crate::scene::{GizmoState, MeshType, ObjectType, SceneObjectSnapshot};
 
 use super::core::{CameraInput, RenderMetrics, GpuProfilerData};
+
+pub mod gizmo_types {
+    /// Normalized viewport bounds used by level editor mouse input.
+    #[derive(Debug, Clone)]
+    pub struct ViewportBounds {
+        pub x: f32,
+        pub y: f32,
+        pub width: f32,
+        pub height: f32,
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum RendererCommand {
+    ToggleFeature(String),
+}
+
+#[derive(Debug, Clone)]
+pub struct ViewportMouseInput {
+    pub left_clicked: bool,
+    pub left_down: bool,
+    pub mouse_pos: glam::Vec2,
+    pub mouse_delta: glam::Vec2,
+    pub viewport_bounds: Option<gizmo_types::ViewportBounds>,
+}
+
+impl Default for ViewportMouseInput {
+    fn default() -> Self {
+        Self {
+            left_clicked: false,
+            left_down: false,
+            mouse_pos: glam::Vec2::ZERO,
+            mouse_delta: glam::Vec2::ZERO,
+            viewport_bounds: None,
+        }
+    }
+}
 
 // ── Mesh helpers ─────────────────────────────────────────────────────────────
 
@@ -146,6 +183,11 @@ pub struct HelioRenderer {
     /// Shared scene database owned by the UI and level editor.
     pub scene_db: Arc<crate::scene::SceneDb>,
 
+    pub command_sender: mpsc::Sender<RendererCommand>,
+    pub command_receiver: mpsc::Receiver<RendererCommand>,
+    pub viewport_mouse_input: Arc<Mutex<ViewportMouseInput>>,
+    pub gizmo_state: Arc<Mutex<GizmoState>>,
+
     // Lazily initialised on the first `render_frame` call.
     inner: Option<HelioInner>,
 
@@ -174,9 +216,14 @@ struct HelioInner {
 
 impl HelioRenderer {
     pub fn new(scene_db: Arc<crate::scene::SceneDb>) -> Self {
+        let (command_sender, command_receiver) = mpsc::channel();
         Self {
             camera_input: Arc::new(Mutex::new(CameraInput::new())),
             scene_db,
+            command_sender,
+            command_receiver,
+            viewport_mouse_input: Arc::new(Mutex::new(ViewportMouseInput::default())),
+            gizmo_state: Arc::new(Mutex::new(GizmoState::default())),
             inner: None,
             cam_pos:   Vec3::new(0.0, 5.0, 15.0),
             cam_yaw:   0.0,
@@ -188,6 +235,10 @@ impl HelioRenderer {
             last_frame:  Instant::now(),
             frame_count: 0,
         }
+    }
+
+    pub fn get_read_index(&self) -> usize {
+        0
     }
 
     /// Called each GPUI frame from the viewport.
