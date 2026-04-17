@@ -461,9 +461,6 @@ impl ViewportPanel {
 
         // Main viewport container
         div()
-            .flex()
-            .flex_col()
-            .flex_1()
             .size_full()
             .relative()
             // TRANSPARENT - no background! This creates the "hole" to see Bevy rendering
@@ -805,35 +802,7 @@ impl ViewportPanel {
                     }
                 }
             })
-            .child({
-                let input_state_speed = Arc::clone(&self.input_state);
-                let mouse_right_captured_scroll = self.mouse_right_captured.clone();
-                // Main viewport - Bevy renders through this transparent area
-                div()
-                    .flex()
-                    .flex_1()
-                    .size_full()
-                    .on_scroll_wheel(move |event: &gpui::ScrollWheelEvent, _phase, cx| {
-                        let scroll_delta: f32 = event.delta.pixel_delta(px(1.0)).y.into();
-                        let is_rotating = mouse_right_captured_scroll.load(Ordering::Acquire);
-                        
-                        tracing::info!("[VIEWPORT] 📜 Scroll event received: delta={:.2}, is_rotating={}", scroll_delta, is_rotating);
-                        
-                        if is_rotating {
-                            // Adjust camera movement speed when holding right-click
-                            // Scroll up (positive) = increase speed, scroll down (negative) = decrease speed
-                            let speed_delta = if scroll_delta > 0.0 { 2.0 } else if scroll_delta < 0.0 { -2.0 } else { 0.0 };
-                            tracing::info!("[VIEWPORT] 🎚️ Scroll adjusting speed, ptr={:p}, delta={}", Arc::as_ptr(&input_state_speed), speed_delta);
-                            input_state_speed.adjust_move_speed(speed_delta);
-                            tracing::info!("[VIEWPORT] 🎚️ After adjust, speed={:.2}", input_state_speed.get_move_speed());
-                            cx.stop_propagation();
-                        } else {
-                            // Normal zoom behavior when not holding right-click
-                            input_state_scroll.set_zoom_delta(scroll_delta * 0.5);
-                        }
-                    })
-                    .child(viewport_entity)
-            })
+            .child(viewport_entity)
             // Overlays
             .child(self.render_overlays(state, state_arc, fps_graph_state, ui_fps, bevy_fps, render_fps, renderer_ready, pipeline_us, fps_data, tps_data, frame_time_data, memory_data, draw_calls_data, vertices_data, input_latency_data, ui_consistency_data, gpu_engine, cx))
     }
@@ -863,10 +832,9 @@ impl ViewportPanel {
     where
         V: EventEmitter<ui::dock::PanelEvent> + Render,
     {
-        let mut overlays = v_flex()
-            .size_full()
-            .p_2()
-            .gap_2()
+        let mut overlays = div()
+            .absolute()
+            .inset_0()
             // Top-left: Viewport options
             .child(
                 div()

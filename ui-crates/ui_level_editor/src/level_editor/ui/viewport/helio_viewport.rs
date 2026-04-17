@@ -40,8 +40,8 @@ impl EventEmitter<DismissEvent> for HelioViewport {}
 
 impl Render for HelioViewport {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Mark entity dirty so GPUI keeps calling render() at vsync rate.
-        cx.notify();
+        // Keep rendering continuously for real-time 3D viewport updates.
+        window.request_animation_frame();
 
         let format = wgpu::TextureFormat::Rgba8UnormSrgb;
 
@@ -76,15 +76,14 @@ impl Render for HelioViewport {
             }
         }
 
-        // Element tree — matches the working example exactly:
-        //   div with explicit size + bg + wgpu_surface child
+        // Element tree fills the parent panel. The WGPU surface is composited
+        // as an absolute layer inside this full-size container.
         if let Some(ref surface) = self.surface {
             div()
+                .relative()
+                .size_full()
                 .track_focus(&self.focus_handle)
                 .id("helio_viewport")
-                .w(px(1600.0))
-                .h(px(900.0))
-                .bg(rgb(0x0d0d14))
                 .child(
                     wgpu_surface(surface.clone())
                         .absolute()
@@ -93,6 +92,7 @@ impl Render for HelioViewport {
                 .into_any_element()
         } else {
             div()
+                .relative()
                 .track_focus(&self.focus_handle)
                 .id("helio_viewport")
                 .size_full()
