@@ -15,17 +15,20 @@ pub struct HelioViewport {
     pub gpu_engine: Arc<Mutex<GpuRenderer>>,
     surface: Option<WgpuSurfaceHandle>,
     focus_handle: FocusHandle,
+    debug_replace_with_yellow: bool,
 }
 
 impl HelioViewport {
     pub fn new<V: 'static>(
         gpu_engine: Arc<Mutex<GpuRenderer>>,
+        debug_replace_with_yellow: bool,
         cx: &mut Context<V>,
     ) -> Self {
         Self {
             gpu_engine,
             surface: None,
             focus_handle: cx.focus_handle(),
+            debug_replace_with_yellow,
         }
     }
 }
@@ -40,6 +43,16 @@ impl EventEmitter<DismissEvent> for HelioViewport {}
 
 impl Render for HelioViewport {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.debug_replace_with_yellow {
+            return div()
+                .relative()
+                .size_full()
+                .track_focus(&self.focus_handle)
+                .id("helio_viewport_debug_yellow")
+                .bg(rgb(0xffff00))
+                .into_any_element();
+        }
+
         // Keep rendering continuously for real-time 3D viewport updates.
         window.request_animation_frame();
 
