@@ -73,11 +73,8 @@ impl Render for HelioViewport {
 
         // Render into the back buffer, then swap.
         if let Some(ref surface) = self.surface {
-            println!("[HELIO-VIEWPORT] Have surface, checking for back view...");
             if let Some((view, (w, h))) = surface.back_view_with_size() {
-                println!("[HELIO-VIEWPORT] Got back view {}x{}, trying to lock engine...", w, h);
                 if let Ok(mut engine) = self.gpu_engine.try_lock() {
-                    println!("[HELIO-VIEWPORT] Locked engine, calling render_frame_to_surface...");
                     engine.render_frame_to_surface(
                         surface.device(),
                         surface.queue(),
@@ -86,18 +83,10 @@ impl Render for HelioViewport {
                         h,
                         surface.format(),
                     );
-                    println!("[HELIO-VIEWPORT] render_frame_to_surface returned");
-                } else {
-                    println!("[HELIO-VIEWPORT] Failed to lock gpu_engine!");
                 }
                 drop(view);
                 surface.swap_buffers();
-                println!("[HELIO-VIEWPORT] swap_buffers() completed");
-            } else {
-                println!("[HELIO-VIEWPORT] back_view_with_size returned None");
             }
-        } else {
-            println!("[HELIO-VIEWPORT] No surface yet");
         }
 
         // Element tree fills the parent panel. The WGPU surface is composited

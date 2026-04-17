@@ -253,10 +253,6 @@ impl HelioRenderer {
         height: u32,
         format: wgpu::TextureFormat,
     ) {
-        println!("[HELIO-RENDERER] render_frame called: {}x{}, format={:?}", width, height, format);
-        println!("[HELIO-RENDERER] Frame {} - device ptr: {:p}, queue ptr: {:p}", 
-                 self.frame_count, _device as *const _, _queue as *const _);
-        
         let now = Instant::now();
         let dt  = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
         self.last_frame   = now;
@@ -271,12 +267,6 @@ impl HelioRenderer {
             // The parameters (_device/_queue) are ignored - we need to use fresh clones
             let device_arc = Arc::new(_device.clone());
             let queue_arc  = Arc::new(_queue.clone());
-            
-            println!("[HELIO-RENDERER] Init - device ptr: {:p}, queue ptr: {:p}", 
-                     _device as *const _, _queue as *const _);
-            println!("[HELIO-RENDERER] Init - device_arc ptr: {:p}, queue_arc ptr: {:p}", 
-                     Arc::as_ptr(&device_arc), Arc::as_ptr(&queue_arc));
-            println!("[HELIO-RENDERER] Init - format: {:?}, size: {}x{}", format, width, height);
             
             // GPUI owns the wgpu device/queue, so Helio must use the
             // external-device path (same as working wgpu_surface examples).
@@ -298,7 +288,6 @@ impl HelioRenderer {
             };
             self.populate_initial_scene(&mut inner);
             self.inner = Some(inner);
-            println!("[HELIO-RENDERER] Renderer initialized!");
         }
 
         self.apply_camera_input(dt);
@@ -325,12 +314,8 @@ impl HelioRenderer {
             std::f32::consts::FRAC_PI_4, aspect, 0.1, 10_000.0,
         );
 
-        println!("[HELIO-RENDERER] About to call render(), cam_pos={:?}, fwd={:?}", self.cam_pos, fwd);
-        
         if let Err(e) = inner.renderer.render(&camera, &view) {
-            println!("[HELIO] render error: {:?}", e);
-        } else {
-            println!("[HELIO-RENDERER] render() succeeded!");
+            tracing::error!("Helio render error: {:?}", e);
         }
 
         if let Ok(mut m) = self.metrics.lock() {
@@ -400,6 +385,7 @@ impl HelioRenderer {
         inner.renderer.scene_mut().insert_actor(SceneActor::Sky(
             SkyActor::new().with_sky_color([0.5, 0.7, 1.0]),
         ));
+
 
         // ── Sun (directional light) ──────────────────────────────────────────
         let sun_dir = Vec3::new(-0.5, -1.0, -0.3).normalize();
