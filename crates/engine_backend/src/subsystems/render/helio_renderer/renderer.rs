@@ -284,6 +284,9 @@ impl HelioRenderer {
             self.populate_initial_scene(&mut inner);
             self.inner = Some(inner);
             self.viewport_size = (width, height);
+            
+            tracing::info!("[HELIO] Renderer initialized - camera at {:?}, yaw={}, pitch={}", 
+                self.cam_pos, self.cam_yaw, self.cam_pitch);
         }
 
         self.apply_camera_input(dt);
@@ -435,10 +438,13 @@ impl HelioRenderer {
     // ── Scene Setup ──────────────────────────────────────────────────────────
 
     fn populate_initial_scene(&self, inner: &mut HelioInner) {
+        tracing::info!("[HELIO SCENE] Populating initial scene...");
+        
         // Sky
         inner.renderer.scene_mut().insert_actor(SceneActor::Sky(
             SkyActor::new().with_sky_color([0.5, 0.7, 1.0]),
         ));
+        tracing::info!("[HELIO SCENE] Added sky");
 
         // Sun (directional light)
         let sun_dir = Vec3::new(-0.5, -1.0, -0.3).normalize();
@@ -451,6 +457,7 @@ impl HelioRenderer {
             inner_angle:     0.0,
             _pad:            0,
         }));
+        tracing::info!("[HELIO SCENE] Added directional light");
 
         // Fill light (softer ambient)
         inner.renderer.scene_mut().insert_actor(SceneActor::light(GpuLight {
@@ -462,6 +469,7 @@ impl HelioRenderer {
             inner_angle:     0.0,
             _pad:            0,
         }));
+        tracing::info!("[HELIO SCENE] Added fill light");
 
         // Ground plane
         let ground_upload = plane_mesh(50.0);
@@ -470,14 +478,17 @@ impl HelioRenderer {
             .as_mesh()
         {
             Some(id) => id,
-            None     => return,
+            None     => {
+                tracing::error!("[HELIO SCENE] Failed to insert ground mesh");
+                return;
+            }
         };
-        // Register with picker
         inner.scene_picker.register_mesh(ground_mesh, &ground_upload);
+        tracing::info!("[HELIO SCENE] Ground mesh registered: {:?}", ground_mesh);
         
         let ground_mat = inner.renderer.scene_mut()
             .insert_material(make_material([0.35, 0.35, 0.35, 1.0], 0.9, 0.0));
-        let _ = inner.renderer.scene_mut()
+        let ground_obj = inner.renderer.scene_mut()
             .insert_actor(SceneActor::object(ObjectDescriptor {
                 mesh:       ground_mesh,
                 material:   ground_mat,
@@ -487,18 +498,25 @@ impl HelioRenderer {
                 groups:     GroupMask::NONE,
                 movability: None, // Ground stays static
             }));
+        tracing::info!("[HELIO SCENE] Ground object created: {:?}", ground_obj);
 
         // Test cubes
         let cube_upload = box_mesh([0.5, 0.5, 0.5]);
+        tracing::info!("[HELIO SCENE] Created cube mesh with {} vertices, {} indices", 
+            cube_upload.vertices.len(), cube_upload.indices.len());
         let cube_mesh = match inner.renderer.scene_mut()
             .insert_actor(SceneActor::mesh(cube_upload.clone()))
             .as_mesh()
         {
             Some(id) => id,
-            None     => return,
+            None     => {
+                tracing::error!("[HELIO SCENE] Failed to insert cube mesh");
+                return;
+            }
         };
         // Register cube mesh with picker
         inner.scene_picker.register_mesh(cube_mesh, &cube_upload);
+        tracing::info!("[HELIO SCENE] Cube mesh registered: {:?}", cube_mesh);
 
         let positions_and_colors: &[([f32; 3], [f32; 4])] = &[
             ([ 0.0, 1.0,  0.0], [0.8, 0.2, 0.2, 1.0]),  // red center
@@ -508,11 +526,11 @@ impl HelioRenderer {
             ([ 0.0, 1.0, -5.0], [0.8, 0.3, 0.8, 1.0]),  // magenta back
         ];
 
-        for &(pos, color) in positions_and_colors {
+        for (idx, &(pos, color)) in positions_and_colors.iter().enumerate() {
             let mat = inner.renderer.scene_mut()
                 .insert_material(make_material(color, 0.5, 0.1));
             let transform = Mat4::from_translation(Vec3::from_array(pos));
-            let _ = inner.renderer.scene_mut()
+            let obj = inner.renderer.scene_mut()
                 .insert_actor(SceneActor::object(ObjectDescriptor {
                     mesh:       cube_mesh,
                     material:   mat,
@@ -522,60 +540,10 @@ impl HelioRenderer {
                     groups:     GroupMask::NONE,
                     movability: Some(Movability::Movable), // Make cubes movable!
                 }));
+            tracing::info!("[HELIO SCENE] Cube #{} at {:?}: {:?}", idx, pos, obj);
         }
-
-        // Add a sphere
-        let sphere_upload = sphere_mesh(0.6);
-        let sphere_mesh = match inner.renderer.scene_mut()
-            .insert_actor(SceneActor::mesh(sphere_upload.clone()))
-            .as_mesh()
-        {
-            Some(id) => id,
-            None     => return,
-        };
-        inner.scene_picker.register_mesh(sphere_mesh, &sphere_upload);
         
-        let sphere_mat = inner.renderer.scene_mut()
-            .insert_material(make_material([0.2, 0.8, 0.9, 1.0], 0.2, 0.8)); // Cyan metallic
-        let sphere_transform = Mat4::from_translation(Vec3::new(0.0, 1.5, -8.0));
-        let _ = inner.renderer.scene_mut()
-            .insert_actor(SceneActor::object(ObjectDescriptor {
-                mesh:       sphere_mesh,
-                material:   sphere_mat,
-                transform:  sphere_transform,
-                bounds:     [0.0, 1.5, -8.0, 0.6],
-                flags:      0,
-                groups:     GroupMask::NONE,
-                movability: Some(Movability::Movable),
-            }));
-
-        // Add a tall cylinder (using box mesh stretched)
-        let cylinder_upload = box_mesh([0.3, 1.2, 0.3]); // Tall thin box
-        let cylinder_mesh = match inner.renderer.scene_mut()
-            .insert_actor(SceneActor::mesh(cylinder_upload.clone()))
-            .as_mesh()
-        {
-            Some(id) => id,
-            None     => return,
-        };
-        inner.scene_picker.register_mesh(cylinder_mesh, &cylinder_upload);
-        
-        let cylinder_mat = inner.renderer.scene_mut()
-            .insert_material(make_material([0.9, 0.6, 0.1, 1.0], 0.4, 0.3)); // Orange
-        let cylinder_transform = Mat4::from_translation(Vec3::new(6.0, 1.2, 3.0));
-        let _ = inner.renderer.scene_mut()
-            .insert_actor(SceneActor::object(ObjectDescriptor {
-                mesh:       cylinder_mesh,
-                material:   cylinder_mat,
-                transform:  cylinder_transform,
-                bounds:     [6.0, 1.2, 3.0, 1.5],
-                flags:      0,
-                groups:     GroupMask::NONE,
-                movability: Some(Movability::Movable),
-            }));
-        
-        // Rebuild picker instances after adding all objects
-        inner.scene_picker.rebuild_instances(inner.renderer.scene());
+        tracing::info!("[HELIO SCENE] Scene population complete!");
     }
 
     fn sync_scene(scene_db: &crate::scene::SceneDb, inner: &mut HelioInner) {
