@@ -35,7 +35,7 @@
 //! renderer.downcast::<Mutex<GpuRenderer>>().unwrap()
 //!
 //! // New (compile-time safety):
-//! handle.as_bevy::<Mutex<GpuRenderer>>() // Returns Option
+//! handle.as_helio::<Mutex<GpuRenderer>>() // Returns Option
 //! ```
 
 mod channels;

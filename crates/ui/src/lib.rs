@@ -25,7 +25,6 @@ mod root;
 mod styled;
 mod time;
 mod title_bar;
-pub mod bevy_viewport; // Production-ready zero-copy Bevy viewport using GPUI's gpu_canvas
 
 // Compatibility types for legacy GPUI APIs that were removed upstream.
 pub mod gpu_compat;

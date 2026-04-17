@@ -15,8 +15,8 @@ use ui_types_common::window_types::WindowId;
 /// runtime type_id comparisons.
 #[derive(Clone)]
 pub enum RendererType {
-    /// Bevy renderer (D3D12-based, used for 3D viewports)
-    Bevy(Arc<dyn std::any::Any + Send + Sync>),
+    /// Helio renderer (wgpu-based, used for 3D viewports)
+    Helio(Arc<dyn std::any::Any + Send + Sync>),
 
     /// WGPU renderer (cross-platform, future renderer option)
     Wgpu(Arc<dyn std::any::Any + Send + Sync>),
@@ -29,10 +29,10 @@ pub enum RendererType {
 }
 
 impl RendererType {
-    /// Get as Bevy renderer if this is a Bevy variant
-    pub fn as_bevy<T: Send + Sync + 'static>(&self) -> Option<Arc<T>> {
+    /// Get as Helio renderer if this is a Helio variant
+    pub fn as_helio<T: Send + Sync + 'static>(&self) -> Option<Arc<T>> {
         match self {
-            RendererType::Bevy(renderer) => renderer.clone().downcast::<T>().ok(),
+            RendererType::Helio(renderer) => renderer.clone().downcast::<T>().ok(),
             _ => None,
         }
     }
@@ -58,7 +58,7 @@ impl RendererType {
     /// Get the name of this renderer type
     pub fn name(&self) -> &str {
         match self {
-            RendererType::Bevy(_) => "Bevy",
+            RendererType::Helio(_) => "Helio",
             RendererType::Wgpu(_) => "WGPU",
             RendererType::Custom { name, .. } => name,
         }
@@ -83,12 +83,12 @@ impl TypedRendererHandle {
         }
     }
 
-    /// Convenience method to create a Bevy renderer handle
-    pub fn bevy<T: Send + Sync + 'static>(
+    /// Convenience method to create a Helio renderer handle
+    pub fn helio<T: Send + Sync + 'static>(
         window_id: WindowId,
         renderer: Arc<T>,
     ) -> Self {
-        Self::new(window_id, RendererType::Bevy(renderer))
+        Self::new(window_id, RendererType::Helio(renderer))
     }
 
     /// Convenience method to create a WGPU renderer handle
@@ -108,9 +108,9 @@ impl TypedRendererHandle {
         Self::new(window_id, RendererType::Custom { name, renderer })
     }
 
-    /// Get as Bevy renderer (type-safe, no runtime errors)
-    pub fn as_bevy<T: Send + Sync + 'static>(&self) -> Option<Arc<T>> {
-        self.renderer_type.as_bevy()
+    /// Get as Helio renderer (type-safe, no runtime errors)
+    pub fn as_helio<T: Send + Sync + 'static>(&self) -> Option<Arc<T>> {
+        self.renderer_type.as_helio()
     }
 
     /// Get as WGPU renderer (type-safe, no runtime errors)
@@ -192,14 +192,14 @@ pub mod migration {
     ///
     /// This is used during migration when we receive an old-style renderer handle
     /// and need to convert it to the new typed system.
-    pub fn from_any_bevy<T: Send + Sync + 'static>(
+    pub fn from_any_helio<T: Send + Sync + 'static>(
         window_id: WindowId,
         handle: Arc<dyn std::any::Any + Send + Sync>,
     ) -> Option<TypedRendererHandle> {
         handle
             .downcast::<T>()
             .ok()
-            .map(|renderer| TypedRendererHandle::bevy(window_id, renderer))
+            .map(|renderer| TypedRendererHandle::helio(window_id, renderer))
     }
 
     /// Convert u64 window ID to WindowId

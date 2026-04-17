@@ -122,12 +122,12 @@ impl LevelEditorPanel {
         if let Some(engine_context) = engine_state::EngineContext::global() {
             if let Some(wid) = window_id {
                 // We have the actual window ID - register directly!
-                let handle = engine_state::TypedRendererHandle::bevy(wid, gpu_engine.clone());
+                let handle = engine_state::TypedRendererHandle::helio(wid, gpu_engine.clone());
                 engine_context.renderers.register(wid, handle);
             } else {
                 // Fallback: Use a sentinel value (0) to mark this renderer as pending association with a window
                 // The main render loop will detect windows with viewports and claim this renderer
-                let handle = engine_state::TypedRendererHandle::bevy(0, gpu_engine.clone());
+                let handle = engine_state::TypedRendererHandle::helio(0, gpu_engine.clone());
                 engine_context.renderers.register(0, handle);
             }
         } else {
@@ -306,8 +306,8 @@ impl LevelEditorPanel {
             .render(cx)
     }
 
-    // Helper method to sync GPUI gizmo state to SceneDB and Bevy's shared resource
-    fn sync_gizmo_to_bevy(&mut self) {
+    // Helper method to sync GPUI gizmo state to SceneDB and Helio's shared resource
+    fn sync_gizmo_to_helio(&mut self) {
         // First, sync to SceneDB through HelioRenderer
         if let Ok(engine) = self.gpu_engine.try_lock() {
             if let Some(ref helio_renderer) = engine.helio_renderer {
@@ -331,7 +331,7 @@ impl LevelEditorPanel {
                 tracing::info!("[GIZMO SYNC] Synced to backend SceneDB - tool: {:?}, selected: {:?}", 
                     state.current_tool, selected_id);
             
-                // Old Bevy gizmo sync is deprecated. The editor state is now driven
+                // Old legacy gizmo sync is deprecated. The editor state is now driven
                 // through the shared SceneDb and Helio's own gizmo handling.
             }
         }
@@ -340,25 +340,25 @@ impl LevelEditorPanel {
     // Action handlers
     fn on_select_tool(&mut self, _: &SelectTool, _: &mut Window, cx: &mut Context<Self>) {
         self.shared_state.write().set_tool(TransformTool::Select);
-        self.sync_gizmo_to_bevy();
+        self.sync_gizmo_to_helio();
         cx.notify();
     }
 
     fn on_move_tool(&mut self, _: &MoveTool, _: &mut Window, cx: &mut Context<Self>) {
         self.shared_state.write().set_tool(TransformTool::Move);
-        self.sync_gizmo_to_bevy();
+        self.sync_gizmo_to_helio();
         cx.notify();
     }
 
     fn on_rotate_tool(&mut self, _: &RotateTool, _: &mut Window, cx: &mut Context<Self>) {
         self.shared_state.write().set_tool(TransformTool::Rotate);
-        self.sync_gizmo_to_bevy();
+        self.sync_gizmo_to_helio();
         cx.notify();
     }
 
     fn on_scale_tool(&mut self, _: &ScaleTool, _: &mut Window, cx: &mut Context<Self>) {
         self.shared_state.write().set_tool(TransformTool::Scale);
-        self.sync_gizmo_to_bevy();
+        self.sync_gizmo_to_helio();
         cx.notify();
     }
 
@@ -436,7 +436,7 @@ impl LevelEditorPanel {
 
             // Deselect after deletion
             self.shared_state.write().select_object(None);
-            self.sync_gizmo_to_bevy(); // Clear gizmo after deletion
+            self.sync_gizmo_to_helio(); // Clear gizmo after deletion
         }
         cx.notify();
     }
@@ -451,7 +451,7 @@ impl LevelEditorPanel {
 
     fn on_select_object(&mut self, action: &SelectObject, _: &mut Window, cx: &mut Context<Self>) {
         self.shared_state.write().select_object(Some(action.object_id.clone()));
-        self.sync_gizmo_to_bevy(); // Sync gizmo to follow selected object
+        self.sync_gizmo_to_helio(); // Sync gizmo to follow selected object
         cx.notify();
     }
 
@@ -544,7 +544,7 @@ impl LevelEditorPanel {
         self.game_thread.set_enabled(true);
 
         // Disable gizmos in play mode
-        self.sync_gizmo_to_bevy();
+        self.sync_gizmo_to_helio();
 
         cx.notify();
     }
@@ -557,7 +557,7 @@ impl LevelEditorPanel {
         self.shared_state.write().exit_play_mode();
 
         // Re-enable gizmos in edit mode
-        self.sync_gizmo_to_bevy();
+        self.sync_gizmo_to_helio();
 
         cx.notify();
     }

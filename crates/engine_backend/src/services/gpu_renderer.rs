@@ -64,13 +64,8 @@ impl GpuRenderer {
         height: u32,
         format: wgpu::TextureFormat,
     ) {
-        println!("[GPU-RENDERER] render_frame_to_surface called, helio_renderer present: {}", self.helio_renderer.is_some());
         if let Some(ref mut r) = self.helio_renderer {
-            println!("[GPU-RENDERER] Calling helio_renderer.render_frame...");
             r.render_frame(device, queue, view, width, height, format);
-            println!("[GPU-RENDERER] helio_renderer.render_frame returned");
-        } else {
-            println!("[GPU-RENDERER] No helio_renderer!");
         }
         self.frame_count += 1;
     }
@@ -103,10 +98,6 @@ impl GpuRenderer {
     pub fn get_render_metrics(&self) -> Option<RenderMetrics> {
         self.helio_renderer.as_ref().map(|r| r.get_metrics())
     }
-
-    pub fn get_pipeline_time_us(&self) -> u64 { 0 }
-    pub fn get_gpu_time_us(&self)      -> u64 { 0 }
-    pub fn get_cpu_time_us(&self)      -> u64 { 0 }
 
     pub fn get_gpu_profiler_data(&self) -> Option<crate::subsystems::render::GpuProfilerData> {
         self.helio_renderer.as_ref().map(|r| r.get_gpu_profiler_data())

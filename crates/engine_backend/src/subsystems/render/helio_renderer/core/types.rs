@@ -11,10 +11,7 @@ pub struct RenderMetrics {
     pub memory_usage_mb: f32,
     pub vertices_drawn: u64,
     pub frames_rendered: u64,
-    pub bevy_fps: f32,
     pub pipeline_time_us: f32,
-    pub gpu_time_us: f32,
-    pub cpu_time_us: f32,
 }
 
 /// Represents a single diagnostic metric for GPU profiling
@@ -34,27 +31,10 @@ pub struct GpuProfilerData {
     pub fps: f32,
     pub frame_count: u64,
     pub total_gpu_ms: f32,
-    
     pub render_metrics: Vec<DiagnosticMetric>,
-    
-    // Legacy fields for backwards compatibility
-    pub shadow_pass_ms: f32,
-    pub shadow_pass_pct: f32,
-    pub opaque_pass_ms: f32,
-    pub opaque_pass_pct: f32,
-    pub alpha_mask_pass_ms: f32,
-    pub alpha_mask_pass_pct: f32,
-    pub transparent_pass_ms: f32,
-    pub transparent_pass_pct: f32,
-    pub lighting_ms: f32,
-    pub lighting_pct: f32,
-    pub post_processing_ms: f32,
-    pub post_processing_pct: f32,
-    pub ui_pass_ms: f32,
-    pub ui_pass_pct: f32,
 }
 
-/// Camera controller - matches BevyRenderer's CameraInput
+/// Camera controller input state
 #[derive(Default, Clone)]
 pub struct CameraInput {
     pub forward: f32,

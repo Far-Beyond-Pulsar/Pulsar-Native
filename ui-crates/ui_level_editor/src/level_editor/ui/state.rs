@@ -214,7 +214,7 @@ pub use crate::level_editor::scene_database::{
 
 impl Default for LevelEditorState {
     fn default() -> Self {
-        // Create scene database with default objects matching Bevy renderer
+        // Create scene database with default objects matching Helio renderer
         let scene_database = SceneDatabase::with_default_scene();
         
         // Create gizmo state with translate tool active
