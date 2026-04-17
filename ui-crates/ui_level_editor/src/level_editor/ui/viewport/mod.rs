@@ -1,7 +1,7 @@
 //! Viewport panel with 3D rendering and camera controls.
 //!
 //! This module provides the main viewport panel for the level editor, featuring:
-//! - Zero-copy GPU rendering via Bevy
+//! - Direct GPU rendering via Helio
 //! - Professional camera controls (FPS, pan, orbit, zoom)
 //! - Performance monitoring and overlays
 //! - Lock-free input processing on dedicated thread
@@ -41,7 +41,7 @@ use performance::*;
 /// Viewport panel with zero-copy GPU rendering and professional camera controls.
 ///
 /// This panel manages:
-/// - Direct GPU rendering through Bevy (no CPU copies)
+/// - Direct GPU rendering through Helio (no CPU copies)
 /// - Dedicated input thread for high-frequency polling
 /// - Performance metrics tracking and visualization
 /// - Camera mode selection and controls
@@ -312,7 +312,7 @@ impl ViewportPanel {
     fn update_performance_metrics(&self, gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>, game_thread: &Arc<GameThread>) {
         if let Ok(engine) = gpu_engine.try_lock() {
             let ui_fps = engine.get_fps() as f64;
-            let bevy_fps = engine.get_helio_fps() as f64;
+            let helio_fps = engine.get_helio_fps() as f64;
             
             let metrics_opt = engine.get_render_metrics();
             let (memory_mb, draw_calls, vertices, frame_time_ms) = if let Some(ref m) = metrics_opt {
@@ -324,7 +324,7 @@ impl ViewportPanel {
             let mut metrics = self.metrics.borrow_mut();
             
             // Update FPS using the renderer metric when UI-side frame count is not yet available.
-            let display_fps = if ui_fps > 0.0 { ui_fps } else { bevy_fps };
+            let display_fps = if ui_fps > 0.0 { ui_fps } else { helio_fps };
             metrics.add_fps(display_fps);
             
             // Update TPS from game thread
@@ -415,12 +415,12 @@ impl ViewportPanel {
         let viewport_entity = self.viewport.clone();
 
         // Get performance data
-        let (ui_fps, bevy_fps, render_fps, renderer_ready) = if let Ok(engine) = gpu_engine.try_lock() {
+        let (ui_fps, helio_fps, render_fps, renderer_ready) = if let Ok(engine) = gpu_engine.try_lock() {
             let ui_fps = engine.get_fps() as f64;
-            let bevy_fps = engine.get_helio_fps() as f64;
+            let helio_fps = engine.get_helio_fps() as f64;
             let render_fps = engine.get_render_fps() as f64;
             let renderer_ready = engine.is_initialized();
-            (ui_fps, bevy_fps, render_fps, renderer_ready)
+            (ui_fps, helio_fps, render_fps, renderer_ready)
         } else {
             (0.0, 0.0, 0.0, false)
         };
@@ -460,9 +460,9 @@ impl ViewportPanel {
         div()
             .size_full()
             .relative()
-            // TRANSPARENT - no background! This creates the "hole" to see Bevy rendering
+            // TRANSPARENT - no background for direct Helio rendering
             .rounded(cx.theme().radius)
-            // CRITICAL: Capture element bounds and update Bevy camera viewport
+            // CRITICAL: Capture element bounds and update Helio camera viewport
             .on_children_prepainted(move |children_bounds: Vec<Bounds<Pixels>>, _window, _cx| {
                 if !children_bounds.is_empty() {
                     let mut min_x = f32::MAX;
@@ -489,7 +489,7 @@ impl ViewportPanel {
 
                     *element_bounds_for_prepaint.borrow_mut() = Some(bounds);
 
-                    // Update Bevy camera viewport to match GPUI viewport bounds
+                    // Update Helio camera viewport to match GPUI viewport bounds
                     if let Ok(engine) = gpu_engine_clone.try_lock() {
                         if let Some(ref helio_renderer) = engine.helio_renderer {
                             if let Ok(mut camera_input) = helio_renderer.camera_input.try_lock() {
@@ -502,7 +502,7 @@ impl ViewportPanel {
                     }
                 }
             })
-            // Track mouse movement and update Bevy input
+            // Track mouse movement and update Helio input
             .on_mouse_move({
                 let input_state_clone = self.input_state.clone();
                 let mouse_right_captured = mouse_right_captured.clone();
@@ -573,7 +573,7 @@ impl ViewportPanel {
                     }
                     drop(state);
 
-                    // Update Bevy mouse input
+                    // Update Helio mouse input
                     let bounds_opt = element_bounds_move.borrow();
                     let (element_x, element_y, viewport_width, viewport_height) = if let Some(ref bounds) = *bounds_opt {
                         let origin_x: f32 = bounds.origin.x.into();
@@ -730,7 +730,7 @@ impl ViewportPanel {
 
                     if let Ok(engine) = gpu_engine_click.try_lock() {
                         if let Some(ref helio_renderer) = engine.helio_renderer {
-                            // The Bevy renderer draws to the full window (e.g. 1920x1080)
+            // The Helio renderer draws to the full window (e.g. 1920x1080)
                             // while the GPUI viewport is just a "hole" in the UI that shows it
                             // We need to map from the click position within the GPUI viewport bounds
                             // to normalized coordinates (0-1) within the GPUI viewport area
@@ -769,7 +769,7 @@ impl ViewportPanel {
                             mouse_input.mouse_pos.x = normalized_x;
                             mouse_input.mouse_pos.y = normalized_y;
                             mouse_input.viewport_bounds = viewport_bounds;
-                            tracing::info!("[VIEWPORT] 🎯 Sent mouse input to Bevy: pos=({:.4}, {:.4}), clicked=true", normalized_x, normalized_y);
+                            tracing::info!("[VIEWPORT] 🎯 Sent mouse input to Helio: pos=({:.4}, {:.4}), clicked=true", normalized_x, normalized_y);
                         }
                     }
                 }
@@ -806,7 +806,7 @@ impl ViewportPanel {
                     .child(viewport_entity)
             )
             // Overlays
-            .child(self.render_overlays(state, state_arc, fps_graph_state, ui_fps, bevy_fps, render_fps, renderer_ready, fps_data, tps_data, frame_time_data, memory_data, draw_calls_data, vertices_data, input_latency_data, ui_consistency_data, gpu_engine, cx))
+            .child(self.render_overlays(state, state_arc, fps_graph_state, ui_fps, helio_fps, render_fps, renderer_ready, fps_data, tps_data, frame_time_data, memory_data, draw_calls_data, vertices_data, input_latency_data, ui_consistency_data, gpu_engine, cx))
     }
 
     /// Render all viewport overlays.
@@ -816,7 +816,7 @@ impl ViewportPanel {
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         fps_graph_state: Rc<RefCell<bool>>,
         ui_fps: f64,
-        bevy_fps: f64,
+        helio_fps: f64,
         render_fps: f64,
         renderer_ready: bool,
         fps_data: Vec<FpsDataPoint>,

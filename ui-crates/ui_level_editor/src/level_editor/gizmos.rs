@@ -6,7 +6,7 @@
 //! - Scale gizmo - 3 colored cubes for uniform or per-axis scaling
 //! - Selection highlighting - Outline/wireframe for selected objects
 //!
-//! Gizmos are rendered in the Bevy viewport and support:
+//! Gizmos are rendered in the Helio viewport and support:
 //! - Mouse picking (ray casting)
 //! - Dragging with visual feedback
 //! - Snapping to grid
@@ -591,7 +591,7 @@ impl GizmoState {
     }
 }
 
-/// Gizmo rendering data structure (will be sent to Bevy)
+/// Gizmo rendering data structure (sent to Helio)
 #[derive(Clone, Debug)]
 pub struct GizmoRenderData {
     pub gizmo_type: GizmoType,

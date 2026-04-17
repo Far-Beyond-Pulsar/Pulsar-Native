@@ -11,7 +11,6 @@ pub struct RenderMetrics {
     pub memory_usage_mb: f32,
     pub vertices_drawn: u64,
     pub frames_rendered: u64,
-    pub bevy_fps: f32,
     pub pipeline_time_us: f32,
 }
 
@@ -35,7 +34,7 @@ pub struct GpuProfilerData {
     pub render_metrics: Vec<DiagnosticMetric>,
 }
 
-/// Camera controller - matches BevyRenderer's CameraInput
+/// Camera controller input state
 #[derive(Default, Clone)]
 pub struct CameraInput {
     pub forward: f32,
