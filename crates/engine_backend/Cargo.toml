@@ -57,6 +57,7 @@ sha2 = "0.10"
 walkdir = "2.4"
 
 [target.'cfg(windows)'.dependencies]
+windows = { workspace = true }
 winapi = { version = "0.3", features = ["winuser"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]

@@ -2552,6 +2552,7 @@ dependencies = [
  "walkdir",
  "wgpu",
  "winapi",
+ "windows 0.62.2",
 ]
 
 [[package]]

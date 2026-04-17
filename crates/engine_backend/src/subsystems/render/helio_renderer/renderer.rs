@@ -224,6 +224,8 @@ impl HelioRenderer {
             self.inner = Some(inner);
         }
 
+        self.apply_camera_input(dt);
+
         let inner = match self.inner.as_mut() {
             Some(i) => i,
             None    => return,
@@ -233,7 +235,6 @@ impl HelioRenderer {
             inner.renderer.set_render_size(width, height);
         }
 
-        self.apply_camera_input(dt);
         Self::sync_scene(&self.scene_db, inner);
 
         inner.renderer.debug_clear();
@@ -319,7 +320,6 @@ impl HelioRenderer {
             Some(id) => id,
             None     => return,
         };
-        inner.picker.register_mesh(ground_mesh, &ground_upload);
         let ground_mat = inner.renderer.scene_mut()
             .insert_material(make_material([0.25, 0.25, 0.25, 1.0], 0.9, 0.0));
         let _ = inner.renderer.scene_mut()
