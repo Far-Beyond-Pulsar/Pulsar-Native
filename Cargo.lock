@@ -12125,6 +12125,7 @@ dependencies = [
  "directories 5.0.1",
  "engine_backend",
  "engine_state",
+ "futures",
  "gpui-ce",
  "notify 6.1.1",
  "once_cell",

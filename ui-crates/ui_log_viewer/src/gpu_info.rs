@@ -4,6 +4,7 @@
 //! platforms), then uses platform-specific APIs for driver version, total VRAM,
 //! and live VRAM usage.
 
+use futures::executor::block_on;
 use wgpu::{Backends, Instance, InstanceDescriptor};
 
 /// GPU information gathered at startup.
@@ -34,7 +35,7 @@ pub fn detect_primary_gpu() -> GpuInfo {
         ..Default::default()
     });
 
-    let adapters = instance.enumerate_adapters(Backends::all());
+    let adapters = block_on(instance.enumerate_adapters(Backends::all()));
 
     // Prefer discrete GPU, then integrated, then anything else.
     let best = adapters.into_iter().max_by_key(|a| match a.get_info().device_type {
