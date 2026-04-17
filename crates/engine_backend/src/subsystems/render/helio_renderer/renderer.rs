@@ -265,11 +265,15 @@ impl HelioRenderer {
         if self.inner.is_none() {
             tracing::warn!("[HELIO-RENDERER] Initializing renderer...");
 
+            // Get device/queue from surface ONCE, not from parameters
+            // The parameters (_device/_queue) are ignored - we need to use fresh clones
             let device_arc = Arc::new(_device.clone());
             let queue_arc  = Arc::new(_queue.clone());
             
-            println!("[HELIO-RENDERER] Storing device Arc ptr: {:p}", Arc::as_ptr(&device_arc));
-            println!("[HELIO-RENDERER] Storing queue Arc ptr: {:p}", Arc::as_ptr(&queue_arc));
+            println!("[HELIO-RENDERER] Init - device ptr: {:p}, queue ptr: {:p}", 
+                     _device as *const _, _queue as *const _);
+            println!("[HELIO-RENDERER] Init - device_arc ptr: {:p}, queue_arc ptr: {:p}", 
+                     Arc::as_ptr(&device_arc), Arc::as_ptr(&queue_arc));
             
             // GPUI owns the wgpu device/queue, so Helio must use the
             // external-device path (same as working wgpu_surface examples).
