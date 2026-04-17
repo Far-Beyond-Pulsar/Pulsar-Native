@@ -251,6 +251,8 @@ impl HelioRenderer {
         height: u32,
         format: wgpu::TextureFormat,
     ) {
+        tracing::warn!("[HELIO-RENDERER] render_frame called: {}x{}, format={:?}", width, height, format);
+        
         let now = Instant::now();
         let dt  = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
         self.last_frame   = now;
@@ -259,6 +261,8 @@ impl HelioRenderer {
 
         // Lazy init
         if self.inner.is_none() {
+            tracing::warn!("[HELIO-RENDERER] Initializing renderer...");
+
             let device = Arc::new(device.clone());
             let queue  = Arc::new(queue.clone());
             // GPUI owns the wgpu device/queue, so Helio must use the
@@ -279,6 +283,7 @@ impl HelioRenderer {
             };
             self.populate_initial_scene(&mut inner);
             self.inner = Some(inner);
+            tracing::warn!("[HELIO-RENDERER] Renderer initialized!");
         }
 
         self.apply_camera_input(dt);
@@ -305,8 +310,11 @@ impl HelioRenderer {
             std::f32::consts::FRAC_PI_4, aspect, 0.1, 10_000.0,
         );
 
+        tracing::warn!("[HELIO-RENDERER] About to call render(), cam_pos={:?}, fwd={:?}", self.cam_pos, fwd);
         if let Err(e) = inner.renderer.render(&camera, view) {
             tracing::error!("[HELIO] render error: {:?}", e);
+        } else {
+            tracing::warn!("[HELIO-RENDERER] render() succeeded!");
         }
 
         if let Ok(mut m) = self.metrics.lock() {
