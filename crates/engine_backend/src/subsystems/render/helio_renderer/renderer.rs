@@ -351,6 +351,10 @@ impl HelioRenderer {
     /// Call on left mouse release.
     pub fn on_left_release(&mut self) {}
 
+    pub fn is_initialized(&self) -> bool {
+        self.inner.is_some()
+    }
+
     pub fn get_metrics(&self) -> RenderMetrics {
         self.metrics.lock().map(|m| m.clone()).unwrap_or_default()
     }

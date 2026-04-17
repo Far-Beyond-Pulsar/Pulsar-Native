@@ -12092,6 +12092,7 @@ dependencies = [
  "tracing",
  "ui",
  "ui_common",
+ "wgpu",
  "winapi",
  "window_manager",
 ]

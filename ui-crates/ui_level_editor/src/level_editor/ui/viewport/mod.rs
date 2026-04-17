@@ -12,6 +12,7 @@ pub mod platform;
 pub mod performance;
 pub mod input_state;
 pub mod components;
+pub mod helio_viewport;
 
 use std::cell::RefCell;
 use std::collections::{HashSet, VecDeque};
@@ -22,7 +23,7 @@ use std::sync::{Arc, Mutex};
 use device_query::{DeviceQuery, DeviceState, Keycode};
 use engine_backend::GameThread;
 use gpui::*;
-use ui::bevy_viewport::BevyViewport;
+use helio_viewport::HelioViewport;
 use ui::{h_flex, v_flex, ActiveTheme, StyledExt};
 use ui_common::ViewportControls;
 use ui::Sizable;
@@ -46,8 +47,8 @@ use performance::*;
 /// - Camera mode selection and controls
 /// - Visual option toggles (grid, wireframe, lighting)
 pub struct ViewportPanel {
-    /// Bevy viewport entity for GPU rendering
-    viewport: Entity<BevyViewport>,
+    /// Helio viewport entity for GPU rendering
+    viewport: Entity<HelioViewport>,
 
     /// Viewport controls state
     viewport_controls: ViewportControls,
@@ -93,7 +94,7 @@ pub struct ViewportPanel {
 impl ViewportPanel {
     /// Create a new viewport panel.
     pub fn new<V>(
-        viewport: Entity<BevyViewport>,
+        viewport: Entity<HelioViewport>,
         render_enabled: Arc<AtomicBool>,
         _window: &mut Window,
         cx: &mut Context<V>,
@@ -311,6 +312,7 @@ impl ViewportPanel {
     fn update_performance_metrics(&self, gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>, game_thread: &Arc<GameThread>) {
         if let Ok(engine) = gpu_engine.try_lock() {
             let ui_fps = engine.get_fps() as f64;
+            let bevy_fps = engine.get_helio_fps() as f64;
             let pipeline_us = engine.get_pipeline_time_us();
             
             let metrics_opt = engine.get_render_metrics();
@@ -322,8 +324,9 @@ impl ViewportPanel {
 
             let mut metrics = self.metrics.borrow_mut();
             
-            // Update FPS (track both UI and Bevy)
-            metrics.add_fps(ui_fps);
+            // Update FPS using the renderer metric when UI-side frame count is not yet available.
+            let display_fps = if ui_fps > 0.0 { ui_fps } else { bevy_fps };
+            metrics.add_fps(display_fps);
             
             // Update TPS from game thread
             let game_tps = game_thread.get_tps() as f64;
@@ -414,13 +417,15 @@ impl ViewportPanel {
         let viewport_entity = self.viewport.clone();
 
         // Get performance data
-        let (ui_fps, bevy_fps, pipeline_us) = if let Ok(engine) = gpu_engine.try_lock() {
+        let (ui_fps, bevy_fps, render_fps, pipeline_us, renderer_ready) = if let Ok(engine) = gpu_engine.try_lock() {
             let ui_fps = engine.get_fps() as f64;
             let bevy_fps = engine.get_helio_fps() as f64;
+            let render_fps = engine.get_render_fps() as f64;
             let pipeline = engine.get_pipeline_time_us();
-            (ui_fps, bevy_fps, pipeline)
+            let renderer_ready = engine.is_initialized();
+            (ui_fps, bevy_fps, render_fps, pipeline, renderer_ready)
         } else {
-            (0.0, 0.0, 0)
+            (0.0, 0.0, 0.0, 0, false)
         };
 
         // Collect metric histories
@@ -830,7 +835,7 @@ impl ViewportPanel {
                     .child(viewport_entity)
             })
             // Overlays
-            .child(self.render_overlays(state, state_arc, fps_graph_state, ui_fps, bevy_fps, pipeline_us, fps_data, tps_data, frame_time_data, memory_data, draw_calls_data, vertices_data, input_latency_data, ui_consistency_data, gpu_engine, cx))
+            .child(self.render_overlays(state, state_arc, fps_graph_state, ui_fps, bevy_fps, render_fps, renderer_ready, pipeline_us, fps_data, tps_data, frame_time_data, memory_data, draw_calls_data, vertices_data, input_latency_data, ui_consistency_data, gpu_engine, cx))
     }
 
     /// Render all viewport overlays.
@@ -841,6 +846,8 @@ impl ViewportPanel {
         fps_graph_state: Rc<RefCell<bool>>,
         ui_fps: f64,
         bevy_fps: f64,
+        render_fps: f64,
+        renderer_ready: bool,
         pipeline_us: u64,
         fps_data: Vec<FpsDataPoint>,
         tps_data: Vec<TpsDataPoint>,
@@ -904,7 +911,7 @@ impl ViewportPanel {
                         state,
                         state_arc.clone(),
                         ui_fps,
-                        bevy_fps,
+                        render_fps,
                         pipeline_us,
                         fps_data,
                         tps_data,
@@ -949,7 +956,7 @@ impl ViewportPanel {
         }
 
         // Initialization overlay - show when renderer is still warming up (< 10 FPS)
-        if bevy_fps < 10.0 {
+        if render_fps < 10.0 {
             overlays = overlays.child(
                 div()
                     .absolute()
@@ -970,13 +977,17 @@ impl ViewportPanel {
                                 div()
                                     .text_lg()
                                     .text_color(cx.theme().foreground)
-                                    .child("Initializing 3D Renderer...")
+                                    .child(if renderer_ready {
+                                        "Initializing 3D Renderer..."
+                                    } else {
+                                        "Waiting for 3D Renderer to initialize..."
+                                    })
                             )
                             .child(
                                 div()
                                     .text_sm()
                                     .text_color(cx.theme().muted_foreground)
-                                    .child(format!("FPS: {:.1}", bevy_fps))
+                                    .child(format!("FPS: {:.1}", render_fps))
                             )
                     )
             );

@@ -72,13 +72,27 @@ impl GpuRenderer {
 
     pub fn get_fps(&self) -> f32 {
         let elapsed = self.start_time.elapsed().as_secs_f32();
-        if elapsed > 0.0 { self.frame_count as f32 / elapsed } else { 0.0 }
+        if self.frame_count > 0 && elapsed > 0.0 {
+            self.frame_count as f32 / elapsed
+        } else {
+            self.get_helio_fps()
+        }
     }
 
     pub fn get_helio_fps(&self) -> f32 {
         self.helio_renderer.as_ref()
             .map(|r| r.get_metrics().fps)
             .unwrap_or(0.0)
+    }
+
+    pub fn get_render_fps(&self) -> f32 {
+        self.get_fps().max(self.get_helio_fps())
+    }
+
+    pub fn is_initialized(&self) -> bool {
+        self.helio_renderer.as_ref()
+            .map(|r| r.is_initialized())
+            .unwrap_or(false)
     }
 
     pub fn get_render_metrics(&self) -> Option<RenderMetrics> {

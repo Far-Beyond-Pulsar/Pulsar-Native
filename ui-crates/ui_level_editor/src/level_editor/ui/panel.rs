@@ -6,8 +6,8 @@ use ui::{
     resizable::ResizableState,
     v_flex,
 };
-// Zero-copy Bevy viewport for 3D rendering
-use ui::bevy_viewport::{BevyViewport, BevyViewportState};
+// HelioViewport — GPUI-native Helio 3D viewport
+use super::viewport::helio_viewport::HelioViewport;
 
 use ui::settings::EngineSettings;
 use engine_backend::services::gpu_renderer::{GpuRenderer, GpuRendererBuilder};
@@ -37,9 +37,8 @@ pub struct LevelEditorPanel {
     // UI Components
     toolbar: ToolbarPanel,
 
-    // Zero-copy Bevy viewport for 3D rendering
-    viewport: Entity<BevyViewport>,
-    viewport_state: Arc<parking_lot::RwLock<BevyViewportState>>,
+    // Helio viewport rendered via WgpuSurfaceHandle
+    viewport: Entity<HelioViewport>,
     gpu_engine: Arc<Mutex<GpuRenderer>>, // Full GPU renderer from backend
     render_enabled: Arc<std::sync::atomic::AtomicBool>,
     
@@ -73,10 +72,6 @@ impl LevelEditorPanel {
 
         let _max_viewport_fps = settings.advanced.max_viewport_fps;
 
-        // Create Bevy viewport with zero-copy shared textures
-        let viewport = cx.new(|cx| BevyViewport::new(1600, 900, cx));
-        let viewport_state = viewport.read(cx).shared_state();
-        
         // Get the central GameThread from the global EngineBackend
         let (game_thread, physics_query) = match engine_backend::EngineBackend::global() {
             Some(backend_arc) => {
@@ -98,7 +93,7 @@ impl LevelEditorPanel {
 
         // Get game state reference (needed for renderer integration)
         let _game_state = game_thread.get_state();
-        
+
         // Create the shared scene database FIRST so both the renderer and the UI
         // panels hold the same Arc. All reads/writes go to the same atomic storage.
         let scene_db = Arc::new(SceneDb::new());
@@ -111,6 +106,10 @@ impl LevelEditorPanel {
         }
         let gpu_engine = Arc::new(Mutex::new(renderer_builder.build()));
         let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
+
+        // Create HelioViewport — renders via WgpuSurfaceHandle every GPUI frame.
+        // Must be created AFTER gpu_engine so we can share the Arc.
+        let viewport = cx.new(|cx| HelioViewport::new(gpu_engine.clone(), cx));
 
         // Store GPU renderer in global EngineContext using a marker that the render loop will pick up
         // The render loop will associate it with the correct window when it first renders
@@ -128,11 +127,6 @@ impl LevelEditorPanel {
         } else {
                     }
 
-        // Viewport stays transparent - Bevy renders directly to winit back buffer BEHIND GPUI
-        // No texture initialization needed in GPUI - all handled in main.rs rendering loop
-        
-        
-        
         // Build the level editor state with the default scene populated into the shared SceneDb.
         // The renderer and all panels now read/write the same Arc<SceneDb>.
         let state = LevelEditorState::new_with_scene_db(scene_db);
@@ -142,7 +136,6 @@ impl LevelEditorPanel {
             fps_graph_is_line: Rc::new(RefCell::new(true)),
             toolbar: ToolbarPanel::new(),
             viewport,
-            viewport_state,
             gpu_engine: gpu_engine.clone(),
             render_enabled,
             game_thread: game_thread.clone(),
@@ -737,51 +730,12 @@ impl Render for LevelEditorPanel {
         // Initialize workspace on first render
         self.initialize_workspace(window, cx);
         
-        // Sync viewport buffer index with Bevy's read index each frame
-        // ALSO sync selection state from Bevy back to GPUI
+        // Sync selection and gizmo tool state to the backend SceneDB every frame.
         if let Ok(engine_guard) = self.gpu_engine.try_lock() {
             if let Some(ref helio_renderer) = engine_guard.helio_renderer {
-                let read_idx = helio_renderer.get_read_index();
-                let mut state = self.viewport_state.write();
-                state.set_active_buffer(read_idx);
-
-                // BIDIRECTIONAL SYNC: Poll Bevy's gizmo state for selection changes
-                // DISABLED: Gizmo interaction is currently disabled, and this was causing
-                // Bevy's None selection to override GPUI selections on every frame
-                /*
-                if let Ok(bevy_gizmo) = helio_renderer.gizmo_state.try_lock() {
-                    let bevy_selected_id = bevy_gizmo.selected_object_id.clone();
-                    let bevy_updated_flag = bevy_gizmo.updated_object_id.clone(); // Check if Bevy made a change
-                    drop(bevy_gizmo); // Release lock immediately
-                    
-                    // Only sync FROM Bevy if Bevy actually updated something
-                    // This prevents overwriting GPUI-initiated selections
-                    if bevy_updated_flag.is_some() {
-                        let gpui_selected_id = self.shared_state.read().selected_object();
-                        
-                        if bevy_selected_id != gpui_selected_id {
-                            // Bevy has a different selection - sync to GPUI!
-                            if let Some(ref new_id) = bevy_selected_id {
-                                                                self.shared_state.write().select_object(Some(new_id.clone()));
-                                cx.notify(); // Trigger UI update
-                            } else {
-                                // Bevy deselected
-                                                                self.shared_state.write().select_object(None);
-                                cx.notify();
-                            }
-                        }
-                    }
-                }
-                */
-                
-                // TRANSFORM SYNC: Transform updates are now handled through the shared
-                // SceneDb / Helio runtime, so old Bevy-only gizmo state is disabled.
-                
-                // SELECTION SYNC: Sync GPUI selection to backend SceneDB every frame
                 let state = self.shared_state.read();
                 let gpui_selected = state.selected_object();
-                
-                // GIZMO TOOL SYNC: Sync current tool to backend gizmo type
+
                 use engine_backend::scene::GizmoType as SceneGizmoType;
                 let gizmo_type = match state.current_tool {
                     TransformTool::Select => SceneGizmoType::None,
@@ -789,29 +743,17 @@ impl Render for LevelEditorPanel {
                     TransformTool::Rotate => SceneGizmoType::Rotate,
                     TransformTool::Scale => SceneGizmoType::Scale,
                 };
-                
                 drop(state);
-                let backend_selected = helio_renderer.scene_db.get_selected_id();
-                let backend_gizmo_type = helio_renderer.scene_db.get_gizmo_state().gizmo_type;
-                
-                if gpui_selected != backend_selected {
-                    // Selection changed - sync to backend  
+
+                if gpui_selected != helio_renderer.scene_db.get_selected_id() {
                     helio_renderer.scene_db.select_object(gpui_selected.clone());
-                    tracing::info!("[GIZMO SYNC] Selection synced to backend: {:?}", gpui_selected);
                 }
-                
-                if gizmo_type != backend_gizmo_type {
-                    // Gizmo type changed - sync to backend
+                if gizmo_type != helio_renderer.scene_db.get_gizmo_state().gizmo_type {
                     helio_renderer.scene_db.set_gizmo_type(gizmo_type);
-                    tracing::info!("[GIZMO SYNC] Gizmo type synced to backend: {:?}", gizmo_type);
                 }
             }
         }
 
-        // Request continuous animation frames to keep viewport and stats updating
-        // This creates a render loop synchronized with the display refresh rate
-        //TODO: Optimize to only request when necessary (The viewport is now a transparent hole son continuous updates may not be needed for the entire window)
-        window.request_animation_frame();
 
         v_flex()
             .size_full()
