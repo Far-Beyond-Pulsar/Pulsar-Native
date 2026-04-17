@@ -50,8 +50,8 @@ impl EventEmitter<DismissEvent> for HelioViewport {}
 
 impl Render for HelioViewport {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Drive continuous animation — GPUI will call render() every frame.
-        window.request_animation_frame();
+        // Mark entity dirty so GPUI keeps scheduling redraws at vsync rate.
+        cx.notify();
 
         let format = wgpu::TextureFormat::Rgba8UnormSrgb;
 

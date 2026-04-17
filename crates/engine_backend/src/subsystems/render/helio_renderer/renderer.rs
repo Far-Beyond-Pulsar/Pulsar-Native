@@ -6,9 +6,9 @@ use std::time::Instant;
 use glam::{EulerRot, Mat4, Quat, Vec2, Vec3};
 
 use helio::{
-    Camera, GroupMask, GpuMaterial,
+    Camera, GroupMask, GpuLight, GpuMaterial, LightType,
     MaterialId, MeshId, MeshUpload, Movability, ObjectDescriptor, ObjectId,
-    PackedVertex, Renderer, RendererConfig, SceneActor,
+    PackedVertex, Renderer, RendererConfig, SceneActor, SkyActor,
 };
 
 use crate::scene::{GizmoState, MeshType, ObjectType, SceneObjectSnapshot};
@@ -263,8 +263,8 @@ impl HelioRenderer {
             let queue  = Arc::new(queue.clone());
             let mut r  = Renderer::new(device, queue, RendererConfig::new(width, height, format));
             r.set_editor_mode(true);
-            r.set_clear_color([0.12, 0.14, 0.18, 1.0]);
-            r.set_ambient([0.3, 0.35, 0.45], 0.4);
+            r.set_clear_color([0.15, 0.18, 0.25, 1.0]);
+            r.set_ambient([0.4, 0.45, 0.55], 0.6);
 
             let mut inner = HelioInner {
                 renderer:   r,
@@ -366,7 +366,35 @@ impl HelioRenderer {
     // ── Scene sync ────────────────────────────────────────────────────────────
 
     fn populate_initial_scene(&self, inner: &mut HelioInner) {
-        // Add a ground plane so the editor doesn't start empty.
+        // ── Sky ──────────────────────────────────────────────────────────────
+        inner.renderer.scene_mut().insert_actor(SceneActor::Sky(
+            SkyActor::new().with_sky_color([0.5, 0.7, 1.0]),
+        ));
+
+        // ── Sun (directional light) ──────────────────────────────────────────
+        let sun_dir = Vec3::new(-0.5, -1.0, -0.3).normalize();
+        inner.renderer.scene_mut().insert_actor(SceneActor::light(GpuLight {
+            position_range:  [0.0, 0.0, 0.0, f32::MAX],
+            direction_outer: [sun_dir.x, sun_dir.y, sun_dir.z, 0.0],
+            color_intensity: [1.0, 0.95, 0.9, 5.0],
+            shadow_index:    0,
+            light_type:      LightType::Directional as u32,
+            inner_angle:     0.0,
+            _pad:            0,
+        }));
+
+        // ── Fill light (softer, from the opposite side) ──────────────────────
+        inner.renderer.scene_mut().insert_actor(SceneActor::light(GpuLight {
+            position_range:  [0.0, 10.0, 0.0, 100.0],
+            direction_outer: [0.0, -1.0, 0.0, 0.0],
+            color_intensity: [0.4, 0.5, 0.7, 2.0],
+            shadow_index:    u32::MAX,
+            light_type:      LightType::Point as u32,
+            inner_angle:     0.0,
+            _pad:            0,
+        }));
+
+        // ── Ground plane ─────────────────────────────────────────────────────
         let ground_upload = plane_mesh(50.0);
         let ground_mesh = match inner.renderer.scene_mut()
             .insert_actor(SceneActor::mesh(ground_upload.clone()))
@@ -376,7 +404,7 @@ impl HelioRenderer {
             None     => return,
         };
         let ground_mat = inner.renderer.scene_mut()
-            .insert_material(make_material([0.25, 0.25, 0.25, 1.0], 0.9, 0.0));
+            .insert_material(make_material([0.35, 0.35, 0.35, 1.0], 0.9, 0.0));
         let _ = inner.renderer.scene_mut()
             .insert_actor(SceneActor::object(ObjectDescriptor {
                 mesh:       ground_mesh,
@@ -385,8 +413,42 @@ impl HelioRenderer {
                 bounds:     [0.0, 0.0, 0.0, 50.0],
                 flags:      0,
                 groups:     GroupMask::NONE,
-                movability: None, // static
+                movability: None,
             }));
+
+        // ── Colored cubes around the origin ──────────────────────────────────
+        let cube_upload = box_mesh([0.5, 0.5, 0.5]);
+        let cube_mesh = match inner.renderer.scene_mut()
+            .insert_actor(SceneActor::mesh(cube_upload.clone()))
+            .as_mesh()
+        {
+            Some(id) => id,
+            None     => return,
+        };
+
+        let positions_and_colors: &[([f32; 3], [f32; 4])] = &[
+            ([ 0.0, 1.0,  0.0], [0.8, 0.2, 0.2, 1.0]),  // red center
+            ([ 3.0, 1.0,  0.0], [0.2, 0.7, 0.2, 1.0]),  // green right
+            ([-3.0, 1.0,  0.0], [0.2, 0.3, 0.9, 1.0]),  // blue left
+            ([ 0.0, 1.0,  5.0], [0.9, 0.9, 0.2, 1.0]),  // yellow front
+            ([ 0.0, 1.0, -5.0], [0.8, 0.3, 0.8, 1.0]),  // magenta back
+        ];
+
+        for &(pos, color) in positions_and_colors {
+            let mat = inner.renderer.scene_mut()
+                .insert_material(make_material(color, 0.5, 0.1));
+            let transform = Mat4::from_translation(Vec3::from_array(pos));
+            let _ = inner.renderer.scene_mut()
+                .insert_actor(SceneActor::object(ObjectDescriptor {
+                    mesh:       cube_mesh,
+                    material:   mat,
+                    transform,
+                    bounds:     [pos[0], pos[1], pos[2], 1.0],
+                    flags:      0,
+                    groups:     GroupMask::NONE,
+                    movability: None,
+                }));
+        }
     }
 
     fn sync_scene(scene_db: &crate::scene::SceneDb, inner: &mut HelioInner) {
