@@ -32,7 +32,7 @@ ttf-parser = { opt-level = 3 }
 [workspace.dependencies]
 
 # ---------- GPUI (WGPUI) ----------
-gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "dc05302c691276eb768a15d5cdb05a29935c4c2d" }
+gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "276f6d683d21e2e00a0a1f4d195cd75041f36064" }
 
 # ---------- Core Engine ----------
 ui                    = { path = "crates/ui" }
@@ -74,19 +74,8 @@ ui_fab_search         = { path = "ui-crates/ui_fab_search" }
 plugin_editor_api = { path = "crates/plugin_editor_api"}
 plugin_manager    = { path = "crates/plugin_manager" }
 
-# ---------- Helio Renderer (blade-graphics based) ----------
-helio-core                       = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "03e1e3d9693329b2ea0c5367e648d45b2e04dde7" }
-helio-render                     = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "03e1e3d9693329b2ea0c5367e648d45b2e04dde7" }
-helio-features                   = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "03e1e3d9693329b2ea0c5367e648d45b2e04dde7" }
-helio-feature-base-geometry      = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "03e1e3d9693329b2ea0c5367e648d45b2e04dde7" }
-helio-feature-lighting           = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "03e1e3d9693329b2ea0c5367e648d45b2e04dde7" }
-helio-feature-materials          = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "03e1e3d9693329b2ea0c5367e648d45b2e04dde7" }
-helio-feature-procedural-shadows = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "03e1e3d9693329b2ea0c5367e648d45b2e04dde7" }
-helio-feature-bloom              = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "03e1e3d9693329b2ea0c5367e648d45b2e04dde7" }
-helio-feature-billboards         = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "03e1e3d9693329b2ea0c5367e648d45b2e04dde7" }
-
-blade-graphics = { git = "https://github.com/tristanpoland/blade", rev = "d85bd14a78ed7729abc298906e87332257674a02"}
-blade-macros   = { git = "https://github.com/tristanpoland/blade", rev = "d85bd14a78ed7729abc298906e87332257674a02"}
+# ---------- Helio Renderer (wgpu-based) ----------
+helio = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "f124aeac0057c8f11c159931ea0c57d4c3b7fef9" }
 glam           = { version = "0.29", features = ["bytemuck"] }
 
 # ---------- Installer ----------
@@ -95,7 +84,7 @@ glam           = { version = "0.29", features = ["bytemuck"] }
 rustup = { git = "https://github.com/tristanpoland/rustup", default-features = false, features = ["reqwest-native-tls"] }
 
 # ---------- Third-party ----------
-wgpu = "0.20.1"
+wgpu = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", rev = "fce5b80e8017304449124b12637ec324417e40c8" }
 anyhow = "1.0.100"
 log = "0.4.29"
 serde = { version = "1.0.228", features = ["derive"] }
