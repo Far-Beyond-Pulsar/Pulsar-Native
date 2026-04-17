@@ -208,6 +208,8 @@ pub struct HelioRenderer {
 
 struct HelioInner {
     renderer: Renderer,
+    device: Arc<wgpu::Device>,
+    queue: Arc<wgpu::Queue>,
     /// SceneDb id → (helio ObjectId, mesh used)
     object_map: HashMap<String, (ObjectId, MeshId)>,
     /// MeshKey → (MeshId, MaterialId) shared across all objects of that type
@@ -244,8 +246,8 @@ impl HelioRenderer {
     /// Called each GPUI frame from the viewport.
     pub fn render_frame(
         &mut self,
-        device: &wgpu::Device,
-        queue:  &wgpu::Queue,
+        _device: &wgpu::Device,
+        _queue:  &wgpu::Queue,
         view:   &wgpu::TextureView,
         width:  u32,
         height: u32,
@@ -263,13 +265,17 @@ impl HelioRenderer {
         if self.inner.is_none() {
             tracing::warn!("[HELIO-RENDERER] Initializing renderer...");
 
-            let device = Arc::new(device.clone());
-            let queue  = Arc::new(queue.clone());
+            let device_arc = Arc::new(_device.clone());
+            let queue_arc  = Arc::new(_queue.clone());
+            
+            println!("[HELIO-RENDERER] Storing device Arc ptr: {:p}", Arc::as_ptr(&device_arc));
+            println!("[HELIO-RENDERER] Storing queue Arc ptr: {:p}", Arc::as_ptr(&queue_arc));
+            
             // GPUI owns the wgpu device/queue, so Helio must use the
             // external-device path (same as working wgpu_surface examples).
             let mut r  = Renderer::new_with_external_device(
-                device,
-                queue,
+                device_arc.clone(),
+                queue_arc.clone(),
                 RendererConfig::new(width, height, format),
             );
             r.set_editor_mode(true);
@@ -278,6 +284,8 @@ impl HelioRenderer {
 
             let mut inner = HelioInner {
                 renderer:   r,
+                device: device_arc,
+                queue: queue_arc,
                 object_map: HashMap::new(),
                 mesh_cache: HashMap::new(),
             };
@@ -299,7 +307,7 @@ impl HelioRenderer {
 
         Self::sync_scene(&self.scene_db, inner);
 
-        inner.renderer.debug_clear();
+        // inner.renderer.debug_clear();  // TEMPORARILY DISABLED TO TEST
 
         let (sy, cy) = self.cam_yaw.sin_cos();
         let (sp, cp) = self.cam_pitch.sin_cos();
@@ -311,7 +319,8 @@ impl HelioRenderer {
         );
 
         println!("[HELIO-RENDERER] About to call render(), cam_pos={:?}, fwd={:?}", self.cam_pos, fwd);
-        if let Err(e) = inner.renderer.render(&camera, view) {
+        
+        if let Err(e) = inner.renderer.render(&camera, &view) {
             println!("[HELIO] render error: {:?}", e);
         } else {
             println!("[HELIO-RENDERER] render() succeeded!");

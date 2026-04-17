@@ -92,6 +92,7 @@ impl Render for HelioViewport {
                 }
                 drop(view);
                 surface.swap_buffers();
+                println!("[HELIO-VIEWPORT] swap_buffers() completed");
             } else {
                 println!("[HELIO-VIEWPORT] back_view_with_size returned None");
             }
@@ -103,7 +104,8 @@ impl Render for HelioViewport {
         // as an absolute layer inside this full-size container.
         if let Some(ref surface) = self.surface {
             wgpu_surface(surface.clone())
-                .size_full()
+                .absolute()
+                .inset_0()
                 .into_any_element()
         } else {
             div()
