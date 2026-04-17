@@ -309,8 +309,8 @@ impl LevelEditorPanel {
     // Helper method to sync GPUI gizmo state to SceneDB and Helio's shared resource
     fn sync_gizmo_to_helio(&mut self) {
         // First, sync to SceneDB through HelioRenderer
-        if let Ok(engine) = self.gpu_engine.try_lock() {
-            if let Some(ref helio_renderer) = engine.helio_renderer {
+        if let Ok(mut engine) = self.gpu_engine.try_lock() {
+            if let Some(ref mut helio_renderer) = engine.helio_renderer {
                 let state = self.shared_state.read();
                 
                 // Map TransformTool to GizmoType
@@ -328,11 +328,18 @@ impl LevelEditorPanel {
                 let selected_id = state.scene_database.get_selected_object_id();
                 helio_renderer.scene_db.select_object(selected_id.clone());
                 
-                tracing::info!("[GIZMO SYNC] Synced to backend SceneDB - tool: {:?}, selected: {:?}", 
+                // NEW: Sync to Helio's EditorState for native gizmo rendering
+                use engine_backend::GizmoMode;
+                let helio_mode = match state.current_tool {
+                    TransformTool::Select => GizmoMode::Translate, // Default to Translate for Select
+                    TransformTool::Move => GizmoMode::Translate,
+                    TransformTool::Rotate => GizmoMode::Rotate,
+                    TransformTool::Scale => GizmoMode::Scale,
+                };
+                helio_renderer.set_gizmo_mode(helio_mode);
+                
+                tracing::info!("[GIZMO SYNC] Synced to backend SceneDB and Helio EditorState - tool: {:?}, selected: {:?}", 
                     state.current_tool, selected_id);
-            
-                // Old legacy gizmo sync is deprecated. The editor state is now driven
-                // through the shared SceneDb and Helio's own gizmo handling.
             }
         }
     }

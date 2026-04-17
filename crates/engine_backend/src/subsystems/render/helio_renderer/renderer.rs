@@ -6,9 +6,9 @@ use std::time::Instant;
 use glam::{EulerRot, Mat4, Quat, Vec2, Vec3};
 
 use helio::{
-    Camera, GroupMask, GpuLight, GpuMaterial, LightType,
+    Camera, EditorState, GizmoMode, GroupMask, GpuLight, GpuMaterial, LightType,
     MaterialId, MeshId, MeshUpload, Movability, ObjectDescriptor, ObjectId,
-    PackedVertex, Renderer, RendererConfig, SceneActor, SkyActor,
+    PackedVertex, Renderer, RendererConfig, SceneActor, ScenePicker, SkyActor,
 };
 
 use crate::scene::{GizmoState, MeshType, ObjectType, SceneObjectSnapshot};
@@ -85,7 +85,46 @@ fn plane_mesh(half_extent: f32) -> MeshUpload {
     let vertices = positions.iter().zip(uvs.iter())
         .map(|(p, uv)| PackedVertex::from_components(*p, normal, *uv, tangent, 1.0))
         .collect();
-    MeshUpload { vertices, indices: vec![0, 1, 2, 0, 2, 3] }
+    // Counter-clockwise winding when viewed from above (positive Y)
+    MeshUpload { vertices, indices: vec![0, 2, 1, 0, 3, 2] }
+}
+
+fn sphere_mesh(radius: f32) -> MeshUpload {
+    let center = Vec3::ZERO;
+    let lat_steps = 16;
+    let lon_steps = 32;
+    let mut vertices = Vec::new();
+    let mut indices = Vec::new();
+
+    for i in 0..=lat_steps {
+        let phi = std::f32::consts::PI * (i as f32 / lat_steps as f32);
+        let y = phi.cos();
+        let sin_phi = phi.sin();
+        for j in 0..=lon_steps {
+            let theta = 2.0 * std::f32::consts::PI * (j as f32 / lon_steps as f32);
+            let x = sin_phi * theta.cos();
+            let z = sin_phi * theta.sin();
+
+            let position = center + Vec3::new(x, y, z) * radius;
+            let normal = [x, y, z];
+            let uv = [j as f32 / lon_steps as f32, i as f32 / lat_steps as f32];
+            let tangent_vec = Vec3::new(-z, 0.0, x).normalize_or_zero();
+            let tangent = tangent_vec.to_array();
+            vertices.push(PackedVertex::from_components(position.to_array(), normal, uv, tangent, 1.0));
+        }
+    }
+
+    for i in 0..lat_steps {
+        for j in 0..lon_steps {
+            let a = (i * (lon_steps + 1) + j) as u32;
+            let b = a + (lon_steps + 1) as u32;
+            // CCW winding when viewed from outside (outward normals).
+            indices.extend_from_slice(&[a, a + 1, b]);
+            indices.extend_from_slice(&[b, a + 1, b + 1]);
+        }
+    }
+
+    MeshUpload { vertices, indices }
 }
 
 fn make_material(base_color: [f32; 4], roughness: f32, metallic: f32) -> GpuMaterial {
@@ -131,7 +170,7 @@ impl From<MeshType> for MeshKey {
 fn mesh_for_key(key: MeshKey) -> MeshUpload {
     match key {
         MeshKey::Cube | MeshKey::Cylinder => box_mesh([0.5, 0.5, 0.5]),
-        MeshKey::Sphere => box_mesh([0.5, 0.5, 0.5]), // TODO: Implement sphere mesh
+        MeshKey::Sphere => sphere_mesh(0.5),
         MeshKey::Plane => plane_mesh(5.0),
     }
 }
@@ -174,6 +213,10 @@ struct HelioInner {
     object_map: HashMap<String, (ObjectId, MeshId)>,
     /// MeshKey → (MeshId, MaterialId) shared across all objects of that type
     mesh_cache: HashMap<MeshKey, (MeshId, MaterialId)>,
+    /// Helio editor state for gizmo management
+    editor_state: EditorState,
+    /// Scene picker for raycasting object selection
+    scene_picker: ScenePicker,
 }
 
 impl HelioRenderer {
@@ -187,9 +230,9 @@ impl HelioRenderer {
             viewport_mouse_input: Arc::new(Mutex::new(ViewportMouseInput::default())),
             gizmo_state: Arc::new(Mutex::new(GizmoState::default())),
             inner: None,
-            cam_pos: Vec3::new(0.0, 5.0, 15.0),
-            cam_yaw: 0.0,
-            cam_pitch: -0.2,
+            cam_pos: Vec3::new(8.0, 6.0, 12.0),  // Better view angle
+            cam_yaw: -0.5,                        // Look left a bit
+            cam_pitch: -0.3,                      // Look down to see objects
             viewport_size: (0, 0),
             metrics: Arc::new(Mutex::new(RenderMetrics::default())),
             gpu_profiler: Arc::new(Mutex::new(GpuProfilerData::default())),
@@ -235,6 +278,8 @@ impl HelioRenderer {
                 queue: queue_arc,
                 object_map: HashMap::new(),
                 mesh_cache: HashMap::new(),
+                editor_state: EditorState::new(),
+                scene_picker: ScenePicker::new(),
             };
             self.populate_initial_scene(&mut inner);
             self.inner = Some(inner);
@@ -321,6 +366,72 @@ impl HelioRenderer {
         self.gpu_profiler.lock().map(|m| m.clone()).unwrap_or_default()
     }
 
+    // ── Editor Integration ───────────────────────────────────────────────────
+
+    /// Set the gizmo mode (Translate, Rotate, Scale).
+    pub fn set_gizmo_mode(&mut self, mode: GizmoMode) {
+        if let Some(inner) = &mut self.inner {
+            inner.editor_state.set_gizmo_mode(mode);
+            tracing::info!("[HELIO] Gizmo mode set to: {:?}", mode);
+        }
+    }
+
+    /// Get the currently selected object ID.
+    pub fn get_selected_object(&self) -> Option<helio::SceneActorId> {
+        self.inner.as_ref()?.editor_state.selected()
+    }
+
+    /// Build a ray from cursor position for object picking.
+    fn build_pick_ray(&self, cursor_x: f32, cursor_y: f32) -> (Vec3, Vec3) {
+        let (width, height) = self.viewport_size;
+        let (sy, cy) = self.cam_yaw.sin_cos();
+        let (sp, cp) = self.cam_pitch.sin_cos();
+        let fwd = Vec3::new(sy * cp, sp, -cy * cp);
+        let aspect = width as f32 / height.max(1) as f32;
+        let proj = Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect, 0.1, 10_000.0);
+        let view = Mat4::look_at_rh(self.cam_pos, self.cam_pos + fwd, Vec3::Y);
+        let vp_inv = (proj * view).inverse();
+        EditorState::ray_from_screen(cursor_x, cursor_y, width as f32, height as f32, vp_inv)
+    }
+
+    /// Handle left-click for object selection or gizmo dragging.
+    pub fn handle_left_click(&mut self, cursor_x: f32, cursor_y: f32) {
+        let (ray_o, ray_d) = self.build_pick_ray(cursor_x, cursor_y);
+        let Some(inner) = &mut self.inner else { return };
+        
+        // Try to start gizmo drag first
+        if !inner.editor_state.try_start_drag(ray_o, ray_d, inner.renderer.scene()) {
+            // No gizmo hit, try object picking
+            inner.scene_picker.rebuild_instances(inner.renderer.scene());
+            if let Some(hit) = inner.scene_picker.cast_ray(inner.renderer.scene(), ray_o, ray_d) {
+                inner.editor_state.select(hit.actor_id);
+                tracing::info!("[HELIO] Selected object: {:?}", hit.actor_id);
+            } else {
+                inner.editor_state.deselect();
+                tracing::info!("[HELIO] Deselected");
+            }
+        }
+    }
+
+    /// Handle mouse movement for gizmo dragging.
+    pub fn handle_mouse_move(&mut self, cursor_x: f32, cursor_y: f32) {
+        let (ray_o, ray_d) = self.build_pick_ray(cursor_x, cursor_y);
+        let Some(inner) = &mut self.inner else { return };
+        
+        if inner.editor_state.is_dragging() {
+            inner.editor_state.update_drag(ray_o, ray_d, inner.renderer.scene_mut());
+        } else {
+            inner.editor_state.update_hover(ray_o, ray_d, inner.renderer.scene());
+        }
+    }
+
+    /// Handle left-click release to end gizmo dragging.
+    pub fn handle_left_release(&mut self) {
+        if let Some(inner) = &mut self.inner {
+            inner.editor_state.end_drag();
+        }
+    }
+
     // ── Scene Setup ──────────────────────────────────────────────────────────
 
     fn populate_initial_scene(&self, inner: &mut HelioInner) {
@@ -361,6 +472,9 @@ impl HelioRenderer {
             Some(id) => id,
             None     => return,
         };
+        // Register with picker
+        inner.scene_picker.register_mesh(ground_mesh, &ground_upload);
+        
         let ground_mat = inner.renderer.scene_mut()
             .insert_material(make_material([0.35, 0.35, 0.35, 1.0], 0.9, 0.0));
         let _ = inner.renderer.scene_mut()
@@ -371,7 +485,7 @@ impl HelioRenderer {
                 bounds:     [0.0, 0.0, 0.0, 50.0],
                 flags:      0,
                 groups:     GroupMask::NONE,
-                movability: None,
+                movability: None, // Ground stays static
             }));
 
         // Test cubes
@@ -383,6 +497,8 @@ impl HelioRenderer {
             Some(id) => id,
             None     => return,
         };
+        // Register cube mesh with picker
+        inner.scene_picker.register_mesh(cube_mesh, &cube_upload);
 
         let positions_and_colors: &[([f32; 3], [f32; 4])] = &[
             ([ 0.0, 1.0,  0.0], [0.8, 0.2, 0.2, 1.0]),  // red center
@@ -404,9 +520,62 @@ impl HelioRenderer {
                     bounds:     [pos[0], pos[1], pos[2], 1.0],
                     flags:      0,
                     groups:     GroupMask::NONE,
-                    movability: None,
+                    movability: Some(Movability::Movable), // Make cubes movable!
                 }));
         }
+
+        // Add a sphere
+        let sphere_upload = sphere_mesh(0.6);
+        let sphere_mesh = match inner.renderer.scene_mut()
+            .insert_actor(SceneActor::mesh(sphere_upload.clone()))
+            .as_mesh()
+        {
+            Some(id) => id,
+            None     => return,
+        };
+        inner.scene_picker.register_mesh(sphere_mesh, &sphere_upload);
+        
+        let sphere_mat = inner.renderer.scene_mut()
+            .insert_material(make_material([0.2, 0.8, 0.9, 1.0], 0.2, 0.8)); // Cyan metallic
+        let sphere_transform = Mat4::from_translation(Vec3::new(0.0, 1.5, -8.0));
+        let _ = inner.renderer.scene_mut()
+            .insert_actor(SceneActor::object(ObjectDescriptor {
+                mesh:       sphere_mesh,
+                material:   sphere_mat,
+                transform:  sphere_transform,
+                bounds:     [0.0, 1.5, -8.0, 0.6],
+                flags:      0,
+                groups:     GroupMask::NONE,
+                movability: Some(Movability::Movable),
+            }));
+
+        // Add a tall cylinder (using box mesh stretched)
+        let cylinder_upload = box_mesh([0.3, 1.2, 0.3]); // Tall thin box
+        let cylinder_mesh = match inner.renderer.scene_mut()
+            .insert_actor(SceneActor::mesh(cylinder_upload.clone()))
+            .as_mesh()
+        {
+            Some(id) => id,
+            None     => return,
+        };
+        inner.scene_picker.register_mesh(cylinder_mesh, &cylinder_upload);
+        
+        let cylinder_mat = inner.renderer.scene_mut()
+            .insert_material(make_material([0.9, 0.6, 0.1, 1.0], 0.4, 0.3)); // Orange
+        let cylinder_transform = Mat4::from_translation(Vec3::new(6.0, 1.2, 3.0));
+        let _ = inner.renderer.scene_mut()
+            .insert_actor(SceneActor::object(ObjectDescriptor {
+                mesh:       cylinder_mesh,
+                material:   cylinder_mat,
+                transform:  cylinder_transform,
+                bounds:     [6.0, 1.2, 3.0, 1.5],
+                flags:      0,
+                groups:     GroupMask::NONE,
+                movability: Some(Movability::Movable),
+            }));
+        
+        // Rebuild picker instances after adding all objects
+        inner.scene_picker.rebuild_instances(inner.renderer.scene());
     }
 
     fn sync_scene(scene_db: &crate::scene::SceneDb, inner: &mut HelioInner) {

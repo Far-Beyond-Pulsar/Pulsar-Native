@@ -20,6 +20,9 @@ pub use subsystems::framework::{SubsystemRegistry, SubsystemContext, Subsystem, 
 pub use services::{GpuRenderer, GlobalRustAnalyzerCompletionProvider, RustAnalyzerManager};
 pub use std::sync::Arc;
 
+// Re-export Helio types for UI integration
+pub use helio::GizmoMode;
+
 pub const ENGINE_THREADS: [&str; 8] = [
     "GameThread",
     "RenderThread",
