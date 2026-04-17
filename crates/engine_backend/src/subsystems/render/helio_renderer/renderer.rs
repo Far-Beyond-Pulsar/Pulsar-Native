@@ -15,8 +15,14 @@ use crate::scene::{GizmoState, MeshType, ObjectType, SceneObjectSnapshot};
 
 use super::core::{CameraInput, RenderMetrics, GpuProfilerData};
 
+// ── Legacy types (unused but referenced by UI code) ──────────────────────────
+
+#[derive(Debug, Clone)]
+pub enum RendererCommand {
+    ToggleFeature(String),
+}
+
 pub mod gizmo_types {
-    /// Normalized viewport bounds used by level editor mouse input.
     #[derive(Debug, Clone)]
     pub struct ViewportBounds {
         pub x: f32,
@@ -26,12 +32,7 @@ pub mod gizmo_types {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum RendererCommand {
-    ToggleFeature(String),
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ViewportMouseInput {
     pub left_clicked: bool,
     pub left_down: bool,
@@ -40,19 +41,7 @@ pub struct ViewportMouseInput {
     pub viewport_bounds: Option<gizmo_types::ViewportBounds>,
 }
 
-impl Default for ViewportMouseInput {
-    fn default() -> Self {
-        Self {
-            left_clicked: false,
-            left_down: false,
-            mouse_pos: glam::Vec2::ZERO,
-            mouse_delta: glam::Vec2::ZERO,
-            viewport_bounds: None,
-        }
-    }
-}
-
-// ── Mesh helpers ─────────────────────────────────────────────────────────────
+// ── Mesh Generation ──────────────────────────────────────────────────────────
 
 fn box_mesh(half_extents: [f32; 3]) -> MeshUpload {
     let e = glam::Vec3::from_array(half_extents);
@@ -81,32 +70,6 @@ fn box_mesh(half_extents: [f32; 3]) -> MeshUpload {
             ));
         }
         indices.extend_from_slice(&[base, base+1, base+2, base, base+2, base+3]);
-    }
-    MeshUpload { vertices, indices }
-}
-
-fn sphere_mesh(radius: f32, stacks: u32, slices: u32) -> MeshUpload {
-    let mut vertices = Vec::new();
-    let mut indices  = Vec::new();
-    for s in 0..=stacks {
-        let phi = std::f32::consts::PI * s as f32 / stacks as f32;
-        let (sp, cp) = phi.sin_cos();
-        for sl in 0..=slices {
-            let theta = 2.0 * std::f32::consts::PI * sl as f32 / slices as f32;
-            let (st, ct) = theta.sin_cos();
-            let n = [sp * ct, cp, sp * st];
-            let p = [n[0] * radius, n[1] * radius, n[2] * radius];
-            let uv = [sl as f32 / slices as f32, s as f32 / stacks as f32];
-            let t = [-st, 0.0, ct];
-            vertices.push(PackedVertex::from_components(p, n, uv, t, 1.0));
-        }
-    }
-    for s in 0..stacks {
-        for sl in 0..slices {
-            let a = s * (slices + 1) + sl;
-            let b = a + slices + 1;
-            indices.extend_from_slice(&[a, b, a+1, b, b+1, a+1]);
-        }
     }
     MeshUpload { vertices, indices }
 }
@@ -158,10 +121,9 @@ enum MeshKey { Cube, Sphere, Plane, Cylinder }
 impl From<MeshType> for MeshKey {
     fn from(t: MeshType) -> Self {
         match t {
-            MeshType::Cube | MeshType::Custom => MeshKey::Cube,
-            MeshType::Sphere                  => MeshKey::Sphere,
-            MeshType::Plane                   => MeshKey::Plane,
-            MeshType::Cylinder                => MeshKey::Cylinder,
+            MeshType::Cube | MeshType::Custom | MeshType::Cylinder => MeshKey::Cube,
+            MeshType::Sphere => MeshKey::Sphere,
+            MeshType::Plane => MeshKey::Plane,
         }
     }
 }
@@ -169,40 +131,38 @@ impl From<MeshType> for MeshKey {
 fn mesh_for_key(key: MeshKey) -> MeshUpload {
     match key {
         MeshKey::Cube | MeshKey::Cylinder => box_mesh([0.5, 0.5, 0.5]),
-        MeshKey::Sphere                   => sphere_mesh(0.5, 16, 16),
-        MeshKey::Plane                    => plane_mesh(5.0),
+        MeshKey::Sphere => box_mesh([0.5, 0.5, 0.5]), // TODO: Implement sphere mesh
+        MeshKey::Plane => plane_mesh(5.0),
     }
 }
 
 // ── HelioRenderer ─────────────────────────────────────────────────────────────
 
-/// Shared camera input written by the dedicated input thread.
+/// Main renderer coordinating Helio 3D rendering with GPUI.
 pub struct HelioRenderer {
-    /// Written by the input thread, read each frame in `render_frame`.
+    // ── Scene & Input ──
     pub camera_input: Arc<Mutex<CameraInput>>,
-    /// Shared scene database owned by the UI and level editor.
     pub scene_db: Arc<crate::scene::SceneDb>,
-
-    pub command_sender: mpsc::Sender<RendererCommand>,
-    pub command_receiver: mpsc::Receiver<RendererCommand>,
     pub viewport_mouse_input: Arc<Mutex<ViewportMouseInput>>,
     pub gizmo_state: Arc<Mutex<GizmoState>>,
 
-    // Lazily initialised on the first `render_frame` call.
+    // ── Legacy (unused) ──
+    pub command_sender: mpsc::Sender<RendererCommand>,
+    pub command_receiver: mpsc::Receiver<RendererCommand>,
+
+    // ── Renderer State ──
     inner: Option<HelioInner>,
-
-    // Camera state driven by `camera_input` each frame.
-    cam_pos:   Vec3,
-    cam_yaw:   f32,
+    
+    // ── Camera State ──
+    cam_pos: Vec3,
+    cam_yaw: f32,
     cam_pitch: f32,
-
-    // Viewport-local cursor position set from GPUI events.
-    cursor_pos: (f32, f32),
     viewport_size: (u32, u32),
 
-    pub metrics:     Arc<Mutex<RenderMetrics>>,
+    // ── Metrics ──
+    pub metrics: Arc<Mutex<RenderMetrics>>,
     pub gpu_profiler: Arc<Mutex<GpuProfilerData>>,
-    last_frame:  Instant,
+    last_frame: Instant,
     frame_count: u64,
 }
 
@@ -227,20 +187,15 @@ impl HelioRenderer {
             viewport_mouse_input: Arc::new(Mutex::new(ViewportMouseInput::default())),
             gizmo_state: Arc::new(Mutex::new(GizmoState::default())),
             inner: None,
-            cam_pos:   Vec3::new(0.0, 5.0, 15.0),
-            cam_yaw:   0.0,
+            cam_pos: Vec3::new(0.0, 5.0, 15.0),
+            cam_yaw: 0.0,
             cam_pitch: -0.2,
-            cursor_pos: (0.0, 0.0),
             viewport_size: (0, 0),
-            metrics:      Arc::new(Mutex::new(RenderMetrics::default())),
+            metrics: Arc::new(Mutex::new(RenderMetrics::default())),
             gpu_profiler: Arc::new(Mutex::new(GpuProfilerData::default())),
-            last_frame:  Instant::now(),
+            last_frame: Instant::now(),
             frame_count: 0,
         }
-    }
-
-    pub fn get_read_index(&self) -> usize {
-        0
     }
 
     /// Called each GPUI frame from the viewport.
@@ -261,16 +216,12 @@ impl HelioRenderer {
 
         // Lazy init
         if self.inner.is_none() {
-            tracing::warn!("[HELIO-RENDERER] Initializing renderer...");
+            tracing::info!("Initializing Helio renderer...");
 
-            // Get device/queue from surface ONCE, not from parameters
-            // The parameters (_device/_queue) are ignored - we need to use fresh clones
+            // Clone device/queue from GPUI's WgpuSurface
             let device_arc = Arc::new(_device.clone());
-            let queue_arc  = Arc::new(_queue.clone());
-            
-            // GPUI owns the wgpu device/queue, so Helio must use the
-            // external-device path (same as working wgpu_surface examples).
-            let mut r  = Renderer::new_with_external_device(
+            let queue_arc = Arc::new(_queue.clone());
+            let mut r = Renderer::new_with_external_device(
                 device_arc.clone(),
                 queue_arc.clone(),
                 RendererConfig::new(width, height, format),
@@ -280,7 +231,7 @@ impl HelioRenderer {
             r.set_ambient([0.4, 0.45, 0.55], 0.6);
 
             let mut inner = HelioInner {
-                renderer:   r,
+                renderer: r,
                 device: device_arc,
                 queue: queue_arc,
                 object_map: HashMap::new(),
@@ -302,8 +253,6 @@ impl HelioRenderer {
         }
 
         Self::sync_scene(&self.scene_db, inner);
-
-        // inner.renderer.debug_clear();  // TEMPORARILY DISABLED TO TEST
 
         let (sy, cy) = self.cam_yaw.sin_cos();
         let (sp, cp) = self.cam_pitch.sin_cos();
@@ -346,25 +295,18 @@ impl HelioRenderer {
         self.cam_pitch  = self.cam_pitch.clamp(-1.5, 1.5);
 
         let (sy, cy) = self.cam_yaw.sin_cos();
-        let fwd   = Vec3::new(sy, 0.0, -cy);
-        let right = Vec3::new(cy, 0.0,  sy);
-        let speed = if input.boost { input.move_speed * 3.0 } else { input.move_speed };
+        let fwd = Vec3::new(sy, 0.0, -cy);
+        let right = Vec3::new(cy, 0.0, sy);
+        let speed = if input.boost {
+            input.move_speed * 3.0
+        } else {
+            input.move_speed
+        };
 
-        self.cam_pos += fwd   * input.forward * speed * dt;
-        self.cam_pos += right * input.right   * speed * dt;
-        self.cam_pos += Vec3::Y * input.up    * speed * dt;
+        self.cam_pos += fwd * input.forward * speed * dt;
+        self.cam_pos += right * input.right * speed * dt;
+        self.cam_pos += Vec3::Y * input.up * speed * dt;
     }
-
-    /// Call on mouse move when not in camera fly mode.
-    pub fn update_cursor(&mut self, x: f32, y: f32) {
-        self.cursor_pos = (x, y);
-    }
-
-    /// Call on left mouse press when not in camera fly mode.
-    pub fn on_left_press(&mut self, _x: f32, _y: f32) {}
-
-    /// Call on left mouse release.
-    pub fn on_left_release(&mut self) {}
 
     pub fn is_initialized(&self) -> bool {
         self.inner.is_some()
@@ -378,16 +320,15 @@ impl HelioRenderer {
         self.gpu_profiler.lock().map(|m| m.clone()).unwrap_or_default()
     }
 
-    // ── Scene sync ────────────────────────────────────────────────────────────
+    // ── Scene Setup ──────────────────────────────────────────────────────────
 
     fn populate_initial_scene(&self, inner: &mut HelioInner) {
-        // ── Sky ──────────────────────────────────────────────────────────────
+        // Sky
         inner.renderer.scene_mut().insert_actor(SceneActor::Sky(
             SkyActor::new().with_sky_color([0.5, 0.7, 1.0]),
         ));
 
-
-        // ── Sun (directional light) ──────────────────────────────────────────
+        // Sun (directional light)
         let sun_dir = Vec3::new(-0.5, -1.0, -0.3).normalize();
         inner.renderer.scene_mut().insert_actor(SceneActor::light(GpuLight {
             position_range:  [0.0, 0.0, 0.0, f32::MAX],
@@ -399,7 +340,7 @@ impl HelioRenderer {
             _pad:            0,
         }));
 
-        // ── Fill light (softer, from the opposite side) ──────────────────────
+        // Fill light (softer ambient)
         inner.renderer.scene_mut().insert_actor(SceneActor::light(GpuLight {
             position_range:  [0.0, 10.0, 0.0, 100.0],
             direction_outer: [0.0, -1.0, 0.0, 0.0],
@@ -410,7 +351,7 @@ impl HelioRenderer {
             _pad:            0,
         }));
 
-        // ── Ground plane ─────────────────────────────────────────────────────
+        // Ground plane
         let ground_upload = plane_mesh(50.0);
         let ground_mesh = match inner.renderer.scene_mut()
             .insert_actor(SceneActor::mesh(ground_upload.clone()))
@@ -432,7 +373,7 @@ impl HelioRenderer {
                 movability: None,
             }));
 
-        // ── Colored cubes around the origin ──────────────────────────────────
+        // Test cubes
         let cube_upload = box_mesh([0.5, 0.5, 0.5]);
         let cube_mesh = match inner.renderer.scene_mut()
             .insert_actor(SceneActor::mesh(cube_upload.clone()))
