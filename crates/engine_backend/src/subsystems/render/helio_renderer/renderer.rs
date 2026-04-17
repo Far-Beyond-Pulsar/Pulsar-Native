@@ -212,7 +212,6 @@ impl HelioRenderer {
         let dt  = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
         self.last_frame   = now;
         self.frame_count += 1;
-        self.viewport_size = (width, height);
 
         // Lazy init
         if self.inner.is_none() {
@@ -239,6 +238,7 @@ impl HelioRenderer {
             };
             self.populate_initial_scene(&mut inner);
             self.inner = Some(inner);
+            self.viewport_size = (width, height);
         }
 
         self.apply_camera_input(dt);
@@ -248,8 +248,9 @@ impl HelioRenderer {
             None    => return,
         };
 
-        if self.viewport_size.0 != width || self.viewport_size.1 != height {
+        if self.viewport_size != (width, height) {
             inner.renderer.set_render_size(width, height);
+            self.viewport_size = (width, height);
         }
 
         Self::sync_scene(&self.scene_db, inner);
