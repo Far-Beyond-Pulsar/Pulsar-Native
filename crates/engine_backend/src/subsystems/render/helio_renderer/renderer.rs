@@ -254,6 +254,8 @@ impl HelioRenderer {
         format: wgpu::TextureFormat,
     ) {
         println!("[HELIO-RENDERER] render_frame called: {}x{}, format={:?}", width, height, format);
+        println!("[HELIO-RENDERER] Frame {} - device ptr: {:p}, queue ptr: {:p}", 
+                 self.frame_count, _device as *const _, _queue as *const _);
         
         let now = Instant::now();
         let dt  = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
