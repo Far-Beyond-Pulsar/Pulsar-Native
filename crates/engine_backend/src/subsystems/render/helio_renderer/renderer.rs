@@ -276,6 +276,7 @@ impl HelioRenderer {
                      _device as *const _, _queue as *const _);
             println!("[HELIO-RENDERER] Init - device_arc ptr: {:p}, queue_arc ptr: {:p}", 
                      Arc::as_ptr(&device_arc), Arc::as_ptr(&queue_arc));
+            println!("[HELIO-RENDERER] Init - format: {:?}, size: {}x{}", format, width, height);
             
             // GPUI owns the wgpu device/queue, so Helio must use the
             // external-device path (same as working wgpu_surface examples).
