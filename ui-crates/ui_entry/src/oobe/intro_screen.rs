@@ -320,7 +320,7 @@ impl IntroScreen {
         self.audio.play_click();
 
         if current_page + 1 >= total_pages {
-            self.finish(cx);
+            self.skip(cx); // Same immediate path as Skip Tour
         } else {
             {
                 let mut state = SHARED_ANIM_STATE.lock();
@@ -545,49 +545,47 @@ impl IntroScreen {
         let is_last_page = current_page + 1 >= total_pages;
         let is_first_page = current_page == 0;
 
-        let back_enabled = !is_first_page;
-        let back_btn = div()
-            .px_5()
-            .py_2()
-            .rounded_full()
-            .bg(white().opacity(if is_first_page { 0.05 } else { 0.1 }))
-            .border_1()
-            .border_color(white().opacity(if is_first_page { 0.1 } else { 0.2 }))
-            .when(back_enabled, |s| s.cursor_pointer())
-            .hover(|s| if back_enabled { s.bg(white().opacity(0.2)) } else { s })
-            .child(
-                h_flex()
-                    .gap_2()
-                    .items_center()
-                    .child(
-                        ui::Icon::new(IconName::ArrowLeft)
-                            .size_4()
-                            .text_color(white().opacity(if is_first_page { 0.3 } else { 0.9 }))
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(white().opacity(if is_first_page { 0.3 } else { 0.9 }))
-                            .child("Back")
-                    )
-            );
-
         h_flex()
             .gap_4()
             .items_center()
             .opacity(opacity)
+            // Back button — single div with id, styling, AND on_click
             .child(
                 div()
                     .id("back-btn")
-                    .child(back_btn)
-                    .when(back_enabled, |el| {
+                    .px_5()
+                    .py_2()
+                    .rounded_full()
+                    .bg(white().opacity(if is_first_page { 0.05 } else { 0.1 }))
+                    .border_1()
+                    .border_color(white().opacity(if is_first_page { 0.1 } else { 0.2 }))
+                    .when(!is_first_page, |s| s.cursor_pointer())
+                    .hover(|s| if !is_first_page { s.bg(white().opacity(0.2)) } else { s })
+                    .when(!is_first_page, |el| {
                         el.on_click(cx.listener(|this, _, _, cx| {
-                            println!("🖱️ [back-btn] on_click fired");
+                            println!("🖱️ [back-btn] clicked");
                             this.prev_page(cx);
                         }))
                     })
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                ui::Icon::new(IconName::ArrowLeft)
+                                    .size_4()
+                                    .text_color(white().opacity(if is_first_page { 0.3 } else { 0.9 }))
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(white().opacity(if is_first_page { 0.3 } else { 0.9 }))
+                                    .child("Back")
+                            )
+                    )
             )
+            // Page dots
             .child(
                 h_flex()
                     .gap_2()
@@ -600,8 +598,10 @@ impl IntroScreen {
                             .bg(white().opacity(if i == current_page { 0.9 } else { 0.3 }))
                     }))
             )
-            .child({
-                let next_btn = div()
+            // Next / Get Started button — single div with id, styling, AND on_click
+            .child(
+                div()
+                    .id("next-btn")
                     .px_5()
                     .py_2()
                     .rounded_full()
@@ -610,6 +610,10 @@ impl IntroScreen {
                     .border_color(white().opacity(0.3))
                     .cursor_pointer()
                     .hover(|s| s.bg(white().opacity(0.25)))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        println!("🖱️ [next-btn] clicked");
+                        this.next_page(cx);
+                    }))
                     .child(
                         h_flex()
                             .gap_2()
@@ -626,16 +630,8 @@ impl IntroScreen {
                                     .size_4()
                                     .text_color(white())
                             )
-                    );
-
-                div()
-                    .id("next-btn")
-                    .child(next_btn)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        println!("🖱️ [next-btn] on_click fired");
-                        this.next_page(cx);
-                    }))
-            })
+                    )
+            )
     }
 }
 
