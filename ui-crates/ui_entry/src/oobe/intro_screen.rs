@@ -364,11 +364,35 @@ impl IntroScreen {
     fn finish(&mut self, cx: &mut Context<Self>) {
         // Only start FadeOut if not already fading/complete.
         let phase = self.get_phase();
+        println!("🎬 [finish] called, phase={:?}", phase);
         if matches!(phase, IntroPhase::FadeOut | IntroPhase::Complete) {
+            println!("🎬 [finish] already fading/complete, skipping");
             return;
         }
         self.audio.play_complete();
         self.advance_phase(IntroPhase::FadeOut, cx);
+
+        // Don't rely on tick() — schedule emit directly after fade duration.
+        cx.spawn(async move |this, mut cx| {
+            println!("🎬 [finish] spawn started, waiting 550ms");
+            cx.background_executor().timer(Duration::from_millis(550)).await;
+            println!("🎬 [finish] timer fired, emitting IntroComplete");
+            let _ = cx.update(|cx| {
+                let _ = this.update(cx, |screen, cx| {
+                    {
+                        let mut state = SHARED_ANIM_STATE.lock();
+                        if let Some(s) = state.as_mut() {
+                            s.phase = IntroPhase::Complete;
+                            s.phase_start_time = std::time::Instant::now();
+                        }
+                    }
+                    screen.audio.stop_all();
+                    println!("🎬 [finish] cx.emit(IntroComplete) called");
+                    cx.emit(IntroComplete);
+                });
+            });
+            println!("🎬 [finish] spawn done");
+        }).detach();
     }
 
     fn skip(&mut self, cx: &mut Context<Self>) {
