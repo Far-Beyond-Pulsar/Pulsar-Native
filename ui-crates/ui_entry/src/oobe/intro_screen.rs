@@ -69,6 +69,7 @@ pub struct IntroScreen {
     pages: Vec<OobePage>,
     frame_count: u64,
     audio_muted: bool,
+    should_close: bool,
 }
 
 impl EventEmitter<IntroComplete> for IntroScreen {}
@@ -190,6 +191,7 @@ impl IntroScreen {
             pages,
             frame_count: 0,
             audio_muted: false,
+            should_close: false,
         };
 
         // Start the animation loop only on first creation
@@ -299,7 +301,7 @@ impl IntroScreen {
         }
     }
 
-    fn next_page(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn next_page(&mut self, cx: &mut Context<Self>) {
         let (current_page, total_pages, phase) = {
             let state = SHARED_ANIM_STATE.lock();
             if let Some(s) = state.as_ref() {
@@ -320,7 +322,7 @@ impl IntroScreen {
         self.audio.play_click();
 
         if current_page + 1 >= total_pages {
-            self.skip(window, cx); // Same immediate path as Skip Tour
+            self.skip(cx); // Same immediate path as Skip Tour
         } else {
             {
                 let mut state = SHARED_ANIM_STATE.lock();
@@ -395,12 +397,13 @@ impl IntroScreen {
         }).detach();
     }
 
-    fn skip(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn skip(&mut self, cx: &mut Context<Self>) {
         // Skip the animation entirely — emit IntroComplete immediately.
         let phase = self.get_phase();
         if matches!(phase, IntroPhase::FadeOut | IntroPhase::Complete) {
             return;
         }
+        // Jump straight to Complete so tick() doesn't re-fire IntroComplete.
         {
             let mut state = SHARED_ANIM_STATE.lock();
             if let Some(s) = state.as_mut() {
@@ -409,11 +412,9 @@ impl IntroScreen {
             }
         }
         self.audio.stop_all();
+        self.should_close = true;
         cx.emit(IntroComplete);
-        // Close this window directly — we own &mut Window here, so set removed = true
-        // before returning. update_window_id will clean up after the closure returns.
-        println!("🪟 [skip] calling window.remove_window() directly");
-        window.remove_window();
+        cx.notify();
     }
 
     /// Calculate content opacity based on phase
@@ -613,9 +614,9 @@ impl IntroScreen {
                     .border_color(white().opacity(0.3))
                     .cursor_pointer()
                     .hover(|s| s.bg(white().opacity(0.25)))
-                    .on_click(cx.listener(|this, _, window, cx| {
+                    .on_click(cx.listener(|this, _, _, cx| {
                         println!("🖱️ [next-btn] clicked");
-                        this.next_page(window, cx);
+                        this.next_page(cx);
                     }))
                     .child(
                         h_flex()
@@ -650,6 +651,12 @@ fn ease_out_quart(t: f32) -> f32 {
 
 impl Render for IntroScreen {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Close this window if skip/finish was called
+        if self.should_close {
+            println!("🪟 [IntroScreen::render] should_close=true, removing window");
+            _window.remove_window();
+        }
+
         // Capture all animation state ONCE at the start of render
         // Use TOTAL elapsed time from animation start as single source of truth
         let (current_page, phase, total_elapsed_secs, page_start_elapsed_secs, swipe_direction) = {
@@ -796,8 +803,8 @@ impl Render for IntroScreen {
                             .text_color(white().opacity(0.6))
                             .hover(|s| s.text_color(white().opacity(0.9)).cursor_pointer())
                             .child("Skip Tour")
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.skip(window, cx);
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.skip(cx);
                             }))
                     )
             )
