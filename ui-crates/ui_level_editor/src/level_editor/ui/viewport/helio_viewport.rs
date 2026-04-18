@@ -97,6 +97,7 @@ impl Render for HelioViewport {
         // as an absolute layer inside this full-size container.
         if let Some(ref surface) = self.surface {
             wgpu_surface(surface.clone())
+                .defer_resize_until_mouse_up(true)
                 .absolute()
                 .inset_0()
                 .into_any_element()

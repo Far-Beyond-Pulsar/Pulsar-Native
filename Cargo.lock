@@ -3727,7 +3727,7 @@ dependencies = [
 [[package]]
 name = "gpui-ce"
 version = "0.3.3"
-source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI?rev=e7d772be394029b29204f1fb8c55d06b569f2af8#e7d772be394029b29204f1fb8c55d06b569f2af8"
+source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI?rev=79fea35860cca081ae4f67c1883ceaede0f10d62#79fea35860cca081ae4f67c1883ceaede0f10d62"
 dependencies = [
  "anyhow",
  "async-task",
