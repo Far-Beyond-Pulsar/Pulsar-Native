@@ -512,14 +512,11 @@ impl IntroScreen {
             )
     }
 
-    fn render_navigation(&self, current_page: usize, total_pages: usize, opacity: f32, phase: IntroPhase, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_navigation(&self, current_page: usize, total_pages: usize, opacity: f32, cx: &mut Context<Self>) -> impl IntoElement {
         let is_last_page = current_page + 1 >= total_pages;
         let is_first_page = current_page == 0;
-        // Allow interaction as soon as the intro is visible — only block during
-        // in-progress transitions, fade-out, and completion.
-        let can_interact = !matches!(phase, IntroPhase::PageTransition | IntroPhase::FadeOut | IntroPhase::Complete);
 
-        let back_enabled = can_interact && !is_first_page;
+        let back_enabled = !is_first_page;
         let back_btn = div()
             .px_5()
             .py_2()
@@ -581,8 +578,8 @@ impl IntroScreen {
                     .bg(white().opacity(0.15))
                     .border_1()
                     .border_color(white().opacity(0.3))
-                    .when(can_interact, |s| s.cursor_pointer())
-                    .hover(|s| if can_interact { s.bg(white().opacity(0.25)) } else { s })
+                    .cursor_pointer()
+                    .hover(|s| s.bg(white().opacity(0.25)))
                     .child(
                         h_flex()
                             .gap_2()
@@ -604,11 +601,9 @@ impl IntroScreen {
                 div()
                     .id("next-btn")
                     .child(next_btn)
-                    .when(can_interact, |el| {
-                        el.on_click(cx.listener(|this, _, _, cx| {
-                            this.next_page(cx);
-                        }))
-                    })
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.next_page(cx);
+                    }))
             })
     }
 }
@@ -751,7 +746,7 @@ impl Render for IntroScreen {
                     .child(
                         div()
                             .mt_6()
-                            .child(self.render_navigation(current_page, total_pages, content_opacity, phase, cx))
+                            .child(self.render_navigation(current_page, total_pages, content_opacity, cx))
                     )
             )
             // Skip button
