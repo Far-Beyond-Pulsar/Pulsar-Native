@@ -198,19 +198,19 @@ impl IntroScreen {
             cx.spawn(async move |this, mut cx| {
                 loop {
                     cx.background_executor().timer(Duration::from_millis(16)).await;
-                    
-                    let should_continue = cx.update(|cx| {
-                        this.update(cx, |screen, cx| {
-                            screen.tick(cx);
-                            let phase = SHARED_ANIM_STATE.lock().as_ref().map(|s| s.phase).unwrap_or(IntroPhase::Complete);
-                            phase != IntroPhase::Complete
-                        }).unwrap_or_else(|e| { println!("🎬 [anim_loop] this.update failed: {:?}", e); false })
-                    }).unwrap_or_else(|e| { println!("🎬 [anim_loop] cx.update failed: {:?}", e); false });
 
-                    if !should_continue {
+                    // Check phase from shared state directly — don't rely on entity update succeeding
+                    let phase = SHARED_ANIM_STATE.lock().as_ref().map(|s| s.phase).unwrap_or(IntroPhase::Complete);
+                    if phase == IntroPhase::Complete {
                         println!("🎬 [IntroScreen] Animation loop complete");
                         break;
                     }
+
+                    let _ = cx.update(|cx| {
+                        let _ = this.update(cx, |screen, cx| {
+                            screen.tick(cx);
+                        });
+                    });
                 }
             }).detach();
         }
@@ -312,7 +312,7 @@ impl IntroScreen {
 
         println!("🎬 [next_page] called: page={}/{}, phase={:?}", current_page, total_pages, phase);
 
-        if matches!(phase, IntroPhase::PageTransition | IntroPhase::FadeOut | IntroPhase::Complete) {
+        if matches!(phase, IntroPhase::FadeOut | IntroPhase::Complete) {
             println!("🔒 [next_page] BLOCKED by phase {:?}", phase);
             return;
         }
@@ -344,7 +344,7 @@ impl IntroScreen {
             }
         };
 
-        if matches!(phase, IntroPhase::PageTransition | IntroPhase::FadeOut | IntroPhase::Complete) || current_page == 0 {
+        if matches!(phase, IntroPhase::FadeOut | IntroPhase::Complete) || current_page == 0 {
             return;
         }
 
