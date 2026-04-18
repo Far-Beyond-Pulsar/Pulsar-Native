@@ -508,6 +508,22 @@ impl DocumentationWindow {
 // Public API
 // ============================================================================
 
+impl window_manager::PulsarWindow for DocumentationWindow {
+    type Params = ();
+
+    fn window_name() -> &'static str {
+        "DocumentationWindow"
+    }
+
+    fn window_options(_: &()) -> gpui::WindowOptions {
+        window_manager::default_window_options(1100.0, 750.0)
+    }
+
+    fn build(_: (), window: &mut Window, cx: &mut App) -> gpui::Entity<Self> {
+        cx.new(|cx| DocumentationWindow::new_with_project(window, cx, None))
+    }
+}
+
 pub fn create_documentation_window(window: &mut Window, cx: &mut App) -> Entity<Root> {
     create_documentation_window_with_project(window, cx, None)
 }

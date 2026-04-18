@@ -22,6 +22,8 @@ ui_plugin_manager.workspace = true
 ui_log_viewer.workspace = true
 ui_settings.workspace = true
 ui_git_manager = { path = "../ui_git_manager" }
+ui_about.workspace = true
+ui_documentation.workspace = true
 
 
 # Engine

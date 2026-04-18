@@ -7,6 +7,7 @@ edition = "2024"
 gpui-ce.workspace = true
 ui = { path = "../../crates/ui" }
 ui_common = { workspace = true }
+window_manager = { path = "../../crates/window_manager" }
 chrono = "0.4"
 
 [lints]

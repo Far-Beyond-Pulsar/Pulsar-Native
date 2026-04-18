@@ -243,6 +243,22 @@ impl Render for AboutWindow {
     }
 }
 
+impl window_manager::PulsarWindow for AboutWindow {
+    type Params = ();
+
+    fn window_name() -> &'static str {
+        "AboutWindow"
+    }
+
+    fn window_options(_: &()) -> gpui::WindowOptions {
+        window_manager::default_window_options(500.0, 420.0)
+    }
+
+    fn build(_: (), window: &mut Window, cx: &mut App) -> gpui::Entity<Self> {
+        cx.new(|cx| AboutWindow::new(window, cx))
+    }
+}
+
 /// Helper to create the about window with Root wrapper
 pub fn create_about_window(window: &mut Window, cx: &mut App) -> Entity<Root> {
     let about = cx.new(|cx| AboutWindow::new(window, cx));

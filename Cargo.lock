@@ -11873,6 +11873,7 @@ dependencies = [
  "gpui-ce",
  "ui",
  "ui_common",
+ "window_manager",
 ]
 
 [[package]]
@@ -11906,7 +11907,9 @@ dependencies = [
  "smol 2.0.2",
  "tracing",
  "ui",
+ "ui_about",
  "ui_common",
+ "ui_documentation",
  "ui_entry",
  "ui_file_manager",
  "ui_flamegraph",
@@ -11932,6 +11935,7 @@ dependencies = [
  "tracing",
  "ui",
  "ui_common",
+ "window_manager",
 ]
 
 [[package]]

@@ -16,6 +16,8 @@ use ui_plugin_manager::PluginManagerWindow;
 use ui_git_manager::GitManager;
 use ui_settings::SettingsWindow;
 use ui_log_viewer::MissionControlPanel;
+use ui_about::AboutWindow;
+use ui_documentation::DocumentationWindow;
 
 use super::PulsarApp;
 use super::panel_window::PanelWindow;
@@ -106,6 +108,14 @@ impl PulsarApp {
 
     pub(super) fn open_settings(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         open_pulsar_window::<SettingsWindow>((), cx);
+    }
+
+    pub(super) fn open_about(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        open_pulsar_window::<AboutWindow>((), cx);
+    }
+
+    pub(super) fn open_documentation(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        open_pulsar_window::<DocumentationWindow>((), cx);
     }
 
     pub(super) fn toggle_flamegraph(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
