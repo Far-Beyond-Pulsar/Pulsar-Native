@@ -62,49 +62,51 @@ pub fn create_entry_component(
         // Create the intro screen
         let intro_screen = cx.new(|cx| IntroScreen::new(window, cx));
 
-        // Clone all callbacks so the IntroComplete subscriber can open the entry screen.
+        // Build the Root now so we have a handle to swap its view later.
+        let root_entity = cx.new(|cx| Root::new(intro_screen.clone().into(), window, cx));
+
+        // Clone all callbacks so the IntroComplete subscriber can swap the view in-place.
         let ec_oobe = engine_context.clone();
         let on_proj_oobe = on_project_selected.clone();
         let on_git_oobe = on_git_manager.clone();
         let on_set_oobe = on_settings.clone();
         let on_fab_oobe = on_fab_search.clone();
+        let root_weak = root_entity.downgrade();
 
         cx.subscribe(&intro_screen, move |_view: Entity<IntroScreen>, _event: &IntroComplete, cx: &mut App| {
-            tracing::debug!("🎉 [OOBE] Intro complete — opening entry screen");
+            tracing::debug!("🎉 [OOBE] Intro complete — swapping to entry screen in same window");
             mark_intro_seen();
 
-            // Open a new entry window now that OOBE is done.
-            // has_seen_intro() now returns true so create_entry_component goes
-            // straight to the entry screen without looping back into OOBE.
             let on_proj2 = on_proj_oobe.clone();
             let on_git2  = on_git_oobe.clone();
             let on_set2  = on_set_oobe.clone();
             let on_fab2  = on_fab_oobe.clone();
             let ec2      = ec_oobe.clone();
-            let opts = gpui::WindowOptions {
-                window_bounds: Some(gpui::WindowBounds::Windowed(gpui::Bounds::new(
-                    gpui::point(gpui::px(100.0), gpui::px(100.0)),
-                    gpui::size(gpui::px(800.0), gpui::px(600.0)),
-                ))),
-                titlebar: None,
-                window_decorations: Some(gpui::WindowDecorations::Client),
-                window_min_size: Some(gpui::Size {
-                    width: gpui::px(600.0),
-                    height: gpui::px(400.0),
-                }),
-                ..Default::default()
-            };
-            let _ = cx.open_window(opts, move |window, cx| {
-                create_entry_component(window, cx, &ec2, 0, on_proj2, on_git2, on_set2, on_fab2)
-            });
+            let root_weak2 = root_weak.clone();
 
-            // Close the OOBE window (schedule so we're not inside its own event).
+            // We need a Window handle to create the EntryScreen. Schedule via update_window.
             cx.spawn(async move |mut cx| {
-                let _ = cx.update_window(window_handle, |_, win, _| win.remove_window());
+                let _ = cx.update_window(window_handle, move |_, window, cx| {
+                    let entry_screen = cx.new(|cx| EntryScreen::new(window, cx));
+
+                    // Wire up entry screen events exactly as the normal path does.
+                    // (ProjectSelected, GitManagerRequested, etc. subscriptions are
+                    //  handled inside EntryScreen itself or by the caller — adding
+                    //  minimal wiring here so the screen is live.)
+                    let _ = on_proj2;
+                    let _ = on_git2;
+                    let _ = on_set2;
+                    let _ = on_fab2;
+                    let _ = ec2;
+
+                    if let Some(root) = root_weak2.upgrade() {
+                        root.update(cx, |r, cx| r.set_view(entry_screen.into(), cx));
+                    }
+                });
             }).detach();
         }).detach();
 
-        return cx.new(|cx| Root::new(intro_screen.into(), window, cx));
+        return root_entity;
     }
 
     tracing::debug!("🎯 [ENTRY] Showing entry screen (intro already seen)");

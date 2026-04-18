@@ -377,6 +377,12 @@ impl Root {
         &self.view
     }
 
+    /// Replace the root view (e.g. swap OOBE → entry screen in the same window).
+    pub fn set_view(&mut self, view: AnyView, cx: &mut Context<Self>) {
+        self.view = view;
+        cx.notify();
+    }
+
     fn on_action_tab(&mut self, _: &Tab, window: &mut Window, _: &mut Context<Self>) {
         window.focus_next();
     }
