@@ -62,19 +62,15 @@ pub fn create_entry_component(
         // Create the intro screen
         let intro_screen = cx.new(|cx| IntroScreen::new(window, cx));
 
-        // Build the Root now so we have a handle to swap its view later.
-        let root_entity = cx.new(|cx| Root::new(intro_screen.clone().into(), window, cx));
-
-        // Clone all callbacks so the IntroComplete subscriber can swap the view in-place.
+        // Clone all callbacks so the IntroComplete subscriber can open the entry screen.
         let ec_oobe = engine_context.clone();
         let on_proj_oobe = on_project_selected.clone();
         let on_git_oobe = on_git_manager.clone();
         let on_set_oobe = on_settings.clone();
         let on_fab_oobe = on_fab_search.clone();
-        let root_weak = root_entity.downgrade();
 
         cx.subscribe(&intro_screen, move |_view: Entity<IntroScreen>, _event: &IntroComplete, cx: &mut App| {
-            println!("✅ [OOBE subscriber] IntroComplete received — beginning swap");
+            println!("✅ [OOBE subscriber] IntroComplete received — opening entry screen");
             mark_intro_seen();
 
             let on_proj2 = on_proj_oobe.clone();
@@ -82,49 +78,30 @@ pub fn create_entry_component(
             let on_set2  = on_set_oobe.clone();
             let on_fab2  = on_fab_oobe.clone();
             let ec2      = ec_oobe.clone();
-            let root_weak2 = root_weak.clone();
 
+            let opts = gpui::WindowOptions {
+                titlebar: None,
+                window_decorations: Some(gpui::WindowDecorations::Client),
+                window_min_size: Some(gpui::Size {
+                    width: gpui::px(600.0),
+                    height: gpui::px(400.0),
+                }),
+                ..Default::default()
+            };
+
+            let result = cx.open_window(opts, move |window, cx| {
+                println!("✅ [OOBE] Entry window opened, building component");
+                create_entry_component(window, cx, &ec2, 0, on_proj2, on_git2, on_set2, on_fab2)
+            });
+            println!("✅ [OOBE] open_window result: {:?}", result.is_ok());
+
+            // Close the OOBE window
             cx.spawn(async move |mut cx| {
-                println!("✅ [OOBE subscriber] inside spawn, calling update_window");
-                let result = cx.update_window(window_handle, move |_, window, cx| {
-                    println!("✅ [OOBE subscriber] inside update_window, creating EntryScreen");
-                    let entry_screen = cx.new(|cx| EntryScreen::new(window, cx));
-
-                    // Wire up exactly the same subscriptions as the normal (non-OOBE) path.
-                    let ec_sub = ec2.clone();
-                    let on_proj3 = on_proj2.clone();
-                    cx.subscribe(&entry_screen, move |_view: Entity<EntryScreen>, event: &crate::entry_screen::project_selector::ProjectSelected, cx: &mut App| {
-                        on_proj3(event.path.clone(), cx);
-                        let _ = ec_sub.clone();
-                    }).detach();
-
-                    let on_git3 = on_git2.clone();
-                    cx.subscribe(&entry_screen, move |_view: Entity<EntryScreen>, event: &crate::entry_screen::GitManagerRequested, cx: &mut App| {
-                        on_git3(event.path.clone(), cx);
-                    }).detach();
-
-                    let on_set3 = on_set2.clone();
-                    cx.subscribe(&entry_screen, move |_view: Entity<EntryScreen>, _event: &crate::entry_screen::SettingsRequested, cx: &mut App| {
-                        on_set3(cx);
-                    }).detach();
-
-                    let on_fab3 = on_fab2.clone();
-                    cx.subscribe(&entry_screen, move |_view: Entity<EntryScreen>, _event: &crate::entry_screen::FabSearchRequested, cx: &mut App| {
-                        on_fab3(cx);
-                    }).detach();
-
-                    if let Some(root) = root_weak2.upgrade() {
-                        root.update(cx, |r, cx| r.set_view(entry_screen.into(), cx));
-                        println!("✅ [OOBE] View swapped to entry screen");
-                    } else {
-                        println!("❌ [OOBE] root_weak upgrade failed — cannot swap view");
-                    }
-                });
-                println!("✅ [OOBE subscriber] update_window result: {:?}", result.is_ok());
+                let _ = cx.update_window(window_handle, |_, window, _| window.remove_window());
             }).detach();
         }).detach();
 
-        return root_entity;
+        return cx.new(|cx| Root::new(intro_screen.into(), window, cx));
     }
 
     tracing::debug!("🎯 [ENTRY] Showing entry screen (intro already seen)");
