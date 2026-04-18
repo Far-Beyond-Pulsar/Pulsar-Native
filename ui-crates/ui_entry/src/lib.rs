@@ -62,31 +62,49 @@ pub fn create_entry_component(
         // Create the intro screen
         let intro_screen = cx.new(|cx| IntroScreen::new(window, cx));
 
-        // Subscribe to intro completion - will switch to entry screen
-        let engine_context_clone = engine_context.clone();
+        // Clone all callbacks so the IntroComplete subscriber can open the entry screen.
+        let ec_oobe = engine_context.clone();
+        let on_proj_oobe = on_project_selected.clone();
+        let on_git_oobe = on_git_manager.clone();
+        let on_set_oobe = on_settings.clone();
+        let on_fab_oobe = on_fab_search.clone();
+
         cx.subscribe(&intro_screen, move |_view: Entity<IntroScreen>, _event: &IntroComplete, cx: &mut App| {
-            tracing::debug!("🎉 [OOBE] Intro complete, marking as seen");
+            tracing::debug!("🎉 [OOBE] Intro complete — opening entry screen");
             mark_intro_seen();
 
-            // finished intro; nothing special to do here
-            // the engine will supply callbacks for opening the new entry window
-            // and we simply defer to them when needed.
+            // Open a new entry window now that OOBE is done.
+            // has_seen_intro() now returns true so create_entry_component goes
+            // straight to the entry screen without looping back into OOBE.
+            let on_proj2 = on_proj_oobe.clone();
+            let on_git2  = on_git_oobe.clone();
+            let on_set2  = on_set_oobe.clone();
+            let on_fab2  = on_fab_oobe.clone();
+            let ec2      = ec_oobe.clone();
+            let opts = gpui::WindowOptions {
+                window_bounds: Some(gpui::WindowBounds::Windowed(gpui::Bounds::new(
+                    gpui::point(gpui::px(100.0), gpui::px(100.0)),
+                    gpui::size(gpui::px(800.0), gpui::px(600.0)),
+                ))),
+                titlebar: None,
+                window_decorations: Some(gpui::WindowDecorations::Client),
+                window_min_size: Some(gpui::Size {
+                    width: gpui::px(600.0),
+                    height: gpui::px(400.0),
+                }),
+                ..Default::default()
+            };
+            let _ = cx.open_window(opts, move |window, cx| {
+                create_entry_component(window, cx, &ec2, 0, on_proj2, on_git2, on_set2, on_fab2)
+            });
 
-            // close this intro/OOBE window soon
-            if window_id != 0 {
-                let ec2 = engine_context_clone.clone();
-                let close_id = window_id;
-                // use the precomputed window handle to safely close from the async task
-                cx.spawn(async move |mut cx| {
-                    cx.background_executor().timer(Duration::from_millis(100)).await;
-                    tracing::debug!("🗑️ (delayed) Closing OOBE window {}", close_id);
-                    let _ = cx.update_window(window_handle, |_, window, _| window.remove_window());
-                    ec2.unregister_window(&close_id);
-                });
-            }
+            // Close the OOBE window (schedule so we're not inside its own event).
+            cx.spawn(async move |mut cx| {
+                let _ = cx.update_window(window_handle, |_, win, _| win.remove_window());
+            }).detach();
         }).detach();
 
-        return cx.new(|cx| Root::new(intro_screen.clone().into(), window, cx));
+        return cx.new(|cx| Root::new(intro_screen.into(), window, cx));
     }
 
     tracing::debug!("🎯 [ENTRY] Showing entry screen (intro already seen)");

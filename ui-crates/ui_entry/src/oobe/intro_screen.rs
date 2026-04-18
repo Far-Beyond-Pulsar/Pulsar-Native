@@ -310,7 +310,7 @@ impl IntroScreen {
             }
         };
 
-        if phase != IntroPhase::Ready {
+        if matches!(phase, IntroPhase::PageTransition | IntroPhase::FadeOut | IntroPhase::Complete) {
             return;
         }
 
@@ -341,7 +341,7 @@ impl IntroScreen {
             }
         };
 
-        if phase != IntroPhase::Ready || current_page == 0 {
+        if matches!(phase, IntroPhase::PageTransition | IntroPhase::FadeOut | IntroPhase::Complete) || current_page == 0 {
             return;
         }
 
@@ -512,7 +512,9 @@ impl IntroScreen {
     fn render_navigation(&self, current_page: usize, total_pages: usize, opacity: f32, phase: IntroPhase, cx: &mut Context<Self>) -> impl IntoElement {
         let is_last_page = current_page + 1 >= total_pages;
         let is_first_page = current_page == 0;
-        let can_interact = phase == IntroPhase::Ready;
+        // Allow interaction as soon as the intro is visible — only block during
+        // in-progress transitions, fade-out, and completion.
+        let can_interact = !matches!(phase, IntroPhase::PageTransition | IntroPhase::FadeOut | IntroPhase::Complete);
 
         let back_enabled = can_interact && !is_first_page;
         let back_btn = div()
