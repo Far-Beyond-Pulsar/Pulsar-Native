@@ -28,7 +28,6 @@ struct SharedAnimState {
     start_time: Instant,
     phase_start_time: Instant,
     page_start_time: Instant,
-    user_interacted: bool,
     /// Direction of page transition: 1 = forward (swipe left), -1 = backward (swipe right)
     swipe_direction: i32,
 }
@@ -93,7 +92,6 @@ impl IntroScreen {
                     start_time: now,
                     phase_start_time: now,
                     page_start_time: now,
-                    user_interacted: false,
                     swipe_direction: 1,
                 });
             } else {
@@ -359,26 +357,31 @@ impl IntroScreen {
     }
 
     fn finish(&mut self, cx: &mut Context<Self>) {
-        let can_finish = {
-            let state = SHARED_ANIM_STATE.lock();
-            state.as_ref().map(|s| !s.user_interacted).unwrap_or(false)
-        };
-        
-        if can_finish {
-            {
-                let mut state = SHARED_ANIM_STATE.lock();
-                if let Some(s) = state.as_mut() {
-                    s.user_interacted = true;
-                }
-            }
-            self.audio.play_complete();
-            self.advance_phase(IntroPhase::FadeOut, cx);
+        // Only start FadeOut if not already fading/complete.
+        let phase = self.get_phase();
+        if matches!(phase, IntroPhase::FadeOut | IntroPhase::Complete) {
+            return;
         }
+        self.audio.play_complete();
+        self.advance_phase(IntroPhase::FadeOut, cx);
     }
 
     fn skip(&mut self, cx: &mut Context<Self>) {
-        self.audio.play_click();
-        self.finish(cx);
+        // Skip the animation entirely — emit IntroComplete immediately.
+        let phase = self.get_phase();
+        if matches!(phase, IntroPhase::FadeOut | IntroPhase::Complete) {
+            return;
+        }
+        // Jump straight to Complete so tick() doesn't re-fire IntroComplete.
+        {
+            let mut state = SHARED_ANIM_STATE.lock();
+            if let Some(s) = state.as_mut() {
+                s.phase = IntroPhase::Complete;
+                s.phase_start_time = std::time::Instant::now();
+            }
+        }
+        self.audio.stop_all();
+        cx.emit(IntroComplete);
     }
 
     /// Calculate content opacity based on phase
