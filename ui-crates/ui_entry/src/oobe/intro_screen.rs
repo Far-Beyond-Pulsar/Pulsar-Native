@@ -204,8 +204,8 @@ impl IntroScreen {
                             screen.tick(cx);
                             let phase = SHARED_ANIM_STATE.lock().as_ref().map(|s| s.phase).unwrap_or(IntroPhase::Complete);
                             phase != IntroPhase::Complete
-                        }).unwrap_or(false)
-                    }).unwrap_or(false);
+                        }).unwrap_or_else(|e| { tracing::warn!("🎬 [anim_loop] this.update failed: {:?}", e); false })
+                    }).unwrap_or_else(|e| { tracing::warn!("🎬 [anim_loop] cx.update failed: {:?}", e); false });
 
                     if !should_continue {
                         tracing::debug!("🎬 [IntroScreen] Animation loop complete");
@@ -304,11 +304,15 @@ impl IntroScreen {
             if let Some(s) = state.as_ref() {
                 (s.current_page, self.pages.len(), s.phase)
             } else {
+                tracing::warn!("🎬 [next_page] SHARED_ANIM_STATE is None — returning early");
                 return;
             }
         };
 
+        tracing::info!("🎬 [next_page] called: page={}/{}, phase={:?}", current_page, total_pages, phase);
+
         if matches!(phase, IntroPhase::PageTransition | IntroPhase::FadeOut | IntroPhase::Complete) {
+            tracing::warn!("🎬 [next_page] blocked by phase {:?}", phase);
             return;
         }
 
@@ -602,6 +606,7 @@ impl IntroScreen {
                     .id("next-btn")
                     .child(next_btn)
                     .on_click(cx.listener(|this, _, _, cx| {
+                        tracing::info!("🎬 [next-btn] on_click fired");
                         this.next_page(cx);
                     }))
             })
