@@ -69,6 +69,7 @@ pub struct IntroScreen {
     pages: Vec<OobePage>,
     frame_count: u64,
     audio_muted: bool,
+    should_close: bool,
 }
 
 impl EventEmitter<IntroComplete> for IntroScreen {}
@@ -190,6 +191,7 @@ impl IntroScreen {
             pages,
             frame_count: 0,
             audio_muted: false,
+            should_close: false,
         };
 
         // Start the animation loop only on first creation
@@ -410,7 +412,9 @@ impl IntroScreen {
             }
         }
         self.audio.stop_all();
+        self.should_close = true;
         cx.emit(IntroComplete);
+        cx.notify();
     }
 
     /// Calculate content opacity based on phase
@@ -647,6 +651,12 @@ fn ease_out_quart(t: f32) -> f32 {
 
 impl Render for IntroScreen {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Close this window if skip/finish was called
+        if self.should_close {
+            println!("🪟 [IntroScreen::render] should_close=true, removing window");
+            _window.remove_window();
+        }
+
         // Capture all animation state ONCE at the start of render
         // Use TOTAL elapsed time from animation start as single source of truth
         let (current_page, phase, total_elapsed_secs, page_start_elapsed_secs, swipe_direction) = {
