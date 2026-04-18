@@ -1,16 +1,16 @@
-use crate::settings_v2::{SettingsScreenV2, SettingsScreenV2Props};
+use crate::settings_modern::{ModernSettingsScreen, SettingChanged};
 use gpui::*;
 use ui::{
     v_flex, ActiveTheme, TitleBar,
 };
 
 pub struct SettingsWindow {
-    settings_screen: Option<Entity<SettingsScreenV2>>,
+    settings_screen: Option<Entity<ModernSettingsScreen>>,
     window_id: Option<engine_state::WindowId>,
 }
 
 impl SettingsWindow {
-    pub fn new(cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         // Initialize default settings in the registry if not already done
         engine_state::register_default_settings();
 
@@ -22,11 +22,7 @@ impl SettingsWindow {
                     .map(|project| project.path.clone())
             });
 
-        let settings_screen = cx.new(|_cx| SettingsScreenV2::new(
-            SettingsScreenV2Props {
-                project_path,
-            },
-        ));
+        let settings_screen = cx.new(|cx| ModernSettingsScreen::new(project_path, window, cx));
 
         Self {
             settings_screen: Some(settings_screen),
@@ -61,10 +57,10 @@ impl window_manager::PulsarWindow for SettingsWindow {
     }
 
     fn window_options(_: &()) -> gpui::WindowOptions {
-        window_manager::default_window_options(700.0, 500.0)
+        window_manager::default_window_options(1000.0, 700.0) // Wider for sidebar layout
     }
 
-    fn build(_: (), _window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {
-        cx.new(|cx| SettingsWindow::new(cx))
+    fn build(_: (), window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {
+        cx.new(|cx| SettingsWindow::new(window, cx))
     }
 }
