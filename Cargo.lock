@@ -2181,6 +2181,21 @@ dependencies = [
 
 [[package]]
 name = "device_query"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bafa241a89a5edccff5057d0b85fbc083a781bd03d766c11a688331604980985"
+dependencies = [
+ "lazy_static",
+ "macos-accessibility-client",
+ "pkg-config",
+ "readkey",
+ "readmouse",
+ "windows 0.48.0",
+ "x11",
+]
+
+[[package]]
+name = "device_query"
 version = "4.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7331225604b9b097b41872d550134933d4be83465d70a2c4a132b929f99aaca"
@@ -3727,7 +3742,7 @@ dependencies = [
 [[package]]
 name = "gpui-ce"
 version = "0.3.3"
-source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI?rev=82f5f5df847e1cbefb7797e9f066f1a680d8be8a#82f5f5df847e1cbefb7797e9f066f1a680d8be8a"
+source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI?rev=11bd519047d3b299b0702feb67bf27570093db31#11bd519047d3b299b0702feb67bf27570093db31"
 dependencies = [
  "anyhow",
  "async-task",
@@ -3737,6 +3752,7 @@ dependencies = [
  "cosmic-text",
  "ctor",
  "derive_more 2.1.1",
+ "device_query 2.1.0",
  "etagere",
  "flume 0.12.0",
  "font-kit",
@@ -12066,7 +12082,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "core-graphics2",
- "device_query",
+ "device_query 4.0.1",
  "engine_backend",
  "engine_state",
  "gpui-ce",
