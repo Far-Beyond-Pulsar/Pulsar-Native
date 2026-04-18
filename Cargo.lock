@@ -3727,7 +3727,7 @@ dependencies = [
 [[package]]
 name = "gpui-ce"
 version = "0.3.3"
-source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI?rev=7165732a35e6089eb7b876f1121d0eaf6d88b7be#7165732a35e6089eb7b876f1121d0eaf6d88b7be"
+source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI?rev=1c1d2627ee8c06a26aea064213610d8b1adbaa70#1c1d2627ee8c06a26aea064213610d8b1adbaa70"
 dependencies = [
  "anyhow",
  "async-task",
@@ -7955,7 +7955,7 @@ dependencies = [
 
 [[package]]
 name = "pulsar_engine"
-version = "0.1.132"
+version = "0.1.133"
 dependencies = [
  "anyhow",
  "chrono",

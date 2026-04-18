@@ -71,21 +71,25 @@ impl Render for HelioViewport {
             }
         }
 
-        // Render into the back buffer, then swap.
+        // Render into the back buffer, then swap.  If the surface is still
+        // resizing, keep the previous display buffer visible and avoid forcing
+        // Helio to resize mid-drag.
         if let Some(ref surface) = self.surface {
-            if let Some((view, (w, h))) = surface.back_view_with_size() {
-                if let Ok(mut engine) = self.gpu_engine.try_lock() {
-                    engine.render_frame_to_surface(
-                        surface.device(),
-                        surface.queue(),
-                        &view,
-                        w,
-                        h,
-                        surface.format(),
-                    );
+            if !surface.is_resize_pending() {
+                if let Some((view, (w, h))) = surface.back_view_with_size() {
+                    if let Ok(mut engine) = self.gpu_engine.try_lock() {
+                        engine.render_frame_to_surface(
+                            surface.device(),
+                            surface.queue(),
+                            &view,
+                            w,
+                            h,
+                            surface.format(),
+                        );
+                    }
+                    drop(view);
+                    surface.swap_buffers();
                 }
-                drop(view);
-                surface.swap_buffers();
             }
         }
 
