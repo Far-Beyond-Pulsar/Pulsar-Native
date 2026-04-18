@@ -95,10 +95,12 @@ pub fn create_entry_component(
             });
             println!("✅ [OOBE] open_window result: {:?}", result.is_ok());
 
-            // Close the OOBE window
-            cx.spawn(async move |mut cx| {
-                let _ = cx.update_window(window_handle, |_, window, _| window.remove_window());
-            }).detach();
+            // Close the OOBE window synchronously — we're already in event handler context
+            let close_result = cx.update_window(window_handle, |_, window, _| {
+                println!("✅ [OOBE] Closing OOBE window");
+                window.remove_window();
+            });
+            println!("✅ [OOBE] close result: {:?}", close_result.is_ok());
         }).detach();
 
         return cx.new(|cx| Root::new(intro_screen.into(), window, cx));
