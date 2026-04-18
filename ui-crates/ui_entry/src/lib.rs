@@ -94,7 +94,7 @@ pub fn create_entry_component(
                 create_entry_component(window, cx, &ec2, 0, on_proj2, on_git2, on_set2, on_fab2)
             });
             println!("✅ [OOBE] open_window result: {:?}", result.is_ok());
-            // The OOBE window closes itself via should_close flag in render()
+            // The OOBE window closes itself by calling window.remove_window() in skip()
         }).detach();
 
         return cx.new(|cx| Root::new(intro_screen.into(), window, cx));
