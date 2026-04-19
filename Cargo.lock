@@ -2600,7 +2600,6 @@ dependencies = [
  "dashmap 6.1.0",
  "directories 5.0.1",
  "gpui-ce",
- "once_cell",
  "parking_lot",
  "rust-discord-activity",
  "serde",

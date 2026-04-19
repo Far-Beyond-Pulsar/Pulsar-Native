@@ -1,5 +1,3 @@
-#![allow(warnings)]
-
 //! # Pulsar Engine Backend
 //!
 //! This crate provides the backend functionalities for the Pulsar game engine, including

@@ -129,13 +129,11 @@ pub struct EngineContext {
     /// Global type database for reflection
     pub type_database: Arc<RwLock<Option<Arc<TypeDatabase>>>>,
 
-    /// Window count
-    pub window_count: Arc<parking_lot::Mutex<usize>>,
-
     /// Typed renderer registry (replaces old Arc<dyn Any> system)
     pub renderers: crate::renderers_typed::TypedRendererRegistry,
 
-    /// Monotonically increasing window ID counter
+    /// Monotonically increasing window ID counter (no cross-thread ordering
+    /// needed — uniqueness is all that matters for IDs).
     next_id: Arc<AtomicU64>,
 
     /// Optional window manager instance (enabled via feature)
@@ -162,7 +160,6 @@ impl EngineContext {
             discord: Arc::new(RwLock::new(None)),
             multiuser: Arc::new(RwLock::new(None)),
             type_database: Arc::new(RwLock::new(None)),
-            window_count: Arc::new(parking_lot::Mutex::new(0)),
             renderers: crate::renderers_typed::TypedRendererRegistry::new(),
             next_id: Arc::new(AtomicU64::new(1)),
 
@@ -172,7 +169,7 @@ impl EngineContext {
 
     /// Allocate the next unique window ID
     pub fn next_window_id(&self) -> WindowId {
-        self.next_id.fetch_add(1, Ordering::SeqCst)
+        self.next_id.fetch_add(1, Ordering::Relaxed)
     }
 
 
@@ -180,17 +177,11 @@ impl EngineContext {
     /// Register a window context
     pub fn register_window(&self, window_id: WindowId, context: WindowContext) {
         self.windows.insert(window_id, context);
-        *self.window_count.lock() += 1;
     }
 
     /// Unregister a window
     pub fn unregister_window(&self, window_id: &WindowId) -> Option<WindowContext> {
-        let result = self.windows.remove(window_id).map(|(_, ctx)| ctx);
-        if result.is_some() {
-            let mut count = self.window_count.lock();
-            *count = count.saturating_sub(1);
-        }
-        result
+        self.windows.remove(window_id).map(|(_, ctx)| ctx)
     }
 
 
@@ -245,7 +236,7 @@ impl EngineContext {
 
     /// Get window count
     pub fn window_count(&self) -> usize {
-        *self.window_count.lock()
+        self.windows.len()
     }
 
     /// Set current project

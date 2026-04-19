@@ -261,8 +261,8 @@ impl Default for SettingsRegistry {
 }
 
 /// Global settings registry instance
-static GLOBAL_REGISTRY: once_cell::sync::Lazy<Arc<RwLock<SettingsRegistry>>> =
-    once_cell::sync::Lazy::new(|| Arc::new(RwLock::new(SettingsRegistry::new())));
+static GLOBAL_REGISTRY: std::sync::LazyLock<Arc<RwLock<SettingsRegistry>>> =
+    std::sync::LazyLock::new(|| Arc::new(RwLock::new(SettingsRegistry::new())));
 
 /// Get the global settings registry
 pub fn registry() -> Arc<RwLock<SettingsRegistry>> {
