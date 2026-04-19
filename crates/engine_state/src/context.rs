@@ -29,8 +29,6 @@ pub struct WindowContext {
     pub window_id: WindowId,
     /// Type of window (Entry, Settings, ProjectEditor, etc.)
     pub window_type: WindowRequest,
-    /// Associated renderer handle (typed, not Arc<dyn Any>)
-    pub renderer: Option<Arc<dyn std::any::Any + Send + Sync>>, // Will be replaced with TypedRendererHandle in Phase 1
 }
 
 impl WindowContext {
@@ -38,13 +36,7 @@ impl WindowContext {
         Self {
             window_id,
             window_type,
-            renderer: None,
         }
-    }
-
-    pub fn with_renderer(mut self, renderer: Arc<dyn std::any::Any + Send + Sync>) -> Self {
-        self.renderer = Some(renderer);
-        self
     }
 }
 
