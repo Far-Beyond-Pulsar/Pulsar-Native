@@ -403,11 +403,7 @@ impl SettingsScreenV2 {
                 SettingsTab::Project => NS_PROJECT,
             };
 
-            self.active_page = global_config()
-                .list_pages(ns)
-                .into_iter()
-                .next()
-                .unwrap_or_else(|| "General".to_string());
+            self.active_page = global_config().list_pages(ns).into_iter().next().unwrap_or_else(|| "General".to_string());
 
             cx.notify();
         }
