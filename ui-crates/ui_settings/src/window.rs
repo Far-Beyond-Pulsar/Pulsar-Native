@@ -1,6 +1,6 @@
 use crate::settings_modern::ModernSettingsScreen;
-use gpui::*;
-use ui::ActiveTheme;
+use gpui::{prelude::FluentBuilder as _, *};
+use ui::{ActiveTheme, TitleBar, v_flex};
 
 pub struct SettingsWindow {
     settings_screen: Option<Entity<ModernSettingsScreen>>,
@@ -32,11 +32,15 @@ impl SettingsWindow {
 impl Render for SettingsWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _ = cx.theme();
-        if let Some(screen) = &self.settings_screen {
-            screen.clone().into_any_element()
-        } else {
-            div().into_any_element()
-        }
+        v_flex()
+            .size_full()
+            .child(TitleBar::new().child(
+                div().flex().items_center().px_2().text_sm().font_weight(gpui::FontWeight::MEDIUM)
+                    .child("Settings"),
+            ))
+            .when_some(self.settings_screen.as_ref(), |this: gpui::Div, screen: &Entity<ModernSettingsScreen>| {
+                this.child(screen.clone())
+            })
     }
 }
 

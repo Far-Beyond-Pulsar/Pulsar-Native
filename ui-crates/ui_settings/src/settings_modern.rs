@@ -1,93 +1,26 @@
 use gpui::{
-    App, AppContext, Axis, Context, Entity, FocusHandle, Focusable, Global, IntoElement,
-    ParentElement as _, Render, SharedString, Styled, Window, px,
+    App, AppContext, Context, FocusHandle, Focusable, IntoElement,
+    ParentElement as _, Render, SharedString, Window,
+};
+
+use engine_state::{
+    global_config, ConfigValue, DropdownOption, FieldType, SettingInfo,
+    NS_EDITOR, NS_PROJECT,
 };
 
 use ui::{
     ActiveTheme, Icon, IconName, Sizable, Size, Theme, ThemeMode,
-    button::Button,
     group_box::GroupBoxVariant,
-    h_flex,
-    label::Label,
     setting::{
-        NumberFieldOptions, RenderOptions, SettingField, SettingFieldElement, SettingGroup,
+        NumberFieldOptions, SettingField, SettingGroup,
         SettingItem, SettingPage, Settings,
     },
-    text::{Text, TextView},
-    v_flex,
 };
-
-struct AppSettings {
-    auto_switch_theme: bool,
-    cli_path: SharedString,
-    font_family: SharedString,
-    font_size: f64,
-    line_height: f64,
-    notifications_enabled: bool,
-    auto_update: bool,
-    resettable: bool,
-}
-
-impl Default for AppSettings {
-    fn default() -> Self {
-        Self {
-            auto_switch_theme: false,
-            cli_path: "/usr/local/bin/bash".into(),
-            font_family: "Arial".into(),
-            font_size: 14.0,
-            line_height: 12.0,
-            notifications_enabled: true,
-            auto_update: true,
-            resettable: true,
-        }
-    }
-}
-
-impl Global for AppSettings {}
-
-impl AppSettings {
-    fn global(cx: &App) -> &AppSettings {
-        cx.global::<AppSettings>()
-    }
-
-    fn global_mut(cx: &mut App) -> &mut AppSettings {
-        cx.global_mut::<AppSettings>()
-    }
-}
 
 pub struct ModernSettingsScreen {
     focus_handle: FocusHandle,
     group_variant: GroupBoxVariant,
     size: Size,
-}
-
-struct OpenURLSettingField {
-    label: SharedString,
-    url: SharedString,
-}
-
-impl OpenURLSettingField {
-    fn new(label: impl Into<SharedString>, url: impl Into<SharedString>) -> Self {
-        Self {
-            label: label.into(),
-            url: url.into(),
-        }
-    }
-}
-
-impl SettingFieldElement for OpenURLSettingField {
-    type Element = Button;
-
-    fn render_field(&self, options: &RenderOptions, _: &mut Window, _: &mut App) -> Self::Element {
-        let url = self.url.clone();
-        Button::new("open-url")
-            .outline()
-            .label(self.label.clone())
-            .with_size(options.size)
-            .on_click(move |_, _window, cx| {
-                cx.open_url(url.as_str());
-            })
-    }
 }
 
 impl ModernSettingsScreen {
@@ -131,8 +64,6 @@ impl ModernSettingsScreen {
         cx: &mut Context<Self>,
     ) -> Self {
         let _ = window;
-        cx.set_global::<AppSettings>(AppSettings::default());
-
         Self {
             focus_handle: cx.focus_handle(),
             group_variant: GroupBoxVariant::Outline,
@@ -140,56 +71,201 @@ impl ModernSettingsScreen {
         }
     }
 
-    fn setting_pages(&self, window: &mut Window, cx: &mut Context<Self>) -> Vec<SettingPage> {
-        let view = cx.entity();
-        let default_settings = AppSettings::default();
-        let resettable = AppSettings::global(cx).resettable;
+    /// Build a `SettingItem` from a `SettingInfo` pulled from the global config.
+    fn item_from_info(info: &SettingInfo) -> Option<SettingItem> {
+        let ns = info.namespace.clone();
+        let owner = info.owner.clone();
+        let key = info.key.clone();
+        let label: SharedString = info.label.clone().unwrap_or_else(|| info.key.clone()).into();
+        let desc: SharedString = info.description.clone().into();
 
-        vec![
-            SettingPage::new("General")
-                .resettable(resettable)
+        let field_type = info.field_type.clone()?;
+
+        let item: SettingItem = match field_type {
+            FieldType::Checkbox => {
+                let (ns2, owner2, key2) = (ns.clone(), owner.clone(), key.clone());
+                SettingItem::new(
+                    label,
+                    SettingField::checkbox(
+                        move |_cx: &App| {
+                            global_config().get(&ns, &owner, &key)
+                                .ok().and_then(|v| v.as_bool().ok()).unwrap_or(false)
+                        },
+                        move |val: bool, _cx: &mut App| {
+                            if let Some(h) = global_config().owner_handle(&ns2, &owner2) {
+                                let _ = h.set(&key2, ConfigValue::Bool(val));
+                            }
+                        },
+                    ),
+                )
+                .description(desc)
+            }
+            FieldType::TextInput { .. } => {
+                let (ns2, owner2, key2) = (ns.clone(), owner.clone(), key.clone());
+                SettingItem::new(
+                    label,
+                    SettingField::input(
+                        move |_cx: &App| {
+                            global_config().get(&ns, &owner, &key)
+                                .ok()
+                                .and_then(|v| v.as_str().ok().map(|s| SharedString::from(s.to_owned())))
+                                .unwrap_or_default()
+                        },
+                        move |val: SharedString, _cx: &mut App| {
+                            if let Some(h) = global_config().owner_handle(&ns2, &owner2) {
+                                let _ = h.set(&key2, ConfigValue::String(val.to_string()));
+                            }
+                        },
+                    ),
+                )
+                .description(desc)
+            }
+            FieldType::NumberInput { min, max, step } => {
+                let (ns2, owner2, key2) = (ns.clone(), owner.clone(), key.clone());
+                let opts = NumberFieldOptions {
+                    min: min.unwrap_or(f64::MIN),
+                    max: max.unwrap_or(f64::MAX),
+                    step: step.unwrap_or(1.0),
+                    ..Default::default()
+                };
+                SettingItem::new(
+                    label,
+                    SettingField::number_input(
+                        opts,
+                        move |_cx: &App| {
+                            global_config().get(&ns, &owner, &key)
+                                .ok().and_then(|v| v.as_float().ok()).unwrap_or(0.0)
+                        },
+                        move |val: f64, _cx: &mut App| {
+                            if let Some(h) = global_config().owner_handle(&ns2, &owner2) {
+                                let _ = h.set(&key2, ConfigValue::Float(val));
+                            }
+                        },
+                    ),
+                )
+                .description(desc)
+            }
+            FieldType::Slider { min, max, step } => {
+                // Map slider to number_input — no dedicated slider SettingField
+                let (ns2, owner2, key2) = (ns.clone(), owner.clone(), key.clone());
+                let opts = NumberFieldOptions {
+                    min,
+                    max,
+                    step,
+                    ..Default::default()
+                };
+                SettingItem::new(
+                    label,
+                    SettingField::number_input(
+                        opts,
+                        move |_cx: &App| {
+                            global_config().get(&ns, &owner, &key)
+                                .ok().and_then(|v| v.as_float().ok()).unwrap_or(0.0)
+                        },
+                        move |val: f64, _cx: &mut App| {
+                            if let Some(h) = global_config().owner_handle(&ns2, &owner2) {
+                                let _ = h.set(&key2, ConfigValue::Float(val));
+                            }
+                        },
+                    ),
+                )
+                .description(desc)
+            }
+            FieldType::Dropdown { options } => {
+                let (ns2, owner2, key2) = (ns.clone(), owner.clone(), key.clone());
+                let opts: Vec<(SharedString, SharedString)> = options
+                    .iter()
+                    .map(|o| (SharedString::from(o.value.clone()), SharedString::from(o.label.clone())))
+                    .collect();
+                SettingItem::new(
+                    label,
+                    SettingField::dropdown(
+                        opts,
+                        move |_cx: &App| {
+                            global_config().get(&ns, &owner, &key)
+                                .ok()
+                                .and_then(|v| v.as_str().ok().map(|s| SharedString::from(s.to_owned())))
+                                .unwrap_or_default()
+                        },
+                        move |val: SharedString, _cx: &mut App| {
+                            if let Some(h) = global_config().owner_handle(&ns2, &owner2) {
+                                let _ = h.set(&key2, ConfigValue::String(val.to_string()));
+                            }
+                        },
+                    ),
+                )
+                .description(desc)
+            }
+            // Unsupported field types: skip
+            _ => return None,
+        };
+
+        Some(item)
+    }
+
+    /// Build all SettingGroups for one namespace, grouping settings by owner.
+    fn groups_for_namespace(ns: &str) -> Vec<SettingGroup> {
+        let mut owners = global_config().list_owners(ns);
+        // Sort for stable ordering
+        owners.sort();
+
+        owners.into_iter().filter_map(|owner_segs| {
+            let owner_path = owner_segs.join("/");
+            let mut settings = global_config().list_settings(ns, &owner_path)?;
+            // Sort settings by their label for predictable order
+            settings.sort_by(|a, b| {
+                let la = a.label.as_deref().unwrap_or(&a.key);
+                let lb = b.label.as_deref().unwrap_or(&b.key);
+                la.cmp(lb)
+            });
+
+            // Use the display name of this owner as the group title
+            // (capitalize first segment of owner path)
+            let group_title = owner_segs.first()
+                .map(|s| {
+                    let mut c = s.chars();
+                    match c.next() {
+                        None => String::new(),
+                        Some(f) => f.to_uppercase().collect::<String>() + &c.as_str().replace('_', " "),
+                    }
+                })
+                .unwrap_or_else(|| owner_path.clone());
+
+            let items: Vec<SettingItem> = settings.iter()
+                .filter_map(Self::item_from_info)
+                .collect();
+
+            if items.is_empty() {
+                return None;
+            }
+
+            Some(SettingGroup::new().title(group_title).items(items))
+        }).collect()
+    }
+
+    fn setting_pages(&self, _window: &mut Window, cx: &mut Context<Self>) -> Vec<SettingPage> {
+        let view = cx.entity();
+
+        // ── UI Controls page (appearance of this settings screen itself) ──
+        let ui_controls_page = {
+            let view2 = view.clone();
+            SettingPage::new("UI Controls")
                 .default_open(true)
                 .icon(Icon::new(IconName::Settings2))
-                .groups(vec![
-                    SettingGroup::new().title("Appearance").items(vec![
+                .group(
+                    SettingGroup::new().title("Settings Display").items(vec![
                         SettingItem::new(
                             "Dark Mode",
                             SettingField::switch(
                                 |cx: &App| cx.theme().mode.is_dark(),
                                 |val: bool, cx: &mut App| {
-                                    let mode = if val {
-                                        ThemeMode::Dark
-                                    } else {
-                                        ThemeMode::Light
-                                    };
+                                    let mode = if val { ThemeMode::Dark } else { ThemeMode::Light };
                                     Theme::global_mut(cx).mode = mode;
                                     Theme::change(mode, None, cx);
                                 },
-                            )
-                            .default_value(false),
-                        )
-                        .description("Switch between light and dark themes."),
-                        SettingItem::new(
-                            "Auto Switch Theme",
-                            SettingField::checkbox(
-                                |cx: &App| AppSettings::global(cx).auto_switch_theme,
-                                |val: bool, cx: &mut App| {
-                                    AppSettings::global_mut(cx).auto_switch_theme = val;
-                                },
-                            )
-                            .default_value(default_settings.auto_switch_theme),
-                        )
-                        .description("Automatically switch theme based on system settings."),
-                        SettingItem::new(
-                            "resettable",
-                            SettingField::switch(
-                                |cx: &App| AppSettings::global(cx).resettable,
-                                |checked: bool, cx: &mut App| {
-                                    AppSettings::global_mut(cx).resettable = checked
-                                },
                             ),
                         )
-                        .description("Enable/Disable reset button for settings."),
+                        .description("Switch between light and dark themes."),
                         SettingItem::new(
                             "Group Variant",
                             SettingField::dropdown(
@@ -199,16 +275,14 @@ impl ModernSettingsScreen {
                                     ("fill".into(), "Fill".into()),
                                 ],
                                 {
-                                    let view = view.clone();
-                                    move |cx: &App| {
-                                        Self::group_variant_to_value(view.read(cx).group_variant)
-                                    }
+                                    let v = view.clone();
+                                    move |cx: &App| Self::group_variant_to_value(v.read(cx).group_variant)
                                 },
                                 {
-                                    let view = view.clone();
+                                    let v = view2.clone();
                                     move |val: SharedString, cx: &mut App| {
-                                        view.update(cx, |view, cx| {
-                                            view.group_variant = Self::group_variant_from_value(val.as_ref());
+                                        v.update(cx, |this, cx| {
+                                            this.group_variant = Self::group_variant_from_value(val.as_ref());
                                             cx.notify();
                                         });
                                     }
@@ -226,16 +300,14 @@ impl ModernSettingsScreen {
                                     ("xsmall".into(), "XSmall".into()),
                                 ],
                                 {
-                                    let view = view.clone();
-                                    move |cx: &App| {
-                                        Self::size_to_value(view.read(cx).size)
-                                    }
+                                    let v = view.clone();
+                                    move |cx: &App| Self::size_to_value(v.read(cx).size)
                                 },
                                 {
-                                    let view = view.clone();
+                                    let v = view2.clone();
                                     move |val: SharedString, cx: &mut App| {
-                                        view.update(cx, |view, cx| {
-                                            view.size = Self::size_from_value(val.as_ref());
+                                        v.update(cx, |this, cx| {
+                                            this.size = Self::size_from_value(val.as_ref());
                                             cx.notify();
                                         });
                                     }
@@ -245,192 +317,22 @@ impl ModernSettingsScreen {
                         )
                         .description("Select the size for the setting group."),
                     ]),
-                    SettingGroup::new()
-                        .title("Font")
-                        .item(
-                            SettingItem::new(
-                                "Font Family",
-                                SettingField::dropdown(
-                                    vec![
-                                        ("Arial".into(), "Arial".into()),
-                                        ("Helvetica".into(), "Helvetica".into()),
-                                        ("Times New Roman".into(), "Times New Roman".into()),
-                                        ("Courier New".into(), "Courier New".into()),
-                                    ],
-                                    |cx: &App| AppSettings::global(cx).font_family.clone(),
-                                    |val: SharedString, cx: &mut App| {
-                                        AppSettings::global_mut(cx).font_family = val;
-                                    },
-                                )
-                                .default_value(default_settings.font_family),
-                            )
-                            .description("Select the font family for the story."),
-                        )
-                        .item(
-                            SettingItem::new(
-                                "Font Size",
-                                SettingField::number_input(
-                                    NumberFieldOptions {
-                                        min: 8.0,
-                                        max: 72.0,
-                                        ..Default::default()
-                                    },
-                                    |cx: &App| AppSettings::global(cx).font_size,
-                                    |val: f64, cx: &mut App| {
-                                        AppSettings::global_mut(cx).font_size = val;
-                                    },
-                                )
-                                .default_value(default_settings.font_size),
-                            )
-                            .description(
-                                "Adjust the font size for better readability between 8 and 72.",
-                            ),
-                        )
-                        .item(
-                            SettingItem::new(
-                                "Line Height",
-                                SettingField::number_input(
-                                    NumberFieldOptions {
-                                        min: 8.0,
-                                        max: 32.0,
-                                        ..Default::default()
-                                    },
-                                    |cx: &App| AppSettings::global(cx).line_height,
-                                    |val: f64, cx: &mut App| {
-                                        AppSettings::global_mut(cx).line_height = val;
-                                    },
-                                )
-                                .default_value(default_settings.line_height),
-                            )
-                            .description(
-                                "Adjust the line height for better readability between 8 and 32.",
-                            ),
-                        ),
-                    SettingGroup::new().title("Other").items(vec![
-                        SettingItem::render(|options, _, _| {
-                            h_flex()
-                                .w_full()
-                                .justify_between()
-                                .flex_wrap()
-                                .gap_3()
-                                .child("This is a custom element item by use SettingItem::element.")
-                                .child(
-                                    Button::new("action")
-                                        .icon(IconName::Globe)
-                                        .label("Repository...")
-                                        .outline()
-                                        .with_size(options.size)
-                                        .on_click(|_, _, cx| {
-                                            cx.open_url("https://github.com/longbridge/gpui-component");
-                                        }),
-                                )
-                                .into_any_element()
-                        }),
-                        SettingItem::new(
-                            "CLI Path",
-                            SettingField::input(
-                                |cx: &App| AppSettings::global(cx).cli_path.clone(),
-                                |val: SharedString, cx: &mut App| {
-                                    AppSettings::global_mut(cx).cli_path = val;
-                                },
-                            )
-                            .default_value(default_settings.cli_path),
-                        )
-                        .layout(Axis::Vertical)
-                        .description(
-                            "Path to the CLI executable. \n\
-                        This item uses Vertical layout. The title,\
-                        description, and field are all aligned vertically with width 100%.",
-                        ),
-                    ]),
-                ]),
-            SettingPage::new("Software Update")
-                .resettable(resettable)
-                .icon(Icon::new(IconName::Cpu))
-                .groups(vec![SettingGroup::new().title("Updates").items(vec![
-                    SettingItem::new(
-                        "Enable Notifications",
-                        SettingField::switch(
-                            |cx: &App| AppSettings::global(cx).notifications_enabled,
-                            |val: bool, cx: &mut App| {
-                                AppSettings::global_mut(cx).notifications_enabled = val;
-                            },
-                        )
-                        .default_value(default_settings.notifications_enabled),
-                    )
-                    .description("Receive notifications about updates and news."),
-                    SettingItem::new(
-                        "Auto Update",
-                        SettingField::switch(
-                            |cx: &App| AppSettings::global(cx).auto_update,
-                            |val: bool, cx: &mut App| {
-                                AppSettings::global_mut(cx).auto_update = val;
-                            },
-                        )
-                        .default_value(default_settings.auto_update),
-                    )
-                    .description("Automatically download and install updates."),
-                ])]),
-            SettingPage::new("About")
-                .resettable(resettable)
-                .icon(Icon::new(IconName::Info))
-                .group(
-                    SettingGroup::new().item(SettingItem::render(|_options, _, cx| {
-                        v_flex()
-                            .gap_3()
-                            .w_full()
-                            .items_center()
-                            .justify_center()
-                            .child(Icon::new(IconName::GalleryVerticalEnd).size_16())
-                            .child("GPUI Component")
-                            .child(
-                                Label::new(
-                                    "Rust GUI components for building fantastic cross-platform \
-                                    desktop application by using GPUI.",
-                                )
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground),
-                            )
-                            .into_any_element()
-                    })),
                 )
-                .group(SettingGroup::new().title("Links").items(vec![
-                    SettingItem::new(
-                        "GitHub Repository",
-                        SettingField::element(OpenURLSettingField::new(
-                            "Repository...",
-                            "https://github.com/longbridge/gpui-component",
-                        )),
-                    )
-                    .description("Open the GitHub repository in your default browser."),
-                    SettingItem::new(
-                        "Documentation",
-                        SettingField::element(OpenURLSettingField::new(
-                            "Rust Docs...",
-                            "https://docs.rs/gpui-component",
-                        )),
-                    )
-                    .description(Text::from(TextView::markdown(
-                        "settings-story-docs-md",
-                        "Rust doc for the `gpui-component` crate.",
-                        window,
-                        cx,
-                    ))),
-                    SettingItem::new(
-                        "Website",
-                        SettingField::render(|options, _window, _cx| {
-                            Button::new("open-url")
-                                .outline()
-                                .label("Website...")
-                                .with_size(options.size)
-                                .on_click(|_, _window, cx| {
-                                    cx.open_url("https://longbridge.github.io/gpui-component/");
-                                })
-                        }),
-                    )
-                    .description("Official website and documentation for the GPUI Component."),
-                ])),
-        ]
+        };
+
+        // ── Editor settings page (NS_EDITOR) ──
+        let editor_groups = Self::groups_for_namespace(NS_EDITOR);
+        let editor_page = SettingPage::new("Editor")
+            .icon(Icon::new(IconName::Code))
+            .groups(editor_groups);
+
+        // ── Project settings page (NS_PROJECT) ──
+        let project_groups = Self::groups_for_namespace(NS_PROJECT);
+        let project_page = SettingPage::new("Project")
+            .icon(Icon::new(IconName::Folder))
+            .groups(project_groups);
+
+        vec![ui_controls_page, editor_page, project_page]
     }
 }
 
@@ -448,3 +350,4 @@ impl Render for ModernSettingsScreen {
             .pages(self.setting_pages(window, cx))
     }
 }
+
