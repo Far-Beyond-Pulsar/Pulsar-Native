@@ -11,7 +11,6 @@ use gpui::{
     RenderOnce, StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _, px, relative,
 };
 use rust_i18n::t;
-use std::collections::BTreeMap;
 
 /// The settings structure containing multiple pages for app settings.
 ///
@@ -37,101 +36,7 @@ pub struct Settings {
     header_style: StyleRefinement,
 }
 
-#[derive(Default)]
-struct SidebarGroupNode {
-    label: String,
-    group_ix: Option<usize>,
-    children: BTreeMap<String, SidebarGroupNode>,
-}
-
 impl Settings {
-    fn insert_group_node(root: &mut BTreeMap<String, SidebarGroupNode>, title: &str, group_ix: usize) {
-        let mut parts = title
-            .split('/')
-            .map(str::trim)
-            .filter(|part| !part.is_empty());
-
-        if let Some(first) = parts.next() {
-            let node = root
-                .entry(first.to_string())
-                .or_insert_with(|| SidebarGroupNode {
-                    label: first.to_string(),
-                    ..Default::default()
-                });
-
-            let mut current = node;
-            for part in parts {
-                current = current
-                    .children
-                    .entry(part.to_string())
-                    .or_insert_with(|| SidebarGroupNode {
-                        label: part.to_string(),
-                        ..Default::default()
-                    });
-            }
-            current.group_ix = Some(group_ix);
-        }
-    }
-
-    fn node_has_active_descendant(
-        node: &SidebarGroupNode,
-        page_ix: usize,
-        selected_index: SelectIndex,
-    ) -> bool {
-        if node.group_ix == selected_index.group_ix && selected_index.page_ix == page_ix {
-            return true;
-        }
-
-        node.children
-            .values()
-            .any(|child| Self::node_has_active_descendant(child, page_ix, selected_index))
-    }
-
-    fn build_sidebar_items_from_nodes(
-        nodes: &BTreeMap<String, SidebarGroupNode>,
-        page_ix: usize,
-        selected_index: SelectIndex,
-        state: &Entity<SettingsState>,
-    ) -> Vec<SidebarMenuItem> {
-        nodes
-            .values()
-            .map(|node| {
-                let child_items =
-                    Self::build_sidebar_items_from_nodes(&node.children, page_ix, selected_index, state);
-                let is_active_leaf =
-                    selected_index.page_ix == page_ix && node.group_ix == selected_index.group_ix;
-                let has_active_descendant =
-                    Self::node_has_active_descendant(node, page_ix, selected_index);
-
-                let mut item = SidebarMenuItem::new(node.label.clone())
-                    .default_open(has_active_descendant)
-                    .active(is_active_leaf);
-
-                if let Some(group_ix) = node.group_ix {
-                    item = item.on_click({
-                        let state = state.clone();
-                        move |_, _, cx| {
-                            state.update(cx, |state, cx| {
-                                state.selected_index = SelectIndex {
-                                    page_ix,
-                                    group_ix: Some(group_ix),
-                                };
-                                state.deferred_scroll_group_ix = Some(group_ix);
-                                cx.notify();
-                            })
-                        }
-                    });
-                }
-
-                if !child_items.is_empty() {
-                    item = item.children(child_items);
-                }
-
-                item
-            })
-            .collect()
-    }
-
     /// Create a new settings with the given ID.
     pub fn new(id: impl Into<ElementId>) -> Self {
         Self {
@@ -287,20 +192,31 @@ impl Settings {
                             }
                         })
                         .when(page.groups.len() > 1, |this| {
-                            let mut root = BTreeMap::new();
-                            for (group_ix, group) in page.groups.iter().enumerate() {
-                                if let Some(title) = group.title.as_ref() {
-                                    Self::insert_group_node(&mut root, title, group_ix);
-                                }
-                            }
+                            this.children(
+                                page.groups
+                                    .iter()
+                                    .filter(|g| g.title.is_some())
+                                    .enumerate()
+                                    .map(|(group_ix, group)| {
+                                        let is_active = selected_index.page_ix == page_ix
+                                            && selected_index.group_ix == Some(group_ix);
+                                        let title = group.title.clone().unwrap_or_default();
 
-                            let nested_items = Self::build_sidebar_items_from_nodes(
-                                &root,
-                                page_ix,
-                                selected_index,
-                                state,
-                            );
-                            this.children(nested_items)
+                                        SidebarMenuItem::new(title).active(is_active).on_click({
+                                            let state = state.clone();
+                                            move |_, _, cx| {
+                                                state.update(cx, |state, cx| {
+                                                    state.selected_index = SelectIndex {
+                                                        page_ix,
+                                                        group_ix: Some(group_ix),
+                                                    };
+                                                    state.deferred_scroll_group_ix = Some(group_ix);
+                                                    cx.notify();
+                                                })
+                                            }
+                                        })
+                                    }),
+                            )
                         })
                 })),
             )

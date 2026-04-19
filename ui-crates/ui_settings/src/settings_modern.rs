@@ -1,6 +1,6 @@
 use gpui::{
     App, AppContext, Axis, Context, Entity, FocusHandle, Focusable, Global, IntoElement,
-    ParentElement as _, Render, SharedString, Styled, Window,
+    ParentElement as _, Render, SharedString, Styled, Window, px,
 };
 
 use ui::{
@@ -127,9 +127,10 @@ impl ModernSettingsScreen {
 
     pub fn new(
         _project_path: Option<std::path::PathBuf>,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let _ = window;
         cx.set_global::<AppSettings>(AppSettings::default());
 
         Self {
@@ -199,7 +200,9 @@ impl ModernSettingsScreen {
                                 ],
                                 {
                                     let view = view.clone();
-                                    move |cx: &App| Self::group_variant_to_value(view.read(cx).group_variant)
+                                    move |cx: &App| {
+                                        Self::group_variant_to_value(view.read(cx).group_variant)
+                                    }
                                 },
                                 {
                                     let view = view.clone();
@@ -224,7 +227,9 @@ impl ModernSettingsScreen {
                                 ],
                                 {
                                     let view = view.clone();
-                                    move |cx: &App| Self::size_to_value(view.read(cx).size)
+                                    move |cx: &App| {
+                                        Self::size_to_value(view.read(cx).size)
+                                    }
                                 },
                                 {
                                     let view = view.clone();
@@ -441,5 +446,293 @@ impl Render for ModernSettingsScreen {
             .with_size(self.size)
             .with_group_variant(self.group_variant)
             .pages(self.setting_pages(window, cx))
+    }
+}
+            .unwrap_or_else(|| info.current_value.clone())
+    }
+
+    fn apply_value(info: &SettingInfo, value: ConfigValue, project_path: &Option<PathBuf>) {
+        if let Some(handle) = global_config().owner_handle(&info.namespace, &info.owner) {
+            let _ = handle.set(&info.key, value);
+
+            if info.namespace == NS_PROJECT {
+                if let Some(path) = project_path.as_deref() {
+                    let _ = ProjectSettings::new(path).save_all();
+                }
+            } else {
+                let _ = GlobalSettings::new().save_all();
+            }
+        }
+    }
+
+    fn prettify_owner(owner: &str) -> String {
+        owner
+            .split('/')
+            .map(|part| {
+                part.split('_')
+                    .map(|word| {
+                        let mut chars = word.chars();
+                        match chars.next() {
+                            Some(first) => {
+                                first.to_uppercase().collect::<String>() + chars.as_str()
+                            }
+                            None => String::new(),
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+            .collect::<Vec<_>>()
+            .join(" / ")
+    }
+
+    fn setting_title(info: &SettingInfo) -> String {
+        info.label.clone().unwrap_or_else(|| info.key.clone())
+    }
+
+    fn map_bool_item(&self, info: &SettingInfo, is_checkbox: bool) -> SettingItem {
+        let info_for_get = info.clone();
+        let info_for_set = info.clone();
+        let default_bool = info.default_value.as_bool().ok();
+
+        let field = if is_checkbox {
+            SettingField::<bool>::checkbox(
+                move |_| Self::read_value(&info_for_get).as_bool().unwrap_or(false),
+                {
+                    let project_path = self.project_path.clone();
+                    move |value, _| {
+                        Self::apply_value(&info_for_set, ConfigValue::Bool(value), &project_path);
+                    }
+                },
+            )
+        } else {
+            SettingField::<bool>::switch(
+                move |_| Self::read_value(&info_for_get).as_bool().unwrap_or(false),
+                {
+                    let project_path = self.project_path.clone();
+                    move |value, _| {
+                        Self::apply_value(&info_for_set, ConfigValue::Bool(value), &project_path);
+                    }
+                },
+            )
+        };
+
+        let field = if let Some(default_bool) = default_bool {
+            field.default_value(default_bool)
+        } else {
+            field
+        };
+
+        SettingItem::new(Self::setting_title(info), field)
+    }
+
+    fn map_text_item(&self, info: &SettingInfo) -> SettingItem {
+        let info_for_get = info.clone();
+        let info_for_set = info.clone();
+        let default_text = info
+            .default_value
+            .as_str()
+            .ok()
+            .map(|s| SharedString::from(s.to_string()));
+
+        let field = SettingField::<SharedString>::input(
+            move |_| {
+                let value = Self::read_value(&info_for_get)
+                    .as_str()
+                    .unwrap_or("")
+                    .to_string();
+                SharedString::from(value)
+            },
+            {
+                let project_path = self.project_path.clone();
+                move |value, _| {
+                    Self::apply_value(
+                        &info_for_set,
+                        ConfigValue::String(value.to_string()),
+                        &project_path,
+                    );
+                }
+            },
+        );
+
+        let field = if let Some(default_text) = default_text {
+            field.default_value(default_text)
+        } else {
+            field
+        };
+
+        SettingItem::new(Self::setting_title(info), field)
+    }
+
+    fn map_number_item(
+        &self,
+        info: &SettingInfo,
+        min: Option<f64>,
+        max: Option<f64>,
+        step: Option<f64>,
+    ) -> SettingItem {
+        let info_for_get = info.clone();
+        let info_for_set = info.clone();
+
+        let min_value = min.unwrap_or(f64::MIN);
+        let max_value = max.unwrap_or(f64::MAX);
+        let step_value = step.unwrap_or(1.0);
+        let default_number = info
+            .default_value
+            .as_float()
+            .ok()
+            .or_else(|| info.default_value.as_int().ok().map(|v| v as f64));
+
+        let field = SettingField::<f64>::number_input(
+            NumberFieldOptions {
+                min: min_value,
+                max: max_value,
+                step: step_value,
+            },
+            move |_| {
+                let current = Self::read_value(&info_for_get);
+                current
+                    .as_float()
+                    .ok()
+                    .or_else(|| current.as_int().ok().map(|v| v as f64))
+                    .unwrap_or(min_value)
+            },
+            {
+                let project_path = self.project_path.clone();
+                move |value, _| {
+                    Self::apply_value(&info_for_set, ConfigValue::Float(value), &project_path);
+                }
+            },
+        );
+
+        let field = if let Some(default_number) = default_number {
+            field.default_value(default_number)
+        } else {
+            field
+        };
+
+        SettingItem::new(Self::setting_title(info), field)
+    }
+
+    fn map_dropdown_item(&self, info: &SettingInfo, options: &Vec<engine_state::DropdownOption>) -> SettingItem {
+        let info_for_get = info.clone();
+        let info_for_set = info.clone();
+        let dropdown_options = options
+            .iter()
+            .map(|opt| {
+                (
+                    SharedString::from(opt.value.clone()),
+                    SharedString::from(opt.label.clone()),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let default_value = info
+            .default_value
+            .as_str()
+            .ok()
+            .map(|s| SharedString::from(s.to_string()));
+
+        let field = SettingField::<SharedString>::dropdown(
+            dropdown_options,
+            move |_| {
+                let value = Self::read_value(&info_for_get)
+                    .as_str()
+                    .unwrap_or("")
+                    .to_string();
+                SharedString::from(value)
+            },
+            {
+                let project_path = self.project_path.clone();
+                move |value, _| {
+                    Self::apply_value(
+                        &info_for_set,
+                        ConfigValue::String(value.to_string()),
+                        &project_path,
+                    );
+                }
+            },
+        );
+
+        let field = if let Some(default_value) = default_value {
+            field.default_value(default_value)
+        } else {
+            field
+        };
+
+        SettingItem::new(Self::setting_title(info), field)
+    }
+
+    fn map_setting_item(&self, info: &SettingInfo) -> SettingItem {
+        let mut item = match info.field_type.as_ref() {
+            Some(FieldType::Checkbox) => self.map_bool_item(info, true),
+            Some(FieldType::TextInput { .. }) => self.map_text_item(info),
+            Some(FieldType::PathSelector { .. }) => self.map_text_item(info),
+            Some(FieldType::ColorPicker) => self.map_text_item(info),
+            Some(FieldType::NumberInput { min, max, step }) => {
+                self.map_number_item(info, *min, *max, *step)
+            }
+            Some(FieldType::Slider { min, max, step }) => {
+                self.map_number_item(info, Some(*min), Some(*max), Some(*step))
+            }
+            Some(FieldType::Dropdown { options }) => self.map_dropdown_item(info, options),
+            None => self.map_text_item(info),
+        };
+
+        if !info.description.is_empty() {
+            item = item.description(info.description.clone());
+        }
+
+        item
+    }
+
+    fn build_namespace_pages(&self, namespace: &str) -> Vec<SettingPage> {
+        global_config()
+            .list_pages(namespace)
+            .into_iter()
+            .map(|page_name| {
+                let settings = global_config().list_settings_by_page(namespace, &page_name);
+                let mut owners: Vec<String> = Vec::new();
+                for info in &settings {
+                    if !owners.iter().any(|owner| owner == &info.owner) {
+                        owners.push(info.owner.clone());
+                    }
+                }
+
+                let mut page = SettingPage::new(page_name.clone());
+                for owner in owners {
+                    let owner_items = settings
+                        .iter()
+                        .filter(|info| info.owner == owner)
+                        .map(|info| self.map_setting_item(info))
+                        .collect::<Vec<_>>();
+
+                    page = page.group(
+                        SettingGroup::new()
+                            .title(Self::prettify_owner(&owner))
+                            .items(owner_items),
+                    );
+                }
+
+                page
+            })
+            .collect()
+    }
+
+    fn build_pages(&self) -> Vec<SettingPage> {
+        let mut pages = self.build_namespace_pages(NS_EDITOR);
+        if self.project_path.is_some() {
+            pages.extend(self.build_namespace_pages(NS_PROJECT));
+        }
+        pages
+    }
+}
+
+impl Render for ModernSettingsScreen {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .size_full()
+            .bg(cx.theme().background)
+            .child(Settings::new("data-driven-settings").pages(self.build_pages()))
     }
 }
