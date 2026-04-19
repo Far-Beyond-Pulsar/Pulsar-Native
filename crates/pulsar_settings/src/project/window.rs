@@ -5,6 +5,7 @@ pub const OWNER: &str = "window";
 
 pub fn register(cfg: &'static ConfigManager) {
     let schema = NamespaceSchema::new("Window", "Game window presentation settings")
+        .setting("title",
             SchemaEntry::new("Title shown in the OS window title bar", "My Game")
                 .label("Window Title").page("Window")
                 .field_type(FieldType::TextInput { placeholder: Some("My Game".into()), multiline: false }))
