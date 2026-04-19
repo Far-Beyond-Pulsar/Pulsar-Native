@@ -246,6 +246,11 @@ jobs:
           brew link --force protobuf
           protoc --version
 
+      - name: Install cargo-bundle
+        if: runner.os == 'macOS'
+        run: |
+          cargo install cargo-bundle --force
+
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
@@ -334,6 +339,59 @@ jobs:
           upload_url: ${{ needs.create-release.outputs.upload_url }}
           asset_path: ${{ env.FULL_BIN_PATH }}.sha256
           asset_name: ${{ env.FULL_ASSET_NAME }}.sha256
+          asset_content_type: text/plain
+        continue-on-error: true
+
+      - name: Create macOS ARM .app bundle
+        if: runner.os == 'macOS' && matrix.target == 'aarch64-apple-darwin' && env.BUILD_CRATES == 'true'
+        shell: bash
+        run: |
+          PACKAGE_NAME="${{ needs.check-version.outputs.package_name }}"
+          cargo bundle --release --target aarch64-apple-darwin --manifest-path crates/engine/Cargo.toml
+          APP_DIR=$(find target/aarch64-apple-darwin/release/bundle -maxdepth 2 -name '*.app' | head -n 1)
+          if [ -z "$APP_DIR" ]; then
+            echo "❌ ERROR: .app bundle not found"
+            find target/aarch64-apple-darwin/release/bundle -maxdepth 3 -type d | sort
+            exit 1
+          fi
+          ZIP_NAME="${PACKAGE_NAME}-macos-arm64.app.zip"
+          ditto -c -k --keepParent "$APP_DIR" "$ZIP_NAME"
+          echo "APP_ZIP_PATH=$ZIP_NAME" >> $GITHUB_ENV
+          echo "Created .app archive: $ZIP_NAME"
+          ls -lh "$ZIP_NAME"
+
+      - name: Generate SHA256 for macOS ARM .app zip
+        if: runner.os == 'macOS' && matrix.target == 'aarch64-apple-darwin' && env.BUILD_CRATES == 'true'
+        shell: bash
+        run: |
+          if [ -z "${APP_ZIP_PATH}" ]; then
+            echo "❌ APP_ZIP_PATH is not set"
+            exit 1
+          fi
+          shasum -a 256 "$APP_ZIP_PATH" > "$APP_ZIP_PATH.sha256"
+          cat "$APP_ZIP_PATH.sha256"
+
+      - name: Upload macOS ARM .app zip
+        if: runner.os == 'macOS' && matrix.target == 'aarch64-apple-darwin' && env.BUILD_CRATES == 'true'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ env.APP_ZIP_PATH }}
+          asset_name: ${{ needs.check-version.outputs.package_name }}-macos-arm64.app.zip
+          asset_content_type: application/zip
+        continue-on-error: true
+
+      - name: Upload macOS ARM .app zip SHA256
+        if: runner.os == 'macOS' && matrix.target == 'aarch64-apple-darwin' && env.BUILD_CRATES == 'true'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ env.APP_ZIP_PATH }}.sha256
+          asset_name: ${{ needs.check-version.outputs.package_name }}-macos-arm64.app.zip.sha256
           asset_content_type: text/plain
         continue-on-error: true
 
