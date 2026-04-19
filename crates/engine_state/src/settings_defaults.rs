@@ -12,6 +12,9 @@ pub fn register_default_settings() {
 fn register_editor_settings() {
     register_appearance();
     register_editor_page();
+    register_viewport_page();
+    register_tooling_page();
+    register_source_control_page();
     register_performance();
     register_advanced();
 }
@@ -141,12 +144,326 @@ fn register_advanced() {
 
 fn register_project_settings() {
     register_project_page();
+    register_gameplay_page();
     register_window_page();
+    register_world_page();
     register_graphics_page();
+    register_physics_page();
+    register_network_page();
     register_audio_page();
     register_input_page();
     register_paths_page();
     register_build_page();
+    register_packaging_page();
+}
+
+fn register_viewport_page() {
+    let schema = NamespaceSchema::new("Viewport", "Realtime viewport and scene camera settings")
+        .setting(
+            "camera_speed",
+            SchemaEntry::new("Base speed used for editor camera movement", 4.0_f64)
+                .label("Camera Speed").page("Viewport")
+                .field_type(FieldType::Slider { min: 0.5, max: 12.0, step: 0.5 })
+                .validator(Validator::float_range(0.5, 12.0)),
+        )
+        .setting(
+            "fov_degrees",
+            SchemaEntry::new("Perspective camera field of view in degrees", 70_i64)
+                .label("Camera FOV").page("Viewport")
+                .field_type(FieldType::NumberInput { min: Some(30.0), max: Some(120.0), step: Some(1.0) })
+                .validator(Validator::int_range(30, 120)),
+        )
+        .setting(
+            "show_grid",
+            SchemaEntry::new("Show world grid in the viewport", true)
+                .label("Show Grid").page("Viewport")
+                .field_type(FieldType::Checkbox),
+        )
+        .setting(
+            "show_gizmos",
+            SchemaEntry::new("Show transform gizmos and helper widgets", true)
+                .label("Show Gizmos").page("Viewport")
+                .field_type(FieldType::Checkbox),
+        )
+        .setting(
+            "realtime_rendering",
+            SchemaEntry::new("Render viewport continuously instead of on-demand", true)
+                .label("Realtime Rendering").page("Viewport")
+                .field_type(FieldType::Checkbox),
+        )
+        .setting(
+            "post_fx_quality",
+            SchemaEntry::new("Editor viewport post-processing quality", "high")
+                .label("Post FX Quality").page("Viewport")
+                .field_type(FieldType::Dropdown {
+                    options: vec![
+                        DropdownOption::new("Low", "low"),
+                        DropdownOption::new("Medium", "medium"),
+                        DropdownOption::new("High", "high"),
+                        DropdownOption::new("Cinematic", "cinematic"),
+                    ],
+                })
+                .validator(Validator::string_one_of(["low", "medium", "high", "cinematic"])),
+        );
+    let _ = global_config().register(NS_EDITOR, "viewport", schema);
+}
+
+fn register_tooling_page() {
+    let schema = NamespaceSchema::new("Tooling", "Editor tooling and productivity settings")
+        .setting(
+            "autosave_interval_seconds",
+            SchemaEntry::new("Seconds between editor autosave snapshots", 120_i64)
+                .label("Autosave Interval (s)").page("Tooling")
+                .field_type(FieldType::NumberInput { min: Some(15.0), max: Some(1800.0), step: Some(5.0) })
+                .validator(Validator::int_range(15, 1800)),
+        )
+        .setting(
+            "max_undo_steps",
+            SchemaEntry::new("Maximum undo history depth", 256_i64)
+                .label("Undo History Depth").page("Tooling")
+                .field_type(FieldType::NumberInput { min: Some(32.0), max: Some(4096.0), step: Some(32.0) })
+                .validator(Validator::int_range(32, 4096)),
+        )
+        .setting(
+            "live_blueprint_compile",
+            SchemaEntry::new("Compile visual scripts as they are edited", true)
+                .label("Live Blueprint Compile").page("Tooling")
+                .field_type(FieldType::Checkbox),
+        )
+        .setting(
+            "enable_asset_thumbnails",
+            SchemaEntry::new("Render thumbnails in asset browsers", true)
+                .label("Asset Thumbnails").page("Tooling")
+                .field_type(FieldType::Checkbox),
+        )
+        .setting(
+            "diagnostics_level",
+            SchemaEntry::new("Verbosity level for in-editor diagnostics", "standard")
+                .label("Diagnostics Level").page("Tooling")
+                .field_type(FieldType::Dropdown {
+                    options: vec![
+                        DropdownOption::new("Quiet", "quiet"),
+                        DropdownOption::new("Standard", "standard"),
+                        DropdownOption::new("Verbose", "verbose"),
+                    ],
+                })
+                .validator(Validator::string_one_of(["quiet", "standard", "verbose"])),
+        );
+    let _ = global_config().register(NS_EDITOR, "tooling", schema);
+}
+
+fn register_source_control_page() {
+    let schema = NamespaceSchema::new("Source Control", "Integrated source control behavior")
+        .setting(
+            "provider",
+            SchemaEntry::new("Source control backend", "git")
+                .label("Provider").page("Source Control")
+                .field_type(FieldType::Dropdown {
+                    options: vec![
+                        DropdownOption::new("Git", "git"),
+                        DropdownOption::new("Perforce", "perforce"),
+                        DropdownOption::new("None", "none"),
+                    ],
+                })
+                .validator(Validator::string_one_of(["git", "perforce", "none"])),
+        )
+        .setting(
+            "auto_checkout_on_edit",
+            SchemaEntry::new("Auto-checkout locked files when editing", false)
+                .label("Auto Checkout on Edit").page("Source Control")
+                .field_type(FieldType::Checkbox),
+        )
+        .setting(
+            "show_changelists",
+            SchemaEntry::new("Display changelists in content browser", true)
+                .label("Show Changelists").page("Source Control")
+                .field_type(FieldType::Checkbox),
+        )
+        .setting(
+            "require_commit_message_template",
+            SchemaEntry::new("Require commit message templates for check-ins", false)
+                .label("Require Commit Template").page("Source Control")
+                .field_type(FieldType::Checkbox),
+        );
+    let _ = global_config().register(NS_EDITOR, "source_control", schema);
+}
+
+fn register_gameplay_page() {
+    let schema = NamespaceSchema::new("Gameplay", "Gameplay framework defaults")
+        .setting(
+            "target_tick_rate",
+            SchemaEntry::new("Desired gameplay simulation tick rate", 60_i64)
+                .label("Target Tick Rate").page("Gameplay")
+                .field_type(FieldType::NumberInput { min: Some(15.0), max: Some(240.0), step: Some(1.0) })
+                .validator(Validator::int_range(15, 240)),
+        )
+        .setting(
+            "fixed_timestep",
+            SchemaEntry::new("Use a fixed simulation timestep for deterministic behavior", false)
+                .label("Fixed Timestep").page("Gameplay")
+                .field_type(FieldType::Checkbox),
+        )
+        .setting(
+            "pause_when_unfocused",
+            SchemaEntry::new("Pause simulation when the game window loses focus", true)
+                .label("Pause When Unfocused").page("Gameplay")
+                .field_type(FieldType::Checkbox),
+        )
+        .setting(
+            "default_game_mode",
+            SchemaEntry::new("Path or identifier for the default game mode", "DefaultGameMode")
+                .label("Default Game Mode").page("Gameplay")
+                .field_type(FieldType::TextInput { placeholder: Some("DefaultGameMode".into()), multiline: false }),
+        );
+    let _ = global_config().register(NS_PROJECT, "gameplay", schema);
+}
+
+fn register_world_page() {
+    let schema = NamespaceSchema::new("World", "World partitioning and streaming defaults")
+        .setting(
+            "world_partition_enabled",
+            SchemaEntry::new("Enable world partition and region-based loading", true)
+                .label("World Partition").page("World")
+                .field_type(FieldType::Checkbox),
+        )
+        .setting(
+            "streaming_distance_meters",
+            SchemaEntry::new("Distance at which world cells stream in", 1200.0_f64)
+                .label("Streaming Distance (m)").page("World")
+                .field_type(FieldType::NumberInput { min: Some(100.0), max: Some(10000.0), step: Some(50.0) })
+                .validator(Validator::float_range(100.0, 10000.0)),
+        )
+        .setting(
+            "hlod_enabled",
+            SchemaEntry::new("Enable hierarchical LOD generation", true)
+                .label("Enable HLOD").page("World")
+                .field_type(FieldType::Checkbox),
+        )
+        .setting(
+            "origin_rebasing",
+            SchemaEntry::new("Rebase world origin for very large worlds", true)
+                .label("Origin Rebasing").page("World")
+                .field_type(FieldType::Checkbox),
+        );
+    let _ = global_config().register(NS_PROJECT, "world", schema);
+}
+
+fn register_physics_page() {
+    let schema = NamespaceSchema::new("Physics", "Physics simulation defaults")
+        .setting(
+            "solver_iterations",
+            SchemaEntry::new("Constraint solver iterations per physics step", 8_i64)
+                .label("Solver Iterations").page("Physics")
+                .field_type(FieldType::NumberInput { min: Some(1.0), max: Some(64.0), step: Some(1.0) })
+                .validator(Validator::int_range(1, 64)),
+        )
+        .setting(
+            "substepping",
+            SchemaEntry::new("Enable physics substepping for stability at low frame rates", true)
+                .label("Substepping").page("Physics")
+                .field_type(FieldType::Checkbox),
+        )
+        .setting(
+            "max_substeps",
+            SchemaEntry::new("Maximum number of physics substeps per frame", 4_i64)
+                .label("Max Substeps").page("Physics")
+                .field_type(FieldType::NumberInput { min: Some(1.0), max: Some(16.0), step: Some(1.0) })
+                .validator(Validator::int_range(1, 16)),
+        )
+        .setting(
+            "gravity_scale",
+            SchemaEntry::new("Global gravity scalar multiplier", 1.0_f64)
+                .label("Gravity Scale").page("Physics")
+                .field_type(FieldType::Slider { min: 0.1, max: 3.0, step: 0.1 })
+                .validator(Validator::float_range(0.1, 3.0)),
+        );
+    let _ = global_config().register(NS_PROJECT, "physics", schema);
+}
+
+fn register_network_page() {
+    let schema = NamespaceSchema::new("Network", "Multiplayer and replication settings")
+        .setting(
+            "enable_multiplayer",
+            SchemaEntry::new("Enable networking systems for this project", false)
+                .label("Enable Multiplayer").page("Network")
+                .field_type(FieldType::Checkbox),
+        )
+        .setting(
+            "default_server_port",
+            SchemaEntry::new("Default listen/server port", 7777_i64)
+                .label("Server Port").page("Network")
+                .field_type(FieldType::NumberInput { min: Some(1024.0), max: Some(65535.0), step: Some(1.0) })
+                .validator(Validator::int_range(1024, 65535)),
+        )
+        .setting(
+            "replication_rate_hz",
+            SchemaEntry::new("State replication update rate", 30_i64)
+                .label("Replication Rate (Hz)").page("Network")
+                .field_type(FieldType::NumberInput { min: Some(1.0), max: Some(120.0), step: Some(1.0) })
+                .validator(Validator::int_range(1, 120)),
+        )
+        .setting(
+            "network_transport",
+            SchemaEntry::new("Preferred network transport", "udp")
+                .label("Transport").page("Network")
+                .field_type(FieldType::Dropdown {
+                    options: vec![
+                        DropdownOption::new("UDP", "udp"),
+                        DropdownOption::new("TCP", "tcp"),
+                        DropdownOption::new("WebSocket", "ws"),
+                    ],
+                })
+                .validator(Validator::string_one_of(["udp", "tcp", "ws"])),
+        )
+        .setting(
+            "prediction_enabled",
+            SchemaEntry::new("Use client-side prediction for responsive movement", true)
+                .label("Client Prediction").page("Network")
+                .field_type(FieldType::Checkbox),
+        );
+    let _ = global_config().register(NS_PROJECT, "network", schema);
+}
+
+fn register_packaging_page() {
+    let schema = NamespaceSchema::new("Packaging", "Shipping and distribution settings")
+        .setting(
+            "configuration",
+            SchemaEntry::new("Build configuration for packaged output", "development")
+                .label("Build Configuration").page("Packaging")
+                .field_type(FieldType::Dropdown {
+                    options: vec![
+                        DropdownOption::new("Debug", "debug"),
+                        DropdownOption::new("Development", "development"),
+                        DropdownOption::new("Shipping", "shipping"),
+                    ],
+                })
+                .validator(Validator::string_one_of(["debug", "development", "shipping"])),
+        )
+        .setting(
+            "use_pak_files",
+            SchemaEntry::new("Bundle cooked assets into package archives", true)
+                .label("Use Pak Files").page("Packaging")
+                .field_type(FieldType::Checkbox),
+        )
+        .setting(
+            "compress_assets",
+            SchemaEntry::new("Compress packaged assets for smaller download size", true)
+                .label("Compress Assets").page("Packaging")
+                .field_type(FieldType::Checkbox),
+        )
+        .setting(
+            "strip_editor_content",
+            SchemaEntry::new("Exclude editor-only assets from shipping builds", true)
+                .label("Strip Editor Content").page("Packaging")
+                .field_type(FieldType::Checkbox),
+        )
+        .setting(
+            "staging_directory",
+            SchemaEntry::new("Directory used for staged packaged builds", "build/staging")
+                .label("Staging Directory").page("Packaging")
+                .field_type(FieldType::PathSelector { directory: true }),
+        );
+    let _ = global_config().register(NS_PROJECT, "packaging", schema);
 }
 
 fn register_project_page() {
