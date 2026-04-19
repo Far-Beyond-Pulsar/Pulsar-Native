@@ -35,12 +35,18 @@ pub const GAME_SUBSYSTEM_ID: SubsystemId = SubsystemId::new("game");
 /// methods like set_enabled() for runtime control (e.g., Edit/Play mode toggling).
 pub struct ManagedGameThread {
     inner: Arc<GameThread>,
+    /// Set to `false` by `shutdown()` to tell the game loop to exit.
+    running: Arc<AtomicBool>,
+    /// Owned join-handle for the game-loop thread.
+    thread_handle: Option<thread::JoinHandle<()>>,
 }
 
 impl ManagedGameThread {
     pub fn new(target_tps: f32) -> Self {
         Self {
             inner: Arc::new(GameThread::new(target_tps)),
+            running: Arc::new(AtomicBool::new(false)),
+            thread_handle: None,
         }
     }
 
@@ -60,9 +66,6 @@ impl Subsystem for ManagedGameThread {
     }
 
     fn init(&mut self, context: &SubsystemContext) -> Result<(), SubsystemError> {
-        // Delegate to inner GameThread's Subsystem implementation
-        // But we need to call it through a mutable reference we don't have...
-        // Actually, let's just inline the init logic here
         profiling::profile_scope!("Subsystem::Game::Init");
 
         let state = self.inner.state.clone();
@@ -70,8 +73,11 @@ impl Subsystem for ManagedGameThread {
         let target_tps = self.inner.target_tps;
         let tps = self.inner.tps.clone();
         let frame_count = self.inner.frame_count.clone();
+        let running = self.running.clone();
 
         tracing::debug!("[GAME-THREAD] ⚡ Initializing managed game thread subsystem...");
+
+        running.store(true, Ordering::Relaxed);
 
         let handle = std::thread::Builder::new()
             .name("Game Logic".to_string())
@@ -92,11 +98,13 @@ impl Subsystem for ManagedGameThread {
                 let mut tick_count = 0u32;
                 let mut accumulated_time = Duration::ZERO;
 
-                loop {
+                while running.load(Ordering::Relaxed) {
                     profiling::profile_scope!("Game::Tick");
 
                     if !enabled.load(Ordering::Relaxed) {
-                        thread::sleep(Duration::from_millis(target_frame_time.as_millis().min(1) as u64));
+                        thread::sleep(Duration::from_millis(8));
+                        last_tick = Instant::now();
+                        accumulated_time = Duration::ZERO;
                         continue;
                     }
 
@@ -114,7 +122,6 @@ impl Subsystem for ManagedGameThread {
                         if let Ok(mut game_state) = state.try_lock() {
                             game_state.update(fixed_dt);
                         }
-
                         accumulated_time -= target_frame_time;
                         steps += 1;
                         tick_count += 1;
@@ -131,35 +138,34 @@ impl Subsystem for ManagedGameThread {
                     let frame_time = frame_start.elapsed();
                     if frame_time < target_frame_time {
                         thread::sleep(target_frame_time - frame_time);
-                    }
-
-                    if frame_count.load(Ordering::Relaxed) % 30 == 0 {
+                    } else if frame_count.load(Ordering::Relaxed) % 30 == 0 {
                         thread::yield_now();
                     }
                 }
+
+                tracing::debug!("[GAME-THREAD] Loop exited cleanly");
             })
             .map_err(|e| SubsystemError::InitFailed(format!("Failed to spawn game thread: {}", e)))?;
 
-        // Store handle in inner (need unsafe to modify through Arc)
-        // Actually we can't do this cleanly. Let's rethink...
-
+        self.thread_handle = Some(handle);
         tracing::info!("✓ Managed game thread initialized at {} TPS", target_tps);
-
         Ok(())
     }
 
     fn shutdown(&mut self) -> Result<(), SubsystemError> {
         profiling::profile_scope!("Subsystem::Game::Shutdown");
-
         tracing::debug!("[GAME-THREAD] Shutting down managed game thread");
 
-        // Signal thread to stop
-        self.inner.enabled.store(false, Ordering::Relaxed);
+        // Signal the loop to exit, then wait for the thread to finish.
+        self.running.store(false, Ordering::Relaxed);
 
-        thread::sleep(Duration::from_millis(50));
+        if let Some(handle) = self.thread_handle.take() {
+            handle.join().map_err(|_| {
+                SubsystemError::ShutdownFailed("Game thread panicked".to_string())
+            })?;
+        }
 
         tracing::info!("✓ Managed game thread stopped");
-
         Ok(())
     }
 }
@@ -247,7 +253,6 @@ pub struct GameThread {
     /// TPS × 100, stored atomically (e.g. 60.00 TPS → 6000).
     tps: Arc<AtomicU32>,
     frame_count: Arc<AtomicU64>,
-    thread_handle: Option<thread::JoinHandle<()>>,
 }
 
 impl GameThread {
@@ -350,7 +355,6 @@ impl GameThread {
             target_tps,
             tps: Arc::new(AtomicU32::new(0)),
             frame_count: Arc::new(AtomicU64::new(0)),
-            thread_handle: None,
         }
     }
 

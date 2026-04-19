@@ -301,9 +301,7 @@ impl EngineContext {
     /// engine_context.set_multiuser(multiuser_ctx);
     /// ```
     pub fn set_multiuser(&self, context: crate::multiuser::MultiuserContext) {
-        *self.multiuser.write() = Some(context.clone());
-        // Also update the global static for backward compatibility
-        crate::multiuser::set_multiuser_context(context);
+        *self.multiuser.write() = Some(context);
     }
 
     /// Clear multiuser session context
@@ -311,7 +309,6 @@ impl EngineContext {
     /// Call this when disconnecting from a session.
     pub fn clear_multiuser(&self) {
         *self.multiuser.write() = None;
-        crate::multiuser::clear_multiuser_context();
     }
 
     /// Get multiuser session context (if active)
@@ -335,19 +332,14 @@ impl EngineContext {
     /// Update multiuser connection status
     pub fn set_multiuser_status(&self, status: crate::multiuser::MultiuserStatus) {
         if let Some(ctx) = self.multiuser.write().as_mut() {
-            ctx.set_status(status.clone());
-            // Sync to global static
-            crate::multiuser::set_multiuser_status(status);
+            ctx.set_status(status);
         }
     }
 
     /// Add a participant to the current multiuser session
     pub fn add_multiuser_participant(&self, peer_id: impl Into<String>) {
-        let peer_id = peer_id.into();
         if let Some(ctx) = self.multiuser.write().as_mut() {
-            ctx.add_participant(peer_id.clone());
-            // Sync to global static
-            crate::multiuser::add_participant(peer_id);
+            ctx.add_participant(peer_id);
         }
     }
 
@@ -355,8 +347,6 @@ impl EngineContext {
     pub fn remove_multiuser_participant(&self, peer_id: &str) {
         if let Some(ctx) = self.multiuser.write().as_mut() {
             ctx.remove_participant(peer_id);
-            // Sync to global static
-            crate::multiuser::remove_participant(peer_id);
         }
     }
 

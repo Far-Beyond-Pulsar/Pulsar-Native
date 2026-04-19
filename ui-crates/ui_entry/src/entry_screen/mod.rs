@@ -1199,7 +1199,11 @@ default_scene = "scenes/main.scene"
             ctx
         };
 
-        engine_state::set_multiuser_context(ctx);
+        if let Some(ec) = engine_state::EngineContext::global() {
+            ec.set_multiuser(ctx);
+        } else {
+            tracing::warn!("EngineContext not initialized; multiuser context not stored");
+        }
 
         // Encode as a virtual cloud path that the editor can parse.
         let virtual_path = PathBuf::from(format!(

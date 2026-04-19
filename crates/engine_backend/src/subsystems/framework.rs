@@ -7,8 +7,6 @@
 //! - Shared context for runtime handles and configuration
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::Arc;
-use dashmap::DashMap;
 use tokio::runtime::Handle;
 use thiserror::Error;
 
@@ -43,41 +41,11 @@ pub mod subsystem_ids {
 pub struct SubsystemContext {
     /// Tokio runtime handle for spawning async tasks
     pub runtime: Handle,
-    /// Shared channel registry for inter-subsystem communication
-    pub channels: Arc<ChannelRegistry>,
 }
 
 impl SubsystemContext {
     pub fn new(runtime: Handle) -> Self {
-        Self {
-            runtime,
-            channels: Arc::new(ChannelRegistry::new()),
-        }
-    }
-}
-
-/// Registry for typed channels between subsystems
-pub struct ChannelRegistry {
-    channels: DashMap<String, Arc<dyn std::any::Any + Send + Sync>>,
-}
-
-impl ChannelRegistry {
-    pub fn new() -> Self {
-        Self {
-            channels: DashMap::new(),
-        }
-    }
-
-    /// Register a channel sender
-    pub fn register<T: Send + Sync + 'static>(&self, name: String, sender: T) {
-        self.channels.insert(name, Arc::new(sender));
-    }
-
-    /// Get a channel sender
-    pub fn get<T: Send + Sync + 'static>(&self, name: &str) -> Option<Arc<T>> {
-        self.channels
-            .get(name)
-            .and_then(|entry| entry.value().clone().downcast::<T>().ok())
+        Self { runtime }
     }
 }
 
