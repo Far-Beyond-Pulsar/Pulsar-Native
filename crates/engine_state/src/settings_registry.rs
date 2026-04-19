@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use parking_lot::RwLock;
 
 /// The scope of a setting - either global (engine-wide) or project-specific
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -271,5 +272,5 @@ pub fn registry() -> Arc<RwLock<SettingsRegistry>> {
 
 /// Register a setting in the global registry
 pub fn register_setting(definition: SettingDefinition) {
-    GLOBAL_REGISTRY.write().unwrap().register(definition);
+    GLOBAL_REGISTRY.write().register(definition);
 }

@@ -165,7 +165,6 @@ impl SettingsStorage {
         // Fall back to registry default
         registry()
             .read()
-            .unwrap()
             .get(key)
             .map(|def| def.default_value.clone())
             .unwrap_or(SettingValue::String(String::new()))
@@ -194,7 +193,7 @@ impl SettingsStorage {
     /// Initialize with defaults from the registry for a given scope
     pub fn init_with_defaults(&mut self, scope: SettingScope) {
         let reg = registry();
-        let reg = reg.read().unwrap();
+        let reg = reg.read();
 
         for def in reg.get_by_scope(scope) {
             if !self.values.contains_key(&def.key) {

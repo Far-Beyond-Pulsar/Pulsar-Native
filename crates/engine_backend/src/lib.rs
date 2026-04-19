@@ -15,6 +15,7 @@ pub use subsystems::world::World;
 pub use subsystems::render::{WgpuRenderer, Framebuffer as RenderFramebuffer};
 pub use subsystems::framework::{SubsystemRegistry, SubsystemContext, Subsystem, SubsystemError};
 pub use services::{GpuRenderer, GlobalRustAnalyzerCompletionProvider, RustAnalyzerManager};
+use std::sync::Arc;
 
 // Re-export Helio types for UI integration
 pub use helio::GizmoMode;
