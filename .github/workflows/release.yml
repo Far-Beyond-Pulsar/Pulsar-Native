@@ -347,7 +347,7 @@ jobs:
         shell: bash
         run: |
           PACKAGE_NAME="${{ needs.check-version.outputs.package_name }}"
-          cargo bundle --release --target aarch64-apple-darwin --manifest-path crates/engine/Cargo.toml
+          cargo bundle --release --target aarch64-apple-darwin -p pulsar_engine
           APP_DIR=$(find target/aarch64-apple-darwin/release/bundle -maxdepth 2 -name '*.app' | head -n 1)
           if [ -z "$APP_DIR" ]; then
             echo "❌ ERROR: .app bundle not found"
