@@ -395,6 +395,13 @@ fn make_window_options(
     win_size: gpui::Size<gpui::Pixels>,
     min_size: Option<gpui::Size<gpui::Pixels>>,
 ) -> gpui::WindowOptions {
+    // Embed the Pulsar icon at compile time so it is always available at runtime,
+    // even when running outside an app bundle (no .icns / no PE resource needed).
+    static ICON_PNG: &[u8] = include_bytes!("../../../assets/images/logo_sqrkl.png");
+    let app_icon = gpui::WindowIcon::from_png_bytes(ICON_PNG)
+        .map_err(|e| tracing::warn!("Failed to decode app icon: {e}"))
+        .ok();
+
     gpui::WindowOptions {
         window_bounds: Some(gpui::WindowBounds::Windowed(gpui::Bounds::new(origin, win_size))),
         titlebar: None,
@@ -402,6 +409,7 @@ fn make_window_options(
         is_resizable: true,
         window_decorations: Some(gpui::WindowDecorations::Client),
         window_min_size: min_size,
+        app_icon,
         ..Default::default()
     }
 }

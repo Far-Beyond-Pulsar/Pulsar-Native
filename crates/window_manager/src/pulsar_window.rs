@@ -51,7 +51,16 @@ pub trait PulsarWindow: Render + Sized + 'static {
 /// Convenience constructor for standard client-decorated windows.
 /// `width` and `height` are logical pixels; min size is half of each.
 pub fn default_window_options(width: f32, height: f32) -> WindowOptions {
-    use gpui::{Bounds, Point, Size, WindowBounds, WindowDecorations, WindowKind, px};
+    use gpui::{Bounds, Point, Size, WindowBounds, WindowDecorations, WindowIcon, WindowKind, px};
+
+    // Embed the Pulsar icon at compile time so it is always available, even
+    // when running outside an app bundle.
+    static ICON_PNG: &[u8] = include_bytes!("../../../assets/images/logo_sqrkl.png");
+
+    let app_icon = WindowIcon::from_png_bytes(ICON_PNG)
+        .map_err(|e| tracing::warn!("Failed to decode app icon: {e}"))
+        .ok();
+
     WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(Bounds {
             origin: Point { x: px(100.0), y: px(100.0) },
@@ -65,6 +74,7 @@ pub fn default_window_options(width: f32, height: f32) -> WindowOptions {
             width: px(width * 0.5),
             height: px(height * 0.5),
         }),
+        app_icon,
         ..Default::default()
     }
 }
