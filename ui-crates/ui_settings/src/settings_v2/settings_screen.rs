@@ -1,7 +1,7 @@
 use super::field_renderers::render_setting_row;
 use super::tabs::render_tab_switcher;
 use super::{SettingsContainer, SettingsTab};
-use engine_state::{registry, SettingScope, SettingValue};
+use engine_state::{global_config, ConfigValue, NS_EDITOR, NS_PROJECT};
 use gpui::*;
 use gpui::prelude::FluentBuilder as _;
 use std::path::PathBuf;
@@ -28,7 +28,7 @@ pub struct SettingsScreenV2 {
     /// Currently selected page within the active tab
     active_page: String,
     /// Pending changes (not yet saved)
-    pending_changes: std::collections::HashMap<String, SettingValue>,
+    pending_changes: std::collections::HashMap<String, ConfigValue>,
     /// Whether there are unsaved changes
     has_unsaved_changes: bool,
     /// Input states for text/number fields
@@ -48,11 +48,10 @@ impl SettingsScreenV2 {
         let container = SettingsContainer::new(props.project_path);
 
         // Get the first page for the active tab
-        let active_page = registry()
-            .read()
-            .get_pages(SettingScope::Global)
-            .first()
-            .cloned()
+        let active_page = global_config()
+            .list_pages(NS_EDITOR)
+            .into_iter()
+            .next()
             .unwrap_or_else(|| "General".to_string());
 
         Self {
@@ -100,12 +99,12 @@ impl SettingsScreenV2 {
                             if is_number_field {
                                 // Try to parse as number
                                 if let Ok(value) = text.parse::<f64>() {
-                                    this.pending_changes.insert(key_clone_inner, SettingValue::Number(value));
+                                    this.pending_changes.insert(key_clone_inner, ConfigValue::Float(value));
                                     this.has_unsaved_changes = true;
                                 }
                             } else {
                                 // It's a text field
-                                this.pending_changes.insert(key_clone_inner, SettingValue::String(text));
+                                this.pending_changes.insert(key_clone_inner, ConfigValue::String(text));
                                 this.has_unsaved_changes = true;
                             }
                         }
@@ -120,7 +119,7 @@ impl SettingsScreenV2 {
                             if is_number_field {
                                 // Parse, validate, and reformat
                                 if let Ok(value) = text.parse::<f64>() {
-                                    this.pending_changes.insert(key_clone_inner, SettingValue::Number(value));
+                                    this.pending_changes.insert(key_clone_inner, ConfigValue::Float(value));
                                     this.has_unsaved_changes = true;
 
                                     // Reformat to canonical form
@@ -131,7 +130,7 @@ impl SettingsScreenV2 {
                                 }
                             } else {
                                 // Text fields don't need reformatting
-                                this.pending_changes.insert(key_clone_inner, SettingValue::String(text));
+                                this.pending_changes.insert(key_clone_inner, ConfigValue::String(text));
                                 this.has_unsaved_changes = true;
                             }
                         }
@@ -154,6 +153,7 @@ impl SettingsScreenV2 {
         key: &str,
         options: &[engine_state::DropdownOption],
         current_value: &str,
+        is_theme: bool,
         window: &mut Window,
         cx: &mut Context<Self>
     ) -> Entity<DropdownState<Vec<String>>> {
@@ -162,7 +162,7 @@ impl SettingsScreenV2 {
         }
 
         // Special handling for theme dropdown - get themes from ThemeRegistry
-        let option_values: Vec<String> = if key == "appearance.theme" {
+        let option_values: Vec<String> = if is_theme {
             ui::theme::ThemeRegistry::global(cx)
                 .themes()
                 .keys()
@@ -180,13 +180,12 @@ impl SettingsScreenV2 {
 
         // Subscribe to dropdown events
         let key_clone = key.to_string();
-        let is_theme = key == "appearance.theme";
         let subscription = cx.subscribe_in(
             &state,
             window,
             move |this, _state, event: &DropdownEvent<Vec<String>>, _window, cx| {
                 if let DropdownEvent::Confirm(Some(value)) = event {
-                    this.pending_changes.insert(key_clone.clone(), SettingValue::String(value.clone()));
+                    this.pending_changes.insert(key_clone.clone(), ConfigValue::String(value.clone()));
                     this.has_unsaved_changes = true;
 
                     // Special handling for theme - apply immediately for preview
@@ -246,7 +245,7 @@ impl SettingsScreenV2 {
                         SliderValue::Single(v) => *v as f64,
                         SliderValue::Range(_, end) => *end as f64, // Use end value for range
                     };
-                    this.pending_changes.insert(key_clone.clone(), SettingValue::Number(num_value));
+                    this.pending_changes.insert(key_clone.clone(), ConfigValue::Float(num_value));
                     this.has_unsaved_changes = true;
                 }
             },
@@ -287,7 +286,7 @@ impl SettingsScreenV2 {
             move |this, _state, event: &ColorPickerEvent, _window, _cx| {
                 if let ColorPickerEvent::Change(Some(color)) = event {
                     let hex = Self::color_to_hex(*color);
-                    this.pending_changes.insert(key_clone.clone(), SettingValue::String(hex));
+                    this.pending_changes.insert(key_clone.clone(), ConfigValue::String(hex));
                     this.has_unsaved_changes = true;
                 }
             },
@@ -312,61 +311,51 @@ impl SettingsScreenV2 {
         format!("#{:02x}{:02x}{:02x}", r, g, b)
     }
 
-    fn get_current_value(&self, key: &str, cx: &App) -> SettingValue {
+    fn get_current_value(&self, info: &engine_state::SettingInfo, cx: &App) -> ConfigValue {
+        // Compound key for pending_changes lookup
+        let compound = format!("{}/{}", info.owner, info.key);
+
         // Check pending changes first
-        if let Some(value) = self.pending_changes.get(key) {
+        if let Some(value) = self.pending_changes.get(&compound) {
             return value.clone();
         }
 
         // Special handling for theme - get from Theme global
-        if key == "appearance.theme" {
+        if info.owner == "appearance" && info.key == "theme" {
             let theme = ui::theme::Theme::global(cx);
             let theme_name = match theme.mode {
                 ui::theme::ThemeMode::Light => theme.light_theme.name.to_string(),
                 ui::theme::ThemeMode::Dark => theme.dark_theme.name.to_string(),
             };
-            return SettingValue::String(theme_name);
+            return ConfigValue::String(theme_name);
         }
 
-        // Then check the appropriate storage
-        match self.active_tab {
-            SettingsTab::Global => self.container.global.get_or_default(key),
-            SettingsTab::Project => {
-                if let Some(ref project) = self.container.project {
-                    project.get_or_default(key)
-                } else {
-                    // Fallback to registry default
-                    registry()
-                        .read()
-                        .get(key)
-                        .map(|def| def.default_value.clone())
-                        .unwrap_or(SettingValue::String(String::new()))
-                }
-            }
-        }
+        // Return the current value from SettingInfo (already populated by ConfigManager)
+        info.current_value.clone()
     }
 
-    fn handle_setting_change(&mut self, key: String, value: SettingValue, cx: &mut Context<Self>) {
-        self.pending_changes.insert(key, value);
+    fn handle_setting_change(&mut self, owner: String, key: String, value: ConfigValue, cx: &mut Context<Self>) {
+        // Store with compound key so owner:key is unique
+        self.pending_changes.insert(format!("{}/{}", owner, key), value);
         self.has_unsaved_changes = true;
         cx.notify();
     }
 
-    fn save_all_changes(&mut self, cx: &mut Context<Self>) {
+    fn save_all_changes(&mut self, _cx: &mut Context<Self>) {
         tracing::info!("Saving all changes for {:?} settings", self.active_tab);
 
-        // Apply all pending changes to the appropriate storage
-        for (key, value) in self.pending_changes.drain() {
-            tracing::debug!("Applying change: {} = {:?}", key, value);
-            match self.active_tab {
-                SettingsTab::Global => {
-                    self.container.global.set(key, value);
-                }
-                SettingsTab::Project => {
-                    if let Some(ref mut project) = self.container.project {
-                        project.set(key, value);
-                    } else {
-                        tracing::warn!("No project settings available - cannot save project setting: {}", key);
+        let ns = match self.active_tab {
+            SettingsTab::Global => NS_EDITOR,
+            SettingsTab::Project => NS_PROJECT,
+        };
+
+        // Apply all pending changes via ConfigManager owner handles
+        for (compound_key, value) in self.pending_changes.drain() {
+            if let Some((owner, key)) = compound_key.rsplit_once('/') {
+                tracing::debug!("Applying change: {}/{} = {:?}", owner, key, value);
+                if let Some(handle) = global_config().owner_handle(ns, owner) {
+                    if let Err(e) = handle.set(key, value) {
+                        tracing::warn!("Failed to apply setting {}/{}: {}", owner, key, e);
                     }
                 }
             }
@@ -375,7 +364,7 @@ impl SettingsScreenV2 {
         // Save to disk
         match self.active_tab {
             SettingsTab::Global => {
-                if let Err(e) = self.container.global.save() {
+                if let Err(e) = self.container.global.save_all() {
                     tracing::error!("Failed to save global settings: {}", e);
                 } else {
                     tracing::info!("Successfully saved global settings");
@@ -384,7 +373,7 @@ impl SettingsScreenV2 {
             SettingsTab::Project => {
                 if let Some(ref project) = self.container.project {
                     tracing::info!("Saving project settings to: {:?}", project.path());
-                    if let Err(e) = project.save() {
+                    if let Err(e) = project.save_all() {
                         tracing::error!("Failed to save project settings: {}", e);
                     } else {
                         tracing::info!("Successfully saved project settings");
@@ -396,7 +385,6 @@ impl SettingsScreenV2 {
         }
 
         self.has_unsaved_changes = false;
-        cx.notify();
     }
 
     fn discard_changes(&mut self, cx: &mut Context<Self>) {
@@ -410,16 +398,15 @@ impl SettingsScreenV2 {
             self.active_tab = tab;
 
             // Reset to first page of new tab
-            let scope = match tab {
-                SettingsTab::Global => SettingScope::Global,
-                SettingsTab::Project => SettingScope::Project,
+            let ns = match tab {
+                SettingsTab::Global => NS_EDITOR,
+                SettingsTab::Project => NS_PROJECT,
             };
 
-            self.active_page = registry()
-                .read()
-                .get_pages(scope)
-                .first()
-                .cloned()
+            self.active_page = global_config()
+                .list_pages(ns)
+                .into_iter()
+                .next()
                 .unwrap_or_else(|| "General".to_string());
 
             cx.notify();
@@ -634,12 +621,12 @@ impl SettingsScreenV2 {
     fn render_sidebar(&self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
 
-        let scope = match self.active_tab {
-            SettingsTab::Global => SettingScope::Global,
-            SettingsTab::Project => SettingScope::Project,
+        let ns = match self.active_tab {
+            SettingsTab::Global => NS_EDITOR,
+            SettingsTab::Project => NS_PROJECT,
         };
 
-        let pages = registry().read().get_pages(scope);
+        let pages = global_config().list_pages(ns);
 
         v_flex()
             .w(px(280.0))
@@ -716,8 +703,8 @@ impl SettingsScreenV2 {
 
     fn render_setting_row_inline(
         &mut self,
-        definition: &engine_state::SettingDefinition,
-        current_value: &SettingValue,
+        definition: &engine_state::SettingInfo,
+        current_value: &ConfigValue,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
@@ -743,7 +730,7 @@ impl SettingsScreenV2 {
                             .text_sm()
                             .font_weight(FontWeight::MEDIUM)
                             .text_color(theme.foreground)
-                            .child(definition.label.clone())
+                            .child(definition.label.clone().unwrap_or_else(|| definition.key.clone()))
                     )
                     .when(!definition.description.is_empty(), |this| {
                         this.child(
@@ -763,12 +750,11 @@ impl SettingsScreenV2 {
 
     fn render_field_editor(
         &mut self,
-        definition: &engine_state::SettingDefinition,
-        current_value: &SettingValue,
+        definition: &engine_state::SettingInfo,
+        current_value: &ConfigValue,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        use engine_state::FieldType;
         use ui::input::{TextInput, NumberInput};
         use ui::switch::Switch;
         use ui::button::{Button, ButtonVariants as _};
@@ -777,26 +763,30 @@ impl SettingsScreenV2 {
         use ui::color_picker::ColorPicker;
 
         let key = definition.key.clone();
+        let owner = definition.owner.clone();
+        let setting_id = format!("{}/{}", owner, key);
+        let is_theme_setting = owner == "appearance" && key == "theme";
 
-        match &definition.field_type {
-            FieldType::Checkbox => {
+        match definition.field_type.as_ref() {
+            Some(engine_state::FieldType::Checkbox) => {
                 let checked = current_value.as_bool().unwrap_or(false);
 
                 Switch::new(ElementId::Name(key.clone().into()))
                     .checked(checked)
                     .on_click(cx.listener(move |screen, _, _, cx| {
-                        screen.handle_setting_change(key.clone(), SettingValue::Bool(!checked), cx);
+                        screen.handle_setting_change(owner.clone(), key.clone(), ConfigValue::Bool(!checked), cx);
                     }))
                     .into_any_element()
             }
 
-            FieldType::NumberInput { min, max, step: _ } => {
-                let value = current_value.as_number().unwrap_or(0.0);
+            Some(engine_state::FieldType::NumberInput { min, max, step: _ }) => {
+                let value = current_value.as_float()
+                    .or_else(|_| current_value.as_int().map(|i| i as f64))
+                    .unwrap_or(0.0);
                 let min_opt = *min;
                 let max_opt = *max;
 
-                // Create and initialize input state BEFORE borrowing theme
-                let input_state = self.get_or_create_input_state(&key, true, window, cx);
+                let input_state = self.get_or_create_input_state(&setting_id, true, window, cx);
                 input_state.update(cx, |state, cx| {
                     let current_text = value.to_string();
                     if state.text().to_string() != current_text {
@@ -804,15 +794,12 @@ impl SettingsScreenV2 {
                     }
                 });
 
-                // Now we can borrow theme
                 let theme = cx.theme();
 
                 h_flex()
                     .gap_2()
                     .items_center()
-                    .child(
-                        NumberInput::new(&input_state)
-                    )
+                    .child(NumberInput::new(&input_state))
                     .when(min_opt.is_some() || max_opt.is_some(), |this| {
                         this.child(
                             div()
@@ -828,13 +815,12 @@ impl SettingsScreenV2 {
                     .into_any_element()
             }
 
-            FieldType::TextInput { placeholder: _, multiline: _ } => {
-                let value = current_value.as_string().unwrap_or("");
+            Some(engine_state::FieldType::TextInput { placeholder: _, multiline: _ }) => {
+                let value = current_value.as_str().unwrap_or("").to_string();
 
-                // Create and initialize input state BEFORE borrowing theme
-                let input_state = self.get_or_create_input_state(&key, false, window, cx);
+                let input_state = self.get_or_create_input_state(&setting_id, false, window, cx);
                 input_state.update(cx, |state, cx| {
-                    let current_text = value.to_string();
+                    let current_text = value.clone();
                     if state.text().to_string() != current_text {
                         state.set_value(&current_text, window, cx);
                     }
@@ -845,74 +831,49 @@ impl SettingsScreenV2 {
                     .into_any_element()
             }
 
-            FieldType::Dropdown { options } => {
-                let current_str = current_value.as_string().unwrap_or("");
-
-                // Create dropdown state with event subscription
-                let dropdown_state = self.get_or_create_dropdown_state(&key, options, current_str, window, cx);
-
+            Some(engine_state::FieldType::Dropdown { options }) => {
+                let current_str = current_value.as_str().unwrap_or("");
+                let dropdown_state = self.get_or_create_dropdown_state(&setting_id, options, current_str, is_theme_setting, window, cx);
                 Dropdown::new(&dropdown_state)
                     .w(px(200.0))
                     .into_any_element()
             }
 
-            FieldType::Slider { min, max, step } => {
-                let value = current_value.as_number().unwrap_or(*min);
+            Some(engine_state::FieldType::Slider { min, max, step }) => {
+                let value = current_value.as_float()
+                    .or_else(|_| current_value.as_int().map(|i| i as f64))
+                    .unwrap_or(*min);
                 let min_val = *min;
                 let max_val = *max;
                 let step_val = *step;
 
-                // Create slider state BEFORE borrowing theme
-                let slider_state = self.get_or_create_slider_state(&key, min_val, max_val, step_val, value, window, cx);
+                let slider_state = self.get_or_create_slider_state(&setting_id, min_val, max_val, step_val, value, window, cx);
 
                 let theme = cx.theme();
 
                 v_flex()
                     .gap_2()
                     .min_w(px(200.0))
-                    .child(
-                        Slider::new(&slider_state)
-                            .horizontal()
-                    )
+                    .child(Slider::new(&slider_state).horizontal())
                     .child(
                         h_flex()
                             .justify_between()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme.muted_foreground)
-                                    .child(format!("{}", min_val))
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(theme.foreground)
-                                    .child(format!("{:.1}", value))
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme.muted_foreground)
-                                    .child(format!("{}", max_val))
-                            )
+                            .child(div().text_xs().text_color(theme.muted_foreground).child(format!("{}", min_val)))
+                            .child(div().text_xs().font_weight(FontWeight::MEDIUM).text_color(theme.foreground).child(format!("{:.1}", value)))
+                            .child(div().text_xs().text_color(theme.muted_foreground).child(format!("{}", max_val)))
                     )
                     .into_any_element()
             }
 
-            FieldType::ColorPicker => {
-                let color_str = current_value.as_string().unwrap_or("#000000");
-
-                // Create color picker state with event subscription
-                let color_picker_state = self.get_or_create_color_picker_state(&key, color_str, window, cx);
-
-                ColorPicker::new(&color_picker_state)
-                    .into_any_element()
+            Some(engine_state::FieldType::ColorPicker) => {
+                let color_str = current_value.as_str().unwrap_or("#000000");
+                let color_picker_state = self.get_or_create_color_picker_state(&setting_id, color_str, window, cx);
+                ColorPicker::new(&color_picker_state).into_any_element()
             }
 
-            FieldType::PathSelector { directory } => {
+            Some(engine_state::FieldType::PathSelector { directory }) => {
                 let theme = cx.theme();
-                let path = current_value.as_string().unwrap_or("").to_string();
+                let path = current_value.as_str().unwrap_or("").to_string();
                 let is_dir = *directory;
 
                 h_flex()
@@ -929,51 +890,30 @@ impl SettingsScreenV2 {
                             .child(
                                 div()
                                     .text_sm()
-                                    .text_color(if path.is_empty() {
-                                        theme.muted_foreground
-                                    } else {
-                                        theme.foreground
-                                    })
+                                    .text_color(if path.is_empty() { theme.muted_foreground } else { theme.foreground })
                                     .child(if path.is_empty() {
-                                        if is_dir {
-                                            "No directory selected".to_string()
-                                        } else {
-                                            "No file selected".to_string()
-                                        }
-                                    } else {
-                                        path
-                                    })
+                                        if is_dir { "No directory selected".to_string() }
+                                        else { "No file selected".to_string() }
+                                    } else { path })
                             )
                     )
-                    .child(
-                        Button::new("browse")
-                            .ghost()
-                            .icon(IconName::Folder)
-                            .label("Browse")
-                    )
+                    .child(Button::new("browse").ghost().icon(IconName::Folder).label("Browse"))
                     .into_any_element()
             }
+
+            None => div().into_any_element(),
         }
     }
 
     fn render_content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
 
-        let scope = match self.active_tab {
-            SettingsTab::Global => SettingScope::Global,
-            SettingsTab::Project => SettingScope::Project,
+        let ns = match self.active_tab {
+            SettingsTab::Global => NS_EDITOR,
+            SettingsTab::Project => NS_PROJECT,
         };
 
-        // Collect settings into a vector to avoid borrowing issues
-        let settings: Vec<_> = {
-            let reg = registry();
-            let reg_guard = reg.read();
-            reg_guard
-                .get_by_scope_and_page(scope, &self.active_page)
-                .into_iter()
-                .cloned()
-                .collect()
-        };
+        let settings = global_config().list_settings_by_page(ns, &self.active_page);
 
         v_flex()
             .flex_1()
@@ -1001,9 +941,9 @@ impl SettingsScreenV2 {
                     .child(
                         v_flex()
                             .w_full()
-                            .children(settings.iter().map(|def| {
-                                let current_value = self.get_current_value(&def.key, cx);
-                                self.render_setting_row_inline(def, &current_value, window, cx)
+                            .children(settings.iter().map(|info| {
+                                let current_value = self.get_current_value(info, cx);
+                                self.render_setting_row_inline(info, &current_value, window, cx)
                             }))
                     )
             )

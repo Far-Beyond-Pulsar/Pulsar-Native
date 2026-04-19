@@ -1,4 +1,4 @@
-use engine_state::{DropdownOption, FieldType, SettingDefinition, SettingValue};
+use engine_state::{DropdownOption, FieldType, SettingInfo, ConfigValue};
 use gpui::*;
 use gpui::prelude::FluentBuilder as _;
 use ui::{
@@ -11,20 +11,20 @@ use ui::{
 
 /// Render a setting field based on its definition and current value
 pub fn render_setting_field<F>(
-    definition: &SettingDefinition,
-    current_value: &SettingValue,
+    definition: &SettingInfo,
+    current_value: &ConfigValue,
     on_change: F,
     _window: &mut Window,
     cx: &mut App,
 ) -> impl IntoElement
 where
-    F: Fn(SettingValue) + 'static + Clone,
+    F: Fn(ConfigValue) + 'static + Clone,
 {
     let theme = cx.theme();
     let key = definition.key.clone();
 
-    match &definition.field_type {
-        FieldType::Checkbox => {
+    match definition.field_type.as_ref() {
+        Some(FieldType::Checkbox) => {
             let checked = current_value.as_bool().unwrap_or(false);
             let switch_id = ElementId::Name(key.into());
             let on_change = on_change.clone();
@@ -32,14 +32,18 @@ where
             Switch::new(switch_id)
                 .checked(checked)
                 .on_click(move |_, _, _| {
-                    on_change(SettingValue::Bool(!checked));
+                    on_change(ConfigValue::Bool(!checked));
                 })
                 .into_any_element()
         }
 
-        FieldType::NumberInput { min, max, step: _ } => {
-            let value = current_value.as_number().unwrap_or(0.0);
+        Some(FieldType::NumberInput { min, max, step: _ }) => {
+            let value = current_value.as_float()
+                .or_else(|_| current_value.as_int().map(|i| i as f64))
+                .unwrap_or(0.0);
             let display_value = format!("{}", value);
+            let min_opt = *min;
+            let max_opt = *max;
 
             h_flex()
                 .gap_2()
@@ -61,23 +65,23 @@ where
                                 .child(display_value)
                         )
                 )
-                .when(min.is_some() || max.is_some(), |this| {
+                .when(min_opt.is_some() || max_opt.is_some(), |this| {
                     this.child(
                         div()
                             .text_xs()
                             .text_color(theme.muted_foreground)
                             .child(format!(
                                 "({} - {})",
-                                min.map(|v| v.to_string()).unwrap_or_else(|| "∞".to_string()),
-                                max.map(|v| v.to_string()).unwrap_or_else(|| "∞".to_string())
+                                min_opt.map(|v| v.to_string()).unwrap_or_else(|| "∞".to_string()),
+                                max_opt.map(|v| v.to_string()).unwrap_or_else(|| "∞".to_string())
                             ))
                     )
                 })
                 .into_any_element()
         }
 
-        FieldType::TextInput { placeholder, multiline } => {
-            let value = current_value.as_string().unwrap_or("").to_string();
+        Some(FieldType::TextInput { placeholder, multiline }) => {
+            let value = current_value.as_str().unwrap_or("").to_string();
             let is_empty = value.is_empty();
 
             div()
@@ -102,11 +106,9 @@ where
                 .into_any_element()
         }
 
-        FieldType::Dropdown { options: _ } => {
-            let current_str = current_value.as_string().unwrap_or("").to_string();
+        Some(FieldType::Dropdown { options: _ }) => {
+            let current_str = current_value.as_str().unwrap_or("").to_string();
 
-            // For now, just display the current value as a read-only field
-            // Full dropdown with popup menu requires more complex implementation
             div()
                 .px_3()
                 .py_1p5()
@@ -134,8 +136,10 @@ where
                 .into_any_element()
         }
 
-        FieldType::Slider { min, max, step } => {
-            let value = current_value.as_number().unwrap_or(*min);
+        Some(FieldType::Slider { min, max, step: _ }) => {
+            let value = current_value.as_float()
+                .or_else(|_| current_value.as_int().map(|i| i as f64))
+                .unwrap_or(*min);
             let percentage = ((value - min) / (max - min) * 100.0).clamp(0.0, 100.0);
 
             v_flex()
@@ -198,8 +202,8 @@ where
                 .into_any_element()
         }
 
-        FieldType::ColorPicker => {
-            let color_str = current_value.as_string().unwrap_or("#000000").to_string();
+        Some(FieldType::ColorPicker) => {
+            let color_str = current_value.as_str().unwrap_or("#000000").to_string();
 
             h_flex()
                 .gap_3()
@@ -211,7 +215,6 @@ where
                         .rounded_md()
                         .border_2()
                         .border_color(theme.border)
-                        // For now, just show a placeholder - full color picker would be more complex
                         .bg(gpui::rgb(0x000000))
                 )
                 .child(
@@ -233,8 +236,8 @@ where
                 .into_any_element()
         }
 
-        FieldType::PathSelector { directory } => {
-            let path = current_value.as_string().unwrap_or("").to_string();
+        Some(FieldType::PathSelector { directory }) => {
+            let path = current_value.as_str().unwrap_or("").to_string();
             let empty_path = path.is_empty();
             let is_dir = *directory;
 
@@ -276,19 +279,21 @@ where
                 )
                 .into_any_element()
         }
+
+        None => div().into_any_element(),
     }
 }
 
 /// Render a setting row with label, description, and field
 pub fn render_setting_row<F>(
-    definition: &SettingDefinition,
-    current_value: &SettingValue,
+    definition: &SettingInfo,
+    current_value: &ConfigValue,
     on_change: F,
     window: &mut Window,
     cx: &mut App,
 ) -> impl IntoElement
 where
-    F: Fn(SettingValue) + 'static + Clone,
+    F: Fn(ConfigValue) + 'static + Clone,
 {
     let theme = cx.theme();
 
@@ -310,7 +315,7 @@ where
                         .text_sm()
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(theme.foreground)
-                        .child(definition.label.clone())
+                        .child(definition.label.clone().unwrap_or_else(|| definition.key.clone()))
                 )
                 .when(!definition.description.is_empty(), |this| {
                     this.child(

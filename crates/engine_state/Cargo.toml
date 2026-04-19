@@ -24,7 +24,8 @@ tracing.workspace = true
 # Use the local cross-platform version until it's pushed to the repo
 rust-discord-activity = { git = "https://github.com/Far-Beyond-Pulsar/Discord-RPC-RS", rev = "2f07922277bc3632fd124e46d28008fc542367fc"}
 
-# Settings system
+# Settings system (PulsarConfig)
+pulsar-config.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
 directories = "5"

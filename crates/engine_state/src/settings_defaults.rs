@@ -1,785 +1,264 @@
-use super::settings_registry::{DropdownOption, FieldType, SettingDefinition, SettingScope, register_setting};
+use crate::settings::{
+    global_config, DropdownOption, FieldType, NamespaceSchema, SchemaEntry, Validator,
+    NS_EDITOR, NS_PROJECT,
+};
 
-/// Register all default engine settings
+/// Register all default engine and project settings with the global [`ConfigManager`].
 pub fn register_default_settings() {
-    register_global_settings();
+    register_editor_settings();
     register_project_settings();
 }
 
-fn register_global_settings() {
-    // Appearance page
-    register_setting(
-        SettingDefinition::builder("appearance.theme")
-            .label("Theme")
-            .description("Visual theme for the engine interface")
-            .page("Appearance")
-            .scope(SettingScope::Global)
-            .field_type(FieldType::Dropdown {
-                options: vec![
-                    DropdownOption {
-                        label: "Default Dark".to_string(),
-                        value: "Default Dark".to_string(),
-                    },
-                    DropdownOption {
-                        label: "Default Light".to_string(),
-                        value: "Default Light".to_string(),
-                    },
-                ],
-            })
-            .default_value("Default Dark")
-            .build(),
-    );
+fn register_editor_settings() {
+    register_appearance();
+    register_editor_page();
+    register_performance();
+    register_advanced();
+}
 
-    register_setting(
-        SettingDefinition::builder("appearance.ui_scale")
-            .label("UI Scale")
-            .description("Scale factor for the user interface")
-            .page("Appearance")
-            .scope(SettingScope::Global)
-            .field_type(FieldType::Slider {
-                min: 0.5,
-                max: 2.0,
-                step: 0.1,
-            })
-            .default_value(1.0)
-            .build(),
-    );
+fn register_appearance() {
+    let schema = NamespaceSchema::new("Appearance", "Visual appearance settings")
+        .setting(
+            "theme",
+            SchemaEntry::new("Visual theme for the engine interface", "Default Dark")
+                .label("Theme").page("Appearance")
+                .field_type(FieldType::Dropdown {
+                    options: vec![
+                        DropdownOption::same("Default Dark"),
+                        DropdownOption::same("Default Light"),
+                    ],
+                })
+                .validator(Validator::string_one_of(["Default Dark", "Default Light"])),
+        )
+        .setting(
+            "ui_scale",
+            SchemaEntry::new("Scale factor for the user interface", 1.0_f64)
+                .label("UI Scale").page("Appearance")
+                .field_type(FieldType::Slider { min: 0.5, max: 2.0, step: 0.1 })
+                .validator(Validator::float_range(0.5, 2.0)),
+        )
+        .setting(
+            "accent_color",
+            SchemaEntry::new("Primary accent color used throughout the interface", "#0ea5e9")
+                .label("Accent Color").page("Appearance")
+                .field_type(FieldType::ColorPicker),
+        );
+    let _ = global_config().register(NS_EDITOR, "appearance", schema);
+}
 
-    register_setting(
-        SettingDefinition::builder("appearance.accent_color")
-            .label("Accent Color")
-            .description("Primary accent color used throughout the interface")
-            .page("Appearance")
-            .scope(SettingScope::Global)
-            .field_type(FieldType::ColorPicker)
-            .default_value("#0ea5e9")
-            .build(),
-    );
+fn register_editor_page() {
+    let schema = NamespaceSchema::new("Editor", "Code editor settings")
+        .setting(
+            "font_size",
+            SchemaEntry::new("Font size for code editor", 14_i64)
+                .label("Font Size").page("Editor")
+                .field_type(FieldType::NumberInput { min: Some(8.0), max: Some(32.0), step: Some(1.0) })
+                .validator(Validator::int_range(8, 32)),
+        )
+        .setting(
+            "show_line_numbers",
+            SchemaEntry::new("Display line numbers in code editor", true)
+                .label("Show Line Numbers").page("Editor")
+                .field_type(FieldType::Checkbox),
+        )
+        .setting(
+            "word_wrap",
+            SchemaEntry::new("Enable word wrapping in code editor", false)
+                .label("Word Wrap").page("Editor")
+                .field_type(FieldType::Checkbox),
+        )
+        .setting(
+            "tab_size",
+            SchemaEntry::new("Number of spaces for tab indentation", 4_i64)
+                .label("Tab Size").page("Editor")
+                .field_type(FieldType::NumberInput { min: Some(2.0), max: Some(8.0), step: Some(1.0) })
+                .validator(Validator::int_range(2, 8)),
+        )
+        .setting(
+            "auto_save",
+            SchemaEntry::new("Automatically save files when editing", true)
+                .label("Auto Save").page("Editor")
+                .field_type(FieldType::Checkbox),
+        );
+    let _ = global_config().register(NS_EDITOR, "editor", schema);
+}
 
-    // Editor page
-    register_setting(
-        SettingDefinition::builder("editor.font_size")
-            .label("Font Size")
-            .description("Font size for code editor")
-            .page("Editor")
-            .scope(SettingScope::Global)
-            .field_type(FieldType::NumberInput {
-                min: Some(8.0),
-                max: Some(32.0),
-                step: Some(1.0),
-            })
-            .default_value(14.0)
-            .build(),
-    );
+fn register_performance() {
+    let schema = NamespaceSchema::new("Performance", "Performance settings")
+        .setting(
+            "max_viewport_fps",
+            SchemaEntry::new("Maximum frame rate for viewport rendering", "60")
+                .label("Max Viewport FPS").page("Performance")
+                .field_type(FieldType::Dropdown {
+                    options: vec![
+                        DropdownOption::new("30 FPS", "30"),
+                        DropdownOption::new("60 FPS", "60"),
+                        DropdownOption::new("120 FPS", "120"),
+                        DropdownOption::new("144 FPS", "144"),
+                        DropdownOption::new("240 FPS", "240"),
+                        DropdownOption::new("Unlimited", "0"),
+                    ],
+                }),
+        )
+        .setting(
+            "optimization_level",
+            SchemaEntry::new("Performance optimization level (higher = more aggressive)", 1.0_f64)
+                .label("Performance Level").page("Performance")
+                .field_type(FieldType::Slider { min: 0.0, max: 2.0, step: 1.0 })
+                .validator(Validator::float_range(0.0, 2.0)),
+        )
+        .setting(
+            "enable_vsync",
+            SchemaEntry::new("Synchronize frame rate with display refresh rate", true)
+                .label("Enable V-Sync").page("Performance")
+                .field_type(FieldType::Checkbox),
+        );
+    let _ = global_config().register(NS_EDITOR, "performance", schema);
+}
 
-    register_setting(
-        SettingDefinition::builder("editor.show_line_numbers")
-            .label("Show Line Numbers")
-            .description("Display line numbers in code editor")
-            .page("Editor")
-            .scope(SettingScope::Global)
-            .field_type(FieldType::Checkbox)
-            .default_value(true)
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("editor.word_wrap")
-            .label("Word Wrap")
-            .description("Enable word wrapping in code editor")
-            .page("Editor")
-            .scope(SettingScope::Global)
-            .field_type(FieldType::Checkbox)
-            .default_value(false)
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("editor.tab_size")
-            .label("Tab Size")
-            .description("Number of spaces for tab indentation")
-            .page("Editor")
-            .scope(SettingScope::Global)
-            .field_type(FieldType::NumberInput {
-                min: Some(2.0),
-                max: Some(8.0),
-                step: Some(1.0),
-            })
-            .default_value(4.0)
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("editor.auto_save")
-            .label("Auto Save")
-            .description("Automatically save files when editing")
-            .page("Editor")
-            .scope(SettingScope::Global)
-            .field_type(FieldType::Checkbox)
-            .default_value(true)
-            .build(),
-    );
-
-    // Performance page
-    register_setting(
-        SettingDefinition::builder("performance.max_viewport_fps")
-            .label("Max Viewport FPS")
-            .description("Maximum frame rate for viewport rendering")
-            .page("Performance")
-            .scope(SettingScope::Global)
-            .field_type(FieldType::Dropdown {
-                options: vec![
-                    DropdownOption {
-                        label: "30 FPS".to_string(),
-                        value: "30".to_string(),
-                    },
-                    DropdownOption {
-                        label: "60 FPS".to_string(),
-                        value: "60".to_string(),
-                    },
-                    DropdownOption {
-                        label: "120 FPS".to_string(),
-                        value: "120".to_string(),
-                    },
-                    DropdownOption {
-                        label: "144 FPS".to_string(),
-                        value: "144".to_string(),
-                    },
-                    DropdownOption {
-                        label: "240 FPS".to_string(),
-                        value: "240".to_string(),
-                    },
-                    DropdownOption {
-                        label: "Unlimited".to_string(),
-                        value: "0".to_string(),
-                    },
-                ],
-            })
-            .default_value("60")
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("performance.optimization_level")
-            .label("Performance Level")
-            .description("Performance optimization level (higher = more aggressive)")
-            .page("Performance")
-            .scope(SettingScope::Global)
-            .field_type(FieldType::Slider {
-                min: 0.0,
-                max: 2.0,
-                step: 1.0,
-            })
-            .default_value(1.0)
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("performance.enable_vsync")
-            .label("Enable V-Sync")
-            .description("Synchronize frame rate with display refresh rate")
-            .page("Performance")
-            .scope(SettingScope::Global)
-            .field_type(FieldType::Checkbox)
-            .default_value(true)
-            .build(),
-    );
-
-    // Advanced page
-    register_setting(
-        SettingDefinition::builder("advanced.debug_logging")
-            .label("Debug Logging")
-            .description("Enable detailed debug logging")
-            .page("Advanced")
-            .scope(SettingScope::Global)
-            .field_type(FieldType::Checkbox)
-            .default_value(false)
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("advanced.experimental_features")
-            .label("Experimental Features")
-            .description("Enable experimental engine features (may be unstable)")
-            .page("Advanced")
-            .scope(SettingScope::Global)
-            .field_type(FieldType::Checkbox)
-            .default_value(false)
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("advanced.telemetry")
-            .label("Anonymous Telemetry")
-            .description("Send anonymous usage data to help improve the engine")
-            .page("Advanced")
-            .scope(SettingScope::Global)
-            .field_type(FieldType::Checkbox)
-            .default_value(false)
-            .build(),
-    );
+fn register_advanced() {
+    let schema = NamespaceSchema::new("Advanced", "Advanced engine settings")
+        .setting(
+            "debug_logging",
+            SchemaEntry::new("Enable detailed debug logging", false)
+                .label("Debug Logging").page("Advanced")
+                .field_type(FieldType::Checkbox),
+        )
+        .setting(
+            "experimental_features",
+            SchemaEntry::new("Enable experimental engine features (may be unstable)", false)
+                .label("Experimental Features").page("Advanced")
+                .field_type(FieldType::Checkbox),
+        )
+        .setting(
+            "telemetry",
+            SchemaEntry::new("Send anonymous usage data to help improve the engine", false)
+                .label("Anonymous Telemetry").page("Advanced")
+                .field_type(FieldType::Checkbox),
+        );
+    let _ = global_config().register(NS_EDITOR, "advanced", schema);
 }
 
 fn register_project_settings() {
-    // Project page
-    register_setting(
-        SettingDefinition::builder("project.name")
-            .label("Project Name")
-            .description("Name of your game project")
-            .page("Project")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::TextInput {
-                placeholder: Some("MyGame".to_string()),
-                multiline: false,
-            })
-            .default_value("MyGame")
-            .build(),
-    );
+    register_project_page();
+    register_window_page();
+    register_graphics_page();
+    register_audio_page();
+    register_input_page();
+    register_paths_page();
+    register_build_page();
+}
 
-    register_setting(
-        SettingDefinition::builder("project.version")
-            .label("Version")
-            .description("Project version")
-            .page("Project")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::TextInput {
-                placeholder: Some("0.1.0".to_string()),
-                multiline: false,
-            })
-            .default_value("0.1.0")
-            .build(),
-    );
+fn register_project_page() {
+    let schema = NamespaceSchema::new("Project", "Project metadata settings")
+        .setting("name",        SchemaEntry::new("Name of your game project", "MyGame").label("Project Name").page("Project").field_type(FieldType::TextInput { placeholder: Some("MyGame".into()), multiline: false }))
+        .setting("version",     SchemaEntry::new("Project version", "0.1.0").label("Version").page("Project").field_type(FieldType::TextInput { placeholder: Some("0.1.0".into()), multiline: false }))
+        .setting("author",      SchemaEntry::new("Author or studio name", "Your Name").label("Author").page("Project").field_type(FieldType::TextInput { placeholder: Some("Your Name".into()), multiline: false }))
+        .setting("description", SchemaEntry::new("A brief description of your game", "A brief description.").label("Description").page("Project").field_type(FieldType::TextInput { placeholder: Some("A brief description.".into()), multiline: false }))
+        .setting("company",     SchemaEntry::new("Studio or company name", "Your Studio Name").label("Company").page("Project").field_type(FieldType::TextInput { placeholder: Some("Your Studio Name".into()), multiline: false }))
+        .setting(
+            "license",
+            SchemaEntry::new("License type", "MIT").label("License").page("Project")
+                .field_type(FieldType::Dropdown {
+                    options: vec![
+                        DropdownOption::same("MIT"), DropdownOption::same("GPL"),
+                        DropdownOption::new("Apache 2.0", "Apache 2.0"), DropdownOption::same("Proprietary"),
+                    ],
+                }),
+        );
+    let _ = global_config().register(NS_PROJECT, "project", schema);
+}
 
-    register_setting(
-        SettingDefinition::builder("project.author")
-            .label("Author")
-            .description("Author or studio name")
-            .page("Project")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::TextInput {
-                placeholder: Some("Your Name".to_string()),
-                multiline: false,
-            })
-            .default_value("Your Name")
-            .build(),
-    );
+fn register_window_page() {
+    let schema = NamespaceSchema::new("Window", "Game window settings")
+        .setting("title",      SchemaEntry::new("Title displayed in the game window", "My Game Window").label("Window Title").page("Window").field_type(FieldType::TextInput { placeholder: Some("My Game Window".into()), multiline: false }))
+        .setting("width",      SchemaEntry::new("Window width in pixels", 1280_i64).label("Window Width").page("Window").field_type(FieldType::NumberInput { min: Some(320.0), max: Some(7680.0), step: Some(1.0) }).validator(Validator::int_range(320, 7680)))
+        .setting("height",     SchemaEntry::new("Window height in pixels", 720_i64).label("Window Height").page("Window").field_type(FieldType::NumberInput { min: Some(240.0), max: Some(4320.0), step: Some(1.0) }).validator(Validator::int_range(240, 4320)))
+        .setting("fullscreen", SchemaEntry::new("Start in fullscreen mode", false).label("Fullscreen").page("Window").field_type(FieldType::Checkbox))
+        .setting("vsync",      SchemaEntry::new("Enable vertical sync", true).label("VSync").page("Window").field_type(FieldType::Checkbox))
+        .setting("resizable",  SchemaEntry::new("Allow window resizing", true).label("Resizable").page("Window").field_type(FieldType::Checkbox))
+        .setting("icon",       SchemaEntry::new("Path to window icon", "assets/icon.png").label("Window Icon").page("Window").field_type(FieldType::TextInput { placeholder: Some("assets/icon.png".into()), multiline: false }));
+    let _ = global_config().register(NS_PROJECT, "window", schema);
+}
 
-    register_setting(
-        SettingDefinition::builder("project.description")
-            .label("Description")
-            .description("A brief description of your game")
-            .page("Project")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::TextInput {
-                placeholder: Some("A brief description.".to_string()),
-                multiline: false,
-            })
-            .default_value("A brief description.")
-            .build(),
-    );
+fn register_graphics_page() {
+    let schema = NamespaceSchema::new("Graphics", "Graphics rendering settings")
+        .setting(
+            "renderer",
+            SchemaEntry::new("Graphics rendering backend", "OpenGL").label("Renderer").page("Graphics")
+                .field_type(FieldType::Dropdown {
+                    options: vec![
+                        DropdownOption::same("OpenGL"), DropdownOption::same("Vulkan"),
+                        DropdownOption::same("DirectX"), DropdownOption::same("Metal"),
+                        DropdownOption::same("Software"),
+                    ],
+                }),
+        )
+        .setting(
+            "msaa_samples",
+            SchemaEntry::new("Multisample anti-aliasing samples (0 = off)", "4").label("MSAA Samples").page("Graphics")
+                .field_type(FieldType::Dropdown {
+                    options: vec![
+                        DropdownOption::new("Off", "0"), DropdownOption::new("2x", "2"),
+                        DropdownOption::new("4x", "4"), DropdownOption::new("8x", "8"),
+                    ],
+                }),
+        )
+        .setting("max_fps",            SchemaEntry::new("Maximum frames per second (0 = unlimited)", 144_i64).label("Max FPS").page("Graphics").field_type(FieldType::NumberInput { min: Some(0.0), max: Some(360.0), step: Some(1.0) }).validator(Validator::int_range(0, 360)))
+        .setting(
+            "texture_filtering",
+            SchemaEntry::new("Texture filtering method", "Anisotropic").label("Texture Filtering").page("Graphics")
+                .field_type(FieldType::Dropdown { options: vec![DropdownOption::same("Nearest"), DropdownOption::same("Linear"), DropdownOption::same("Anisotropic")] }),
+        )
+        .setting(
+            "shadow_quality",
+            SchemaEntry::new("Quality of rendered shadows", "High").label("Shadow Quality").page("Graphics")
+                .field_type(FieldType::Dropdown { options: vec![DropdownOption::same("Low"), DropdownOption::same("Medium"), DropdownOption::same("High"), DropdownOption::same("Ultra")] }),
+        );
+    let _ = global_config().register(NS_PROJECT, "graphics", schema);
+}
 
-    register_setting(
-        SettingDefinition::builder("project.company")
-            .label("Company")
-            .description("Studio or company name")
-            .page("Project")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::TextInput {
-                placeholder: Some("Your Studio Name".to_string()),
-                multiline: false,
-            })
-            .default_value("Your Studio Name")
-            .build(),
-    );
+fn register_audio_page() {
+    let schema = NamespaceSchema::new("Audio", "Audio settings")
+        .setting("master_volume",   SchemaEntry::new("Master audio volume (0.0 - 1.0)", 1.0_f64).label("Master Volume").page("Audio").field_type(FieldType::Slider { min: 0.0, max: 1.0, step: 0.01 }).validator(Validator::float_range(0.0, 1.0)))
+        .setting("music_volume",    SchemaEntry::new("Music volume (0.0 - 1.0)", 0.8_f64).label("Music Volume").page("Audio").field_type(FieldType::Slider { min: 0.0, max: 1.0, step: 0.01 }).validator(Validator::float_range(0.0, 1.0)))
+        .setting("sfx_volume",      SchemaEntry::new("Sound effects volume (0.0 - 1.0)", 0.8_f64).label("SFX Volume").page("Audio").field_type(FieldType::Slider { min: 0.0, max: 1.0, step: 0.01 }).validator(Validator::float_range(0.0, 1.0)))
+        .setting("enable_3d_audio", SchemaEntry::new("Enable spatial 3D audio", true).label("Enable 3D Audio").page("Audio").field_type(FieldType::Checkbox));
+    let _ = global_config().register(NS_PROJECT, "audio", schema);
+}
 
-    register_setting(
-        SettingDefinition::builder("project.license")
-            .label("License")
-            .description("License type (MIT, GPL, Proprietary, etc.)")
-            .page("Project")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::Dropdown {
-                options: vec![
-                    DropdownOption {
-                        label: "MIT".to_string(),
-                        value: "MIT".to_string(),
-                    },
-                    DropdownOption {
-                        label: "GPL".to_string(),
-                        value: "GPL".to_string(),
-                    },
-                    DropdownOption {
-                        label: "Apache 2.0".to_string(),
-                        value: "Apache 2.0".to_string(),
-                    },
-                    DropdownOption {
-                        label: "Proprietary".to_string(),
-                        value: "Proprietary".to_string(),
-                    },
-                ],
-            })
-            .default_value("MIT")
-            .build(),
-    );
+fn register_input_page() {
+    let schema = NamespaceSchema::new("Input", "Input settings")
+        .setting("mouse_sensitivity", SchemaEntry::new("Mouse sensitivity multiplier", 1.0_f64).label("Mouse Sensitivity").page("Input").field_type(FieldType::Slider { min: 0.1, max: 5.0, step: 0.1 }).validator(Validator::float_range(0.1, 5.0)))
+        .setting("invert_y_axis",     SchemaEntry::new("Invert mouse Y axis", false).label("Invert Y Axis").page("Input").field_type(FieldType::Checkbox));
+    let _ = global_config().register(NS_PROJECT, "input", schema);
+}
 
-    // Window page
-    register_setting(
-        SettingDefinition::builder("window.title")
-            .label("Window Title")
-            .description("Title displayed in the game window")
-            .page("Window")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::TextInput {
-                placeholder: Some("My Game Window".to_string()),
-                multiline: false,
-            })
-            .default_value("My Game Window")
-            .build(),
-    );
+fn register_paths_page() {
+    let schema = NamespaceSchema::new("Paths", "Project path settings")
+        .setting("assets",    SchemaEntry::new("Path to assets directory", "assets/").label("Assets Path").page("Paths").field_type(FieldType::TextInput { placeholder: Some("assets/".into()), multiline: false }))
+        .setting("shaders",   SchemaEntry::new("Path to shaders directory", "shaders/").label("Shaders Path").page("Paths").field_type(FieldType::TextInput { placeholder: Some("shaders/".into()), multiline: false }))
+        .setting("scripts",   SchemaEntry::new("Path to scripts directory", "classes/").label("Scripts Path").page("Paths").field_type(FieldType::TextInput { placeholder: Some("classes/".into()), multiline: false }))
+        .setting("savegames", SchemaEntry::new("Path to savegames directory", "saves/").label("Savegames Path").page("Paths").field_type(FieldType::TextInput { placeholder: Some("saves/".into()), multiline: false }))
+        .setting("plugins",   SchemaEntry::new("Path to plugins directory", "plugins/").label("Plugins Path").page("Paths").field_type(FieldType::TextInput { placeholder: Some("plugins/".into()), multiline: false }))
+        .setting("logs",      SchemaEntry::new("Path to logs directory", "logs/").label("Logs Path").page("Paths").field_type(FieldType::TextInput { placeholder: Some("logs/".into()), multiline: false }));
+    let _ = global_config().register(NS_PROJECT, "paths", schema);
+}
 
-    register_setting(
-        SettingDefinition::builder("window.width")
-            .label("Window Width")
-            .description("Window width in pixels")
-            .page("Window")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::NumberInput {
-                min: Some(320.0),
-                max: Some(7680.0),
-                step: Some(1.0),
-            })
-            .default_value(1280.0)
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("window.height")
-            .label("Window Height")
-            .description("Window height in pixels")
-            .page("Window")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::NumberInput {
-                min: Some(240.0),
-                max: Some(4320.0),
-                step: Some(1.0),
-            })
-            .default_value(720.0)
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("window.fullscreen")
-            .label("Fullscreen")
-            .description("Start in fullscreen mode")
-            .page("Window")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::Checkbox)
-            .default_value(false)
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("window.vsync")
-            .label("VSync")
-            .description("Enable vertical sync")
-            .page("Window")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::Checkbox)
-            .default_value(true)
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("window.resizable")
-            .label("Resizable")
-            .description("Allow window resizing")
-            .page("Window")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::Checkbox)
-            .default_value(true)
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("window.icon")
-            .label("Window Icon")
-            .description("Path to window icon")
-            .page("Window")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::TextInput {
-                placeholder: Some("assets/icon.png".to_string()),
-                multiline: false,
-            })
-            .default_value("assets/icon.png")
-            .build(),
-    );
-
-    // Graphics page
-    register_setting(
-        SettingDefinition::builder("graphics.renderer")
-            .label("Renderer")
-            .description("Graphics rendering backend")
-            .page("Graphics")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::Dropdown {
-                options: vec![
-                    DropdownOption {
-                        label: "OpenGL".to_string(),
-                        value: "OpenGL".to_string(),
-                    },
-                    DropdownOption {
-                        label: "Vulkan".to_string(),
-                        value: "Vulkan".to_string(),
-                    },
-                    DropdownOption {
-                        label: "DirectX".to_string(),
-                        value: "DirectX".to_string(),
-                    },
-                    DropdownOption {
-                        label: "Metal".to_string(),
-                        value: "Metal".to_string(),
-                    },
-                    DropdownOption {
-                        label: "Software".to_string(),
-                        value: "Software".to_string(),
-                    },
-                ],
-            })
-            .default_value("OpenGL")
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("graphics.msaa_samples")
-            .label("MSAA Samples")
-            .description("Multisample anti-aliasing samples (0 = off)")
-            .page("Graphics")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::Dropdown {
-                options: vec![
-                    DropdownOption {
-                        label: "Off".to_string(),
-                        value: "0".to_string(),
-                    },
-                    DropdownOption {
-                        label: "2x".to_string(),
-                        value: "2".to_string(),
-                    },
-                    DropdownOption {
-                        label: "4x".to_string(),
-                        value: "4".to_string(),
-                    },
-                    DropdownOption {
-                        label: "8x".to_string(),
-                        value: "8".to_string(),
-                    },
-                ],
-            })
-            .default_value("4")
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("graphics.max_fps")
-            .label("Max FPS")
-            .description("Maximum frames per second (0 = unlimited)")
-            .page("Graphics")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::NumberInput {
-                min: Some(0.0),
-                max: Some(360.0),
-                step: Some(1.0),
-            })
-            .default_value(144.0)
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("graphics.texture_filtering")
-            .label("Texture Filtering")
-            .description("Texture filtering method")
-            .page("Graphics")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::Dropdown {
-                options: vec![
-                    DropdownOption {
-                        label: "Nearest".to_string(),
-                        value: "Nearest".to_string(),
-                    },
-                    DropdownOption {
-                        label: "Linear".to_string(),
-                        value: "Linear".to_string(),
-                    },
-                    DropdownOption {
-                        label: "Anisotropic".to_string(),
-                        value: "Anisotropic".to_string(),
-                    },
-                ],
-            })
-            .default_value("Anisotropic")
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("graphics.shadow_quality")
-            .label("Shadow Quality")
-            .description("Quality of rendered shadows")
-            .page("Graphics")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::Dropdown {
-                options: vec![
-                    DropdownOption {
-                        label: "Low".to_string(),
-                        value: "Low".to_string(),
-                    },
-                    DropdownOption {
-                        label: "Medium".to_string(),
-                        value: "Medium".to_string(),
-                    },
-                    DropdownOption {
-                        label: "High".to_string(),
-                        value: "High".to_string(),
-                    },
-                    DropdownOption {
-                        label: "Ultra".to_string(),
-                        value: "Ultra".to_string(),
-                    },
-                ],
-            })
-            .default_value("High")
-            .build(),
-    );
-
-    // Audio page
-    register_setting(
-        SettingDefinition::builder("audio.master_volume")
-            .label("Master Volume")
-            .description("Master audio volume (0.0 - 1.0)")
-            .page("Audio")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::Slider {
-                min: 0.0,
-                max: 1.0,
-                step: 0.01,
-            })
-            .default_value(1.0)
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("audio.music_volume")
-            .label("Music Volume")
-            .description("Music volume (0.0 - 1.0)")
-            .page("Audio")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::Slider {
-                min: 0.0,
-                max: 1.0,
-                step: 0.01,
-            })
-            .default_value(0.8)
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("audio.sfx_volume")
-            .label("SFX Volume")
-            .description("Sound effects volume (0.0 - 1.0)")
-            .page("Audio")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::Slider {
-                min: 0.0,
-                max: 1.0,
-                step: 0.01,
-            })
-            .default_value(0.8)
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("audio.enable_3d_audio")
-            .label("Enable 3D Audio")
-            .description("Enable spatial 3D audio")
-            .page("Audio")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::Checkbox)
-            .default_value(true)
-            .build(),
-    );
-
-    // Input page
-    register_setting(
-        SettingDefinition::builder("input.mouse_sensitivity")
-            .label("Mouse Sensitivity")
-            .description("Mouse sensitivity multiplier")
-            .page("Input")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::Slider {
-                min: 0.1,
-                max: 5.0,
-                step: 0.1,
-            })
-            .default_value(1.0)
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("input.invert_y_axis")
-            .label("Invert Y Axis")
-            .description("Invert mouse Y axis")
-            .page("Input")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::Checkbox)
-            .default_value(false)
-            .build(),
-    );
-
-    // Paths page
-    register_setting(
-        SettingDefinition::builder("paths.assets")
-            .label("Assets Path")
-            .description("Path to assets directory")
-            .page("Paths")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::TextInput {
-                placeholder: Some("assets/".to_string()),
-                multiline: false,
-            })
-            .default_value("assets/")
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("paths.shaders")
-            .label("Shaders Path")
-            .description("Path to shaders directory")
-            .page("Paths")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::TextInput {
-                placeholder: Some("shaders/".to_string()),
-                multiline: false,
-            })
-            .default_value("shaders/")
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("paths.scripts")
-            .label("Scripts Path")
-            .description("Path to scripts directory")
-            .page("Paths")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::TextInput {
-                placeholder: Some("classes/".to_string()),
-                multiline: false,
-            })
-            .default_value("classes/")
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("paths.savegames")
-            .label("Savegames Path")
-            .description("Path to savegames directory")
-            .page("Paths")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::TextInput {
-                placeholder: Some("saves/".to_string()),
-                multiline: false,
-            })
-            .default_value("saves/")
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("paths.plugins")
-            .label("Plugins Path")
-            .description("Path to plugins directory")
-            .page("Paths")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::TextInput {
-                placeholder: Some("plugins/".to_string()),
-                multiline: false,
-            })
-            .default_value("plugins/")
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("paths.logs")
-            .label("Logs Path")
-            .description("Path to logs directory")
-            .page("Paths")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::TextInput {
-                placeholder: Some("logs/".to_string()),
-                multiline: false,
-            })
-            .default_value("logs/")
-            .build(),
-    );
-
-    // Build page
-    register_setting(
-        SettingDefinition::builder("build.debug")
-            .label("Debug Mode")
-            .description("Enable debug mode")
-            .page("Build")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::Checkbox)
-            .default_value(true)
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("build.optimize")
-            .label("Optimize")
-            .description("Enable optimizations")
-            .page("Build")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::Checkbox)
-            .default_value(false)
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("build.hot_reload")
-            .label("Hot Reload")
-            .description("Enable hot reload for faster iteration")
-            .page("Build")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::Checkbox)
-            .default_value(true)
-            .build(),
-    );
-
-    register_setting(
-        SettingDefinition::builder("build.target_platform")
-            .label("Target Platform")
-            .description("Platform to build for")
-            .page("Build")
-            .scope(SettingScope::Project)
-            .field_type(FieldType::Dropdown {
-                options: vec![
-                    DropdownOption {
-                        label: "Windows".to_string(),
-                        value: "windows".to_string(),
-                    },
-                    DropdownOption {
-                        label: "Linux".to_string(),
-                        value: "linux".to_string(),
-                    },
-                    DropdownOption {
-                        label: "macOS".to_string(),
-                        value: "macos".to_string(),
-                    },
-                    DropdownOption {
-                        label: "Web (WASM)".to_string(),
-                        value: "web".to_string(),
-                    },
-                ],
-            })
-            .default_value("windows")
-            .build(),
-    );
+fn register_build_page() {
+    let schema = NamespaceSchema::new("Build", "Build settings")
+        .setting("debug",    SchemaEntry::new("Enable debug mode", true).label("Debug Mode").page("Build").field_type(FieldType::Checkbox))
+        .setting("optimize", SchemaEntry::new("Enable optimizations", false).label("Optimize").page("Build").field_type(FieldType::Checkbox))
+        .setting("hot_reload", SchemaEntry::new("Enable hot reload for faster iteration", true).label("Hot Reload").page("Build").field_type(FieldType::Checkbox))
+        .setting(
+            "target_platform",
+            SchemaEntry::new("Platform to build for", "windows").label("Target Platform").page("Build")
+                .field_type(FieldType::Dropdown {
+                    options: vec![
+                        DropdownOption::new("Windows", "windows"), DropdownOption::new("Linux", "linux"),
+                        DropdownOption::new("macOS", "macos"),     DropdownOption::new("Web (WASM)", "web"),
+                    ],
+                }),
+        );
+    let _ = global_config().register(NS_PROJECT, "build", schema);
 }

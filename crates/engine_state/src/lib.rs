@@ -45,9 +45,8 @@ mod multiuser;
 pub mod context;
 pub mod renderers_typed;
 
-// Settings system
-pub mod settings_registry;
-pub mod settings_storage;
+// Settings system — backed by PulsarConfig
+pub mod settings;
 pub mod settings_defaults;
 
 pub use discord::DiscordPresence;
@@ -59,12 +58,16 @@ pub use multiuser::{MultiuserContext, MultiuserStatus};
 pub use context::{EngineContext, WindowContext, ProjectContext, LaunchContext};
 pub use renderers_typed::{TypedRendererHandle, TypedRendererRegistry, RendererType};
 
-// Re-export settings system
-pub use settings_registry::{
-    DropdownOption, FieldType, SettingDefinition, SettingScope, SettingValue,
-    SettingsRegistry, register_setting, registry,
+// Re-export settings system (PulsarConfig surface)
+pub use settings::{
+    global_config,
+    GlobalSettings, ProjectSettings,
+    NS_EDITOR, NS_PROJECT,
+    // PulsarConfig types
+    ChangeEvent, Color, ConfigError, ConfigManager, ConfigStore, ConfigValue,
+    DropdownOption, FieldType, ListenerId, NamespaceSchema, OwnerHandle,
+    PersistError, SchemaEntry, SearchResult, SettingInfo, Validator,
 };
-pub use settings_storage::{GlobalSettings, ProjectSettings, SettingsStorage};
 pub use settings_defaults::register_default_settings;
 
 // Type alias for backward compatibility - EngineState is now EngineContext

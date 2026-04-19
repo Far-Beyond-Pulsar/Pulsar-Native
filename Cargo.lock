@@ -2601,6 +2601,7 @@ dependencies = [
  "directories 5.0.1",
  "gpui-ce",
  "parking_lot",
+ "pulsar-config",
  "rust-discord-activity",
  "serde",
  "toml 0.8.23",
@@ -7874,6 +7875,16 @@ dependencies = [
  "bitflags 2.11.0",
  "memchr",
  "unicase",
+]
+
+[[package]]
+name = "pulsar-config"
+version = "0.1.0"
+dependencies = [
+ "dashmap 6.1.0",
+ "dirs 5.0.1",
+ "parking_lot",
+ "toml 0.8.23",
 ]
 
 [[package]]

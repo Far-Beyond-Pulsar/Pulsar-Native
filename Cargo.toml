@@ -78,6 +78,11 @@ plugin_manager    = { path = "crates/plugin_manager" }
 helio = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "4e1d8ea4471855452f6e8ff7921cf0790eb03a4f" }
 glam           = { version = "0.29", features = ["bytemuck"] }
 
+# ---------- PulsarConfig ----------
+pulsar-config = { path = "/Users/tristanpoland/Documents/GitHub/PulsarConfig" }
+# TODO: Switch back to git dep after pushing PulsarConfig changes:
+# pulsar-config = { git = "https://github.com/Far-Beyond-Pulsar/PulsarConfig", rev = "<new-hash>" }
+
 # ---------- Installer ----------
 # Local rustup fork used as a library to drive platform-native Rust installation.
 # curl-backend disabled: reqwest-native-tls is sufficient and avoids the curl C dep.

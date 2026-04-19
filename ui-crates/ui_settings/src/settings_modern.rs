@@ -1,6 +1,6 @@
 //! Modern Professional Settings UI - Redesigned to match engine style
 
-use engine_state::{registry, SettingDefinition, SettingValue, FieldType, DropdownOption};
+use engine_state::{global_config, SettingInfo, ConfigValue, FieldType, DropdownOption};
 use gpui::*;
 use gpui::prelude::FluentBuilder as _;
 use std::path::PathBuf;
@@ -73,12 +73,12 @@ pub struct ModernSettingsScreen {
     search_query: String,
     search_input: Entity<InputState>,
     _project_path: Option<PathBuf>,
-    pending_changes: HashMap<String, SettingValue>,
+    pending_changes: HashMap<String, ConfigValue>,
     has_unsaved_changes: bool,
     /// Cache input states to avoid recreating on every render
     input_states: HashMap<String, Entity<InputState>>,
     /// Cache filtered settings for current category
-    cached_settings: Option<(SettingsCategory, Vec<SettingDefinition>)>,
+    cached_settings: Option<(SettingsCategory, Vec<SettingInfo>)>,
     /// Cache dropdown states
     dropdown_states: HashMap<String, Entity<DropdownState<Vec<String>>>>,
     /// Cache slider states
@@ -110,7 +110,7 @@ impl ModernSettingsScreen {
         }
     }
 
-    fn get_settings_for_category(&mut self, category: SettingsCategory) -> Vec<SettingDefinition> {
+    fn get_settings_for_category(&mut self, category: SettingsCategory) -> Vec<SettingInfo> {
         // Check cache first
         if let Some((cached_cat, ref settings)) = self.cached_settings {
             if cached_cat == category {
@@ -118,26 +118,15 @@ impl ModernSettingsScreen {
             }
         }
 
-        // Cache miss - fetch and filter
-        let binding = registry();
-        let registry = binding.read();
-        let all_settings = registry.all();
+        // Cache miss - fetch and filter by page (which maps to category label)
+        let page_label = category.label();
+        let all_settings = global_config().list_all_settings();
 
-        let filtered: Vec<SettingDefinition> = all_settings
+        let filtered: Vec<SettingInfo> = all_settings
             .into_iter()
-            .filter(|def| {
-                let matches_category = match category {
-                    SettingsCategory::General => def.key.starts_with("general."),
-                    SettingsCategory::Appearance => def.key.starts_with("appearance."),
-                    SettingsCategory::Editor => def.key.starts_with("editor."),
-                    SettingsCategory::Project => def.key.starts_with("project."),
-                    SettingsCategory::Performance => def.key.starts_with("performance."),
-                    SettingsCategory::Network => def.key.starts_with("network."),
-                    SettingsCategory::Advanced => def.key.starts_with("advanced."),
-                };
-                matches_category
+            .filter(|info| {
+                info.page.as_deref() == Some(page_label)
             })
-            .cloned()
             .collect();
 
         // Update cache
@@ -171,7 +160,7 @@ impl ModernSettingsScreen {
             window,
             move |this, _state, event: &DropdownEvent<Vec<String>>, _window, cx| {
                 if let DropdownEvent::Confirm(Some(value)) = event {
-                    this.pending_changes.insert(key_clone.clone(), SettingValue::String(value.clone()));
+                    this.pending_changes.insert(key_clone.clone(), ConfigValue::String(value.clone()));
                     this.has_unsaved_changes = true;
                     cx.notify();
                 }
@@ -217,7 +206,7 @@ impl ModernSettingsScreen {
                     SliderValue::Single(v) => *v as f64,
                     SliderValue::Range(_, end) => *end as f64,
                 };
-                this.pending_changes.insert(key_clone.clone(), SettingValue::Number(num_value));
+                this.pending_changes.insert(key_clone.clone(), ConfigValue::Float(num_value));
                 this.has_unsaved_changes = true;
                 cx.notify();
             },
@@ -256,7 +245,7 @@ impl ModernSettingsScreen {
             move |this, _state, event: &ColorPickerEvent, _window, cx| {
                 if let ColorPickerEvent::Change(Some(color)) = event {
                     let hex = Self::color_to_hex(*color);
-                    this.pending_changes.insert(key_clone.clone(), SettingValue::String(hex));
+                    this.pending_changes.insert(key_clone.clone(), ConfigValue::String(hex));
                     this.has_unsaved_changes = true;
                     cx.notify();
                 }
@@ -376,7 +365,7 @@ impl ModernSettingsScreen {
             )
     }
 
-    fn render_setting_row(&mut self, definition: SettingDefinition, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_setting_row(&mut self, definition: SettingInfo, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
 
         h_flex()
@@ -396,7 +385,7 @@ impl ModernSettingsScreen {
                             .text_sm()
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(theme.foreground)
-                            .child(definition.label.clone())
+                            .child(definition.label.clone().unwrap_or_else(|| definition.key.clone()))
                     )
                     .when(!definition.description.is_empty(), |el| {
                         el.child(
@@ -414,66 +403,53 @@ impl ModernSettingsScreen {
             )
     }
 
-    fn render_setting_control(&mut self, definition: SettingDefinition, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        match &definition.field_type {
-            FieldType::Checkbox => {
-                let checked = match definition.default_value {
-                    SettingValue::Bool(v) => v,
-                    _ => false,
-                };
-                div().child(Switch::new(SharedString::from(format!("switch_{}", definition.key))).checked(checked))
+    fn render_setting_control(&mut self, definition: SettingInfo, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        match definition.field_type.as_ref() {
+            Some(FieldType::Checkbox) => {
+                let checked = definition.current_value.as_bool().unwrap_or(false);
+                div().child(Switch::new(SharedString::from(format!("switch_{}", definition.key))).checked(checked)).into_any_element()
             }
-            
-            FieldType::TextInput { .. } => {
-                // Get or create cached input state
+
+            Some(FieldType::TextInput { .. }) => {
+                let val = definition.current_value.as_str().unwrap_or("").to_string();
                 let input_state = self.input_states.entry(definition.key.clone()).or_insert_with(|| {
                     cx.new(|cx| {
                         let mut state = InputState::new(window, cx);
-                        if let SettingValue::String(val) = &definition.default_value {
-                            state.set_value(val, window, cx);
-                        }
+                        state.set_value(&val, window, cx);
                         state
                     })
                 }).clone();
-                div().child(TextInput::new(&input_state))
+                div().child(TextInput::new(&input_state)).into_any_element()
             }
-            
-            FieldType::NumberInput { .. } => {
-                // Get or create cached input state
+
+            Some(FieldType::NumberInput { .. }) => {
+                let val = definition.current_value.as_float()
+                    .or_else(|_| definition.current_value.as_int().map(|i| i as f64))
+                    .unwrap_or(0.0)
+                    .to_string();
                 let input_state = self.input_states.entry(definition.key.clone()).or_insert_with(|| {
                     cx.new(|cx| {
                         let mut state = InputState::new(window, cx);
-                        if let SettingValue::Number(val) = definition.default_value {
-                            state.set_value(&val.to_string(), window, cx);
-                        }
+                        state.set_value(&val, window, cx);
                         state
                     })
                 }).clone();
-                div().child(TextInput::new(&input_state))
+                div().child(TextInput::new(&input_state)).into_any_element()
             }
-            
-            FieldType::Dropdown { options } => {
-                let current_str = match &definition.default_value {
-                    SettingValue::String(s) => s.as_str(),
-                    _ => "",
-                };
-                
+
+            Some(FieldType::Dropdown { options }) => {
+                let current_str = definition.current_value.as_str().unwrap_or("");
                 let dropdown_state = self.get_or_create_dropdown_state(&definition.key, options, current_str, window, cx);
-                
-                div().child(Dropdown::new(&dropdown_state).w(px(200.0)))
+                div().child(Dropdown::new(&dropdown_state).w(px(200.0))).into_any_element()
             }
-            
-            FieldType::Slider { min, max, step } => {
-                let value = match definition.default_value {
-                    SettingValue::Number(v) => v,
-                    _ => *min,
-                };
-                
-                let slider_state = self.get_or_create_slider_state(&definition.key, *min, *max, *step, value, window, cx);
-                
-                // Get theme after mutable borrow
+
+            Some(FieldType::Slider { min, max, step }) => {
+                let value = definition.current_value.as_float()
+                    .or_else(|_| definition.current_value.as_int().map(|i| i as f64))
+                    .unwrap_or(*min);
+                let (min_val, max_val, step_val) = (*min, *max, *step);
+                let slider_state = self.get_or_create_slider_state(&definition.key, min_val, max_val, step_val, value, window, cx);
                 let theme = cx.theme();
-                
                 v_flex()
                     .gap_2()
                     .min_w(px(200.0))
@@ -481,50 +457,23 @@ impl ModernSettingsScreen {
                     .child(
                         h_flex()
                             .justify_between()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme.muted_foreground)
-                                    .child(format!("{}", min))
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(theme.foreground)
-                                    .child(format!("{:.1}", value))
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme.muted_foreground)
-                                    .child(format!("{}", max))
-                            )
+                            .child(div().text_xs().text_color(theme.muted_foreground).child(format!("{}", min_val)))
+                            .child(div().text_xs().font_weight(FontWeight::MEDIUM).text_color(theme.foreground).child(format!("{:.1}", value)))
+                            .child(div().text_xs().text_color(theme.muted_foreground).child(format!("{}", max_val)))
                     )
+                    .into_any_element()
             }
-            
-            FieldType::ColorPicker => {
-                let color_str = match &definition.default_value {
-                    SettingValue::String(s) => s.as_str(),
-                    _ => "#000000",
-                };
-                
+
+            Some(FieldType::ColorPicker) => {
+                let color_str = definition.current_value.as_str().unwrap_or("#000000");
                 let color_picker_state = self.get_or_create_color_picker_state(&definition.key, color_str, window, cx);
-                
-                div().child(ColorPicker::new(&color_picker_state))
+                div().child(ColorPicker::new(&color_picker_state)).into_any_element()
             }
-            
-            FieldType::PathSelector { directory } => {
-                let path = match &definition.default_value {
-                    SettingValue::String(s) => s.clone(),
-                    _ => String::new(),
-                };
-                
+
+            Some(FieldType::PathSelector { directory }) => {
+                let path = definition.current_value.as_str().unwrap_or("").to_string();
                 let is_dir = *directory;
-                
-                // Get theme after extracting values
                 let theme = cx.theme();
-                
                 h_flex()
                     .gap_2()
                     .child(
@@ -539,28 +488,17 @@ impl ModernSettingsScreen {
                             .child(
                                 div()
                                     .text_sm()
-                                    .text_color(if path.is_empty() {
-                                        theme.muted_foreground
-                                    } else {
-                                        theme.foreground
-                                    })
+                                    .text_color(if path.is_empty() { theme.muted_foreground } else { theme.foreground })
                                     .child(if path.is_empty() {
-                                        if is_dir {
-                                            "No directory selected".to_string()
-                                        } else {
-                                            "No file selected".to_string()
-                                        }
-                                    } else {
-                                        path.clone()
-                                    })
+                                        if is_dir { "No directory selected".to_string() } else { "No file selected".to_string() }
+                                    } else { path.clone() })
                             )
                     )
-                    .child(
-                        Button::new(SharedString::from(format!("browse_{}", definition.key)))
-                            .label("Browse...")
-                            .ghost()
-                    )
+                    .child(Button::new(SharedString::from(format!("browse_{}", definition.key))).label("Browse...").ghost())
+                    .into_any_element()
             }
+
+            None => div().into_any_element(),
         }
     }
 
@@ -626,7 +564,7 @@ impl ModernSettingsScreen {
 #[derive(Clone)]
 pub struct SettingChanged {
     pub key: String,
-    pub value: SettingValue,
+    pub value: ConfigValue,
 }
 
 impl EventEmitter<SettingChanged> for ModernSettingsScreen {}
