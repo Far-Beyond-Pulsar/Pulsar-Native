@@ -6,7 +6,7 @@
 
 <p align="center">
   <!-- Replace src with your logo -->
-  <img src="https://github.com/user-attachments/assets/b8ec0edd-3de9-4b62-8a4e-f1817a9a32aa" alt="Pulsar Engine Logo (Coming soon)" width="200" />
+  <img width="256" height="256" alt="logo_sqrkl_mac" src="https://github.com/user-attachments/assets/e36bfc3b-f5e8-437e-a50a-967ee254a0eb" />
 </p>
 
 <h1 align="center">Pulsar Engine</h1>
