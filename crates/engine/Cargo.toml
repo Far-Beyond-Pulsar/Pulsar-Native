@@ -68,3 +68,16 @@ tempfile = "3.8"
 
 [lints]
 workspace = true
+
+[package.metadata.bundle]
+name = "Pulsar"
+identifier = "dev.pulsar.engine"
+icon = ["assets/images/logo_sqrkl.icns"]
+copyright = "Copyright © 2025-2026 Tristan J. Poland"
+category = "Developer Tool"
+short_description = "A modern high-performance game engine"
+long_description = "Pulsar is a modern, high-performance game and simulation engine written in Rust."
+
+[package.metadata.bundle.macos]
+minimum_system_version = "12.0"
+high_resolution_capable = true

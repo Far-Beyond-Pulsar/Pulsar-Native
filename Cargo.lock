@@ -3742,7 +3742,7 @@ dependencies = [
 [[package]]
 name = "gpui-ce"
 version = "0.3.3"
-source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI?rev=a22cd74d2f9acf657309675dce1118e9b74da35e#a22cd74d2f9acf657309675dce1118e9b74da35e"
+source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI?rev=38ae94c8cca2f1fc84ec5c5649066afd9f6d2dcc#38ae94c8cca2f1fc84ec5c5649066afd9f6d2dcc"
 dependencies = [
  "anyhow",
  "async-task",
@@ -3771,6 +3771,9 @@ dependencies = [
  "log",
  "lyon",
  "num_cpus",
+ "objc2 0.5.2",
+ "objc2-app-kit 0.2.2",
+ "objc2-foundation 0.2.2",
  "parking",
  "parking_lot",
  "pathfinder_geometry",
