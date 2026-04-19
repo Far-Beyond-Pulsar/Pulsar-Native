@@ -1,6 +1,7 @@
 impl FileManagerDrawer {
     pub fn render_content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        h_resizable("file-manager-resizable", self.resizable_state.clone())
+        h_resizable("file-manager-resizable")
+            .state(self.resizable_state.clone())
             .child(
                 resizable_panel()
                     .child(self.render_folder_tree(window, cx))

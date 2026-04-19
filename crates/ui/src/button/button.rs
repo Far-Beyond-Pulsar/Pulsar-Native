@@ -2,11 +2,12 @@ use crate::{
     h_flex, indicator::Indicator, tooltip::Tooltip, ActiveTheme, Colorize as _, Disableable,
     FocusableExt as _, Icon, Selectable, Sizable, Size, StyleSized, StyledExt,
 };
+use crate::popup_menu::{PopupMenu, PopupMenuExt};
 use gpui::{
     div, prelude::FluentBuilder as _, px, relative, Action, AnyElement, App, ClickEvent, Corners,
-    Div, Edges, ElementId, Hsla, InteractiveElement, Interactivity, IntoElement, ParentElement,
-    Pixels, RenderOnce, SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement,
-    Styled, Window,
+    Context, Corner, Div, Edges, ElementId, Hsla, InteractiveElement, Interactivity,
+    IntoElement, ParentElement, Pixels, RenderOnce, SharedString, Stateful,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, Window,
 };
 use std::rc::Rc;
 
@@ -203,6 +204,7 @@ pub struct Button {
     pub(crate) stop_propagation: bool,
     loading: bool,
     loading_icon: Option<Icon>,
+    dropdown_caret: bool,
 
     tab_index: isize,
     tab_stop: bool,
@@ -241,6 +243,7 @@ impl Button {
             outline: false,
             children: Vec::new(),
             loading_icon: None,
+            dropdown_caret: false,
             tab_index: 0,
             tab_stop: true,
         }
@@ -332,6 +335,19 @@ impl Button {
     pub fn loading_icon(mut self, icon: impl Into<Icon>) -> Self {
         self.loading_icon = Some(icon.into());
         self
+    }
+
+    pub fn dropdown_caret(mut self, dropdown_caret: bool) -> Self {
+        self.dropdown_caret = dropdown_caret;
+        self
+    }
+
+    pub fn dropdown_menu_with_anchor(
+        self,
+        anchor: impl Into<Corner>,
+        f: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static,
+    ) -> crate::popover::Popover<PopupMenu> {
+        self.popup_menu_with_anchor(anchor, f)
     }
 
     /// Set the tab index of the button, it will be used to focus the button by tab key.
@@ -550,6 +566,9 @@ impl RenderOnce for Button {
                     })
                     .when_some(self.label, |this, label| {
                         this.child(div().flex_none().line_height(relative(1.)).child(label))
+                    })
+                    .when(self.dropdown_caret, |this| {
+                        this.child(Icon::from(crate::IconName::ChevronDown).with_size(icon_size))
                     })
                     .children(self.children)
             })

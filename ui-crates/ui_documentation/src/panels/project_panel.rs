@@ -41,7 +41,8 @@ impl ProjectDocsPanel {
             Self::render_tree_node(node, state, on_toggle_expansion.clone(), on_load_content.clone(), cx)
         }).collect();
 
-        h_resizable("docs-horizontal", sidebar_resizable)
+        h_resizable("docs-horizontal")
+            .state(sidebar_resizable)
             .child(
                 resizable_panel()
                     .size(px(280.0))

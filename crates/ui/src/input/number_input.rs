@@ -1,7 +1,7 @@
 use gpui::{
     actions, prelude::FluentBuilder as _, px, AnyElement, App, Context, Entity, EventEmitter,
     FocusHandle, Focusable, InteractiveElement, IntoElement, KeyBinding, ParentElement, RenderOnce,
-    SharedString, Styled, Window,
+    SharedString, StyleRefinement, Styled, Window,
 };
 
 use crate::{
@@ -25,6 +25,7 @@ pub fn init(cx: &mut App) {
 #[derive(IntoElement)]
 pub struct NumberInput {
     state: Entity<InputState>,
+    style: StyleRefinement,
     placeholder: SharedString,
     size: Size,
     prefix: Option<AnyElement>,
@@ -38,6 +39,7 @@ impl NumberInput {
     pub fn new(state: &Entity<InputState>) -> Self {
         Self {
             state: state.clone(),
+            style: StyleRefinement::default(),
             size: Size::default(),
             placeholder: SharedString::default(),
             prefix: None,
@@ -93,6 +95,12 @@ impl Disableable for NumberInput {
     }
 }
 
+impl Styled for NumberInput {
+    fn style(&mut self) -> &mut StyleRefinement {
+        &mut self.style
+    }
+}
+
 impl InputState {
     fn on_action_increment(&mut self, _: &Increment, window: &mut Window, cx: &mut Context<Self>) {
         self.on_number_input_step(StepAction::Increment, window, cx);
@@ -139,6 +147,7 @@ impl RenderOnce for NumberInput {
 
         h_flex()
             .id(("number-input", self.state.entity_id()))
+            .refine_style(&self.style)
             .key_context(KEY_CONTENT)
             .on_action(window.listener_for(&self.state, InputState::on_action_increment))
             .on_action(window.listener_for(&self.state, InputState::on_action_decrement))

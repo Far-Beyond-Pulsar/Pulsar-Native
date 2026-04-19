@@ -327,6 +327,13 @@ impl From<TextView> for Text {
 }
 
 impl Text {
+    pub fn get_text(&self, _cx: &App) -> String {
+        match self {
+            Self::String(s) => s.to_string(),
+            Self::TextView(_) => String::new(),
+        }
+    }
+
     /// Set the style for [`TextView`].
     ///
     /// Do nothing if this is `String`.

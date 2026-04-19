@@ -383,7 +383,8 @@ impl FileSyncUI {
                     div()
                         .flex_1()
                         .child(
-                            h_resizable("diff-split", self.diff_split.clone())
+                            h_resizable("diff-split")
+                                .state(self.diff_split.clone())
                                 .child(
                                     resizable_panel()
                                         .child(
@@ -494,7 +495,8 @@ impl Render for FileSyncUI {
                 div()
                     .flex_1()
                     .child(
-                        h_resizable("file-sync-split", self.file_list_split.clone())
+                        h_resizable("file-sync-split")
+                            .state(self.file_list_split.clone())
                             .child(
                         resizable_panel()
                             .size(px(280.))

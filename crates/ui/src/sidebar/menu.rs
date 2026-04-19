@@ -62,6 +62,7 @@ pub struct SidebarMenuItem {
     label: SharedString,
     handler: Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>,
     active: bool,
+    default_open: bool,
     collapsed: bool,
     children: Vec<Self>,
     suffix: Option<AnyElement>,
@@ -76,6 +77,7 @@ impl SidebarMenuItem {
             label: label.into(),
             handler: Rc::new(|_, _, _| {}),
             active: false,
+            default_open: false,
             collapsed: false,
             children: Vec::new(),
             suffix: None,
@@ -97,6 +99,11 @@ impl SidebarMenuItem {
     /// Set the active state of the menu item
     pub fn active(mut self, active: bool) -> Self {
         self.active = active;
+        self
+    }
+
+    pub fn default_open(mut self, default_open: bool) -> Self {
+        self.default_open = default_open;
         self
     }
 
@@ -132,7 +139,7 @@ impl SidebarMenuItem {
 
     fn is_open(&self) -> bool {
         if self.is_submenu() {
-            self.active
+            self.active || self.default_open
         } else {
             false
         }

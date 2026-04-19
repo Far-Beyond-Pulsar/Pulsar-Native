@@ -730,7 +730,8 @@ impl Render for FlamegraphWindow {
                     .when(has_data && !is_profiling, |this| {
                         // Show flamegraph viewer only when not profiling and data exists
                         this.child(
-                            h_resizable("flamegraph-resizable", self.resizable_state.clone())
+                            h_resizable("flamegraph-resizable")
+                                .state(self.resizable_state.clone())
                                 .child(
                                     resizable_panel()
                                         .child(self.view.clone())

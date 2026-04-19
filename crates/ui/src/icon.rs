@@ -9,6 +9,9 @@ use gpui::{
 pulsar_macros::generate_icon_enum!("../../assets/icons");
 
 impl IconName {
+    #[allow(non_upper_case_globals)]
+    pub const Undo2: IconName = IconName::Undo;
+
     /// Return the icon as a Entity<Icon>
     pub fn view(self, cx: &mut App) -> Entity<Icon> {
         Icon::build(self).view(cx)

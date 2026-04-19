@@ -417,7 +417,8 @@ impl Render for StackPanel {
             .overflow_hidden()
             // NO BACKGROUND - allow transparency for viewports (same as TabPanel)
             .child(
-                ResizablePanelGroup::new("stack-panel-group", self.state.clone())
+                ResizablePanelGroup::new("stack-panel-group")
+                    .state(self.state.clone())
                     .axis(self.axis)
                     .children(self.panels.clone().into_iter().map(|panel| {
                         resizable_panel()

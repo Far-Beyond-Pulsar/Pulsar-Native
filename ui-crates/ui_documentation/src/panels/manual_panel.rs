@@ -48,7 +48,8 @@ impl ManualDocsPanel {
             .and_then(|n| n.to_str())
             .map(|s| s.to_string());
 
-        h_resizable("docs-horizontal", sidebar_resizable)
+        h_resizable("docs-horizontal")
+            .state(sidebar_resizable)
             .child(
                 resizable_panel()
                     .size(px(260.0))

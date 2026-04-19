@@ -14,6 +14,8 @@ pub enum GroupBoxVariant {
     Outline,
 }
 
+pub type GroupBoxVariants = GroupBoxVariant;
+
 /// GroupBox is a styled container element that with
 /// an optional title to groups related content together.
 #[derive(IntoElement)]
@@ -44,6 +46,10 @@ impl GroupBox {
     pub fn variant(mut self, variant: GroupBoxVariant) -> Self {
         self.variant = variant;
         self
+    }
+
+    pub fn with_variant(self, variant: GroupBoxVariant) -> Self {
+        self.variant(variant)
     }
 
     /// Set to use Fill variant.

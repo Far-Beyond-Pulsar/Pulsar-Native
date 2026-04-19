@@ -6,7 +6,7 @@ pub mod app_menu_bar;
 pub use app_menu_bar::{AppMenuBar, AppMenusCache};
 pub mod context_menu;
 pub mod popup_menu;
-pub(crate) use popup_menu::PopupMenuItem;
+pub use popup_menu::{PopupMenu, PopupMenuExt as DropdownMenu, PopupMenuItem};
 
 pub(crate) fn init(cx: &mut App) {
     app_menu_bar::init(cx);

@@ -59,7 +59,7 @@ pub trait PopupMenuExt: Styled + Selectable + InteractiveElement + IntoElement +
 }
 impl PopupMenuExt for Button {}
 
-pub(crate) enum PopupMenuItem {
+pub enum PopupMenuItem {
     Separator,
     Label(SharedString),
     Item {
@@ -87,6 +87,46 @@ pub(crate) enum PopupMenuItem {
 }
 
 impl PopupMenuItem {
+    /// Create a plain clickable popup menu item.
+    pub fn new(label: impl Into<SharedString>) -> Self {
+        Self::Item {
+            icon: None,
+            label: label.into(),
+            disabled: false,
+            is_link: false,
+            action: None,
+            handler: None,
+        }
+    }
+
+    /// Mark the item as checked.
+    pub fn checked(mut self, checked: bool) -> Self {
+        if checked {
+            if let PopupMenuItem::Item { icon, .. } = &mut self {
+                *icon = Some(IconName::Check.into());
+            }
+        }
+        self
+    }
+
+    /// Attach a click handler to this item.
+    pub fn on_click(
+        mut self,
+        handler: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        if let PopupMenuItem::Item {
+            handler: item_handler,
+            ..
+        } = &mut self
+        {
+            *item_handler = Some(Rc::new(move |window, cx| {
+                let event = gpui::ClickEvent::default();
+                handler(&event, window, cx);
+            }));
+        }
+        self
+    }
+
     #[inline]
     fn is_clickable(&self) -> bool {
         !matches!(self, PopupMenuItem::Separator)
@@ -239,6 +279,15 @@ impl PopupMenu {
     /// Add label
     pub fn label(mut self, label: impl Into<SharedString>) -> Self {
         self.menu_items.push(PopupMenuItem::Label(label.into()));
+        self
+    }
+
+    /// Add a fully constructed popup menu item.
+    pub fn item(mut self, item: PopupMenuItem) -> Self {
+        if matches!(item, PopupMenuItem::Item { icon: Some(_), .. }) {
+            self.has_icon = true;
+        }
+        self.menu_items.push(item);
         self
     }
 
