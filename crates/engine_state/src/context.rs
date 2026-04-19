@@ -14,7 +14,7 @@ use dashmap::DashMap;
 use type_db::TypeDatabase;
 use ui_types_common::window_types::{WindowRequest, WindowId};
 
-use crate::{DiscordPresence, channels::WindowRequestSender};
+use crate::DiscordPresence;
 
 
 use gpui::{WindowOptions, Window, AnyView, Render, IntoElement, Context};
@@ -129,9 +129,6 @@ pub struct EngineContext {
     /// Global type database for reflection
     pub type_database: Arc<RwLock<Option<Arc<TypeDatabase>>>>,
 
-    /// Window request channel sender
-    pub window_sender: Arc<RwLock<Option<WindowRequestSender>>>,
-
     /// Window count
     pub window_count: Arc<parking_lot::Mutex<usize>>,
 
@@ -165,7 +162,6 @@ impl EngineContext {
             discord: Arc::new(RwLock::new(None)),
             multiuser: Arc::new(RwLock::new(None)),
             type_database: Arc::new(RwLock::new(None)),
-            window_sender: Arc::new(RwLock::new(None)),
             window_count: Arc::new(parking_lot::Mutex::new(0)),
             renderers: crate::renderers_typed::TypedRendererRegistry::new(),
             next_id: Arc::new(AtomicU64::new(1)),
@@ -174,30 +170,12 @@ impl EngineContext {
         }
     }
 
-    /// Set window request sender (builder pattern)
-    pub fn with_window_sender(self, sender: WindowRequestSender) -> Self {
-        *self.window_sender.write() = Some(sender);
-        self
-    }
-
     /// Allocate the next unique window ID
     pub fn next_window_id(&self) -> WindowId {
         self.next_id.fetch_add(1, Ordering::SeqCst)
     }
 
-    /// Request a new window
-    pub fn request_window(&self, request: WindowRequest) {
-        tracing::info!("request_window called: {:?}", request);
-        let sender = self.window_sender.read();
-        if let Some(sender) = sender.as_ref() {
-            match sender.send(request) {
-                Ok(()) => tracing::info!("Window request sent successfully"),
-                Err(e) => tracing::error!("Failed to send window request: {}", e),
-            }
-        } else {
-            tracing::error!("Window sender not initialized!");
-        }
-    }
+
 
     /// Register a window context
     pub fn register_window(&self, window_id: WindowId, context: WindowContext) {

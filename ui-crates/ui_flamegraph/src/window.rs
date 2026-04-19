@@ -58,7 +58,7 @@ impl FlamegraphWindow {
 
         // Create database file in project directory
         if let Some(project_path) = engine_state::get_project_path() {
-            match profiling::database::ensure_profiling_dir(project_path) {
+            match profiling::database::ensure_profiling_dir(&project_path) {
                 Ok(profiling_dir) => {
                     let db_filename = profiling::database::generate_db_filename();
                     let db_path = profiling_dir.join(&db_filename);
@@ -180,7 +180,7 @@ impl FlamegraphWindow {
     fn open_file_dialog(&mut self, cx: &mut Context<Self>) {
         if let Some(project_path) = engine_state::get_project_path() {
             // List available sessions
-            match profiling::database::list_profiling_sessions(project_path) {
+            match profiling::database::list_profiling_sessions(&project_path) {
                 Ok(sessions) => {
                     tracing::trace!("[PROFILER] Found {} profiling sessions", sessions.len());
                     if let Some(latest) = sessions.first() {

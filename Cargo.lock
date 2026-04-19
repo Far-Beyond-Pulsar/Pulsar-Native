@@ -8068,6 +8068,7 @@ name = "pulsar_replication"
 version = "0.1.0"
 dependencies = [
  "gpui-ce",
+ "parking_lot",
  "serde",
  "serde_json",
  "tracing",

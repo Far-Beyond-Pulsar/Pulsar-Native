@@ -13,37 +13,23 @@ pub enum WindowCommand {
     UpdateTitle(UpdateTitleCommand),
 }
 
+/// Metadata for a window-create command.
+///
+/// The content builder is intentionally **not** stored here — it is passed
+/// directly to `cx.open_window` in `WindowManager::create_window` so that we
+/// never need a dummy/panic closure to satisfy this struct's constructor.
+#[derive(Debug)]
 pub struct CreateWindowCommand {
     pub window_type: WindowRequest,
     pub options: WindowOptions,
-    pub content_builder: Box<dyn FnOnce(&mut Window, &mut App) -> AnyView + Send>,
     pub parent_window: Option<WindowId>,
 }
 
-impl std::fmt::Debug for CreateWindowCommand {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CreateWindowCommand")
-            .field("window_type", &self.window_type)
-            .field("options", &"WindowOptions { ... }")
-            .field("content_builder", &"<closure>")
-            .field("parent_window", &self.parent_window)
-            .finish()
-    }
-}
-
 impl CreateWindowCommand {
-    pub fn new<F>(
-        window_type: WindowRequest,
-        options: WindowOptions,
-        content_builder: F,
-    ) -> Self
-    where
-        F: FnOnce(&mut Window, &mut App) -> AnyView + Send + 'static,
-    {
+    pub fn new(window_type: WindowRequest, options: WindowOptions) -> Self {
         Self {
             window_type,
             options,
-            content_builder: Box::new(content_builder),
             parent_window: None,
         }
     }

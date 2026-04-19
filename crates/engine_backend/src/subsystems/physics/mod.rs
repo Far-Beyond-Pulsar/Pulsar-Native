@@ -1,5 +1,7 @@
 use rapier3d::prelude::*;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
 use crate::subsystems::framework::{Subsystem, SubsystemContext, SubsystemError, SubsystemId, subsystem_ids};
 use crate::services::PhysicsQueryService;
 
@@ -66,8 +68,9 @@ pub struct PhysicsEngine {
     // Query service for raycasting
     pub query_service: Arc<PhysicsQueryService>,
 
-    // Task handle for cleanup
-    task_handle: Option<tokio::task::JoinHandle<()>>,
+    // Shutdown flag and thread handle for cleanup
+    running: Arc<AtomicBool>,
+    task_handle: Option<thread::JoinHandle<()>>,
 }
 
 impl PhysicsEngine {
@@ -93,6 +96,7 @@ impl PhysicsEngine {
             collider_set: collider_set_arc,
             rigid_body_set: rigid_body_set_arc,
             query_service,
+            running: Arc::new(AtomicBool::new(false)),
             task_handle: None,
         }
     }
@@ -142,24 +146,30 @@ impl Subsystem for PhysicsEngine {
         let world = self.world.clone();
         let rigid_body_set = self.rigid_body_set.clone();
         let collider_set = self.collider_set.clone();
+        let running = self.running.clone();
 
-        // Spawn physics loop on the provided runtime
-        let handle = context.runtime.spawn(async move {
-            profiling::set_thread_name("Physics Thread");
+        running.store(true, Ordering::Relaxed);
 
-            loop {
-                profiling::profile_scope!("Physics::Step");
+        // Spawn a dedicated OS thread — physics mutexes are std::sync, not async-safe.
+        let handle = thread::Builder::new()
+            .name("Pulsar-Physics".into())
+            .spawn(move || {
+                profiling::set_thread_name("Physics Thread");
 
-                {
-                    let mut w = world.lock().unwrap_or_else(|e| e.into_inner());
-                    let mut bodies = rigid_body_set.lock().unwrap_or_else(|e| e.into_inner());
-                    let mut colliders = collider_set.lock().unwrap_or_else(|e| e.into_inner());
-                    w.step(&gravity, &integration_parameters, &mut bodies, &mut colliders);
+                while running.load(Ordering::Relaxed) {
+                    profiling::profile_scope!("Physics::Step");
+
+                    {
+                        let mut w = world.lock().unwrap_or_else(|e| e.into_inner());
+                        let mut bodies = rigid_body_set.lock().unwrap_or_else(|e| e.into_inner());
+                        let mut colliders = collider_set.lock().unwrap_or_else(|e| e.into_inner());
+                        w.step(&gravity, &integration_parameters, &mut bodies, &mut colliders);
+                    }
+
+                    thread::sleep(std::time::Duration::from_millis(8)); // ~120 Hz
                 }
-
-                tokio::time::sleep(std::time::Duration::from_millis(8)).await; // Approx ~120 FPS
-            }
-        });
+            })
+            .expect("failed to spawn physics thread");
 
         self.task_handle = Some(handle);
         tracing::info!("✓ Physics engine initialized and running");
@@ -172,9 +182,10 @@ impl Subsystem for PhysicsEngine {
 
         tracing::debug!("Shutting down physics engine");
 
+        self.running.store(false, Ordering::Relaxed);
         if let Some(handle) = self.task_handle.take() {
-            handle.abort();
-            tracing::info!("✓ Physics task stopped");
+            let _ = handle.join();
+            tracing::info!("✓ Physics thread stopped");
         }
 
         Ok(())

@@ -15,10 +15,6 @@ pub mod gizmo_interaction_controller;
 pub use gpu_renderer::GpuRenderer;
 pub use lsp_completion_provider::GlobalRustAnalyzerCompletionProvider;
 pub use path_utils::path_to_uri;
-pub use rust_analyzer_manager::RustAnalyzerManager;
+pub use rust_analyzer_manager::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager};
 pub use physics_query_service::{PhysicsQueryService, RaycastHit, ColliderTag, GizmoType};
 pub use gizmo_interaction_controller::{GizmoInteractionController, InteractionState, DragState};
-
-// Re-exports from the pulsar_lsp crate — callers can use either path.
-pub use pulsar_lsp::rust_analyzer::{AnalyzerEvent, AnalyzerStatus};
-pub use pulsar_lsp::rust_analyzer::path_to_uri as lsp_path_to_uri;

@@ -135,21 +135,11 @@ impl PulsarApp {
 
         // Store project_path before moving it
         let has_project = project_path.is_some();
-        
-        // Set project path in engine_state for access from other crates
+
+        // Propagate project path into EngineContext so all subsystems can read it.
         if let Some(ref path) = project_path {
-            let path_str = path.to_string_lossy().to_string();
-            tracing::trace!("[ENGINE_STATE DEBUG] ========================================");
-            tracing::trace!("[ENGINE_STATE DEBUG] Setting project path to: {:?}", path);
-            tracing::trace!("[ENGINE_STATE DEBUG] As string: {:?}", path_str);
-            engine_state::set_project_path(path_str.clone());
-            tracing::trace!("[ENGINE_STATE DEBUG] Verification - get_project_path(): {:?}", engine_state::get_project_path());
-            tracing::trace!("[ENGINE_STATE DEBUG] ========================================");
+            engine_state::set_project_path(path.to_string_lossy().into_owned());
             tracing::info!("Set engine project path to {:?}", path);
-        } else {
-            tracing::trace!("[ENGINE_STATE DEBUG] ========================================");
-            tracing::trace!("[ENGINE_STATE DEBUG] NO PROJECT PATH - project_path is None");
-            tracing::trace!("[ENGINE_STATE DEBUG] ========================================");
         }
 
         // Create drawers

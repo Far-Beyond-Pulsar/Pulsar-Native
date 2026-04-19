@@ -68,14 +68,12 @@ impl WindowManager {
         V: Render + 'static,
         F: FnOnce(&mut Window, &mut App) -> gpui::Entity<V> + Send + 'static,
     {
-        // Create a dummy command just for telemetry and validation
-        // We can't store the actual content_builder in the command since it's not clone-able
-        let dummy_content: Box<dyn Fn(&mut Window, &mut App) -> gpui::AnyView + Send> = 
-            Box::new(|_, _| panic!("dummy content builder should never be called"));
+        // Build metadata-only command for telemetry, validation, and hooks.
+        // The content_builder is passed directly to cx.open_window below —
+        // no dummy/panic closure is needed.
         let command = WindowCommand::Create(CreateWindowCommand::new(
             window_type.clone(),
             WindowOptions::default(),
-            dummy_content,
         ));
 
         self.telemetry.record_command_executed(&command);

@@ -38,7 +38,6 @@
 //! handle.as_helio::<Mutex<GpuRenderer>>() // Returns Option
 //! ```
 
-mod channels;
 mod discord;
 mod multiuser;
 
@@ -80,30 +79,23 @@ pub use settings_defaults::register_default_settings;
 #[deprecated(since = "0.2.0", note = "Use EngineContext instead - provides typed context fields")]
 pub type EngineState = EngineContext;
 
-// Project path storage for backward compatibility
-use std::sync::OnceLock;
-static PROJECT_PATH: OnceLock<String> = OnceLock::new();
-
-/// Get the current project path (compatibility function)
+/// Set the current project path.
 ///
-/// Returns the project path as a static string slice.
-/// This uses a separate static storage for backward compatibility.
-pub fn get_project_path() -> Option<&'static str> {
-    PROJECT_PATH.get().map(|s| s.as_str())
-}
-
-/// Set the current project path (compatibility function)
-///
-/// Stores the path both in the static storage and in EngineContext if available.
+/// Updates `EngineContext::project` so that all subsystems that read the
+/// context get the new value immediately.  The old write-once `OnceLock`
+/// static has been removed — use `EngineContext::global()` to read the path.
 pub fn set_project_path(path: String) {
-    // Update EngineContext if available
     if let Some(ctx) = EngineContext::global() {
-        let project_ctx = ProjectContext::new(std::path::PathBuf::from(path.clone()));
+        let project_ctx = ProjectContext::new(std::path::PathBuf::from(path));
         ctx.set_project(project_ctx);
     }
+}
 
-    // Also update static storage for backward compatibility
-    let _ = PROJECT_PATH.set(path);
+/// Get the current project path from EngineContext.
+pub fn get_project_path() -> Option<String> {
+    EngineContext::global().and_then(|ctx| {
+        ctx.project.read().as_ref().map(|p| p.path.to_string_lossy().into_owned())
+    })
 }
 
 pub use ui_types_common::window_types::{WindowRequest, WindowId};
