@@ -120,7 +120,7 @@ impl ModernSettingsScreen {
 
         // Cache miss - fetch and filter
         let binding = registry();
-        let registry = binding.read().unwrap();
+        let registry = binding.read();
         let all_settings = registry.all();
 
         let filtered: Vec<SettingDefinition> = all_settings

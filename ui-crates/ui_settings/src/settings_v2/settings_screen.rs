@@ -50,7 +50,6 @@ impl SettingsScreenV2 {
         // Get the first page for the active tab
         let active_page = registry()
             .read()
-            .unwrap()
             .get_pages(SettingScope::Global)
             .first()
             .cloned()
@@ -339,7 +338,6 @@ impl SettingsScreenV2 {
                     // Fallback to registry default
                     registry()
                         .read()
-                        .unwrap()
                         .get(key)
                         .map(|def| def.default_value.clone())
                         .unwrap_or(SettingValue::String(String::new()))
@@ -419,7 +417,6 @@ impl SettingsScreenV2 {
 
             self.active_page = registry()
                 .read()
-                .unwrap()
                 .get_pages(scope)
                 .first()
                 .cloned()
@@ -642,7 +639,7 @@ impl SettingsScreenV2 {
             SettingsTab::Project => SettingScope::Project,
         };
 
-        let pages = registry().read().unwrap().get_pages(scope);
+        let pages = registry().read().get_pages(scope);
 
         v_flex()
             .w(px(280.0))
@@ -970,7 +967,7 @@ impl SettingsScreenV2 {
         // Collect settings into a vector to avoid borrowing issues
         let settings: Vec<_> = {
             let reg = registry();
-            let reg_guard = reg.read().unwrap();
+            let reg_guard = reg.read();
             reg_guard
                 .get_by_scope_and_page(scope, &self.active_page)
                 .into_iter()
