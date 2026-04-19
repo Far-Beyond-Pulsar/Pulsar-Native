@@ -1,8 +1,6 @@
 use crate::settings_modern::ModernSettingsScreen;
 use gpui::*;
-use ui::{
-    v_flex, ActiveTheme, TitleBar,
-};
+use ui::{v_flex, ActiveTheme, TitleBar};
 
 pub struct SettingsWindow {
     settings_screen: Option<Entity<ModernSettingsScreen>>,

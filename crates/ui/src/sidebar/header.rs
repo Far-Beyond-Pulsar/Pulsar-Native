@@ -1,26 +1,39 @@
 use gpui::{
-    prelude::FluentBuilder as _, Div, InteractiveElement, IntoElement, ParentElement, RenderOnce,
-    Styled,
+    AnyElement, Div, InteractiveElement, IntoElement, ParentElement, RenderOnce, StyleRefinement,
+    Styled, div, prelude::FluentBuilder as _,
 };
 
-use crate::{h_flex, popup_menu::PopupMenuExt, ActiveTheme as _, Collapsible, Selectable};
+use crate::{ActiveTheme as _, Collapsible, Selectable, StyledExt, menu::DropdownMenu};
 
+/// Header for the [`super::Sidebar`]
 #[derive(IntoElement)]
 pub struct SidebarHeader {
     base: Div,
+    style: StyleRefinement,
+    children: Vec<AnyElement>,
     selected: bool,
     collapsed: bool,
 }
 
 impl SidebarHeader {
+    /// Create a new [`SidebarHeader`].
     pub fn new() -> Self {
         Self {
-            base: h_flex().gap_2().w_full(),
+            base: div(),
+            style: StyleRefinement::default(),
+            children: Vec::new(),
             selected: false,
             collapsed: false,
         }
     }
 }
+
+impl Default for SidebarHeader {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Selectable for SidebarHeader {
     fn selected(mut self, selected: bool) -> Self {
         self.selected = selected;
@@ -42,14 +55,16 @@ impl Collapsible for SidebarHeader {
         self
     }
 }
+
 impl ParentElement for SidebarHeader {
     fn extend(&mut self, elements: impl IntoIterator<Item = gpui::AnyElement>) {
-        self.base.extend(elements);
+        self.children.extend(elements);
     }
 }
+
 impl Styled for SidebarHeader {
     fn style(&mut self) -> &mut gpui::StyleRefinement {
-        self.base.style()
+        &mut self.style
     }
 }
 
@@ -59,16 +74,19 @@ impl InteractiveElement for SidebarHeader {
     }
 }
 
-impl PopupMenuExt for SidebarHeader {}
+impl DropdownMenu for SidebarHeader {}
+
 impl RenderOnce for SidebarHeader {
     fn render(self, _: &mut gpui::Window, cx: &mut gpui::App) -> impl gpui::IntoElement {
-        h_flex()
+        self.base
             .id("sidebar-header")
+            .h_flex()
             .gap_2()
             .p_2()
             .w_full()
             .justify_between()
             .rounded(cx.theme().radius)
+            .refine_style(&self.style)
             .hover(|this| {
                 this.bg(cx.theme().sidebar_accent)
                     .text_color(cx.theme().sidebar_accent_foreground)
@@ -77,6 +95,6 @@ impl RenderOnce for SidebarHeader {
                 this.bg(cx.theme().sidebar_accent)
                     .text_color(cx.theme().sidebar_accent_foreground)
             })
-            .child(self.base)
+            .children(self.children)
     }
 }

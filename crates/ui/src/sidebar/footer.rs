@@ -1,10 +1,11 @@
 use gpui::{
-    prelude::FluentBuilder as _, Div, InteractiveElement, IntoElement, ParentElement, RenderOnce,
-    Styled,
+    Div, InteractiveElement, IntoElement, ParentElement, RenderOnce, Styled,
+    prelude::FluentBuilder as _,
 };
 
-use crate::{h_flex, popup_menu::PopupMenuExt, ActiveTheme as _, Collapsible, Selectable};
+use crate::{ActiveTheme as _, Collapsible, Selectable, h_flex, menu::DropdownMenu};
 
+/// Footer for the [`super::Sidebar`].
 #[derive(IntoElement)]
 pub struct SidebarFooter {
     base: Div,
@@ -13,6 +14,7 @@ pub struct SidebarFooter {
 }
 
 impl SidebarFooter {
+    /// Create a new [`SidebarFooter`].
     pub fn new() -> Self {
         Self {
             base: h_flex().gap_2().w_full(),
@@ -21,6 +23,7 @@ impl SidebarFooter {
         }
     }
 }
+
 impl Selectable for SidebarFooter {
     fn selected(mut self, selected: bool) -> Self {
         self.selected = selected;
@@ -42,11 +45,13 @@ impl Collapsible for SidebarFooter {
         self
     }
 }
+
 impl ParentElement for SidebarFooter {
     fn extend(&mut self, elements: impl IntoIterator<Item = gpui::AnyElement>) {
         self.base.extend(elements);
     }
 }
+
 impl Styled for SidebarFooter {
     fn style(&mut self) -> &mut gpui::StyleRefinement {
         self.base.style()
@@ -59,7 +64,8 @@ impl InteractiveElement for SidebarFooter {
     }
 }
 
-impl PopupMenuExt for SidebarFooter {}
+impl DropdownMenu for SidebarFooter {}
+
 impl RenderOnce for SidebarFooter {
     fn render(self, _: &mut gpui::Window, cx: &mut gpui::App) -> impl gpui::IntoElement {
         h_flex()
