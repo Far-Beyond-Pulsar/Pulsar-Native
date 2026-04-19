@@ -42,6 +42,7 @@ profiling             = { path = "crates/profiling" }
 engine_fs             = { path = "crates/engine_fs" }
 pulsar_std            = { path = "crates/pulsar_std" }
 engine_state          = { path = "crates/engine_state" }
+pulsar_settings       = { path = "crates/pulsar_settings" }
 engine_backend        = { path = "crates/engine_backend" }
 pulsar_diagnostics    = { path = "crates/pulsar_diagnostics" }
 pulsar_lsp            = { path = "crates/pulsar_lsp" }

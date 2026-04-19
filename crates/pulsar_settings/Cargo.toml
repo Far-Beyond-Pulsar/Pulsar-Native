@@ -1,0 +1,9 @@
+[package]
+name = "pulsar_settings"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "All engine and project settings registrations for Pulsar Engine"
+
+[dependencies]
+pulsar-config.workspace = true

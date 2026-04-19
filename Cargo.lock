@@ -2602,6 +2602,7 @@ dependencies = [
  "gpui-ce",
  "parking_lot",
  "pulsar-config",
+ "pulsar_settings",
  "rust-discord-activity",
  "serde",
  "toml 0.8.23",
@@ -8082,6 +8083,13 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+]
+
+[[package]]
+name = "pulsar_settings"
+version = "0.1.0"
+dependencies = [
+ "pulsar-config",
 ]
 
 [[package]]
