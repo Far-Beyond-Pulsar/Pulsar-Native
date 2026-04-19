@@ -558,11 +558,15 @@ jobs:
           while IFS= read -r crate_path; do
             crate_path=$(echo "$crate_path" | xargs)
             if [ -n "$crate_path" ]; then
-              crate_name=$(grep -m1 '^name' "$crate_path/Cargo.toml" | sed 's/name[[:space:]]*=[[:space:]]*"\(.*\)"/\1/' | tr -d '[:space:]')
-              ARGS="$ARGS -p $crate_name"
-              echo "Added crate: $crate_name from $crate_path"
+              if [ -f "$crate_path/Cargo.toml" ]; then
+                crate_name=$(grep -m1 '^name' "$crate_path/Cargo.toml" | sed 's/name[[:space:]]*=[[:space:]]*"\(.*\)"/\1/' | tr -d '[:space:]')
+                ARGS="$ARGS -p $crate_name"
+                echo "Added crate: $crate_name from $crate_path"
+              else
+                echo "Skipping invalid crate path: $crate_path (Cargo.toml not found)"
+              fi
             fi
-          done <<< "${{ env.CRATES_WITH_EXAMPLES }}"
+          done <<< "${{ env.CRATES_TO_BUILD }}"
           cross build $ARGS
 
       - name: Generate SHA256
