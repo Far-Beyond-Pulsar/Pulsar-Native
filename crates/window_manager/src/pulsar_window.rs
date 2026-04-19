@@ -55,6 +55,10 @@ pub fn default_window_options(width: f32, height: f32) -> WindowOptions {
 
     // Embed the Pulsar icon at compile time so it is always available, even
     // when running outside an app bundle.
+    #[cfg(target_os = "macos")]
+    static ICON_PNG: &[u8] = include_bytes!("../../../assets/images/logo_sqrkl_mac.png");
+
+    #[cfg(not(target_os = "macos"))]
     static ICON_PNG: &[u8] = include_bytes!("../../../assets/images/logo_sqrkl.png");
 
     let app_icon = WindowIcon::from_png_bytes(ICON_PNG)

@@ -11,5 +11,5 @@ fn main() {
         }
     }
 
-    eprintln!("cargo:rerun-if-changed=../../assets/images/logo_sqrkl.ico");
+    eprintln!("cargo:rerun-if-changed=../../assets/images/logo_sqrkl_mac.ico");
 }

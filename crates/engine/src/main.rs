@@ -397,7 +397,7 @@ fn make_window_options(
 ) -> gpui::WindowOptions {
     // Embed the Pulsar icon at compile time so it is always available at runtime,
     // even when running outside an app bundle (no .icns / no PE resource needed).
-    static ICON_PNG: &[u8] = include_bytes!("../../../assets/images/logo_sqrkl.png");
+    static ICON_PNG: &[u8] = include_bytes!("../../../assets/images/logo_sqrkl_mac.png");
     let app_icon = gpui::WindowIcon::from_png_bytes(ICON_PNG)
         .map_err(|e| tracing::warn!("Failed to decode app icon: {e}"))
         .ok();

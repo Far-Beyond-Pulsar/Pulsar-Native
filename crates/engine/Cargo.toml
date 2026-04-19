@@ -72,7 +72,7 @@ workspace = true
 [package.metadata.bundle]
 name = "Pulsar"
 identifier = "dev.pulsar.engine"
-icon = ["assets/images/logo_sqrkl.icns"]
+icon = ["assets/images/logo_sqrkl_mac.icns"]
 copyright = "Copyright © 2025-2026 Tristan J. Poland"
 category = "Developer Tool"
 short_description = "A modern high-performance game engine"
