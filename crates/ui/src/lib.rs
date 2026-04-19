@@ -38,6 +38,7 @@ mod window_wrapper;
 pub mod component; // Component-based UI architecture
 pub mod registry;
 pub mod selection;
+pub mod setting;
 
 pub(crate) mod actions;
 
@@ -138,6 +139,7 @@ pub use assets::Assets;
 pub use graph::*;
 pub use compiler::*;
 pub use settings::*;
+pub use setting::*;
 pub use themes::*;
 
 // Download manager components
