@@ -413,6 +413,13 @@ impl PulsarApp {
             app.state.command_palette = Some(palette_ref);
         }
 
+        // Focus this app's handle so menus built before any editor interaction have
+        // a valid action_context that routes back to PulsarApp's .on_action() handlers.
+        // Without this, window.focused(cx) returns None when the first menu is opened,
+        // action_context is never set, and menu item actions dispatch from PopupMenu's
+        // own focus chain — which is a sibling of PulsarApp, not a descendant.
+        app.state.focus_handle.focus(window);
+
         app
     }
 

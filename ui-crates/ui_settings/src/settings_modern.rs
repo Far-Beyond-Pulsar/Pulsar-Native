@@ -8,7 +8,7 @@ use gpui::{
 };
 
 use engine_state::{
-    global_config, ConfigValue, DropdownOption, FieldType, GlobalSettings,
+    global_config, ConfigValue, FieldType, GlobalSettings,
     ProjectSettings, SettingInfo, NS_EDITOR, NS_PROJECT,
 };
 
