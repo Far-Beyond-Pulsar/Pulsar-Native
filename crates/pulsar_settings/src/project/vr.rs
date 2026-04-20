@@ -114,18 +114,18 @@ pub fn register(cfg: &'static ConfigManager) {
                 .field_type(FieldType::Checkbox))
         .setting("smooth_turn_speed_deg",
             SchemaEntry::new("Degrees per second for smooth rotation (0 = snap turn)", 0.0_f64)
-                .label("Smooth Turn Speed (\u00b0/s)").page("VR / XR")
+                .label("Smooth Turn Speed (\u{00b0}/s)").page("VR / XR")
                 .field_type(FieldType::Slider { min: 0.0, max: 360.0, step: 10.0 })
                 .validator(Validator::float_range(0.0, 360.0)))
         .setting("snap_turn_angle_deg",
             SchemaEntry::new("Angle per snap rotation step in degrees", 45.0_f64)
-                .label("Snap Turn Angle (\u00b0)").page("VR / XR")
+                .label("Snap Turn Angle (\u{00b0})").page("VR / XR")
                 .field_type(FieldType::Dropdown { options: vec![
-                    DropdownOption::new("15\u00b0", "15"),
-                    DropdownOption::new("22.5\u00b0", "22"),
-                    DropdownOption::new("30\u00b0", "30"),
-                    DropdownOption::new("45\u00b0", "45"),
-                    DropdownOption::new("90\u00b0", "90"),
+                    DropdownOption::new("15\u{00b0}", "15"),
+                    DropdownOption::new("22.5\u{00b0}", "22"),
+                    DropdownOption::new("30\u{00b0}", "30"),
+                    DropdownOption::new("45\u{00b0}", "45"),
+                    DropdownOption::new("90\u{00b0}", "90"),
                 ]}))
         .setting("fade_on_teleport",
             SchemaEntry::new("Briefly fade to black when teleporting to reduce disorientation", true)

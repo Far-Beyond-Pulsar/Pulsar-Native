@@ -67,7 +67,7 @@ pub fn register(cfg: &'static ConfigManager) {
                 .field_type(FieldType::Checkbox))
         .setting("animation_notify_budget_us",
             SchemaEntry::new("CPU time budget per frame for animation notifies / events in microseconds", 2000_i64)
-                .label("Notify Budget (\u00b5s)").page("Animation")
+                .label("Notify Budget (\u{00b5}s)").page("Animation")
                 .field_type(FieldType::NumberInput { min: Some(100.0), max: Some(16000.0), step: Some(100.0) })
                 .validator(Validator::int_range(100, 16_000)))
         .setting("physics_animation_blend",
