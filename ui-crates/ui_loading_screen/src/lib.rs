@@ -183,19 +183,17 @@ impl Render for LoadingScreen {
             window.request_animation_frame();
         }
 
-        // Once all done: spawn a task so we get AsyncWindowContext, which has
-        // a public update_window. Open editor first so GPUI never sees 0 windows,
-        // then close ourselves.
+        // Once all done: schedule on_next_frame so we have (&mut Window, &mut App).
+        // Open editor first (so GPUI never sees 0 windows), then remove ourselves.
         if self.all_done && !self.opened_editor {
             self.opened_editor = true;
             update_recent_projects(&self.project_path);
             let path = self.project_path.clone();
             let on_complete = self.on_complete.clone();
-            let handle = window.window_handle();
-            cx.spawn(async move |_weak, mut async_cx| {
-                async_cx.update(|cx| on_complete(path, cx)).ok();
-                async_cx.update_window(handle, |_, window, _| window.remove_window()).ok();
-            }).detach();
+            window.on_next_frame(move |window, cx| {
+                on_complete(path, cx);
+                window.remove_window();
+            });
         }
 
         let theme = cx.theme();
