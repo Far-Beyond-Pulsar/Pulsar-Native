@@ -100,6 +100,14 @@ impl GlobalSettings {
 }
 
 /// Per-project settings backed by PulsarConfig's [`ConfigStore`].
+///
+/// # `.pulsar` directory ownership
+///
+/// `ProjectSettings` writes **only** to `<project>/.pulsar/project/<owner>.toml`.
+/// It never scans, deletes, or modifies any other file in `.pulsar/`, making it
+/// safe to share `.pulsar/` with other subsystems (scene cache, asset manifests,
+/// version control hooks, etc.).  All persistence is additive: specific TOML files
+/// are written per registered owner; nothing else is touched.
 pub struct ProjectSettings {
     store: ConfigStore,
     project_path: PathBuf,
