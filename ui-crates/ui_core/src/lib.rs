@@ -64,8 +64,6 @@ pub fn init(cx: &mut gpui::App) {
 }
 
 
-    rust_i18n::locale().to_string()
-}
 
 /// Set locale
 pub fn set_locale(locale: &str) {
