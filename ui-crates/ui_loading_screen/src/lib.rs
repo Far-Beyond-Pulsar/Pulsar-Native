@@ -290,22 +290,42 @@ impl Render for LoadingScreen {
                                                     .child(self.project_name.clone())
                                             )
                                     )
-                                    // Right: task list
-                                    .child(
+                                    // Right: scrolling task window (5 visible at a time)
+                                    .child({
+                                        // Find the currently running task (or last one if all done)
+                                        let running = self.statuses.iter().position(|s| *s == TaskStatus::Running)
+                                            .unwrap_or(self.statuses.len().saturating_sub(1));
+                                        const VISIBLE: usize = 5;
+                                        const ABOVE: usize = 2; // done tasks to show above current
+                                        // Window start: keep `running` at position ABOVE inside the window
+                                        let window_start = running.saturating_sub(ABOVE);
+                                        let window_end = (window_start + VISIBLE).min(self.statuses.len());
+                                        let window_start = window_end.saturating_sub(VISIBLE); // clamp at end
+
                                         div()
                                             .flex()
                                             .flex_col()
                                             .items_end()
                                             .gap(px(6.0))
                                             .children(
-                                                self.statuses.iter().enumerate().map(|(i, status)| {
+                                                (window_start..window_end).map(|i| {
+                                                    let status = self.statuses[i];
                                                     let label = TASKS[i].0;
-                                                    let (icon, color): (&str, Hsla) = match status {
-                                                        TaskStatus::Done    => ("✓", gpui::white().opacity(0.9)),
-                                                        TaskStatus::Running => (spinner, gpui::white()),
-                                                        TaskStatus::Pending => ("·", gpui::white().opacity(0.35)),
+                                                    // Tasks above the window fade out toward the top
+                                                    let dist_above = if i < running { running - i } else { 0 };
+                                                    let (icon, base_opacity): (&str, f32) = match status {
+                                                        TaskStatus::Done    => ("✓", 0.9),
+                                                        TaskStatus::Running => (spinner, 1.0),
+                                                        TaskStatus::Pending => ("·", 0.35),
                                                     };
-                                                    let weight = if *status == TaskStatus::Running {
+                                                    // Fade completed tasks as they get further from the current
+                                                    let opacity = if dist_above > 0 {
+                                                        (base_opacity - dist_above as f32 * 0.25).max(0.18)
+                                                    } else {
+                                                        base_opacity
+                                                    };
+                                                    let color: Hsla = gpui::white().opacity(opacity);
+                                                    let weight = if status == TaskStatus::Running {
                                                         FontWeight::SEMIBOLD
                                                     } else {
                                                         FontWeight::NORMAL
@@ -333,7 +353,7 @@ impl Render for LoadingScreen {
                                                         )
                                                 })
                                             )
-                                    )
+                                    })
                             )
                             // Status message
                             .child(
