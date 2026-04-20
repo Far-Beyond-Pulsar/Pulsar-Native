@@ -156,6 +156,8 @@ impl AppMenu {
         let popup_menu = match self.popup_menu.as_ref() {
             None => {
                 let items = self.menu.items.clone();
+                let focused = window.focused(cx);
+                println!("[MENU] build_popup_menu: focused={}", if focused.is_some() { "Some(handle)" } else { "None" });
                 let popup_menu = PopupMenu::build(window, cx, |menu, window, cx| {
                     menu.when_some(window.focused(cx), |this, handle| {
                         this.action_context(handle)
@@ -200,6 +202,7 @@ impl AppMenu {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        println!("[MENU] handle_trigger_click: menu='{}' ix={}", self.name, self.ix);
         // Stop propagation to prevent titlebar drag
         cx.stop_propagation();
 

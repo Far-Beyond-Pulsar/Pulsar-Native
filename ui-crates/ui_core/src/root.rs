@@ -2,7 +2,7 @@
 
 use gpui::{prelude::*, div, Entity, IntoElement, Render, SharedString, Window, Context};
 use ui::{v_flex, Root};
-use ui_common::menu::AppTitleBar;
+use ui_common::menu::{AboutApp, Settings, Preferences, ShowDocumentation, AppTitleBar};
 
 use crate::app::PulsarApp;
 
@@ -30,8 +30,31 @@ impl Render for PulsarRoot {
         let modal_layer = Root::render_modal_layer(window, cx);
         let notification_layer = Root::render_notification_layer(window, cx);
 
+        // Belt-and-suspenders action handlers at the root level so that menu
+        // actions are always caught regardless of which child element has focus
+        // at the time the popup menu fires dispatch_action.
         div()
             .size_full()
+            .on_action(cx.listener(|this: &mut PulsarRoot, _: &Settings, window, cx| {
+                println!("[MENU] PulsarRoot caught Settings action");
+                this.app.update(cx, |app, cx| app.open_settings(window, cx));
+            }))
+            .on_action(cx.listener(|this: &mut PulsarRoot, _: &ui::OpenSettings, window, cx| {
+                println!("[MENU] PulsarRoot caught OpenSettings action");
+                this.app.update(cx, |app, cx| app.open_settings(window, cx));
+            }))
+            .on_action(cx.listener(|this: &mut PulsarRoot, _: &Preferences, window, cx| {
+                println!("[MENU] PulsarRoot caught Preferences action");
+                this.app.update(cx, |app, cx| app.open_settings(window, cx));
+            }))
+            .on_action(cx.listener(|this: &mut PulsarRoot, _: &AboutApp, window, cx| {
+                println!("[MENU] PulsarRoot caught AboutApp action");
+                this.app.update(cx, |app, cx| app.open_about(window, cx));
+            }))
+            .on_action(cx.listener(|this: &mut PulsarRoot, _: &ShowDocumentation, window, cx| {
+                println!("[MENU] PulsarRoot caught ShowDocumentation action");
+                this.app.update(cx, |app, cx| app.open_documentation(window, cx));
+            }))
             .child(
                 v_flex()
                     .size_full()

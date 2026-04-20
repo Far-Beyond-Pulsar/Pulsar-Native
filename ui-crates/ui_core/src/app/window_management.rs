@@ -106,15 +106,16 @@ impl PulsarApp {
         open_pulsar_window::<PluginManagerWindow>((), cx);
     }
 
-    pub(super) fn open_settings(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    pub fn open_settings(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        println!("[MENU] open_settings: opening SettingsWindow");
         open_pulsar_window::<SettingsWindow>((), cx);
     }
 
-    pub(super) fn open_about(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    pub fn open_about(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         open_pulsar_window::<AboutWindow>((), cx);
     }
 
-    pub(super) fn open_documentation(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    pub fn open_documentation(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         open_pulsar_window::<DocumentationWindow>((), cx);
     }
 

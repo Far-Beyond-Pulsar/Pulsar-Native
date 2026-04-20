@@ -79,14 +79,17 @@ impl PulsarApp {
     }
 
     fn on_open_settings(&mut self, _: &ui::OpenSettings, window: &mut Window, cx: &mut Context<Self>) {
+        println!("[MENU] on_open_settings fired");
         self.open_settings(window, cx);
     }
 
     fn on_open_settings_menu(&mut self, _: &Settings, window: &mut Window, cx: &mut Context<Self>) {
+        println!("[MENU] on_open_settings_menu fired");
         self.open_settings(window, cx);
     }
 
     fn on_open_preferences(&mut self, _: &Preferences, window: &mut Window, cx: &mut Context<Self>) {
+        println!("[MENU] on_open_preferences fired");
         self.open_settings(window, cx);
     }
 
