@@ -87,7 +87,71 @@ pub fn register(cfg: &'static ConfigManager) {
             SchemaEntry::new("Speed multiplier for UI animations (1.0 = normal)", 1.0_f64)
                 .label("Animation Speed").page("Appearance")
                 .field_type(FieldType::Slider { min: 0.1, max: 3.0, step: 0.1 })
-                .validator(Validator::float_range(0.1, 3.0)));
+                .validator(Validator::float_range(0.1, 3.0)))
+        .setting("compact_mode",
+            SchemaEntry::new("Reduce padding and spacing throughout the UI for denser layouts", false)
+                .label("Compact Mode").page("Appearance")
+                .field_type(FieldType::Checkbox))
+        .setting("custom_title_bar",
+            SchemaEntry::new("Use the editor's custom title bar instead of the native OS one", true)
+                .label("Custom Title Bar").page("Appearance")
+                .field_type(FieldType::Checkbox))
+        .setting("window_opacity",
+            SchemaEntry::new("Editor window background opacity (1.0 = fully opaque)", 1.0_f64)
+                .label("Window Opacity").page("Appearance")
+                .field_type(FieldType::Slider { min: 0.3, max: 1.0, step: 0.01 })
+                .validator(Validator::float_range(0.3, 1.0)))
+        .setting("panel_blur",
+            SchemaEntry::new("Apply frosted glass blur to transparent panel backgrounds", false)
+                .label("Panel Blur").page("Appearance")
+                .field_type(FieldType::Checkbox))
+        .setting("panel_blur_radius",
+            SchemaEntry::new("Blur radius in pixels for frosted glass panels", 12.0_f64)
+                .label("Blur Radius").page("Appearance")
+                .field_type(FieldType::Slider { min: 1.0, max: 40.0, step: 1.0 })
+                .validator(Validator::float_range(1.0, 40.0)))
+        .setting("sidebar_width",
+            SchemaEntry::new("Default width of the left sidebar panel in pixels", 260_i64)
+                .label("Sidebar Width (px)").page("Appearance")
+                .field_type(FieldType::NumberInput { min: Some(160.0), max: Some(600.0), step: Some(10.0) })
+                .validator(Validator::int_range(160, 600)))
+        .setting("bottom_panel_height",
+            SchemaEntry::new("Default height of the bottom panel (terminal / log / problems) in pixels", 200_i64)
+                .label("Bottom Panel Height (px)").page("Appearance")
+                .field_type(FieldType::NumberInput { min: Some(80.0), max: Some(800.0), step: Some(10.0) })
+                .validator(Validator::int_range(80, 800)))
+        .setting("breadcrumbs",
+            SchemaEntry::new("Show breadcrumb navigation bar below the editor tab strip", true)
+                .label("Breadcrumbs").page("Appearance")
+                .field_type(FieldType::Checkbox))
+        .setting("show_line_numbers",
+            SchemaEntry::new("Display line numbers in the code editor gutter", true)
+                .label("Line Numbers").page("Appearance")
+                .field_type(FieldType::Checkbox))
+        .setting("minimap",
+            SchemaEntry::new("Show a minimap overview on the right side of the code editor", false)
+                .label("Minimap").page("Appearance")
+                .field_type(FieldType::Checkbox))
+        .setting("minimap_side",
+            SchemaEntry::new("Which side of the editor the minimap appears on", "right")
+                .label("Minimap Side").page("Appearance")
+                .field_type(FieldType::Dropdown { options: vec![
+                    DropdownOption::new("Left", "left"),
+                    DropdownOption::new("Right", "right"),
+                ]})
+                .validator(Validator::string_one_of(["left", "right"])))
+        .setting("status_bar_visible",
+            SchemaEntry::new("Show the status bar at the bottom of the editor window", true)
+                .label("Status Bar").page("Appearance")
+                .field_type(FieldType::Checkbox))
+        .setting("tab_bar_position",
+            SchemaEntry::new("Position of the file tab bar", "top")
+                .label("Tab Bar Position").page("Appearance")
+                .field_type(FieldType::Dropdown { options: vec![
+                    DropdownOption::new("Top", "top"),
+                    DropdownOption::new("Bottom", "bottom"),
+                ]})
+                .validator(Validator::string_one_of(["top", "bottom"])));
 
     let _ = cfg.register(NS, OWNER, schema);
 }

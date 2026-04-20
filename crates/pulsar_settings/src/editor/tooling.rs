@@ -73,7 +73,64 @@ pub fn register(cfg: &'static ConfigManager) {
         .setting("show_welcome_on_startup",
             SchemaEntry::new("Show the welcome screen when no project is open", true)
                 .label("Welcome Screen").page("Tooling")
-                .field_type(FieldType::Checkbox));
+                .field_type(FieldType::Checkbox))
+        .setting("external_build_system",
+            SchemaEntry::new("Build system used by the editor's build button", "cargo")
+                .label("Build System").page("Tooling")
+                .field_type(FieldType::Dropdown { options: vec![
+                    DropdownOption::new("Cargo", "cargo"),
+                    DropdownOption::new("Make", "make"),
+                    DropdownOption::new("CMake", "cmake"),
+                    DropdownOption::new("Ninja", "ninja"),
+                    DropdownOption::new("Bazel", "bazel"),
+                    DropdownOption::new("Custom", "custom"),
+                ]}))
+        .setting("custom_build_command",
+            SchemaEntry::new("Custom build command run when build system is set to 'custom'", "")
+                .label("Custom Build Command").page("Tooling")
+                .field_type(FieldType::TextInput { placeholder: Some("./build.sh --release".into()), multiline: false }))
+        .setting("lsp_enabled",
+            SchemaEntry::new("Enable the built-in Language Server Protocol client for code intelligence", true)
+                .label("LSP Client").page("Tooling")
+                .field_type(FieldType::Checkbox))
+        .setting("rust_analyzer_path",
+            SchemaEntry::new("Path to a custom rust-analyzer binary (empty = PATH lookup)", "")
+                .label("rust-analyzer Binary").page("Tooling")
+                .field_type(FieldType::TextInput { placeholder: Some("/usr/bin/rust-analyzer".into()), multiline: false }))
+        .setting("formatter_enabled",
+            SchemaEntry::new("Run the code formatter on save", true)
+                .label("Format on Save").page("Tooling")
+                .field_type(FieldType::Checkbox))
+        .setting("formatter_command",
+            SchemaEntry::new("Custom formatter command run on save (empty = rustfmt for Rust files)", "")
+                .label("Formatter Command").page("Tooling")
+                .field_type(FieldType::TextInput { placeholder: Some("rustfmt --edition 2021".into()), multiline: false }))
+        .setting("clippy_on_save",
+            SchemaEntry::new("Run Clippy after each save and surface lints as diagnostics", false)
+                .label("Clippy on Save").page("Tooling")
+                .field_type(FieldType::Checkbox))
+        .setting("test_runner",
+            SchemaEntry::new("Test framework used by the integrated test explorer", "cargo-test")
+                .label("Test Runner").page("Tooling")
+                .field_type(FieldType::Dropdown { options: vec![
+                    DropdownOption::new("cargo test", "cargo-test"),
+                    DropdownOption::new("nextest", "nextest"),
+                    DropdownOption::new("pytest", "pytest"),
+                    DropdownOption::new("jest", "jest"),
+                    DropdownOption::new("Custom", "custom"),
+                ]}))
+        .setting("custom_test_command",
+            SchemaEntry::new("Custom test command when test runner is 'custom'", "")
+                .label("Custom Test Command").page("Tooling")
+                .field_type(FieldType::TextInput { placeholder: Some("./run_tests.sh".into()), multiline: false }))
+        .setting("profiler_integration",
+            SchemaEntry::new("Launch the external profiler alongside game-in-editor runs", false)
+                .label("Profiler Integration").page("Tooling")
+                .field_type(FieldType::Checkbox))
+        .setting("task_shortcuts",
+            SchemaEntry::new("Path to a JSON file defining custom task shortcuts shown in the toolbar", "")
+                .label("Task Shortcuts File").page("Tooling")
+                .field_type(FieldType::TextInput { placeholder: Some("config/tasks.json".into()), multiline: false }));
 
     let _ = cfg.register(NS, OWNER, schema);
 }

@@ -56,6 +56,58 @@ pub fn register(cfg: &'static ConfigManager) {
         .setting("suspend_when_unfocused",
             SchemaEntry::new("Throttle the editor when its window loses focus to save resources", true)
                 .label("Suspend When Unfocused").page("Performance")
+                .field_type(FieldType::Checkbox))
+        .setting("background_fps_limit",
+            SchemaEntry::new("Maximum FPS for the editor when it is not in focus (0 = unlimited)", 20_i64)
+                .label("Background FPS Limit").page("Performance")
+                .field_type(FieldType::NumberInput { min: Some(0.0), max: Some(60.0), step: Some(1.0) })
+                .validator(Validator::int_range(0, 60)))
+        .setting("foreground_fps_limit",
+            SchemaEntry::new("Maximum FPS for the editor when focused (0 = unlimited)", 0_i64)
+                .label("Foreground FPS Limit").page("Performance")
+                .field_type(FieldType::NumberInput { min: Some(0.0), max: Some(360.0), step: Some(1.0) })
+                .validator(Validator::int_range(0, 360)))
+        .setting("gpu_memory_budget_mb",
+            SchemaEntry::new("GPU VRAM budget for the editor in megabytes (0 = auto)", 0_i64)
+                .label("GPU Memory Budget (MB)").page("Performance")
+                .field_type(FieldType::NumberInput { min: Some(0.0), max: Some(32768.0), step: Some(256.0) })
+                .validator(Validator::int_range(0, 32768)))
+        .setting("asset_thumbnail_threads",
+            SchemaEntry::new("Number of threads used to generate asset thumbnails in the background", 2_i64)
+                .label("Thumbnail Threads").page("Performance")
+                .field_type(FieldType::NumberInput { min: Some(0.0), max: Some(16.0), step: Some(1.0) })
+                .validator(Validator::int_range(0, 16)))
+        .setting("shader_compilation_threads",
+            SchemaEntry::new("Threads used for background shader compilation (0 = auto)", 0_i64)
+                .label("Shader Compilation Threads").page("Performance")
+                .field_type(FieldType::NumberInput { min: Some(0.0), max: Some(64.0), step: Some(1.0) })
+                .validator(Validator::int_range(0, 64)))
+        .setting("undo_memory_limit_mb",
+            SchemaEntry::new("Maximum memory to use for undo history (MB, 0 = unlimited)", 256_i64)
+                .label("Undo Memory Limit (MB)").page("Performance")
+                .field_type(FieldType::NumberInput { min: Some(0.0), max: Some(4096.0), step: Some(64.0) })
+                .validator(Validator::int_range(0, 4096)))
+        .setting("cache_assets_in_memory",
+            SchemaEntry::new("Keep recently used assets resident in RAM to speed up repeat access", true)
+                .label("Asset Memory Cache").page("Performance")
+                .field_type(FieldType::Checkbox))
+        .setting("asset_cache_size_mb",
+            SchemaEntry::new("Maximum RAM to use for the in-memory asset cache (MB)", 512_i64)
+                .label("Asset Cache Size (MB)").page("Performance")
+                .field_type(FieldType::NumberInput { min: Some(64.0), max: Some(16384.0), step: Some(64.0) })
+                .validator(Validator::int_range(64, 16384)))
+        .setting("gc_interval_seconds",
+            SchemaEntry::new("Frequency at which the editor GCs unused loaded assets (seconds)", 60_i64)
+                .label("GC Interval (s)").page("Performance")
+                .field_type(FieldType::NumberInput { min: Some(5.0), max: Some(600.0), step: Some(5.0) })
+                .validator(Validator::int_range(5, 600)))
+        .setting("disable_hardware_acceleration",
+            SchemaEntry::new("Run the editor UI in software rendering mode (for troubleshooting)", false)
+                .label("Disable GPU Acceleration").page("Performance")
+                .field_type(FieldType::Checkbox))
+        .setting("perf_stats_overlay",
+            SchemaEntry::new("Show a real-time CPU/GPU/memory stats overlay in the editor viewport", false)
+                .label("Perf Stats Overlay").page("Performance")
                 .field_type(FieldType::Checkbox));
 
     let _ = cfg.register(NS, OWNER, schema);

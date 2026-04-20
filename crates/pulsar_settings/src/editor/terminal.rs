@@ -66,7 +66,69 @@ pub fn register(cfg: &'static ConfigManager) {
         .setting("custom_working_directory",
             SchemaEntry::new("Custom starting directory for new terminals", "")
                 .label("Custom Starting Path").page("Terminal")
-                .field_type(FieldType::TextInput { placeholder: Some("/path/to/dir".into()), multiline: false }));
+                .field_type(FieldType::TextInput { placeholder: Some("/path/to/dir".into()), multiline: false }))
+        .setting("scrollback_lines",
+            SchemaEntry::new("Maximum number of lines stored in terminal scrollback buffer", 10_000_i64)
+                .label("Scrollback Lines").page("Terminal")
+                .field_type(FieldType::NumberInput { min: Some(100.0), max: Some(1_000_000.0), step: Some(1000.0) })
+                .validator(Validator::int_range(100, 1_000_000)))
+        .setting("cursor_style",
+            SchemaEntry::new("Cursor style inside terminal panels", "block")
+                .label("Cursor Style").page("Terminal")
+                .field_type(FieldType::Dropdown { options: vec![
+                    DropdownOption::new("Block", "block"),
+                    DropdownOption::new("Underline", "underline"),
+                    DropdownOption::new("Bar (|", "bar"),
+                ]})
+                .validator(Validator::string_one_of(["block", "underline", "bar"])))
+        .setting("cursor_blink",
+            SchemaEntry::new("Blink the terminal cursor", true)
+                .label("Cursor Blink").page("Terminal")
+                .field_type(FieldType::Checkbox))
+        .setting("copy_on_select",
+            SchemaEntry::new("Automatically copy selected text to clipboard", false)
+                .label("Copy on Select").page("Terminal")
+                .field_type(FieldType::Checkbox))
+        .setting("terminal_bell",
+            SchemaEntry::new("How to handle terminal bell (\\a escape)", "none")
+                .label("Terminal Bell").page("Terminal")
+                .field_type(FieldType::Dropdown { options: vec![
+                    DropdownOption::new("None", "none"),
+                    DropdownOption::new("Audible", "audible"),
+                    DropdownOption::new("Visual Flash", "visual"),
+                ]})
+                .validator(Validator::string_one_of(["none", "audible", "visual"])))
+        .setting("gpu_acceleration",
+            SchemaEntry::new("Use GPU rendering for the terminal emulator when available", true)
+                .label("GPU Acceleration").page("Terminal")
+                .field_type(FieldType::Checkbox))
+        .setting("renderer",
+            SchemaEntry::new("Terminal rendering backend", "auto")
+                .label("Terminal Renderer").page("Terminal")
+                .field_type(FieldType::Dropdown { options: vec![
+                    DropdownOption::new("Auto", "auto"),
+                    DropdownOption::new("OpenGL", "opengl"),
+                    DropdownOption::new("Vulkan", "vulkan"),
+                    DropdownOption::new("Metal", "metal"),
+                    DropdownOption::new("Software", "software"),
+                ]})
+                .validator(Validator::string_one_of(["auto", "opengl", "vulkan", "metal", "software"])))
+        .setting("word_separators",
+            SchemaEntry::new("Characters treated as word boundaries for double-click selection", " ()[]{}',\";:")
+                .label("Word Separators").page("Terminal")
+                .field_type(FieldType::TextInput { placeholder: Some(" ()[]{}',\";".into()), multiline: false }))
+        .setting("env_vars",
+            SchemaEntry::new("Extra environment variables injected into terminal sessions (KEY=VAL, comma-separated)", "")
+                .label("Extra Env Vars").page("Terminal")
+                .field_type(FieldType::TextInput { placeholder: Some("FOO=bar,BAZ=qux".into()), multiline: false }))
+        .setting("close_on_exit",
+            SchemaEntry::new("Close the terminal tab automatically when the process exits", false)
+                .label("Close Tab on Exit").page("Terminal")
+                .field_type(FieldType::Checkbox))
+        .setting("enable_osc_hyperlinks",
+            SchemaEntry::new("Render OSC 8 hyperlinks as clickable links in the terminal", true)
+                .label("OSC Hyperlinks").page("Terminal")
+                .field_type(FieldType::Checkbox));
 
     let _ = cfg.register(NS, OWNER, schema);
 }

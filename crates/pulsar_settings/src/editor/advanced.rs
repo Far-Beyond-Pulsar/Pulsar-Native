@@ -65,6 +65,67 @@ pub fn register(cfg: &'static ConfigManager) {
         .setting("allow_unsafe_plugins",
             SchemaEntry::new("Load plugins that have not been signed or verified", false)
                 .label("Allow Unsigned Plugins").page("Advanced")
+                .field_type(FieldType::Checkbox))
+        .setting("log_verbosity",
+            SchemaEntry::new("Minimum log level surfaced in the editor log panel", "info")
+                .label("Log Verbosity").page("Advanced")
+                .field_type(FieldType::Dropdown { options: vec![
+                    DropdownOption::new("Error", "error"),
+                    DropdownOption::new("Warn", "warn"),
+                    DropdownOption::new("Info", "info"),
+                    DropdownOption::new("Debug", "debug"),
+                    DropdownOption::new("Trace", "trace"),
+                ]})
+                .validator(Validator::string_one_of(["error", "warn", "info", "debug", "trace"])))
+        .setting("log_file",
+            SchemaEntry::new("Path to the editor log file (empty = no file logging)", "")
+                .label("Log File Path").page("Advanced")
+                .field_type(FieldType::TextInput { placeholder: Some(".pulsar/editor.log".into()), multiline: false }))
+        .setting("log_rotate_max_size_mb",
+            SchemaEntry::new("Rotate the log file when it exceeds this size in MB (0 = no rotation)", 10_i64)
+                .label("Log Rotate Size (MB)").page("Advanced")
+                .field_type(FieldType::NumberInput { min: Some(0.0), max: Some(500.0), step: Some(5.0) })
+                .validator(Validator::int_range(0, 500)))
+        .setting("experimental_features",
+            SchemaEntry::new("Enable unstable features that are not yet ready for general use", false)
+                .label("Experimental Features").page("Advanced")
+                .field_type(FieldType::Checkbox))
+        .setting("dev_mode",
+            SchemaEntry::new("Enable developer mode with extra diagnostics, raw inspector access, and internal tools", false)
+                .label("Developer Mode").page("Advanced")
+                .field_type(FieldType::Checkbox))
+        .setting("crash_reporter",
+            SchemaEntry::new("Send anonymized crash reports to the Pulsar team to help fix bugs", true)
+                .label("Send Crash Reports").page("Advanced")
+                .field_type(FieldType::Checkbox))
+        .setting("telemetry",
+            SchemaEntry::new("Send anonymized usage analytics to improve the editor", false)
+                .label("Usage Telemetry").page("Advanced")
+                .field_type(FieldType::Checkbox))
+        .setting("ipc_socket_path",
+            SchemaEntry::new("Path to the UNIX socket / named pipe for external tooling IPC", "")
+                .label("IPC Socket Path").page("Advanced")
+                .field_type(FieldType::TextInput { placeholder: Some("/tmp/pulsar.sock".into()), multiline: false }))
+        .setting("http_proxy",
+            SchemaEntry::new("HTTP/HTTPS proxy URL for marketplace and update network requests", "")
+                .label("HTTP Proxy").page("Advanced")
+                .field_type(FieldType::TextInput { placeholder: Some("http://proxy.example.com:3128".into()), multiline: false }))
+        .setting("no_proxy",
+            SchemaEntry::new("Comma-separated list of hostnames/CIDRs that bypass the HTTP proxy", "localhost,127.0.0.0/8")
+                .label("No-Proxy Hosts").page("Advanced")
+                .field_type(FieldType::TextInput { placeholder: Some("localhost,127.0.0.1".into()), multiline: false }))
+        .setting("update_channel",
+            SchemaEntry::new("Editor update channel", "stable")
+                .label("Editor Update Channel").page("Advanced")
+                .field_type(FieldType::Dropdown { options: vec![
+                    DropdownOption::new("Stable", "stable"),
+                    DropdownOption::new("Beta", "beta"),
+                    DropdownOption::new("Nightly", "nightly"),
+                ]})
+                .validator(Validator::string_one_of(["stable", "beta", "nightly"])))
+        .setting("auto_update_editor",
+            SchemaEntry::new("Automatically download and install editor updates in the background", true)
+                .label("Auto-Update Editor").page("Advanced")
                 .field_type(FieldType::Checkbox));
 
     let _ = cfg.register(NS, OWNER, schema);
