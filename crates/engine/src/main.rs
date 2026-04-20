@@ -312,8 +312,8 @@ fn main() {
             let opts = make_window_options(
                 Some("Pulsar Engine"),
                 gpui::point(gpui::px(100.0), gpui::px(100.0)),
-                gpui::size(gpui::px(800.0), gpui::px(600.0)),
-                Some(gpui::Size { width: gpui::px(600.), height: gpui::px(400.) }),
+                gpui::size(gpui::px(1100.0), gpui::px(700.0)),
+                Some(gpui::Size { width: gpui::px(800.), height: gpui::px(500.) }),
             );
             match engine_context.create_window(
                 WindowRequest::Entry,
