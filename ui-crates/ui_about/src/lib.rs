@@ -4,17 +4,29 @@ use ui::{
     button::{Button, ButtonVariants as _},
     Icon, IconName,
 };
+use gpui::prelude::FluentBuilder;
 use ui_common::translate;
 use chrono::Datelike;
+use std::sync::Arc;
+
+static LOGO_PNG: &[u8] = include_bytes!("../../../assets/images/logo_sqrkl.png");
+
+fn decode_png(bytes: &[u8]) -> Option<Arc<RenderImage>> {
+    let rgba = image::load_from_memory(bytes).ok()?.into_rgba8();
+    let frame = image::Frame::new(rgba);
+    Some(Arc::new(RenderImage::new(smallvec::smallvec![frame])))
+}
 
 pub struct AboutWindow {
     focus_handle: FocusHandle,
+    logo: Option<Arc<RenderImage>>,
 }
 
 impl AboutWindow {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
             focus_handle: cx.focus_handle(),
+            logo: decode_png(LOGO_PNG),
         }
     }
 }
@@ -68,12 +80,12 @@ impl Render for AboutWindow {
                                     .items_center()
                                     .justify_center()
                                     .shadow_lg()
-                                    .child(
-                                        img("images/logo_sqrkl.png")
+                                    .children(self.logo.clone().map(|logo| {
+                                        img(ImageSource::Render(logo))
                                             .w(px(100.0))
                                             .h(px(100.0))
                                             .object_fit(gpui::ObjectFit::Contain)
-                                    )
+                                    }))
                             )
                             // Title and version
                             .child(

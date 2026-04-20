@@ -764,7 +764,6 @@ impl PopupMenu {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        println!("[MENU] dispatch_confirm_action: action={:?} context={}", action.type_id(), if self.action_context.is_some() { "Some" } else { "None" });
         if let Some(context) = self.action_context.as_ref() {
             context.focus(window);
         }

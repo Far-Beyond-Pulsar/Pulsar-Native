@@ -406,24 +406,19 @@ impl Render for ModernSettingsScreen {
                                 .icon(IconName::Check)
                                 .label("Save")
                                 .on_click(cx.listener(|screen, _, _window, cx| {
-                                    println!("[settings] Save clicked — writing editor settings...");
                                     let global = GlobalSettings::new();
-                                    println!("[settings] Config dir: {:?}", global.config_dir());
                                     match global.save_all() {
-                                        Ok(_) => println!("[settings] Editor settings saved OK."),
-                                        Err(e) => println!("[settings] ERROR saving editor settings: {e:?}"),
+                                        Ok(_) => tracing::info!("Editor settings saved."),
+                                        Err(e) => tracing::error!("Error saving editor settings: {e:?}"),
                                     }
                                     if let Some(ref path) = screen.project_path {
-                                        println!("[settings] Writing project settings to {:?}", path);
                                         match ProjectSettings::new(path) {
                                             Some(ps) => match ps.save_all() {
-                                                Ok(_) => println!("[settings] Project settings saved OK."),
-                                                Err(e) => println!("[settings] ERROR saving project settings: {e:?}"),
+                                                Ok(_) => tracing::info!("Project settings saved."),
+                                                Err(e) => tracing::error!("Error saving project settings: {e:?}"),
                                             },
-                                            None => println!("[settings] Project path does not exist on disk — skipping project settings."),
+                                            None => tracing::warn!("Project path does not exist on disk — skipping project settings."),
                                         }
-                                    } else {
-                                        println!("[settings] No project path — skipping project settings.");
                                     }
                                     screen.has_pending_changes = false;
                                     cx.notify();

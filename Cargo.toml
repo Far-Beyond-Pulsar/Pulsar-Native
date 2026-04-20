@@ -96,6 +96,7 @@ serde_repr = "0.1.20"
 serde_json = "1.0.149"
 schemars = "1.2.0"
 smallvec = "1.15.1"
+image = { version = "0.25.9", default-features = false, features = ["png"] }
 rust-i18n = "3.1.5"
 raw-window-handle = "0.6.2"
 winit = "0.30.12"

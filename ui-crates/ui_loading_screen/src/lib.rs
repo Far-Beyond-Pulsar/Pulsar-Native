@@ -6,11 +6,20 @@ use gpui::*;
 use gpui::Hsla;
 use ui::{ActiveTheme, Colorize};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 use engine_backend::services::rust_analyzer_manager::{RustAnalyzerManager, AnalyzerStatus, AnalyzerEvent};
 use engine_state::EngineContext;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
+
+static SPLASH_PNG: &[u8] = include_bytes!("../../../assets/images/Splash.png");
+
+fn decode_png(bytes: &[u8]) -> Option<Arc<RenderImage>> {
+    let rgba = image::load_from_memory(bytes).ok()?.into_rgba8();
+    let frame = image::Frame::new(rgba);
+    Some(Arc::new(RenderImage::new(smallvec::smallvec![frame])))
+}
 
 // we used to pull these types from ui_entry, but that created a cyclic
 // dependency. The definitions are small so we duplicate them here.
@@ -73,6 +82,8 @@ pub struct LoadingScreen {
     progress_rx: std::sync::mpsc::Receiver<LoadingEvent>,
     // called (once, deferred) when all tasks complete
     on_complete: std::sync::Arc<dyn Fn(PathBuf, &mut gpui::App) + Send + Sync>,
+    // pre-decoded splash image
+    splash: Option<Arc<RenderImage>>,
 }
 
 #[derive(Clone)]
@@ -165,6 +176,7 @@ impl LoadingScreen {
             opened_editor: false,
             progress_rx: rx,
             on_complete,
+            splash: decode_png(SPLASH_PNG),
         };
 
         let analyzer = cx.new(|cx| RustAnalyzerManager::new(window, cx));
@@ -175,16 +187,8 @@ impl LoadingScreen {
         // spawn background thread for updates
         let tx_clone = tx.clone();
 //        std::thread::spawn(move || {
-            println!("[bg] task1 start");
-//            std::thread::sleep(Duration::from_millis(100));
             tx_clone.send(LoadingEvent::TaskDone(0)).ok();
-
-            println!("[bg] task2 start");
-//            std::thread::sleep(Duration::from_millis(100));
             tx_clone.send(LoadingEvent::TaskDone(1)).ok();
-
-            println!("[bg] task3 start");
-//            std::thread::sleep(Duration::from_millis(100));
             tx_clone.send(LoadingEvent::TaskDone(2)).ok();
 //        });
 
@@ -196,10 +200,8 @@ impl Render for LoadingScreen {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // keep the animation loop running regardless of events
         _window.request_animation_frame();
-        println!("[render] called, progress={} task={} initial_done={}", self.progress, self.current_task_index, self.initial_tasks_complete);
         // process any pending progress events
         while let Ok(ev) = self.progress_rx.try_recv() {
-            println!("[render] got event {:?}", ev);
             match ev {
                 LoadingEvent::TaskDone(idx) => {
                     if idx < self.loading_tasks.len() {
@@ -253,16 +255,16 @@ impl Render for LoadingScreen {
             .flex_col()
             .size_full()
             .bg(theme.background)
-            .child(
+            .children(self.splash.clone().map(|splash| {
                 div()
                     .absolute()
                     .size_full()
                     .child(
-                        img("images/Splash.png")
+                        img(ImageSource::Render(splash))
                             .size_full()
                             .object_fit(gpui::ObjectFit::Cover)
                     )
-            )
+            }))
             .child(
                 div()
                     .flex()

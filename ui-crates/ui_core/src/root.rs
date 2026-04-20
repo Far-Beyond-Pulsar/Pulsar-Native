@@ -36,23 +36,18 @@ impl Render for PulsarRoot {
         div()
             .size_full()
             .on_action(cx.listener(|this: &mut PulsarRoot, _: &Settings, window, cx| {
-                println!("[MENU] PulsarRoot caught Settings action");
                 this.app.update(cx, |app, cx| app.open_settings(window, cx));
             }))
             .on_action(cx.listener(|this: &mut PulsarRoot, _: &ui::OpenSettings, window, cx| {
-                println!("[MENU] PulsarRoot caught OpenSettings action");
                 this.app.update(cx, |app, cx| app.open_settings(window, cx));
             }))
             .on_action(cx.listener(|this: &mut PulsarRoot, _: &Preferences, window, cx| {
-                println!("[MENU] PulsarRoot caught Preferences action");
                 this.app.update(cx, |app, cx| app.open_settings(window, cx));
             }))
             .on_action(cx.listener(|this: &mut PulsarRoot, _: &AboutApp, window, cx| {
-                println!("[MENU] PulsarRoot caught AboutApp action");
                 this.app.update(cx, |app, cx| app.open_about(window, cx));
             }))
             .on_action(cx.listener(|this: &mut PulsarRoot, _: &ShowDocumentation, window, cx| {
-                println!("[MENU] PulsarRoot caught ShowDocumentation action");
                 this.app.update(cx, |app, cx| app.open_documentation(window, cx));
             }))
             .child(

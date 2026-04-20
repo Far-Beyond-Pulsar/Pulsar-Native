@@ -107,7 +107,6 @@ impl PulsarApp {
     }
 
     pub fn open_settings(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        println!("[MENU] open_settings: opening SettingsWindow");
         open_pulsar_window::<SettingsWindow>((), cx);
     }
 
