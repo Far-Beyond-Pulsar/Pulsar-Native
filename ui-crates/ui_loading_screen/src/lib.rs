@@ -1,15 +1,11 @@
-//! Loading Screen Component
-//!
-//! Full-featured loading screen from LoadingWindow
+//! Loading screen — runs background tasks, shows progress, then opens the editor.
 
 use gpui::*;
-use gpui::Hsla;
 use ui::{ActiveTheme, Colorize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use engine_backend::services::rust_analyzer_manager::{RustAnalyzerManager, AnalyzerStatus, AnalyzerEvent};
-use engine_state::EngineContext;
+use engine_backend::services::rust_analyzer_manager::RustAnalyzerManager;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
@@ -21,8 +17,7 @@ fn decode_png(bytes: &[u8]) -> Option<Arc<RenderImage>> {
     Some(Arc::new(RenderImage::new(smallvec::smallvec![frame])))
 }
 
-// we used to pull these types from ui_entry, but that created a cyclic
-// dependency. The definitions are small so we duplicate them here.
+// ── recent-project bookkeeping ────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RecentProject {
@@ -32,109 +27,81 @@ struct RecentProject {
     pub is_git: bool,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct RecentProjectsList {
     pub projects: Vec<RecentProject>,
 }
 
 impl RecentProjectsList {
-    fn load(path: &std::path::Path) -> Self {
+    fn load(path: &Path) -> Self {
         use ui_common::file_utils;
         file_utils::read_json(path).unwrap_or_default()
     }
-
-    fn save(&self, path: &std::path::Path) {
+    fn save(&self, path: &Path) {
         use ui_common::file_utils;
         let _ = file_utils::write_json(path, self);
     }
-
     fn add_or_update(&mut self, project: RecentProject) {
         if let Some(existing) = self.projects.iter_mut().find(|p| p.path == project.path) {
             *existing = project;
         } else {
             self.projects.insert(0, project);
         }
-        if self.projects.len() > 20 {
-            self.projects.truncate(20);
-        }
-    }
-
-    fn remove(&mut self, path: &str) {
-        self.projects.retain(|p| p.path != path);
+        self.projects.truncate(20);
     }
 }
+
+fn update_recent_projects(project_path: &Path) {
+    let Some(proj_dirs) = ProjectDirs::from("com", "Pulsar", "Pulsar_Engine") else {
+        return;
+    };
+    let recent_path = proj_dirs.data_dir().join("recent_projects.json");
+    let mut list = RecentProjectsList::load(&recent_path);
+    list.add_or_update(RecentProject {
+        name: project_path.file_name().and_then(|n| n.to_str()).unwrap_or("Unknown").to_string(),
+        path: project_path.to_string_lossy().to_string(),
+        last_opened: Some(chrono::Local::now().to_rfc3339()),
+        is_git: project_path.join(".git").exists(),
+    });
+    list.save(&recent_path);
+}
+
+// ── task model ────────────────────────────────────────────────────────────────
+
+const TASKS: &[(&str, u64)] = &[
+    ("Initializing renderer",  1200),   // (label, min ms)
+    ("Loading project data",   900),
+    ("Starting Rust Analyzer", 1100),
+];
+
+#[derive(Clone, Copy, PartialEq)]
+enum TaskStatus { Pending, Running, Done }
+
+#[derive(Debug)]
+enum LoadingEvent { TaskDone(usize) }
+
+// ── component ─────────────────────────────────────────────────────────────────
 
 pub struct LoadingScreen {
-    project_path: PathBuf,
     project_name: String,
-    loading_tasks: Vec<LoadingTask>,
-    current_task_index: usize,
-    progress: f32,
-    rust_analyzer: Option<Entity<RustAnalyzerManager>>,
-    analyzer_ready: bool,
-    initial_tasks_complete: bool,
-    _analyzer_subscription: Option<Subscription>,
-    analyzer_message: String,
-    window_id: u64,
-    // flag to open editor only once
+    project_path: PathBuf,
+    statuses:     Vec<TaskStatus>,
+    progress:     f32,          // 0.0 – 1.0
+    message:      String,
+    all_done:     bool,
     opened_editor: bool,
-    // background thread channel receiver for progress events
-    progress_rx: std::sync::mpsc::Receiver<LoadingEvent>,
-    // called (once, deferred) when all tasks complete
-    on_complete: std::sync::Arc<dyn Fn(PathBuf, &mut gpui::App) + Send + Sync>,
-    // pre-decoded splash image
-    splash: Option<Arc<RenderImage>>,
+    anim_tick:    u32,
+    on_complete:  Arc<dyn Fn(PathBuf, &mut App) + Send + Sync>,
+    splash:       Option<Arc<RenderImage>>,
+    rx:           std::sync::mpsc::Receiver<LoadingEvent>,
+    // keep the RustAnalyzerManager alive during loading
+    _analyzer:    Option<Entity<RustAnalyzerManager>>,
 }
-
-#[derive(Clone)]
-struct LoadingTask {
-    name: String,
-    status: TaskStatus,
-}
-
-// message sent from the timer thread to the UI
-#[derive(Debug)]
-enum LoadingEvent {
-    TaskDone(usize),
-    FrameRequest,
-}
-
-#[derive(Clone, PartialEq)]
-enum TaskStatus {
-    Pending,
-    InProgress,
-    Completed,
-}
-
-pub struct LoadingComplete {
-    pub project_path: PathBuf,
-    pub rust_analyzer: Entity<RustAnalyzerManager>,
-}
-
-impl EventEmitter<LoadingComplete> for LoadingScreen {}
 
 impl LoadingScreen {
-    pub fn new(project_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self::new_with_window_id(project_path, 0, window, cx)
-    }
-
     pub fn new_with_on_complete(
         project_path: PathBuf,
-        on_complete: std::sync::Arc<dyn Fn(PathBuf, &mut gpui::App) + Send + Sync>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        Self::new_internal(project_path, 0, on_complete, window, cx)
-    }
-
-    pub fn new_with_window_id(project_path: PathBuf, window_id: u64, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self::new_internal(project_path, window_id, std::sync::Arc::new(|_, _| {}), window, cx)
-    }
-
-    fn new_internal(
-        project_path: PathBuf,
-        window_id: u64,
-        on_complete: std::sync::Arc<dyn Fn(PathBuf, &mut gpui::App) + Send + Sync>,
+        on_complete: Arc<dyn Fn(PathBuf, &mut App) + Send + Sync>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -143,295 +110,256 @@ impl LoadingScreen {
             .and_then(|n| n.to_str())
             .unwrap_or("Unnamed Project")
             .to_string();
-        
-        let loading_tasks = vec![
-            LoadingTask {
-                name: "Initializing renderer...".to_string(),
-                status: TaskStatus::Pending,
-            },
-            LoadingTask {
-                name: "Loading project data...".to_string(),
-                status: TaskStatus::Pending,
-            },
-            LoadingTask {
-                name: "Starting Rust Analyzer...".to_string(),
-                status: TaskStatus::Pending,
-            },
-        ];
 
-        // create progress channel
-        let (tx, rx) = std::sync::mpsc::channel();
-        let mut loading_screen = Self {
-            project_path: project_path.clone(),
+        let (tx, rx) = std::sync::mpsc::channel::<LoadingEvent>();
+        let n = TASKS.len();
+
+        // Spawn analyzer entity (keeps it alive and starts initialization)
+        let analyzer = cx.new(|cx| RustAnalyzerManager::new(window, cx));
+
+        // Background thread: run tasks sequentially with minimum display times.
+        // Each task represents real work; we give it a minimum duration so the
+        // user actually sees each step before the editor opens.
+        std::thread::spawn(move || {
+            for (idx, (_label, min_ms)) in TASKS.iter().enumerate() {
+                std::thread::sleep(Duration::from_millis(*min_ms));
+                if tx.send(LoadingEvent::TaskDone(idx)).is_err() {
+                    break;
+                }
+            }
+        });
+
+        let mut statuses = vec![TaskStatus::Pending; n];
+        statuses[0] = TaskStatus::Running;
+
+        Self {
             project_name,
-            loading_tasks,
-            current_task_index: 0,
+            project_path,
+            statuses,
             progress: 0.0,
-            rust_analyzer: None,
-            analyzer_ready: false,
-            initial_tasks_complete: false,
-            _analyzer_subscription: None,
-            analyzer_message: String::new(),
-            window_id,
+            message: TASKS[0].0.to_string(),
+            all_done: false,
             opened_editor: false,
-            progress_rx: rx,
+            anim_tick: 0,
             on_complete,
             splash: decode_png(SPLASH_PNG),
-        };
+            rx,
+            _analyzer: Some(analyzer),
+        }
+    }
 
-        let analyzer = cx.new(|cx| RustAnalyzerManager::new(window, cx));
-        loading_screen.rust_analyzer = Some(analyzer.clone());
-        // mark first task
-        loading_screen.loading_tasks[0].status = TaskStatus::InProgress;
-        loading_screen.analyzer_message = "Initializing renderer...".to_string();
-        // spawn background thread for updates
-        let tx_clone = tx.clone();
-//        std::thread::spawn(move || {
-            tx_clone.send(LoadingEvent::TaskDone(0)).ok();
-            tx_clone.send(LoadingEvent::TaskDone(1)).ok();
-            tx_clone.send(LoadingEvent::TaskDone(2)).ok();
-//        });
-
-        loading_screen
+    fn advance(&mut self, idx: usize) {
+        if idx < self.statuses.len() {
+            self.statuses[idx] = TaskStatus::Done;
+        }
+        let next = idx + 1;
+        if next < self.statuses.len() {
+            self.statuses[next] = TaskStatus::Running;
+            self.message = TASKS[next].0.to_string();
+        } else {
+            self.message = "Ready!".to_string();
+            self.all_done = true;
+        }
+        self.progress = (idx + 1) as f32 / TASKS.len() as f32;
     }
 }
 
+// ── render ────────────────────────────────────────────────────────────────────
+
+// Braille spinner frames
+const SPINNER: &[&str] = &["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"];
+
 impl Render for LoadingScreen {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // keep the animation loop running regardless of events
-        _window.request_animation_frame();
-        // process any pending progress events
-        while let Ok(ev) = self.progress_rx.try_recv() {
-            match ev {
-                LoadingEvent::TaskDone(idx) => {
-                    if idx < self.loading_tasks.len() {
-                        self.loading_tasks[idx].status = TaskStatus::Completed;
-                        if idx + 1 < self.loading_tasks.len() {
-                            self.loading_tasks[idx + 1].status = TaskStatus::InProgress;
-                        }
-                        self.progress = ((idx + 1) as f32 / self.loading_tasks.len() as f32) * 100.0;
-                        self.analyzer_message = if idx + 1 < self.loading_tasks.len() {
-                            self.loading_tasks[idx + 1].name.clone()
-                        } else {
-                            "Ready!".to_string()
-                        };
-                        cx.notify();
-                    }
-                    if idx + 1 == self.loading_tasks.len() {
-                        self.initial_tasks_complete = true;
-                    }
-                }
-                LoadingEvent::FrameRequest => {
-                    _window.request_animation_frame();
-                }
-            }
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Drain pending task-done events
+        while let Ok(LoadingEvent::TaskDone(idx)) = self.rx.try_recv() {
+            self.advance(idx);
+            cx.notify();
         }
-        // once all tasks done, open editor.
-        // Must NOT call cx.open_window directly from render() — deferred via
-        // cx.defer so it runs after the current render pass completes.
-        if self.initial_tasks_complete && !self.opened_editor {
+
+        // Keep animation running until all done
+        if !self.all_done {
+            self.anim_tick = self.anim_tick.wrapping_add(1);
+            window.request_animation_frame();
+        }
+
+        // Once all done, open editor then remove this window — in a single
+        // deferred call so the editor window exists before we vanish (prevents
+        // GPUI from quitting due to zero open windows).
+        if self.all_done && !self.opened_editor {
             self.opened_editor = true;
-            let project_path = self.project_path.clone();
+            update_recent_projects(&self.project_path);
+            let path = self.project_path.clone();
             let on_complete = self.on_complete.clone();
+            let handle = window.window_handle();
             cx.defer(move |cx| {
-                on_complete(project_path, cx);
+                on_complete(path, cx);
+                cx.update_window(handle, |_, window, _| window.remove_window()).ok();
             });
         }
-        // request a frame every render call to keep loop alive
-        _window.request_animation_frame();
 
         let theme = cx.theme();
-        
-        let relative_w = relative(match self.progress {
-            v if v < 0.0 => 0.0,
-            v if v > 100.0 => 1.0,
-            v => v / 100.0,
-        });
+        let spinner = SPINNER[(self.anim_tick / 3) as usize % SPINNER.len()];
+        let bar_w = relative(self.progress.clamp(0.0, 1.0));
+
+        // ── layout ──────────────────────────────────────────────────────────
 
         div()
-            .id("loading-screen")
-            .relative()
-            .flex()
-            .flex_col()
+            .id("loading-root")
             .size_full()
-            .bg(theme.background)
+            .relative()
+            .bg(gpui::black())
+            // Background splash image
             .children(self.splash.clone().map(|splash| {
                 div()
                     .absolute()
-                    .size_full()
+                    .top_0().left_0().size_full()
                     .child(
                         img(ImageSource::Render(splash))
                             .size_full()
-                            .object_fit(gpui::ObjectFit::Cover)
+                            .object_fit(ObjectFit::Cover)
                     )
             }))
+            // Dark vignette overlay — gradient from bottom
             .child(
                 div()
+                    .absolute()
+                    .bottom_0().left_0().right_0()
+                    .h(px(260.0))
+                    .bg(gpui::black().opacity(0.82))
+            )
+            // Full overlay for darker tint on top half
+            .child(
+                div()
+                    .absolute()
+                    .top_0().left_0().size_full()
+                    .bg(gpui::black().opacity(0.25))
+            )
+            // Content sits on top of overlays
+            .child(
+                div()
+                    .absolute()
+                    .top_0().left_0().size_full()
                     .flex()
                     .flex_col()
-                    .items_center()
-                    .justify_center()
-                    .flex_1()
+                    .justify_end()
+                    // ── bottom info panel ────────────────────────────────
                     .child(
                         div()
                             .flex()
                             .flex_col()
-                            .items_center()
-                            .gap_4()
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_col()
-                                    .items_center()
-                                    .gap_1()
-                                    .px_6()
-                                    .py_4()
-                                    .rounded_lg()
-                                    .bg(gpui::black().opacity(0.5))
-                                    .child(
-                                        div()
-                                            .text_xl()
-                                            .font_weight(FontWeight::BOLD)
-                                            .text_color(theme.foreground)
-                                            .child("Pulsar Engine")
-                                    )
-                                    .child(
-                                        div()
-                                            .text_sm()
-                                            .text_color(theme.muted_foreground)
-                                            .child(self.project_name.clone())
-                                    )
-                            )
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_col()
-                                    .gap_2()
-                                    .mt_4()
-                                    .px_6()
-                                    .py_4()
-                                    .rounded_lg()
-                                    .bg(gpui::black().opacity(0.5))
-                                    .children(
-                                        self.loading_tasks.iter().map(|task| {
-                                            let color = match task.status {
-                                                TaskStatus::Pending => theme.muted_foreground,
-                                                TaskStatus::InProgress => theme.accent,
-                                                TaskStatus::Completed => theme.success_foreground,
-                                            };
-                                            let icon = match task.status {
-                                                TaskStatus::Pending => "○",
-                                                TaskStatus::InProgress => "◐",
-                                                TaskStatus::Completed => "●",
-                                            };
-
-                                            div()
-                                                .flex()
-                                                .items_center()
-                                                .gap_2()
-                                                .child(
-                                                    div()
-                                                        .text_color(color)
-                                                        .child(icon)
-                                                )
-                                                .child(
-                                                    div()
-                                                        .text_sm()
-                                                        .text_color(color)
-                                                        .child(task.name.clone())
-                                                )
-                                        })
-                                    )
-                            )
-                    )
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .w_full()
-                    .child(
-                        div()
-                            .px_4()
-                            .pb_2()
                             .w_full()
-                            .overflow_hidden()
+                            .px(px(32.0))
+                            .pt(px(24.0))
+                            .pb(px(0.0))
+                            .gap(px(16.0))
+                            // Row: title + task list
                             .child(
                                 div()
-                                    .px_4()
-                                    .py_2()
-                                    .rounded_lg()
-                                    .bg(gpui::black().opacity(0.5))
+                                    .flex()
+                                    .flex_row()
+                                    .items_end()
+                                    .justify_between()
+                                    .w_full()
+                                    // Left: engine + project name
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .flex_col()
+                                            .gap(px(4.0))
+                                            .child(
+                                                div()
+                                                    .text_2xl()
+                                                    .font_weight(FontWeight::EXTRA_BOLD)
+                                                    .text_color(gpui::white())
+                                                    .child("PULSAR ENGINE")
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_sm()
+                                                    .font_weight(FontWeight::MEDIUM)
+                                                    .text_color(gpui::white().opacity(0.55))
+                                                    .child(self.project_name.clone())
+                                            )
+                                    )
+                                    // Right: task list
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .flex_col()
+                                            .items_end()
+                                            .gap(px(6.0))
+                                            .children(
+                                                self.statuses.iter().enumerate().map(|(i, status)| {
+                                                    let label = TASKS[i].0;
+                                                    let (icon, color): (&str, Hsla) = match status {
+                                                        TaskStatus::Done    => ("✓", gpui::white().opacity(0.9)),
+                                                        TaskStatus::Running => (spinner, gpui::white()),
+                                                        TaskStatus::Pending => ("·", gpui::white().opacity(0.35)),
+                                                    };
+                                                    let weight = if *status == TaskStatus::Running {
+                                                        FontWeight::SEMIBOLD
+                                                    } else {
+                                                        FontWeight::NORMAL
+                                                    };
+                                                    div()
+                                                        .flex()
+                                                        .flex_row()
+                                                        .items_center()
+                                                        .gap(px(8.0))
+                                                        .child(
+                                                            div()
+                                                                .text_sm()
+                                                                .font_weight(weight)
+                                                                .text_color(color)
+                                                                .child(label)
+                                                        )
+                                                        .child(
+                                                            div()
+                                                                .text_sm()
+                                                                .font_weight(FontWeight::BOLD)
+                                                                .text_color(color)
+                                                                .w(px(16.0))
+                                                                .text_center()
+                                                                .child(icon)
+                                                        )
+                                                })
+                                            )
+                                    )
+                            )
+                            // Status message
+                            .child(
+                                div()
                                     .text_xs()
-                                    .text_color(theme.muted_foreground)
-                                    .whitespace_nowrap()
-                                    .overflow_hidden()
-                                    .child(
-                                        if !self.analyzer_message.is_empty() {
-                                            self.analyzer_message.clone()
-                                        } else {
-                                            self.loading_tasks.iter()
-                                                .find(|t| t.status == TaskStatus::InProgress)
-                                                .map(|t| t.name.clone())
-                                                .unwrap_or_else(|| "Initializing...".to_string())
-                                        }
-                                    )
+                                    .text_color(gpui::white().opacity(0.45))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .child(self.message.clone())
                             )
                     )
+                    // ── progress bar (flush to bottom) ───────────────────
                     .child(
                         div()
                             .w_full()
-                            .h(px(4.))
+                            .h(px(4.0))
+                            .bg(gpui::white().opacity(0.12))
                             .relative()
-                            .bg(theme.border)
                             .child(
                                 div()
                                     .absolute()
-                                    .top_0()
-                                    .left_0()
+                                    .top_0().left_0()
                                     .h_full()
-                                    .w(relative_w)
-                                    .bg(Hsla::parse_hex("#c2c2c8ff").unwrap())
+                                    .w(bar_w)
+                                    .bg(gpui::white().opacity(0.85))
                             )
                     )
             )
     }
 }
 
-/// Update recent projects list when a project is successfully loaded
-fn update_recent_projects(project_path: &Path) {
-    // Get recent projects path
-    let Some(proj_dirs) = ProjectDirs::from("com", "Pulsar", "Pulsar_Engine") else {
-        tracing::warn!("Failed to get project directories for recent projects update");
-        return;
-    };
-
-    let data_dir = proj_dirs.data_dir();
-    let recent_projects_path = data_dir.join("recent_projects.json");
-
-    // Load existing recent projects
-    let mut recent_projects = RecentProjectsList::load(&recent_projects_path);
-
-    // Create RecentProject entry
-    let project = RecentProject {
-        name: project_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("Unknown")
-            .to_string(),
-        path: project_path.to_string_lossy().to_string(),
-        last_opened: Some(chrono::Local::now().to_rfc3339()),
-        is_git: project_path.join(".git").exists(),
-    };
-
-    // Add/update and save
-    recent_projects.add_or_update(project);
-    recent_projects.save(&recent_projects_path);
-    tracing::debug!("Updated recent projects for: {}", project_path.display());
-}
+// ── PulsarWindow impl ─────────────────────────────────────────────────────────
 
 impl window_manager::PulsarWindow for LoadingScreen {
-    type Params = (PathBuf, std::sync::Arc<dyn Fn(PathBuf, &mut gpui::App) + Send + Sync>);
+    type Params = (PathBuf, Arc<dyn Fn(PathBuf, &mut App) + Send + Sync>);
 
     fn window_name() -> &'static str { "LoadingScreen" }
 
