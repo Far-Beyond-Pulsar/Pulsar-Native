@@ -79,6 +79,11 @@ impl GlobalSettings {
         self.store.save_namespace(NS_EDITOR)
     }
 
+    /// Return the directory where editor config files are written.
+    pub fn config_dir(&self) -> &std::path::Path {
+        self.store.config_dir()
+    }
+
     pub fn get(&self, owner: &str, key: &str) -> Option<ConfigValue> {
         global_config().get(NS_EDITOR, owner, key).ok()
     }

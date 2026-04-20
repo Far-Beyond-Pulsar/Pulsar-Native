@@ -1,14 +1,16 @@
+use std::sync::Arc;
+use std::path::PathBuf;
+
 use gpui::{
     App, AppContext, Context, FocusHandle, Focusable, IntoElement,
     ParentElement as _, Styled, Render, SharedString, Window, div,
+    prelude::FluentBuilder as _,
 };
 
 use engine_state::{
     global_config, ConfigValue, DropdownOption, FieldType, GlobalSettings,
     ProjectSettings, SettingInfo, NS_EDITOR, NS_PROJECT,
 };
-
-use std::path::PathBuf;
 
 use ui::{
     ActiveTheme, Icon, IconName, Sizable, Size, StyledExt as _, Theme, ThemeMode,
@@ -26,6 +28,8 @@ pub struct ModernSettingsScreen {
     group_variant: GroupBoxVariant,
     size: Size,
     project_path: Option<PathBuf>,
+    /// True when any editor/project setting has changed since the last save.
+    has_pending_changes: bool,
 }
 
 impl ModernSettingsScreen {
@@ -64,7 +68,7 @@ impl ModernSettingsScreen {
     }
 
     pub fn new(
-        project_path: Option<std::path::PathBuf>,
+        project_path: Option<PathBuf>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -74,11 +78,19 @@ impl ModernSettingsScreen {
             group_variant: GroupBoxVariant::Outline,
             size: Size::default(),
             project_path,
+            has_pending_changes: false,
         }
     }
 
     /// Build a `SettingItem` from a `SettingInfo` pulled from the global config.
-    fn item_from_info(info: &SettingInfo) -> Option<SettingItem> {
+    ///
+    /// `mark_dirty` is called (with `&mut App`) whenever the user changes this
+    /// setting, so the parent screen can show the Save button and trigger a
+    /// re-render.
+    fn item_from_info(
+        info: &SettingInfo,
+        mark_dirty: Arc<dyn Fn(&mut App) + Send + Sync>,
+    ) -> Option<SettingItem> {
         let ns = info.namespace.clone();
         let owner = info.owner.clone();
         let key = info.key.clone();
@@ -90,6 +102,7 @@ impl ModernSettingsScreen {
         let item: SettingItem = match field_type {
             FieldType::Checkbox => {
                 let (ns2, owner2, key2) = (ns.clone(), owner.clone(), key.clone());
+                let notify = mark_dirty.clone();
                 SettingItem::new(
                     label,
                     SettingField::checkbox(
@@ -97,10 +110,11 @@ impl ModernSettingsScreen {
                             global_config().get(&ns, &owner, &key)
                                 .ok().and_then(|v| v.as_bool().ok()).unwrap_or(false)
                         },
-                        move |val: bool, _cx: &mut App| {
+                        move |val: bool, cx: &mut App| {
                             if let Some(h) = global_config().owner_handle(&ns2, &owner2) {
                                 let _ = h.set(&key2, ConfigValue::Bool(val));
                             }
+                            notify(cx);
                         },
                     ),
                 )
@@ -108,6 +122,7 @@ impl ModernSettingsScreen {
             }
             FieldType::TextInput { .. } => {
                 let (ns2, owner2, key2) = (ns.clone(), owner.clone(), key.clone());
+                let notify = mark_dirty.clone();
                 SettingItem::new(
                     label,
                     SettingField::input(
@@ -117,10 +132,11 @@ impl ModernSettingsScreen {
                                 .and_then(|v| v.as_str().ok().map(|s| SharedString::from(s.to_owned())))
                                 .unwrap_or_default()
                         },
-                        move |val: SharedString, _cx: &mut App| {
+                        move |val: SharedString, cx: &mut App| {
                             if let Some(h) = global_config().owner_handle(&ns2, &owner2) {
                                 let _ = h.set(&key2, ConfigValue::String(val.to_string()));
                             }
+                            notify(cx);
                         },
                     ),
                 )
@@ -128,6 +144,7 @@ impl ModernSettingsScreen {
             }
             FieldType::NumberInput { min, max, step } => {
                 let (ns2, owner2, key2) = (ns.clone(), owner.clone(), key.clone());
+                let notify = mark_dirty.clone();
                 let opts = NumberFieldOptions {
                     min: min.unwrap_or(f64::MIN),
                     max: max.unwrap_or(f64::MAX),
@@ -142,10 +159,11 @@ impl ModernSettingsScreen {
                             global_config().get(&ns, &owner, &key)
                                 .ok().and_then(|v| v.as_float().ok()).unwrap_or(0.0)
                         },
-                        move |val: f64, _cx: &mut App| {
+                        move |val: f64, cx: &mut App| {
                             if let Some(h) = global_config().owner_handle(&ns2, &owner2) {
                                 let _ = h.set(&key2, ConfigValue::Float(val));
                             }
+                            notify(cx);
                         },
                     ),
                 )
@@ -154,6 +172,7 @@ impl ModernSettingsScreen {
             FieldType::Slider { min, max, step } => {
                 // Map slider to number_input — no dedicated slider SettingField
                 let (ns2, owner2, key2) = (ns.clone(), owner.clone(), key.clone());
+                let notify = mark_dirty.clone();
                 let opts = NumberFieldOptions {
                     min,
                     max,
@@ -168,10 +187,11 @@ impl ModernSettingsScreen {
                             global_config().get(&ns, &owner, &key)
                                 .ok().and_then(|v| v.as_float().ok()).unwrap_or(0.0)
                         },
-                        move |val: f64, _cx: &mut App| {
+                        move |val: f64, cx: &mut App| {
                             if let Some(h) = global_config().owner_handle(&ns2, &owner2) {
                                 let _ = h.set(&key2, ConfigValue::Float(val));
                             }
+                            notify(cx);
                         },
                     ),
                 )
@@ -179,6 +199,7 @@ impl ModernSettingsScreen {
             }
             FieldType::Dropdown { options } => {
                 let (ns2, owner2, key2) = (ns.clone(), owner.clone(), key.clone());
+                let notify = mark_dirty.clone();
                 let opts: Vec<(SharedString, SharedString)> = options
                     .iter()
                     .map(|o| (SharedString::from(o.value.clone()), SharedString::from(o.label.clone())))
@@ -193,10 +214,11 @@ impl ModernSettingsScreen {
                                 .and_then(|v| v.as_str().ok().map(|s| SharedString::from(s.to_owned())))
                                 .unwrap_or_default()
                         },
-                        move |val: SharedString, _cx: &mut App| {
+                        move |val: SharedString, cx: &mut App| {
                             if let Some(h) = global_config().owner_handle(&ns2, &owner2) {
                                 let _ = h.set(&key2, ConfigValue::String(val.to_string()));
                             }
+                            notify(cx);
                         },
                     ),
                 )
@@ -210,23 +232,22 @@ impl ModernSettingsScreen {
     }
 
     /// Build all SettingGroups for one namespace, grouping settings by owner.
-    fn groups_for_namespace(ns: &str) -> Vec<SettingGroup> {
+    fn groups_for_namespace(
+        ns: &str,
+        mark_dirty: Arc<dyn Fn(&mut App) + Send + Sync>,
+    ) -> Vec<SettingGroup> {
         let mut owners = global_config().list_owners(ns);
-        // Sort for stable ordering
         owners.sort();
 
         owners.into_iter().filter_map(|owner_segs| {
             let owner_path = owner_segs.join("/");
             let mut settings = global_config().list_settings(ns, &owner_path)?;
-            // Sort settings by their label for predictable order
             settings.sort_by(|a, b| {
                 let la = a.label.as_deref().unwrap_or(&a.key);
                 let lb = b.label.as_deref().unwrap_or(&b.key);
                 la.cmp(lb)
             });
 
-            // Use the display name of this owner as the group title
-            // (capitalize first segment of owner path)
             let group_title = owner_segs.first()
                 .map(|s| {
                     let mut c = s.chars();
@@ -238,7 +259,7 @@ impl ModernSettingsScreen {
                 .unwrap_or_else(|| owner_path.clone());
 
             let items: Vec<SettingItem> = settings.iter()
-                .filter_map(Self::item_from_info)
+                .filter_map(|info| Self::item_from_info(info, mark_dirty.clone()))
                 .collect();
 
             if items.is_empty() {
@@ -252,7 +273,18 @@ impl ModernSettingsScreen {
     fn setting_pages(&self, _window: &mut Window, cx: &mut Context<Self>) -> Vec<SettingPage> {
         let view = cx.entity();
 
-        // ── UI Controls page (appearance of this settings screen itself) ──
+        // Closure that marks the screen as having unsaved changes and triggers a re-render.
+        let mark_dirty: Arc<dyn Fn(&mut App) + Send + Sync> = {
+            let view = view.clone();
+            Arc::new(move |cx: &mut App| {
+                view.update(cx, |screen: &mut ModernSettingsScreen, cx| {
+                    screen.has_pending_changes = true;
+                    cx.notify();
+                });
+            })
+        };
+
+        // ── UI Controls page (local display preferences — not persisted via save) ──
         let ui_controls_page = {
             let view2 = view.clone();
             SettingPage::new("UI Controls")
@@ -327,13 +359,13 @@ impl ModernSettingsScreen {
         };
 
         // ── Editor settings page (NS_EDITOR) ──
-        let editor_groups = Self::groups_for_namespace(NS_EDITOR);
+        let editor_groups = Self::groups_for_namespace(NS_EDITOR, mark_dirty.clone());
         let editor_page = SettingPage::new("Editor")
             .icon(Icon::new(IconName::Code))
             .groups(editor_groups);
 
         // ── Project settings page (NS_PROJECT) ──
-        let project_groups = Self::groups_for_namespace(NS_PROJECT);
+        let project_groups = Self::groups_for_namespace(NS_PROJECT, mark_dirty.clone());
         let project_page = SettingPage::new("Project")
             .icon(Icon::new(IconName::Folder))
             .groups(project_groups);
@@ -351,39 +383,51 @@ impl Focusable for ModernSettingsScreen {
 impl Render for ModernSettingsScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
+        let has_pending = self.has_pending_changes;
+
         v_flex()
             .size_full()
-            .child(
-                // Persistent action bar with Save button
-                h_flex()
-                    .w_full()
-                    .px_4()
-                    .py_2()
-                    .justify_end()
-                    .gap_2()
-                    .border_b_1()
-                    .border_color(theme.border)
-                    .bg(theme.sidebar)
-                    .child(
-                        Button::new("save-settings")
-                            .primary()
-                            .small()
-                            .icon(IconName::Check)
-                            .label("Save")
-                            .on_click(cx.listener(|screen, _, _window, _cx| {
-                                match GlobalSettings::new().save_all() {
-                                    Ok(_) => tracing::info!("Editor settings saved."),
-                                    Err(e) => tracing::error!("Failed to save editor settings: {e}"),
-                                }
-                                if let Some(ref path) = screen.project_path {
-                                    match ProjectSettings::new(path).save_all() {
-                                        Ok(_) => tracing::info!("Project settings saved."),
-                                        Err(e) => tracing::error!("Failed to save project settings: {e}"),
+            // Save bar — only visible when there are unsaved changes
+            .when(has_pending, |this| {
+                this.child(
+                    h_flex()
+                        .w_full()
+                        .px_4()
+                        .py_2()
+                        .justify_end()
+                        .gap_2()
+                        .border_b_1()
+                        .border_color(theme.border)
+                        .bg(theme.sidebar)
+                        .child(
+                            Button::new("save-settings")
+                                .primary()
+                                .small()
+                                .icon(IconName::Check)
+                                .label("Save")
+                                .on_click(cx.listener(|screen, _, _window, cx| {
+                                    println!("[settings] Save clicked — writing editor settings...");
+                                    let global = GlobalSettings::new();
+                                    println!("[settings] Config dir: {:?}", global.config_dir());
+                                    match global.save_all() {
+                                        Ok(_) => println!("[settings] Editor settings saved OK."),
+                                        Err(e) => println!("[settings] ERROR saving editor settings: {e:?}"),
                                     }
-                                }
-                            })),
-                    ),
-            )
+                                    if let Some(ref path) = screen.project_path {
+                                        println!("[settings] Writing project settings to {:?}", path);
+                                        match ProjectSettings::new(path).save_all() {
+                                            Ok(_) => println!("[settings] Project settings saved OK."),
+                                            Err(e) => println!("[settings] ERROR saving project settings: {e:?}"),
+                                        }
+                                    } else {
+                                        println!("[settings] No project path — skipping project settings.");
+                                    }
+                                    screen.has_pending_changes = false;
+                                    cx.notify();
+                                })),
+                        ),
+                )
+            })
             .child(
                 div()
                     .flex_1()
