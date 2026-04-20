@@ -80,7 +80,7 @@ helio = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "4e1d8ea4471
 glam           = { version = "0.29", features = ["bytemuck"] }
 
 # ---------- PulsarConfig ----------
-pulsar_config = { git = "https://github.com/Far-Beyond-Pulsar/PulsarConfig", rev = "78177169070a4f7e36ea44a598f69d539ba3df12" }
+pulsar-config = { git = "https://github.com/Far-Beyond-Pulsar/PulsarConfig", rev = "78a332cc59e82db5dc4d7b26c920b0ac7a703102" }
 
 # ---------- Installer ----------
 # Local rustup fork used as a library to drive platform-native Rust installation.

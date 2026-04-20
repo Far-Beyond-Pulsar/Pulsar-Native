@@ -7881,6 +7881,7 @@ dependencies = [
 [[package]]
 name = "pulsar-config"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/PulsarConfig?rev=78a332cc59e82db5dc4d7b26c920b0ac7a703102#78a332cc59e82db5dc4d7b26c920b0ac7a703102"
 dependencies = [
  "dashmap 6.1.0",
  "dirs 5.0.1",
