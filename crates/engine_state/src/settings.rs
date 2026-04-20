@@ -114,10 +114,18 @@ pub struct ProjectSettings {
 }
 
 impl ProjectSettings {
-    pub fn new(project_path: &Path) -> Self {
-        let store = ConfigStore::with_dir(global_config().clone(), project_path.join(".pulsar"))
-            .expect("invalid project config directory");
-        Self { store, project_path: project_path.to_owned() }
+    /// Returns `None` if the project directory doesn't exist or can't be created.
+    pub fn new(project_path: &Path) -> Option<Self> {
+        match ConfigStore::with_dir(global_config().clone(), project_path.join(".pulsar")) {
+            Ok(store) => Some(Self { store, project_path: project_path.to_owned() }),
+            Err(e) => {
+                tracing::error!(
+                    "ProjectSettings: cannot create config dir for {:?}: {:?}",
+                    project_path, e
+                );
+                None
+            }
+        }
     }
 
     pub fn load_all(&self) {

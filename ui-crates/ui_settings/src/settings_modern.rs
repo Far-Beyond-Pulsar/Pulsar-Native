@@ -415,9 +415,12 @@ impl Render for ModernSettingsScreen {
                                     }
                                     if let Some(ref path) = screen.project_path {
                                         println!("[settings] Writing project settings to {:?}", path);
-                                        match ProjectSettings::new(path).save_all() {
-                                            Ok(_) => println!("[settings] Project settings saved OK."),
-                                            Err(e) => println!("[settings] ERROR saving project settings: {e:?}"),
+                                        match ProjectSettings::new(path) {
+                                            Some(ps) => match ps.save_all() {
+                                                Ok(_) => println!("[settings] Project settings saved OK."),
+                                                Err(e) => println!("[settings] ERROR saving project settings: {e:?}"),
+                                            },
+                                            None => println!("[settings] Project path does not exist on disk — skipping project settings."),
                                         }
                                     } else {
                                         println!("[settings] No project path — skipping project settings.");
