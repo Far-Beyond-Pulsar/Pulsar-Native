@@ -173,7 +173,6 @@ impl Render for LoadingScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Drain pending task-done events
         while let Ok(LoadingEvent::TaskDone(idx)) = self.rx.try_recv() {
-            eprintln!("[loading] TaskDone({idx}) received, advancing");
             self.advance(idx);
             cx.notify();
         }
@@ -187,21 +186,14 @@ impl Render for LoadingScreen {
         // Once all done: defer so we're outside the render borrow, then open
         // editor first (so GPUI never sees 0 windows), then remove ourselves.
         if self.all_done && !self.opened_editor {
-            eprintln!("[loading] all_done=true, scheduling defer to open editor + close");
             self.opened_editor = true;
             update_recent_projects(&self.project_path);
             let path = self.project_path.clone();
             let on_complete = self.on_complete.clone();
             let handle = window.window_handle();
             cx.defer(move |cx| {
-                eprintln!("[loading] defer fired — calling on_complete");
                 on_complete(path, cx);
-                eprintln!("[loading] on_complete done — calling remove_window");
-                let result = cx.update_window(handle, |_, window, _| {
-                    eprintln!("[loading] inside update_window — setting removed=true");
-                    window.remove_window();
-                });
-                eprintln!("[loading] update_window result: {:?}", result.is_ok());
+                cx.update_window(handle, |_, window, _| window.remove_window()).ok();
             });
         }
 
