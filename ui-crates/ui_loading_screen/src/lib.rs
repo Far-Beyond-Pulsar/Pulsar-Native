@@ -183,23 +183,23 @@ impl Render for LoadingScreen {
             window.request_animation_frame();
         }
 
-        // Once all done, open editor then remove this window — in a single
-        // deferred call so the editor window exists before we vanish (prevents
-        // GPUI from quitting due to zero open windows).
+        // Once all done: spawn a task so we get AsyncWindowContext, which has
+        // a public update_window. Open editor first so GPUI never sees 0 windows,
+        // then close ourselves.
         if self.all_done && !self.opened_editor {
             self.opened_editor = true;
             update_recent_projects(&self.project_path);
             let path = self.project_path.clone();
             let on_complete = self.on_complete.clone();
             let handle = window.window_handle();
-            cx.defer(move |cx| {
-                on_complete(path, cx);
-                cx.update_window(handle, |_, window, _| window.remove_window()).ok();
-            });
+            cx.spawn(async move |_weak, mut async_cx| {
+                async_cx.update(|cx| on_complete(path, cx)).ok();
+                async_cx.update_window(handle, |_, window, _| window.remove_window()).ok();
+            }).detach();
         }
 
         let theme = cx.theme();
-        let spinner = SPINNER[(self.anim_tick / 3) as usize % SPINNER.len()];
+        let spinner = SPINNER[(self.anim_tick / 15) as usize % SPINNER.len()];
         let bar_w = relative(self.progress.clamp(0.0, 1.0));
 
         // ── layout ──────────────────────────────────────────────────────────
