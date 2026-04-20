@@ -183,16 +183,17 @@ impl Render for LoadingScreen {
             window.request_animation_frame();
         }
 
-        // Once all done: schedule on_next_frame so we have (&mut Window, &mut App).
-        // Open editor first (so GPUI never sees 0 windows), then remove ourselves.
+        // Once all done: defer so we're outside the render borrow, then open
+        // editor first (so GPUI never sees 0 windows), then remove ourselves.
         if self.all_done && !self.opened_editor {
             self.opened_editor = true;
             update_recent_projects(&self.project_path);
             let path = self.project_path.clone();
             let on_complete = self.on_complete.clone();
-            window.on_next_frame(move |window, cx| {
+            let handle = window.window_handle();
+            cx.defer(move |cx| {
                 on_complete(path, cx);
-                window.remove_window();
+                cx.update_window(handle, |_, window, _| window.remove_window()).ok();
             });
         }
 
