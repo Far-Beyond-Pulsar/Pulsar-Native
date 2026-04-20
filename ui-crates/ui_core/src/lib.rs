@@ -30,8 +30,40 @@ pub use ui_common::file_utils;
 // Re-export actions from ui crate
 pub use ui::OpenSettings;
 
-/// Get current locale
-pub fn locale() -> String {
+/// Initialize ui_core: register global action handlers for application menu actions.
+///
+/// Must be called once from the `gpui_app.run` callback (alongside `ui::init`).
+/// Global `cx.on_action` handlers fire regardless of focus or render-tree position,
+/// which is necessary because popup menus render in a `deferred` layer that is
+/// disconnected from the `PulsarApp` dispatch tree on Windows / Linux.
+///
+/// Each handler opens the corresponding window directly via `open_pulsar_window`,
+/// the same path used everywhere else in the codebase — fully decoupled from
+/// `PulsarApp` or any particular window hierarchy.
+pub fn init(cx: &mut gpui::App) {
+    use ui_common::open_pulsar_window;
+    use ui_common::menu::{Settings, Preferences, AboutApp, ShowDocumentation};
+    use ui_settings::SettingsWindow;
+    use ui_about::AboutWindow;
+    use ui_documentation::DocumentationWindow;
+
+    cx.on_action(|_: &Settings, cx| {
+        println!("[MENU] global: Settings → SettingsWindow");
+        open_pulsar_window::<SettingsWindow>((), cx);
+    });
+    cx.on_action(|_: &Preferences, cx| {
+        println!("[MENU] global: Preferences → SettingsWindow");
+        open_pulsar_window::<SettingsWindow>((), cx);
+    });
+    cx.on_action(|_: &AboutApp, cx| {
+        open_pulsar_window::<AboutWindow>((), cx);
+    });
+    cx.on_action(|_: &ShowDocumentation, cx| {
+        open_pulsar_window::<DocumentationWindow>((), cx);
+    });
+}
+
+
     rust_i18n::locale().to_string()
 }
 

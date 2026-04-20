@@ -294,6 +294,7 @@ fn main() {
         cx.activate(true);
         ui::init(cx);
         ui::themes::init(cx);
+        ui_core::init(cx);
 
         {
             use window_manager::WindowManager;
