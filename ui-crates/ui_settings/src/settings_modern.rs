@@ -1,16 +1,20 @@
 use gpui::{
     App, AppContext, Context, FocusHandle, Focusable, IntoElement,
-    ParentElement as _, Render, SharedString, Window,
+    ParentElement as _, Styled, Render, SharedString, Window, div,
 };
 
 use engine_state::{
-    global_config, ConfigValue, DropdownOption, FieldType, SettingInfo,
-    NS_EDITOR, NS_PROJECT,
+    global_config, ConfigValue, DropdownOption, FieldType, GlobalSettings,
+    ProjectSettings, SettingInfo, NS_EDITOR, NS_PROJECT,
 };
 
+use std::path::PathBuf;
+
 use ui::{
-    ActiveTheme, Icon, IconName, Sizable, Size, Theme, ThemeMode,
+    ActiveTheme, Icon, IconName, Sizable, Size, StyledExt as _, Theme, ThemeMode,
+    button::{Button, ButtonVariants as _},
     group_box::GroupBoxVariant,
+    h_flex, v_flex,
     setting::{
         NumberFieldOptions, SettingField, SettingGroup,
         SettingItem, SettingPage, Settings,
@@ -21,6 +25,7 @@ pub struct ModernSettingsScreen {
     focus_handle: FocusHandle,
     group_variant: GroupBoxVariant,
     size: Size,
+    project_path: Option<PathBuf>,
 }
 
 impl ModernSettingsScreen {
@@ -59,7 +64,7 @@ impl ModernSettingsScreen {
     }
 
     pub fn new(
-        _project_path: Option<std::path::PathBuf>,
+        project_path: Option<std::path::PathBuf>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -68,6 +73,7 @@ impl ModernSettingsScreen {
             focus_handle: cx.focus_handle(),
             group_variant: GroupBoxVariant::Outline,
             size: Size::default(),
+            project_path,
         }
     }
 
@@ -344,10 +350,52 @@ impl Focusable for ModernSettingsScreen {
 
 impl Render for ModernSettingsScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        Settings::new("app-settings")
-            .with_size(self.size)
-            .with_group_variant(self.group_variant)
-            .pages(self.setting_pages(window, cx))
+        let theme = cx.theme();
+        v_flex()
+            .size_full()
+            .child(
+                // Persistent action bar with Save button
+                h_flex()
+                    .w_full()
+                    .px_4()
+                    .py_2()
+                    .justify_end()
+                    .gap_2()
+                    .border_b_1()
+                    .border_color(theme.border)
+                    .bg(theme.sidebar)
+                    .child(
+                        Button::new("save-settings")
+                            .primary()
+                            .small()
+                            .icon(IconName::Check)
+                            .label("Save")
+                            .on_click(cx.listener(|screen, _, _window, _cx| {
+                                match GlobalSettings::new().save_all() {
+                                    Ok(_) => tracing::info!("Editor settings saved."),
+                                    Err(e) => tracing::error!("Failed to save editor settings: {e}"),
+                                }
+                                if let Some(ref path) = screen.project_path {
+                                    match ProjectSettings::new(path).save_all() {
+                                        Ok(_) => tracing::info!("Project settings saved."),
+                                        Err(e) => tracing::error!("Failed to save project settings: {e}"),
+                                    }
+                                }
+                            })),
+                    ),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .size_full()
+                    .child(
+                        Settings::new("app-settings")
+                            .with_size(self.size)
+                            .with_group_variant(self.group_variant)
+                            .pages(self.setting_pages(window, cx)),
+                    ),
+            )
     }
 }
 
