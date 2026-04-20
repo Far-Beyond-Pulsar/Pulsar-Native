@@ -79,7 +79,66 @@ pub fn register(cfg: &'static ConfigManager) {
         .setting("mute_on_focus_loss",
             SchemaEntry::new("Mute all audio when the game window loses focus", false)
                 .label("Mute on Focus Loss").page("Audio")
-                .field_type(FieldType::Checkbox));
+                .field_type(FieldType::Checkbox))
+        .setting("spatial_audio_enabled",
+            SchemaEntry::new("Enable 3D positional audio spatialization", true)
+                .label("3D Spatial Audio").page("Audio")
+                .field_type(FieldType::Checkbox))
+        .setting("hrtf_enabled",
+            SchemaEntry::new("Use Head-Related Transfer Function (HRTF) for realistic headphone spatialization", false)
+                .label("HRTF (Headphone Spatialization)").page("Audio")
+                .field_type(FieldType::Checkbox))
+        .setting("reverb_enabled",
+            SchemaEntry::new("Enable environmental reverb and convolution on audio sources", true)
+                .label("Reverb").page("Audio")
+                .field_type(FieldType::Checkbox))
+        .setting("occlusion_enabled",
+            SchemaEntry::new("Occlude sounds that pass through geometry using raycasts", false)
+                .label("Audio Occlusion").page("Audio")
+                .field_type(FieldType::Checkbox))
+        .setting("voice_channels",
+            SchemaEntry::new("Maximum number of simultaneous voice/sound channels", 64_i64)
+                .label("Voice Channels").page("Audio")
+                .field_type(FieldType::NumberInput { min: Some(8.0), max: Some(512.0), step: Some(8.0) })
+                .validator(Validator::int_range(8, 512)))
+        .setting("doppler_scale",
+            SchemaEntry::new("Doppler effect intensity multiplier (0.0 = off, 1.0 = realistic)", 0.0_f64)
+                .label("Doppler Scale").page("Audio")
+                .field_type(FieldType::Slider { min: 0.0, max: 3.0, step: 0.1 })
+                .validator(Validator::float_range(0.0, 3.0)))
+        .setting("distance_model",
+            SchemaEntry::new("Falloff model for 3D audio attenuation", "inverse")
+                .label("Distance Attenuation Model").page("Audio")
+                .field_type(FieldType::Dropdown { options: vec![
+                    DropdownOption::new("Inverse", "inverse"),
+                    DropdownOption::new("Linear", "linear"),
+                    DropdownOption::new("Exponential", "exponential"),
+                    DropdownOption::new("None", "none"),
+                ]})
+                .validator(Validator::string_one_of(["inverse", "linear", "exponential", "none"])))
+        .setting("rolloff_factor",
+            SchemaEntry::new("Rolloff factor for the distance attenuation model", 1.0_f64)
+                .label("Rolloff Factor").page("Audio")
+                .field_type(FieldType::Slider { min: 0.0, max: 10.0, step: 0.1 })
+                .validator(Validator::float_range(0.0, 10.0)))
+        .setting("streaming_threshold_kb",
+            SchemaEntry::new("Audio files larger than this value (KB) are streamed from disk", 256_i64)
+                .label("Streaming Threshold (KB)").page("Audio")
+                .field_type(FieldType::NumberInput { min: Some(64.0), max: Some(8192.0), step: Some(64.0) })
+                .validator(Validator::int_range(64, 8192)))
+        .setting("mix_presets_file",
+            SchemaEntry::new("Path to the audio mix presets/busses configuration file", "config/audio_mix.toml")
+                .label("Mix Presets File").page("Audio")
+                .field_type(FieldType::TextInput { placeholder: Some("config/audio_mix.toml".into()), multiline: false }))
+        .setting("duck_on_voice",
+            SchemaEntry::new("Automatically duck (reduce) background music volume during voice lines", true)
+                .label("Duck on Voice").page("Audio")
+                .field_type(FieldType::Checkbox))
+        .setting("duck_amount_db",
+            SchemaEntry::new("Amount to reduce background music volume during ducking in dB", -12.0_f64)
+                .label("Duck Amount (dB)").page("Audio")
+                .field_type(FieldType::Slider { min: -40.0, max: 0.0, step: 1.0 })
+                .validator(Validator::float_range(-40.0, 0.0)));
 
     let _ = cfg.register(NS, OWNER, schema);
 }

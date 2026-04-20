@@ -57,7 +57,60 @@ pub fn register(cfg: &'static ConfigManager) {
         .setting("flashing_lights",
             SchemaEntry::new("Show photosensitive epilepsy warning and allow disabling flashing lights", true)
                 .label("Photosensitivity Warning").page("Accessibility")
-                .field_type(FieldType::Checkbox));
+                .field_type(FieldType::Checkbox))
+        .setting("aim_assist_enabled",
+            SchemaEntry::new("Enable aim assistance for players using controllers or with motor impairments", false)
+                .label("Aim Assist").page("Accessibility")
+                .field_type(FieldType::Checkbox))
+        .setting("aim_assist_strength",
+            SchemaEntry::new("Strength of the aim assist magnetism (0.0 = off, 1.0 = maximum)", 0.3_f64)
+                .label("Aim Assist Strength").page("Accessibility")
+                .field_type(FieldType::Slider { min: 0.0, max: 1.0, step: 0.05 })
+                .validator(Validator::float_range(0.0, 1.0)))
+        .setting("auto_sprint",
+            SchemaEntry::new("Automatically sprint when moving forward (toggle instead of hold)", false)
+                .label("Auto Sprint").page("Accessibility")
+                .field_type(FieldType::Checkbox))
+        .setting("hold_to_crouch",
+            SchemaEntry::new("Require holding the crouch key instead of toggling", true)
+                .label("Hold to Crouch").page("Accessibility")
+                .field_type(FieldType::Checkbox))
+        .setting("toggle_ads",
+            SchemaEntry::new("Toggle aim-down-sights instead of requiring the button to be held", false)
+                .label("Toggle ADS").page("Accessibility")
+                .field_type(FieldType::Checkbox))
+        .setting("narrate_ui",
+            SchemaEntry::new("Read focused UI elements aloud using text-to-speech", false)
+                .label("Narrate UI").page("Accessibility")
+                .field_type(FieldType::Checkbox))
+        .setting("narration_speed",
+            SchemaEntry::new("Text-to-speech narration speed multiplier", 1.0_f64)
+                .label("Narration Speed").page("Accessibility")
+                .field_type(FieldType::Slider { min: 0.5, max: 3.0, step: 0.1 })
+                .validator(Validator::float_range(0.5, 3.0)))
+        .setting("large_cursor",
+            SchemaEntry::new("Display a larger mouse cursor for better visibility", false)
+                .label("Large Cursor").page("Accessibility")
+                .field_type(FieldType::Checkbox))
+        .setting("ui_border_highlight",
+            SchemaEntry::new("Add high-contrast borders to interactive UI elements", false)
+                .label("UI Border Highlight").page("Accessibility")
+                .field_type(FieldType::Checkbox))
+        .setting("safe_zone_margin",
+            SchemaEntry::new("Extra inset margin percentage for HUD elements on older displays", 0.0_f64)
+                .label("Safe Zone Margin (%)").page("Accessibility")
+                .field_type(FieldType::Slider { min: 0.0, max: 15.0, step: 0.5 })
+                .validator(Validator::float_range(0.0, 15.0)))
+        .setting("gameplay_hints_verbosity",
+            SchemaEntry::new("How often the game displays contextual gameplay hints", "normal")
+                .label("Gameplay Hints").page("Accessibility")
+                .field_type(FieldType::Dropdown { options: vec![
+                    DropdownOption::new("None", "none"),
+                    DropdownOption::new("Minimal", "minimal"),
+                    DropdownOption::new("Normal", "normal"),
+                    DropdownOption::new("Verbose", "verbose"),
+                ]})
+                .validator(Validator::string_one_of(["none", "minimal", "normal", "verbose"])));
 
     let _ = cfg.register(NS, OWNER, schema);
 }

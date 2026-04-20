@@ -68,7 +68,57 @@ pub fn register(cfg: &'static ConfigManager) {
         .setting("post_build_script",
             SchemaEntry::new("Script to run after a successful build", "")
                 .label("Post-Build Script").page("Build")
-                .field_type(FieldType::TextInput { placeholder: Some("scripts/post_build.sh".into()), multiline: false }));
+                .field_type(FieldType::TextInput { placeholder: Some("scripts/post_build.sh".into()), multiline: false }))
+        .setting("build_threads",
+            SchemaEntry::new("Number of parallel compile threads (0 = auto-detect from CPU core count)", 0_i64)
+                .label("Build Threads").page("Build")
+                .field_type(FieldType::NumberInput { min: Some(0.0), max: Some(256.0), step: Some(1.0) })
+                .validator(Validator::int_range(0, 256)))
+        .setting("incremental_compilation",
+            SchemaEntry::new("Only recompile translation units that have changed since the last build", true)
+                .label("Incremental Compilation").page("Build")
+                .field_type(FieldType::Checkbox))
+        .setting("unity_builds",
+            SchemaEntry::new("Combine multiple .cpp files into single unity translation units for faster builds", false)
+                .label("Unity Builds").page("Build")
+                .field_type(FieldType::Checkbox))
+        .setting("unity_batch_size",
+            SchemaEntry::new("Number of source files to group per unity batch", 16_i64)
+                .label("Unity Batch Size").page("Build")
+                .field_type(FieldType::NumberInput { min: Some(4.0), max: Some(64.0), step: Some(4.0) })
+                .validator(Validator::int_range(4, 64)))
+        .setting("use_distributed_build",
+            SchemaEntry::new("Distribute compilation across remote build agents (icecc/distcc)", false)
+                .label("Distributed Build").page("Build")
+                .field_type(FieldType::Checkbox))
+        .setting("build_server_address",
+            SchemaEntry::new("Address of the build coordinator/scheduler server", "")
+                .label("Build Server Address").page("Build")
+                .field_type(FieldType::TextInput { placeholder: Some("build-server.local:8374".into()), multiline: false }))
+        .setting("cache_build_artifacts",
+            SchemaEntry::new("Cache compiled objects to a shared artifact store", false)
+                .label("Artifact Cache").page("Build")
+                .field_type(FieldType::Checkbox))
+        .setting("artifact_cache_url",
+            SchemaEntry::new("URL for the shared artifact cache (sccache, Bazel remote cache, etc.)", "")
+                .label("Artifact Cache URL").page("Build")
+                .field_type(FieldType::TextInput { placeholder: Some("http://cache.build.local:9000".into()), multiline: false }))
+        .setting("error_on_warning",
+            SchemaEntry::new("Treat all compiler warnings as errors", false)
+                .label("Warnings as Errors").page("Build")
+                .field_type(FieldType::Checkbox))
+        .setting("lint_scripts",
+            SchemaEntry::new("Run the configured linter on scripting files before compilation", false)
+                .label("Lint Scripts").page("Build")
+                .field_type(FieldType::Checkbox))
+        .setting("generate_compile_commands",
+            SchemaEntry::new("Generate compile_commands.json for clangd/LSP tooling", true)
+                .label("Generate compile_commands.json").page("Build")
+                .field_type(FieldType::Checkbox))
+        .setting("hot_reload",
+            SchemaEntry::new("Rebuild and hot-reload modified modules while the game is running in the editor", false)
+                .label("Hot Reload").page("Build")
+                .field_type(FieldType::Checkbox));
 
     let _ = cfg.register(NS, OWNER, schema);
 }

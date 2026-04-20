@@ -64,7 +64,60 @@ pub fn register(cfg: &'static ConfigManager) {
         .setting("gpu_skinning",
             SchemaEntry::new("Perform mesh skinning on the GPU", true)
                 .label("GPU Skinning").page("Animation")
-                .field_type(FieldType::Checkbox));
+                .field_type(FieldType::Checkbox))
+        .setting("animation_notify_budget_us",
+            SchemaEntry::new("CPU time budget per frame for animation notifies / events in microseconds", 2000_i64)
+                .label("Notify Budget (\u00b5s)").page("Animation")
+                .field_type(FieldType::NumberInput { min: Some(100.0), max: Some(16000.0), step: Some(100.0) })
+                .validator(Validator::int_range(100, 16_000)))
+        .setting("physics_animation_blend",
+            SchemaEntry::new("Blend between kinematic animation and physics simulation on ragdoll", 1.0_f64)
+                .label("Physics Animation Blend").page("Animation")
+                .field_type(FieldType::Slider { min: 0.0, max: 1.0, step: 0.01 })
+                .validator(Validator::float_range(0.0, 1.0)))
+        .setting("procedural_animation",
+            SchemaEntry::new("Enable procedural secondary motion for hair, clothing, and accessories", true)
+                .label("Procedural Animation").page("Animation")
+                .field_type(FieldType::Checkbox))
+        .setting("foot_ik",
+            SchemaEntry::new("Enable foot inverse kinematics to plant feet on uneven terrain", true)
+                .label("Foot IK").page("Animation")
+                .field_type(FieldType::Checkbox))
+        .setting("aim_offset",
+            SchemaEntry::new("Enable aim offset blend space for upper-body aiming", true)
+                .label("Aim Offset").page("Animation")
+                .field_type(FieldType::Checkbox))
+        .setting("look_at",
+            SchemaEntry::new("Enable head/eye look-at constraint driven by target position", true)
+                .label("Look-At Constraint").page("Animation")
+                .field_type(FieldType::Checkbox))
+        .setting("transition_blend_time",
+            SchemaEntry::new("Default blend time for state machine transitions in seconds", 0.2_f64)
+                .label("Default Blend Time (s)").page("Animation")
+                .field_type(FieldType::Slider { min: 0.0, max: 2.0, step: 0.01 })
+                .validator(Validator::float_range(0.0, 2.0)))
+        .setting("additive_animation_enabled",
+            SchemaEntry::new("Support additive animation layers that modify a base pose", true)
+                .label("Additive Layers").page("Animation")
+                .field_type(FieldType::Checkbox))
+        .setting("motion_matching",
+            SchemaEntry::new("Use motion matching instead of traditional state machines for locomotion", false)
+                .label("Motion Matching").page("Animation")
+                .field_type(FieldType::Checkbox))
+        .setting("motion_matching_candidates",
+            SchemaEntry::new("Number of candidate poses evaluated per motion matching query", 8_i64)
+                .label("MM Candidates").page("Animation")
+                .field_type(FieldType::NumberInput { min: Some(1.0), max: Some(64.0), step: Some(1.0) })
+                .validator(Validator::int_range(1, 64)))
+        .setting("cloth_simulation",
+            SchemaEntry::new("Enable GPU cloth simulation for capes, robes, and flags", false)
+                .label("Cloth Simulation").page("Animation")
+                .field_type(FieldType::Checkbox))
+        .setting("cloth_substeps",
+            SchemaEntry::new("Physics substeps per frame for cloth simulation accuracy", 2_i64)
+                .label("Cloth Substeps").page("Animation")
+                .field_type(FieldType::NumberInput { min: Some(1.0), max: Some(8.0), step: Some(1.0) })
+                .validator(Validator::int_range(1, 8)));
 
     let _ = cfg.register(NS, OWNER, schema);
 }

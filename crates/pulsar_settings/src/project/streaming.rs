@@ -50,7 +50,58 @@ pub fn register(cfg: &'static ConfigManager) {
             SchemaEntry::new("How often the asset garbage collector runs to free unused assets (s)", 30_i64)
                 .label("GC Interval (s)").page("Streaming")
                 .field_type(FieldType::NumberInput { min: Some(5.0), max: Some(300.0), step: Some(5.0) })
-                .validator(Validator::int_range(5, 300)));
+                .validator(Validator::int_range(5, 300)))
+        .setting("level_streaming_mode",
+            SchemaEntry::new("How sub-levels are streamed in", "distance")
+                .label("Level Streaming Mode").page("Streaming")
+                .field_type(FieldType::Dropdown { options: vec![
+                    DropdownOption::new("Distance-Based", "distance"),
+                    DropdownOption::new("Always Loaded", "always"),
+                    DropdownOption::new("Blueprint-Controlled", "blueprint"),
+                ]})
+                .validator(Validator::string_one_of(["distance", "always", "blueprint"])))
+        .setting("virtual_texturing_enabled",
+            SchemaEntry::new("Enable runtime virtual texturing (RVT) for large terrain surfaces", false)
+                .label("Virtual Texturing").page("Streaming")
+                .field_type(FieldType::Checkbox))
+        .setting("virtual_texture_tile_size",
+            SchemaEntry::new("Size of each virtual texture tile in texels (power of 2)", "128")
+                .label("VT Tile Size").page("Streaming")
+                .field_type(FieldType::Dropdown { options: vec![
+                    DropdownOption::new("64", "64"),
+                    DropdownOption::new("128", "128"),
+                    DropdownOption::new("256", "256"),
+                    DropdownOption::new("512", "512"),
+                ]}))
+        .setting("nanite_streaming",
+            SchemaEntry::new("Enable Nanite virtualized geometry streaming", false)
+                .label("Nanite Streaming").page("Streaming")
+                .field_type(FieldType::Checkbox))
+        .setting("shader_cache_size_mb",
+            SchemaEntry::new("Disk space budget for compiled shader cache in MB", 256_i64)
+                .label("Shader Cache (MB)").page("Streaming")
+                .field_type(FieldType::NumberInput { min: Some(0.0), max: Some(4096.0), step: Some(64.0) })
+                .validator(Validator::int_range(0, 4096)))
+        .setting("cooked_data_only",
+            SchemaEntry::new("Load only pre-cooked binary asset formats in shipped builds", true)
+                .label("Cooked Data Only").page("Streaming")
+                .field_type(FieldType::Checkbox))
+        .setting("progressive_mesh_loading",
+            SchemaEntry::new("Stream mesh LOD levels progressively as the player moves closer", false)
+                .label("Progressive Mesh Loading").page("Streaming")
+                .field_type(FieldType::Checkbox))
+        .setting("async_physics_cooking",
+            SchemaEntry::new("Cook physics collision shapes asynchronously to avoid hitches", true)
+                .label("Async Physics Cooking").page("Streaming")
+                .field_type(FieldType::Checkbox))
+        .setting("streaming_install_enabled",
+            SchemaEntry::new("Allow streaming installation where players can start playing before download is complete", false)
+                .label("Streaming Install").page("Streaming")
+                .field_type(FieldType::Checkbox))
+        .setting("streaming_install_initial_chunk",
+            SchemaEntry::new("Minimum content chunk required before streaming install allows gameplay", "chunk0")
+                .label("Initial Chunk").page("Streaming")
+                .field_type(FieldType::TextInput { placeholder: Some("chunk0".into()), multiline: false }));
 
     let _ = cfg.register(NS, OWNER, schema);
 }

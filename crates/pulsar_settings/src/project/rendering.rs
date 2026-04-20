@@ -103,7 +103,75 @@ pub fn register(cfg: &'static ConfigManager) {
             SchemaEntry::new("Blend intensity of the color grading LUT", 1.0_f64)
                 .label("LUT Intensity").page("Rendering")
                 .field_type(FieldType::Slider { min: 0.0, max: 1.0, step: 0.01 })
-                .validator(Validator::float_range(0.0, 1.0)));
+                .validator(Validator::float_range(0.0, 1.0)))
+        .setting("gi_method",
+            SchemaEntry::new("Global illumination technique for indirect light", "none")
+                .label("Global Illumination").page("Rendering")
+                .field_type(FieldType::Dropdown { options: vec![
+                    DropdownOption::new("None", "none"),
+                    DropdownOption::new("Baked Lightmaps", "lightmap"),
+                    DropdownOption::new("DDGI (Dynamic)", "ddgi"),
+                    DropdownOption::new("Lumen (Software)", "lumen_sw"),
+                    DropdownOption::new("Lumen (Hardware RT)", "lumen_hw"),
+                    DropdownOption::new("SSGI", "ssgi"),
+                ]})
+                .validator(Validator::string_one_of(["none", "lightmap", "ddgi", "lumen_sw", "lumen_hw", "ssgi"])))
+        .setting("lightmap_resolution",
+            SchemaEntry::new("Default lightmap texture resolution in texels", "512")
+                .label("Default Lightmap Resolution").page("Rendering")
+                .field_type(FieldType::Dropdown { options: vec![
+                    DropdownOption::new("64", "64"),
+                    DropdownOption::new("128", "128"),
+                    DropdownOption::new("256", "256"),
+                    DropdownOption::new("512", "512"),
+                    DropdownOption::new("1024", "1024"),
+                    DropdownOption::new("2048", "2048"),
+                ]}))
+        .setting("ray_tracing_enabled",
+            SchemaEntry::new("Enable hardware ray tracing for shadows, reflections, and GI", false)
+                .label("Ray Tracing").page("Rendering")
+                .field_type(FieldType::Checkbox))
+        .setting("rt_reflections",
+            SchemaEntry::new("Use ray-traced reflections (requires ray tracing to be enabled)", false)
+                .label("RT Reflections").page("Rendering")
+                .field_type(FieldType::Checkbox))
+        .setting("rt_shadows",
+            SchemaEntry::new("Use ray-traced soft shadows (requires ray tracing to be enabled)", false)
+                .label("RT Shadows").page("Rendering")
+                .field_type(FieldType::Checkbox))
+        .setting("rt_ambient_occlusion",
+            SchemaEntry::new("Use ray-traced ambient occlusion for accurate contact shadows", false)
+                .label("RT Ambient Occlusion").page("Rendering")
+                .field_type(FieldType::Checkbox))
+        .setting("upscaler",
+            SchemaEntry::new("Temporal upscaling technique to reconstruct native resolution from lower input", "none")
+                .label("Upscaler").page("Rendering")
+                .field_type(FieldType::Dropdown { options: vec![
+                    DropdownOption::new("None", "none"),
+                    DropdownOption::new("DLSS (NVIDIA)", "dlss"),
+                    DropdownOption::new("FSR 3 (AMD)", "fsr3"),
+                    DropdownOption::new("XeSS (Intel)", "xess"),
+                    DropdownOption::new("TAA (built-in)", "taa"),
+                ]})
+                .validator(Validator::string_one_of(["none", "dlss", "fsr3", "xess", "taa"])))
+        .setting("sky_atmosphere",
+            SchemaEntry::new("Enable physically-based sky atmosphere scattering", false)
+                .label("Sky Atmosphere").page("Rendering")
+                .field_type(FieldType::Checkbox))
+        .setting("volumetric_clouds",
+            SchemaEntry::new("Render volumetric clouds using raymarching", false)
+                .label("Volumetric Clouds").page("Rendering")
+                .field_type(FieldType::Checkbox))
+        .setting("max_draw_calls",
+            SchemaEntry::new("Maximum draw calls per frame before an overdraw warning is surfaced", 10_000_i64)
+                .label("Max Draw Calls").page("Rendering")
+                .field_type(FieldType::NumberInput { min: Some(100.0), max: Some(1_000_000.0), step: Some(1000.0) })
+                .validator(Validator::int_range(100, 1_000_000)))
+        .setting("triangle_budget",
+            SchemaEntry::new("Target triangle count per frame in thousands", 5_000_i64)
+                .label("Triangle Budget (K)").page("Rendering")
+                .field_type(FieldType::NumberInput { min: Some(100.0), max: Some(100_000.0), step: Some(100.0) })
+                .validator(Validator::int_range(100, 100_000)));
 
     let _ = cfg.register(NS, OWNER, schema);
 }

@@ -54,7 +54,62 @@ pub fn register(cfg: &'static ConfigManager) {
                     DropdownOption::new("Log + Traceback", "traceback"),
                     DropdownOption::new("Break into debugger", "debug"),
                     DropdownOption::new("Abort game", "abort"),
-                ]}));
+                ]}))
+        .setting("script_search_paths",
+            SchemaEntry::new("Additional directories to search for script files (semicolon-separated)", "")
+                .label("Script Search Paths").page("Scripting")
+                .field_type(FieldType::TextInput { placeholder: Some("scripts/;plugins/my_mod/scripts/".into()), multiline: false }))
+        .setting("preload_scripts",
+            SchemaEntry::new("Comma-separated list of script files to load before any scene initializes", "")
+                .label("Preload Scripts").page("Scripting")
+                .field_type(FieldType::TextInput { placeholder: Some("scripts/preload.lua".into()), multiline: false }))
+        .setting("expose_engine_api",
+            SchemaEntry::new("Expose full engine API to scripts (disable to limit to a safe subset)", true)
+                .label("Expose Engine API").page("Scripting")
+                .field_type(FieldType::Checkbox))
+        .setting("expose_filesystem_api",
+            SchemaEntry::new("Allow scripts to read/write files through the engine FS API", false)
+                .label("Expose Filesystem API").page("Scripting")
+                .field_type(FieldType::Checkbox))
+        .setting("expose_network_api",
+            SchemaEntry::new("Allow scripts to make outbound network requests", false)
+                .label("Expose Network API").page("Scripting")
+                .field_type(FieldType::Checkbox))
+        .setting("expose_audio_api",
+            SchemaEntry::new("Expose audio playback controls to scripts", true)
+                .label("Expose Audio API").page("Scripting")
+                .field_type(FieldType::Checkbox))
+        .setting("strict_type_checking",
+            SchemaEntry::new("Enforce strict type annotations in supported scripting backends (Rhai)", false)
+                .label("Strict Type Checking").page("Scripting")
+                .field_type(FieldType::Checkbox))
+        .setting("co_routine_tick_hz",
+            SchemaEntry::new("How many times per second yielded coroutines are resumed", 30_i64)
+                .label("Coroutine Tick (Hz)").page("Scripting")
+                .field_type(FieldType::NumberInput { min: Some(1.0), max: Some(120.0), step: Some(1.0) })
+                .validator(Validator::int_range(1, 120)))
+        .setting("require_path",
+            SchemaEntry::new("Lua package.path pattern for require() resolution (empty = default)", "")
+                .label("Lua require Path").page("Scripting")
+                .field_type(FieldType::TextInput { placeholder: Some("./scripts/?.lua;./?.lua".into()), multiline: false }))
+        .setting("global_namespace",
+            SchemaEntry::new("Name of the global table that engine APIs are mounted under in Lua", "Engine")
+                .label("Global Namespace").page("Scripting")
+                .field_type(FieldType::TextInput { placeholder: Some("Engine".into()), multiline: false }))
+        .setting("script_profiling",
+            SchemaEntry::new("Enable per-function profiling inside the scripting VM", false)
+                .label("Script Profiling").page("Scripting")
+                .field_type(FieldType::Checkbox))
+        .setting("wasm_linear_memory_pages",
+            SchemaEntry::new("Initial WebAssembly linear memory size in 64 KiB pages", 256_i64)
+                .label("WASM Memory Pages").page("Scripting")
+                .field_type(FieldType::NumberInput { min: Some(16.0), max: Some(65536.0), step: Some(16.0) })
+                .validator(Validator::int_range(16, 65536)))
+        .setting("wasm_max_memory_pages",
+            SchemaEntry::new("Maximum WebAssembly linear memory size in 64 KiB pages", 16384_i64)
+                .label("WASM Max Memory Pages").page("Scripting")
+                .field_type(FieldType::NumberInput { min: Some(256.0), max: Some(65536.0), step: Some(256.0) })
+                .validator(Validator::int_range(256, 65536)));
 
     let _ = cfg.register(NS, OWNER, schema);
 }

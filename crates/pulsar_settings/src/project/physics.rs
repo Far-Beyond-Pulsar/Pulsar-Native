@@ -65,7 +65,61 @@ pub fn register(cfg: &'static ConfigManager) {
             SchemaEntry::new("Number of physics collision layers", 32_i64)
                 .label("Collision Layers").page("Physics")
                 .field_type(FieldType::NumberInput { min: Some(2.0), max: Some(64.0), step: Some(2.0) })
-                .validator(Validator::int_range(2, 64)));
+                .validator(Validator::int_range(2, 64)))
+        .setting("solver_iterations_velocity",
+            SchemaEntry::new("Velocity constraint solver iterations per physics step", 8_i64)
+                .label("Velocity Solver Iterations").page("Physics")
+                .field_type(FieldType::NumberInput { min: Some(1.0), max: Some(64.0), step: Some(1.0) })
+                .validator(Validator::int_range(1, 64)))
+        .setting("solver_iterations_position",
+            SchemaEntry::new("Position constraint solver iterations per physics step", 2_i64)
+                .label("Position Solver Iterations").page("Physics")
+                .field_type(FieldType::NumberInput { min: Some(1.0), max: Some(16.0), step: Some(1.0) })
+                .validator(Validator::int_range(1, 16)))
+        .setting("ccd_enabled",
+            SchemaEntry::new("Enable continuous collision detection to prevent tunneling at high speeds", true)
+                .label("Continuous Collision Detection (CCD)").page("Physics")
+                .field_type(FieldType::Checkbox))
+        .setting("rigid_body_sleep_threshold",
+            SchemaEntry::new("Kinetic energy threshold below which a rigid body enters sleep state", 0.005_f64)
+                .label("Sleep Threshold").page("Physics")
+                .field_type(FieldType::NumberInput { min: Some(0.0), max: Some(1.0), step: Some(0.001) })
+                .validator(Validator::float_range(0.0, 1.0)))
+        .setting("contact_offset",
+            SchemaEntry::new("Distance at which contact points are generated (slightly above surface)", 0.02_f64)
+                .label("Contact Offset").page("Physics")
+                .field_type(FieldType::NumberInput { min: Some(0.001), max: Some(0.5), step: Some(0.001) })
+                .validator(Validator::float_range(0.001, 0.5)))
+        .setting("scene_query_accuracy",
+            SchemaEntry::new("Accuracy level for scene queries like raycasts", "normal")
+                .label("Scene Query Accuracy").page("Physics")
+                .field_type(FieldType::Dropdown { options: vec![
+                    DropdownOption::new("Fast (bounding volume)", "fast"),
+                    DropdownOption::new("Normal (mesh proxy)", "normal"),
+                    DropdownOption::new("Precise (exact geometry)", "precise"),
+                ]})
+                .validator(Validator::string_one_of(["fast", "normal", "precise"])))
+        .setting("water_physics",
+            SchemaEntry::new("Enable buoyancy and drag simulation for objects in water volumes", false)
+                .label("Water Physics").page("Physics")
+                .field_type(FieldType::Checkbox))
+        .setting("destruction_enabled",
+            SchemaEntry::new("Enable procedural mesh destruction / fracturing simulation", false)
+                .label("Destruction System").page("Physics")
+                .field_type(FieldType::Checkbox))
+        .setting("max_destruction_chunks",
+            SchemaEntry::new("Maximum live chunk actors from destruction events before oldest are removed", 256_i64)
+                .label("Max Destruction Chunks").page("Physics")
+                .field_type(FieldType::NumberInput { min: Some(16.0), max: Some(4096.0), step: Some(16.0) })
+                .validator(Validator::int_range(16, 4096)))
+        .setting("debug_draw_contacts",
+            SchemaEntry::new("Visualize active physics contact points in the editor viewport", false)
+                .label("Debug Draw Contacts").page("Physics")
+                .field_type(FieldType::Checkbox))
+        .setting("debug_draw_joints",
+            SchemaEntry::new("Visualize physics constraint joints in the editor viewport", false)
+                .label("Debug Draw Joints").page("Physics")
+                .field_type(FieldType::Checkbox));
 
     let _ = cfg.register(NS, OWNER, schema);
 }

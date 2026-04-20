@@ -67,7 +67,64 @@ pub fn register(cfg: &'static ConfigManager) {
             SchemaEntry::new("Timeout for reliable RPC calls in milliseconds", 5000_i64)
                 .label("RPC Timeout (ms)").page("Network")
                 .field_type(FieldType::NumberInput { min: Some(100.0), max: Some(30000.0), step: Some(100.0) })
-                .validator(Validator::int_range(100, 30_000)));
+                .validator(Validator::int_range(100, 30_000)))
+        .setting("bandwidth_limit_kbps",
+            SchemaEntry::new("Outbound bandwidth cap per client connection in Kbps (0 = unlimited)", 0_i64)
+                .label("Bandwidth Limit (Kbps)").page("Network")
+                .field_type(FieldType::NumberInput { min: Some(0.0), max: Some(100_000.0), step: Some(100.0) })
+                .validator(Validator::int_range(0, 100_000)))
+        .setting("compression_enabled",
+            SchemaEntry::new("Compress network packets to reduce bandwidth at the cost of CPU", true)
+                .label("Packet Compression").page("Network")
+                .field_type(FieldType::Checkbox))
+        .setting("encryption_enabled",
+            SchemaEntry::new("Encrypt network traffic using DTLS/TLS", false)
+                .label("Encryption").page("Network")
+                .field_type(FieldType::Checkbox))
+        .setting("nat_traversal",
+            SchemaEntry::new("Enable NAT punch-through for peer-to-peer connections", true)
+                .label("NAT Traversal").page("Network")
+                .field_type(FieldType::Checkbox))
+        .setting("relay_server_url",
+            SchemaEntry::new("WebSocket relay server URL used when direct NAT traversal fails", "")
+                .label("Relay Server URL").page("Network")
+                .field_type(FieldType::TextInput { placeholder: Some("wss://relay.example.com".into()), multiline: false }))
+        .setting("stun_server_url",
+            SchemaEntry::new("STUN server URL used for NAT traversal and IP discovery", "stun:stun.l.google.com:19302")
+                .label("STUN Server URL").page("Network")
+                .field_type(FieldType::TextInput { placeholder: Some("stun:stun.l.google.com:19302".into()), multiline: false }))
+        .setting("prediction_enabled",
+            SchemaEntry::new("Enable client-side movement prediction for responsive feel", true)
+                .label("Client Prediction").page("Network")
+                .field_type(FieldType::Checkbox))
+        .setting("reconciliation_enabled",
+            SchemaEntry::new("Reconcile predicted state with authoritative server corrections", true)
+                .label("Server Reconciliation").page("Network")
+                .field_type(FieldType::Checkbox))
+        .setting("interpolation_delay_ms",
+            SchemaEntry::new("Entity interpolation delay in milliseconds to smooth remote player movement", 100_i64)
+                .label("Interpolation Delay (ms)").page("Network")
+                .field_type(FieldType::NumberInput { min: Some(0.0), max: Some(500.0), step: Some(10.0) })
+                .validator(Validator::int_range(0, 500)))
+        .setting("max_queued_snapshots",
+            SchemaEntry::new("Maximum number of world state snapshots buffered for reconciliation", 60_i64)
+                .label("Max Queued Snapshots").page("Network")
+                .field_type(FieldType::NumberInput { min: Some(10.0), max: Some(256.0), step: Some(10.0) })
+                .validator(Validator::int_range(10, 256)))
+        .setting("debug_network_stats",
+            SchemaEntry::new("Show real-time network stats overlay (ping, packet loss, bandwidth)", false)
+                .label("Network Stats Overlay").page("Network")
+                .field_type(FieldType::Checkbox))
+        .setting("simulate_latency_ms",
+            SchemaEntry::new("Artificial latency added to all network packets for testing (0 = off)", 0_i64)
+                .label("Simulated Latency (ms)").page("Network")
+                .field_type(FieldType::NumberInput { min: Some(0.0), max: Some(2000.0), step: Some(10.0) })
+                .validator(Validator::int_range(0, 2000)))
+        .setting("simulate_packet_loss_pct",
+            SchemaEntry::new("Percentage of packets artificially dropped for network testing (0 = off)", 0_i64)
+                .label("Simulated Packet Loss (%)").page("Network")
+                .field_type(FieldType::NumberInput { min: Some(0.0), max: Some(50.0), step: Some(1.0) })
+                .validator(Validator::int_range(0, 50)));
 
     let _ = cfg.register(NS, OWNER, schema);
 }
