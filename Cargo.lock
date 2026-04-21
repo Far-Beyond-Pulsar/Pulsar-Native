@@ -7932,6 +7932,7 @@ dependencies = [
  "ed25519-dalek",
  "futures-util",
  "jsonwebtoken",
+ "libc",
  "mockall",
  "once_cell",
  "opentelemetry",
