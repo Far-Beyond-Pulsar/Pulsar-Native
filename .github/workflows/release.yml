@@ -278,25 +278,29 @@ jobs:
         env:
           RUST_BACKTRACE: 1
 
-      - name: Upload all binaries
+      - name: Stage binaries for upload
         if: ${{ env.BUILD_CRATES == 'true' }}
         shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
         run: |
+          mkdir -p release-artifacts
           while IFS= read -r crate_path; do
             crate_path=$(echo "$crate_path" | xargs)
             if [ -n "$crate_path" ]; then
               crate_name=$(grep -m1 '^name' "$crate_path/Cargo.toml" | sed 's/name[[:space:]]*=[[:space:]]*"\(.*\)"/\1/' | tr -d '[:space:]')
               BIN_PATH="${{ matrix.bin_path }}/${crate_name}${{ matrix.extension || '' }}"
               ASSET_NAME="${crate_name}${{ matrix.asset_name }}"
-              echo "Uploading $BIN_PATH as $ASSET_NAME"
-              gh release upload "v${{ needs.check-version.outputs.version }}" \
-                "$BIN_PATH#${ASSET_NAME}" \
-                --repo "${{ github.repository }}" \
-                --clobber || echo "⚠️ Upload failed for $crate_name (continuing)"
+              echo "Staging $BIN_PATH as $ASSET_NAME"
+              cp "$BIN_PATH" "release-artifacts/${ASSET_NAME}"
             fi
           done <<< "${{ env.CRATES_TO_BUILD }}"
+
+      - name: Upload native artifacts
+        if: ${{ env.BUILD_CRATES == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-native-${{ matrix.target }}
+          path: release-artifacts/
+          if-no-files-found: warn
 
       - name: Create macOS ARM .app bundle
         if: runner.os == 'macOS' && matrix.target == 'aarch64-apple-darwin' && env.BUILD_CRATES == 'true'
@@ -316,17 +320,13 @@ jobs:
           echo "Created .app archive: $ZIP_NAME"
           ls -lh "$ZIP_NAME"
 
-      - name: Upload macOS ARM .app zip
+      - name: Upload macOS .app artifact
         if: runner.os == 'macOS' && matrix.target == 'aarch64-apple-darwin' && env.BUILD_CRATES == 'true'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ${{ env.APP_ZIP_PATH }}
-          asset_name: ${{ needs.check-version.outputs.package_name }}-macos-arm64.app.zip
-          asset_content_type: application/zip
-        continue-on-error: true
+          name: release-macos-app
+          path: ${{ env.APP_ZIP_PATH }}
+          if-no-files-found: warn
 
       - name: Build examples
         if: ${{ env.BUILD_EXAMPLES == 'true' }}
@@ -393,17 +393,13 @@ jobs:
             exit 1
           fi
 
-      - name: Upload examples archive
+      - name: Upload examples artifact
         if: ${{ env.BUILD_EXAMPLES == 'true' && env.EXAMPLES_ARCHIVE != '' }}
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ${{ env.EXAMPLES_ARCHIVE }}
-          asset_name: ${{ env.EXAMPLES_ARCHIVE }}
-          asset_content_type: application/gzip
-        continue-on-error: true
+          name: release-examples-${{ matrix.target }}
+          path: ${{ env.EXAMPLES_ARCHIVE }}
+          if-no-files-found: warn
 
   cross-builds:
     needs: [check-version, create-release]
@@ -502,7 +498,7 @@ jobs:
           done <<< "${{ env.CRATES_TO_BUILD }}"
           cross build $ARGS
 
-      - name: Generate SHA256
+      - name: Generate SHA256 and stage artifacts
         if: ${{ env.BUILD_CRATES == 'true' }}
         run: |
           echo "Checking binary at: [$BIN_PATH]"
@@ -511,28 +507,17 @@ jobs:
           sha256sum "$BIN_PATH" > "$BIN_PATH.sha256"
           echo "SHA256 file contents:"
           cat "$BIN_PATH.sha256"
+          mkdir -p release-artifacts
+          cp "$BIN_PATH" "release-artifacts/$ASSET_NAME"
+          cp "$BIN_PATH.sha256" "release-artifacts/$ASSET_NAME.sha256"
 
-      - name: Upload Binary
+      - name: Upload cross-build artifacts
         if: ${{ env.BUILD_CRATES == 'true' }}
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ${{ env.BIN_PATH }}
-          asset_name: ${{ env.ASSET_NAME }}
-          asset_content_type: application/octet-stream
-
-      - name: Upload SHA256
-        if: ${{ env.BUILD_CRATES == 'true' }}
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ${{ env.BIN_PATH }}.sha256
-          asset_name: ${{ env.ASSET_NAME }}.sha256
-          asset_content_type: text/plain
+          name: release-cross-${{ matrix.target }}
+          path: release-artifacts/
+          if-no-files-found: warn
 
       - name: Build examples
         if: ${{ env.BUILD_EXAMPLES == 'true' }}
@@ -594,14 +579,51 @@ jobs:
             exit 1
           fi
 
-      - name: Upload examples archive
+      - name: Upload examples artifact
         if: ${{ env.BUILD_EXAMPLES == 'true' && env.EXAMPLES_ARCHIVE != '' }}
-        uses: actions/upload-release-asset@v1
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-examples-cross-${{ matrix.target }}
+          path: ${{ env.EXAMPLES_ARCHIVE }}
+          if-no-files-found: warn
+
+  upload-release:
+    needs: [check-version, create-release, build-release, cross-builds]
+    # Run even if some build jobs failed — only upload what actually succeeded
+    if: always() && needs.check-version.outputs.should_release == 'true' && needs.create-release.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: all-artifacts
+          merge-multiple: true
+
+      - name: List artifacts to upload
+        run: |
+          echo "Artifacts staged for upload:"
+          find all-artifacts -type f | sort
+
+      - name: Upload all artifacts to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ${{ env.EXAMPLES_ARCHIVE }}
-          asset_name: ${{ env.EXAMPLES_ARCHIVE }}
-          asset_content_type: application/gzip
+        run: |
+          shopt -s nullglob
+          files=(all-artifacts/*)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No artifacts found to upload."
+            exit 0
+          fi
+          for file in "${files[@]}"; do
+            if [ -f "$file" ]; then
+              echo "Uploading: $file"
+              gh release upload "v${{ needs.check-version.outputs.version }}" \
+                "$file" \
+                --repo "${{ github.repository }}" \
+                --clobber || echo "⚠️ Upload failed for $file (continuing)"
+            fi
+          done
 
