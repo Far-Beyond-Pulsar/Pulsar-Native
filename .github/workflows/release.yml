@@ -9,6 +9,8 @@ env:
   # First crate is used for version checking
   CRATES_TO_BUILD: |
     crates/engine
+    crates/multiuser_host
+    crates/multiuser_server
   
   # Crates to build examples for (newline-separated list)
   CRATES_WITH_EXAMPLES: |
@@ -276,71 +278,50 @@ jobs:
         env:
           RUST_BACKTRACE: 1
 
-      - name: Set binary path variables
+      - name: Generate SHA256 for all binaries
         if: ${{ env.BUILD_CRATES == 'true' }}
         shell: bash
         run: |
-          PACKAGE_NAME="${{ needs.check-version.outputs.package_name }}"
-          FULL_BIN_PATH="${{ matrix.bin_path }}/${PACKAGE_NAME}${{ matrix.extension || '' }}"
-          FULL_ASSET_NAME="${PACKAGE_NAME}${{ matrix.asset_name }}"
-          FULL_BIN_PATH=$(echo "$FULL_BIN_PATH" | tr -d '[:space:]')
+          while IFS= read -r crate_path; do
+            crate_path=$(echo "$crate_path" | xargs)
+            if [ -n "$crate_path" ]; then
+              crate_name=$(grep -m1 '^name' "$crate_path/Cargo.toml" | sed 's/name[[:space:]]*=[[:space:]]*"\(.*\)"/\1/' | tr -d '[:space:]')
+              BIN_PATH="${{ matrix.bin_path }}/${crate_name}${{ matrix.extension || '' }}"
+              if [ -f "$BIN_PATH" ]; then
+                echo "✅ Found: $BIN_PATH"
+                if [[ "${{ runner.os }}" == "Windows" ]]; then
+                  sha256sum "$BIN_PATH" > "$BIN_PATH.sha256"
+                else
+                  shasum -a 256 "$BIN_PATH" > "$BIN_PATH.sha256"
+                fi
+                echo "SHA256: $(cat "$BIN_PATH.sha256")"
+              else
+                echo "❌ Binary not found: $BIN_PATH"
+                exit 1
+              fi
+            fi
+          done <<< "${{ env.CRATES_TO_BUILD }}"
 
-          echo "PACKAGE_NAME=${PACKAGE_NAME}" >> $GITHUB_ENV
-          echo "FULL_BIN_PATH=${FULL_BIN_PATH}" >> $GITHUB_ENV
-          echo "FULL_ASSET_NAME=${FULL_ASSET_NAME}" >> $GITHUB_ENV
-
-          echo "Debug info:"
-          echo "- Package name: [$PACKAGE_NAME]"
-          echo "- Binary path: [$FULL_BIN_PATH]"
-          echo "- Asset name: [$FULL_ASSET_NAME]"
-
-          if [ -f "${FULL_BIN_PATH}" ]; then
-            echo "✅ Binary exists at: ${FULL_BIN_PATH}"
-            ls -la "${FULL_BIN_PATH}"
-          else
-            echo "❌ Binary NOT found at: ${FULL_BIN_PATH}"
-            echo "Contents of target directory:"
-            find target -type f | grep -E "(\\.exe$|\\.wasm$|/${PACKAGE_NAME}$)" | sort
-          fi
-
-      - name: Generate SHA256
+      - name: Upload all binaries and SHAs
         if: ${{ env.BUILD_CRATES == 'true' }}
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          echo "Checking binary at: [$FULL_BIN_PATH]"
-          ls -l "$FULL_BIN_PATH" || (echo "❌ ERROR: Binary still not found at $FULL_BIN_PATH" && find target -type f | grep -E "(\\.exe$|\\.wasm$|/${PACKAGE_NAME}$)" | sort && exit 1)
-          echo "Generating SHA256 for $FULL_BIN_PATH"
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            sha256sum "$FULL_BIN_PATH" > "$FULL_BIN_PATH.sha256"
-          else
-            shasum -a 256 "$FULL_BIN_PATH" > "$FULL_BIN_PATH.sha256"
-          fi
-          echo "SHA256 file contents:"
-          cat "$FULL_BIN_PATH.sha256"
-
-      - name: Upload Binary
-        if: ${{ env.BUILD_CRATES == 'true' }}
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ${{ env.FULL_BIN_PATH }}
-          asset_name: ${{ env.FULL_ASSET_NAME }}
-          asset_content_type: application/octet-stream
-        continue-on-error: true
-
-      - name: Upload SHA256
-        if: ${{ env.BUILD_CRATES == 'true' }}
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ${{ env.FULL_BIN_PATH }}.sha256
-          asset_name: ${{ env.FULL_ASSET_NAME }}.sha256
-          asset_content_type: text/plain
-        continue-on-error: true
+          while IFS= read -r crate_path; do
+            crate_path=$(echo "$crate_path" | xargs)
+            if [ -n "$crate_path" ]; then
+              crate_name=$(grep -m1 '^name' "$crate_path/Cargo.toml" | sed 's/name[[:space:]]*=[[:space:]]*"\(.*\)"/\1/' | tr -d '[:space:]')
+              BIN_PATH="${{ matrix.bin_path }}/${crate_name}${{ matrix.extension || '' }}"
+              ASSET_NAME="${crate_name}${{ matrix.asset_name }}"
+              echo "Uploading $BIN_PATH as $ASSET_NAME"
+              gh release upload "v${{ needs.check-version.outputs.version }}" \
+                "$BIN_PATH#${ASSET_NAME}" \
+                "$BIN_PATH.sha256#${ASSET_NAME}.sha256" \
+                --repo "${{ github.repository }}" \
+                --clobber || echo "⚠️ Upload failed for $crate_name (continuing)"
+            fi
+          done <<< "${{ env.CRATES_TO_BUILD }}"
 
       - name: Create macOS ARM .app bundle
         if: runner.os == 'macOS' && matrix.target == 'aarch64-apple-darwin' && env.BUILD_CRATES == 'true'
