@@ -278,31 +278,7 @@ jobs:
         env:
           RUST_BACKTRACE: 1
 
-      - name: Generate SHA256 for all binaries
-        if: ${{ env.BUILD_CRATES == 'true' }}
-        shell: bash
-        run: |
-          while IFS= read -r crate_path; do
-            crate_path=$(echo "$crate_path" | xargs)
-            if [ -n "$crate_path" ]; then
-              crate_name=$(grep -m1 '^name' "$crate_path/Cargo.toml" | sed 's/name[[:space:]]*=[[:space:]]*"\(.*\)"/\1/' | tr -d '[:space:]')
-              BIN_PATH="${{ matrix.bin_path }}/${crate_name}${{ matrix.extension || '' }}"
-              if [ -f "$BIN_PATH" ]; then
-                echo "✅ Found: $BIN_PATH"
-                if [[ "${{ runner.os }}" == "Windows" ]]; then
-                  sha256sum "$BIN_PATH" > "$BIN_PATH.sha256"
-                else
-                  shasum -a 256 "$BIN_PATH" > "$BIN_PATH.sha256"
-                fi
-                echo "SHA256: $(cat "$BIN_PATH.sha256")"
-              else
-                echo "❌ Binary not found: $BIN_PATH"
-                exit 1
-              fi
-            fi
-          done <<< "${{ env.CRATES_TO_BUILD }}"
-
-      - name: Upload all binaries and SHAs
+      - name: Upload all binaries
         if: ${{ env.BUILD_CRATES == 'true' }}
         shell: bash
         env:
@@ -317,7 +293,6 @@ jobs:
               echo "Uploading $BIN_PATH as $ASSET_NAME"
               gh release upload "v${{ needs.check-version.outputs.version }}" \
                 "$BIN_PATH#${ASSET_NAME}" \
-                "$BIN_PATH.sha256#${ASSET_NAME}.sha256" \
                 --repo "${{ github.repository }}" \
                 --clobber || echo "⚠️ Upload failed for $crate_name (continuing)"
             fi
@@ -341,17 +316,6 @@ jobs:
           echo "Created .app archive: $ZIP_NAME"
           ls -lh "$ZIP_NAME"
 
-      - name: Generate SHA256 for macOS ARM .app zip
-        if: runner.os == 'macOS' && matrix.target == 'aarch64-apple-darwin' && env.BUILD_CRATES == 'true'
-        shell: bash
-        run: |
-          if [ -z "${APP_ZIP_PATH}" ]; then
-            echo "❌ APP_ZIP_PATH is not set"
-            exit 1
-          fi
-          shasum -a 256 "$APP_ZIP_PATH" > "$APP_ZIP_PATH.sha256"
-          cat "$APP_ZIP_PATH.sha256"
-
       - name: Upload macOS ARM .app zip
         if: runner.os == 'macOS' && matrix.target == 'aarch64-apple-darwin' && env.BUILD_CRATES == 'true'
         uses: actions/upload-release-asset@v1
@@ -362,18 +326,6 @@ jobs:
           asset_path: ${{ env.APP_ZIP_PATH }}
           asset_name: ${{ needs.check-version.outputs.package_name }}-macos-arm64.app.zip
           asset_content_type: application/zip
-        continue-on-error: true
-
-      - name: Upload macOS ARM .app zip SHA256
-        if: runner.os == 'macOS' && matrix.target == 'aarch64-apple-darwin' && env.BUILD_CRATES == 'true'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ${{ env.APP_ZIP_PATH }}.sha256
-          asset_name: ${{ needs.check-version.outputs.package_name }}-macos-arm64.app.zip.sha256
-          asset_content_type: text/plain
         continue-on-error: true
 
       - name: Build examples
