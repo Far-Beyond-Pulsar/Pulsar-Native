@@ -173,3 +173,23 @@ gpui-component-macros = { path = "crates/macros" }
 # UI crates referenced by core crates
 ui_common             = { path = "ui-crates/ui_common" }
 ui_types_common       = { path = "ui-crates/ui_types_common" }
+
+[patch."https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints"]
+plugin_editor_api     = { path = "crates/plugin_editor_api" }
+ui                    = { path = "crates/ui" }
+ui_common             = { path = "ui-crates/ui_common" }
+ui_types_common       = { path = "ui-crates/ui_types_common" }
+pulsar_std            = { path = "crates/pulsar_std" }
+engine_backend        = { path = "crates/engine_backend" }
+window_manager        = { path = "crates/window_manager" }
+engine_state          = { path = "crates/engine_state" }
+engine_fs             = { path = "crates/engine_fs" }
+profiling             = { path = "crates/profiling" }
+type_db               = { path = "crates/type_db" }
+pulsar_settings       = { path = "crates/pulsar_settings" }
+pulsar_diagnostics    = { path = "crates/pulsar_diagnostics" }
+pulsar_lsp            = { path = "crates/pulsar_lsp" }
+blueprint_compiler    = { path = "crates/blueprint_compiler" }
+pulsar_graph          = { path = "crates/pulsar_graph" }
+pulsar_replication    = { path = "crates/pulsar_replication" }
+gpui-component-macros = { path = "crates/macros" }

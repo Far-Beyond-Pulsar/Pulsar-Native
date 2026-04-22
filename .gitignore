@@ -26,3 +26,5 @@ out.txt
 /tools/set-logo/target
 composed_shader_debug.wgsl
 /.vscode/fastsearch
+.cargo_metadata_full.json
+.cargo_metadata.json
