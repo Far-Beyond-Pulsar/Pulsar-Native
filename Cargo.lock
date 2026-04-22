@@ -1077,6 +1077,7 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.4.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints#d53ad47aa54c966c0815e05f9fb823ecedefc206"
 dependencies = [
  "chrono",
  "engine_backend",

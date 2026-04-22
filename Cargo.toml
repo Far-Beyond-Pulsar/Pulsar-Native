@@ -151,4 +151,8 @@ files.extend-exclude = ["**/fixtures/*"]
 ###################################
 
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Native"]
-pulsar_std = { path = "crates/pulsar_std" }
+pulsar_std        = { path = "crates/pulsar_std" }
+ui                = { path = "crates/ui" }
+ui_common         = { path = "ui-crates/ui_common" }
+plugin_editor_api = { path = "crates/plugin_editor_api" }
+engine_backend    = { path = "crates/engine_backend" }
