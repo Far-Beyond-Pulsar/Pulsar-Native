@@ -1075,6 +1075,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "blueprint_editor_plugin"
+version = "0.4.0"
+dependencies = [
+ "chrono",
+ "engine_backend",
+ "futures",
+ "gpui-ce",
+ "graphy",
+ "log",
+ "pbgc",
+ "plugin_editor_api",
+ "pulsar_std 0.1.0",
+ "schemars",
+ "serde",
+ "serde_json",
+ "smol 2.0.2",
+ "tracing",
+ "ui",
+ "ui_common",
+ "uuid",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "borsh"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11937,6 +11961,7 @@ dependencies = [
 name = "ui_core"
 version = "0.1.0"
 dependencies = [
+ "blueprint_editor_plugin",
  "engine_backend",
  "engine_state",
  "futures",
@@ -11946,6 +11971,7 @@ dependencies = [
  "rust-i18n",
  "schemars",
  "serde",
+ "serde_json",
  "smol 2.0.2",
  "tracing",
  "ui",
