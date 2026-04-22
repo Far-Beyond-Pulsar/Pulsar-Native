@@ -143,3 +143,12 @@ style = { level = "allow", priority = -1 }
 
 [workspace.metadata.typos]
 files.extend-exclude = ["**/fixtures/*"]
+
+###################################
+# Patch: force git deps to use local crates
+# pbgc (PBGC repo) pulls pulsar_std from a Pulsar-Native git rev,
+# creating a second copy. This patch unifies it with the local one.
+###################################
+
+[patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Native"]
+pulsar_std = { path = "crates/pulsar_std" }
