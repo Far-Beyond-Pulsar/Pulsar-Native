@@ -1,5 +1,5 @@
 use crate::ReplicationMessage;
-use gpui::{App, Global, ReadGlobal};
+use gpui::{App, Global};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;

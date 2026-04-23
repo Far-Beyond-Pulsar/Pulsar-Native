@@ -529,7 +529,7 @@ impl RustAnalyzerManager {
         if let Some(stderr) = child.stderr.take() {
             thread::spawn(move || {
                 let reader = BufReader::new(stderr);
-                for line in reader.lines().flatten() {
+                for line in reader.lines().map_while(Result::ok) {
                     tracing::error!("[rust-analyzer stderr] {}", line);
                 }
                 tracing::error!("❌ rust-analyzer stderr stream ended");

@@ -4,8 +4,10 @@ use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+type HookMap = Arc<RwLock<HashMap<HookType, Vec<Box<dyn WindowHook>>>>>;
+
 pub struct HookRegistry {
-    hooks: Arc<RwLock<HashMap<HookType, Vec<Box<dyn WindowHook>>>>>,
+    hooks: HookMap,
 }
 
 impl HookRegistry {
