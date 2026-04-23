@@ -2,8 +2,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use gpui::{
-    div, prelude::FluentBuilder as _, App, Context, FocusHandle, Focusable,
-    IntoElement, ParentElement as _, Render, SharedString, Styled, Window,
+    div, prelude::FluentBuilder as _, App, Context, FocusHandle, Focusable, IntoElement,
+    ParentElement as _, Render, SharedString, Styled, Window,
 };
 
 use engine_state::{
@@ -177,11 +177,7 @@ impl ModernSettingsScreen {
                 // Map slider to number_input — no dedicated slider SettingField
                 let (ns2, owner2, key2) = (ns.clone(), owner.clone(), key.clone());
                 let notify = mark_dirty.clone();
-                let opts = NumberFieldOptions {
-                    min,
-                    max,
-                    step,
-                };
+                let opts = NumberFieldOptions { min, max, step };
                 SettingItem::new(
                     label,
                     SettingField::number_input(

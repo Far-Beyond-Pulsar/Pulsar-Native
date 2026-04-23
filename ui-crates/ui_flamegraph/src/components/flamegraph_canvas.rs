@@ -29,7 +29,7 @@ pub fn render_flamegraph_canvas(
                 let _closure_start = std::time::Instant::now();
                 let viewport_width: f32 = bounds.size.width.into();
                 let viewport_height: f32 = bounds.size.height.into();
-                
+
                 (bounds, Arc::clone(&frame), Arc::clone(&lod_tree), Arc::clone(&thread_offsets), view_state.clone(), viewport_width, viewport_height, palette.clone())
             }
         },

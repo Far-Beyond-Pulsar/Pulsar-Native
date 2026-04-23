@@ -81,7 +81,8 @@ impl FolderNode {
         let cloud_root_s = cloud_root.to_string_lossy().replace('\\', "/");
 
         let root_name = cloud_root_s
-            .trim_start_matches("cloud+pulsar://").split('/')
+            .trim_start_matches("cloud+pulsar://")
+            .split('/')
             .nth(1)
             .unwrap_or("Remote Project")
             .to_string();

@@ -10,7 +10,6 @@ pub mod workspace;
 use std::error::Error;
 use std::path::Path;
 
-
 /// Generate documentation for an entire workspace
 ///
 /// # Arguments

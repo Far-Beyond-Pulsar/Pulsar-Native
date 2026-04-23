@@ -14,8 +14,7 @@ use std::sync::Arc;
 // Re-export the shared types from engine_backend so downstream code
 // that imports from this module still compiles unchanged.
 pub use engine_backend::scene::{
-    Component, LightType, MeshType, ObjectId, ObjectType, SceneDb,
-    SceneObjectSnapshot,
+    Component, LightType, MeshType, ObjectId, ObjectType, SceneDb, SceneObjectSnapshot,
 };
 
 // ─── Transform (kept for backwards compat with existing UI code) ──────────────

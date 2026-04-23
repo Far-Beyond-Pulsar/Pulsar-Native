@@ -4,9 +4,7 @@
 //! of scene objects using the field binding system for automatic sync and undo/redo.
 
 use gpui::{prelude::*, *};
-use ui::{
-    h_flex, v_flex, ActiveTheme, IconName, Sizable,
-};
+use ui::{h_flex, v_flex, ActiveTheme, IconName, Sizable};
 
 use super::bound_field::F32BoundField;
 use crate::level_editor::scene_database::SceneDatabase;

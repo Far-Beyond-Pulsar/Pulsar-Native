@@ -1,4 +1,3 @@
-
 // Engine constants
 pub const ENGINE_NAME: &str = env!("CARGO_PKG_NAME");
 pub const ENGINE_LICENSE: &str = env!("CARGO_PKG_LICENSE");

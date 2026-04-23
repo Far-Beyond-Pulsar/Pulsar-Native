@@ -537,9 +537,9 @@ fn compute_before_after(
         if !found_end
             && (edit.end_line > current_line
                 || (edit.end_line == current_line && edit.end_column > current_col))
-            {
-                offset_end = modified_content.len();
-            }
+        {
+            offset_end = modified_content.len();
+        }
 
         // Apply the edit
         if found_start && offset_start <= offset_end && offset_end <= modified_content.len() {

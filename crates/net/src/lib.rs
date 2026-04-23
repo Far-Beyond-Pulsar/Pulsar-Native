@@ -1,4 +1,3 @@
-
 pub struct PulsarIntNetConnection {
     pub endpoint: quinn::Endpoint,
     pub connection: quinn::Connection,

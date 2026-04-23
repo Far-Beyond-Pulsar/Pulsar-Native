@@ -67,8 +67,7 @@ pub struct ProjectWithGitStatus {
 // ── Cloud Projects ─────────────────────────────────────────────────────────
 
 /// Runtime connection status of a cloud server (not persisted to disk).
-#[derive(Clone, Debug, PartialEq)]
-#[derive(Default)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub enum CloudServerStatus {
     /// Initial / never polled
     #[default]
@@ -87,7 +86,6 @@ pub enum CloudServerStatus {
     /// Server returned 401 / 403
     Unauthorized,
 }
-
 
 /// Status of a single project on a remote server.
 #[derive(Clone, Debug, PartialEq)]

@@ -360,7 +360,6 @@ static GLOBAL_CONTEXT: OnceLock<EngineContext> = OnceLock::new();
 ///
 /// These provide a compatibility layer during the migration period.
 pub mod migration {
-    
 
     /// Extract window ID from metadata string (used during migration)
     pub fn parse_window_id_u64(id_str: &str) -> Option<u64> {

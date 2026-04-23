@@ -116,7 +116,7 @@ impl Render for FlamegraphView {
                         self.view_state.viewport_width = width;
 
                         let (_, _cache) = self.get_or_build_cache();
-                        
+
                         render_flamegraph_canvas(
                             Arc::clone(&frame),
                             Arc::clone(&lod_tree),
@@ -246,12 +246,12 @@ impl Render for FlamegraphView {
                     }))
                     .child({
                         let _tl_start = std::time::Instant::now();
-                        
+
                         render_thread_labels(&frame, &thread_offsets, &view_state, cx)
                     })
                     .child({
                         let _ss_start = std::time::Instant::now();
-                        
+
                         render_statistics_sidebar(&frame, cx)
                     })
                     .children({

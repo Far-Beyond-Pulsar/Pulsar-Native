@@ -7,9 +7,7 @@ use crate::hooks::{HookContext, HookRegistry, HookType, LoggingHook, TelemetryHo
 use crate::state::WindowState;
 use crate::telemetry::TelemetrySender;
 use crate::validation::{ValidationRule, WindowError, WindowResult, WindowValidator};
-use gpui::{
-    AnyWindowHandle, App, EventEmitter, Global, Render, Window, WindowOptions,
-};
+use gpui::{AnyWindowHandle, App, EventEmitter, Global, Render, Window, WindowOptions};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use ui_types_common::window_types::{WindowId, WindowRequest};

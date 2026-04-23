@@ -5,8 +5,7 @@
 //! static.  Use `EngineContext::global()` to read or mutate session state.
 
 /// Connection status for multiuser session
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum MultiuserStatus {
     /// Not connected to any session
     #[default]
@@ -18,7 +17,6 @@ pub enum MultiuserStatus {
     /// Connection error occurred
     Error(String),
 }
-
 
 /// Context for an active multiuser session
 ///

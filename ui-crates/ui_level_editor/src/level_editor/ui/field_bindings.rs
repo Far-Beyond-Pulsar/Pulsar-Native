@@ -516,7 +516,7 @@ mod tests {
         assert_eq!(binding.get(&object_id, &db), Some(5.0));
 
         // Test to_string
-        assert_eq!(binding.to_string(&3.142), "3.142");
+        assert_eq!(binding.to_string(&3.256), "3.256");
 
         // Test from_string
         assert_eq!(binding.from_string("2.5"), Ok(2.5));

@@ -1,6 +1,4 @@
-use pulsar_config::{
-    ConfigManager, FieldType, NamespaceSchema, SchemaEntry, Validator,
-};
+use pulsar_config::{ConfigManager, FieldType, NamespaceSchema, SchemaEntry, Validator};
 
 pub const NS: &str = "project";
 pub const OWNER: &str = "input";

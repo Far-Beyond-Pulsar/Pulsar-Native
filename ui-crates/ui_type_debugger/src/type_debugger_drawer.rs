@@ -126,9 +126,9 @@ impl TypeDebuggerDrawer {
                     || t.description
                         .as_ref()
                         .is_some_and(|d| d.to_lowercase().contains(&query))
-                    || t.file_path.as_ref().is_some_and(|p| {
-                        p.to_string_lossy().to_lowercase().contains(&query)
-                    })
+                    || t.file_path
+                        .as_ref()
+                        .is_some_and(|p| p.to_string_lossy().to_lowercase().contains(&query))
             });
         }
 

@@ -194,9 +194,7 @@ impl DiscordPresence {
         // Create asset with large image (main Pulsar logo) and small image (editor icon)
         let asset = if let Some(ref icon_key) = inner.discord_icon_key {
             // Use the custom icon key provided by the panel
-            let small_image_text = inner
-                .active_tab.as_deref()
-                .unwrap_or("Editor");
+            let small_image_text = inner.active_tab.as_deref().unwrap_or("Editor");
 
             tracing::debug!(
                 "🎨 Using panel's Discord icon: large='pulsar_logo', small='{}', text='{}'",

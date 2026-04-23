@@ -80,20 +80,22 @@ impl TraceFrame {
         self.max_depth = self.max_depth.max(span.depth);
 
         // Ensure thread exists
-        self.threads.entry(span.thread_id).or_insert_with(|| ThreadInfo {
-                    id: span.thread_id,
-                    name: match span.thread_id {
-                        0 => "GPU".to_string(),
-                        1 => "Main Thread".to_string(),
-                        2 => "Render Thread".to_string(),
-                        3 => "Physics Thread".to_string(),
-                        4 => "Audio Thread".to_string(),
-                        5 => "Network Thread".to_string(),
-                        6 => "I/O Thread".to_string(),
-                        7..=10 => format!("Worker {}", span.thread_id - 7),
-                        id => format!("Thread {}", id),
-                    },
-                });
+        self.threads
+            .entry(span.thread_id)
+            .or_insert_with(|| ThreadInfo {
+                id: span.thread_id,
+                name: match span.thread_id {
+                    0 => "GPU".to_string(),
+                    1 => "Main Thread".to_string(),
+                    2 => "Render Thread".to_string(),
+                    3 => "Physics Thread".to_string(),
+                    4 => "Audio Thread".to_string(),
+                    5 => "Network Thread".to_string(),
+                    6 => "I/O Thread".to_string(),
+                    7..=10 => format!("Worker {}", span.thread_id - 7),
+                    id => format!("Thread {}", id),
+                },
+            });
 
         self.spans.push(span);
     }

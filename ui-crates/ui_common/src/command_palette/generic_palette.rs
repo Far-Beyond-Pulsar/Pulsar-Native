@@ -54,14 +54,13 @@ impl<D: PaletteDelegate> GenericPalette<D> {
         let filtered_categories = categories.clone();
 
         // Subscribe to input changes
-        cx.subscribe(
-            &search_input,
-            |this, _input, event: &InputEvent, cx| if event == &InputEvent::Change {
+        cx.subscribe(&search_input, |this, _input, event: &InputEvent, cx| {
+            if event == &InputEvent::Change {
                 let query = this.search_input.read(cx).text().to_string();
                 this.update_filter(&query);
                 cx.notify();
-            },
-        )
+            }
+        })
         .detach();
 
         Self {

@@ -325,8 +325,7 @@ impl Render for LoadingScreen {
                                                 let status = self.statuses[i];
                                                 let label = TASKS[i].0;
                                                 // Tasks above the window fade out toward the top
-                                                let dist_above =
-                                                    running.saturating_sub(i);
+                                                let dist_above = running.saturating_sub(i);
                                                 let (icon, base_opacity): (&str, f32) = match status
                                                 {
                                                     TaskStatus::Done => ("✓", 0.9),

@@ -1,9 +1,6 @@
 use gpui::*;
 use std::sync::Arc;
-use ui::{
-    button::Button,
-    h_flex, Selectable,
-};
+use ui::{button::Button, h_flex, Selectable};
 
 use crate::level_editor::ui::state::LevelEditorState;
 use engine_backend::subsystems::render::helio_renderer::RendererCommand;

@@ -115,10 +115,7 @@ impl<T: Clone + Eq + Hash + Debug> ORSet<T> {
     pub fn apply(&mut self, op: ORSetOp<T>) {
         match op {
             ORSetOp::Add { element, tag } => {
-                self.elements
-                    .entry(element)
-                    .or_default()
-                    .insert(tag);
+                self.elements.entry(element).or_default().insert(tag);
             }
             ORSetOp::Remove { element, tags } => {
                 if let Some(element_tags) = self.elements.get_mut(&element) {
@@ -136,10 +133,7 @@ impl<T: Clone + Eq + Hash + Debug> ORSet<T> {
     /// Merge with another OR-Set
     pub fn merge(&mut self, other: &ORSet<T>) {
         for (element, other_tags) in &other.elements {
-            let entry = self
-                .elements
-                .entry(element.clone())
-                .or_default();
+            let entry = self.elements.entry(element.clone()).or_default();
             for tag in other_tags {
                 entry.insert(tag.clone());
             }

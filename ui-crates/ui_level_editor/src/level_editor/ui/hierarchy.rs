@@ -3,11 +3,10 @@ use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
-    StyledExt,
     h_flex,
     hierarchical_tree::tree_colors,
     scroll::ScrollbarAxis,
-    v_flex, ActiveTheme, Icon, IconName, Sizable,
+    v_flex, ActiveTheme, Icon, IconName, Sizable, StyledExt,
 };
 
 use super::state::{LevelEditorState, SceneObject};

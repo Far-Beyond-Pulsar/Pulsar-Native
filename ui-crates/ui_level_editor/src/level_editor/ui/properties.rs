@@ -5,10 +5,9 @@ use std::sync::Arc;
 use ui::{
     button::Button,
     h_flex,
-    StyledExt,
     input::{InputState, TextInput},
     scroll::ScrollbarAxis,
-    v_flex, ActiveTheme, CollapsibleSection, IconName, Sizable,
+    v_flex, ActiveTheme, CollapsibleSection, IconName, Sizable, StyledExt,
 };
 
 use super::state::{LevelEditorState, Transform};

@@ -28,12 +28,10 @@ use std::time::Duration;
 use ui::Root;
 
 // Component config
-#[derive(Clone)]
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct EntryScreenConfig {
     // Configuration options
 }
-
 
 /// Create an entry screen component as a composable piece
 pub fn create_entry_component(

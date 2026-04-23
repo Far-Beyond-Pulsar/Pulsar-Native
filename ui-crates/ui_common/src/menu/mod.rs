@@ -1203,10 +1203,7 @@ fn build_app_menus(title: SharedString) -> Vec<Menu> {
         Menu {
             name: t!("Menu.Help").into(),
             items: vec![
-                MenuItem::action(
-                    t!("Menu.Help.Documentation").to_string(),
-                    ShowDocumentation,
-                ),
+                MenuItem::action(t!("Menu.Help.Documentation").to_string(), ShowDocumentation),
                 MenuItem::action(t!("Menu.Help.API").to_string(), ShowAPIReference),
                 MenuItem::action(t!("Menu.Help.Tutorials").to_string(), ShowTutorials),
                 MenuItem::separator(),

@@ -313,10 +313,9 @@ impl LogDrawer {
             }
 
             // Send updates (non-blocking)
-            if !new_lines.is_empty()
-                && tx.try_send(LogUpdate::NewLines(new_lines)).is_err() {
-                    break;
-                }
+            if !new_lines.is_empty() && tx.try_send(LogUpdate::NewLines(new_lines)).is_err() {
+                break;
+            }
         }
     }
 

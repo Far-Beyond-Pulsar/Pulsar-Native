@@ -4,16 +4,9 @@ use std::rc::Rc;
 
 use gpui::{prelude::*, *};
 use ui::{
-    ActiveTheme, Sizable, StyledExt,
-    button::Button,
-    download_item::DownloadItemStatus,
-    download_manager::DownloadEntry,
-    h_flex,
-    input::TextInput,
-    scroll::Scrollbar,
-    skeleton::Skeleton,
-    spinner::Spinner,
-    v_flex, v_virtual_list,
+    ActiveTheme, Sizable, StyledExt, button::Button, download_item::DownloadItemStatus,
+    download_manager::DownloadEntry, h_flex, input::TextInput, scroll::Scrollbar,
+    skeleton::Skeleton, spinner::Spinner, v_flex, v_virtual_list,
 };
 
 use crate::FabSearchWindow;

@@ -55,7 +55,6 @@ struct ThreadState {
     scope_stack: Vec<String>, // Track parent scopes
 }
 
-
 thread_local! {
     static THREAD_STATE: std::cell::RefCell<ThreadState> = std::cell::RefCell::new(ThreadState::default());
     static THREAD_NAME: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };

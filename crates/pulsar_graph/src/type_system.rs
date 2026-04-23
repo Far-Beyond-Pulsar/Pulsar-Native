@@ -218,7 +218,14 @@ impl TypeInfo {
         }
 
         // Built-in conversions
-        matches!((self.base_type.as_str(), other.base_type.as_str()), ("i32", "f32") | ("i32", "f64") | ("f32", "f64") | ("&str", "String") | ("String", "&str"))
+        matches!(
+            (self.base_type.as_str(), other.base_type.as_str()),
+            ("i32", "f32")
+                | ("i32", "f64")
+                | ("f32", "f64")
+                | ("&str", "String")
+                | ("String", "&str")
+        )
     }
 
     fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (f32, f32, f32) {

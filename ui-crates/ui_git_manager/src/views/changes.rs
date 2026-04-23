@@ -2,8 +2,8 @@
 
 use super::toolbar::render_toolbar;
 use crate::{
-    CopyFullPath, CopyRelativePath, DiscardFileChanges, GitManager,
-    IgnoreExtension, IgnoreFile, IgnoreFolder, OpenInExplorer, models::*,
+    CopyFullPath, CopyRelativePath, DiscardFileChanges, GitManager, IgnoreExtension, IgnoreFile,
+    IgnoreFolder, OpenInExplorer, models::*,
 };
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;

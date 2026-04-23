@@ -17,7 +17,6 @@ pub enum ProjectStatus {
     Error(String),
 }
 
-
 #[allow(dead_code)]
 impl ProjectStatus {
     pub fn as_str(&self) -> &'static str {

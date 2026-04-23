@@ -537,7 +537,6 @@ fn install_rust_windows(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Str
 
 #[cfg(target_os = "windows")]
 fn add_windows_defender_exclusions(progress: &Arc<Mutex<InstallProgress>>) {
-    
     const CREATE_NO_WINDOW: u32 = 0x08000000;
 
     let home = match std::env::var("USERPROFILE") {

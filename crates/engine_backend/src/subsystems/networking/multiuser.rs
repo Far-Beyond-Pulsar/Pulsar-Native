@@ -1,8 +1,5 @@
 use anyhow::{Context, Result};
-use async_tungstenite::{
-    tokio::connect_async,
-    tungstenite::Message,
-};
+use async_tungstenite::{tokio::connect_async, tungstenite::Message};
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, OnceLock};

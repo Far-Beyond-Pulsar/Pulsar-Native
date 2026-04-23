@@ -45,8 +45,7 @@ pub struct MemoryAllocation {
 }
 
 /// Memory tracking statistics
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub struct MemoryStats {
     pub total_allocated: usize,
     pub total_deallocated: usize,
@@ -56,7 +55,6 @@ pub struct MemoryStats {
     pub deallocation_count: usize,
     pub by_category: HashMap<MemoryCategory, usize>,
 }
-
 
 impl MemoryStats {
     /// Record an allocation
@@ -104,11 +102,7 @@ impl MemoryStats {
 
     /// Get category breakdown sorted by size
     pub fn category_breakdown(&self) -> Vec<(MemoryCategory, usize)> {
-        let mut categories: Vec<_> = self
-            .by_category
-            .iter()
-            .map(|(k, v)| (*k, *v))
-            .collect();
+        let mut categories: Vec<_> = self.by_category.iter().map(|(k, v)| (*k, *v)).collect();
         categories.sort_by(|a, b| b.1.cmp(&a.1));
         categories
     }

@@ -74,4 +74,3 @@ pub enum PulsarIntConnectionState {
     Connected,
     Disconnecting,
 }
-

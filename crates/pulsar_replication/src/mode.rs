@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Defines how a UI element's state should be replicated across users
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum ReplicationMode {
     /// No replication - element state is purely local
     ///
@@ -95,7 +94,6 @@ pub enum ReplicationMode {
     /// - Can merge partitions when needed
     PartitionedEdit,
 }
-
 
 impl ReplicationMode {
     /// Returns true if this mode allows concurrent editing by multiple users
@@ -258,8 +256,7 @@ impl ReplicationConfig {
 }
 
 /// Strategy for resolving conflicts when multiple users edit simultaneously
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ConflictStrategy {
     /// Last write wins - most recent change takes precedence
     #[default]
@@ -277,4 +274,3 @@ pub enum ConflictStrategy {
     /// CRDT-based merge
     CRDT,
 }
-

@@ -144,46 +144,42 @@ impl RenderOnce for GalleryThumbnailRow {
                     .flex_row()
                     .items_start()
                     .gap_2()
-                    .children(
-                        self.images
-                            .into_iter()
-                            .zip(self.on_select)
-                            .enumerate()
-                            .map(|(i, (img_data, on_click))| {
-                                let is_sel = i == selected;
-                                div()
-                                    .id(SharedString::from(format!("thumb-chip-{}", i)))
-                                    .w(px(128.0))
-                                    .h(px(72.0))
-                                    .flex_shrink_0()
-                                    .rounded_md()
-                                    .overflow_hidden()
-                                    .bg(card_bg)
-                                    .when(is_sel, |el| el.border_2())
-                                    .when(!is_sel, |el| el.border_1())
-                                    .border_color(if is_sel { accent } else { border })
-                                    .cursor_pointer()
-                                    .map(|el| {
-                                        if let Some(arc) = img_data.image {
-                                            el.child(
-                                                img(gpui::ImageSource::Render(arc))
-                                                    .w_full()
-                                                    .h_full()
-                                                    .object_fit(gpui::ObjectFit::Cover),
-                                            )
-                                        } else {
-                                            el.flex().items_center().justify_center().child(
-                                                div()
-                                                    .text_xs()
-                                                    .text_color(muted)
-                                                    .child(format!("{}", i + 1)),
-                                            )
-                                        }
-                                    })
-                                    .on_click(on_click)
-                                    .into_any_element()
-                            }),
-                    ),
+                    .children(self.images.into_iter().zip(self.on_select).enumerate().map(
+                        |(i, (img_data, on_click))| {
+                            let is_sel = i == selected;
+                            div()
+                                .id(SharedString::from(format!("thumb-chip-{}", i)))
+                                .w(px(128.0))
+                                .h(px(72.0))
+                                .flex_shrink_0()
+                                .rounded_md()
+                                .overflow_hidden()
+                                .bg(card_bg)
+                                .when(is_sel, |el| el.border_2())
+                                .when(!is_sel, |el| el.border_1())
+                                .border_color(if is_sel { accent } else { border })
+                                .cursor_pointer()
+                                .map(|el| {
+                                    if let Some(arc) = img_data.image {
+                                        el.child(
+                                            img(gpui::ImageSource::Render(arc))
+                                                .w_full()
+                                                .h_full()
+                                                .object_fit(gpui::ObjectFit::Cover),
+                                        )
+                                    } else {
+                                        el.flex().items_center().justify_center().child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(muted)
+                                                .child(format!("{}", i + 1)),
+                                        )
+                                    }
+                                })
+                                .on_click(on_click)
+                                .into_any_element()
+                        },
+                    )),
             )
             .child(div().absolute().inset_0().child(Scrollbar::horizontal(
                 &self.scroll_state,
