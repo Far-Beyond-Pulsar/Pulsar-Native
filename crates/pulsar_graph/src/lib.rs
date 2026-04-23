@@ -551,8 +551,6 @@ impl DataType {
 
 impl PartialEq<&str> for DataType {
     fn eq(&self, other: &&str) -> bool {
-            (DataType::Boolean, "boolean") => true,
-            (DataType::Vector2, "vector2") => true,
         matches!((self, *other), (DataType::Execution, "execution") | (DataType::String, "string") | (DataType::Number, "number") | (DataType::Boolean, "boolean") | (DataType::Vector2, "vector2") | (DataType::Vector3, "vector3") | (DataType::Color, "color") | (DataType::Object, "object"))
     }
 }
