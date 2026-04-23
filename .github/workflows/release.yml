@@ -662,7 +662,7 @@ jobs:
       matrix:
         include:
           - name: pulsar-multiedit
-            context: crates/multiuser_server
+            context: .
             dockerfile: crates/multiuser_server/Dockerfile
           - name: pulsar-host
             context: .

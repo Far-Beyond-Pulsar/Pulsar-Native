@@ -12,22 +12,24 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy manifests
+# Copy workspace manifests for dependency caching
 COPY Cargo.toml Cargo.lock ./
-COPY build.rs ./
-COPY proto ./proto
+COPY crates/multiuser_server/Cargo.toml crates/multiuser_server/
+COPY crates/multiuser_server/build.rs crates/multiuser_server/
+COPY crates/multiuser_server/proto crates/multiuser_server/proto
 
 # Create dummy main to cache dependencies
-RUN mkdir src && \
-    echo "fn main() {}" > src/main.rs && \
-    cargo build --release && \
-    rm -rf src
+RUN mkdir -p crates/multiuser_server/src && \
+    echo "fn main() {}" > crates/multiuser_server/src/main.rs && \
+    cargo build --release -p pulsar-multiedit && \
+    rm -rf crates/multiuser_server/src
 
 # Copy actual source code
-COPY src ./src
+COPY crates/multiuser_server/src crates/multiuser_server/src
 
 # Build the application
-RUN cargo build --release --bin pulsar-multiedit
+RUN touch crates/multiuser_server/src/main.rs && \
+    cargo build --release --bin pulsar-multiedit
 
 # Stage 2: Runtime
 FROM debian:bookworm-slim
