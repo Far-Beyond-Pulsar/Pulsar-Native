@@ -323,7 +323,7 @@ pub fn for_loop(count: i64) {
 /// WARNING: Ensure the condition eventually becomes false to avoid infinite loops.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn while_loop(condition: bool) {
-    while condition {
+    if condition {
         exec_output!("Body");
     }
 }
