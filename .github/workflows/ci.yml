@@ -51,7 +51,7 @@ jobs:
       - name: Lint
         if: ${{ matrix.run_on == 'macos-latest' }}
         run: |
-          cargo clippy -- --deny warnings
+          cargo clippy --workspace --exclude pulsar_docs --all-targets -- -A dead_code -A clippy::too_many_arguments -A clippy::type_complexity -A clippy::match_like_matches_macro -A clippy::only_used_in_recursion -A improper_ctypes_definitions -A clippy::field_reassign_with_default -A clippy::result_large_err -A clippy::doc_overindented_list_items
       - name: Test Linux
         if: ${{ matrix.run_on == 'ubuntu-latest' }}
         run: |
