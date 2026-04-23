@@ -431,11 +431,9 @@ fn find_exec_in_block(block: &syn::Block, labels: &mut Vec<String>) {
     for stmt in &block.stmts {
         match stmt {
             Stmt::Expr(expr, _) => find_exec_in_expr(expr, labels),
-            Stmt::Macro(stmt_macro) => {
-                if stmt_macro.mac.path.is_ident("exec_output") {
-                    if let Ok(label) = syn::parse2::<syn::LitStr>(stmt_macro.mac.tokens.clone()) {
-                        labels.push(label.value());
-                    }
+            Stmt::Macro(stmt_macro) if stmt_macro.mac.path.is_ident("exec_output") => {
+                if let Ok(label) = syn::parse2::<syn::LitStr>(stmt_macro.mac.tokens.clone()) {
+                    labels.push(label.value());
                 }
             }
             _ => {}
@@ -445,11 +443,9 @@ fn find_exec_in_block(block: &syn::Block, labels: &mut Vec<String>) {
 
 fn find_exec_in_expr(expr: &Expr, labels: &mut Vec<String>) {
     match expr {
-        Expr::Macro(macro_expr) => {
-            if macro_expr.mac.path.is_ident("exec_output") {
-                if let Ok(label) = syn::parse2::<syn::LitStr>(macro_expr.mac.tokens.clone()) {
-                    labels.push(label.value());
-                }
+        Expr::Macro(macro_expr) if macro_expr.mac.path.is_ident("exec_output") => {
+            if let Ok(label) = syn::parse2::<syn::LitStr>(macro_expr.mac.tokens.clone()) {
+                labels.push(label.value());
             }
         }
         Expr::Block(block_expr) => find_exec_in_block(&block_expr.block, labels),
