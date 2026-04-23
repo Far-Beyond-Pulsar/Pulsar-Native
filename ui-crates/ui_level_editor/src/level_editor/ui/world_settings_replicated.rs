@@ -684,7 +684,7 @@ impl WorldSettingsReplicated {
 
     fn render_bool_field(
         &self,
-        element_id: &str,
+        _element_id: &str,
         label: &str,
         value: bool,
         setter: fn(&mut WorldSettingsData, bool),
