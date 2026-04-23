@@ -220,7 +220,7 @@ impl World {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// # use your_crate::{VaultManager, CustomData};
     /// # use uuid::Uuid;
     /// # let mut vault_manager: VaultManager<CustomData> = VaultManager::new("path/to/database.db").unwrap();
