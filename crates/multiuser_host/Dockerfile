@@ -1,9 +1,11 @@
 # Multi-stage Docker build for Pulsar Host
 
 # Stage 1: Builder
-FROM rust:1.88-slim as builder
+FROM rust:1.88-slim AS builder
 
 WORKDIR /app
+
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
