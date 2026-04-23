@@ -532,7 +532,7 @@ impl TextElement {
             let mut visible_top = line_bottom;
 
             // Reset to start of found chunk
-            line_bottom = visible_top;
+            std::mem::swap(&mut visible_top, &mut line_bottom);
 
             // Linear search within the small region to find exact boundaries
             for ix in search_start..search_end {
