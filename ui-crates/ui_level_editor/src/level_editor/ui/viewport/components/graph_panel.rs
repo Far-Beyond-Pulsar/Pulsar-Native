@@ -3,11 +3,10 @@
 //! This component eliminates repetitive boilerplate for rendering performance graphs
 //! with consistent styling and layout.
 
-use gpui::prelude::FluentBuilder;
 use gpui::*;
 use ui::{
     chart::{AreaChart, BarChart},
-    h_flex, v_flex, ActiveTheme, Icon, IconName, StyledExt,
+    h_flex, v_flex, ActiveTheme, Icon, IconName,
 };
 
 /// A reusable panel for displaying performance graphs.
@@ -71,7 +70,7 @@ impl<T: Clone + 'static> GraphPanel<T> {
     }
 
     /// Build a bar chart with custom styling function.
-    pub fn build_bar<X, Y, F, V: 'static>(
+    pub fn build_bar<X, Y, F, V>(
         self,
         x_fn: X,
         y_fn: Y,
@@ -82,7 +81,7 @@ impl<T: Clone + 'static> GraphPanel<T> {
         X: Fn(&T) -> SharedString + 'static,
         Y: Fn(&T) -> f64 + 'static + Clone,
         F: Fn(&T) -> Hsla + 'static,
-        V: Render,
+        V: 'static + Render,
     {
         // Extract fields before consuming self
         let title = self.title.clone();
