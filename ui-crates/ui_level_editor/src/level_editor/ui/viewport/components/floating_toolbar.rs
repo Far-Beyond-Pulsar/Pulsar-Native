@@ -171,13 +171,13 @@ where
 /// * `drag_handle_content` - The drag handle element
 /// * `toolbar_content` - The main toolbar content
 /// * `cx` - The window context
-pub fn toolbar_with_drag_handle<V: 'static>(
+pub fn toolbar_with_drag_handle<V>(
     drag_handle_content: impl IntoElement,
     toolbar_content: impl IntoElement,
     cx: &Context<V>,
 ) -> impl IntoElement
 where
-    V: Render,
+    V: 'static + Render,
 {
     h_flex().gap_0().child(drag_handle_content).child(
         h_flex()
