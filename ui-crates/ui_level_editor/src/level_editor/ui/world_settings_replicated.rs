@@ -614,13 +614,13 @@ impl WorldSettingsReplicated {
             .child(self.render_f32_field(
                 &self.doppler_factor_input,
                 "world_doppler_factor",
-                &t!("LevelEditor.WorldSettings.DopplerFactor").to_string(),
+                t!("LevelEditor.WorldSettings.DopplerFactor").as_ref(),
                 "",
                 cx,
             ))
             .child(self.render_bool_field(
                 "world_enable_spatial_audio",
-                &t!("LevelEditor.WorldSettings.EnableSpatialAudio").to_string(),
+                t!("LevelEditor.WorldSettings.EnableSpatialAudio").as_ref(),
                 settings.enable_spatial_audio,
                 |s, v| s.enable_spatial_audio = v,
                 cx,
