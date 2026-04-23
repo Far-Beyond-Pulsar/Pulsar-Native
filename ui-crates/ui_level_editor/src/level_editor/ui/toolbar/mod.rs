@@ -47,7 +47,7 @@ impl ToolbarPanel {
         Self
     }
 
-    pub fn render<V: 'static>(
+    pub fn render<V>(
         &self,
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
@@ -55,7 +55,7 @@ impl ToolbarPanel {
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
-        V: EventEmitter<ui::dock::PanelEvent> + Render,
+        V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
         let theme = cx.theme();
 
@@ -93,14 +93,14 @@ impl ToolbarPanel {
         div().h_6().w_px().bg(cx.theme().border.opacity(0.4))
     }
 
-    fn render_profiling_button<V: 'static>(
+    fn render_profiling_button<V>(
         &self,
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         _cx: &mut Context<V>,
     ) -> impl IntoElement
     where
-        V: EventEmitter<ui::dock::PanelEvent> + Render,
+        V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
         let state_clone = state_arc.clone();
         let is_profiling = state.show_performance_overlay;

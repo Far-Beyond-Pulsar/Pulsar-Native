@@ -13,13 +13,13 @@ use super::actions::SetMultiplayerMode;
 pub struct MultiplayerDropdown;
 
 impl MultiplayerDropdown {
-    pub fn render<V: 'static>(
+    pub fn render<V>(
         state: &LevelEditorState,
         _state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         _cx: &mut Context<V>,
     ) -> impl IntoElement
     where
-        V: EventEmitter<ui::dock::PanelEvent> + Render,
+        V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
         let mode_label = match state.multiplayer_mode {
             MultiplayerMode::Offline => "Offline",

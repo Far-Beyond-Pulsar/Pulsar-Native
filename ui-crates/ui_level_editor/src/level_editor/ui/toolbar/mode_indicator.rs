@@ -7,9 +7,9 @@ use super::super::state::LevelEditorState;
 pub struct ModeIndicator;
 
 impl ModeIndicator {
-    pub fn render<V: 'static>(state: &LevelEditorState, cx: &mut Context<V>) -> impl IntoElement
+    pub fn render<V>(state: &LevelEditorState, cx: &mut Context<V>) -> impl IntoElement
     where
-        V: EventEmitter<ui::dock::PanelEvent> + Render,
+        V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
         let theme = cx.theme();
 

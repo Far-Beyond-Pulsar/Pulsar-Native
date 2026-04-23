@@ -5,8 +5,7 @@
 
 use gpui::{prelude::*, *};
 use ui::{
-    button::{Button, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme, IconName, Sizable, StyledExt,
+    h_flex, v_flex, ActiveTheme, IconName, Sizable,
 };
 
 use super::bound_field::F32BoundField;

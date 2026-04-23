@@ -13,13 +13,13 @@ use super::actions::SetTimeScale;
 pub struct TimeScaleDropdown;
 
 impl TimeScaleDropdown {
-    pub fn render<V: 'static>(
+    pub fn render<V>(
         state: &LevelEditorState,
         _state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
-        V: EventEmitter<ui::dock::PanelEvent> + Render,
+        V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
         let theme = cx.theme();
         let time_scale = state.game_time_scale;

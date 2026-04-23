@@ -3,7 +3,7 @@ use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
-    ActiveTheme, Disableable, IconName, Selectable, Sizable,
+    IconName, Selectable,
 };
 
 use super::super::state::LevelEditorState;
@@ -12,13 +12,13 @@ use super::super::state::LevelEditorState;
 pub struct PlaybackControls;
 
 impl PlaybackControls {
-    pub fn render<V: 'static>(
+    pub fn render<V>(
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         _cx: &mut Context<V>,
     ) -> impl IntoElement
     where
-        V: EventEmitter<ui::dock::PanelEvent> + Render,
+        V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
         ui::h_flex()
             .gap_1p5()
