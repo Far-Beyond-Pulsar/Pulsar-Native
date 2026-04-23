@@ -49,7 +49,7 @@ pub struct MissionControlPanel {
 
 impl MissionControlPanel {
     pub fn new(cx: &mut Context<Self>) -> Self {
-        let log_drawer = cx.new(|cx| LogDrawer::new(cx));
+        let log_drawer = cx.new(LogDrawer::new);
         let metrics = create_shared_metrics();
         let system_info = create_shared_info();
         let memory_tracker = create_memory_tracker();
@@ -253,7 +253,7 @@ impl window_manager::PulsarWindow for MissionControlPanel {
     }
 
     fn build(_: (), _window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {
-        let panel = cx.new(|cx| MissionControlPanel::new(cx));
+        let panel = cx.new(MissionControlPanel::new);
         panel.update(cx, |p, cx| p.start_monitoring(cx));
         panel
     }

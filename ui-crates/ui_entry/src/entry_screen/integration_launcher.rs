@@ -162,7 +162,7 @@ fn launch_gui_app(command: &str, path: &Path) -> LaunchResult {
             );
 
             match Command::new("powershell")
-                .args(&[
+                .args([
                     "-NoProfile",
                     "-NonInteractive",
                     "-WindowStyle",
@@ -238,7 +238,7 @@ fn launch_terminal_editor(command: &str, path: &Path) -> LaunchResult {
         const CREATE_NEW_CONSOLE: u32 = 0x00000010;
 
         match Command::new("cmd")
-            .args(&["/K", "cd", "/D", &path.to_string_lossy(), "&&", command])
+            .args(["/K", "cd", "/D", &path.to_string_lossy(), "&&", command])
             .creation_flags(CREATE_NEW_CONSOLE)
             .spawn()
         {
@@ -272,7 +272,7 @@ fn launch_git_gui(path: &Path) -> LaunchResult {
         );
 
         match Command::new("powershell")
-            .args(&[
+            .args([
                 "-NoProfile",
                 "-NonInteractive",
                 "-WindowStyle",
@@ -358,7 +358,7 @@ fn launch_lazygit(path: &Path) -> LaunchResult {
         const CREATE_NEW_CONSOLE: u32 = 0x00000010;
 
         match Command::new("cmd")
-            .args(&["/K", "cd", "/D", &path.to_string_lossy(), "&&", "lazygit"])
+            .args(["/K", "cd", "/D", &path.to_string_lossy(), "&&", "lazygit"])
             .creation_flags(CREATE_NEW_CONSOLE)
             .spawn()
         {
@@ -392,7 +392,7 @@ fn launch_windows_terminal(path: &Path) -> LaunchResult {
     const DETACHED_PROCESS: u32 = 0x00000008;
 
     match Command::new("wt")
-        .args(&["-d", &path.to_string_lossy()])
+        .args(["-d", &path.to_string_lossy()])
         .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
         .spawn()
     {
@@ -407,7 +407,7 @@ fn launch_powershell(path: &Path) -> LaunchResult {
     const CREATE_NEW_CONSOLE: u32 = 0x00000010;
 
     match Command::new("pwsh")
-        .args(&["-NoExit", "-Command", &format!("cd '{}'", path.display())])
+        .args(["-NoExit", "-Command", &format!("cd '{}'", path.display())])
         .creation_flags(CREATE_NEW_CONSOLE)
         .spawn()
     {
@@ -422,7 +422,7 @@ fn launch_cmd(path: &Path) -> LaunchResult {
     const CREATE_NEW_CONSOLE: u32 = 0x00000010;
 
     match Command::new("cmd")
-        .args(&["/K", "cd", "/D", &path.to_string_lossy()])
+        .args(["/K", "cd", "/D", &path.to_string_lossy()])
         .creation_flags(CREATE_NEW_CONSOLE)
         .spawn()
     {

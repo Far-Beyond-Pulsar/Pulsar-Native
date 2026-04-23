@@ -49,11 +49,11 @@ impl DependencySetupWindow {
 
         let view = cx.entity().downgrade();
 
-        cx.spawn(async move |_this, mut cx| {
+        cx.spawn(async move |_this, cx| {
             // Step 1 — check
             cx.update(|cx| {
                 if let Some(v) = view.upgrade() {
-                    let _ = v.update(cx, |this, cx| {
+                    v.update(cx, |this, cx| {
                         this.update_task(0, TaskStatus::InProgress);
                         cx.notify();
                     });
@@ -64,7 +64,7 @@ impl DependencySetupWindow {
 
             cx.update(|cx| {
                 if let Some(v) = view.upgrade() {
-                    let _ = v.update(cx, |this, cx| {
+                    v.update(cx, |this, cx| {
                         this.update_task(
                             0,
                             if rust_ok {
@@ -82,7 +82,7 @@ impl DependencySetupWindow {
             if rust_ok {
                 cx.update(|cx| {
                     if let Some(v) = view.upgrade() {
-                        let _ = v.update(cx, |this, cx| {
+                        v.update(cx, |this, cx| {
                             this.update_task(1, TaskStatus::Completed);
                             this.progress = 1.0;
                             this.setup_complete = true;
@@ -98,7 +98,7 @@ impl DependencySetupWindow {
             // Step 2 — install (rustup handles platform detection internally)
             cx.update(|cx| {
                 if let Some(v) = view.upgrade() {
-                    let _ = v.update(cx, |this, cx| {
+                    v.update(cx, |this, cx| {
                         this.update_task(1, TaskStatus::InProgress);
                         cx.notify();
                     });
@@ -112,7 +112,7 @@ impl DependencySetupWindow {
 
             cx.update(|cx| {
                 if let Some(v) = view.upgrade() {
-                    let _ = v.update(cx, |this, cx| {
+                    v.update(cx, |this, cx| {
                         this.update_task(
                             1,
                             if install_ok {

@@ -16,7 +16,6 @@ use ui::{
 };
 
 use super::PulsarApp;
-use crate::actions::*;
 
 impl PulsarApp {
     pub(super) fn render_footer(
@@ -519,7 +518,7 @@ impl PulsarApp {
                         button.on_click(cx.listener(move |app, _, window, cx| {
                             tracing::info!("Opening editor {:?}", editor_id);
 
-                            let path = file_path.clone().unwrap_or_else(|| PathBuf::new());
+                            let path = file_path.clone().unwrap_or_else(PathBuf::new);
 
                             // Find which plugin owns this editor
                             if let Some(pm_lock) = plugin_manager::global() {
@@ -658,7 +657,7 @@ impl Render for PulsarApp {
                                 .bg(Hsla::black().opacity(0.3))
                                 .on_mouse_down(
                                     MouseButton::Left,
-                                    cx.listener(|app, _, window, cx| {
+                                    cx.listener(|app, _, _window, cx| {
                                         app.state.drawer_open = false;
                                         cx.notify();
                                     }),

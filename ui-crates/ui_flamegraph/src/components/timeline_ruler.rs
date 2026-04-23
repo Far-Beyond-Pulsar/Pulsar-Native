@@ -14,7 +14,7 @@ pub fn render_timeline_ruler(
     view_state: &ViewState,
     cx: &mut Context<impl Render>,
 ) -> impl IntoElement {
-    let setup_start = std::time::Instant::now();
+    let _setup_start = std::time::Instant::now();
     let frame_for_canvas = Arc::clone(frame);
     let view_state = view_state.clone();
     let theme = cx.theme();
@@ -36,17 +36,17 @@ pub fn render_timeline_ruler(
                         viewport_width,
                     )
                 },
-                move |bounds, state, window, _cx| {
-                    let paint_start = std::time::Instant::now();
+                move |_bounds, state, window, _cx| {
+                    let _paint_start = std::time::Instant::now();
                     let (bounds, frame, view_state, viewport_width) = state;
 
                     if frame.duration_ns() == 0 {
                         return;
                     }
 
-                    let effective_width = viewport_width - THREAD_LABEL_WIDTH;
+                    let _effective_width = viewport_width - THREAD_LABEL_WIDTH;
 
-                    let paint_layer_start = std::time::Instant::now();
+                    let _paint_layer_start = std::time::Instant::now();
                     window.paint_layer(bounds, |window| {
                         // Calculate visible time range
                         let visible_range_val = visible_range(&frame, viewport_width, &view_state);
@@ -111,7 +111,7 @@ pub fn render_timeline_ruler(
 
                         while current_minor_time <= visible_range_val.end {
                             if current_minor_time >= frame.min_time_ns
-                                && current_minor_time % marker_interval_ns != 0
+                                && !current_minor_time.is_multiple_of(marker_interval_ns)
                             {
                                 let x = time_to_x(
                                     current_minor_time,

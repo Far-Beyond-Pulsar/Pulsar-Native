@@ -212,7 +212,7 @@ impl PermanentLibrary {
     /// // Call it (symbol is always valid because library never unloads)
     /// let plugin = unsafe { create_fn() };
     /// ```
-    pub unsafe fn get<T>(&self, symbol: &[u8]) -> Result<Symbol<T>, libloading::Error> {
+    pub unsafe fn get<T>(&self, symbol: &[u8]) -> Result<Symbol<'_, T>, libloading::Error> {
         // SAFETY: Caller ensures:
         // 1. Symbol exists and name is correct
         // 2. Type T matches the actual symbol type
@@ -268,7 +268,7 @@ mod tests {
     #[test]
     fn test_permanent_library_debug() {
         // Ensure Debug implementation exists (useful for logging)
-        let path = PathBuf::from("test.dll");
+        let _path = PathBuf::from("test.dll");
         // Can't actually create one without a real DLL, but we can
         // verify the type implements Debug
         fn assert_debug<T: std::fmt::Debug>() {}

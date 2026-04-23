@@ -2,8 +2,7 @@
 
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use plugin_editor_api::{PluginId, PluginMetadata};
-use plugin_manager::PluginManager;
+use plugin_editor_api::PluginMetadata;
 use ui::Sizable;
 use ui::{
     button::{Button, ButtonVariants as _},
@@ -228,7 +227,7 @@ impl PluginManagerWindow {
                             .label("Unload")
                             .icon(IconName::Trash)
                             .danger()
-                            .on_click(cx.listener(move |this, _, _window, cx| {
+                            .on_click(cx.listener(move |_this, _, _window, _cx| {
                                 todo!("Implement plugin unloading in PluginManager and call it here (plugin_id: {})", id_for_button);
                             }))
                     })
@@ -248,6 +247,6 @@ impl window_manager::PulsarWindow for PluginManagerWindow {
     }
 
     fn build(_: (), _window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {
-        cx.new(|cx| PluginManagerWindow::new_global(cx))
+        cx.new(PluginManagerWindow::new_global)
     }
 }

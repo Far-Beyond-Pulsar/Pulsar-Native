@@ -41,7 +41,7 @@ where
     let cols = (((inner_width + gap) / (card_width + gap)).floor() as usize).max(1);
     let actual_card_w = (inner_width - (cols - 1) as f32 * gap) / cols as f32;
     let row_height = card_height + gap;
-    let total_rows = (total_items + cols - 1) / cols;
+    let total_rows = total_items.div_ceil(cols);
 
     let item_sizes = Rc::new(
         (0..total_rows)

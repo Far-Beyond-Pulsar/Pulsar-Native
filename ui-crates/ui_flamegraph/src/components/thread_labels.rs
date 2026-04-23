@@ -16,12 +16,12 @@ pub fn render_thread_labels(
     view_state: &ViewState,
     cx: &mut Context<impl Render>,
 ) -> impl IntoElement {
-    let setup_start = std::time::Instant::now();
+    let _setup_start = std::time::Instant::now();
     let thread_offsets = thread_offsets.clone();
     let view_state = view_state.clone();
     let theme = cx.theme();
 
-    let render_start = std::time::Instant::now();
+    let _render_start = std::time::Instant::now();
     let result = div()
         .absolute()
         .left_0()

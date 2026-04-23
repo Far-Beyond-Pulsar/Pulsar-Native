@@ -34,7 +34,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use tracing::{debug, warn};
+use tracing::warn;
 
 use crate::state::AppState;
 

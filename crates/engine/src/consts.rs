@@ -1,4 +1,3 @@
-use pulsar_std::env;
 
 // Engine constants
 pub const ENGINE_NAME: &str = env!("CARGO_PKG_NAME");

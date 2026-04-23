@@ -149,7 +149,7 @@ impl PulsarApp {
             cx.new(|cx| FileManagerDrawer::new(project_path.clone(), window, cx));
         let problems_drawer = cx.new(|cx| ProblemsDrawer::new(window, cx));
         let type_debugger_drawer = cx.new(|cx| TypeDebuggerDrawer::new(window, cx));
-        let mission_control = cx.new(|cx| MissionControlPanel::new(cx));
+        let mission_control = cx.new(MissionControlPanel::new);
 
         // Subscribe to drawer events
         cx.subscribe_in(

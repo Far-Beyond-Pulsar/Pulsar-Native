@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 
 use gpui::*;
 use ui::ActiveTheme as _;
@@ -173,7 +172,7 @@ impl ProblemsDrawer {
                         || d.file_path.to_lowercase().contains(q)
                         || d.source
                             .as_ref()
-                            .map_or(false, |s| s.to_lowercase().contains(q));
+                            .is_some_and(|s| s.to_lowercase().contains(q));
                 }
                 true
             })

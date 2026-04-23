@@ -8,7 +8,7 @@
 
 use crate::scene::{GizmoAxis, GizmoType, SceneDb};
 use crate::services::{ColliderTag, PhysicsQueryService};
-use glam::{Mat4, Quat, Vec2, Vec3};
+use glam::{Vec2, Vec3};
 use std::sync::Arc;
 
 /// State of gizmo interaction
@@ -118,8 +118,8 @@ impl GizmoInteractionController {
         mouse_pos: Vec2,
         camera_position: Vec3,
         camera_forward: Vec3,
-        camera_right: Vec3,
-        camera_up: Vec3,
+        _camera_right: Vec3,
+        _camera_up: Vec3,
     ) -> bool {
         // Can only start drag if hovering
         let axis = match self.interaction_state {
@@ -331,7 +331,7 @@ fn calculate_drag_plane(
     axis: GizmoAxis,
     gizmo_type: GizmoType,
     camera_position: Vec3,
-    camera_forward: Vec3,
+    _camera_forward: Vec3,
 ) -> (Vec3, Vec3) {
     let axis_vec = match axis {
         GizmoAxis::X => Vec3::X,

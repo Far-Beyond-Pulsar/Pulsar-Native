@@ -81,7 +81,7 @@ impl FolderMetadata {
         if let Some(color_val) = color {
             self.files
                 .entry(filename.to_string())
-                .or_insert_with(FileMetadata::default)
+                .or_default()
                 .color_override = Some(color_val.into());
         } else {
             // Remove color override
@@ -107,6 +107,12 @@ impl FolderMetadata {
 /// Manager for file system metadata across folders
 pub struct FsMetadataManager {
     cache: HashMap<PathBuf, FolderMetadata>,
+}
+
+impl Default for FsMetadataManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FsMetadataManager {

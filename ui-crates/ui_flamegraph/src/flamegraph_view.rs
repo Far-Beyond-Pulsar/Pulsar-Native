@@ -10,7 +10,7 @@ use ui::ActiveTheme;
 use crate::colors::get_palette;
 use crate::components::*;
 use crate::constants::*;
-use crate::coordinates::{time_to_x, visible_range};
+use crate::coordinates::time_to_x;
 use crate::state::{SpanCache, ViewState};
 
 pub struct FlamegraphView {
@@ -66,12 +66,12 @@ impl FlamegraphView {
 
 impl Render for FlamegraphView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let start = std::time::Instant::now();
+        let _start = std::time::Instant::now();
 
-        let cache_start = std::time::Instant::now();
+        let _cache_start = std::time::Instant::now();
         let (frame, cache) = self.get_or_build_cache();
 
-        let clone_start = std::time::Instant::now();
+        let _clone_start = std::time::Instant::now();
         let frame = Arc::clone(frame);
         let thread_offsets = Arc::clone(&cache.thread_offsets);
         let lod_tree = Arc::clone(&cache.lod_tree);
@@ -82,7 +82,7 @@ impl Render for FlamegraphView {
         let view_state_for_canvas = view_state.clone();
         let palette_for_canvas = palette.clone();
 
-        let tr_start = std::time::Instant::now();
+        let _tr_start = std::time::Instant::now();
         let timeline_ruler = render_timeline_ruler(&frame, &view_state, cx);
 
         let result = v_flex()
@@ -108,22 +108,22 @@ impl Render for FlamegraphView {
                         }
                     })
                     .child({
-                        let canvas_start = std::time::Instant::now();
+                        let _canvas_start = std::time::Instant::now();
                         let frame = Arc::clone(&frame);
 
                         // Track viewport width in view_state
                         let width = *self.viewport_width.read().unwrap();
                         self.view_state.viewport_width = width;
 
-                        let (_, cache) = self.get_or_build_cache();
-                        let canvas = render_flamegraph_canvas(
+                        let (_, _cache) = self.get_or_build_cache();
+                        
+                        render_flamegraph_canvas(
                             Arc::clone(&frame),
                             Arc::clone(&lod_tree),
                             Arc::clone(&thread_offsets),
                             view_state_for_canvas.clone(),
                             palette_for_canvas.clone(),
-                        );
-                        canvas
+                        )
                     })
                     .on_mouse_down(
                         MouseButton::Right,
@@ -187,13 +187,13 @@ impl Render for FlamegraphView {
                                     if canvas_y >= y && canvas_y <= y + ROW_HEIGHT {
                                         let x1 = time_to_x(
                                             span.start_ns,
-                                            &frame,
+                                            frame,
                                             viewport_width,
                                             &view_state_copy,
                                         );
                                         let x2 = time_to_x(
                                             span.end_ns(),
-                                            &frame,
+                                            frame,
                                             viewport_width,
                                             &view_state_copy,
                                         );
@@ -245,18 +245,17 @@ impl Render for FlamegraphView {
                         cx.notify();
                     }))
                     .child({
-                        let tl_start = std::time::Instant::now();
-                        let labels =
-                            render_thread_labels(&frame, &*thread_offsets, &view_state, cx);
-                        labels
+                        let _tl_start = std::time::Instant::now();
+                        
+                        render_thread_labels(&frame, &thread_offsets, &view_state, cx)
                     })
                     .child({
-                        let ss_start = std::time::Instant::now();
-                        let sidebar = render_statistics_sidebar(&frame, cx);
-                        sidebar
+                        let _ss_start = std::time::Instant::now();
+                        
+                        render_statistics_sidebar(&frame, cx)
                     })
                     .children({
-                        let hp_start = std::time::Instant::now();
+                        let _hp_start = std::time::Instant::now();
                         let popup = render_hover_popup(
                             &frame,
                             &view_state,

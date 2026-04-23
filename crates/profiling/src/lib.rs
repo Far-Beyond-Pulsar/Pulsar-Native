@@ -48,29 +48,21 @@ pub struct ProfileEvent {
 }
 
 /// Thread-local profiling state
+#[derive(Default)]
 struct ThreadState {
     depth: u32,
     start_time: Option<Instant>,
     scope_stack: Vec<String>, // Track parent scopes
 }
 
-impl Default for ThreadState {
-    fn default() -> Self {
-        Self {
-            depth: 0,
-            start_time: None,
-            scope_stack: Vec::new(),
-        }
-    }
-}
 
 thread_local! {
     static THREAD_STATE: std::cell::RefCell<ThreadState> = std::cell::RefCell::new(ThreadState::default());
-    static THREAD_NAME: std::cell::RefCell<Option<String>> = std::cell::RefCell::new(None);
+    static THREAD_NAME: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
 }
 
 /// Global profiler state
-static PROFILER: once_cell::sync::Lazy<Profiler> = once_cell::sync::Lazy::new(|| Profiler::new());
+static PROFILER: once_cell::sync::Lazy<Profiler> = once_cell::sync::Lazy::new(Profiler::new);
 
 struct Profiler {
     enabled: Arc<RwLock<bool>>,

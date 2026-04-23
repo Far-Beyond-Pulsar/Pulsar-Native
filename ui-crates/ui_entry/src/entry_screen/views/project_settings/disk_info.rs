@@ -17,11 +17,7 @@ pub fn render_disk_info_tab(
     let theme = cx.theme();
     let project_size = settings.disk_size.unwrap_or(0);
     let git_size = settings.git_repo_size.unwrap_or(0);
-    let working_files_size = if project_size > git_size {
-        project_size - git_size
-    } else {
-        0
-    };
+    let working_files_size = project_size.saturating_sub(git_size);
 
     v_flex()
         .gap_6()
@@ -40,7 +36,7 @@ pub fn render_disk_info_tab(
                 ("Git Repository", format_size(Some(git_size))),
                 ("Working Files", format_size(Some(working_files_size))),
             ],
-            &theme,
+            theme,
         ))
         .child(
             v_flex()
@@ -62,14 +58,14 @@ pub fn render_disk_info_tab(
                     working_files_size,
                     project_size,
                     theme.accent,
-                    &theme,
+                    theme,
                 ))
                 .child(render_size_bar(
                     "Git Data",
                     git_size,
                     project_size,
                     theme.primary,
-                    &theme,
+                    theme,
                 )),
         )
         .child(
@@ -98,7 +94,7 @@ pub fn render_disk_info_tab(
                             let path = settings.project_path.clone();
                             move |_, _, _| {
                                 let _ = std::process::Command::new("git")
-                                    .args(&["gc", "--aggressive", "--prune=now"])
+                                    .args(["gc", "--aggressive", "--prune=now"])
                                     .current_dir(&path)
                                     .spawn();
                             }

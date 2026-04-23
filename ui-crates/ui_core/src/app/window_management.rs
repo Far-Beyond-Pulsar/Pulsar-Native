@@ -76,7 +76,7 @@ impl PulsarApp {
                         PanelWindow::new(
                             panel_for_popout,
                             center_tabs,
-                            parent_window_handle.into(),
+                            parent_window_handle,
                             window,
                             cx,
                         )

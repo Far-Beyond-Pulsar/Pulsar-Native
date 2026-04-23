@@ -15,7 +15,7 @@ pub fn render_hover_popup(
     viewport_width: f32,
     cx: &mut Context<impl Render>,
 ) -> Option<impl IntoElement> {
-    let setup_start = std::time::Instant::now();
+    let _setup_start = std::time::Instant::now();
     let span_idx = view_state.hovered_span?;
     let span = frame.spans.get(span_idx)?;
     let theme = cx.theme();
@@ -44,7 +44,7 @@ pub fn render_hover_popup(
     // Need to subtract timeline height to get canvas-relative position
     let popup_y = (mouse_y - 210.0 + 5.0).max(0.0);
 
-    let render_start = std::time::Instant::now();
+    let _render_start = std::time::Instant::now();
     let result = Some(
         div()
             .absolute()

@@ -6,7 +6,7 @@ use gpui::prelude::FluentBuilder;
 use gpui::*;
 use ui::{
     dock::{Panel, PanelEvent},
-    v_flex, ActiveTheme, StyledExt,
+    v_flex, ActiveTheme,
 };
 
 pub struct MemoryBreakdownPanel {
@@ -41,7 +41,7 @@ ui_common::panel_boilerplate!(MemoryBreakdownPanel);
 
 impl Render for MemoryBreakdownPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        use ui::{chart::AreaChart, h_flex, scroll::ScrollbarAxis, v_virtual_list};
+        use ui::{chart::AreaChart, h_flex, v_virtual_list};
 
         let theme = cx.theme().clone();
 
@@ -230,11 +230,9 @@ impl Render for MemoryBreakdownPanel {
                         let theme = cx.theme().clone();
                         let total   = cached_alloc;
                         let entries = &cached_entries;
-                        let colors  = vec![
-                            theme.chart_1, theme.chart_2, theme.chart_3,
+                        let colors  = [theme.chart_1, theme.chart_2, theme.chart_3,
                             theme.chart_4, theme.chart_5,
-                            theme.info, theme.warning, theme.success,
-                        ];
+                            theme.info, theme.warning, theme.success];
                         range.map(|ix| {
                             if let Some(entry) = entries.get(ix) {
                                 let pct     = if total > 0 { entry.size as f64 / total as f64 * 100.0 } else { 0.0 };

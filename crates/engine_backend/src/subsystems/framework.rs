@@ -6,8 +6,7 @@
 //! - Type-safe subsystem registration
 //! - Shared context for runtime handles and configuration
 
-use std::collections::{HashMap, HashSet, VecDeque};
-use thiserror::Error;
+use std::collections::{HashMap, VecDeque};
 use tokio::runtime::Handle;
 
 /// Unique identifier for a subsystem

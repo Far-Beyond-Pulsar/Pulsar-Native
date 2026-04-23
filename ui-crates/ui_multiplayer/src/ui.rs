@@ -8,7 +8,7 @@ use ui::{
     h_flex,
     input::TextInput,
     tab::{Tab, TabBar},
-    v_flex, ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _, StyledExt,
+    v_flex, ActiveTheme as _, Disableable as _, Icon, IconName, StyledExt,
 };
 
 use super::state::MultiplayerWindow;
@@ -272,7 +272,7 @@ impl MultiplayerWindow {
                                         let id = session_id.clone();
                                         move |_, _| SharedString::from(id.clone())
                                     })
-                                    .on_copied(|_, window, cx| {
+                                    .on_copied(|_, _window, _cx| {
                                         tracing::debug!("Session ID copied to clipboard");
                                     }),
                             ),
@@ -305,7 +305,7 @@ impl MultiplayerWindow {
                                         let token = join_token.clone();
                                         move |_, _| SharedString::from(token.clone())
                                     })
-                                    .on_copied(|_, window, cx| {
+                                    .on_copied(|_, _window, _cx| {
                                         tracing::debug!("Password copied to clipboard");
                                     }),
                             ),
@@ -366,7 +366,7 @@ impl MultiplayerWindow {
                                             ))
                                         }
                                     })
-                                    .on_copied(|_, window, cx| {
+                                    .on_copied(|_, _window, _cx| {
                                         tracing::debug!("Join credentials copied to clipboard");
                                     }),
                             ),

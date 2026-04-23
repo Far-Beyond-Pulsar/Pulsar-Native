@@ -68,8 +68,10 @@ pub struct ProjectWithGitStatus {
 
 /// Runtime connection status of a cloud server (not persisted to disk).
 #[derive(Clone, Debug, PartialEq)]
+#[derive(Default)]
 pub enum CloudServerStatus {
     /// Initial / never polled
+    #[default]
     Unknown,
     /// Poll in progress
     Connecting,
@@ -86,11 +88,6 @@ pub enum CloudServerStatus {
     Unauthorized,
 }
 
-impl Default for CloudServerStatus {
-    fn default() -> Self {
-        Self::Unknown
-    }
-}
 
 /// Status of a single project on a remote server.
 #[derive(Clone, Debug, PartialEq)]

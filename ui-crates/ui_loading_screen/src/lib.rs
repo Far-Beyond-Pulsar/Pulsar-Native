@@ -217,7 +217,7 @@ impl Render for LoadingScreen {
             });
         }
 
-        let theme = cx.theme();
+        let _theme = cx.theme();
         let spinner = SPINNER[(self.anim_tick / 15) as usize % SPINNER.len()];
         let bar_w = relative(self.progress.clamp(0.0, 1.0));
 
@@ -326,7 +326,7 @@ impl Render for LoadingScreen {
                                                 let label = TASKS[i].0;
                                                 // Tasks above the window fade out toward the top
                                                 let dist_above =
-                                                    if i < running { running - i } else { 0 };
+                                                    running.saturating_sub(i);
                                                 let (icon, base_opacity): (&str, f32) = match status
                                                 {
                                                     TaskStatus::Done => ("✓", 0.9),

@@ -24,8 +24,7 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
 use crate::metrics::METRICS;
-use peer_discovery::{PeerSession, RendezvousSession};
-use session_manager::TokenClaims;
+use peer_discovery::PeerSession;
 
 impl RendezvousCoordinator {
     /// Handle WebSocket upgrade

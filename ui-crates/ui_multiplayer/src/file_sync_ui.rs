@@ -12,7 +12,7 @@ use ui::{
     h_flex,
     input::{InputState, TextInput},
     resizable::{h_resizable, resizable_panel, ResizableState},
-    v_flex, ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt,
+    v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
 };
 
 /// Status of a file in the sync

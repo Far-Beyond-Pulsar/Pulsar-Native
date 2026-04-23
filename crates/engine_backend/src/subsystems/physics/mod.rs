@@ -118,7 +118,7 @@ impl Subsystem for PhysicsEngine {
         vec![] // Physics has no dependencies
     }
 
-    fn init(&mut self, context: &SubsystemContext) -> Result<(), SubsystemError> {
+    fn init(&mut self, _context: &SubsystemContext) -> Result<(), SubsystemError> {
         profiling::profile_scope!("Subsystem::Physics::Init");
 
         tracing::debug!("Initializing physics engine with Rapier3D");
@@ -147,7 +147,7 @@ impl Subsystem for PhysicsEngine {
 
         // Clone Arc pointers for the async task
         let gravity = self.gravity;
-        let integration_parameters = self.integration_parameters.clone();
+        let integration_parameters = self.integration_parameters;
         let world = self.world.clone();
         let rigid_body_set = self.rigid_body_set.clone();
         let collider_set = self.collider_set.clone();

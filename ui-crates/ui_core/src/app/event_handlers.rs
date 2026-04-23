@@ -1,6 +1,6 @@
 //! Event handler implementations
 
-use gpui::{AppContext, Context, DismissEvent, Entity, Focusable, UpdateGlobal, Window};
+use gpui::{AppContext, Context, Entity, UpdateGlobal, Window};
 use ui::{dock::PanelEvent, ContextModal};
 use ui_entry::{EntryScreen, ProjectSelected};
 use ui_file_manager::{FileManagerDrawer, FileSelected, PopoutFileManagerEvent};
@@ -221,11 +221,7 @@ pub fn on_analyzer_event(
 
                 for (i, parent) in problems_diagnostics.iter().enumerate() {
                     if parent.file_path == hint.file_path {
-                        let distance = if hint.line >= parent.line {
-                            hint.line - parent.line
-                        } else {
-                            parent.line - hint.line
-                        };
+                        let distance = hint.line.abs_diff(parent.line);
 
                         if distance < best_distance {
                             best_distance = distance;
@@ -538,13 +534,12 @@ fn compute_before_after(
         }
 
         // Handle end of file or end of line
-        if !found_end {
-            if edit.end_line > current_line
-                || (edit.end_line == current_line && edit.end_column > current_col)
+        if !found_end
+            && (edit.end_line > current_line
+                || (edit.end_line == current_line && edit.end_column > current_col))
             {
                 offset_end = modified_content.len();
             }
-        }
 
         // Apply the edit
         if found_start && offset_start <= offset_end && offset_end <= modified_content.len() {
@@ -635,7 +630,7 @@ pub fn on_tab_panel_event(
     app: &mut PulsarApp,
     _tabs: &Entity<ui::dock::TabPanel>,
     event: &PanelEvent,
-    window: &mut Window,
+    _window: &mut Window,
     cx: &mut Context<PulsarApp>,
 ) {
     tracing::trace!(
@@ -653,9 +648,9 @@ pub fn on_tab_panel_event(
             }
             PanelEvent::TabClosed(id) => format!("TabClosed({:?})", id),
             PanelEvent::TabChanged { active_index } => format!("TabChanged({})", active_index),
-            PanelEvent::ZoomIn => format!("ZoomIn"),
-            PanelEvent::ZoomOut => format!("ZoomOut"),
-            PanelEvent::LayoutChanged => format!("LayoutChanged"),
+            PanelEvent::ZoomIn => "ZoomIn".to_string(),
+            PanelEvent::ZoomOut => "ZoomOut".to_string(),
+            PanelEvent::LayoutChanged => "LayoutChanged".to_string(),
         }
     );
 
@@ -665,7 +660,7 @@ pub fn on_tab_panel_event(
             // No need to handle it here anymore
             tracing::trace!("[PANEL_EVENT] MoveToNewWindow is now handled by DockArea");
         }
-        PanelEvent::TabClosed(entity_id) => {
+        PanelEvent::TabClosed(_entity_id) => {
             // Editor tracking has been migrated to plugins
             // app.state.daw_editors.retain(|e| e.entity_id() != *entity_id);
             // app.state.database_editors.retain(|e| e.entity_id() != *entity_id);

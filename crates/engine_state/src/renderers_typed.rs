@@ -5,7 +5,6 @@
 
 use dashmap::DashMap;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 use ui_types_common::window_types::WindowId;
 

@@ -2,7 +2,6 @@ use anyhow::Result;
 use opentelemetry::{global, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{runtime, Resource};
-use tracing_subscriber::layer::SubscriberExt;
 
 use crate::config::Config;
 

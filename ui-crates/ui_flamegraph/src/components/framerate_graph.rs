@@ -11,7 +11,7 @@ use ui::ActiveTheme;
 /// Render the framerate graph at the top of the view
 pub fn render_framerate_graph(
     frame: &Arc<TraceFrame>,
-    view_state: &ViewState,
+    _view_state: &ViewState,
     cx: &mut Context<impl Render>,
 ) -> impl IntoElement {
     let frame_times = frame.frame_times_ms.clone();

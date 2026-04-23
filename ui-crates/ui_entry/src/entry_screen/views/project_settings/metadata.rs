@@ -81,7 +81,7 @@ pub fn render_metadata_tab(
     let has_config = config_path.exists();
 
     // Try to read and parse the config file
-    let (config_result, config_content) = if has_config {
+    let (config_result, _config_content) = if has_config {
         let content = std::fs::read_to_string(&config_path).ok();
         let config = content
             .as_ref()
@@ -244,7 +244,7 @@ pub fn render_metadata_tab(
                         .to_string(),
                 ),
             ],
-            &theme,
+            theme,
         ))
         .child(
             div()
@@ -311,7 +311,7 @@ pub fn render_metadata_tab(
                                             const DETACHED_PROCESS: u32 = 0x00000008;
                                             const CREATE_NO_WINDOW: u32 = 0x08000000;
                                             let _ = std::process::Command::new("cmd")
-                                                .args(&[
+                                                .args([
                                                     "/c",
                                                     "start",
                                                     "",

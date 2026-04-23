@@ -62,6 +62,12 @@ pub struct Toolbar {
     buttons: Vec<ToolbarButton>,
 }
 
+impl Default for Toolbar {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Toolbar {
     pub fn new() -> Self {
         Self {
@@ -96,6 +102,12 @@ impl Toolbar {
 pub struct StatusBar {
     left_items: Vec<String>,
     right_items: Vec<String>,
+}
+
+impl Default for StatusBar {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl StatusBar {
@@ -155,6 +167,12 @@ pub struct ViewportControls {
     show_grid: bool,
     show_axes: bool,
     perspective_mode: bool,
+}
+
+impl Default for ViewportControls {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ViewportControls {

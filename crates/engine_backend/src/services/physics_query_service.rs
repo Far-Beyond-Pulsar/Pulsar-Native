@@ -2,7 +2,7 @@
 //!
 //! Provides viewport picking and gizmo interaction using Rapier3d QueryPipeline.
 
-use crate::scene::{ObjectId, SceneDb};
+use crate::scene::ObjectId;
 use dashmap::DashMap;
 use glam::Vec3;
 use rapier3d::na::{Isometry3, Point3, Vector3};
@@ -84,7 +84,7 @@ impl PhysicsQueryService {
             Vector3::new(direction.x, direction.y, direction.z).into(),
         );
 
-        let rigid_body_set = self.rigid_body_set.lock().ok()?;
+        let _rigid_body_set = self.rigid_body_set.lock().ok()?;
         let collider_set = self.collider_set.lock().ok()?;
 
         tracing::info!("[PHYSICS] Checking {} colliders", collider_set.len());
@@ -209,7 +209,7 @@ impl PhysicsQueryService {
 
     /// Sync colliders from SceneDB (recreate all scene colliders)
     pub fn sync_from_scene(&self, scene_db: &crate::scene::SceneDb) {
-        let start_count = self.collider_to_object.len();
+        let _start_count = self.collider_to_object.len();
 
         // Clear existing scene colliders (but not gizmo colliders)
         {

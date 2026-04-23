@@ -1,6 +1,6 @@
 //! Wire protocol types: ClientMessage, ServerMessage, CandidateDto
 
-use crate::nat::{ConnectionCandidate, NatType};
+use crate::nat::ConnectionCandidate;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

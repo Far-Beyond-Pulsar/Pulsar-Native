@@ -44,7 +44,7 @@
 use crate::args::ParsedArgs;
 use crate::logging::LogGuard;
 use engine_state::EngineContext;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use thiserror::Error;
 use tokio::runtime::Runtime;
 

@@ -71,7 +71,7 @@ pub fn render_integrations_tab(
             });
 
             // Detect tools in background using std::thread (not tokio!)
-            let detected = std::thread::spawn(|| AvailableTools::detect()).join().ok();
+            let detected = std::thread::spawn(AvailableTools::detect).join().ok();
 
             if let Some(tools) = detected {
                 // Save to cache file
@@ -145,7 +145,7 @@ pub fn render_integrations_tab(
             settings.preferred_editor.as_deref(),
             &project_path,
             "editor",
-            &theme,
+            theme,
         ))
         .child(render_tool_category(
             "Git GUI Tools",
@@ -153,7 +153,7 @@ pub fn render_integrations_tab(
             settings.preferred_git_tool.as_deref(),
             &project_path,
             "git",
-            &theme,
+            theme,
         ))
         .child(render_tool_category(
             "Terminals",
@@ -161,7 +161,7 @@ pub fn render_integrations_tab(
             None,
             &project_path,
             "terminal",
-            &theme,
+            theme,
         ))
 }
 

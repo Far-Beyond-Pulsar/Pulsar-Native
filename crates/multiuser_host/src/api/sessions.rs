@@ -83,7 +83,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, project_id: String, u
     // Send the initial user list to the newly joined member.
     let list_msg = WsMessage::UserList { users: user_list };
     if let Ok(json) = serde_json::to_string(&list_msg) {
-        let _ = sender.send(Message::Text(json.into())).await;
+        let _ = sender.send(Message::Text(json)).await;
     }
 
     // Ensure project is Running while users are present.
@@ -93,7 +93,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, project_id: String, u
     let send_task = tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
             if let Ok(json) = serde_json::to_string(&msg) {
-                if sender.send(Message::Text(json.into())).await.is_err() {
+                if sender.send(Message::Text(json)).await.is_err() {
                     break;
                 }
             }

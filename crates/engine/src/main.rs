@@ -32,10 +32,8 @@
 //!
 //! Each task is profiled with `Engine::Init::{TaskName}` scope.
 
-use gpui::IntoElement;
 // --- Global Allocator Setup ---
 use gpui::AppContext;
-use std::time::Duration;
 use ui_log_viewer::TrackingAllocator;
 
 #[global_allocator]
@@ -330,7 +328,7 @@ fn main() {
 
         if let Some(path) = launch.uri_project_path.take() {
             tracing::info!("Opening project splash from URI: {}", path.display());
-            open_via_loading_screen(path.into(), cx);
+            open_via_loading_screen(path, cx);
         } else {
             tracing::info!("Opening main entry window");
             let ec = engine_context.clone();
@@ -405,7 +403,7 @@ fn open_via_loading_screen(path: std::path::PathBuf, cx: &mut gpui::App) {
 
 /// Build common `WindowOptions` to reduce boilerplate.
 fn make_window_options(
-    title: Option<&'static str>,
+    _title: Option<&'static str>,
     origin: gpui::Point<gpui::Pixels>,
     win_size: gpui::Size<gpui::Pixels>,
     min_size: Option<gpui::Size<gpui::Pixels>>,

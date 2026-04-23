@@ -2,7 +2,7 @@
 
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use ui::{button::Button, h_flex, v_flex, ActiveTheme as _, StyledExt, TitleBar};
+use ui::{h_flex, v_flex, ActiveTheme as _, TitleBar};
 
 use super::state::MultiplayerWindow;
 

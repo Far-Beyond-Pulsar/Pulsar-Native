@@ -673,7 +673,7 @@ impl EntryScreen {
     }
 
     pub(crate) fn setup_git_upstream(&mut self, skip: bool, cx: &mut Context<Self>) {
-        if let Some((project_path, template_url)) = self.show_git_upstream_prompt.take() {
+        if let Some((project_path, _template_url)) = self.show_git_upstream_prompt.take() {
             if !skip && !self.git_upstream_url.trim().is_empty() {
                 // Add user's upstream
                 if let Err(e) = add_user_upstream(&project_path, &self.git_upstream_url) {

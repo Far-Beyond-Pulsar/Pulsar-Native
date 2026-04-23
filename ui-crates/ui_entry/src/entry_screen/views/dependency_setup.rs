@@ -187,8 +187,8 @@ fn render_install_progress(progress: InstallProgress, theme: &ui::Theme) -> impl
         InstallStatus::Error(e) => (IconName::WarningTriangle, gpui::red(), e.clone()),
     };
 
-    let progress_val = progress.progress;
-    let logs = progress.logs.clone();
+    let _progress_val = progress.progress;
+    let _logs = progress.logs.clone();
 
     v_flex()
         .gap_3()
@@ -406,7 +406,7 @@ fn install_rust_windows(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Str
 
         for process in &rust_processes {
             let _ = Command::new("taskkill")
-                .args(&["/F", "/IM", &format!("{}.exe", process)])
+                .args(["/F", "/IM", &format!("{}.exe", process)])
                 .creation_flags(0x08000000) // CREATE_NO_WINDOW
                 .output();
         }
@@ -429,7 +429,7 @@ fn install_rust_windows(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Str
 
         // Try to uninstall existing rustup
         let _ = Command::new("rustup")
-            .args(&["self", "uninstall", "-y"])
+            .args(["self", "uninstall", "-y"])
             .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .output();
 
@@ -537,7 +537,7 @@ fn install_rust_windows(progress: Arc<Mutex<InstallProgress>>) -> Result<(), Str
 
 #[cfg(target_os = "windows")]
 fn add_windows_defender_exclusions(progress: &Arc<Mutex<InstallProgress>>) {
-    use std::os::windows::process::CommandExt;
+    
     const CREATE_NO_WINDOW: u32 = 0x08000000;
 
     let home = match std::env::var("USERPROFILE") {
@@ -750,7 +750,7 @@ fn uninstall_rust() {
     {
         // Run rustup self uninstall
         let _ = Command::new("rustup")
-            .args(&["self", "uninstall", "-y"])
+            .args(["self", "uninstall", "-y"])
             .spawn();
     }
 

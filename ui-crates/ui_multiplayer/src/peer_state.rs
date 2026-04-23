@@ -41,7 +41,7 @@ impl MultiplayerWindow {
         let client = Arc::new(RwLock::new(MultiuserClient::new(server_address.clone())));
         self.client = Some(client.clone());
 
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             let join_token_clone = join_token.clone();
 
             let event_rx_result = {

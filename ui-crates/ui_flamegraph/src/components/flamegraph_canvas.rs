@@ -18,33 +18,33 @@ pub fn render_flamegraph_canvas(
     view_state: ViewState,
     palette: Vec<Hsla>,
 ) -> impl IntoElement {
-    let setup_start = std::time::Instant::now();
+    let _setup_start = std::time::Instant::now();
     canvas(
         {
-            let clone_start = std::time::Instant::now();
+            let _clone_start = std::time::Instant::now();
             let frame = Arc::clone(&frame);
             let lod_tree = Arc::clone(&lod_tree);
             let thread_offsets = Arc::clone(&thread_offsets);
             move |bounds, _window, _cx| {
-                let closure_start = std::time::Instant::now();
+                let _closure_start = std::time::Instant::now();
                 let viewport_width: f32 = bounds.size.width.into();
                 let viewport_height: f32 = bounds.size.height.into();
-                let result = (bounds, Arc::clone(&frame), Arc::clone(&lod_tree), Arc::clone(&thread_offsets), view_state.clone(), viewport_width, viewport_height, palette.clone());
-                result
+                
+                (bounds, Arc::clone(&frame), Arc::clone(&lod_tree), Arc::clone(&thread_offsets), view_state.clone(), viewport_width, viewport_height, palette.clone())
             }
         },
         move |bounds, state, window, _cx| {
-            let paint_start = std::time::Instant::now();
-            let (bounds_prep, frame, lod_tree, thread_offsets, view_state, viewport_width, viewport_height, palette) = state;
+            let _paint_start = std::time::Instant::now();
+            let (_bounds_prep, frame, lod_tree, thread_offsets, view_state, viewport_width, viewport_height, _palette) = state;
 
             if frame.spans.is_empty() {
                 return;
             }
 
-            let visible_range_start = std::time::Instant::now();
+            let _visible_range_start = std::time::Instant::now();
             let visible_time = visible_range(&frame, viewport_width, &view_state);
 
-            let paint_layer_start = std::time::Instant::now();
+            let _paint_layer_start = std::time::Instant::now();
             window.paint_layer(bounds, |window| {
                 // Draw vertical grid lines aligned with timeline
                 let visible_range_for_grid = visible_range(&frame, viewport_width, &view_state);
@@ -83,7 +83,7 @@ pub fn render_flamegraph_canvas(
                 }
 
                 // Draw thread separators
-                for (idx, (thread_id, y_offset)) in thread_offsets.iter().enumerate() {
+                for (idx, (_thread_id, y_offset)) in thread_offsets.iter().enumerate() {
                     if idx > 0 {
                         let separator_y = y_offset - THREAD_ROW_PADDING / 2.0 + view_state.pan_y;
                         if separator_y >= 0.0 && separator_y < viewport_height {
@@ -110,7 +110,7 @@ pub fn render_flamegraph_canvas(
 
                 // LOD QUERY: Get pre-merged spans at appropriate detail level
                 // O(output) complexity - independent of total dataset size!
-                let lod_start = std::time::Instant::now();
+                let _lod_start = std::time::Instant::now();
 
                 let vertical_min = -CULL_PADDING - view_state.pan_y;
                 let vertical_max = viewport_height + CULL_PADDING - view_state.pan_y;
@@ -119,7 +119,7 @@ pub fn render_flamegraph_canvas(
                 static mut FRAME_COUNT: u32 = 0;
                 unsafe {
                     FRAME_COUNT += 1;
-                    if FRAME_COUNT % 60 == 0 {  // Log every 60 frames
+                    if FRAME_COUNT.is_multiple_of(60) {  // Log every 60 frames
                         let duration_ms = (visible_time.end - visible_time.start) as f64 / 1_000_000.0;
                         tracing::trace!("[FLAMEGRAPH] Visible range: {} - {} ({:.2}ms), pan_x: {:.1}, zoom: {:.8}",
                             visible_time.start, visible_time.end, duration_ms, view_state.pan_x, view_state.zoom);
@@ -135,13 +135,13 @@ pub fn render_flamegraph_canvas(
                 );
 
                 unsafe {
-                    if FRAME_COUNT % 60 == 0 {
+                    if FRAME_COUNT.is_multiple_of(60) {
                         tracing::trace!("[FLAMEGRAPH] LOD returned {} spans", merged_spans.len());
                     }
                 }
 
                 // Paint pre-merged spans directly - NO additional merging needed!
-                let paint_start = std::time::Instant::now();
+                let _paint_start = std::time::Instant::now();
                 let palette = get_palette();
 
                 for merged_span in merged_spans {

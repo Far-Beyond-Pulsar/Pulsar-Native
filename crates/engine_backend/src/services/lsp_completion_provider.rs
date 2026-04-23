@@ -55,7 +55,7 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
 
         // Clone only what we need - DO NOT convert rope to string here (blocks UI!)
         let uri = self.path_to_uri();
-        let file_path = self.file_path.clone();
+        let _file_path = self.file_path.clone();
         let analyzer = self.analyzer.clone();
         let text_clone = text.clone(); // Rope clone is cheap (it's a rope, not a copy)
 
@@ -364,7 +364,7 @@ impl ui::input::HoverProvider for GlobalRustAnalyzerCompletionProvider {
 
         let uri = self.path_to_uri();
         let position = text.offset_to_position(offset);
-        let word = text.word_at(offset);
+        let _word = text.word_at(offset);
 
         // Prepare the request parameters
         let params = json!({

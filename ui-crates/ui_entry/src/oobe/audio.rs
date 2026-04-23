@@ -3,7 +3,6 @@
 //! Manages ambient sounds and UI audio for the intro experience
 //! Uses rodio for audio playback with embedded MP3 file
 
-use parking_lot::Mutex;
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
 use std::io::Cursor;
 use std::sync::atomic::{AtomicBool, Ordering};

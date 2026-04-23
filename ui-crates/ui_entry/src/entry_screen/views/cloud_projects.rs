@@ -185,7 +185,7 @@ fn render_server_card(
     let muted_fg = theme.muted_foreground;
     let border = theme.border;
     let sidebar = theme.sidebar;
-    let accent = theme.accent;
+    let _accent = theme.accent;
 
     let hover_bg = sidebar.lighten(0.04);
 
@@ -427,7 +427,7 @@ fn render_server_detail(
     let fg = theme.foreground;
     let muted_fg = theme.muted_foreground;
     let border = theme.border;
-    let accent = theme.accent;
+    let _accent = theme.accent;
 
     // Snapshot all data we need before handing cx to closures
     let alias = screen.cloud_servers[server_idx].alias.clone();
@@ -1018,7 +1018,7 @@ fn render_add_server_panel(screen: &mut EntryScreen, cx: &mut Context<EntryScree
     let fg = theme.foreground;
     let muted_fg = theme.muted_foreground;
     let border = theme.border;
-    let primary = theme.primary;
+    let _primary = theme.primary;
 
     v_flex()
         .size_full()

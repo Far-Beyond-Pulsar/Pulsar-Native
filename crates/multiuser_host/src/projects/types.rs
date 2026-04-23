@@ -4,8 +4,10 @@ use serde::{Deserialize, Serialize};
 /// Persisted status of a project on disk.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ProjectStatus {
     /// No sessions active; files are at rest.
+    #[default]
     Idle,
     /// Server is loading the project into memory.
     Preparing,
@@ -15,11 +17,6 @@ pub enum ProjectStatus {
     Error(String),
 }
 
-impl Default for ProjectStatus {
-    fn default() -> Self {
-        ProjectStatus::Idle
-    }
-}
 
 #[allow(dead_code)]
 impl ProjectStatus {

@@ -275,7 +275,7 @@ impl ProjectDocsState {
 
                 if item_path == path {
                     let mut md = format!("# `{}`\n\n", item_path);
-                    md.push_str(&format!("**Type:** Struct\n\n"));
+                    md.push_str("**Type:** Struct\n\n");
                     md.push_str(&format!("**Visibility:** `{}`\n\n", struct_doc.visibility));
 
                     if let Some(doc) = &struct_doc.doc_comment {
@@ -311,7 +311,7 @@ impl ProjectDocsState {
 
                 if item_path == path {
                     let mut md = format!("# `{}`\n\n", item_path);
-                    md.push_str(&format!("**Type:** Enum\n\n"));
+                    md.push_str("**Type:** Enum\n\n");
                     md.push_str(&format!("**Visibility:** `{}`\n\n", enum_doc.visibility));
 
                     if let Some(doc) = &enum_doc.doc_comment {
@@ -346,7 +346,7 @@ impl ProjectDocsState {
 
                 if item_path == path {
                     let mut md = format!("# `{}`\n\n", item_path);
-                    md.push_str(&format!("**Type:** Trait\n\n"));
+                    md.push_str("**Type:** Trait\n\n");
                     md.push_str(&format!("**Visibility:** `{}`\n\n", trait_doc.visibility));
 
                     if let Some(doc) = &trait_doc.doc_comment {
@@ -382,7 +382,7 @@ impl ProjectDocsState {
 
                 if item_path == path {
                     let mut md = format!("# `{}`\n\n", item_path);
-                    md.push_str(&format!("**Type:** Function\n\n"));
+                    md.push_str("**Type:** Function\n\n");
                     md.push_str(&format!("**Visibility:** `{}`\n\n", fn_doc.visibility));
                     md.push_str(&format!("**Signature:** `{}`\n\n", fn_doc.signature));
 
@@ -407,7 +407,7 @@ impl ProjectDocsState {
 
                 if item_path == path {
                     let mut md = format!("# `{}`\n\n", item_path);
-                    md.push_str(&format!("**Type:** Constant\n\n"));
+                    md.push_str("**Type:** Constant\n\n");
                     md.push_str(&format!("**Visibility:** `{}`\n\n", const_doc.visibility));
                     md.push_str(&format!("**Type:** `{}`\n\n", const_doc.ty));
 

@@ -15,7 +15,7 @@ use engine_backend::subsystems::networking::multiuser::{
 use engine_backend::subsystems::networking::simple_sync;
 
 impl MultiplayerWindow {
-    pub(super) fn create_session(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn create_session(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let server_address = self.server_address_input.read(cx).text().to_string();
 
         if server_address.is_empty() {
@@ -32,10 +32,10 @@ impl MultiplayerWindow {
         let client = Arc::new(RwLock::new(MultiuserClient::new(server_address.clone())));
         self.client = Some(client.clone());
 
-        let session_id_input = self.session_id_input.clone();
-        let session_password_input = self.session_password_input.clone();
+        let _session_id_input = self.session_id_input.clone();
+        let _session_password_input = self.session_password_input.clone();
 
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             // Call create_session on the client
             let result = {
                 let client_guard = client.read().await;
@@ -189,7 +189,7 @@ impl MultiplayerWindow {
                                                             let user_index = session.connected_users.len();
                                                             // Session borrow dropped here
 
-                                                            if !this.active_session.as_ref().map_or(true, |s| s.connected_users.contains(&joined_peer_id)) {
+                                                            if !this.active_session.as_ref().is_none_or(|s| s.connected_users.contains(&joined_peer_id)) {
                                                                 return;
                                                             }
 

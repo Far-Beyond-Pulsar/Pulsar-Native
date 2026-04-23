@@ -224,7 +224,7 @@ impl Palette {
         for item in self.items.values() {
             categories
                 .entry(item.category.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(item.clone());
         }
 

@@ -230,4 +230,4 @@ fn background_processor(receiver: Receiver<AllocRecord>) {
 
 /// Global type tracker instance
 pub static TYPE_TRACKER: once_cell::sync::Lazy<TypeTracker> =
-    once_cell::sync::Lazy::new(|| TypeTracker::new());
+    once_cell::sync::Lazy::new(TypeTracker::new);

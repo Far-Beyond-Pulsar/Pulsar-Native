@@ -1,8 +1,8 @@
-use crate::entry_screen::{virtual_grid::render_card_grid, EntryScreen, Template};
+use crate::entry_screen::{virtual_grid::render_card_grid, EntryScreen};
 use gpui::{prelude::*, *};
 use ui::Sizable;
 use ui::{
-    h_flex, progress::Progress, tag::Tag, v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
+    h_flex, progress::Progress, tag::Tag, v_flex, ActiveTheme as _, Icon, IconName,
 };
 
 pub fn render_templates(
@@ -11,13 +11,13 @@ pub fn render_templates(
     cx: &mut Context<EntryScreen>,
 ) -> impl IntoElement {
     let theme = cx.theme();
-    let border_col = theme.border;
+    let _border_col = theme.border;
     let muted_fg = theme.muted_foreground;
     let fg = theme.foreground;
     let sidebar_bg = theme.sidebar;
     let primary = theme.primary;
-    let accent = theme.accent;
-    let accent_fg = theme.accent_foreground;
+    let _accent = theme.accent;
+    let _accent_fg = theme.accent_foreground;
 
     let has_progress = screen.clone_progress.is_some();
 

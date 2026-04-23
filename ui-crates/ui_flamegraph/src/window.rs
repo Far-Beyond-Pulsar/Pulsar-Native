@@ -25,7 +25,7 @@ pub struct FlamegraphWindow {
 }
 
 impl FlamegraphWindow {
-    pub fn new(trace_data: Arc<TraceData>, window: &mut Window, cx: &mut App) -> Entity<Self> {
+    pub fn new(trace_data: Arc<TraceData>, _window: &mut Window, cx: &mut App) -> Entity<Self> {
         // Clone the Arc so window and view share the same TraceData
         let view_trace_data = Arc::clone(&trace_data);
         let view = cx.new(move |_cx| FlamegraphView::new((*view_trace_data).clone()));
@@ -633,10 +633,10 @@ impl FlamegraphWindow {
 }
 
 impl Render for FlamegraphWindow {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_profiling = self.is_profiling;
         // Only show data when NOT profiling - during profiling, data is being collected but not displayed
-        let has_data = !is_profiling && self.trace_data.get_frame().spans.len() > 0;
+        let has_data = !is_profiling && !self.trace_data.get_frame().spans.is_empty();
 
         // Initialize panels on first render with data (when profiling stops)
         if has_data && self.flamegraph_panel.is_none() {

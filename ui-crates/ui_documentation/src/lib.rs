@@ -1,7 +1,7 @@
 use gpui::{prelude::*, *};
 use std::path::PathBuf;
 use ui::{
-    ActiveTheme, Icon, IconName, Root, Sizable, StyledExt, TitleBar,
+    ActiveTheme, Icon, IconName, Root, Sizable, TitleBar,
     button::{Button, ButtonVariants as _},
     h_flex,
     input::{InputState, TextInput},
@@ -17,7 +17,7 @@ mod panels;
 mod project_docs;
 
 use engine_docs::EngineDocsState;
-use manual_docs::{ManualDocsState, ViewMode};
+use manual_docs::ManualDocsState;
 use panels::{EngineDocsPanel, ManualDocsPanel, ProjectDocsPanel};
 use project_docs::ProjectDocsState;
 

@@ -43,7 +43,7 @@ pub fn render_git_ci_tab(
                     .to_string(),
                 ),
             ],
-            &theme,
+            theme,
         ))
         .child(
             v_flex()

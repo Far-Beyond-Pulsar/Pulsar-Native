@@ -3,7 +3,7 @@ use gpui::prelude::FluentBuilder;
 use gpui::*;
 use std::sync::Arc;
 use ui::{
-    ActiveTheme, Icon, IconName, Root, Sizable, StyledExt, TitleBar,
+    ActiveTheme, Icon, IconName, Root, TitleBar,
     button::{Button, ButtonVariants as _},
     h_flex, v_flex,
 };

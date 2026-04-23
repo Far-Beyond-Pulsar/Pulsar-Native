@@ -9,7 +9,7 @@ use ui::{
     h_flex,
     spinner::Spinner,
     tag::Tag,
-    v_flex, ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt,
+    v_flex, ActiveTheme as _, Icon, IconName,
 };
 
 pub fn render_recent_projects(
@@ -157,7 +157,7 @@ pub fn render_recent_projects(
 fn render_project_grid(
     screen: &mut EntryScreen,
     available_width: f32,
-    cx: &mut Context<EntryScreen>,
+    _cx: &mut Context<EntryScreen>,
 ) -> impl IntoElement {
     // Match the layout used by `EntryScreen::calculate_columns`
     const CARD_WIDTH: f32 = 320.0;

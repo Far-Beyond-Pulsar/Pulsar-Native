@@ -91,7 +91,7 @@ pub enum Component {
 
 impl Component {
     /// Get field metadata for this component variant
-    pub fn get_field_metadata(&self) -> Vec<ComponentFieldMetadata> {
+    pub fn get_field_metadata(&self) -> Vec<ComponentFieldMetadata<'_>> {
         match self {
             Component::Material {
                 id,
@@ -120,7 +120,7 @@ impl Component {
                 name: "path",
                 value: path,
             }],
-            Component::Collider { shape } => vec![
+            Component::Collider { shape: _ } => vec![
                 // TODO: Handle nested enums like ColliderShape
             ],
             Component::RigidBody { mass, kinematic } => vec![
@@ -659,7 +659,7 @@ impl SceneDb {
     /// Uses DashMap's internal sharding so this is concurrent-safe and very fast.
     pub fn for_each_entry(&self, mut f: impl FnMut(&SceneEntry)) {
         for entry in self.inner.objects.iter() {
-            f(&*entry);
+            f(&entry);
         }
     }
 

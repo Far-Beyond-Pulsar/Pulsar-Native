@@ -248,9 +248,9 @@ impl P2PManager {
 
 /// Helper to run git fetch/push over a custom transport
 pub async fn run_git_over_connection(
-    repo_path: &std::path::Path,
+    _repo_path: &std::path::Path,
     p2p: &P2PManager,
-    remote_url: &str,
+    _remote_url: &str,
 ) -> Result<(), String> {
     match p2p.get_mode().await {
         ConnectionMode::DirectP2P | ConnectionMode::BinaryProxy => {

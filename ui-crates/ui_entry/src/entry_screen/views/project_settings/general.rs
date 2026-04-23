@@ -30,7 +30,7 @@ pub fn render_general_tab(
                 ("Path", settings.project_path.to_string_lossy().to_string()),
                 ("Type", "Pulsar Native Game Project".to_string()),
             ],
-            &theme,
+            theme,
         ))
         .child(
             v_flex()

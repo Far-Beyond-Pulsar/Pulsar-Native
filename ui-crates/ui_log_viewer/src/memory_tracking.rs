@@ -46,6 +46,7 @@ pub struct MemoryAllocation {
 
 /// Memory tracking statistics
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct MemoryStats {
     pub total_allocated: usize,
     pub total_deallocated: usize,
@@ -56,19 +57,6 @@ pub struct MemoryStats {
     pub by_category: HashMap<MemoryCategory, usize>,
 }
 
-impl Default for MemoryStats {
-    fn default() -> Self {
-        Self {
-            total_allocated: 0,
-            total_deallocated: 0,
-            current_usage: 0,
-            peak_usage: 0,
-            allocation_count: 0,
-            deallocation_count: 0,
-            by_category: HashMap::new(),
-        }
-    }
-}
 
 impl MemoryStats {
     /// Record an allocation
@@ -119,7 +107,7 @@ impl MemoryStats {
         let mut categories: Vec<_> = self
             .by_category
             .iter()
-            .map(|(k, v)| (k.clone(), *v))
+            .map(|(k, v)| (*k, *v))
             .collect();
         categories.sort_by(|a, b| b.1.cmp(&a.1));
         categories

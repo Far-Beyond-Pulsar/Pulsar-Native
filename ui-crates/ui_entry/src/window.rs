@@ -57,7 +57,7 @@ impl EntryWindow {
 
     pub fn new_placeholder(cx: &mut Context<Self>) -> Self {
         Self {
-            screen_state: ScreenState::Entry(cx.new(|cx| {
+            screen_state: ScreenState::Entry(cx.new(|_cx| {
                 // Create a minimal placeholder - this shouldn't be used normally
                 panic!("EntryWindow::new_placeholder should not be called in normal operation")
             })),

@@ -74,7 +74,7 @@ impl MultiplayerWindow {
         let project_root = project_path;
 
         // Create diff viewer for file sync
-        let diff_viewer = cx.new(|cx| DiffViewer::new(cx));
+        let diff_viewer = cx.new(DiffViewer::new);
 
         Self {
             server_address_input,

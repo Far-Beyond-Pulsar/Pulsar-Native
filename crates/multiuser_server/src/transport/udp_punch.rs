@@ -466,7 +466,7 @@ impl UdpHolePuncher {
         self.socket.send_to(&payload, stun_server).await?;
 
         let mut buffer = vec![0u8; MAX_PACKET_SIZE];
-        let (n, addr) = timeout(Duration::from_secs(2), self.socket.recv_from(&mut buffer))
+        let (_n, addr) = timeout(Duration::from_secs(2), self.socket.recv_from(&mut buffer))
             .await
             .context("STUN probe timeout")??;
 

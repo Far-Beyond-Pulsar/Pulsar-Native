@@ -80,10 +80,7 @@ impl TraceFrame {
         self.max_depth = self.max_depth.max(span.depth);
 
         // Ensure thread exists
-        if !self.threads.contains_key(&span.thread_id) {
-            self.threads.insert(
-                span.thread_id,
-                ThreadInfo {
+        self.threads.entry(span.thread_id).or_insert_with(|| ThreadInfo {
                     id: span.thread_id,
                     name: match span.thread_id {
                         0 => "GPU".to_string(),
@@ -96,9 +93,7 @@ impl TraceFrame {
                         7..=10 => format!("Worker {}", span.thread_id - 7),
                         id => format!("Thread {}", id),
                     },
-                },
-            );
-        }
+                });
 
         self.spans.push(span);
     }
@@ -210,7 +205,7 @@ impl TraceData {
                         let stage_dur = draw_dur / shader_stages.len() as u64;
                         for stage in &shader_stages {
                             trace.add_span(TraceSpan {
-                                name: format!("{}", stage),
+                                name: stage.to_string(),
                                 start_ns: shader_time,
                                 duration_ns: stage_dur,
                                 depth: 3,

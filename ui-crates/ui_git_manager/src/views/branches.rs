@@ -54,7 +54,7 @@ fn render_branch_section(
         let branch_name = branch.name.clone();
         let branch_name_for_switch = branch.name.clone();
         let is_current = branch.is_current;
-        let is_remote = branch.is_remote;
+        let _is_remote = branch.is_remote;
 
         let icon_color = if is_current { primary } else { muted_fg };
         let text_color = if is_current { foreground } else { muted_fg };

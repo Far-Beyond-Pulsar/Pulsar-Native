@@ -300,7 +300,7 @@ impl ProjectSettings {
         // Get commit count
         if let Ok(output) = std::process::Command::new("git")
             .current_dir(project_path)
-            .args(&["rev-list", "--count", "HEAD"])
+            .args(["rev-list", "--count", "HEAD"])
             .output()
         {
             if let Ok(count_str) = String::from_utf8(output.stdout) {
@@ -313,7 +313,7 @@ impl ProjectSettings {
         // Get branch count
         if let Ok(output) = std::process::Command::new("git")
             .current_dir(project_path)
-            .args(&["branch", "-a"])
+            .args(["branch", "-a"])
             .output()
         {
             if let Ok(branches) = String::from_utf8(output.stdout) {
@@ -324,7 +324,7 @@ impl ProjectSettings {
         // Get current branch
         if let Ok(output) = std::process::Command::new("git")
             .current_dir(project_path)
-            .args(&["branch", "--show-current"])
+            .args(["branch", "--show-current"])
             .output()
         {
             if let Ok(branch) = String::from_utf8(output.stdout) {
@@ -338,7 +338,7 @@ impl ProjectSettings {
         // Get remote URL
         if let Ok(output) = std::process::Command::new("git")
             .current_dir(project_path)
-            .args(&["config", "--get", "remote.origin.url"])
+            .args(["config", "--get", "remote.origin.url"])
             .output()
         {
             if let Ok(url) = String::from_utf8(output.stdout) {
@@ -352,7 +352,7 @@ impl ProjectSettings {
         // Get last commit info
         if let Ok(output) = std::process::Command::new("git")
             .current_dir(project_path)
-            .args(&["log", "-1", "--format=%ci"])
+            .args(["log", "-1", "--format=%ci"])
             .output()
         {
             if let Ok(date) = String::from_utf8(output.stdout) {
@@ -365,7 +365,7 @@ impl ProjectSettings {
 
         if let Ok(output) = std::process::Command::new("git")
             .current_dir(project_path)
-            .args(&["log", "-1", "--format=%s"])
+            .args(["log", "-1", "--format=%s"])
             .output()
         {
             if let Ok(message) = String::from_utf8(output.stdout) {
@@ -379,7 +379,7 @@ impl ProjectSettings {
         // Get uncommitted changes
         if let Ok(output) = std::process::Command::new("git")
             .current_dir(project_path)
-            .args(&["status", "--porcelain"])
+            .args(["status", "--porcelain"])
             .output()
         {
             if let Ok(status) = String::from_utf8(output.stdout) {
@@ -390,7 +390,7 @@ impl ProjectSettings {
         // Get stash count
         if let Ok(output) = std::process::Command::new("git")
             .current_dir(project_path)
-            .args(&["stash", "list"])
+            .args(["stash", "list"])
             .output()
         {
             if let Ok(stashes) = String::from_utf8(output.stdout) {
@@ -401,7 +401,7 @@ impl ProjectSettings {
         // Get untracked files
         if let Ok(output) = std::process::Command::new("git")
             .current_dir(project_path)
-            .args(&["ls-files", "--others", "--exclude-standard"])
+            .args(["ls-files", "--others", "--exclude-standard"])
             .output()
         {
             if let Ok(files) = String::from_utf8(output.stdout) {

@@ -1,6 +1,6 @@
 //! Compact toolbar: tab selector + branch/sync row
 
-use crate::{GitManager, GitView, PendingAuthOp};
+use crate::{GitManager, GitView};
 use gpui::*;
 use ui::{
     ActiveTheme as _, Icon, IconName,

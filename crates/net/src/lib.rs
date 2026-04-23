@@ -1,4 +1,3 @@
-use quinn;
 
 pub struct PulsarIntNetConnection {
     pub endpoint: quinn::Endpoint,
@@ -26,6 +25,6 @@ impl PulsarIntNetConnection {
     }
 
     pub fn is_connected(&self) -> bool {
-        !self.connection.close_reason().is_some()
+        self.connection.close_reason().is_none()
     }
 }

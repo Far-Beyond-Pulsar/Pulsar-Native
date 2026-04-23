@@ -20,7 +20,7 @@ use ui::{
 };
 
 pub fn render_project_settings(
-    screen: &EntryScreen,
+    _screen: &EntryScreen,
     settings: &ProjectSettings,
     cx: &mut Context<EntryScreen>,
 ) -> impl IntoElement {

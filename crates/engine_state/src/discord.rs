@@ -195,9 +195,7 @@ impl DiscordPresence {
         let asset = if let Some(ref icon_key) = inner.discord_icon_key {
             // Use the custom icon key provided by the panel
             let small_image_text = inner
-                .active_tab
-                .as_ref()
-                .map(|s| s.as_str())
+                .active_tab.as_deref()
                 .unwrap_or("Editor");
 
             tracing::debug!(

@@ -6,7 +6,6 @@ use quote::ToTokens;
 /// Extracts documentation from parsed AST nodes. This is the core of the documentation
 /// system - it walks the AST and builds comprehensive documentation structures.
 use std::error::Error;
-use syn::spanned::Spanned;
 use syn::{
     Attribute, Item, ItemConst, ItemEnum, ItemFn, ItemMacro, ItemStruct, ItemTrait, ItemType,
 };

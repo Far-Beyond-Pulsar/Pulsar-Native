@@ -125,8 +125,8 @@ impl TypeDebuggerDrawer {
                     || t.display_name.to_lowercase().contains(&query)
                     || t.description
                         .as_ref()
-                        .map_or(false, |d| d.to_lowercase().contains(&query))
-                    || t.file_path.as_ref().map_or(false, |p| {
+                        .is_some_and(|d| d.to_lowercase().contains(&query))
+                    || t.file_path.as_ref().is_some_and(|p| {
                         p.to_string_lossy().to_lowercase().contains(&query)
                     })
             });
@@ -142,7 +142,7 @@ impl TypeDebuggerDrawer {
         for type_info in types {
             grouped
                 .entry(type_info.file_type_id.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(type_info);
         }
 
@@ -403,7 +403,7 @@ impl TypeDebuggerDrawer {
                 div()
                     .text_xs()
                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(self.kind_color(&kind, cx))
+                    .text_color(self.kind_color(kind, cx))
                     .child(count.to_string()),
             )
     }

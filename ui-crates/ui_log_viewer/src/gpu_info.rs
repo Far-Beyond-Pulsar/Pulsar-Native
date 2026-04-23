@@ -52,7 +52,7 @@ pub fn detect_primary_gpu() -> GpuInfo {
     };
 
     let info = adapter.get_info();
-    let vendor = pci_vendor_name(info.vendor as u32);
+    let vendor = pci_vendor_name(info.vendor);
     let vram_total_mb = query_vram_total_mb();
 
     // wgpu populates driver/driver_info on Vulkan; on DX12 they are often empty.
@@ -112,7 +112,7 @@ pub fn query_vram_shared_mb() -> Option<u64> {
 }
 
 fn pci_vendor_name(vendor_id: u32) -> String {
-    match vendor_id as u32 {
+    match vendor_id {
         0x10DE => "NVIDIA",
         0x1002 | 0x1022 => "AMD",
         0x8086 => "Intel",

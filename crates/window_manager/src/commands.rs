@@ -1,4 +1,4 @@
-use gpui::{AnyView, App, Pixels, Point, Size, Window, WindowOptions};
+use gpui::{Pixels, Point, Size, WindowOptions};
 use ui_types_common::window_types::{WindowId, WindowRequest};
 
 #[derive(Debug)]

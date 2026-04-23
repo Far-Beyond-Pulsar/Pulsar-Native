@@ -3,10 +3,8 @@
 
 use crate::AllocationSite;
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use parking_lot::Mutex;
 use rusqlite::{params, Connection};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 /// Batch of allocation sites to write
 pub struct AllocationBatch {

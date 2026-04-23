@@ -3,7 +3,6 @@
 
 use gpui::*;
 use ui::drawer_window_entity;
-use ui_common::translate;
 
 use crate::{FileManagerDrawer, FileSelected};
 

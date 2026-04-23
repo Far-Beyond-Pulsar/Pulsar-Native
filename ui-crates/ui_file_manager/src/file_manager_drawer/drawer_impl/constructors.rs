@@ -20,7 +20,7 @@ impl FileManagerDrawer {
         cx.subscribe(
             &folder_search_state,
             |drawer, _input, event: &ui::input::InputEvent, cx| {
-                if let ui::input::InputEvent::Change { .. } = event {
+                if let ui::input::InputEvent::Change = event {
                     drawer.search_query = drawer.folder_search_state.read(cx).text().to_string();
                     cx.notify();
                 }
@@ -31,7 +31,7 @@ impl FileManagerDrawer {
         cx.subscribe(
             &file_filter_state,
             |drawer, _input, event: &ui::input::InputEvent, cx| {
-                if let ui::input::InputEvent::Change { .. } = event {
+                if let ui::input::InputEvent::Change = event {
                     drawer.file_filter_query = drawer.file_filter_state.read(cx).text().to_string();
                     cx.notify();
                 }

@@ -28,13 +28,13 @@ pub fn folder_context_menu(
         let mut menu = menu
             .submenu_with_icon(
                 Some(ui::Icon::new(ui::IconName::Plus)),
-                &t!("FileManager.NewFolder").to_string(),
+                t!("FileManager.NewFolder").to_string(),
                 window,
                 cx,
                 move |submenu, window, cx| {
                     let mut submenu = submenu
                         .menu_with_icon(
-                            &t!("FileManager.NewFolder").to_string(),
+                            t!("FileManager.NewFolder").to_string(),
                             ui::Icon::new(ui::IconName::FolderPlus),
                             Box::new(NewFolder {
                                 folder_path: path_str.clone(),
@@ -181,19 +181,19 @@ pub fn folder_context_menu(
             )
             .separator()
             .menu_with_icon(
-                &t!("FileManager.Cut").to_string(),
+                t!("FileManager.Cut").to_string(),
                 ui::Icon::new(ui::IconName::Scissor),
                 Box::new(Cut),
             )
             .menu_with_icon(
-                &t!("FileManager.Copy").to_string(),
+                t!("FileManager.Copy").to_string(),
                 ui::Icon::new(ui::IconName::Copy),
                 Box::new(Copy),
             );
 
         if has_clipboard {
             menu = menu.menu_with_icon(
-                &t!("FileManager.Paste").to_string(),
+                t!("FileManager.Paste").to_string(),
                 ui::Icon::new(ui::IconName::PasteClipboard),
                 Box::new(Paste),
             );
@@ -202,35 +202,35 @@ pub fn folder_context_menu(
         menu = menu
             .separator()
             .menu_with_icon(
-                &t!("FileManager.Rename").to_string(),
+                t!("FileManager.Rename").to_string(),
                 ui::Icon::new(ui::IconName::EditPencil),
                 Box::new(RenameItem::default()),
             )
             .menu_with_icon(
-                &t!("FileManager.Delete").to_string(),
+                t!("FileManager.Delete").to_string(),
                 ui::Icon::new(ui::IconName::Trash),
                 Box::new(DeleteItem::default()),
             )
             .separator()
             .menu_with_icon(
-                &t!("FileManager.Duplicate").to_string(),
+                t!("FileManager.Duplicate").to_string(),
                 ui::Icon::new(ui::IconName::Copy),
                 Box::new(DuplicateItem::default()),
             )
             .separator()
             .menu_with_icon(
-                &t!("FileManager.OpenInFileManager").to_string(),
+                t!("FileManager.OpenInFileManager").to_string(),
                 ui::Icon::new(ui::IconName::ExternalLink),
                 Box::new(OpenInFileManager::default()),
             )
             .menu_with_icon(
-                &t!("FileManager.OpenTerminalHere").to_string(),
+                t!("FileManager.OpenTerminalHere").to_string(),
                 ui::Icon::new(ui::IconName::Terminal),
                 Box::new(OpenTerminalHere::default()),
             )
             .separator()
             .menu_with_icon(
-                &t!("FileManager.Refresh").to_string(),
+                t!("FileManager.Refresh").to_string(),
                 ui::Icon::new(ui::IconName::Refresh),
                 Box::new(RefreshFileManager),
             );
@@ -278,7 +278,7 @@ pub fn item_context_menu(
         if is_class {
             menu = menu
                 .menu_with_icon(
-                    &t!("FileManager.Open").to_string(),
+                    t!("FileManager.Open").to_string(),
                     ui::Icon::new(ui::IconName::BookOpen),
                     Box::new(NewClass::default()),
                 )
@@ -287,19 +287,19 @@ pub fn item_context_menu(
 
         menu = menu
             .menu_with_icon(
-                &t!("FileManager.Cut").to_string(),
+                t!("FileManager.Cut").to_string(),
                 ui::Icon::new(ui::IconName::Scissor),
                 Box::new(Cut),
             )
             .menu_with_icon(
-                &t!("FileManager.Copy").to_string(),
+                t!("FileManager.Copy").to_string(),
                 ui::Icon::new(ui::IconName::Copy),
                 Box::new(Copy),
             );
 
         if has_clipboard {
             menu = menu.menu_with_icon(
-                &t!("FileManager.Paste").to_string(),
+                t!("FileManager.Paste").to_string(),
                 ui::Icon::new(ui::IconName::PasteClipboard),
                 Box::new(Paste),
             );
@@ -308,29 +308,29 @@ pub fn item_context_menu(
         menu = menu
             .separator()
             .menu_with_icon(
-                &t!("FileManager.Rename").to_string(),
+                t!("FileManager.Rename").to_string(),
                 ui::Icon::new(ui::IconName::EditPencil),
                 Box::new(RenameItem::default()),
             )
             .menu_with_icon(
-                &t!("FileManager.Delete").to_string(),
+                t!("FileManager.Delete").to_string(),
                 ui::Icon::new(ui::IconName::Trash),
                 Box::new(DeleteItem::default()),
             )
             .separator()
             .menu_with_icon(
-                &t!("FileManager.Duplicate").to_string(),
+                t!("FileManager.Duplicate").to_string(),
                 ui::Icon::new(ui::IconName::Copy),
                 Box::new(DuplicateItem::default()),
             )
             .separator()
             .menu_with_icon(
-                &t!("FileManager.ValidateAsset").to_string(),
+                t!("FileManager.ValidateAsset").to_string(),
                 ui::Icon::new(ui::IconName::CircleCheck),
                 Box::new(ValidateAsset::default()),
             )
             .menu_with_icon(
-                &t!("FileManager.ToggleFavorite").to_string(),
+                t!("FileManager.ToggleFavorite").to_string(),
                 ui::Icon::new(ui::IconName::Star),
                 Box::new(ToggleFavorite::default()),
             )
@@ -340,13 +340,13 @@ pub fn item_context_menu(
         let submenu_path = path_for_submenu.clone();
         menu = menu.submenu_with_icon(
             Some(ui::Icon::new(ui::IconName::Palette)),
-            &t!("FileManager.SetColor").to_string(),
+            t!("FileManager.SetColor").to_string(),
             window,
             cx,
             move |submenu, _window, _cx| {
                 submenu
                     .menu(
-                        &t!("FileManager.ClearColor").to_string(),
+                        t!("FileManager.ClearColor").to_string(),
                         Box::new(SetColorOverride {
                             item_path: submenu_path.to_string_lossy().to_string(),
                             color: None,
@@ -354,7 +354,7 @@ pub fn item_context_menu(
                     )
                     .separator()
                     .menu(
-                        &"🔴 Red".to_string(),
+                        "🔴 Red".to_string(),
                         Box::new(SetColorOverride {
                             item_path: submenu_path.to_string_lossy().to_string(),
                             color: Some(ColorData {
@@ -365,7 +365,7 @@ pub fn item_context_menu(
                         }),
                     )
                     .menu(
-                        &"🟠 Orange".to_string(),
+                        "🟠 Orange".to_string(),
                         Box::new(SetColorOverride {
                             item_path: submenu_path.to_string_lossy().to_string(),
                             color: Some(ColorData {
@@ -376,7 +376,7 @@ pub fn item_context_menu(
                         }),
                     )
                     .menu(
-                        &"🟡 Yellow".to_string(),
+                        "🟡 Yellow".to_string(),
                         Box::new(SetColorOverride {
                             item_path: submenu_path.to_string_lossy().to_string(),
                             color: Some(ColorData {
@@ -387,7 +387,7 @@ pub fn item_context_menu(
                         }),
                     )
                     .menu(
-                        &"🟢 Green".to_string(),
+                        "🟢 Green".to_string(),
                         Box::new(SetColorOverride {
                             item_path: submenu_path.to_string_lossy().to_string(),
                             color: Some(ColorData {
@@ -398,7 +398,7 @@ pub fn item_context_menu(
                         }),
                     )
                     .menu(
-                        &"🔵 Blue".to_string(),
+                        "🔵 Blue".to_string(),
                         Box::new(SetColorOverride {
                             item_path: submenu_path.to_string_lossy().to_string(),
                             color: Some(ColorData {
@@ -409,7 +409,7 @@ pub fn item_context_menu(
                         }),
                     )
                     .menu(
-                        &"🟣 Purple".to_string(),
+                        "🟣 Purple".to_string(),
                         Box::new(SetColorOverride {
                             item_path: submenu_path.to_string_lossy().to_string(),
                             color: Some(ColorData {
@@ -420,7 +420,7 @@ pub fn item_context_menu(
                         }),
                     )
                     .menu(
-                        &"🟤 Pink".to_string(),
+                        "🟤 Pink".to_string(),
                         Box::new(SetColorOverride {
                             item_path: submenu_path.to_string_lossy().to_string(),
                             color: Some(ColorData {
@@ -435,23 +435,23 @@ pub fn item_context_menu(
 
         menu = menu
             .menu_with_icon(
-                &t!("FileManager.ToggleGitignore").to_string(),
+                t!("FileManager.ToggleGitignore").to_string(),
                 ui::Icon::new(ui::IconName::Gitignore),
                 Box::new(ToggleGitignore::default()),
             )
             .menu_with_icon(
-                &t!("FileManager.ToggleHidden").to_string(),
+                t!("FileManager.ToggleHidden").to_string(),
                 ui::Icon::new(ui::IconName::EyeOff),
                 Box::new(ToggleHidden::default()),
             )
             .separator()
             .menu_with_icon(
-                &t!("FileManager.CheckMultiuserSync").to_string(),
+                t!("FileManager.CheckMultiuserSync").to_string(),
                 ui::Icon::new(ui::IconName::Globe),
                 Box::new(CheckMultiuserSync::default()),
             )
             .menu_with_icon(
-                &t!("FileManager.ShowHistory").to_string(),
+                t!("FileManager.ShowHistory").to_string(),
                 ui::Icon::new(ui::IconName::Calendar),
                 Box::new(ShowHistory::default()),
             );

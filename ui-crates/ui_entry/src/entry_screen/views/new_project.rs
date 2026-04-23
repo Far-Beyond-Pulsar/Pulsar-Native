@@ -2,7 +2,6 @@ use crate::entry_screen::EntryScreen;
 use gpui::{prelude::*, *};
 use ui::{
     button::{Button, ButtonVariants as _},
-    divider::Divider,
     h_flex,
     input::TextInput,
     v_flex, ActiveTheme as _,
@@ -13,7 +12,7 @@ pub fn render_new_project(
     cx: &mut Context<EntryScreen>,
 ) -> impl IntoElement {
     let theme = cx.theme();
-    let project_name_empty = screen.new_project_name.is_empty();
+    let _project_name_empty = screen.new_project_name.is_empty();
     let project_path_display = screen
         .new_project_path
         .as_ref()

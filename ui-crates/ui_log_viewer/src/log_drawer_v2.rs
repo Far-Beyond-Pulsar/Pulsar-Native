@@ -2,7 +2,6 @@ use crate::log_reader::LogReader;
 use gpui::{prelude::*, *};
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Duration;
 use ui::{
     button::{Button, ButtonVariants as _},
@@ -259,7 +258,7 @@ impl LogDrawer {
             return;
         }
 
-        let mut last_position = match file.seek(SeekFrom::Current(0)) {
+        let mut last_position = match file.stream_position() {
             Ok(pos) => pos,
             Err(_) => return,
         };
@@ -309,16 +308,15 @@ impl LogDrawer {
             }
 
             // Update position
-            if let Ok(pos) = file.seek(SeekFrom::Current(0)) {
+            if let Ok(pos) = file.stream_position() {
                 last_position = pos;
             }
 
             // Send updates (non-blocking)
-            if !new_lines.is_empty() {
-                if tx.try_send(LogUpdate::NewLines(new_lines)).is_err() {
+            if !new_lines.is_empty()
+                && tx.try_send(LogUpdate::NewLines(new_lines)).is_err() {
                     break;
                 }
-            }
         }
     }
 
@@ -396,7 +394,7 @@ impl LogDrawer {
                 // Prepend older lines
                 self.start_line_num = start_idx + 1;
                 let mut new_lines = older_lines;
-                new_lines.extend(self.lines.drain(..));
+                new_lines.append(&mut self.lines);
                 self.lines = new_lines;
 
                 // Trim from the end if too large
@@ -445,7 +443,7 @@ impl LogDrawer {
         self.loading_older = true;
 
         let start_line = self.start_line_num;
-        let update_tx = self.update_receiver.as_ref().and_then(|rx| {
+        let _update_tx = self.update_receiver.as_ref().and_then(|_rx| {
             // Get the sender from the receiver (we need to store it separately or reconstruct)
             // For now, we'll create a new channel for this operation
             None as Option<smol::channel::Sender<LogUpdate>>
@@ -460,11 +458,7 @@ impl LogDrawer {
 
                 // Calculate which lines to read
                 let end_line = start_line - 1;
-                let chunk_start = if end_line > LOAD_CHUNK_SIZE {
-                    end_line - LOAD_CHUNK_SIZE
-                } else {
-                    0
-                };
+                let chunk_start = end_line.saturating_sub(LOAD_CHUNK_SIZE);
 
                 // Read the chunk
                 let mut lines: Vec<String> = Vec::new();

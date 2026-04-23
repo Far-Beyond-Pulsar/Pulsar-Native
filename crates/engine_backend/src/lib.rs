@@ -32,7 +32,6 @@ pub const ENGINE_THREADS: [&str; 8] = [
 ];
 
 use std::sync::OnceLock;
-use tokio::sync::Mutex;
 
 static GLOBAL_BACKEND: OnceLock<Arc<parking_lot::RwLock<EngineBackend>>> = OnceLock::new();
 

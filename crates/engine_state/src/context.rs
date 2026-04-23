@@ -16,9 +16,9 @@ use window_manager;
 
 use crate::DiscordPresence;
 
-use gpui::{AnyView, Context, IntoElement, Render, Window, WindowOptions};
+use gpui::{IntoElement, Render};
 
-use window_manager::{WindowError, WindowManager};
+use window_manager::WindowManager;
 
 /// Context for a specific window
 #[derive(Clone)]
@@ -360,7 +360,7 @@ static GLOBAL_CONTEXT: OnceLock<EngineContext> = OnceLock::new();
 ///
 /// These provide a compatibility layer during the migration period.
 pub mod migration {
-    use super::*;
+    
 
     /// Extract window ID from metadata string (used during migration)
     pub fn parse_window_id_u64(id_str: &str) -> Option<u64> {
@@ -402,7 +402,7 @@ mod tests {
     #[test]
     fn test_window_context_creation() {
         // Note: WindowId is now u64, so we can test directly
-        let window_id: WindowId = 42;
+        let _window_id: WindowId = 42;
         // Would need WindowRequest to create full WindowContext
         // Placeholder for when we have integration tests
     }
@@ -421,7 +421,7 @@ mod tests {
             .with_verbose(true);
 
         assert_eq!(launch.uri_project_path, Some(PathBuf::from("/uri/project")));
-        assert_eq!(launch.verbose, true);
+        assert!(launch.verbose);
     }
 
     #[test]

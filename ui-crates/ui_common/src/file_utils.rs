@@ -152,7 +152,7 @@ pub fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
         if entry.path().is_dir() {
             copy_dir_recursive(&entry.path(), &dest)?;
         } else {
-            std::fs::copy(&entry.path(), &dest)?;
+            std::fs::copy(entry.path(), &dest)?;
         }
     }
     Ok(())

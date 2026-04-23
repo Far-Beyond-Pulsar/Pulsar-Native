@@ -15,10 +15,7 @@ pub struct ParsedArgs {
 pub fn parse_args() -> ParsedArgs {
     let args: Vec<String> = std::env::args().collect();
     let verbose = args.iter().any(|a| a == "-v" || a == "--verbose");
-    let uri_command = match uri::parse_launch_args() {
-        Ok(cmd) => cmd,
-        Err(_) => None,
-    };
+    let uri_command = uri::parse_launch_args().unwrap_or_default();
     ParsedArgs {
         verbose,
         uri_command,

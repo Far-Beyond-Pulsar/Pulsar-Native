@@ -259,7 +259,7 @@ impl AtomicMemoryCounters {
             let size = self.get(category);
             if size > 0 {
                 entries.push(AllocationEntry {
-                    name: format!("{}", category.as_str()),
+                    name: category.as_str().to_string(),
                     size,
                     category,
                     bucket: SizeBucket::Tiny, // Not applicable for category entries

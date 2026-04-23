@@ -9,7 +9,7 @@ use ui::{
     dock::{Panel, PanelEvent},
     h_flex,
     input::{InputState, TextInput},
-    v_flex, v_virtual_list, ActiveTheme, StyledExt, VirtualListScrollHandle,
+    v_flex, v_virtual_list, ActiveTheme, VirtualListScrollHandle,
 };
 
 // ─── Sort state ───────────────────────────────────────────────────────────────

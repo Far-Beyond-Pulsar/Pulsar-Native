@@ -16,7 +16,7 @@ use ui::{
     group_box::GroupBoxVariant,
     h_flex,
     setting::{NumberFieldOptions, SettingField, SettingGroup, SettingItem, SettingPage, Settings},
-    v_flex, ActiveTheme, Icon, IconName, Sizable, Size, StyledExt as _, Theme, ThemeMode,
+    v_flex, ActiveTheme, Icon, IconName, Sizable, Size, Theme, ThemeMode,
 };
 
 pub struct ModernSettingsScreen {

@@ -12,4 +12,3 @@ pub use changes::render_changes_view;
 pub use commit_detail::render_commit_detail;
 pub use file_panel::render_file_panel;
 pub use history::render_history_view;
-pub use toolbar::render_toolbar;

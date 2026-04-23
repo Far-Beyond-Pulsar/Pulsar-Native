@@ -10,12 +10,11 @@ mod search_index;
 pub(crate) use dispatch::{DownloadState, LicenseFilter, SortBy};
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::PathBuf;
 
 use gpui::{prelude::*, *};
 use parser::{SketchfabMe, SketchfabModel, SketchfabModelDetail};
 use ui::{
-    ActiveTheme, IconName, Root, Sizable, StyledExt, TitleBar, VirtualListScrollHandle,
+    ActiveTheme, IconName, Root, TitleBar, VirtualListScrollHandle,
     button::Button,
     download_manager::DownloadManagerDrawer,
     h_flex,

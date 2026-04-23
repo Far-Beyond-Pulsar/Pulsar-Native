@@ -1,12 +1,9 @@
 //! Chat functionality for multiplayer sessions
 
 use gpui::*;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
 use super::state::MultiplayerWindow;
-use super::types::*;
-use engine_backend::subsystems::networking::multiuser::{ClientMessage, MultiuserClient};
+use engine_backend::subsystems::networking::multiuser::ClientMessage;
 
 impl MultiplayerWindow {
     pub(super) fn send_chat_message(&mut self, window: &mut Window, cx: &mut Context<Self>) {

@@ -28,7 +28,7 @@ impl SettingsScreen {
         let border_color = cx.theme().border;
         let accent = cx.theme().accent;
         let foreground = cx.theme().foreground;
-        let fps_options = vec![30u32, 60, 120, 144, 240, 0];
+        let fps_options = [30u32, 60, 120, 144, 240, 0];
         let current_fps = self.settings.advanced.max_viewport_fps;
         let performance_level = self.settings.advanced.performance_level;
 

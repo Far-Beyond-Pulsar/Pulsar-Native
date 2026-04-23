@@ -1,5 +1,5 @@
 use crate::commands::{WindowCommand, WindowCommandResult};
-use crate::validation::errors::{HookError, HookResult};
+use crate::validation::errors::HookResult;
 use std::collections::HashMap;
 use ui_types_common::window_types::{WindowId, WindowRequest};
 

@@ -165,8 +165,8 @@ impl GitManager {
 
         // Load initial git state + stored credentials from OS keychain
         let path = project_path.clone();
-        cx.spawn(async move |this, mut cx| {
-            let path2 = path.clone();
+        cx.spawn(async move |this, cx| {
+            let _path2 = path.clone();
             let (state, stored_creds) = cx
                 .background_executor()
                 .spawn(async move {
@@ -221,7 +221,7 @@ impl GitManager {
 
     fn refresh_state(&mut self, cx: &mut Context<Self>) {
         let path = self.project_path.clone();
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             if let Ok(state) = cx
                 .background_executor()
                 .spawn(async move { load_repository_state(&path) })
@@ -248,7 +248,7 @@ impl GitManager {
 
         let path = self.project_path.clone();
 
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move { commit_staged_changes(&path, &message) })
@@ -268,7 +268,7 @@ impl GitManager {
 
     fn stage_file(&mut self, file_path: String, cx: &mut Context<Self>) {
         let path = self.project_path.clone();
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move { stage_file(&path, &file_path) })
@@ -289,7 +289,7 @@ impl GitManager {
 
     pub fn stage_all(&mut self, cx: &mut Context<Self>) {
         let path = self.project_path.clone();
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move { stage_all_files(&path) })
@@ -310,7 +310,7 @@ impl GitManager {
 
     pub fn unstage_all(&mut self, cx: &mut Context<Self>) {
         let path = self.project_path.clone();
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move { unstage_all_files(&path) })
@@ -331,7 +331,7 @@ impl GitManager {
 
     fn unstage_file(&mut self, file_path: String, cx: &mut Context<Self>) {
         let path = self.project_path.clone();
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move { unstage_file(&path, &file_path) })
@@ -360,7 +360,7 @@ impl GitManager {
         cx.notify();
 
         let path = self.project_path.clone();
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             if let Ok(files) = cx
                 .background_executor()
                 .spawn(async move { get_commit_files(&path, &commit_hash) })
@@ -391,7 +391,7 @@ impl GitManager {
         cx.notify();
 
         let repo_path = self.project_path.clone();
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
                 .spawn(
@@ -426,7 +426,7 @@ impl GitManager {
         self.file_diff_expanded.clear();
         cx.notify();
         let repo_path = self.project_path.clone();
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move { load_file_diff_working(&repo_path, &file_path) })
@@ -501,8 +501,8 @@ impl GitManager {
         let path = self.project_path.clone();
         self.op_error = None;
         let cached_creds = self.stored_creds.clone();
-        let explicit_was_provided = explicit_creds.is_some();
-        cx.spawn(async move |this, mut cx| {
+        let _explicit_was_provided = explicit_creds.is_some();
+        cx.spawn(async move |this, cx| {
             let path_clone = path.clone();
             let result = cx
                 .background_executor()
@@ -559,7 +559,7 @@ impl GitManager {
     fn switch_branch(&mut self, branch_name: String, cx: &mut Context<Self>) {
         let path = self.project_path.clone();
         self.op_error = None;
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move { switch_branch(&path, &branch_name) })
@@ -586,7 +586,7 @@ impl GitManager {
     fn discard_file_changes(&mut self, path: &str, cx: &mut Context<Self>) {
         let repo_path = self.project_path.clone();
         let file_path = path.to_string();
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move { discard_file_changes(&repo_path, &file_path) })
@@ -607,7 +607,7 @@ impl GitManager {
 
     fn append_gitignore(&mut self, line: String, cx: &mut Context<Self>) {
         let repo_path = self.project_path.clone();
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move { append_to_gitignore(&repo_path, &line) })

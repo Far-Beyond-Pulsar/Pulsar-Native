@@ -3,7 +3,6 @@
 //! Implements a Myers diff algorithm for efficient line-level diffing with O(ND) complexity.
 //! Used for displaying file changes in the multiuser sync UI.
 
-use std::cmp::min;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,6 +15,12 @@ pub enum DiffOperation {
 #[derive(Debug, Clone)]
 pub struct LineDiff {
     pub operations: Vec<DiffOperation>,
+}
+
+impl Default for LineDiff {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl LineDiff {

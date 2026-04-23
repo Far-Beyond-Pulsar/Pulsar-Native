@@ -6,7 +6,7 @@ use ui::{
     button::{Button, ButtonVariants as _},
     h_flex,
     menu::popup_menu::PopupMenuExt,
-    v_flex, ActiveTheme as _, Icon, IconName, Theme, ThemeRegistry,
+    v_flex, ActiveTheme as _, Icon, IconName, ThemeRegistry,
 };
 
 impl SettingsScreen {
@@ -15,7 +15,7 @@ impl SettingsScreen {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let theme = cx.theme();
+        let _theme = cx.theme();
         let theme_names: Vec<String> = ThemeRegistry::global(cx)
             .sorted_themes()
             .iter()

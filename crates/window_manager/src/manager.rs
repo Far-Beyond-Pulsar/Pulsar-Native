@@ -8,7 +8,7 @@ use crate::state::WindowState;
 use crate::telemetry::TelemetrySender;
 use crate::validation::{ValidationRule, WindowError, WindowResult, WindowValidator};
 use gpui::{
-    AnyWindowHandle, App, AppContext, Context, EventEmitter, Global, Render, Window, WindowOptions,
+    AnyWindowHandle, App, AppContext, EventEmitter, Global, Render, Window, WindowOptions,
 };
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -20,6 +20,12 @@ pub struct WindowManager {
     state: WindowState,
     telemetry: TelemetrySender,
     next_id: Arc<AtomicU64>,
+}
+
+impl Default for WindowManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl WindowManager {

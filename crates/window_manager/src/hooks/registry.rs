@@ -17,7 +17,7 @@ impl HookRegistry {
 
     pub fn register_hook(&self, hook_type: HookType, hook: Box<dyn WindowHook>) {
         let mut hooks = self.hooks.write();
-        let hook_list = hooks.entry(hook_type).or_insert_with(Vec::new);
+        let hook_list = hooks.entry(hook_type).or_default();
         hook_list.push(hook);
         hook_list.sort_by_key(|h| h.priority());
     }

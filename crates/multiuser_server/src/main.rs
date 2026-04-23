@@ -64,7 +64,7 @@ async fn main() -> Result<()> {
     }
 
     // 8. Create shutdown channels
-    let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
+    let (_shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
     let (http_shutdown_tx, http_shutdown_rx) = mpsc::channel::<()>(1);
     let (quic_shutdown_tx, quic_shutdown_rx) = mpsc::channel::<()>(1);
 

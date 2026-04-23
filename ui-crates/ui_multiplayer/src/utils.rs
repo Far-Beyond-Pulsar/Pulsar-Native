@@ -9,7 +9,7 @@ pub fn format_timestamp(timestamp: u64) -> String {
         .unwrap_or_default()
         .as_secs();
 
-    let diff = if now > timestamp { now - timestamp } else { 0 };
+    let diff = now.saturating_sub(timestamp);
 
     if diff < 60 {
         "Just now".to_string()

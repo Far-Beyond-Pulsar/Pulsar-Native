@@ -8,7 +8,6 @@ use rust_i18n::t;
 use ui::Sizable as _;
 use ui::StyledExt as _;
 use ui::{
-    button::Button,
     h_flex,
     indicator::Indicator,
     input::{InputState, TextInput},
@@ -416,7 +415,7 @@ impl ProblemsDrawer {
     pub(crate) fn render_hint_diff(
         &mut self,
         _diagnostic_index: usize,
-        hint_index: usize,
+        _hint_index: usize,
         hint: &Hint,
         _window: &mut Window,
         cx: &mut Context<Self>,

@@ -1,12 +1,9 @@
 //! Simple hash-based file synchronization functionality
 
 use gpui::*;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
 use super::state::MultiplayerWindow;
-use super::types::*;
-use engine_backend::subsystems::networking::multiuser::{ClientMessage, MultiuserClient};
+use engine_backend::subsystems::networking::multiuser::ClientMessage;
 
 impl MultiplayerWindow {
     pub(super) fn approve_file_sync(&mut self, cx: &mut Context<Self>) {
@@ -34,7 +31,7 @@ impl MultiplayerWindow {
                 let session_id = session.session_id.clone();
                 let peer_id = peer_id.clone();
 
-                cx.spawn(async move |this, mut cx| {
+                cx.spawn(async move |_this, _cx| {
                     tracing::debug!("Sending RequestFiles for {} files", files_needed.len());
 
                     let client_guard = client.read().await;

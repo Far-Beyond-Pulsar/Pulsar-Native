@@ -49,7 +49,7 @@ pub fn init(config: &Config) -> Result<()> {
 }
 
 /// Print a beautiful startup banner with configuration details
-pub fn print_banner(config: &Config) {
+pub fn print_banner(_config: &Config) {
     let banner = format!(
         r#"
 ╔══════════════════════════════════════════════════════════════╗

@@ -64,7 +64,7 @@ impl FileManagerDrawer {
         self.breadcrumb_hover_path = Some(path.clone());
 
         // Start a new 1-second timer
-        let timer = cx.spawn(async move |drawer, mut cx| {
+        let timer = cx.spawn(async move |drawer, cx| {
             cx.background_executor().timer(std::time::Duration::from_secs(1)).await;
 
             // Navigate to the folder

@@ -1,6 +1,6 @@
 //! Main HelioRenderer — wgpu + Helio scene renderer with built-in editor state.
 
-use glam::{EulerRot, Mat4, Quat, Vec2, Vec3};
+use glam::{EulerRot, Mat4, Quat, Vec3};
 use std::collections::HashMap;
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Instant;

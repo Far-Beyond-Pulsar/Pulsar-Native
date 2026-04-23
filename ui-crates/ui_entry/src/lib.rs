@@ -29,15 +29,11 @@ use ui::Root;
 
 // Component config
 #[derive(Clone)]
+#[derive(Default)]
 pub struct EntryScreenConfig {
     // Configuration options
 }
 
-impl Default for EntryScreenConfig {
-    fn default() -> Self {
-        Self {}
-    }
-}
 
 /// Create an entry screen component as a composable piece
 pub fn create_entry_component(
@@ -126,7 +122,7 @@ pub fn create_entry_component(
                 let ec2 = engine_context_clone.clone();
                 let close_id = window_id;
                 // use the previously computed handle rather than capturing `window`
-                cx.spawn(async move |mut cx| {
+                cx.spawn(async move |cx| {
                     cx.background_executor()
                         .timer(Duration::from_millis(100))
                         .await;

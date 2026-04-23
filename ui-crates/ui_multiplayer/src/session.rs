@@ -1,7 +1,6 @@
 //! Session management functionality
 
 use super::state::MultiplayerWindow;
-use super::types::*;
 
 impl MultiplayerWindow {
     /// Format participant IDs for display with nice labels
@@ -19,7 +18,7 @@ impl MultiplayerWindow {
         let is_host = self
             .active_session
             .as_ref()
-            .map(|s| participants.first() == Some(our_peer_id))
+            .map(|_s| participants.first() == Some(our_peer_id))
             .unwrap_or(false);
 
         participants

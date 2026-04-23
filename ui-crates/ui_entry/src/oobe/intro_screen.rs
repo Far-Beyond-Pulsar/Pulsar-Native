@@ -200,7 +200,7 @@ impl IntroScreen {
         // Start the animation loop only on first creation
         if !already_created {
             println!("🎬 [IntroScreen] Starting animation loop");
-            cx.spawn(async move |this, mut cx| {
+            cx.spawn(async move |this, cx| {
                 loop {
                     cx.background_executor()
                         .timer(Duration::from_millis(16))
@@ -407,7 +407,7 @@ impl IntroScreen {
         self.advance_phase(IntroPhase::FadeOut, cx);
 
         // Don't rely on tick() — schedule emit directly after fade duration.
-        cx.spawn(async move |this, mut cx| {
+        cx.spawn(async move |this, cx| {
             println!("🎬 [finish] spawn started, waiting 550ms");
             cx.background_executor()
                 .timer(Duration::from_millis(550))

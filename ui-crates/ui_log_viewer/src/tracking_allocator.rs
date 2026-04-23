@@ -35,6 +35,12 @@ thread_local! {
 
 pub struct TrackingAllocator;
 
+impl Default for TrackingAllocator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TrackingAllocator {
     pub const fn new() -> Self {
         Self

@@ -49,6 +49,12 @@ pub struct GlobalSettings {
     store: ConfigStore,
 }
 
+impl Default for GlobalSettings {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GlobalSettings {
     pub fn new() -> Self {
         let manager = global_config().clone();

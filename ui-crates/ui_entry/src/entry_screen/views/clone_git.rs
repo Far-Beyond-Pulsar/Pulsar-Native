@@ -2,7 +2,6 @@ use crate::entry_screen::EntryScreen;
 use gpui::{prelude::*, *};
 use ui::{
     button::{Button, ButtonVariants as _},
-    divider::Divider,
     h_flex,
     input::TextInput,
     progress::Progress,

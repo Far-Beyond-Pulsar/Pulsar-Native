@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+    
     use plugin_editor_api::FileTypeId;
     use type_db::TypeDatabase;
 
@@ -17,7 +17,7 @@ mod tests {
 
     #[test]
     fn test_register_and_get() {
-        let mut db = TypeDatabase::new();
+        let db = TypeDatabase::new();
         let file_type = FileTypeId::new("struct");
         let id = db.register(
             "Vector3",
@@ -38,7 +38,7 @@ mod tests {
 
     #[test]
     fn test_search() {
-        let mut db = TypeDatabase::new();
+        let db = TypeDatabase::new();
         let file_type = FileTypeId::new("struct");
         db.register(
             "Vector2",
@@ -77,7 +77,7 @@ mod tests {
 
     #[test]
     fn test_fuzzy_search() {
-        let mut db = TypeDatabase::new();
+        let db = TypeDatabase::new();
         let file_type = FileTypeId::new("struct");
         db.register_simple("PlayerController", file_type.clone());
         db.register_simple("EnemyController", file_type.clone());
@@ -90,7 +90,7 @@ mod tests {
 
     #[test]
     fn test_category_lookup() {
-        let mut db = TypeDatabase::new();
+        let db = TypeDatabase::new();
         let file_type = FileTypeId::new("struct");
         db.register(
             "Vector2",
@@ -129,7 +129,7 @@ mod tests {
 
     #[test]
     fn test_unregister() {
-        let mut db = TypeDatabase::new();
+        let db = TypeDatabase::new();
         let file_type = FileTypeId::new("struct");
         let id = db.register(
             "TestType",
@@ -151,7 +151,7 @@ mod tests {
 
     #[test]
     fn test_clear_and_is_empty() {
-        let mut db = TypeDatabase::new();
+        let db = TypeDatabase::new();
         let file_type = FileTypeId::new("struct");
         db.register_simple("A", file_type.clone());
         db.register_simple("B", file_type);
@@ -163,7 +163,7 @@ mod tests {
 
     #[test]
     fn test_duplicate_names() {
-        let mut db = TypeDatabase::new();
+        let db = TypeDatabase::new();
         let file_type = FileTypeId::new("struct");
         let id1 = db.register_simple("DupType", file_type.clone());
         let id2 = db.register_simple("DupType", file_type);
@@ -175,7 +175,7 @@ mod tests {
 
     #[test]
     fn test_case_insensitive_lookup() {
-        let mut db = TypeDatabase::new();
+        let db = TypeDatabase::new();
         let file_type = FileTypeId::new("struct");
         db.register(
             "CaseType",
@@ -195,7 +195,7 @@ mod tests {
 
     #[test]
     fn test_all_returns_all_types() {
-        let mut db = TypeDatabase::new();
+        let db = TypeDatabase::new();
         let file_type = FileTypeId::new("struct");
         db.register_simple("A", file_type.clone());
         db.register_simple("B", file_type);
@@ -205,7 +205,7 @@ mod tests {
 
     #[test]
     fn test_search_no_results() {
-        let mut db = TypeDatabase::new();
+        let db = TypeDatabase::new();
         let file_type = FileTypeId::new("struct");
         db.register_simple("Alpha", file_type);
         let results = db.search("Beta");
@@ -214,7 +214,7 @@ mod tests {
 
     #[test]
     fn test_fuzzy_search_no_results() {
-        let mut db = TypeDatabase::new();
+        let db = TypeDatabase::new();
         let file_type = FileTypeId::new("struct");
         db.register_simple("Alpha", file_type);
         let results = db.search_fuzzy("zzz");
@@ -223,7 +223,7 @@ mod tests {
 
     #[test]
     fn test_large_insert_performance() {
-        let mut db = TypeDatabase::new();
+        let db = TypeDatabase::new();
         let file_type = FileTypeId::new("struct");
         let count = 10_000;
         let start = Instant::now();
@@ -259,7 +259,7 @@ mod tests {
                 thread::spawn(move || {
                     let file_type = FileTypeId::new("struct");
                     for i in 0..2_000 {
-                        let mut db = db.lock().unwrap();
+                        let db = db.lock().unwrap();
                         db.register(
                             format!("T{}_{}", t, i),
                             Some("Cat".to_string()),
@@ -283,7 +283,7 @@ mod tests {
 
     #[test]
     fn test_concurrent_reads() {
-        let mut db = TypeDatabase::new();
+        let db = TypeDatabase::new();
         let file_type = FileTypeId::new("struct");
         for i in 0..1000 {
             db.register(
@@ -315,7 +315,7 @@ mod tests {
 
     #[test]
     fn test_file_path_lookup() {
-        let mut db = TypeDatabase::new();
+        let db = TypeDatabase::new();
         let path = std::path::PathBuf::from("/test/file.rs");
         let file_type = FileTypeId::new("struct");
         let id = db.register(
@@ -340,7 +340,7 @@ mod tests {
 
     #[test]
     fn test_get_by_file_type() {
-        let mut db = TypeDatabase::new();
+        let db = TypeDatabase::new();
         let struct_type = FileTypeId::new("struct");
         let enum_type = FileTypeId::new("enum");
         let trait_type = FileTypeId::new("trait");
@@ -362,7 +362,7 @@ mod tests {
 
     #[test]
     fn test_count_by_file_type() {
-        let mut db = TypeDatabase::new();
+        let db = TypeDatabase::new();
         let struct_type = FileTypeId::new("struct");
         let enum_type = FileTypeId::new("enum");
         let trait_type = FileTypeId::new("trait");

@@ -13,7 +13,7 @@ impl FileManagerDrawer {
             .bg(cx.theme().background)
             .child(
                 // Clickable breadcrumb path - takes remaining space with accent styling
-                self.render_clickable_breadcrumb(&items, window, cx)
+                self.render_clickable_breadcrumb(items, window, cx)
             )
             .child(
                 // Item count badge
@@ -163,7 +163,7 @@ impl FileManagerDrawer {
                             .icon(IconName::ArrowUpRightSquare)
                             .ghost()
                             .tooltip("Pop Out to New Window")
-                            .on_click(cx.listener(|drawer, _event, window: &mut Window, cx| {
+                            .on_click(cx.listener(|_drawer, _event, window: &mut Window, cx| {
                                 let mouse_pos = window.mouse_position();
                                 cx.emit(PopoutFileManagerEvent { position: mouse_pos });
                             }))
@@ -247,7 +247,7 @@ impl FileManagerDrawer {
                                     .border_1()
                                     .border_color(cx.theme().accent)
                             })
-                            .on_drop(cx.listener(move |drawer, drag: &DraggedFile, _window, cx| {
+                            .on_drop(cx.listener(move |_drawer, _drag: &DraggedFile, _window, _cx| {
                                 // Don't actually drop here, just trigger the navigation if timer completed
                                 // The actual drop will be handled by the folder below
                                 tracing::debug!("[FILE_MANAGER] Drop on breadcrumb - navigation already handled by hover");

@@ -341,7 +341,7 @@ fn build_app_menus(title: SharedString) -> Vec<Menu> {
     vec![
         // Pulsar Menu
         Menu {
-            name: title.into(),
+            name: title,
             items: vec![
                 MenuItem::action(t!("Menu.App.AboutApp").to_string(), AboutApp),
                 MenuItem::separator(),
@@ -1204,22 +1204,22 @@ fn build_app_menus(title: SharedString) -> Vec<Menu> {
             name: t!("Menu.Help").into(),
             items: vec![
                 MenuItem::action(
-                    &t!("Menu.Help.Documentation").to_string(),
+                    t!("Menu.Help.Documentation").to_string(),
                     ShowDocumentation,
                 ),
-                MenuItem::action(&t!("Menu.Help.API").to_string(), ShowAPIReference),
-                MenuItem::action(&t!("Menu.Help.Tutorials").to_string(), ShowTutorials),
+                MenuItem::action(t!("Menu.Help.API").to_string(), ShowAPIReference),
+                MenuItem::action(t!("Menu.Help.Tutorials").to_string(), ShowTutorials),
                 MenuItem::separator(),
                 MenuItem::action(t!("Menu.Help.Shortcuts").to_string(), ShowShortcuts),
-                MenuItem::action(&t!("Menu.View.CommandPalette").to_string(), CommandPalette),
+                MenuItem::action(t!("Menu.View.CommandPalette").to_string(), CommandPalette),
                 MenuItem::separator(),
-                MenuItem::action(&t!("Menu.Help.ReportBug").to_string(), ReportIssue),
+                MenuItem::action(t!("Menu.Help.ReportBug").to_string(), ReportIssue),
                 MenuItem::action(t!("Menu.Help.ViewLogs").to_string(), ViewLogs),
                 MenuItem::separator(),
                 MenuItem::action(t!("Menu.Help.CheckUpdates").to_string(), CheckUpdates),
                 MenuItem::action(t!("Menu.Help.ReleaseNotes").to_string(), ReleaseNotes),
                 MenuItem::separator(),
-                MenuItem::action(&t!("Menu.Help.About").to_string(), AboutApp),
+                MenuItem::action(t!("Menu.Help.About").to_string(), AboutApp),
             ],
         },
     ]

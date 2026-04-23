@@ -36,9 +36,9 @@ pub fn collect(system: &sysinfo::System) -> MemorySnapshot {
     let swap_used = system.used_swap() / (1024 * 1024);
 
     let mut snap = MemorySnapshot {
-        total_mb: total_mb,
+        total_mb,
         available_mb: avail_mb,
-        in_use_mb: in_use_mb,
+        in_use_mb,
         swap_total_mb: swap_total,
         swap_used_mb: swap_used,
         ..Default::default()

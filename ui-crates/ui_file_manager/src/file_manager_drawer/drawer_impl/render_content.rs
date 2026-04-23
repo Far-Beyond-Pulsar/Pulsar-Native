@@ -12,12 +12,12 @@ impl FileManagerDrawer {
             )
     }
 
-    pub fn render_grid_item(&mut self, item: &FileItem, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    pub fn render_grid_item(&mut self, item: &FileItem, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_selected = self.selected_items.contains(&item.path);
         let is_renaming = self.renaming_item.as_ref() == Some(&item.path);
-        let path = item.path.clone();
-        let icon = get_icon_for_file_type(&item);
-        let icon_color = get_icon_color_for_file_type(&item, cx.theme(), &mut self.fs_metadata);
+        let _path = item.path.clone();
+        let icon = get_icon_for_file_type(item);
+        let icon_color = get_icon_color_for_file_type(item, cx.theme(), &mut self.fs_metadata);
         let item_clone = item.clone();
         let item_clone2 = item.clone();
         let item_clone3 = item.clone(); // For double-click
@@ -154,7 +154,7 @@ impl FileManagerDrawer {
                             }
                         }
                     }))
-                    .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
+                    .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |drawer, _event: &MouseDownEvent, _window: &mut Window, cx| {
                         // Select item on right-click if not already selected (without changing folder view)
                         if !drawer.selected_items.contains(&item_clone2.path) {
                             drawer.selected_items.clear();
@@ -185,8 +185,8 @@ impl FileManagerDrawer {
     pub fn render_list_item(&mut self, item: &FileItem, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_selected = self.selected_items.contains(&item.path);
         let is_renaming = self.renaming_item.as_ref() == Some(&item.path);
-        let icon = get_icon_for_file_type(&item);
-        let icon_color = get_icon_color_for_file_type(&item, cx.theme(), &mut self.fs_metadata);
+        let icon = get_icon_for_file_type(item);
+        let icon_color = get_icon_color_for_file_type(item, cx.theme(), &mut self.fs_metadata);
         let item_clone = item.clone();
         let item_clone2 = item.clone();
         let item_clone3 = item.clone(); // For double-click
@@ -328,7 +328,7 @@ impl FileManagerDrawer {
                     }
                 }
             }))
-            .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
+            .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |drawer, _event: &MouseDownEvent, _window: &mut Window, cx| {
                 // Select item on right-click if not already selected (without changing folder view)
                 if !drawer.selected_items.contains(&item_clone2.path) {
                     drawer.selected_items.clear();

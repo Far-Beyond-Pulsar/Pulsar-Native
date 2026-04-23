@@ -344,7 +344,7 @@ impl QuicServer {
         let key_pair = KeyPair::generate()?;
         let cert = params.self_signed(&key_pair)?;
 
-        let cert_der = CertificateDer::from(cert.der().clone());
+        let cert_der = cert.der().clone();
         let key_der = PrivatePkcs8KeyDer::from(key_pair.serialize_der());
 
         Ok((vec![cert_der], PrivateKeyDer::Pkcs8(key_der)))

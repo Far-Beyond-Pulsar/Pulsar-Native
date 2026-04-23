@@ -147,7 +147,7 @@ impl RenderOnce for GalleryThumbnailRow {
                     .children(
                         self.images
                             .into_iter()
-                            .zip(self.on_select.into_iter())
+                            .zip(self.on_select)
                             .enumerate()
                             .map(|(i, (img_data, on_click))| {
                                 let is_sel = i == selected;

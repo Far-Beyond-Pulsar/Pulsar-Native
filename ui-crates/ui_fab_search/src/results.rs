@@ -1,14 +1,13 @@
 //! FabSearchWindow render helper methods.
 
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use gpui::{prelude::*, *};
 use ui::{
-    ActiveTheme, IconName, Sizable, StyledExt,
+    ActiveTheme, Sizable, StyledExt,
     button::Button,
     download_item::DownloadItemStatus,
-    download_manager::{DownloadEntry, DownloadManagerDrawer},
+    download_manager::DownloadEntry,
     h_flex,
     input::TextInput,
     scroll::Scrollbar,
@@ -305,9 +304,9 @@ impl FabSearchWindow {
     pub(crate) fn render_results_grid(
         &self,
         avail_w: f32,
-        muted_fg: gpui::Hsla,
-        border_col: gpui::Hsla,
-        fg: gpui::Hsla,
+        _muted_fg: gpui::Hsla,
+        _border_col: gpui::Hsla,
+        _fg: gpui::Hsla,
     ) -> AnyElement {
         const CARD_W: f32 = 260.0;
         const CARD_H: f32 = 260.0;

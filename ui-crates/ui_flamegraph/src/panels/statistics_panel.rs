@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use ui::{
     dock::{Panel, PanelEvent},
-    h_flex, v_flex, ActiveTheme, StyledExt,
+    h_flex, v_flex, ActiveTheme,
 };
 
 #[derive(Clone, Debug)]

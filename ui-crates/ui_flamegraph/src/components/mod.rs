@@ -9,8 +9,6 @@ pub mod thread_labels;
 pub mod timeline_ruler;
 
 pub use flamegraph_canvas::render_flamegraph_canvas;
-pub use flamegraph_spans::render_flamegraph_spans;
-pub use framerate_graph::render_framerate_graph;
 pub use hover_popup::render_hover_popup;
 pub use statistics_sidebar::render_statistics_sidebar;
 pub use thread_labels::render_thread_labels;

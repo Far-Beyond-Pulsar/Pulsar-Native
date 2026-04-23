@@ -66,15 +66,12 @@ impl PulsarIntConnection {
 
 /// The PulsarIntConnectionState enum represents the various states
 /// of a game network connection.
+#[derive(Default)]
 pub enum PulsarIntConnectionState {
+    #[default]
     Disconnected,
     Connecting,
     Connected,
     Disconnecting,
 }
 
-impl Default for PulsarIntConnectionState {
-    fn default() -> Self {
-        PulsarIntConnectionState::Disconnected
-    }
-}

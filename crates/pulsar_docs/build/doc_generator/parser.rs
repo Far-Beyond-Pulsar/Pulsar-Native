@@ -6,7 +6,7 @@ use super::workspace::CrateInfo;
 use std::error::Error;
 use std::fs;
 use std::path::Path;
-use syn::{File, Item};
+use syn::File;
 use walkdir::WalkDir;
 
 /// Parsed crate containing all source files

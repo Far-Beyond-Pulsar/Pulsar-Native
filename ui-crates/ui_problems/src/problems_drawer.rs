@@ -5,17 +5,14 @@ use rust_i18n::t;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use ui::StyledExt;
 use ui::{
     button::{Button, ButtonVariants as _},
     h_flex,
     input::{InputState, TextInput},
-    popup_menu::{PopupMenu, PopupMenuExt},
-    scroll::ScrollbarAxis,
+    popup_menu::PopupMenuExt,
     v_flex, ActiveTheme as _, IconName, Sizable as _,
 };
 
-use crate::filter::DiffLineType;
 pub use crate::filter::{Diagnostic, DiagnosticSeverity, Hint, NavigateToDiagnostic};
 
 actions!(

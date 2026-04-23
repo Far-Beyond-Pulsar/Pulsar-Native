@@ -56,13 +56,10 @@ impl<D: PaletteDelegate> GenericPalette<D> {
         // Subscribe to input changes
         cx.subscribe(
             &search_input,
-            |this, _input, event: &InputEvent, cx| match event {
-                InputEvent::Change => {
-                    let query = this.search_input.read(cx).text().to_string();
-                    this.update_filter(&query);
-                    cx.notify();
-                }
-                _ => {}
+            |this, _input, event: &InputEvent, cx| if event == &InputEvent::Change {
+                let query = this.search_input.read(cx).text().to_string();
+                this.update_filter(&query);
+                cx.notify();
             },
         )
         .detach();
@@ -254,12 +251,9 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
             }))
             .on_key_down(cx.listener(|_this, event: &KeyDownEvent, _window, cx| {
                 // Fallback for raw escape keystrokes
-                match event.keystroke.key.as_str() {
-                    "escape" => {
-                        cx.emit(DismissEvent);
-                        cx.stop_propagation();
-                    }
-                    _ => {}
+                if event.keystroke.key.as_str() == "escape" {
+                    cx.emit(DismissEvent);
+                    cx.stop_propagation();
                 }
             }))
             .child(

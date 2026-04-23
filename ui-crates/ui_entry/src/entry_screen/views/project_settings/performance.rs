@@ -157,7 +157,7 @@ pub fn render_performance_tab(
                     },
                 ),
             ],
-            &theme,
+            theme,
         ))
         .child(
             v_flex()
@@ -169,7 +169,7 @@ pub fn render_performance_tab(
                         .mb_2()
                         .child("Optimization Recommendations"),
                 )
-                .children(generate_optimization_recommendations(settings, &theme)),
+                .children(generate_optimization_recommendations(settings, theme)),
         )
         .child(
             v_flex()
@@ -194,7 +194,7 @@ pub fn render_performance_tab(
                                     let path = settings.project_path.clone();
                                     move |_, _, _| {
                                         let _ = std::process::Command::new("git")
-                                            .args(&["gc", "--aggressive"])
+                                            .args(["gc", "--aggressive"])
                                             .current_dir(&path)
                                             .spawn();
                                     }
@@ -210,7 +210,7 @@ pub fn render_performance_tab(
                                     let path = settings.project_path.clone();
                                     move |_, _, _| {
                                         let _ = std::process::Command::new("git")
-                                            .args(&["prune", "--expire=now"])
+                                            .args(["prune", "--expire=now"])
                                             .current_dir(&path)
                                             .spawn();
                                     }
@@ -226,7 +226,7 @@ pub fn render_performance_tab(
                                     let path = settings.project_path.clone();
                                     move |_, _, _| {
                                         let _ = std::process::Command::new("git")
-                                            .args(&["clean", "-fd"])
+                                            .args(["clean", "-fd"])
                                             .current_dir(&path)
                                             .spawn();
                                     }

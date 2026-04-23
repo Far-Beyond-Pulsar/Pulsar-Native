@@ -53,7 +53,7 @@ impl SessionManager {
     /// Remove the session for a project if it has no remaining subscribers.
     pub fn cleanup_if_empty(&self, project_id: &str) -> bool {
         let mut guard = self.inner.write();
-        if guard.users.get(project_id).map_or(true, |u| u.is_empty()) {
+        if guard.users.get(project_id).is_none_or(|u| u.is_empty()) {
             guard.sessions.remove(project_id);
             guard.users.remove(project_id);
             return true;

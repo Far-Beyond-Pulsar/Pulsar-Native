@@ -43,7 +43,7 @@ impl<T: Clone + Eq + Hash + Debug> ORSet<T> {
 
         self.elements
             .entry(element.clone())
-            .or_insert_with(HashSet::new)
+            .or_default()
             .insert(tag.clone());
 
         ORSetOp::Add { element, tag }
@@ -86,7 +86,7 @@ impl<T: Clone + Eq + Hash + Debug> ORSet<T> {
     pub fn contains(&self, element: &T) -> bool {
         self.elements
             .get(element)
-            .map_or(false, |tags| !tags.is_empty())
+            .is_some_and(|tags| !tags.is_empty())
     }
 
     /// Get all elements in the set
@@ -117,7 +117,7 @@ impl<T: Clone + Eq + Hash + Debug> ORSet<T> {
             ORSetOp::Add { element, tag } => {
                 self.elements
                     .entry(element)
-                    .or_insert_with(HashSet::new)
+                    .or_default()
                     .insert(tag);
             }
             ORSetOp::Remove { element, tags } => {
@@ -139,7 +139,7 @@ impl<T: Clone + Eq + Hash + Debug> ORSet<T> {
             let entry = self
                 .elements
                 .entry(element.clone())
-                .or_insert_with(HashSet::new);
+                .or_default();
             for tag in other_tags {
                 entry.insert(tag.clone());
             }

@@ -1,4 +1,3 @@
-use super::super::types::FileItem;
 use std::path::{Path, PathBuf};
 
 // ============================================================================
@@ -82,8 +81,7 @@ impl FolderNode {
         let cloud_root_s = cloud_root.to_string_lossy().replace('\\', "/");
 
         let root_name = cloud_root_s
-            .trim_start_matches("cloud+pulsar://")
-            .splitn(3, '/')
+            .trim_start_matches("cloud+pulsar://").split('/')
             .nth(1)
             .unwrap_or("Remote Project")
             .to_string();
@@ -108,7 +106,7 @@ impl FolderNode {
             let name = entry
                 .path
                 .split('/')
-                .last()
+                .next_back()
                 .unwrap_or(&entry.path)
                 .to_string();
             Self::insert_at_depth(&mut root, &cloud_root_s, &entry.path, child_cloud, name);

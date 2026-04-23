@@ -187,7 +187,7 @@ pub fn clone_repository(
 ///
 /// After calling this function, you should call [`add_user_upstream`] to add the user's
 /// own repository as the new 'origin'.
-pub fn setup_template_remotes(repo_path: &Path, template_url: &str) -> Result<(), git2::Error> {
+pub fn setup_template_remotes(repo_path: &Path, _template_url: &str) -> Result<(), git2::Error> {
     let repo = git2::Repository::open(repo_path)?;
 
     // Rename origin to template
@@ -459,7 +459,7 @@ pub fn check_for_updates(path: &Path) -> Result<usize, git2::Error> {
         .ok_or_else(|| git2::Error::from_str("No remote commit"))?;
 
     // Count commits behind
-    let (ahead, behind) = repo.graph_ahead_behind(local_oid, remote_oid)?;
+    let (_ahead, behind) = repo.graph_ahead_behind(local_oid, remote_oid)?;
 
     Ok(behind)
 }

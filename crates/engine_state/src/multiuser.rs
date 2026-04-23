@@ -6,8 +6,10 @@
 
 /// Connection status for multiuser session
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default)]
 pub enum MultiuserStatus {
     /// Not connected to any session
+    #[default]
     Disconnected,
     /// Currently connecting to a session
     Connecting,
@@ -17,11 +19,6 @@ pub enum MultiuserStatus {
     Error(String),
 }
 
-impl Default for MultiuserStatus {
-    fn default() -> Self {
-        Self::Disconnected
-    }
-}
 
 /// Context for an active multiuser session
 ///

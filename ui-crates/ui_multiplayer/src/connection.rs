@@ -2,17 +2,10 @@
 
 //! Session creation (host path) for multiplayer sessions
 
-use futures::StreamExt;
 use gpui::*;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
 use super::state::MultiplayerWindow;
 use super::types::*;
-use engine_backend::subsystems::networking::multiuser::{
-    ClientMessage, MultiuserClient, ServerMessage,
-};
-use engine_backend::subsystems::networking::simple_sync;
 
 impl MultiplayerWindow {
     pub(super) fn disconnect(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -21,7 +14,7 @@ impl MultiplayerWindow {
             let session_id = session.session_id.clone();
             let peer_id = self.current_peer_id.clone().unwrap_or_default();
 
-            cx.spawn(async move |this, mut cx| {
+            cx.spawn(async move |this, cx| {
                 let mut client_guard = client.write().await;
                 let _ = client_guard.disconnect(session_id, peer_id).await;
 

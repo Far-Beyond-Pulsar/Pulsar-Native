@@ -1,7 +1,7 @@
 use crate::engine_docs::{EngineDocsState, TreeNode};
 use gpui::{prelude::*, *};
 use ui::{
-    ActiveTheme, Icon, IconName, Sizable, StyledExt, h_flex,
+    ActiveTheme, Icon, IconName, StyledExt, h_flex,
     hierarchical_tree::{render_tree_category, render_tree_folder, render_tree_item, tree_colors},
     input::TextInput,
     resizable::{ResizableState, h_resizable, resizable_panel},

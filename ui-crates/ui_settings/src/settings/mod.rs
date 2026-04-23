@@ -376,7 +376,7 @@ impl SettingsScreen {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let theme = cx.theme();
+        let _theme = cx.theme();
 
         v_flex()
             .flex_1()

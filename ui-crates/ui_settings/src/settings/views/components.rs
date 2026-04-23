@@ -1,8 +1,5 @@
-use gpui::prelude::FluentBuilder as _;
 use gpui::*;
-use ui::{
-    button::Button, h_flex, label::Label, switch::Switch, v_flex, ActiveTheme as _, Icon, IconName,
-};
+use ui::ActiveTheme as _;
 
 // Re-export the components from ui crate for convenience
 pub use ui::{SettingCard, SettingRow};

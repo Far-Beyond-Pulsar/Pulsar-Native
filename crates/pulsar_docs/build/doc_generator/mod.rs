@@ -10,10 +10,6 @@ pub mod workspace;
 use std::error::Error;
 use std::path::Path;
 
-pub use extractor::extract_documentation;
-pub use markdown::generate_hierarchical_docs;
-pub use parser::{ParsedCrate, parse_crate};
-pub use workspace::{CrateInfo, discover_crates};
 
 /// Generate documentation for an entire workspace
 ///

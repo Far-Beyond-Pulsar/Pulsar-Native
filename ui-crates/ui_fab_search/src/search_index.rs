@@ -1,7 +1,6 @@
 //! Cache and network fetch layer for Sketchfab search.
 
 use std::collections::VecDeque;
-use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 

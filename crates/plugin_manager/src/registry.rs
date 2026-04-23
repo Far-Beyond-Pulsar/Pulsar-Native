@@ -208,7 +208,7 @@ impl EditorRegistry {
         for file_type_id in &editor.supported_file_types {
             self.file_type_to_editors
                 .entry(file_type_id.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(editor_id.clone());
         }
 

@@ -68,7 +68,7 @@ impl LODLevel {
 
                 self.buckets[bucket_idx]
                     .entry(key)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(merged);
             }
         }
@@ -80,7 +80,7 @@ impl LODLevel {
 
                 let mut i = 0;
                 while i < spans_list.len() {
-                    let mut j = i + 1;
+                    let j = i + 1;
                     while j < spans_list.len() {
                         let gap = spans_list[j].start_ns - spans_list[i].end_ns;
                         // Merge if gap < 1 pixel worth of time (at this LOD level)
@@ -141,7 +141,7 @@ pub struct LODTree {
 impl LODTree {
     /// Build LOD hierarchy from trace data
     pub fn build(frame: &TraceFrame, thread_offsets: &BTreeMap<u64, f32>) -> Self {
-        let build_start = std::time::Instant::now();
+        let _build_start = std::time::Instant::now();
 
         let time_min = frame.min_time_ns;
         let time_max = frame.min_time_ns + frame.duration_ns().max(1);

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use async_tungstenite::{
-    tokio::{connect_async, TokioAdapter},
+    tokio::connect_async,
     tungstenite::Message,
 };
 use futures::{SinkExt, StreamExt};

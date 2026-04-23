@@ -66,7 +66,7 @@ impl LogReader {
             self.line_index.push(offset);
         }
 
-        self.total_lines = if self.line_index.len() > 0 {
+        self.total_lines = if !self.line_index.is_empty() {
             self.line_index.len() - 1
         } else {
             0

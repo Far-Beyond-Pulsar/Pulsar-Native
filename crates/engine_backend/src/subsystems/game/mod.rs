@@ -67,7 +67,7 @@ impl Subsystem for ManagedGameThread {
         vec![] // Game thread has no dependencies
     }
 
-    fn init(&mut self, context: &SubsystemContext) -> Result<(), SubsystemError> {
+    fn init(&mut self, _context: &SubsystemContext) -> Result<(), SubsystemError> {
         profiling::profile_scope!("Subsystem::Game::Init");
 
         let state = self.inner.state.clone();

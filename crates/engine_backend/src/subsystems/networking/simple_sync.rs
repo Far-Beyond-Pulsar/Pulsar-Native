@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use walkdir::WalkDir;
 
 /// File manifest entry
@@ -83,8 +83,7 @@ fn should_ignore(path: &Path) -> bool {
     for pattern in DEFAULT_IGNORES {
         if pattern.contains('*') {
             // Simple glob matching for extensions
-            if pattern.starts_with("*.") {
-                let ext = &pattern[2..];
+            if let Some(ext) = pattern.strip_prefix("*.") {
                 if path_str.ends_with(ext) {
                     return true;
                 }
@@ -200,7 +199,7 @@ pub fn compute_diff(
         .map(|f| (f.path.clone(), f.hash.clone()))
         .collect();
 
-    let remote_map: HashMap<String, String> = remote_manifest
+    let _remote_map: HashMap<String, String> = remote_manifest
         .files
         .iter()
         .map(|f| (f.path.clone(), f.hash.clone()))

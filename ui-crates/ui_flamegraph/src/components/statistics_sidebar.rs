@@ -13,7 +13,7 @@ pub fn render_statistics_sidebar(
     frame: &Arc<TraceFrame>,
     cx: &mut Context<impl Render>,
 ) -> impl IntoElement {
-    let setup_start = std::time::Instant::now();
+    let _setup_start = std::time::Instant::now();
     let duration_ms = frame.duration_ns() as f64 / 1_000_000.0;
     let num_frames = frame.frame_times_ms.len();
     let avg_frame_time = if !frame.frame_times_ms.is_empty() {
@@ -36,7 +36,7 @@ pub fn render_statistics_sidebar(
         .unwrap_or(0.0);
     let theme = cx.theme();
 
-    let render_start = std::time::Instant::now();
+    let _render_start = std::time::Instant::now();
     let result = div()
         .absolute()
         .right_0()

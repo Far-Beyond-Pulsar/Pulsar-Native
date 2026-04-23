@@ -376,7 +376,7 @@ fn serialize_tree(
     });
 
     // Walk tree entries
-    tree.walk(git2::TreeWalkMode::PreOrder, |root, entry| {
+    tree.walk(git2::TreeWalkMode::PreOrder, |_root, entry| {
         if let Some(git2::ObjectType::Blob) = entry.kind() {
             // Serialize blob
             if let Ok(object) = entry.to_object(repo) {
@@ -470,7 +470,7 @@ pub fn extract_files_from_commit(
 fn extract_files_from_tree(
     repo: &Repository,
     tree: &git2::Tree,
-    base_path: PathBuf,
+    _base_path: PathBuf,
     files: &mut Vec<(PathBuf, Vec<u8>)>,
 ) -> Result<(), git2::Error> {
     tree.walk(git2::TreeWalkMode::PreOrder, |root, entry| {

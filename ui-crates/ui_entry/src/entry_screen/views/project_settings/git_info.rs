@@ -59,7 +59,7 @@ pub fn render_git_info_tab(
                 ),
                 (".git Size", format_size(settings.git_repo_size)),
             ],
-            &theme,
+            theme,
         ))
         .child(render_info_section(
             "Latest Commit",
@@ -79,7 +79,7 @@ pub fn render_git_info_tab(
                         .unwrap_or_else(|| "N/A".to_string()),
                 ),
             ],
-            &theme,
+            theme,
         ))
         .child(render_info_section(
             "Working Directory",
@@ -112,7 +112,7 @@ pub fn render_git_info_tab(
                         .unwrap_or_else(|| "0 stashes".to_string()),
                 ),
             ],
-            &theme,
+            theme,
         ))
         .child(
             v_flex()
