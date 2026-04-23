@@ -6,9 +6,8 @@
 
 use std::sync::Arc;
 
-use gpui::prelude::FluentBuilder;
 use gpui::*;
-use ui::{h_flex, v_flex, ActiveTheme, StyledExt};
+use ui::{h_flex, ActiveTheme};
 
 /// Builder for creating a floating toolbar with drag functionality.
 ///
