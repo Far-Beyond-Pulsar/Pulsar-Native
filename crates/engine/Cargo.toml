@@ -3,12 +3,11 @@ edition = "2021"
 name = "pulsar_engine"
 description = "A modern high-performance game engine written in Rust"
 publish = false
-version = "0.1.147"
+version = "0.1.148"
 
 [[bin]]
 name = "pulsar_engine"
 path = "src/main.rs"
-
 [dependencies]
 # horizon.workspace = true
 anyhow.workspace = true
