@@ -118,9 +118,9 @@ impl TypeInfo {
     }
 
     fn extract_wrapper<'a>(type_str: &'a str, prefix: &str, suffix: &str) -> Option<&'a str> {
-        if type_str.starts_with(prefix) {
+        if let Some(stripped) = type_str.strip_prefix(prefix) {
             if suffix.is_empty() {
-                Some(&type_str[prefix.len()..])
+                Some(stripped)
             } else if type_str.ends_with(suffix) {
                 Some(&type_str[prefix.len()..type_str.len() - suffix.len()])
             } else {
@@ -218,11 +218,7 @@ impl TypeInfo {
         }
 
         // Built-in conversions
-        match (self.base_type.as_str(), other.base_type.as_str()) {
-            ("i32", "f32") | ("i32", "f64") | ("f32", "f64") => true,
-            ("&str", "String") | ("String", "&str") => true,
-            _ => false,
-        }
+        matches!((self.base_type.as_str(), other.base_type.as_str()), ("i32", "f32") | ("i32", "f64") | ("f32", "f64") | ("&str", "String") | ("String", "&str"))
     }
 
     fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (f32, f32, f32) {

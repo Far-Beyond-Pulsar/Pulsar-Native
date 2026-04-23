@@ -181,7 +181,7 @@ mod array_or_hsla_color {
     #[serde(untagged)]
     enum ColorFormat {
         Array([f32; 4]),
-        HSLA { h: f32, s: f32, l: f32, a: f32 },
+        Hsla { h: f32, s: f32, l: f32, a: f32 },
     }
 
     pub fn serialize<S>(value: &[f32; 4], serializer: S) -> Result<S::Ok, S::Error>
@@ -197,7 +197,7 @@ mod array_or_hsla_color {
     {
         match ColorFormat::deserialize(deserializer)? {
             ColorFormat::Array(arr) => Ok(arr),
-            ColorFormat::HSLA { h, s, l, a } => {
+            ColorFormat::Hsla { h, s, l, a } => {
                 // Convert HSLA to RGBA
                 let (r, g, b) = hsl_to_rgb(h, s, l);
                 Ok([r, g, b, a])
@@ -551,17 +551,9 @@ impl DataType {
 
 impl PartialEq<&str> for DataType {
     fn eq(&self, other: &&str) -> bool {
-        match (self, *other) {
-            (DataType::Execution, "execution") => true,
-            (DataType::String, "string") => true,
-            (DataType::Number, "number") => true,
             (DataType::Boolean, "boolean") => true,
             (DataType::Vector2, "vector2") => true,
-            (DataType::Vector3, "vector3") => true,
-            (DataType::Color, "color") => true,
-            (DataType::Object, "object") => true,
-            _ => false,
-        }
+        matches!((self, *other), (DataType::Execution, "execution") | (DataType::String, "string") | (DataType::Number, "number") | (DataType::Boolean, "boolean") | (DataType::Vector2, "vector2") | (DataType::Vector3, "vector3") | (DataType::Color, "color") | (DataType::Object, "object"))
     }
 }
 
