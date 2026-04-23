@@ -75,7 +75,7 @@ impl Render for WorldSettingsPanel {
             .bg(cx.theme().sidebar)
             .child(
                 self.world_settings
-                    .render(&*state, self.state.clone(), &collapsed_sections, cx),
+                    .render(&state, self.state.clone(), &collapsed_sections, cx),
             )
     }
 }
