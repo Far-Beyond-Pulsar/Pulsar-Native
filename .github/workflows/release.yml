@@ -78,6 +78,154 @@ jobs:
             echo "Version unchanged: $CURRENT_VERSION"
           fi
 
+  lint-and-test:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Lint/test stage marker
+        run: echo "Starting lint and test fan-out"
+
+  fmt-check:
+    needs: [check-version, lint-and-test]
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust with rustfmt
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  clippy:
+    needs: [check-version, lint-and-test]
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust with clippy
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          components: clippy
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev libglib2.0-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libxkbcommon-x11-0 libxkbcommon-x11-dev libasound2-dev
+
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  unit-tests:
+    needs: [check-version, lint-and-test]
+    if: needs.check-version.outputs.should_release == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev libglib2.0-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libxkbcommon-x11-0 libxkbcommon-x11-dev libasound2-dev
+
+      - name: Run unit tests
+        run: cargo test --workspace --locked
+
+  check-lockfile:
+    needs: [check-version, lint-and-test]
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Validate Cargo.lock is up to date
+        run: |
+          cargo generate-lockfile
+          git diff --exit-code -- Cargo.lock || (echo "Cargo.lock is out of date. Run 'cargo generate-lockfile' and commit changes." && exit 1)
+
+  cargo-audit:
+    needs: [check-version, lint-and-test]
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      audit_section: ${{ steps.audit.outputs.audit_section }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Run cargo audit and prepare release-note section
+        id: audit
+        shell: bash
+        run: |
+          set +e
+          cargo install cargo-audit --locked >/tmp/cargo-audit-install.log 2>&1
+          INSTALL_STATUS=$?
+          AUDIT_OUTPUT=""
+          AUDIT_STATUS=0
+
+          if [ $INSTALL_STATUS -eq 0 ]; then
+            AUDIT_OUTPUT=$(cargo audit 2>&1)
+            AUDIT_STATUS=$?
+          else
+            AUDIT_OUTPUT="cargo-audit install failed.\n\n$(cat /tmp/cargo-audit-install.log)"
+            AUDIT_STATUS=99
+          fi
+
+          {
+            echo "audit_section<<EOF"
+            echo ""
+            echo "<details>"
+            echo "<summary>Security Audit (cargo audit) - non-blocking</summary>"
+            echo ""
+            echo '```text'
+            echo "cargo audit exit status: $AUDIT_STATUS"
+            echo ""
+            echo "$AUDIT_OUTPUT"
+            echo '```'
+            echo ""
+            echo "</details>"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          exit 0
+
   get-changelog:
     needs: check-version
     if: needs.check-version.outputs.should_release == 'true'
@@ -176,7 +324,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
   create-release:
-    needs: [check-version, get-changelog, generate-notes]
+    needs: [check-version, get-changelog, generate-notes, cargo-audit]
     # Run even if generate-notes failed — we fall back to plain git log
     if: always() && needs.check-version.outputs.should_release == 'true' && needs.get-changelog.result == 'success'
     runs-on: ubuntu-latest
@@ -204,6 +352,24 @@ jobs:
           fi
           echo "EOF" >> $GITHUB_OUTPUT
 
+      - name: Compose release body
+        id: compose_body
+        shell: bash
+        env:
+          NOTES_AI: ${{ needs.generate-notes.outputs.notes }}
+          NOTES_FALLBACK: ${{ steps.fallback_notes.outputs.notes }}
+          AUDIT_SECTION: ${{ needs.cargo-audit.outputs.audit_section }}
+        run: |
+          BODY_FILE="release-body.md"
+          if [ "${{ needs.generate-notes.result }}" = "success" ]; then
+            printf '%s\n' "$NOTES_AI" > "$BODY_FILE"
+          else
+            printf '%s\n' "$NOTES_FALLBACK" > "$BODY_FILE"
+          fi
+
+          printf '\n%s\n' "$AUDIT_SECTION" >> "$BODY_FILE"
+          echo "body_path=$BODY_FILE" >> "$GITHUB_OUTPUT"
+
       - name: Create Release
         id: create_release
         env:
@@ -212,12 +378,12 @@ jobs:
         with:
           tag_name: v${{ needs.check-version.outputs.version }}
           name: Release v${{ needs.check-version.outputs.version }}
-          body: ${{ needs.generate-notes.result == 'success' && needs.generate-notes.outputs.notes || steps.fallback_notes.outputs.notes }}
+          body_path: ${{ steps.compose_body.outputs.body_path }}
           draft: true
           prerelease: false
 
   build-release:
-    needs: [check-version, create-release]
+    needs: [check-version, create-release, fmt-check, clippy, unit-tests, check-lockfile]
     if: needs.check-version.outputs.should_release == 'true'
     permissions:
       contents: write
@@ -425,7 +591,7 @@ jobs:
           if-no-files-found: warn
 
   cross-builds:
-    needs: [check-version, create-release]
+    needs: [check-version, create-release, fmt-check, clippy, unit-tests, check-lockfile]
     if: needs.check-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -617,6 +783,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
     steps:
       - name: Download all release artifacts
         uses: actions/download-artifact@v4
@@ -625,10 +792,31 @@ jobs:
           path: all-artifacts
           merge-multiple: true
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.4.1'
+
       - name: List artifacts to upload
         run: |
           echo "Artifacts staged for upload:"
           find all-artifacts -type f | sort
+
+      - name: Sign all artifacts
+        shell: bash
+        run: |
+          shopt -s nullglob
+          files=(all-artifacts/*)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No artifacts found to sign."
+            exit 0
+          fi
+          for file in "${files[@]}"; do
+            if [ -f "$file" ]; then
+              echo "Signing: $file"
+              cosign sign-blob --yes "$file" --output-signature "$file.sig"
+            fi
+          done
 
       - name: Upload all artifacts to release
         env:
