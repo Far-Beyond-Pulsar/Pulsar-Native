@@ -432,8 +432,8 @@ impl ViewportPanel {
     where
         V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
-        let viewport_hovered = self.viewport_hovered.clone();
-        let element_bounds = self.element_bounds.clone();
+        let _viewport_hovered = self.viewport_hovered.clone();
+        let _element_bounds = self.element_bounds.clone();
         let viewport_entity = self.viewport.clone();
 
         // Get performance data
@@ -466,13 +466,13 @@ impl ViewportPanel {
         drop(metrics);
 
         // Clone for event handlers
-        let input_state_scroll = Arc::clone(&self.input_state);
+        let _input_state_scroll = Arc::clone(&self.input_state);
         let mouse_right_captured = self.mouse_right_captured.clone();
         let mouse_middle_captured = self.mouse_middle_captured.clone();
         let gpu_engine_for_click = gpu_engine.clone();
         let element_bounds_for_prepaint = self.element_bounds.clone();
         let element_bounds_for_click = self.element_bounds.clone();
-        let state_arc_scroll = state_arc.clone();
+        let _state_arc_scroll = state_arc.clone();
         let gpu_engine_clone = gpu_engine.clone();
         let locked_cursor_x = self.locked_cursor_x.clone();
         let locked_cursor_y = self.locked_cursor_y.clone();
