@@ -22,14 +22,14 @@ const PASS_COLORS: &[(f32, f32, f32)] = &[
 ];
 
 /// Render the GPU pipeline overlay with fixed-width columns.
-pub fn render_gpu_pipeline_overlay<V: 'static>(
+pub fn render_gpu_pipeline_overlay<V>(
     state: &LevelEditorState,
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
     cx: &mut Context<V>,
 ) -> impl IntoElement
 where
-    V: EventEmitter<ui::dock::PanelEvent> + Render,
+    V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
 {
     // Get GPU profiler data
     let gpu_data = if let Ok(engine) = gpu_engine.lock() {
