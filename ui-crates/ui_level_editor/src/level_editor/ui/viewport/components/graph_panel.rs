@@ -127,7 +127,7 @@ impl<T: Clone + 'static> GraphPanel<T> {
     }
 
     /// Build the graph panel with a custom chart element (internal implementation).
-    fn build_panel_impl<V: 'static>(
+    fn build_panel_impl<V>(
         title: SharedString,
         icon: IconName,
         subtitle: Option<SharedString>,
@@ -136,7 +136,7 @@ impl<T: Clone + 'static> GraphPanel<T> {
         cx: &Context<V>,
     ) -> impl IntoElement
     where
-        V: Render,
+        V: 'static + Render,
     {
         let header = Self::build_header_impl(title, icon, subtitle, cx);
 
@@ -153,14 +153,14 @@ impl<T: Clone + 'static> GraphPanel<T> {
     }
 
     /// Build the header with title, icon, and optional subtitle (internal implementation).
-    fn build_header_impl<V: 'static>(
+    fn build_header_impl<V>(
         title: SharedString,
         icon: IconName,
         subtitle: Option<SharedString>,
         cx: &Context<V>,
     ) -> impl IntoElement
     where
-        V: Render,
+        V: 'static + Render,
     {
         let mut header = h_flex().w_full().items_center().justify_between().child(
             h_flex()
@@ -192,7 +192,7 @@ impl<T: Clone + 'static> GraphPanel<T> {
 /// Create a simple FPS-style colored bar chart.
 ///
 /// Colors bars based on value ranges (green for high, yellow for mid, red for low).
-pub fn fps_colored_bar_chart<T: Clone + 'static, V: 'static>(
+pub fn fps_colored_bar_chart<T: Clone + 'static, V>(
     data: Vec<T>,
     x_fn: impl Fn(&T) -> SharedString + 'static,
     y_fn: impl Fn(&T) -> f64 + 'static + Clone,
@@ -201,7 +201,7 @@ pub fn fps_colored_bar_chart<T: Clone + 'static, V: 'static>(
     cx: &Context<V>,
 ) -> impl IntoElement
 where
-    V: Render,
+    V: 'static + Render,
 {
     let theme = cx.theme();
     let success = theme.success;

@@ -12,12 +12,11 @@ use ui::{
     button::{Button, ButtonVariants as _},
     h_flex,
     switch::Switch,
-    ActiveTheme, IconName, Selectable, StyledExt,
+    ActiveTheme, IconName, Selectable,
 };
 
 use super::floating_toolbar::{create_drag_handle, toolbar_with_drag_handle};
 use super::toggle_button::create_state_toggle;
-use crate::level_editor::ui::actions::{MoveTool, RotateTool, ScaleTool, SelectTool};
 use crate::level_editor::ui::state::LevelEditorState;
 use crate::level_editor::ui::TransformTool;
 
@@ -80,13 +79,13 @@ fn visual_toggles(
 }
 
 /// Render overlay toggle switches (performance, camera).
-fn overlay_toggles<V: 'static>(
+fn overlay_toggles<V>(
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     state: &LevelEditorState,
     cx: &Context<V>,
 ) -> impl IntoElement
 where
-    V: Render,
+    V: 'static + Render,
 {
     h_flex()
         .gap_2()
@@ -230,14 +229,14 @@ fn gizmo_tool_buttons(
 }
 
 /// Render the complete viewport options toolbar.
-pub fn render_viewport_options<V: 'static>(
+pub fn render_viewport_options<V>(
     state: &LevelEditorState,
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     is_dragging: bool,
     cx: &mut Context<V>,
 ) -> impl IntoElement
 where
-    V: EventEmitter<ui::dock::PanelEvent> + Render,
+    V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
 {
     if state.viewport_options_collapsed {
         return Button::new("expand_viewport_options")

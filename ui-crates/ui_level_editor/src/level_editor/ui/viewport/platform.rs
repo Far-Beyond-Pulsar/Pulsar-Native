@@ -13,7 +13,6 @@ use gpui::Window;
 #[cfg(target_os = "windows")]
 pub fn lock_cursor_to_window(window: &Window) {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-    use winapi::shared::minwindef::FALSE;
     use winapi::shared::windef::{POINT, RECT};
     use winapi::um::winuser::{ClientToScreen, ClipCursor, GetClientRect};
 

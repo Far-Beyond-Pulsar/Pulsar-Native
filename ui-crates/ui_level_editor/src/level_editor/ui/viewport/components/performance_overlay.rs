@@ -9,21 +9,21 @@ use gpui::*;
 use ui::{
     button::{Button, ButtonVariants as _},
     chart::AreaChart,
-    h_flex, v_flex, ActiveTheme, Icon, IconName, StyledExt,
+    h_flex, v_flex, ActiveTheme, Icon, IconName,
 };
 
 use super::super::performance::*;
 use crate::level_editor::ui::state::LevelEditorState;
 
 /// Compact stat display: label and value in a single line.
-fn stat_line<V: 'static>(
+fn stat_line<V>(
     label: impl Into<SharedString>,
     value: impl Into<SharedString>,
     color: Hsla,
     cx: &Context<V>,
 ) -> impl IntoElement
 where
-    V: Render,
+    V: 'static + Render,
 {
     h_flex()
         .gap_2()
@@ -44,7 +44,7 @@ where
 }
 
 /// Mini inline sparkline graph for compact display.
-fn mini_graph<T: Clone + 'static, V: 'static>(
+fn mini_graph<T: Clone + 'static, V>(
     data: Vec<T>,
     x_fn: impl Fn(&T) -> SharedString + 'static,
     y_fn: impl Fn(&T) -> f64 + 'static,
@@ -52,7 +52,7 @@ fn mini_graph<T: Clone + 'static, V: 'static>(
     cx: &Context<V>,
 ) -> impl IntoElement
 where
-    V: Render,
+    V: 'static + Render,
 {
     div().h(px(40.0)).w_full().child(
         AreaChart::new(data)
@@ -66,7 +66,7 @@ where
 }
 
 /// Render the complete compact performance overlay.
-pub fn render_performance_overlay<V: 'static>(
+pub fn render_performance_overlay<V>(
     state: &LevelEditorState,
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     ui_fps: f64,
@@ -83,7 +83,7 @@ pub fn render_performance_overlay<V: 'static>(
     cx: &mut Context<V>,
 ) -> impl IntoElement
 where
-    V: EventEmitter<ui::dock::PanelEvent> + Render,
+    V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
 {
     if state.performance_overlay_collapsed {
         return Button::new("expand_performance")

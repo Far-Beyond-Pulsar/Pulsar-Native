@@ -7,7 +7,7 @@ use ui::{
     h_flex,
     input::{InputState, TextInput},
     scroll::ScrollbarAxis,
-    v_flex, ActiveTheme, CollapsibleSection, IconName, Sizable, StyledExt,
+    v_flex, ActiveTheme, CollapsibleSection, IconName, Sizable,
 };
 
 use super::state::{LevelEditorState, Transform};

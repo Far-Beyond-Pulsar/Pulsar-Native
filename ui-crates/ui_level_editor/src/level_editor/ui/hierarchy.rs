@@ -6,7 +6,7 @@ use ui::{
     h_flex,
     hierarchical_tree::tree_colors,
     scroll::ScrollbarAxis,
-    v_flex, ActiveTheme, Icon, IconName, Sizable, StyledExt,
+    v_flex, ActiveTheme, Icon, IconName, Sizable,
 };
 
 use super::state::{LevelEditorState, SceneObject};

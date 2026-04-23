@@ -7,5 +7,3 @@ pub mod graph_panel;
 pub mod performance_overlay;
 pub mod toggle_button;
 pub mod viewport_options;
-
-pub use toggle_button::ToggleButton;
