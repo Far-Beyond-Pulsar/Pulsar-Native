@@ -10,11 +10,10 @@ use gpui::*;
 use rust_i18n::t;
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
+    h_flex, ActiveTheme, IconName, Selectable, Sizable,
 };
 
 use super::floating_toolbar::{create_drag_handle, toolbar_with_drag_handle};
-use super::toggle_button::create_state_toggle;
 use crate::level_editor::ui::state::{CameraMode, LevelEditorState};
 
 /// Camera mode button configuration.
