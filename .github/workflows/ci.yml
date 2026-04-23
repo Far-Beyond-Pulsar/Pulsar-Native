@@ -55,17 +55,7 @@ jobs:
         run: |
           cargo clippy --workspace --exclude pulsar_docs --all-targets -- -A dead_code -A clippy::too_many_arguments -A clippy::type_complexity -A clippy::match_like_matches_macro -A clippy::only_used_in_recursion -A improper_ctypes_definitions -A clippy::field_reassign_with_default -A clippy::result_large_err -A clippy::doc_overindented_list_items
       - name: Install nextest
-        run: |
-          curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
-        if: ${{ matrix.run_on == 'ubuntu-latest' }}
-      - name: Install nextest
-        run: |
-          curl -LsSf https://get.nexte.st/latest/windows-tar | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
-        if: ${{ matrix.run_on == 'windows-latest' }}
-      - name: Install nextest
-        run: |
-          curl -LsSf https://get.nexte.st/latest/mac | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
-        if: ${{ matrix.run_on == 'macos-latest' }}
+        run: cargo install cargo-nextest --locked
       - name: Test Linux
         if: ${{ matrix.run_on == 'ubuntu-latest' }}
         run: |
