@@ -1,0 +1,36 @@
+# Keep Docker build context small for sidecar image builds.
+# These images only need workspace manifests plus Rust crate sources.
+
+.git
+.github
+.vscode
+.idea
+.claude
+.cargo
+
+# Build outputs and caches
+target
+**/target
+
+# Large non-build content
+upstream
+pulsar-host-data
+assets
+diagrams
+docs
+events
+examples
+libraries
+plugins
+scenes
+themes
+
+# Local scripts/tooling not needed for sidecar compilation
+script
+tools
+
+# Misc
+.env
+.cargo_metadata.json
+.cargo_metadata_full.json
+nul
