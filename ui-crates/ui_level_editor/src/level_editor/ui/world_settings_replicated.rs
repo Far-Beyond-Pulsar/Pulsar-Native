@@ -607,7 +607,7 @@ impl WorldSettingsReplicated {
             .child(self.render_f32_field(
                 &self.speed_of_sound_input,
                 "world_speed_of_sound",
-                &t!("LevelEditor.WorldSettings.SpeedOfSound").to_string(),
+                t!("LevelEditor.WorldSettings.SpeedOfSound").as_ref(),
                 "m/s",
                 cx,
             ))
