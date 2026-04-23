@@ -176,7 +176,11 @@ jobs:
 
       - name: Validate Cargo.lock is up to date
         run: |
-          cargo metadata --locked --format-version 1 > /dev/null
+          if ! cargo metadata --locked --format-version 1 > /dev/null; then
+            echo "Cargo.lock is out of date with one or more Cargo.toml manifests."
+            echo "Update lockfile locally (for example: cargo update -w), then commit Cargo.lock."
+            exit 1
+          fi
           git diff --exit-code -- Cargo.lock || (echo "Cargo.lock changed unexpectedly. Commit Cargo.lock updates before releasing." && exit 1)
 
   cargo-audit:
