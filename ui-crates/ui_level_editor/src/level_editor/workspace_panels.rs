@@ -2,7 +2,7 @@
 
 use super::ui::{
     ComponentFieldsSection, HierarchyPanel, LevelEditorState, ObjectHeaderSection, PropertiesPanel,
-    TransformSection, ViewportPanel, WorldSettings, WorldSettingsReplicated,
+    TransformSection, ViewportPanel, WorldSettingsReplicated,
 };
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use engine_backend::GameThread;
@@ -13,8 +13,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 use ui::{
     dock::{Panel, PanelEvent},
-    input::{InputState, TextInput},
-    v_flex, ActiveTheme, StyledExt,
+    input::InputState,
+    v_flex, ActiveTheme,
 };
 
 /// World Settings Panel (replaced Scene Browser)
