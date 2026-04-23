@@ -11,14 +11,14 @@ use engine_backend::subsystems::render::helio_renderer::RendererCommand;
 pub struct FeatureToggles;
 
 impl FeatureToggles {
-    pub fn render<V: 'static>(
+    pub fn render<V>(
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         gpu_engine: Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
         _cx: &mut Context<V>,
     ) -> impl IntoElement
     where
-        V: EventEmitter<ui::dock::PanelEvent> + Render,
+        V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
         h_flex()
             .gap_1()
