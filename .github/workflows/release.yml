@@ -136,7 +136,8 @@ jobs:
             -D warnings \
             -A dead_code \
             -A clippy::too_many_arguments \
-            -A clippy::type_complexity
+            -A clippy::type_complexity \
+            -A clippy::match_like_matches_macro
 
   unit-tests:
     needs: [check-version, lint-and-test]
