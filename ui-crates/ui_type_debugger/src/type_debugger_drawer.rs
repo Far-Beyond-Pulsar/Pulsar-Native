@@ -91,7 +91,7 @@ impl TypeDebuggerDrawer {
     }
 
     /// Compute relative path from absolute path using project root
-    fn get_display_path(&self, absolute_path: &PathBuf) -> String {
+    fn get_display_path(&self, absolute_path: &std::path::Path) -> String {
         if let Some(project_root) = &self.project_root {
             // Try to strip the project root prefix
             if let Ok(relative) = absolute_path.strip_prefix(project_root) {

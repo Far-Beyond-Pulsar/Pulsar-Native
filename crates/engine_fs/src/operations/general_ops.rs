@@ -85,7 +85,7 @@ impl GeneralOperations {
 
         if let Err(e) = self.type_database.register_with_path(
             name.clone(),
-            file_path.clone(),
+            file_path.to_path_buf(),
             file_type_id.clone(),
             None,
             Some(format!("{:?}: {}", file_type_id, name)),
