@@ -1,22 +1,17 @@
 use crate::commands::{
-    CloseWindowCommand,
-    CreateWindowCommand,
-    FocusWindowCommand,
-    MinimizeWindowCommand,
-    MaximizeWindowCommand,
-    MoveWindowCommand,
-    ResizeWindowCommand,
-    UpdateTitleCommand,
-    WindowCommand,
-    WindowCommandResult,
+    CloseWindowCommand, CreateWindowCommand, FocusWindowCommand, MaximizeWindowCommand,
+    MinimizeWindowCommand, MoveWindowCommand, ResizeWindowCommand, UpdateTitleCommand,
+    WindowCommand, WindowCommandResult,
 };
 use crate::hooks::{HookContext, HookRegistry, HookType, LoggingHook, TelemetryHook, WindowHook};
 use crate::state::WindowState;
 use crate::telemetry::TelemetrySender;
 use crate::validation::{ValidationRule, WindowError, WindowResult, WindowValidator};
-use gpui::{AnyWindowHandle, App, AppContext, Context, EventEmitter, Global, Render, Window, WindowOptions};
-use std::sync::Arc;
+use gpui::{
+    AnyWindowHandle, App, AppContext, Context, EventEmitter, Global, Render, Window, WindowOptions,
+};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use ui_types_common::window_types::{WindowId, WindowRequest};
 
 pub struct WindowManager {
@@ -97,7 +92,8 @@ impl WindowManager {
         after.window_type = Some(wtype.clone());
         self.hooks.execute_after(&after)?;
         self.telemetry.record_window_created(window_id, &wtype);
-        self.telemetry.record_window_count(self.state.window_count());
+        self.telemetry
+            .record_window_count(self.state.window_count());
         Ok((window_id, handle))
     }
 
@@ -117,7 +113,8 @@ impl WindowManager {
         let after = HookContext::from_result(&result);
         self.hooks.execute_after(&after)?;
         self.telemetry.record_window_closed(window_id);
-        self.telemetry.record_window_count(self.state.window_count());
+        self.telemetry
+            .record_window_count(self.state.window_count());
         Ok(())
     }
 
@@ -157,7 +154,12 @@ impl WindowManager {
         })
     }
 
-    pub fn maximize_window(&self, window_id: WindowId, restore: bool, window: &mut Window) -> WindowResult<()> {
+    pub fn maximize_window(
+        &self,
+        window_id: WindowId,
+        restore: bool,
+        window: &mut Window,
+    ) -> WindowResult<()> {
         let command = WindowCommand::Maximize(MaximizeWindowCommand { window_id, restore });
         self.run_operation(command, || {
             window.zoom_window();
@@ -165,8 +167,16 @@ impl WindowManager {
         })
     }
 
-    pub fn move_window(&self, window_id: WindowId, position: gpui::Point<gpui::Pixels>, window: &mut Window) -> WindowResult<()> {
-        let command = WindowCommand::Move(MoveWindowCommand { window_id, position });
+    pub fn move_window(
+        &self,
+        window_id: WindowId,
+        position: gpui::Point<gpui::Pixels>,
+        window: &mut Window,
+    ) -> WindowResult<()> {
+        let command = WindowCommand::Move(MoveWindowCommand {
+            window_id,
+            position,
+        });
         self.run_operation(command, || {
             // Note: gpui does not expose a direct set_position API; position change is a no-op here.
             let _ = (position, window);
@@ -174,7 +184,12 @@ impl WindowManager {
         })
     }
 
-    pub fn resize_window(&self, window_id: WindowId, size: gpui::Size<gpui::Pixels>, window: &mut Window) -> WindowResult<()> {
+    pub fn resize_window(
+        &self,
+        window_id: WindowId,
+        size: gpui::Size<gpui::Pixels>,
+        window: &mut Window,
+    ) -> WindowResult<()> {
         let command = WindowCommand::Resize(ResizeWindowCommand { window_id, size });
         self.run_operation(command, || {
             window.set_rem_size(size.width);
@@ -182,8 +197,16 @@ impl WindowManager {
         })
     }
 
-    pub fn update_title(&self, window_id: WindowId, title: String, window: &mut Window) -> WindowResult<()> {
-        let command = WindowCommand::UpdateTitle(UpdateTitleCommand { window_id, title: title.clone() });
+    pub fn update_title(
+        &self,
+        window_id: WindowId,
+        title: String,
+        window: &mut Window,
+    ) -> WindowResult<()> {
+        let command = WindowCommand::UpdateTitle(UpdateTitleCommand {
+            window_id,
+            title: title.clone(),
+        });
         self.run_operation(command, || {
             window.set_window_title(&title);
             WindowCommandResult::TitleUpdated { window_id }

@@ -9,24 +9,27 @@ use tokio::sync::RwLock;
 
 use super::state::MultiplayerWindow;
 use super::types::*;
+use engine_backend::subsystems::networking::multiuser::{
+    ClientMessage, MultiuserClient, ServerMessage,
+};
 use engine_backend::subsystems::networking::simple_sync;
-use engine_backend::subsystems::networking::multiuser::{ClientMessage, MultiuserClient, ServerMessage};
-
 
 impl MultiplayerWindow {
-        pub(super) fn join_session(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn join_session(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let server_address = self.server_address_input.read(cx).text().to_string();
         let session_id = self.session_id_input.read(cx).text().to_string();
         let join_token = self.session_password_input.read(cx).text().to_string();
 
         if server_address.is_empty() {
-            self.connection_status = ConnectionStatus::Error("Server address is required".to_string());
+            self.connection_status =
+                ConnectionStatus::Error("Server address is required".to_string());
             cx.notify();
             return;
         }
 
         if session_id.is_empty() || join_token.is_empty() {
-            self.connection_status = ConnectionStatus::Error("Session ID and password are required".to_string());
+            self.connection_status =
+                ConnectionStatus::Error("Session ID and password are required".to_string());
             cx.notify();
             return;
         }
@@ -267,7 +270,7 @@ impl MultiplayerWindow {
                                         }).ok();
                                     }
                                     ServerMessage::FileManifest { from_peer_id, manifest_json, .. } => {
-                                        tracing::debug!("JOIN_SESSION: Received file manifest from {} ({} bytes)", 
+                                        tracing::debug!("JOIN_SESSION: Received file manifest from {} ({} bytes)",
                                             from_peer_id, manifest_json.len());
 
                                         // Parse manifest and compute diff
@@ -279,7 +282,7 @@ impl MultiplayerWindow {
 
                                         if let Some(project_root) = project_root_result {
                                             tracing::debug!("JOIN_SESSION: Project root is {:?}", project_root);
-                                            
+
                                             // Deserialize manifest
                                             match serde_json::from_str::<simple_sync::FileManifest>(&manifest_json) {
                                                 Ok(remote_manifest) => {
@@ -708,4 +711,3 @@ impl MultiplayerWindow {
         }).detach();
     }
 }
-

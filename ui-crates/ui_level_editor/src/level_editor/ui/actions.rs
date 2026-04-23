@@ -1,40 +1,35 @@
 use gpui::actions;
-use serde::Deserialize;
 use schemars::JsonSchema;
+use serde::Deserialize;
 
 // Define actions for the level editor
 actions!(
     level_editor,
     [
         // Transform tools
-        SelectTool,        // Keyboard: Q
-        MoveTool,          // Keyboard: W
-        RotateTool,        // Keyboard: E
-        ScaleTool,         // Keyboard: R
-
+        SelectTool, // Keyboard: Q
+        MoveTool,   // Keyboard: W
+        RotateTool, // Keyboard: E
+        ScaleTool,  // Keyboard: R
         // Scene operations
         NewScene,
         OpenScene,
         SaveScene,
         SaveSceneAs,
-
         // Object operations
         AddObject,
         DeleteObject,
         DuplicateObject,
         RenameObject,
-        FocusSelected,     // Keyboard: F - Frame selected object
-
+        FocusSelected, // Keyboard: F - Frame selected object
         // Hierarchy operations
         ExpandAll,
         CollapseAll,
-
         // Gizmo operations
-        ToggleSnapping,          // Keyboard: G - Toggle grid snapping
-        ToggleLocalSpace,        // Keyboard: L - Toggle local/world space
-        IncreaseSnapIncrement,   // Keyboard: ] - Increase snap grid size
-        DecreaseSnapIncrement,   // Keyboard: [ - Decrease snap grid size
-
+        ToggleSnapping,        // Keyboard: G - Toggle grid snapping
+        ToggleLocalSpace,      // Keyboard: L - Toggle local/world space
+        IncreaseSnapIncrement, // Keyboard: ] - Increase snap grid size
+        DecreaseSnapIncrement, // Keyboard: [ - Decrease snap grid size
         // View operations
         ToggleGrid,
         ToggleWireframe,
@@ -45,7 +40,6 @@ actions!(
         Toggle3DRenderer,
         ToggleGpuRenderer,
         ToggleFpsGraphType,
-
         // Performance metrics toggles
         ToggleFpsGraph,
         ToggleTpsGraph,
@@ -55,18 +49,15 @@ actions!(
         ToggleVerticesGraph,
         ToggleInputLatencyGraph,
         ToggleUiConsistencyGraph,
-
         // Camera modes
         PerspectiveView,
         OrthographicView,
         TopView,
         FrontView,
         SideView,
-
         // Play/Edit mode
         PlayScene,
         StopScene,
-
         // Edit operations
         Undo,
         Redo,

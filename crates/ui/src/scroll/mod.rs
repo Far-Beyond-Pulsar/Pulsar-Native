@@ -3,9 +3,9 @@ mod scrollable_mask;
 mod scrollbar;
 
 pub trait ScrollableElement: Sized {
-	fn vertical_scrollbar<T>(self, _state: &T) -> Self {
-		self
-	}
+    fn vertical_scrollbar<T>(self, _state: &T) -> Self {
+        self
+    }
 }
 
 impl<T> ScrollableElement for T {}

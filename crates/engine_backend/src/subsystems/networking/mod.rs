@@ -14,4 +14,4 @@ pub mod simple_sync;
 pub use git_sync::*;
 pub use multiuser::{ClientMessage, MultiuserClient, ServerMessage};
 pub use p2p::P2PConnection;
-pub use simple_sync::{FileManifest, FileEntry, SyncDiff};
+pub use simple_sync::{FileEntry, FileManifest, SyncDiff};

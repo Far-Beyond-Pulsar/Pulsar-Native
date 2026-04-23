@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ProjectSettingsTab {
@@ -127,7 +127,7 @@ impl AvailableTools {
             ],
         }
     }
-    
+
     /// Get path to cache file
     fn cache_path() -> PathBuf {
         // Use home directory or fallback to current directory
@@ -140,13 +140,13 @@ impl AvailableTools {
         std::fs::create_dir_all(&cache_dir).ok();
         cache_dir.join("available_tools.json")
     }
-    
+
     /// Load cached tools from file
     pub fn load_from_cache() -> Option<Self> {
         use ui_common::file_utils;
         file_utils::read_json(&Self::cache_path()).ok()
     }
-    
+
     /// Save tools to cache file
     pub fn save_to_cache(&self) {
         use ui_common::file_utils;
@@ -179,7 +179,7 @@ impl ProjectSettings {
             is_updating_tools: false,
         }
     }
-    
+
     /// Load data for a specific tab only - called when tab is first accessed
     pub fn load_tab_data_sync(&mut self, tab: &ProjectSettingsTab) {
         match tab {
@@ -228,16 +228,17 @@ impl ProjectSettings {
         self.load_git_ci_info();
         self.load_tool_preferences();
     }
-    
+
     pub fn load_all_data_async(project_path: PathBuf) -> Self {
         // DON'T load anything here - return empty struct
         // Data will be loaded per-tab on demand
-        Self::new(project_path.clone(), 
+        Self::new(
+            project_path.clone(),
             project_path
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("Unknown")
-                .to_string()
+                .to_string(),
         )
     }
 
@@ -249,12 +250,12 @@ impl ProjectSettings {
 
     fn calculate_directory_size(path: &PathBuf) -> Result<u64, std::io::Error> {
         let mut total_size = 0u64;
-        
+
         if path.is_dir() {
             for entry in std::fs::read_dir(path)? {
                 let entry = entry?;
                 let metadata = entry.metadata()?;
-                
+
                 if metadata.is_file() {
                     total_size += metadata.len();
                 } else if metadata.is_dir() {
@@ -265,7 +266,7 @@ impl ProjectSettings {
                 }
             }
         }
-        
+
         Ok(total_size)
     }
 
@@ -282,10 +283,10 @@ impl ProjectSettings {
         self.stash_count = git_info.stash_count;
         self.untracked_files = git_info.untracked_files;
     }
-    
+
     fn load_git_info_sync(project_path: &PathBuf) -> GitInfo {
         let mut info = GitInfo::default();
-        
+
         let git_dir = project_path.join(".git");
         if !git_dir.exists() {
             return info;
@@ -407,20 +408,21 @@ impl ProjectSettings {
                 info.untracked_files = Some(files.lines().count());
             }
         }
-        
+
         info
     }
 
     fn load_git_ci_info(&mut self) {
         self.workflow_files = Self::load_git_ci_info_sync(&self.project_path);
     }
-    
+
     fn load_tool_preferences(&mut self) {
-        let (preferred_editor, preferred_git_tool) = load_project_tool_preferences(&self.project_path);
+        let (preferred_editor, preferred_git_tool) =
+            load_project_tool_preferences(&self.project_path);
         self.preferred_editor = preferred_editor;
         self.preferred_git_tool = preferred_git_tool;
     }
-    
+
     fn load_git_ci_info_sync(project_path: &PathBuf) -> Vec<String> {
         let workflows_dir = project_path.join(".github").join("workflows");
         if workflows_dir.exists() {
@@ -448,7 +450,7 @@ pub fn format_size(size: Option<u64>) -> String {
             const KB: u64 = 1024;
             const MB: u64 = KB * 1024;
             const GB: u64 = MB * 1024;
-            
+
             if bytes >= GB {
                 format!("{:.2} GB", bytes as f64 / GB as f64)
             } else if bytes >= MB {
@@ -464,27 +466,31 @@ pub fn format_size(size: Option<u64>) -> String {
 }
 
 /// Load tool preferences for a project without loading full settings
-pub fn load_project_tool_preferences(project_path: &std::path::PathBuf) -> (Option<String>, Option<String>) {
+pub fn load_project_tool_preferences(
+    project_path: &std::path::PathBuf,
+) -> (Option<String>, Option<String>) {
     let config_path = project_path.join("Pulsar.toml");
     if !config_path.exists() {
         return (None, None);
     }
-    
+
     if let Ok(content) = std::fs::read_to_string(&config_path) {
         if let Ok(parsed) = toml::from_str::<toml::Value>(&content) {
             if let Some(tools_table) = parsed.get("tools").and_then(|v| v.as_table()) {
-                let editor = tools_table.get("editor")
+                let editor = tools_table
+                    .get("editor")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
-                
-                let git_tool = tools_table.get("git_tool")
+
+                let git_tool = tools_table
+                    .get("git_tool")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
-                
+
                 return (editor, git_tool);
             }
         }
     }
-    
+
     (None, None)
 }

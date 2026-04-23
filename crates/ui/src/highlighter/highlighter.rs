@@ -4,13 +4,13 @@ use crate::input::RopeExt;
 use anyhow::{anyhow, Context, Result};
 use gpui::{HighlightStyle, SharedString};
 
+use gpui_sum_tree::Bias;
 use ropey::{ChunkCursor, Rope};
 use std::{
     collections::{BTreeSet, HashMap},
     ops::Range,
     usize,
 };
-use gpui_sum_tree::Bias;
 use tree_sitter::{
     InputEdit, Node, Parser, Point, Query, QueryCursor, QueryMatch, StreamingIterator, Tree,
 };
@@ -448,7 +448,7 @@ impl SyntaxHighlighter {
         if content.len() == 0 {
             return cache;
         }
-        
+
         // Note: Parser requires owned String. Could optimize with zero-copy parsing if tree-sitter supports it.
         let content = content.to_string();
 

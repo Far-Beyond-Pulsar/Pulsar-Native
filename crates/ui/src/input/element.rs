@@ -485,27 +485,27 @@ impl TextElement {
 
         // Calculate how many lines can fit in viewport + small buffer
         let visible_lines_count = (input_height / line_height).ceil() as usize + 1;
-        
+
         // Studio-quality optimization: Use stride-based binary search for large files
         // This is O(log n) instead of O(n), critical for files with 100k+ lines
         if total_lines > 5000 {
             // Use adaptive stride based on file size for optimal performance
             let stride = match total_lines {
-                5000..=20000 => 100,      // Check every 100 lines
-                20001..=50000 => 200,     // Check every 200 lines
-                50001..=100000 => 500,    // Check every 500 lines
-                _ => 1000,                 // Check every 1000 lines for massive files
+                5000..=20000 => 100,   // Check every 100 lines
+                20001..=50000 => 200,  // Check every 200 lines
+                50001..=100000 => 500, // Check every 500 lines
+                _ => 1000,             // Check every 1000 lines for massive files
             };
-            
+
             let mut line_bottom = px(0.);
             let mut search_start = 0;
-            
+
             // Phase 1: Exponential stride to quickly locate the region
             // Use direct indexing (NOT .skip()) to avoid O(n) iteration cost
             let mut chunk_start = 0;
             while chunk_start < total_lines {
                 let chunk_end = (chunk_start + stride).min(total_lines);
-                
+
                 // Calculate height of this chunk using direct indexing O(stride)
                 let mut chunk_height = px(0.);
                 for i in chunk_start..chunk_end {
@@ -514,31 +514,31 @@ impl TextElement {
                         chunk_height += line.height(line_height);
                     }
                 }
-                
+
                 if line_bottom + chunk_height >= -scroll_top {
                     // Found it! The visible region starts in this chunk
                     search_start = chunk_start;
                     break;
                 }
-                
+
                 line_bottom += chunk_height;
                 chunk_start = chunk_end;
             }
-            
+
             // Phase 2: Fine-grained linear search within the located chunk
             // Only search a small region, not the entire file
             let search_end = (search_start + stride + visible_lines_count).min(total_lines);
             let mut visible_range = search_start..search_end;
             let mut visible_top = line_bottom;
-            
+
             // Reset to start of found chunk
             line_bottom = visible_top;
-            
+
             // Linear search within the small region to find exact boundaries
             for ix in search_start..search_end {
                 if let Some(line) = state.text_wrapper.lines.get(ix) {
                     let wrapped_height = line.height(line_height);
-                    
+
                     // Track the top of the first visible line
                     if line_bottom < -scroll_top {
                         visible_top = line_bottom;
@@ -555,14 +555,14 @@ impl TextElement {
                     }
                 }
             }
-            
+
             // Studio-quality safety: Cap maximum visible range to prevent rendering too many lines
             // This handles edge cases like extreme zoom out or microscopic line heights
             const MAX_VISIBLE_LINES: usize = 200; // No normal viewport needs more than 200 lines
             if visible_range.len() > MAX_VISIBLE_LINES {
                 visible_range.end = visible_range.start + MAX_VISIBLE_LINES;
             }
-            
+
             return (visible_range, visible_top);
         }
 
@@ -571,10 +571,10 @@ impl TextElement {
         let mut visible_range = 0..total_lines;
         let mut visible_top = px(0.);
         let mut line_bottom = px(0.);
-        
+
         for (ix, line) in state.text_wrapper.lines.iter().enumerate() {
             let wrapped_height = line.height(line_height);
-            
+
             if line_bottom < -scroll_top {
                 visible_top = line_bottom;
                 visible_range.start = ix;
@@ -686,7 +686,7 @@ impl TextElement {
             debug_assert_eq!(line_item.len(), line.len());
 
             let mut line_layout = LineLayout::new();
-            
+
             // TODO: PERFORMANCE FIX - Use line cache here
             // The cache exists and stores ShapedLine objects but requires &mut
             // Solution: Wrap line_cache in RefCell or change layout_lines to take &mut InputState
@@ -740,12 +740,12 @@ impl TextElement {
             // For very large visible ranges, return basic styles only
             // to avoid expensive syntax highlighting
             let mut styles = diagnostics.styles_for_range(&visible_byte_range, cx);
-            
+
             // hover definition style
             if let Some(hover_style) = self.layout_hover_definition(cx) {
                 styles.push(hover_style);
             }
-            
+
             return Some(styles);
         }
 
@@ -1011,11 +1011,11 @@ impl Element for TextElement {
         } else {
             None
         };
-        
+
         // Store needed data before dropping state borrow
         let is_multi_line = state.mode.is_multi_line();
         let is_soft_wrap = state.soft_wrap;
-        
+
         let lines = {
             let state = self.state.read(cx);
             Self::layout_lines(
@@ -1327,17 +1327,15 @@ impl Element for TextElement {
         // This provides visual structure for indented code
         {
             let state = self.state.read(cx);
-            let tab_size = state.mode.tab_size()
-                .map(|t| t.tab_size)
-                .unwrap_or(4); // Default to 4 if not available
-            
+            let tab_size = state.mode.tab_size().map(|t| t.tab_size).unwrap_or(4); // Default to 4 if not available
+
             // Make guides clearly visible
             let indent_guide_color = cx.theme().border.opacity(1.0);
-            
+
             // Get actual font metrics for accurate positioning
             let text_style = window.text_style();
             let font_size = text_style.font_size.to_pixels(window.rem_size());
-            
+
             // Measure actual space character width using the text system
             let space_text: SharedString = " ".into();
             let space_run = TextRun {
@@ -1348,42 +1346,38 @@ impl Element for TextElement {
                 underline: None,
                 strikethrough: None,
             };
-            let shaped_space = window.text_system().shape_line(
-                space_text,
-                font_size,
-                &[space_run],
-                None,
-            );
+            let shaped_space =
+                window
+                    .text_system()
+                    .shape_line(space_text, font_size, &[space_run], None);
             let char_width = shaped_space.width;
             let tab_pixel_width = char_width * tab_size as f32;
-            
+
             let mut offset_y = invisible_top_padding;
             let rope = &state.text;
-            
+
             // Paint indent guides for each visible line
             for (ix, line_layout) in prepaint.last_layout.lines.iter().enumerate() {
                 let row = visible_range.start + ix;
-                
+
                 // Get the actual line text from the rope
                 let line_text = rope.slice_line(row);
                 let line_str = line_text.as_str().unwrap_or("");
                 let indent_level = calculate_indent_level(line_str, tab_size);
-                
+
                 // Draw a vertical line at each indent level
                 for level in 0..indent_level {
-                    let x_offset = prepaint.last_layout.line_number_width + (tab_pixel_width * (level + 1) as f32);
+                    let x_offset = prepaint.last_layout.line_number_width
+                        + (tab_pixel_width * (level + 1) as f32);
                     let guide_x = origin.x + x_offset;
                     let guide_y = origin.y + offset_y;
-                    
+
                     window.paint_quad(fill(
-                        Bounds::new(
-                            point(guide_x, guide_y),
-                            size(px(1.0), line_height)
-                        ),
+                        Bounds::new(point(guide_x, guide_y), size(px(1.0), line_height)),
                         indent_guide_color,
                     ));
                 }
-                
+
                 offset_y += line_layout.size(line_height).height;
             }
         }
@@ -1451,15 +1445,12 @@ impl Element for TextElement {
                 // Paint diff gutter bar (3px strip on left edge of line-number column)
                 if let Some(highlight) = line_highlights_snap.get(row) {
                     let bar_color: Option<gpui::Hsla> = match highlight {
-                        crate::input::LineHighlight::Added   => Some(gpui::rgba(0x00cc00ff).into()),
+                        crate::input::LineHighlight::Added => Some(gpui::rgba(0x00cc00ff).into()),
                         crate::input::LineHighlight::Removed => Some(gpui::rgba(0xff2222ff).into()),
-                        crate::input::LineHighlight::None    => None,
+                        crate::input::LineHighlight::None => None,
                     };
                     if let Some(color) = bar_color {
-                        window.paint_quad(fill(
-                            Bounds::new(p, size(px(3.), height)),
-                            color,
-                        ));
+                        window.paint_quad(fill(Bounds::new(p, size(px(3.), height)), color));
                     }
                 }
 

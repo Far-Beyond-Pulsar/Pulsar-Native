@@ -1,16 +1,15 @@
 //! The game client networking subsystem.
-//! 
+//!
 //! This module handles all client-side networking functionalities,
 //! including establishing connections to game servers, managing
 //! connection states, and handling data transmission.
-
 
 /// The PulsarIntConnection struct represents a connection to a game server.
 /// It holds information about the server's IP address, port, connection
 /// status, last ping time, latency, and a reference to the underlying
 /// connection object.
 pub struct PulsarIntConnection {
-    pub ip: Option<[u8; 4]>,    
+    pub ip: Option<[u8; 4]>,
     pub port: Option<u16>,
     pub last_ping: std::time::Instant,
     pub last_latency_ms: u32,
@@ -21,7 +20,7 @@ pub struct PulsarIntConnection {
 impl PulsarIntConnection {
     /// Creates a new PulsarIntConnection instance with the specified
     /// IP and port.
-    /// 
+    ///
     /// Note: The connection is not established upon creation. Call the
     /// `connect` method to establish the connection.
     pub fn new(ip: Option<[u8; 4]>, port: Option<u16>) -> Self {

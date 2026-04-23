@@ -1,11 +1,14 @@
 //! History view: scrollable commit list
 
+use super::toolbar::render_toolbar;
 use crate::GitManager;
 use gpui::*;
-use ui::{h_flex, v_flex, ActiveTheme as _, StyledExt, scroll::ScrollbarAxis};
-use super::toolbar::render_toolbar;
+use ui::{ActiveTheme as _, StyledExt, h_flex, scroll::ScrollbarAxis, v_flex};
 
-pub fn render_history_view(git_manager: &mut GitManager, cx: &mut Context<GitManager>) -> impl IntoElement {
+pub fn render_history_view(
+    git_manager: &mut GitManager,
+    cx: &mut Context<GitManager>,
+) -> impl IntoElement {
     let repo_state = git_manager.repo_state.read();
     let commits = repo_state.commits.clone();
     let selected_commit = git_manager.selected_commit.clone();
@@ -31,7 +34,11 @@ pub fn render_history_view(git_manager: &mut GitManager, cx: &mut Context<GitMan
             commit.timestamp.format("%m/%d %H:%M")
         );
         let commit_hash = commit.hash.clone();
-        let bg = if is_selected { list_active } else { gpui::transparent_black() };
+        let bg = if is_selected {
+            list_active
+        } else {
+            gpui::transparent_black()
+        };
 
         commit_list = commit_list.child(
             v_flex()

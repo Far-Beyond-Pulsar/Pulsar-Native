@@ -1,15 +1,20 @@
-use gpui::*;
-use gpui::prelude::FluentBuilder as _;
-use ui::{
-    h_flex, v_flex, Icon, IconName, ActiveTheme as _, Theme, ThemeRegistry,
-    button::{Button, ButtonVariants as _},
-    menu::popup_menu::PopupMenuExt,
-};
-use crate::settings::{SettingsScreen, SelectThemeAction};
 use super::components::*;
+use crate::settings::{SelectThemeAction, SettingsScreen};
+use gpui::prelude::FluentBuilder as _;
+use gpui::*;
+use ui::{
+    button::{Button, ButtonVariants as _},
+    h_flex,
+    menu::popup_menu::PopupMenuExt,
+    v_flex, ActiveTheme as _, Icon, IconName, Theme, ThemeRegistry,
+};
 
 impl SettingsScreen {
-    pub fn render_appearance_view(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    pub fn render_appearance_view(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let theme = cx.theme();
         let theme_names: Vec<String> = ThemeRegistry::global(cx)
             .sorted_themes()
@@ -26,7 +31,11 @@ impl SettingsScreen {
             .child(self.render_color_scheme_info_card(cx))
     }
 
-    fn render_theme_card(&self, theme_names: &[String], cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_theme_card(
+        &self,
+        theme_names: &[String],
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let border_color = cx.theme().border;
         let accent = cx.theme().accent;
         let foreground = cx.theme().foreground;
@@ -81,7 +90,7 @@ impl SettingsScreen {
                                             }))
                                     )
                             )
-                            
+
                     )
                     .child(
                         div()
@@ -126,11 +135,8 @@ impl SettingsScreen {
                     .child(
                         SettingRow::new("Scale Factor")
                             .description("Coming soon: Adjust UI scale for better visibility")
-                            .control(
-                                render_value_display("1.0x (Default)", cx)
-                            )
-                            
-                    )
+                            .control(render_value_display("1.0x (Default)", cx)),
+                    ),
             )
     }
 

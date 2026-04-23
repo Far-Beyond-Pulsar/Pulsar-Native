@@ -106,7 +106,12 @@ async fn main() -> Result<()> {
     });
     logging::log_status("🧹", "Garbage Collector", "RUNNING", true);
 
-    tracing::debug!("\n{}", "✅ All services started successfully!".bright_green().bold());
+    tracing::debug!(
+        "\n{}",
+        "✅ All services started successfully!"
+            .bright_green()
+            .bold()
+    );
     tracing::debug!("{}\n", "━".repeat(60).bright_black());
 
     // 12. Wait for shutdown signal
@@ -154,7 +159,12 @@ async fn main() -> Result<()> {
         logging::log_status("📡", "Telemetry", "STOPPED", true);
     }
 
-    tracing::debug!("\n{}", "👋 Pulsar MultiEdit service stopped cleanly".bright_green().bold());
+    tracing::debug!(
+        "\n{}",
+        "👋 Pulsar MultiEdit service stopped cleanly"
+            .bright_green()
+            .bold()
+    );
     tracing::debug!("{}\n", "━".repeat(60).bright_black());
 
     Ok(())

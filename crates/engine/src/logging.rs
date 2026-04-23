@@ -7,16 +7,16 @@
 //   Call `logging::init(verbose)` at the start of main().
 //   Keep the returned guard alive for the program's duration.
 
-use directories::ProjectDirs;
 use chrono::Local;
+use directories::ProjectDirs;
 use serde_json;
 use std::fs;
+use tracing::Subscriber;
 use tracing_subscriber::fmt::{
     format::{FormatEvent, FormatFields, Writer},
     FmtContext,
 };
 use tracing_subscriber::registry::LookupSpan;
-use tracing::Subscriber;
 
 #[allow(dead_code)]
 pub struct LogGuard(tracing_appender::non_blocking::WorkerGuard);
@@ -103,13 +103,17 @@ where
         // Elegant, dark-friendly, harmonious colors
         let (level_str, level_color) = match level {
             tracing::Level::ERROR => ("ERROR", "\x1b[1;91m"), // Bold Red
-            tracing::Level::WARN => ("WARN ", "\x1b[1;93m"), // Bold Yellow
-            tracing::Level::INFO => ("INFO ", "\x1b[1;94m"), // Bold Blue
+            tracing::Level::WARN => ("WARN ", "\x1b[1;93m"),  // Bold Yellow
+            tracing::Level::INFO => ("INFO ", "\x1b[1;94m"),  // Bold Blue
             tracing::Level::DEBUG => ("DEBUG", "\x1b[1;92m"), // Bold Green
             tracing::Level::TRACE => ("TRACE", "\x1b[1;95m"), // Bold Magenta
         };
         // Timestamp: dim cyan
-        write!(writer, "\x1b[2;36m{}\x1b[0m ", now.format("%Y-%m-%d %H:%M:%S"))?;
+        write!(
+            writer,
+            "\x1b[2;36m{}\x1b[0m ",
+            now.format("%Y-%m-%d %H:%M:%S")
+        )?;
         // Level: bold, colored, padded
         write!(writer, "{}{}\x1b[0m ", level_color, level_str)?;
         // Thread ID: dim magenta

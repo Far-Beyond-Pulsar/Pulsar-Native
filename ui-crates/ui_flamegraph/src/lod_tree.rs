@@ -1,9 +1,9 @@
 //! Hierarchical LOD tree with pre-merged spans at each level
 //! Query complexity: O(visible_output_size), NOT O(total_data_size)
 
-use std::collections::BTreeMap;
-use crate::trace_data::{TraceFrame, TraceSpan};
 use crate::constants::ROW_HEIGHT;
+use crate::trace_data::{TraceFrame, TraceSpan};
+use std::collections::BTreeMap;
 
 /// Pre-merged span ready for rendering
 #[derive(Clone, Debug)]
@@ -44,7 +44,8 @@ impl LODLevel {
     }
 
     fn bucket_index(&self, time_ns: u64) -> usize {
-        ((time_ns - self.time_min) / self.bucket_size_ns).min((self.num_buckets - 1) as u64) as usize
+        ((time_ns - self.time_min) / self.bucket_size_ns).min((self.num_buckets - 1) as u64)
+            as usize
     }
 
     /// Add spans from original data, merging adjacent ones in same bucket
@@ -98,7 +99,14 @@ impl LODLevel {
     }
 
     /// Query spans in time range - O(output_size)!
-    fn query(&self, time_start: u64, time_end: u64, y_min: f32, y_max: f32, result: &mut Vec<MergedSpan>) {
+    fn query(
+        &self,
+        time_start: u64,
+        time_end: u64,
+        y_min: f32,
+        y_max: f32,
+        result: &mut Vec<MergedSpan>,
+    ) {
         let start_bucket = self.bucket_index(time_start);
         let end_bucket = self.bucket_index(time_end);
 
@@ -140,13 +148,13 @@ impl LODTree {
 
         // Create multiple LOD levels with increasing bucket sizes
         let bucket_sizes = vec![
-            50_000,      // 0.05ms - ultra fine (zoomed in 100x+)
-            100_000,     // 0.1ms  - very fine (zoomed in 20-100x)
-            500_000,     // 0.5ms  - fine (zoomed in 5-20x)
-            1_000_000,   // 1ms    - medium (zoomed in 2-5x)
-            5_000_000,   // 5ms    - coarse (normal view)
-            10_000_000,  // 10ms   - very coarse (zoomed out 2-5x)
-            50_000_000,  // 50ms   - ultra coarse (zoomed out 5x+)
+            50_000,     // 0.05ms - ultra fine (zoomed in 100x+)
+            100_000,    // 0.1ms  - very fine (zoomed in 20-100x)
+            500_000,    // 0.5ms  - fine (zoomed in 5-20x)
+            1_000_000,  // 1ms    - medium (zoomed in 2-5x)
+            5_000_000,  // 5ms    - coarse (normal view)
+            10_000_000, // 10ms   - very coarse (zoomed out 2-5x)
+            50_000_000, // 50ms   - ultra coarse (zoomed out 5x+)
         ];
 
         let mut levels = Vec::new();

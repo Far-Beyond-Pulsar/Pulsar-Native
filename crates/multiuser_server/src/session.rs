@@ -77,7 +77,10 @@ impl SessionStore {
 
         self.sessions.insert(session_id.clone(), session.clone());
 
-        METRICS.sessions_total.with_label_values(&[&session.host_id]).inc();
+        METRICS
+            .sessions_total
+            .with_label_values(&[&session.host_id])
+            .inc();
         METRICS.sessions_active.inc();
 
         info!(
@@ -91,11 +94,7 @@ impl SessionStore {
     }
 
     /// Create a new session (generates a random UUID for session ID)
-    pub fn create_session(
-        &self,
-        host_id: String,
-        metadata: serde_json::Value,
-    ) -> Result<Session> {
+    pub fn create_session(&self, host_id: String, metadata: serde_json::Value) -> Result<Session> {
         let session_id = Uuid::new_v4().to_string();
         self.create_session_with_id(session_id, host_id, metadata)
     }
@@ -106,12 +105,7 @@ impl SessionStore {
     }
 
     /// Add a participant to a session
-    pub fn join_session(
-        &self,
-        session_id: &str,
-        peer_id: String,
-        role: Role,
-    ) -> Result<Session> {
+    pub fn join_session(&self, session_id: &str, peer_id: String, role: Role) -> Result<Session> {
         let mut session = self
             .sessions
             .get_mut(session_id)
@@ -120,11 +114,7 @@ impl SessionStore {
         let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
 
         // Check if peer already in session
-        if session
-            .participants
-            .iter()
-            .any(|p| p.peer_id == peer_id)
-        {
+        if session.participants.iter().any(|p| p.peer_id == peer_id) {
             anyhow::bail!("Peer already in session");
         }
 
@@ -164,7 +154,10 @@ impl SessionStore {
 
         // Close session if host left or no participants remain
         if session.participants.is_empty()
-            || !session.participants.iter().any(|p| p.peer_id == session.host_id)
+            || !session
+                .participants
+                .iter()
+                .any(|p| p.peer_id == session.host_id)
         {
             drop(session);
             self.close_session(session_id, "host_left")?;
@@ -202,7 +195,8 @@ impl SessionStore {
             let duration = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
-                .as_secs() - session.created_at;
+                .as_secs()
+                - session.created_at;
 
             info!(
                 session_id = %session_id,
@@ -247,10 +241,7 @@ impl SessionStore {
         }
 
         if removed > 0 {
-            info!(
-                removed = removed,
-                "🧹 Garbage collected expired sessions"
-            );
+            info!(removed = removed, "🧹 Garbage collected expired sessions");
         }
 
         Ok(removed)
@@ -283,7 +274,10 @@ impl SessionStore {
         }
 
         if removed > 0 {
-            info!(removed = removed, "🧹 Removed {} stale participants", removed);
+            info!(
+                removed = removed,
+                "🧹 Removed {} stale participants", removed
+            );
         }
 
         Ok(removed)

@@ -53,20 +53,20 @@
 //! The only concern is **Arc cycles**, which can cause memory leaks.
 //! See `PLUGIN_ARCHITECTURE.md` for guidelines on preventing cycles with `Weak<T>`.
 
+use once_cell::sync::OnceCell;
 use plugin_editor_api::*;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
-use once_cell::sync::OnceCell;
 use ui::dock::PanelView;
 
+pub mod builtin;
 mod permanent_library;
 mod registry;
-pub mod builtin;
 
+pub use builtin::{BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext};
 pub use permanent_library::PermanentLibrary;
 pub use registry::{EditorRegistry, FileTypeRegistry};
-pub use builtin::{BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext};
 
 // ============================================================================
 // Global Plugin Manager
@@ -209,10 +209,8 @@ impl PluginManager {
     /// This should be called after all built-in editors have been registered
     /// with the builtin registry.
     pub fn register_builtin_editors(&mut self) {
-        self.builtin_registry.register_all(
-            &mut self.file_type_registry,
-            &mut self.editor_registry,
-        );
+        self.builtin_registry
+            .register_all(&mut self.file_type_registry, &mut self.editor_registry);
     }
 
     /// Load all plugins from a directory.
@@ -308,12 +306,11 @@ impl PluginManager {
         tracing::debug!("Loading plugin from: {:?}", path);
 
         // Load the library permanently
-        let library = PermanentLibrary::new(path).map_err(|e| {
-            PluginManagerError::LibraryLoadError {
+        let library =
+            PermanentLibrary::new(path).map_err(|e| PluginManagerError::LibraryLoadError {
                 path: path.to_path_buf(),
                 message: e.to_string(),
-            }
-        })?;
+            })?;
 
         // Get the version info function
         let version_fn: libloading::Symbol<extern "C" fn() -> VersionInfo> = unsafe {
@@ -449,9 +446,7 @@ impl PluginManager {
                     | (StatusbarPosition::Right, StatusbarPosition::Right) => {
                         b.priority.cmp(&a.priority) // Higher priority comes first
                     }
-                    (StatusbarPosition::Left, StatusbarPosition::Right) => {
-                        std::cmp::Ordering::Less
-                    }
+                    (StatusbarPosition::Left, StatusbarPosition::Right) => std::cmp::Ordering::Less,
                     (StatusbarPosition::Right, StatusbarPosition::Left) => {
                         std::cmp::Ordering::Greater
                     }
@@ -604,12 +599,12 @@ impl PluginManager {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginManagerError> {
-        let plugin = self
-            .plugins
-            .get_mut(plugin_id)
-            .ok_or_else(|| PluginManagerError::PluginNotFound {
-                plugin_id: plugin_id.clone(),
-            })?;
+        let plugin =
+            self.plugins
+                .get_mut(plugin_id)
+                .ok_or_else(|| PluginManagerError::PluginNotFound {
+                    plugin_id: plugin_id.clone(),
+                })?;
 
         // Initialize plugin globals (Theme, etc.) from main app before creating editor
         // This syncs the main app's global state into the plugin's DLL memory space
@@ -627,10 +622,7 @@ impl PluginManager {
                 // Validate theme pointer before passing to plugin
                 if !theme_ptr.is_null() {
                     init_fn(theme_ptr);
-                    tracing::debug!(
-                        "Initialized plugin globals for: {}",
-                        plugin_id.as_str()
-                    );
+                    tracing::debug!("Initialized plugin globals for: {}", plugin_id.as_str());
                 } else {
                     tracing::warn!("Theme pointer is null, plugin may not have theme access");
                 }
@@ -677,10 +669,12 @@ impl PluginManager {
         match &file_type.structure {
             FileStructure::Standalone => {
                 // Create a simple file with default content
-                let content = serde_json::to_string_pretty(&file_type.default_content)
-                    .map_err(|e| PluginManagerError::FileCreationError {
-                        path: path.to_path_buf(),
-                        message: e.to_string(),
+                let content =
+                    serde_json::to_string_pretty(&file_type.default_content).map_err(|e| {
+                        PluginManagerError::FileCreationError {
+                            path: path.to_path_buf(),
+                            message: e.to_string(),
+                        }
                     })?;
 
                 std::fs::write(path, content).map_err(|e| {
@@ -705,10 +699,12 @@ impl PluginManager {
 
                 // Create the marker file with default content
                 let marker_path = path.join(marker_file);
-                let content = serde_json::to_string_pretty(&file_type.default_content)
-                    .map_err(|e| PluginManagerError::FileCreationError {
-                        path: marker_path.clone(),
-                        message: e.to_string(),
+                let content =
+                    serde_json::to_string_pretty(&file_type.default_content).map_err(|e| {
+                        PluginManagerError::FileCreationError {
+                            path: marker_path.clone(),
+                            message: e.to_string(),
+                        }
                     })?;
 
                 std::fs::write(&marker_path, content).map_err(|e| {
@@ -764,7 +760,10 @@ impl Default for PluginManager {
 // We just log that we're shutting down
 impl Drop for PluginManager {
     fn drop(&mut self) {
-        tracing::info!("Plugin manager shutting down ({} plugins loaded)", self.plugins.len());
+        tracing::info!(
+            "Plugin manager shutting down ({} plugins loaded)",
+            self.plugins.len()
+        );
 
         // Note: We intentionally do NOT unload plugins or call destroy functions.
         // Plugins remain loaded until process termination. This is safe and intentional.

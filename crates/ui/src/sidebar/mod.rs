@@ -1,16 +1,15 @@
+use crate::PixelsExt;
 use crate::{
-    ActiveTheme, Collapsible, Icon, IconName, Side, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     h_flex,
     scroll::ScrollableElement,
-    v_flex,
+    v_flex, ActiveTheme, Collapsible, Icon, IconName, Side, Sizable, StyledExt,
 };
-use crate::PixelsExt;
 use gpui::{
-    AbsoluteLength, AnyElement, App, ClickEvent, DefiniteLength, EdgesRefinement, ElementId,
+    div, list, prelude::FluentBuilder, px, AbsoluteLength, Animation, AnimationExt as _,
+    AnyElement, App, ClickEvent, DefiniteLength, EdgesRefinement, ElementId,
     InteractiveElement as _, IntoElement, Length, ListAlignment, ListState, ParentElement, Pixels,
-    RenderOnce, SharedString, StyleRefinement, Styled, Window, Animation,
-    AnimationExt as _, div, list, prelude::FluentBuilder, px,
+    RenderOnce, SharedString, StyleRefinement, Styled, Window,
 };
 use std::rc::Rc;
 

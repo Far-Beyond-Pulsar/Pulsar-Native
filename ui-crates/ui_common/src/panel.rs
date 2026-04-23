@@ -1,4 +1,4 @@
-use gpui::{App, AnyElement, EventEmitter};
+use gpui::{AnyElement, App, EventEmitter};
 
 /// Common lifecycle events all panels can emit
 #[derive(Clone, Debug)]

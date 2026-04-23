@@ -14,7 +14,7 @@
 //! ```rust
 //! use type_db::TypeDatabase;
 //! use plugin_editor_api::FileTypeId;
-//! 
+//!
 //! let mut db = TypeDatabase::new();
 //! let file_type = FileTypeId::new("struct");
 //! let id = db.register_simple("Vector3", file_type);
@@ -53,7 +53,6 @@ pub struct TypeInfo {
     /// Last modified timestamp
     pub last_modified: Option<SystemTime>,
 }
-
 
 /// An in-memory, thread-safe database for storing and searching user-created runtime types.
 ///
@@ -370,7 +369,7 @@ impl TypeDatabase {
     /// let struct_type = FileTypeId::new("struct");
     /// db.register_simple("Struct1", struct_type.clone());
     /// db.register_simple("Struct2", struct_type.clone());
-    /// 
+    ///
     /// let enum_type = FileTypeId::new("enum");
     /// db.register_simple("Enum1", enum_type);
     ///
@@ -406,7 +405,10 @@ impl TypeDatabase {
     /// assert_eq!(db.count_by_file_type(&struct_type), 2);
     /// ```
     pub fn count_by_file_type(&self, file_type_id: &FileTypeId) -> usize {
-        self.types.iter().filter(|t| &t.file_type_id == file_type_id).count()
+        self.types
+            .iter()
+            .filter(|t| &t.file_type_id == file_type_id)
+            .count()
     }
 
     /// Gets a type by its unique ID.
@@ -430,7 +432,11 @@ impl TypeDatabase {
     pub fn get_by_name(&self, name: &str) -> Vec<TypeInfo> {
         self.name_index
             .get(&name.to_lowercase())
-            .map(|ids| ids.iter().filter_map(|id| self.types.get(id).map(|v| v.clone())).collect())
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| self.types.get(id).map(|v| v.clone()))
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -491,7 +497,11 @@ impl TypeDatabase {
     pub fn get_by_category(&self, category: &str) -> Vec<TypeInfo> {
         self.category_index
             .get(&category.to_lowercase())
-            .map(|ids| ids.iter().filter_map(|id| self.types.get(id).map(|v| v.clone())).collect())
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| self.types.get(id).map(|v| v.clone()))
+                    .collect()
+            })
             .unwrap_or_default()
     }
 

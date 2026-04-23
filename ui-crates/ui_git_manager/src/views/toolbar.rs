@@ -3,9 +3,11 @@
 use crate::{GitManager, GitView, PendingAuthOp};
 use gpui::*;
 use ui::{
-    h_flex, v_flex, Icon, IconName, ActiveTheme as _,
+    ActiveTheme as _, Icon, IconName,
     button::{Button, ButtonVariant, ButtonVariants as _},
+    h_flex,
     input::TextInput,
+    v_flex,
 };
 
 pub fn render_toolbar(git_manager: &GitManager, cx: &mut Context<GitManager>) -> impl IntoElement {
@@ -29,21 +31,33 @@ pub fn render_toolbar(git_manager: &GitManager, cx: &mut Context<GitManager>) ->
             Button::new("tab-changes")
                 .label("Changes")
                 .compact()
-                .with_variant(if current_view == GitView::Changes { ButtonVariant::Primary } else { ButtonVariant::Ghost })
+                .with_variant(if current_view == GitView::Changes {
+                    ButtonVariant::Primary
+                } else {
+                    ButtonVariant::Ghost
+                })
                 .on_click(cx.listener(|this, _, _, cx| this.switch_view(GitView::Changes, cx))),
         )
         .child(
             Button::new("tab-history")
                 .label("History")
                 .compact()
-                .with_variant(if current_view == GitView::History { ButtonVariant::Primary } else { ButtonVariant::Ghost })
+                .with_variant(if current_view == GitView::History {
+                    ButtonVariant::Primary
+                } else {
+                    ButtonVariant::Ghost
+                })
                 .on_click(cx.listener(|this, _, _, cx| this.switch_view(GitView::History, cx))),
         )
         .child(
             Button::new("tab-branches")
                 .label("Branches")
                 .compact()
-                .with_variant(if current_view == GitView::Branches { ButtonVariant::Primary } else { ButtonVariant::Ghost })
+                .with_variant(if current_view == GitView::Branches {
+                    ButtonVariant::Primary
+                } else {
+                    ButtonVariant::Ghost
+                })
                 .on_click(cx.listener(|this, _, _, cx| this.switch_view(GitView::Branches, cx))),
         );
 
@@ -52,7 +66,11 @@ pub fn render_toolbar(git_manager: &GitManager, cx: &mut Context<GitManager>) ->
         .w_full()
         .gap_1()
         .items_center()
-        .child(Icon::new(IconName::GitBranch).size(px(12.)).text_color(muted_fg))
+        .child(
+            Icon::new(IconName::GitBranch)
+                .size(px(12.))
+                .text_color(muted_fg),
+        )
         .child(
             div()
                 .flex_1()
@@ -130,7 +148,10 @@ pub fn render_toolbar(git_manager: &GitManager, cx: &mut Context<GitManager>) ->
                         .text_xs()
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(warning)
-                        .child(format!("Authentication required for {}", pending_op.label())),
+                        .child(format!(
+                            "Authentication required for {}",
+                            pending_op.label()
+                        )),
                 )
                 .child(TextInput::new(&git_manager.auth_username_input))
                 .child(TextInput::new(&git_manager.auth_password_input))
@@ -165,7 +186,11 @@ pub fn render_toolbar(git_manager: &GitManager, cx: &mut Context<GitManager>) ->
                 .items_center()
                 .rounded(cx.theme().radius)
                 .bg(danger.opacity(0.12))
-                .child(Icon::new(IconName::CircleX).size(px(11.)).text_color(danger))
+                .child(
+                    Icon::new(IconName::CircleX)
+                        .size(px(11.))
+                        .text_color(danger),
+                )
                 .child(
                     div()
                         .flex_1()

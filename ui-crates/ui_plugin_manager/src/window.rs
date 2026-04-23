@@ -1,15 +1,14 @@
 //! Plugin Manager Window
 
-use gpui::*;
 use gpui::prelude::FluentBuilder;
-use plugin_editor_api::{PluginMetadata, PluginId};
+use gpui::*;
+use plugin_editor_api::{PluginId, PluginMetadata};
 use plugin_manager::PluginManager;
+use ui::Sizable;
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex,
-    ActiveTheme as _, Icon, IconName, StyledExt, TitleBar,
+    h_flex, v_flex, ActiveTheme as _, Icon, IconName, StyledExt, TitleBar,
 };
-use ui::Sizable;
 
 /// Plugin Manager Window - Shows loaded plugins with unload functionality
 pub struct PluginManagerWindow {
@@ -26,10 +25,7 @@ impl PluginManagerWindow {
         // Load initial plugin list from global
         let plugins = if let Some(pm_lock) = plugin_manager::global() {
             if let Ok(pm) = pm_lock.read() {
-                pm.get_plugins()
-                    .into_iter()
-                    .cloned()
-                    .collect()
+                pm.get_plugins().into_iter().cloned().collect()
             } else {
                 Vec::new()
             }
@@ -47,10 +43,7 @@ impl PluginManagerWindow {
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
         if let Some(pm_lock) = plugin_manager::global() {
             if let Ok(pm) = pm_lock.read() {
-                self.plugins = pm.get_plugins()
-                    .into_iter()
-                    .cloned()
-                    .collect();
+                self.plugins = pm.get_plugins().into_iter().cloned().collect();
             }
         }
         cx.notify();
@@ -66,36 +59,35 @@ impl Render for PluginManagerWindow {
             .bg(cx.theme().background)
             .child(
                 // Custom titlebar
-                TitleBar::new()
-                    .child(
-                        h_flex()
-                            .w_full()
-                            .items_center()
-                            .gap_3()
-                            .child(
-                                Icon::new(IconName::Puzzle)
-                                    .size(px(16.))
-                                    .text_color(cx.theme().primary)
-                            )
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .font_semibold()
-                                    .text_color(cx.theme().foreground)
-                                    .child("Plugin Manager")
-                            )
-                            .child(div().flex_1())  // Spacer
-                            .child(
-                                Button::new("refresh-plugins")
-                                    .icon(IconName::Refresh)
-                                    .ghost()
-                                    .xsmall()
-                                    .tooltip("Refresh Plugin List")
-                                    .on_click(cx.listener(|this, _, _window, cx| {
-                                        this.refresh(cx);
-                                    }))
-                            )
-                    )
+                TitleBar::new().child(
+                    h_flex()
+                        .w_full()
+                        .items_center()
+                        .gap_3()
+                        .child(
+                            Icon::new(IconName::Puzzle)
+                                .size(px(16.))
+                                .text_color(cx.theme().primary),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_semibold()
+                                .text_color(cx.theme().foreground)
+                                .child("Plugin Manager"),
+                        )
+                        .child(div().flex_1()) // Spacer
+                        .child(
+                            Button::new("refresh-plugins")
+                                .icon(IconName::Refresh)
+                                .ghost()
+                                .xsmall()
+                                .tooltip("Refresh Plugin List")
+                                .on_click(cx.listener(|this, _, _window, cx| {
+                                    this.refresh(cx);
+                                })),
+                        ),
+                ),
             )
             .child(
                 // Content area
@@ -107,9 +99,9 @@ impl Render for PluginManagerWindow {
                         .p_6()
                         .gap_3()
                         .children(
-                            self.plugins.iter().map(|plugin| {
-                                self.render_plugin_item(plugin, cx)
-                            })
+                            self.plugins
+                                .iter()
+                                .map(|plugin| self.render_plugin_item(plugin, cx)),
                         )
                         .into_any_element()
                 } else {
@@ -123,28 +115,32 @@ impl Render for PluginManagerWindow {
                         .child(
                             Icon::new(IconName::Puzzle)
                                 .size(px(64.))
-                                .text_color(cx.theme().muted_foreground.opacity(0.5))
+                                .text_color(cx.theme().muted_foreground.opacity(0.5)),
                         )
                         .child(
                             div()
                                 .text_lg()
                                 .text_color(cx.theme().muted_foreground)
-                                .child("No plugins loaded")
+                                .child("No plugins loaded"),
                         )
                         .child(
                             div()
                                 .text_sm()
                                 .text_color(cx.theme().muted_foreground.opacity(0.7))
-                                .child("Place plugin DLLs in the plugins/editor directory")
+                                .child("Place plugin DLLs in the plugins/editor directory"),
                         )
                         .into_any_element()
-                }
+                },
             )
     }
 }
 
 impl PluginManagerWindow {
-    fn render_plugin_item(&self, plugin: &PluginMetadata, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_plugin_item(
+        &self,
+        plugin: &PluginMetadata,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let plugin_id = plugin.id.clone();
         let plugin_name = plugin.name.clone();
         let plugin_version = plugin.version.clone();

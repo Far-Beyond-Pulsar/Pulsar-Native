@@ -1107,4 +1107,3 @@ pub fn proportion(part: f64, whole: f64) -> f64 {
     }
     (part / whole).clamp(0.0, 1.0)
 }
-

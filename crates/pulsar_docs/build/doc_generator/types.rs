@@ -1,8 +1,7 @@
 /// Type definitions for documentation structures
-/// 
+///
 /// Defines all the data structures used throughout the documentation system.
 /// These represent the parsed and extracted documentation information.
-
 use std::path::PathBuf;
 
 /// Complete documentation for a crate

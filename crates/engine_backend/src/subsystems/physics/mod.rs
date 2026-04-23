@@ -1,9 +1,11 @@
-use rapier3d::prelude::*;
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread;
-use crate::subsystems::framework::{Subsystem, SubsystemContext, SubsystemError, SubsystemId, subsystem_ids};
 use crate::services::PhysicsQueryService;
+use crate::subsystems::framework::{
+    subsystem_ids, Subsystem, SubsystemContext, SubsystemError, SubsystemId,
+};
+use rapier3d::prelude::*;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 /// All physics-engine-owned pipeline state consolidated into one lock.
 ///
@@ -123,7 +125,10 @@ impl Subsystem for PhysicsEngine {
 
         // Setup test scene
         {
-            let mut rigid_body_set = self.rigid_body_set.lock().unwrap_or_else(|e| e.into_inner());
+            let mut rigid_body_set = self
+                .rigid_body_set
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             let mut collider_set = self.collider_set.lock().unwrap_or_else(|e| e.into_inner());
 
             let rigid_body = RigidBodyBuilder::dynamic()
@@ -163,7 +168,12 @@ impl Subsystem for PhysicsEngine {
                         let mut w = world.lock().unwrap_or_else(|e| e.into_inner());
                         let mut bodies = rigid_body_set.lock().unwrap_or_else(|e| e.into_inner());
                         let mut colliders = collider_set.lock().unwrap_or_else(|e| e.into_inner());
-                        w.step(&gravity, &integration_parameters, &mut bodies, &mut colliders);
+                        w.step(
+                            &gravity,
+                            &integration_parameters,
+                            &mut bodies,
+                            &mut colliders,
+                        );
                     }
 
                     thread::sleep(std::time::Duration::from_millis(8)); // ~120 Hz

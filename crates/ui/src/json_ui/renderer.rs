@@ -1,24 +1,30 @@
-use crate::json_ui::schema::*;
 use crate::button::Button;
-use crate::{StyledExt, gray};
+use crate::json_ui::schema::*;
+use crate::{gray, StyledExt};
 use gpui::*;
 use std::collections::HashMap;
 
 pub struct UiRenderer;
 
 impl UiRenderer {
-    pub fn render_component(component: &UiComponent, cx: &mut Context<crate::json_ui::JsonCanvas>) -> AnyElement {
+    pub fn render_component(
+        component: &UiComponent,
+        cx: &mut Context<crate::json_ui::JsonCanvas>,
+    ) -> AnyElement {
         Self::render_component_internal(component, &component.props, cx)
     }
 
-    pub fn render_component_generic<T>(component: &UiComponent, _cx: &mut Context<T>) -> AnyElement {
+    pub fn render_component_generic<T>(
+        component: &UiComponent,
+        _cx: &mut Context<T>,
+    ) -> AnyElement {
         Self::render_component_standalone(component, &component.props)
     }
 
     fn render_component_internal(
         component: &UiComponent,
         props: &HashMap<String, UiValue>,
-        cx: &mut Context<crate::json_ui::JsonCanvas>
+        cx: &mut Context<crate::json_ui::JsonCanvas>,
     ) -> AnyElement {
         match component.component_type.as_str() {
             "div" => Self::render_div(component, props, cx).into_any_element(),
@@ -35,7 +41,11 @@ impl UiRenderer {
         }
     }
 
-    fn render_div(component: &UiComponent, props: &HashMap<String, UiValue>, cx: &mut Context<crate::json_ui::JsonCanvas>) -> impl IntoElement {
+    fn render_div(
+        component: &UiComponent,
+        props: &HashMap<String, UiValue>,
+        cx: &mut Context<crate::json_ui::JsonCanvas>,
+    ) -> impl IntoElement {
         let mut element = div();
 
         element = Self::apply_common_props(element, props);
@@ -44,7 +54,11 @@ impl UiRenderer {
         element
     }
 
-    fn render_h1(component: &UiComponent, props: &HashMap<String, UiValue>, cx: &mut Context<crate::json_ui::JsonCanvas>) -> impl IntoElement {
+    fn render_h1(
+        component: &UiComponent,
+        props: &HashMap<String, UiValue>,
+        cx: &mut Context<crate::json_ui::JsonCanvas>,
+    ) -> impl IntoElement {
         let mut element = div().text_xl().font_bold();
 
         element = Self::apply_common_props(element, props);
@@ -53,7 +67,11 @@ impl UiRenderer {
         element
     }
 
-    fn render_h2(component: &UiComponent, props: &HashMap<String, UiValue>, cx: &mut Context<crate::json_ui::JsonCanvas>) -> impl IntoElement {
+    fn render_h2(
+        component: &UiComponent,
+        props: &HashMap<String, UiValue>,
+        cx: &mut Context<crate::json_ui::JsonCanvas>,
+    ) -> impl IntoElement {
         let mut element = div().text_lg().font_bold();
 
         element = Self::apply_common_props(element, props);
@@ -62,7 +80,11 @@ impl UiRenderer {
         element
     }
 
-    fn render_h3(component: &UiComponent, props: &HashMap<String, UiValue>, cx: &mut Context<crate::json_ui::JsonCanvas>) -> impl IntoElement {
+    fn render_h3(
+        component: &UiComponent,
+        props: &HashMap<String, UiValue>,
+        cx: &mut Context<crate::json_ui::JsonCanvas>,
+    ) -> impl IntoElement {
         let mut element = div().text_base().font_bold();
 
         element = Self::apply_common_props(element, props);
@@ -71,8 +93,14 @@ impl UiRenderer {
         element
     }
 
-    fn render_button(component: &UiComponent, _props: &HashMap<String, UiValue>, _cx: &mut Context<crate::json_ui::JsonCanvas>) -> impl IntoElement {
-        let text = component.children.iter()
+    fn render_button(
+        component: &UiComponent,
+        _props: &HashMap<String, UiValue>,
+        _cx: &mut Context<crate::json_ui::JsonCanvas>,
+    ) -> impl IntoElement {
+        let text = component
+            .children
+            .iter()
             .filter_map(|child| match child {
                 UiChild::Text(text) => Some(text.as_str()),
                 _ => None,
@@ -83,8 +111,13 @@ impl UiRenderer {
         Button::new("json_button").label(text)
     }
 
-    fn render_input(_component: &UiComponent, props: &HashMap<String, UiValue>, _cx: &mut Context<crate::json_ui::JsonCanvas>) -> impl IntoElement {
-        let placeholder = props.get("placeholder")
+    fn render_input(
+        _component: &UiComponent,
+        props: &HashMap<String, UiValue>,
+        _cx: &mut Context<crate::json_ui::JsonCanvas>,
+    ) -> impl IntoElement {
+        let placeholder = props
+            .get("placeholder")
             .and_then(|v| v.as_string())
             .unwrap_or("")
             .to_string();
@@ -98,12 +131,19 @@ impl UiRenderer {
             .child(placeholder)
     }
 
-    fn render_text(component: &UiComponent, props: &HashMap<String, UiValue>, _cx: &mut Context<crate::json_ui::JsonCanvas>) -> impl IntoElement {
-        let content = props.get("content")
+    fn render_text(
+        component: &UiComponent,
+        props: &HashMap<String, UiValue>,
+        _cx: &mut Context<crate::json_ui::JsonCanvas>,
+    ) -> impl IntoElement {
+        let content = props
+            .get("content")
             .and_then(|v| v.as_string())
             .map(|s| s.to_string())
             .or_else(|| {
-                component.children.iter()
+                component
+                    .children
+                    .iter()
                     .filter_map(|child| match child {
                         UiChild::Text(text) => Some(text.clone()),
                         _ => None,
@@ -117,10 +157,15 @@ impl UiRenderer {
         element
     }
 
-    fn render_flex(component: &UiComponent, props: &HashMap<String, UiValue>, cx: &mut Context<crate::json_ui::JsonCanvas>) -> impl IntoElement {
+    fn render_flex(
+        component: &UiComponent,
+        props: &HashMap<String, UiValue>,
+        cx: &mut Context<crate::json_ui::JsonCanvas>,
+    ) -> impl IntoElement {
         let mut element = div().flex();
 
-        let direction = props.get("direction")
+        let direction = props
+            .get("direction")
             .and_then(|v| v.as_string())
             .unwrap_or("row");
 
@@ -135,7 +180,11 @@ impl UiRenderer {
         element
     }
 
-    fn render_column(component: &UiComponent, props: &HashMap<String, UiValue>, cx: &mut Context<crate::json_ui::JsonCanvas>) -> impl IntoElement {
+    fn render_column(
+        component: &UiComponent,
+        props: &HashMap<String, UiValue>,
+        cx: &mut Context<crate::json_ui::JsonCanvas>,
+    ) -> impl IntoElement {
         let mut element = div().flex().flex_col();
 
         element = Self::apply_common_props(element, props);
@@ -144,7 +193,11 @@ impl UiRenderer {
         element
     }
 
-    fn render_row(component: &UiComponent, props: &HashMap<String, UiValue>, cx: &mut Context<crate::json_ui::JsonCanvas>) -> impl IntoElement {
+    fn render_row(
+        component: &UiComponent,
+        props: &HashMap<String, UiValue>,
+        cx: &mut Context<crate::json_ui::JsonCanvas>,
+    ) -> impl IntoElement {
         let mut element = div().flex().flex_row();
 
         element = Self::apply_common_props(element, props);
@@ -153,7 +206,11 @@ impl UiRenderer {
         element
     }
 
-    fn render_unknown(component: &UiComponent, _props: &HashMap<String, UiValue>, cx: &mut Context<crate::json_ui::JsonCanvas>) -> impl IntoElement {
+    fn render_unknown(
+        component: &UiComponent,
+        _props: &HashMap<String, UiValue>,
+        cx: &mut Context<crate::json_ui::JsonCanvas>,
+    ) -> impl IntoElement {
         let mut element = div()
             .border_1()
             .border_color(gpui::red())
@@ -213,12 +270,16 @@ impl UiRenderer {
     fn apply_children<E: ParentElement>(
         mut element: E,
         children: &[UiChild],
-        cx: &mut Context<crate::json_ui::JsonCanvas>
+        cx: &mut Context<crate::json_ui::JsonCanvas>,
     ) -> E {
         for child in children {
             match child {
                 UiChild::Component(component) => {
-                    element = element.child(Self::render_component_internal(component, &component.props, cx));
+                    element = element.child(Self::render_component_internal(
+                        component,
+                        &component.props,
+                        cx,
+                    ));
                 }
                 UiChild::Text(text) => {
                     element = element.child(text.clone());
@@ -233,7 +294,7 @@ impl UiRenderer {
 
     fn render_component_standalone(
         component: &UiComponent,
-        props: &HashMap<String, UiValue>
+        props: &HashMap<String, UiValue>,
     ) -> AnyElement {
         match component.component_type.as_str() {
             "div" => Self::render_div_standalone(component, props).into_any_element(),
@@ -250,36 +311,53 @@ impl UiRenderer {
         }
     }
 
-    fn render_div_standalone(component: &UiComponent, props: &HashMap<String, UiValue>) -> impl IntoElement {
+    fn render_div_standalone(
+        component: &UiComponent,
+        props: &HashMap<String, UiValue>,
+    ) -> impl IntoElement {
         let mut element = div();
         element = Self::apply_common_props(element, props);
         element = Self::apply_children_standalone(element, &component.children);
         element
     }
 
-    fn render_h1_standalone(component: &UiComponent, props: &HashMap<String, UiValue>) -> impl IntoElement {
+    fn render_h1_standalone(
+        component: &UiComponent,
+        props: &HashMap<String, UiValue>,
+    ) -> impl IntoElement {
         let mut element = div().text_xl().font_bold();
         element = Self::apply_common_props(element, props);
         element = Self::apply_children_standalone(element, &component.children);
         element
     }
 
-    fn render_h2_standalone(component: &UiComponent, props: &HashMap<String, UiValue>) -> impl IntoElement {
+    fn render_h2_standalone(
+        component: &UiComponent,
+        props: &HashMap<String, UiValue>,
+    ) -> impl IntoElement {
         let mut element = div().text_lg().font_bold();
         element = Self::apply_common_props(element, props);
         element = Self::apply_children_standalone(element, &component.children);
         element
     }
 
-    fn render_h3_standalone(component: &UiComponent, props: &HashMap<String, UiValue>) -> impl IntoElement {
+    fn render_h3_standalone(
+        component: &UiComponent,
+        props: &HashMap<String, UiValue>,
+    ) -> impl IntoElement {
         let mut element = div().text_base().font_bold();
         element = Self::apply_common_props(element, props);
         element = Self::apply_children_standalone(element, &component.children);
         element
     }
 
-    fn render_button_standalone(component: &UiComponent, _props: &HashMap<String, UiValue>) -> impl IntoElement {
-        let text = component.children.iter()
+    fn render_button_standalone(
+        component: &UiComponent,
+        _props: &HashMap<String, UiValue>,
+    ) -> impl IntoElement {
+        let text = component
+            .children
+            .iter()
             .filter_map(|child| match child {
                 UiChild::Text(text) => Some(text.as_str()),
                 _ => None,
@@ -290,8 +368,12 @@ impl UiRenderer {
         Button::new("json_button").label(text)
     }
 
-    fn render_input_standalone(_component: &UiComponent, props: &HashMap<String, UiValue>) -> impl IntoElement {
-        let placeholder = props.get("placeholder")
+    fn render_input_standalone(
+        _component: &UiComponent,
+        props: &HashMap<String, UiValue>,
+    ) -> impl IntoElement {
+        let placeholder = props
+            .get("placeholder")
             .and_then(|v| v.as_string())
             .unwrap_or("")
             .to_string();
@@ -305,12 +387,18 @@ impl UiRenderer {
             .child(placeholder)
     }
 
-    fn render_text_standalone(component: &UiComponent, props: &HashMap<String, UiValue>) -> impl IntoElement {
-        let content = props.get("content")
+    fn render_text_standalone(
+        component: &UiComponent,
+        props: &HashMap<String, UiValue>,
+    ) -> impl IntoElement {
+        let content = props
+            .get("content")
             .and_then(|v| v.as_string())
             .map(|s| s.to_string())
             .or_else(|| {
-                component.children.iter()
+                component
+                    .children
+                    .iter()
                     .filter_map(|child| match child {
                         UiChild::Text(text) => Some(text.clone()),
                         _ => None,
@@ -324,10 +412,14 @@ impl UiRenderer {
         element
     }
 
-    fn render_flex_standalone(component: &UiComponent, props: &HashMap<String, UiValue>) -> impl IntoElement {
+    fn render_flex_standalone(
+        component: &UiComponent,
+        props: &HashMap<String, UiValue>,
+    ) -> impl IntoElement {
         let mut element = div().flex();
 
-        let direction = props.get("direction")
+        let direction = props
+            .get("direction")
             .and_then(|v| v.as_string())
             .unwrap_or("row");
 
@@ -341,21 +433,30 @@ impl UiRenderer {
         element
     }
 
-    fn render_column_standalone(component: &UiComponent, props: &HashMap<String, UiValue>) -> impl IntoElement {
+    fn render_column_standalone(
+        component: &UiComponent,
+        props: &HashMap<String, UiValue>,
+    ) -> impl IntoElement {
         let mut element = div().flex().flex_col();
         element = Self::apply_common_props(element, props);
         element = Self::apply_children_standalone(element, &component.children);
         element
     }
 
-    fn render_row_standalone(component: &UiComponent, props: &HashMap<String, UiValue>) -> impl IntoElement {
+    fn render_row_standalone(
+        component: &UiComponent,
+        props: &HashMap<String, UiValue>,
+    ) -> impl IntoElement {
         let mut element = div().flex().flex_row();
         element = Self::apply_common_props(element, props);
         element = Self::apply_children_standalone(element, &component.children);
         element
     }
 
-    fn render_unknown_standalone(component: &UiComponent, _props: &HashMap<String, UiValue>) -> impl IntoElement {
+    fn render_unknown_standalone(
+        component: &UiComponent,
+        _props: &HashMap<String, UiValue>,
+    ) -> impl IntoElement {
         let mut element = div()
             .border_1()
             .border_color(gpui::red())
@@ -366,14 +467,14 @@ impl UiRenderer {
         element
     }
 
-    fn apply_children_standalone<E: ParentElement>(
-        mut element: E,
-        children: &[UiChild]
-    ) -> E {
+    fn apply_children_standalone<E: ParentElement>(mut element: E, children: &[UiChild]) -> E {
         for child in children {
             match child {
                 UiChild::Component(component) => {
-                    element = element.child(Self::render_component_standalone(component, &component.props));
+                    element = element.child(Self::render_component_standalone(
+                        component,
+                        &component.props,
+                    ));
                 }
                 UiChild::Text(text) => {
                     element = element.child(text.clone());

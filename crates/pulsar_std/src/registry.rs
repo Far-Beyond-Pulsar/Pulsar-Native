@@ -5,8 +5,8 @@
 //! The `#[blueprint]` macro automatically adds nodes to the registry, which can then
 //! be queried by the engine to build the node library.
 
+use crate::NodeTypes;
 use linkme::distributed_slice;
-use crate::{NodeTypes};
 
 /// Parameter metadata
 #[derive(Debug, Clone)]

@@ -418,7 +418,13 @@ impl RenderOnce for CollapsibleSection {
                     ),
             )
             .when(self.is_open, |this| {
-                this.child(div().w_full().p_3().bg(theme.background).child(self.content))
+                this.child(
+                    div()
+                        .w_full()
+                        .p_3()
+                        .bg(theme.background)
+                        .child(self.content),
+                )
             })
     }
 }

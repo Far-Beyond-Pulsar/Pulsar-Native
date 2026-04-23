@@ -167,34 +167,13 @@ impl AssetKind {
                 AssetKind::BlueprintClass,
                 AssetKind::BlueprintFunction,
             ],
-            AssetCategory::Scripts => vec![
-                AssetKind::RustScript,
-                AssetKind::LuaScript,
-            ],
-            AssetCategory::Scenes => vec![
-                AssetKind::Scene,
-                AssetKind::Prefab,
-            ],
-            AssetCategory::Rendering => vec![
-                AssetKind::Material,
-                AssetKind::Shader,
-            ],
-            AssetCategory::Audio => vec![
-                AssetKind::AudioSource,
-                AssetKind::AudioMixer,
-            ],
-            AssetCategory::UI => vec![
-                AssetKind::UILayout,
-                AssetKind::UITheme,
-            ],
-            AssetCategory::Data => vec![
-                AssetKind::DataTable,
-                AssetKind::JsonData,
-            ],
-            AssetCategory::Config => vec![
-                AssetKind::ProjectConfig,
-                AssetKind::EditorConfig,
-            ],
+            AssetCategory::Scripts => vec![AssetKind::RustScript, AssetKind::LuaScript],
+            AssetCategory::Scenes => vec![AssetKind::Scene, AssetKind::Prefab],
+            AssetCategory::Rendering => vec![AssetKind::Material, AssetKind::Shader],
+            AssetCategory::Audio => vec![AssetKind::AudioSource, AssetKind::AudioMixer],
+            AssetCategory::UI => vec![AssetKind::UILayout, AssetKind::UITheme],
+            AssetCategory::Data => vec![AssetKind::DataTable, AssetKind::JsonData],
+            AssetCategory::Config => vec![AssetKind::ProjectConfig, AssetKind::EditorConfig],
         }
     }
 }

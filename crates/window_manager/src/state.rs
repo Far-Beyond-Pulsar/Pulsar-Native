@@ -1,6 +1,6 @@
-use ui_types_common::window_types::{WindowId, WindowRequest};
 use dashmap::DashMap;
 use std::sync::Arc;
+use ui_types_common::window_types::{WindowId, WindowRequest};
 
 #[derive(Clone)]
 pub struct WindowState {
@@ -22,7 +22,12 @@ impl WindowState {
         }
     }
 
-    pub fn register_window(&self, window_id: WindowId, window_type: WindowRequest, parent: Option<WindowId>) {
+    pub fn register_window(
+        &self,
+        window_id: WindowId,
+        window_type: WindowRequest,
+        parent: Option<WindowId>,
+    ) {
         self.windows.insert(
             window_id,
             WindowInfo {
@@ -43,7 +48,9 @@ impl WindowState {
     }
 
     pub fn get_window(&self, window_id: WindowId) -> Option<WindowInfo> {
-        self.windows.get(&window_id).map(|entry| entry.value().clone())
+        self.windows
+            .get(&window_id)
+            .map(|entry| entry.value().clone())
     }
 
     pub fn window_count(&self) -> usize {
@@ -53,13 +60,18 @@ impl WindowState {
     pub fn windows_by_type(&self, window_type: &WindowRequest) -> Vec<WindowInfo> {
         self.windows
             .iter()
-            .filter(|entry| std::mem::discriminant(&entry.window_type) == std::mem::discriminant(window_type))
+            .filter(|entry| {
+                std::mem::discriminant(&entry.window_type) == std::mem::discriminant(window_type)
+            })
             .map(|entry| entry.value().clone())
             .collect()
     }
 
     pub fn all_windows(&self) -> Vec<WindowInfo> {
-        self.windows.iter().map(|entry| entry.value().clone()).collect()
+        self.windows
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect()
     }
 
     pub fn child_windows(&self, parent_id: WindowId) -> Vec<WindowInfo> {

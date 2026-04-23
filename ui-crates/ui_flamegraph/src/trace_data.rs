@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use std::collections::HashMap;
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TraceSpan {
@@ -30,7 +30,7 @@ impl ThreadInfo {
     pub fn has_custom_name(&self) -> bool {
         !self.name.starts_with("Thread ")
     }
-    
+
     /// Get a sort priority (lower = earlier)
     /// Named threads come first, then unnamed threads sorted by ID
     pub fn sort_priority(&self) -> (bool, u64) {
@@ -55,17 +55,17 @@ impl TraceFrame {
 
     pub fn with_data(spans: Vec<TraceSpan>, threads: HashMap<u64, String>) -> Self {
         let mut frame = Self::default();
-        
+
         // Convert thread names HashMap to ThreadInfo HashMap
         for (id, name) in threads {
             frame.threads.insert(id, ThreadInfo { id, name });
         }
-        
+
         // Add all spans
         for span in spans {
             frame.add_span(span);
         }
-        
+
         frame
     }
 
@@ -78,25 +78,28 @@ impl TraceFrame {
             self.max_time_ns = self.max_time_ns.max(span.end_ns());
         }
         self.max_depth = self.max_depth.max(span.depth);
-        
+
         // Ensure thread exists
         if !self.threads.contains_key(&span.thread_id) {
-            self.threads.insert(span.thread_id, ThreadInfo {
-                id: span.thread_id,
-                name: match span.thread_id {
-                    0 => "GPU".to_string(),
-                    1 => "Main Thread".to_string(),
-                    2 => "Render Thread".to_string(),
-                    3 => "Physics Thread".to_string(),
-                    4 => "Audio Thread".to_string(),
-                    5 => "Network Thread".to_string(),
-                    6 => "I/O Thread".to_string(),
-                    7..=10 => format!("Worker {}", span.thread_id - 7),
-                    id => format!("Thread {}", id),
+            self.threads.insert(
+                span.thread_id,
+                ThreadInfo {
+                    id: span.thread_id,
+                    name: match span.thread_id {
+                        0 => "GPU".to_string(),
+                        1 => "Main Thread".to_string(),
+                        2 => "Render Thread".to_string(),
+                        3 => "Physics Thread".to_string(),
+                        4 => "Audio Thread".to_string(),
+                        5 => "Network Thread".to_string(),
+                        6 => "I/O Thread".to_string(),
+                        7..=10 => format!("Worker {}", span.thread_id - 7),
+                        id => format!("Thread {}", id),
+                    },
                 },
-            });
+            );
         }
-        
+
         self.spans.push(span);
     }
 
@@ -107,14 +110,14 @@ impl TraceFrame {
             self.max_time_ns - self.min_time_ns
         }
     }
-    
+
     /// Get threads sorted with named threads first, then by ID
     pub fn get_sorted_threads(&self) -> Vec<ThreadInfo> {
         let mut threads: Vec<ThreadInfo> = self.threads.values().cloned().collect();
         threads.sort_by_key(|t| t.sort_priority());
         threads
     }
-    
+
     pub fn add_frame_time(&mut self, ms: f32) {
         self.frame_times_ms.push(ms);
         // Keep last 200 frames
@@ -434,7 +437,12 @@ impl TraceData {
                         });
 
                         // Individual draw commands
-                        let cmd_ops = ["SetPipeline", "BindDescriptors", "SetConstants", "DrawIndexed"];
+                        let cmd_ops = [
+                            "SetPipeline",
+                            "BindDescriptors",
+                            "SetConstants",
+                            "DrawIndexed",
+                        ];
                         let mut draw_time = cmd_time;
                         let draw_dur = batch_dur / cmd_ops.len() as u64;
                         for cmd_op in &cmd_ops {
@@ -624,7 +632,8 @@ impl TraceData {
             }
 
             // === THREAD 5: NETWORK THREAD ===
-            if frame_idx % 3 == 0 { // Network updates every 3rd frame
+            if frame_idx % 3 == 0 {
+                // Network updates every 3rd frame
                 let net_start = frame_start + rng.gen_range(0..5_000_000);
                 let net_dur = rng.gen_range(500_000..2_000_000);
 
@@ -654,7 +663,8 @@ impl TraceData {
             }
 
             // === THREAD 6: I/O THREAD ===
-            if frame_idx % 5 == 0 { // I/O operations every 5th frame
+            if frame_idx % 5 == 0 {
+                // I/O operations every 5th frame
                 let io_start = frame_start + rng.gen_range(0..8_000_000);
                 let io_dur = rng.gen_range(1_000_000..4_000_000);
 
@@ -841,7 +851,10 @@ impl TraceData {
         }
 
         let total_spans = trace.get_frame().spans.len();
-        tracing::trace!("Generated sample trace: {} spans across 2000 frames", total_spans);
+        tracing::trace!(
+            "Generated sample trace: {} spans across 2000 frames",
+            total_spans
+        );
 
         trace
     }

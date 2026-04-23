@@ -4,8 +4,15 @@
 use gpui::EventEmitter;
 use ui_common::pulsar_drawer_window;
 
-use crate::{TypeDebuggerDrawer, NavigateToType};
+use crate::{NavigateToType, TypeDebuggerDrawer};
 
-pulsar_drawer_window!(TypeDebuggerWindow, TypeDebuggerDrawer, type_debugger_drawer, "Window.Title.TypeDebugger", 1000.0, 700.0);
+pulsar_drawer_window!(
+    TypeDebuggerWindow,
+    TypeDebuggerDrawer,
+    type_debugger_drawer,
+    "Window.Title.TypeDebugger",
+    1000.0,
+    700.0
+);
 
 impl EventEmitter<NavigateToType> for TypeDebuggerWindow {}

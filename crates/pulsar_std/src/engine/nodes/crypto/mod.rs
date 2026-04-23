@@ -89,11 +89,12 @@ pub fn generate_uuid() -> String {
     let mut hasher = state.build_hasher();
     std::time::SystemTime::now().hash(&mut hasher);
     let h1 = hasher.finish();
-    
+
     std::time::SystemTime::now().hash(&mut hasher);
     let h2 = hasher.finish();
-    
-    format!("{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
+
+    format!(
+        "{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
         (h1 >> 32) as u32,
         (h1 >> 16) as u16,
         h1 as u16,
@@ -168,7 +169,7 @@ pub fn hex_encode(text: String) -> String {
 pub fn hex_decode(hex: String) -> String {
     let chars: Vec<char> = hex.chars().collect();
     let mut result = Vec::new();
-    
+
     for i in (0..chars.len()).step_by(2) {
         if i + 1 < chars.len() {
             let byte_str = format!("{}{}", chars[i], chars[i + 1]);
@@ -177,7 +178,7 @@ pub fn hex_decode(hex: String) -> String {
             }
         }
     }
-    
+
     String::from_utf8(result).unwrap_or_else(|_| "[Invalid UTF-8]".to_string())
 }
 
@@ -291,9 +292,7 @@ pub fn verify_checksum(text: String, expected_checksum: i64) -> bool {
 #[blueprint(type: crate::NodeTypes::pure, category: "Crypto", color: "#8E44AD")]
 pub fn xor_cipher(text: String, key: i64) -> String {
     let key_byte = (key & 0xFF) as u8;
-    text.bytes()
-        .map(|b| (b ^ key_byte) as char)
-        .collect()
+    text.bytes().map(|b| (b ^ key_byte) as char).collect()
 }
 
 /// Caesar cipher shift.

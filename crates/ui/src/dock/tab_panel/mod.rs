@@ -1,32 +1,39 @@
-use std::sync::Arc;
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
+use std::sync::Arc;
 
 use gpui::{
-    div, prelude::FluentBuilder, px, relative, rems, size, App, AppContext, Bounds, Context, Corner,
-    DismissEvent, Div, DragMoveEvent, Empty, Entity, EventEmitter, FocusHandle, Focusable,
-    InteractiveElement as _, IntoElement, ParentElement, Pixels, Point, ReadGlobal, Render, ScrollHandle,
-    SharedString, StatefulInteractiveElement, StyleRefinement, Styled, UpdateGlobal, WeakEntity, Window,
-    WindowBounds, WindowKind, WindowOptions,
+    div, prelude::FluentBuilder, px, relative, rems, size, App, AppContext, Bounds, Context,
+    Corner, DismissEvent, Div, DragMoveEvent, Empty, Entity, EventEmitter, FocusHandle, Focusable,
+    InteractiveElement as _, IntoElement, ParentElement, Pixels, Point, ReadGlobal, Render,
+    ScrollHandle, SharedString, StatefulInteractiveElement, StyleRefinement, Styled, UpdateGlobal,
+    WeakEntity, Window, WindowBounds, WindowKind, WindowOptions,
 };
 use rust_i18n::t;
 
 use crate::{
-    ActiveTheme, AxisExt, IconName, PixelsExt, Placement, Selectable, Sizable, button::{Button, ButtonVariants as _}, context_menu::{ContextMenu, ContextMenuExt}, dock::PanelInfo, h_flex, menu::popup_menu::PopupMenuItem, popup_menu::{PopupMenu, PopupMenuExt}, tab::{Tab, TabBar}, v_flex
+    button::{Button, ButtonVariants as _},
+    context_menu::{ContextMenu, ContextMenuExt},
+    dock::PanelInfo,
+    h_flex,
+    menu::popup_menu::PopupMenuItem,
+    popup_menu::{PopupMenu, PopupMenuExt},
+    tab::{Tab, TabBar},
+    v_flex, ActiveTheme, AxisExt, IconName, PixelsExt, Placement, Selectable, Sizable,
 };
 
 use super::{
-    ClosePanel, Dock, DockArea, DockItem, DockPlacement, Panel, PanelControl, PanelEvent, PanelState,
-    PanelStyle, PanelView, StackPanel, ToggleZoom,
+    ClosePanel, Dock, DockArea, DockItem, DockPlacement, Panel, PanelControl, PanelEvent,
+    PanelState, PanelStyle, PanelView, StackPanel, ToggleZoom,
 };
 
+use ui_types_common::window_types::{WindowId, WindowRequest};
 use window_manager;
-use ui_types_common::window_types::{WindowRequest, WindowId};
 
 pub mod drag_drop;
-pub mod split;
 pub mod render;
 pub mod serialization;
+pub mod split;
 
 #[derive(Clone)]
 pub(crate) struct TabState {
@@ -59,7 +66,11 @@ pub(crate) struct DragPanel {
 }
 
 impl DragPanel {
-    pub(crate) fn new(panel: Arc<dyn PanelView>, tab_panel: Entity<TabPanel>, channel: DockChannel) -> Self {
+    pub(crate) fn new(
+        panel: Arc<dyn PanelView>,
+        tab_panel: Entity<TabPanel>,
+        channel: DockChannel,
+    ) -> Self {
         Self {
             panel,
             tab_panel,
@@ -321,7 +332,9 @@ impl TabPanel {
             return;
         }
 
-        let panels_to_remove: Vec<_> = self.panels.iter()
+        let panels_to_remove: Vec<_> = self
+            .panels
+            .iter()
             .enumerate()
             .filter(|(i, p)| *i != keep_index && p.closable(cx))
             .map(|(_, p)| p.clone())
@@ -343,7 +356,9 @@ impl TabPanel {
             return;
         }
 
-        let panels_to_remove: Vec<_> = self.panels.iter()
+        let panels_to_remove: Vec<_> = self
+            .panels
+            .iter()
             .take(from_index)
             .filter(|p| p.closable(cx))
             .cloned()
@@ -365,7 +380,9 @@ impl TabPanel {
             return;
         }
 
-        let panels_to_remove: Vec<_> = self.panels.iter()
+        let panels_to_remove: Vec<_> = self
+            .panels
+            .iter()
             .skip(from_index + 1)
             .filter(|p| p.closable(cx))
             .cloned()
@@ -377,12 +394,10 @@ impl TabPanel {
     }
 
     /// Close all tabs that are saved (don't have unsaved changes)
-    pub fn close_all_saved_tabs(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let panels_to_remove: Vec<_> = self.panels.iter()
+    pub fn close_all_saved_tabs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let panels_to_remove: Vec<_> = self
+            .panels
+            .iter()
             .filter(|p| p.closable(cx))
             .cloned()
             .collect();
@@ -462,7 +477,10 @@ impl TabPanel {
     }
 
     /// Return all visible panels
-    pub(crate) fn visible_panels<'a>(&'a self, cx: &'a App) -> impl Iterator<Item = Arc<dyn PanelView>> + 'a {
+    pub(crate) fn visible_panels<'a>(
+        &'a self,
+        cx: &'a App,
+    ) -> impl Iterator<Item = Arc<dyn PanelView>> + 'a {
         self.panels.iter().filter_map(|panel| {
             if panel.visible(cx) {
                 Some(panel.clone())

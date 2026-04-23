@@ -38,14 +38,17 @@ impl MultiplayerWindow {
                     tracing::debug!("Sending RequestFiles for {} files", files_needed.len());
 
                     let client_guard = client.read().await;
-                    let _ = client_guard.send(ClientMessage::RequestFiles {
-                        session_id,
-                        peer_id,
-                        file_paths: files_needed,
-                    }).await;
+                    let _ = client_guard
+                        .send(ClientMessage::RequestFiles {
+                            session_id,
+                            peer_id,
+                            file_paths: files_needed,
+                        })
+                        .await;
 
                     tracing::debug!("File request sent, waiting for response...");
-                }).detach();
+                })
+                .detach();
             }
 
             self.pending_file_sync = None;

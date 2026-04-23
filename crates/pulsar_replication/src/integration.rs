@@ -1,8 +1,8 @@
 //! Integration layer for connecting replication to the multiuser client
 
 use crate::{
-    ReplicationMessage, ReplicationMessageHandler, ReplicationRegistry,
-    SessionContext, UserPresence,
+    ReplicationMessage, ReplicationMessageHandler, ReplicationRegistry, SessionContext,
+    UserPresence,
 };
 use gpui::App;
 
@@ -36,7 +36,10 @@ impl MultiuserIntegration {
         session.start_session(our_peer_id.clone(), host_peer_id);
         session.set_message_sender(send_callback);
 
-        tracing::info!("Multiuser replication session started (peer: {})", our_peer_id);
+        tracing::info!(
+            "Multiuser replication session started (peer: {})",
+            our_peer_id
+        );
     }
 
     /// End the multiuser session

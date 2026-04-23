@@ -6,10 +6,10 @@
 rust_i18n::i18n!("locales", fallback = "en");
 
 // Modules
-pub mod app;
 pub mod actions;
-pub mod root;
+pub mod app;
 pub mod builtin_editors;
+pub mod root;
 
 // Re-export main types
 pub use app::PulsarApp;
@@ -17,11 +17,7 @@ pub use root::PulsarRoot;
 
 // Re-export actions
 pub use actions::{
-    ToggleCommandPalette,
-    ToggleFileManager,
-    ToggleProblems,
-    ToggleMultiplayer,
-    OpenFile,
+    OpenFile, ToggleCommandPalette, ToggleFileManager, ToggleMultiplayer, ToggleProblems,
 };
 
 // Re-export file_utils from ui_common
@@ -41,11 +37,11 @@ pub use ui::OpenSettings;
 /// the same path used everywhere else in the codebase — fully decoupled from
 /// `PulsarApp` or any particular window hierarchy.
 pub fn init(cx: &mut gpui::App) {
-    use ui_common::open_pulsar_window;
-    use ui_common::menu::{Settings, Preferences, AboutApp, ShowDocumentation};
-    use ui_settings::SettingsWindow;
     use ui_about::AboutWindow;
+    use ui_common::menu::{AboutApp, Preferences, Settings, ShowDocumentation};
+    use ui_common::open_pulsar_window;
     use ui_documentation::DocumentationWindow;
+    use ui_settings::SettingsWindow;
 
     cx.on_action(|_: &Settings, cx| {
         println!("[MENU] global: Settings → SettingsWindow");
@@ -62,8 +58,6 @@ pub fn init(cx: &mut gpui::App) {
         open_pulsar_window::<DocumentationWindow>((), cx);
     });
 }
-
-
 
 /// Set locale
 pub fn set_locale(locale: &str) {

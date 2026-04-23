@@ -3,7 +3,7 @@
 //! Provides a trait-based system for composable UI components similar to React
 
 use gpui::*;
-use ui_types_common::window_types::{WindowRequest, WindowId};
+use ui_types_common::window_types::{WindowId, WindowRequest};
 use window_manager;
 
 /// Configuration for spawning a component in a window
@@ -61,16 +61,19 @@ pub trait Component: Render + Sized + 'static {
         };
 
         // Replace direct cx.open_window with window_manager::WindowManager::global().create_window
-        window_manager::WindowManager::update_global(cx, |wm: &mut window_manager::WindowManager, cx| {
-            wm.create_window(
-                WindowRequest::Component,
-                options,
-                move |window: &mut gpui::Window, cx: &mut gpui::App| {
-                    cx.new(|cx| Self::new(config.clone(), window, cx))
-                },
-                cx,
-            )
-        })
+        window_manager::WindowManager::update_global(
+            cx,
+            |wm: &mut window_manager::WindowManager, cx| {
+                wm.create_window(
+                    WindowRequest::Component,
+                    options,
+                    move |window: &mut gpui::Window, cx: &mut gpui::App| {
+                        cx.new(|cx| Self::new(config.clone(), window, cx))
+                    },
+                    cx,
+                )
+            },
+        )
         .map(|_| ())?;
 
         Ok(())

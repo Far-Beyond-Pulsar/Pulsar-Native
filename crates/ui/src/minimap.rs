@@ -1,6 +1,6 @@
+use crate::{ActiveTheme, StyledExt};
 use gpui::*;
 use std::ops::Range;
-use crate::{ActiveTheme, StyledExt};
 
 /// Configuration for the minimap display
 #[derive(Clone, Debug)]
@@ -13,7 +13,7 @@ pub struct MinimapConfig {
     pub line_height: f32,
     /// Maximum number of characters to show per line in minimap
     pub max_chars_per_line: usize,
-    /// Whether to show syntax highlighting in the minimap  
+    /// Whether to show syntax highlighting in the minimap
     pub show_syntax_highlighting: bool,
     /// Scale factor for the minimap (smaller = more content visible)
     pub scale_factor: f32,
@@ -59,15 +59,13 @@ impl MinimapData {
     pub fn update(&mut self, full_lines: &[String], visible_range: Range<usize>) {
         self.total_lines = full_lines.len();
         self.visible_range = visible_range;
-        
+
         // Truncate lines for minimap display
         self.lines = full_lines
             .iter()
             .map(|line| {
                 if line.len() > self.config.max_chars_per_line {
-                    line.chars()
-                        .take(self.config.max_chars_per_line)
-                        .collect()
+                    line.chars().take(self.config.max_chars_per_line).collect()
                 } else {
                     line.clone()
                 }
@@ -80,11 +78,11 @@ impl MinimapData {
         if self.total_lines == 0 {
             return (0.0, 1.0);
         }
-        
+
         let start_ratio = self.visible_range.start as f32 / self.total_lines as f32;
-        let height_ratio = (self.visible_range.end - self.visible_range.start) as f32 
-            / self.total_lines as f32;
-        
+        let height_ratio =
+            (self.visible_range.end - self.visible_range.start) as f32 / self.total_lines as f32;
+
         (start_ratio, height_ratio)
     }
 }
@@ -177,4 +175,3 @@ fn render_minimap_line(
                 .child(text.to_string()),
         )
 }
-

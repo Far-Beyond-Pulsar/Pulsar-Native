@@ -2,10 +2,10 @@
 //
 // This module handles creation and management of app data directories, themes, and config files.
 
+use crate::settings::EngineSettings;
 use directories::ProjectDirs;
 use std::fs;
 use std::path::{Path, PathBuf};
-use crate::settings::EngineSettings;
 
 pub struct AppDataPaths {
     pub appdata_dir: PathBuf,
@@ -29,7 +29,9 @@ pub fn setup_appdata() -> AppDataPaths {
             tracing::error!("Failed to create themes directory: {e}");
         } else {
             let project_themes_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .parent().unwrap().join("themes");
+                .parent()
+                .unwrap()
+                .join("themes");
             if let Ok(entries) = fs::read_dir(&project_themes_dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();
@@ -53,5 +55,10 @@ pub fn setup_appdata() -> AppDataPaths {
         default_settings.save(&config_file);
     }
 
-    AppDataPaths { appdata_dir, themes_dir, config_dir, config_file }
+    AppDataPaths {
+        appdata_dir,
+        themes_dir,
+        config_dir,
+        config_file,
+    }
 }

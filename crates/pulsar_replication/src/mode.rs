@@ -116,7 +116,9 @@ impl ReplicationMode {
     pub fn is_exclusive(&self) -> bool {
         matches!(
             self,
-            ReplicationMode::LockedEdit | ReplicationMode::RequestEdit | ReplicationMode::BroadcastOnly
+            ReplicationMode::LockedEdit
+                | ReplicationMode::RequestEdit
+                | ReplicationMode::BroadcastOnly
         )
     }
 
@@ -127,16 +129,17 @@ impl ReplicationMode {
 
     /// Returns true if this mode shows presence indicators
     pub fn shows_presence(&self) -> bool {
-        !matches!(self, ReplicationMode::NoRep | ReplicationMode::BroadcastOnly)
+        !matches!(
+            self,
+            ReplicationMode::NoRep | ReplicationMode::BroadcastOnly
+        )
     }
 
     /// Returns true if changes should be immediately synchronized
     pub fn is_realtime(&self) -> bool {
         matches!(
             self,
-            ReplicationMode::MultiEdit
-                | ReplicationMode::BroadcastOnly
-                | ReplicationMode::Follow
+            ReplicationMode::MultiEdit | ReplicationMode::BroadcastOnly | ReplicationMode::Follow
         )
     }
 

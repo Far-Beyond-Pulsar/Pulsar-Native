@@ -38,11 +38,10 @@ pub async fn require_auth(
     let path = request.uri().path().to_owned();
     let method = request.method().clone();
 
-    let token = extract_token(request.headers())
-        .ok_or_else(|| {
-            warn!("{method} {path} — auth rejected: no Bearer token");
-            StatusCode::UNAUTHORIZED
-        })?;
+    let token = extract_token(request.headers()).ok_or_else(|| {
+        warn!("{method} {path} — auth rejected: no Bearer token");
+        StatusCode::UNAUTHORIZED
+    })?;
 
     if state.config.verify_token(token) {
         debug!("{method} {path} — auth OK");

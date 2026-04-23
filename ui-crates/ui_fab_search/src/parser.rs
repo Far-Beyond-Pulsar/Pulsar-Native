@@ -154,7 +154,8 @@ fn license_value_label(v: Option<&serde_json::Value>) -> Option<String> {
     match v? {
         serde_json::Value::String(s) => Some(license_slug_display(s)),
         serde_json::Value::Object(o) => {
-            let label = o.get("label")
+            let label = o
+                .get("label")
                 .or_else(|| o.get("fullName"))
                 .or_else(|| o.get("slug"))
                 .or_else(|| o.get("name"))
@@ -167,17 +168,18 @@ fn license_value_label(v: Option<&serde_json::Value>) -> Option<String> {
 
 fn license_slug_display(slug: &str) -> String {
     match slug {
-        "cc0"       => "CC0 (Public Domain)",
-        "by"        => "CC BY",
-        "by-sa"     => "CC BY-SA",
-        "by-nd"     => "CC BY-ND",
-        "by-nc"     => "CC BY-NC",
-        "by-nc-sa"  => "CC BY-NC-SA",
-        "by-nc-nd"  => "CC BY-NC-ND",
-        "ed"        => "Editorial",
-        "st"        => "Standard",
-        _           => slug,
-    }.to_string()
+        "cc0" => "CC0 (Public Domain)",
+        "by" => "CC BY",
+        "by-sa" => "CC BY-SA",
+        "by-nd" => "CC BY-ND",
+        "by-nc" => "CC BY-NC",
+        "by-nc-sa" => "CC BY-NC-SA",
+        "by-nc-nd" => "CC BY-NC-ND",
+        "ed" => "Editorial",
+        "st" => "Standard",
+        _ => slug,
+    }
+    .to_string()
 }
 
 // ── Thumbnails ───────────────────────────────────────────────────────────────
@@ -297,10 +299,18 @@ impl SketchfabArchives {
     /// Returns list of (label, archive) for all present archive types.
     pub fn available(&self) -> Vec<(&'static str, &SketchfabArchiveNested)> {
         let mut out = Vec::new();
-        if let Some(ref a) = self.glb    { out.push(("GLB",    a)); }
-        if let Some(ref a) = self.gltf   { out.push(("glTF",   a)); }
-        if let Some(ref a) = self.usdz   { out.push(("USDZ",   a)); }
-        if let Some(ref a) = self.source { out.push(("Source", a)); }
+        if let Some(ref a) = self.glb {
+            out.push(("GLB", a));
+        }
+        if let Some(ref a) = self.gltf {
+            out.push(("glTF", a));
+        }
+        if let Some(ref a) = self.usdz {
+            out.push(("USDZ", a));
+        }
+        if let Some(ref a) = self.source {
+            out.push(("Source", a));
+        }
         out
     }
 }
@@ -367,7 +377,6 @@ pub fn fmt_count(n: i64) -> String {
         n.to_string()
     }
 }
-
 
 /// Top-level API response.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -576,17 +585,17 @@ pub struct FabMedia {
 /// Response from GET /v3/models/{uid}/download (requires auth).
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SketchfabDownloadInfo {
-    pub gltf:   Option<SketchfabDownloadFormat>,
-    pub usdz:   Option<SketchfabDownloadFormat>,
+    pub gltf: Option<SketchfabDownloadFormat>,
+    pub usdz: Option<SketchfabDownloadFormat>,
     pub source: Option<SketchfabDownloadFormat>,
-    pub glb:    Option<SketchfabDownloadFormat>,
+    pub glb: Option<SketchfabDownloadFormat>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SketchfabDownloadFormat {
-    pub url:     String,
+    pub url: String,
     pub expires: Option<u32>,
-    pub size:    Option<u64>,
+    pub size: Option<u64>,
 }
 
 // ── Me (authenticated profile, GET /v3/me) ───────────────────────────────────
@@ -595,24 +604,25 @@ pub struct SketchfabDownloadFormat {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SketchfabMe {
-    pub uid:          Option<String>,
-    pub username:     String,
+    pub uid: Option<String>,
+    pub username: String,
     pub display_name: Option<String>,
-    pub email:        Option<String>,
+    pub email: Option<String>,
     /// Account plan: "basic", "plus", "pro", "business".
-    pub account:      Option<String>,
-    pub api_token:    Option<String>,
-    pub avatar:       Option<SketchfabAvatar>,
+    pub account: Option<String>,
+    pub api_token: Option<String>,
+    pub avatar: Option<SketchfabAvatar>,
     #[serde(default)]
-    pub model_count:  i32,
+    pub model_count: i32,
     #[serde(default)]
-    pub like_count:   i64,
-    pub profile_url:  Option<String>,
+    pub like_count: i64,
+    pub profile_url: Option<String>,
 }
 
 impl SketchfabMe {
     pub fn display(&self) -> &str {
-        self.display_name.as_deref()
+        self.display_name
+            .as_deref()
             .filter(|s| !s.is_empty())
             .unwrap_or(&self.username)
     }
@@ -621,4 +631,3 @@ impl SketchfabMe {
         self.avatar.as_ref()?.best_image_url(target_width)
     }
 }
-

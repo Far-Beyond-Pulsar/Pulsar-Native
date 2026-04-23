@@ -1,14 +1,21 @@
 //! Workspace panels for Level Editor
 
-use gpui::*;
-use ui::{ActiveTheme, StyledExt, dock::{Panel, PanelEvent}, v_flex, input::{TextInput, InputState}};
-use super::ui::{WorldSettings, WorldSettingsReplicated, HierarchyPanel, PropertiesPanel, ViewportPanel, LevelEditorState, TransformSection, ObjectHeaderSection, ComponentFieldsSection};
-use std::sync::Arc;
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::collections::HashSet;
+use super::ui::{
+    ComponentFieldsSection, HierarchyPanel, LevelEditorState, ObjectHeaderSection, PropertiesPanel,
+    TransformSection, ViewportPanel, WorldSettings, WorldSettingsReplicated,
+};
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use engine_backend::GameThread;
+use gpui::*;
+use std::cell::RefCell;
+use std::collections::HashSet;
+use std::rc::Rc;
+use std::sync::Arc;
+use ui::{
+    dock::{Panel, PanelEvent},
+    input::{InputState, TextInput},
+    v_flex, ActiveTheme, StyledExt,
+};
 
 /// World Settings Panel (replaced Scene Browser)
 pub struct WorldSettingsPanel {
@@ -20,7 +27,11 @@ pub struct WorldSettingsPanel {
 }
 
 impl WorldSettingsPanel {
-    pub fn new(state: Arc<parking_lot::RwLock<LevelEditorState>>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        state: Arc<parking_lot::RwLock<LevelEditorState>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         // Default all sections to collapsed
         let mut collapsed_sections = HashSet::new();
         collapsed_sections.insert("Environment".to_string());
@@ -62,7 +73,10 @@ impl Render for WorldSettingsPanel {
         v_flex()
             .size_full()
             .bg(cx.theme().sidebar)
-            .child(self.world_settings.render(&*state, self.state.clone(), &collapsed_sections, cx))
+            .child(
+                self.world_settings
+                    .render(&*state, self.state.clone(), &collapsed_sections, cx),
+            )
     }
 }
 
@@ -136,7 +150,11 @@ pub struct PropertiesPanelWrapper {
 }
 
 impl PropertiesPanelWrapper {
-    pub fn new(state: Arc<parking_lot::RwLock<LevelEditorState>>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        state: Arc<parking_lot::RwLock<LevelEditorState>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let property_input = cx.new(|cx| InputState::new(window, cx));
         // Default all sections to collapsed except Transform (the top section)
         let mut collapsed_sections = HashSet::new();
@@ -151,7 +169,7 @@ impl PropertiesPanelWrapper {
         collapsed_sections.insert("Components".to_string());
         collapsed_sections.insert("Rendering".to_string());
         collapsed_sections.insert("Physics".to_string());
-        
+
         Self {
             properties: PropertiesPanel::new(),
             state,
@@ -179,7 +197,13 @@ impl PropertiesPanelWrapper {
         self.collapsed_sections.contains(section)
     }
 
-    pub fn start_editing(&mut self, property_path: String, current_value: String, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn start_editing(
+        &mut self,
+        property_path: String,
+        current_value: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.editing_property = Some(property_path);
         self.property_input.update(cx, |input, cx| {
             input.set_value(&current_value, window, cx);
@@ -304,7 +328,7 @@ impl Render for PropertiesPanelWrapper {
                 &self.transform_section,
                 &self.component_sections,
                 window,
-                cx
+                cx,
             ))
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                 if this.editing_property.is_some() {

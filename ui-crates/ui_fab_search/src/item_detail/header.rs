@@ -1,7 +1,8 @@
 use gpui::{prelude::*, *};
 use ui::{
+    ActiveTheme, Icon, IconName, Sizable as _, StyledExt,
     button::{Button, ButtonVariants as _},
-    h_flex, ActiveTheme, Icon, IconName, Sizable as _, StyledExt,
+    h_flex,
 };
 
 /// The sticky top-bar of the item detail page.

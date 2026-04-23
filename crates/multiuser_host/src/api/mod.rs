@@ -7,10 +7,10 @@ use axum::{
 use crate::auth::require_auth;
 use crate::state::AppState;
 
+pub mod files;
 pub mod info;
 pub mod projects;
 pub mod sessions;
-pub mod files;
 
 /// Assemble and return the full `/api/v1` router.
 pub fn router(state: AppState) -> Router {

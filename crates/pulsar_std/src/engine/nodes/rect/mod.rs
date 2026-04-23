@@ -125,6 +125,8 @@ pub fn break_rect(rect: ((f32, f32), (f32, f32))) -> ((f32, f32), (f32, f32)) {
 pub fn rect_contains(rect: ((f32, f32), (f32, f32)), point: (f32, f32)) -> bool {
     let ((rect_x, rect_y), (width, height)) = rect;
     let (point_x, point_y) = point;
-    point_x >= rect_x && point_x <= rect_x + width &&
-    point_y >= rect_y && point_y <= rect_y + height
+    point_x >= rect_x
+        && point_x <= rect_x + width
+        && point_y >= rect_y
+        && point_y <= rect_y + height
 }

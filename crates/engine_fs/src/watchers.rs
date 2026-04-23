@@ -1,24 +1,21 @@
 //! File System Watchers
 //!
 //! Monitors file changes and automatically updates indexes
-//! 
+//!
 //! Note: Currently disabled registry-based type detection in watchers due to Send trait limitations.
 //! Type detection is still handled during project scans and manual operations.
 
 use anyhow::Result;
-use notify::{Watcher, RecursiveMode, Event, EventKind};
+use notify::{Event, EventKind, RecursiveMode, Watcher};
 use std::path::PathBuf;
 use std::sync::Arc;
 use type_db::TypeDatabase;
 
 /// Start watching the project directory for changes
-/// 
+///
 /// Note: Currently only handles file removal events. File creation/modification detection
 /// requires plugin registry access which isn't thread-safe yet.
-pub fn start_watcher(
-    project_root: PathBuf,
-    type_database: Arc<TypeDatabase>,
-) -> Result<()> {
+pub fn start_watcher(project_root: PathBuf, type_database: Arc<TypeDatabase>) -> Result<()> {
     let (tx, rx) = std::sync::mpsc::channel();
 
     let mut watcher = notify::recommended_watcher(move |res: Result<Event, _>| {

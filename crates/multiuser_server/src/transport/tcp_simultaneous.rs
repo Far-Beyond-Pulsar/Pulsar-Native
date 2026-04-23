@@ -181,7 +181,10 @@ impl TcpSimultaneousOpen {
         // Attempt to connect
         match socket.connect(peer_addr).await {
             Ok(stream) => {
-                debug!("TCP connection established: {} -> {}", local_addr, peer_addr);
+                debug!(
+                    "TCP connection established: {} -> {}",
+                    local_addr, peer_addr
+                );
                 Ok(stream)
             }
             Err(e) => {
@@ -274,9 +277,7 @@ impl TcpSimultaneousOpen {
         let socket = Self::create_socket(local_addr)?;
 
         // Set socket to listening state
-        let listener = socket
-            .listen(1)
-            .context("Failed to listen on socket")?;
+        let listener = socket.listen(1).context("Failed to listen on socket")?;
 
         // Try to accept while also attempting to connect
         let accept_task = async {
@@ -410,9 +411,7 @@ mod tests {
         let local_addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
 
         // Create a simple listener for testing
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let server_addr = listener.local_addr().unwrap();
 
         // Accept connection in background

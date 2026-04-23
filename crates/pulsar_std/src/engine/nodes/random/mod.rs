@@ -165,7 +165,11 @@ pub fn random_sign() -> i64 {
     let state = RandomState::new();
     let mut hasher = state.build_hasher();
     std::time::SystemTime::now().hash(&mut hasher);
-    if (hasher.finish() & 1) == 1 { 1 } else { -1 }
+    if (hasher.finish() & 1) == 1 {
+        1
+    } else {
+        -1
+    }
 }
 
 /// Generate a random value from a normal distribution (simplified).
@@ -186,10 +190,10 @@ pub fn random_normal(mean: f64, std_dev: f64) -> f64 {
     let mut hasher = state.build_hasher();
     std::time::SystemTime::now().hash(&mut hasher);
     let u1 = (hasher.finish() as f64) / (u64::MAX as f64);
-    
+
     std::time::SystemTime::now().hash(&mut hasher);
     let u2 = (hasher.finish() as f64) / (u64::MAX as f64);
-    
+
     let z = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos();
     mean + std_dev * z
 }

@@ -30,21 +30,11 @@ async fn main() -> Result<()> {
     let config = Config::from_cli(cli)?;
     let data_dir = config.data_dir.clone();
 
-    info!(
-        "Server name  : {}",        config.server_name
-    );
-    info!(
-        "Bind address : {}:{}",     config.bind, config.port
-    );
-    info!(
-        "Data directory: {}",       data_dir.display()
-    );
-    info!(
-        "Auth required : {}",       config.auth_required()
-    );
-    info!(
-        "Max projects  : {}",       config.max_projects
-    );
+    info!("Server name  : {}", config.server_name);
+    info!("Bind address : {}:{}", config.bind, config.port);
+    info!("Data directory: {}", data_dir.display());
+    info!("Auth required : {}", config.auth_required());
+    info!("Max projects  : {}", config.max_projects);
 
     // Load projects from disk.
     let projects = ProjectManager::load(data_dir)?;
@@ -54,9 +44,7 @@ async fn main() -> Result<()> {
     let state = AppState::new(config.clone(), projects);
 
     // Assemble the Axum router.
-    let app = api::router(state).layer(
-        tower_http::trace::TraceLayer::new_for_http()
-    );
+    let app = api::router(state).layer(tower_http::trace::TraceLayer::new_for_http());
 
     // Start listening.
     let addr = format!("{}:{}", config.bind, config.port);

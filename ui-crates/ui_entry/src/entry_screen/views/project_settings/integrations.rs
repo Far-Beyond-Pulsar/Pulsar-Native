@@ -1,14 +1,18 @@
+use super::types::{AvailableTools, ProjectSettings, ToolInfo};
+use crate::entry_screen::EntryScreen;
 use gpui::{prelude::*, *};
 use ui::{
-    h_flex, v_flex, Icon, IconName, divider::Divider, ActiveTheme as _,
     button::{Button, ButtonVariants as _},
+    divider::Divider,
+    h_flex,
     indicator::Indicator,
-    Sizable,
+    v_flex, ActiveTheme as _, Icon, IconName, Sizable,
 };
-use super::types::{ProjectSettings, ToolInfo, AvailableTools};
-use crate::entry_screen::EntryScreen;
 
-pub fn render_integrations_tab(settings: &ProjectSettings, cx: &mut Context<EntryScreen>) -> impl IntoElement {
+pub fn render_integrations_tab(
+    settings: &ProjectSettings,
+    cx: &mut Context<EntryScreen>,
+) -> impl IntoElement {
     let theme = cx.theme();
     let project_path = settings.project_path.clone();
     let is_updating = settings.is_updating_tools;
@@ -34,7 +38,8 @@ pub fn render_integrations_tab(settings: &ProjectSettings, cx: &mut Context<Entr
                         }
                     });
                 });
-            }).detach();
+            })
+            .detach();
 
             // Return cached tools to show immediately
             tools_clone
@@ -49,8 +54,9 @@ pub fn render_integrations_tab(settings: &ProjectSettings, cx: &mut Context<Entr
     };
 
     // If we just loaded from cache or have no cache, trigger background detection
-    if (settings.available_tools_cache.is_some() && is_updating) ||
-       (settings.available_tools_cache.is_none() && !is_updating) {
+    if (settings.available_tools_cache.is_some() && is_updating)
+        || (settings.available_tools_cache.is_none() && !is_updating)
+    {
         cx.spawn(async move |this, cx| {
             // Mark as updating if not already
             let _ = cx.update(|cx| {
@@ -65,9 +71,7 @@ pub fn render_integrations_tab(settings: &ProjectSettings, cx: &mut Context<Entr
             });
 
             // Detect tools in background using std::thread (not tokio!)
-            let detected = std::thread::spawn(|| AvailableTools::detect())
-                .join()
-                .ok();
+            let detected = std::thread::spawn(|| AvailableTools::detect()).join().ok();
 
             if let Some(tools) = detected {
                 // Save to cache file
@@ -84,7 +88,8 @@ pub fn render_integrations_tab(settings: &ProjectSettings, cx: &mut Context<Entr
                     });
                 });
             }
-        }).detach();
+        })
+        .detach();
     }
 
     v_flex()
@@ -173,15 +178,13 @@ fn render_tool_category(
     let default_tool = default_tool.map(|s| s.to_string());
     let project_path = project_path.clone();
     let tool_type = tool_type.to_string();
-    
+
     // Sort tools: available first, then unavailable
     let mut sorted_tools = tools.to_vec();
-    sorted_tools.sort_by(|a, b| {
-        match (a.available, b.available) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.name.cmp(&b.name),
-        }
+    sorted_tools.sort_by(|a, b| match (a.available, b.available) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.cmp(&b.name),
     });
 
     v_flex()
@@ -191,21 +194,17 @@ fn render_tool_category(
                 .text_lg()
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(theme.foreground)
-                .child(category_name)
+                .child(category_name),
         )
-        .child(
-            v_flex()
-                .gap_2()
-                .children(sorted_tools.iter().map(|tool| {
-                    render_tool_row(
-                        tool,
-                        default_tool.as_deref() == Some(&tool.command),
-                        &project_path,
-                        &tool_type,
-                        theme,
-                    )
-                }))
-        )
+        .child(v_flex().gap_2().children(sorted_tools.iter().map(|tool| {
+            render_tool_row(
+                tool,
+                default_tool.as_deref() == Some(&tool.command),
+                &project_path,
+                &tool_type,
+                theme,
+            )
+        })))
 }
 
 fn render_tool_row(
@@ -256,7 +255,7 @@ fn render_tool_row(
                         theme.foreground
                     } else {
                         theme.muted_foreground.opacity(0.4)
-                    })
+                    }),
                 )
                 .child(
                     v_flex()
@@ -270,14 +269,14 @@ fn render_tool_row(
                                 } else {
                                     theme.muted_foreground.opacity(0.5)
                                 })
-                                .child(tool_name.clone())
+                                .child(tool_name.clone()),
                         )
                         .child(
                             div()
                                 .text_xs()
                                 .text_color(theme.muted_foreground.opacity(0.7))
-                                .child(format!("Command: {}", tool_command.clone()))
-                        )
+                                .child(format!("Command: {}", tool_command.clone())),
+                        ),
                 )
                 .when(is_default, |this| {
                     this.child(
@@ -287,7 +286,7 @@ fn render_tool_row(
                             .child(
                                 Icon::new(IconName::Check)
                                     .size(px(12.))
-                                    .text_color(theme.primary)
+                                    .text_color(theme.primary),
                             )
                             .child(
                                 div()
@@ -298,10 +297,10 @@ fn render_tool_row(
                                     .text_xs()
                                     .font_weight(gpui::FontWeight::MEDIUM)
                                     .text_color(theme.primary)
-                                    .child("Default")
-                            )
+                                    .child("Default"),
+                            ),
                     )
-                })
+                }),
         )
         .child(
             h_flex()
@@ -316,7 +315,7 @@ fn render_tool_row(
                             .with_variant(ui::button::ButtonVariant::Ghost)
                             .on_click(move |_, _, _| {
                                 save_tool_preference(&path_clone, &cmd_clone, &tool_type_clone);
-                            })
+                            }),
                     )
                 })
                 .when(available, |this| {
@@ -332,17 +331,26 @@ fn render_tool_row(
                                 use crate::entry_screen::integration_launcher;
                                 match tool_type_clone.as_str() {
                                     "editor" => {
-                                        let _ = integration_launcher::launch_editor(&cmd_clone, &path_clone);
-                                    },
+                                        let _ = integration_launcher::launch_editor(
+                                            &cmd_clone,
+                                            &path_clone,
+                                        );
+                                    }
                                     "git" => {
-                                        let _ = integration_launcher::launch_git_tool(&cmd_clone, &path_clone);
-                                    },
+                                        let _ = integration_launcher::launch_git_tool(
+                                            &cmd_clone,
+                                            &path_clone,
+                                        );
+                                    }
                                     "terminal" => {
-                                        let _ = integration_launcher::launch_terminal(&cmd_clone, &path_clone);
-                                    },
+                                        let _ = integration_launcher::launch_terminal(
+                                            &cmd_clone,
+                                            &path_clone,
+                                        );
+                                    }
                                     _ => {}
                                 }
-                            })
+                            }),
                     )
                 })
                 .when(!available, |this| {
@@ -354,9 +362,9 @@ fn render_tool_row(
                             .bg(theme.muted.opacity(0.1))
                             .text_xs()
                             .text_color(theme.muted_foreground.opacity(0.5))
-                            .child("Not Installed")
+                            .child("Not Installed"),
                     )
-                })
+                }),
         )
 }
 
@@ -374,9 +382,16 @@ fn save_tool_preference(project_path: &std::path::PathBuf, tool_command: &str, t
     };
 
     // Ensure tools table exists
-    if !config.as_table().map(|t| t.contains_key("tools")).unwrap_or(false) {
+    if !config
+        .as_table()
+        .map(|t| t.contains_key("tools"))
+        .unwrap_or(false)
+    {
         if let Some(table) = config.as_table_mut() {
-            table.insert("tools".to_string(), toml::Value::Table(toml::map::Map::new()));
+            table.insert(
+                "tools".to_string(),
+                toml::Value::Table(toml::map::Map::new()),
+            );
         }
     }
 
@@ -389,7 +404,10 @@ fn save_tool_preference(project_path: &std::path::PathBuf, tool_command: &str, t
     // Update the preference
     if let Some(table) = config.as_table_mut() {
         if let Some(tools_table) = table.get_mut("tools").and_then(|v| v.as_table_mut()) {
-            tools_table.insert(key.to_string(), toml::Value::String(tool_command.to_string()));
+            tools_table.insert(
+                key.to_string(),
+                toml::Value::String(tool_command.to_string()),
+            );
         }
     }
 

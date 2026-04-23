@@ -24,7 +24,9 @@ pub enum PanelEvent {
         source_index: usize,
     },
     /// Tab changed - fired when active tab is switched
-    TabChanged { active_index: usize },
+    TabChanged {
+        active_index: usize,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -151,11 +153,11 @@ pub trait Panel: EventEmitter<PanelEvent> + Render + Focusable {
 
     // TODO This is cursed. When we do plugins their tabs will provide ALL RPC data to avoid this conditional garbage
     /// The Discord Rich Presence icon key for this panel type.
-    /// 
+    ///
     /// This key corresponds to an image uploaded to your Discord Application's Rich Presence assets.
     /// Default implementation derives the key from the panel name.
     /// Override this to provide a custom icon key for your panel.
-    /// 
+    ///
     /// Common keys: "level_edit", "script_edit", "daw_edit", "database", "blueprint", etc.
     fn discord_icon_key(&self, cx: &App) -> &'static str {
         // Default implementation based on panel name

@@ -102,7 +102,7 @@ pub fn system_hostname() -> Result<String, String> {
             } else {
                 Err("Failed to get hostname".to_string())
             }
-        },
+        }
         Err(e) => Err(format!("Failed to execute hostname command: {}", e)),
     }
 }
@@ -235,12 +235,9 @@ pub fn system_memory() -> Result<String, String> {
             .args(["/C", "systeminfo | findstr \"Physical Memory\""])
             .output()
     } else if cfg!(target_os = "macos") {
-        Command::new("vm_stat")
-            .output()
+        Command::new("vm_stat").output()
     } else {
-        Command::new("free")
-            .args(["-h"])
-            .output()
+        Command::new("free").args(["-h"]).output()
     };
 
     match output {
@@ -250,7 +247,7 @@ pub fn system_memory() -> Result<String, String> {
             } else {
                 Err("Failed to get memory info".to_string())
             }
-        },
+        }
         Err(e) => Err(format!("Failed to execute memory command: {}", e)),
     }
 }
@@ -281,8 +278,7 @@ pub fn system_uptime() -> Result<String, String> {
             .args(["/C", "systeminfo | findstr \"Boot Time\""])
             .output()
     } else {
-        Command::new("uptime")
-            .output()
+        Command::new("uptime").output()
     };
 
     match output {
@@ -292,7 +288,7 @@ pub fn system_uptime() -> Result<String, String> {
             } else {
                 Err("Failed to get uptime".to_string())
             }
-        },
+        }
         Err(e) => Err(format!("Failed to execute uptime command: {}", e)),
     }
 }

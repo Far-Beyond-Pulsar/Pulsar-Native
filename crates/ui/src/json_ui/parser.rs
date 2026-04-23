@@ -1,7 +1,7 @@
 use crate::json_ui::schema::*;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::fs;
+use std::path::{Path, PathBuf};
 
 pub struct UiParser {
     base_path: PathBuf,
@@ -21,7 +21,10 @@ impl UiParser {
         parser.parse_document(path.as_ref())
     }
 
-    pub fn parse_document(&mut self, path: &Path) -> Result<UiComponent, Box<dyn std::error::Error>> {
+    pub fn parse_document(
+        &mut self,
+        path: &Path,
+    ) -> Result<UiComponent, Box<dyn std::error::Error>> {
         let absolute_path = if path.is_absolute() {
             path.to_path_buf()
         } else {
@@ -41,11 +44,18 @@ impl UiParser {
         Ok(resolved)
     }
 
-    fn resolve_component(&mut self, component: &UiComponent) -> Result<UiComponent, Box<dyn std::error::Error>> {
+    fn resolve_component(
+        &mut self,
+        component: &UiComponent,
+    ) -> Result<UiComponent, Box<dyn std::error::Error>> {
         self.resolve_component_with_props(component, &HashMap::new())
     }
 
-    fn resolve_component_with_props(&mut self, component: &UiComponent, inherited_props: &HashMap<String, UiValue>) -> Result<UiComponent, Box<dyn std::error::Error>> {
+    fn resolve_component_with_props(
+        &mut self,
+        component: &UiComponent,
+        inherited_props: &HashMap<String, UiValue>,
+    ) -> Result<UiComponent, Box<dyn std::error::Error>> {
         if let Some(ref_path) = &component.reference {
             let referenced_path = self.base_path.join(ref_path);
             let referenced_component = self.parse_document(&referenced_path)?;
@@ -57,7 +67,8 @@ impl UiParser {
 
             let mut resolved = referenced_component;
             resolved.props = self.interpolate_props(&resolved.props, &merged_props);
-            resolved.children = self.resolve_children_with_props(&resolved.children, &merged_props)?;
+            resolved.children =
+                self.resolve_children_with_props(&resolved.children, &merged_props)?;
             return Ok(resolved);
         }
 
@@ -74,7 +85,11 @@ impl UiParser {
         })
     }
 
-    fn interpolate_props(&self, props: &HashMap<String, UiValue>, context: &HashMap<String, UiValue>) -> HashMap<String, UiValue> {
+    fn interpolate_props(
+        &self,
+        props: &HashMap<String, UiValue>,
+        context: &HashMap<String, UiValue>,
+    ) -> HashMap<String, UiValue> {
         let mut interpolated = HashMap::new();
 
         for (key, value) in props {
@@ -88,15 +103,17 @@ impl UiParser {
         match value {
             UiValue::String(s) => {
                 if s.starts_with("${") && s.ends_with("}") {
-                    let var_name = &s[2..s.len()-1];
+                    let var_name = &s[2..s.len() - 1];
                     context.get(var_name).unwrap_or(value).clone()
                 } else {
                     value.clone()
                 }
             }
-            UiValue::Array(arr) => {
-                UiValue::Array(arr.iter().map(|v| self.interpolate_value(v, context)).collect())
-            }
+            UiValue::Array(arr) => UiValue::Array(
+                arr.iter()
+                    .map(|v| self.interpolate_value(v, context))
+                    .collect(),
+            ),
             UiValue::Object(obj) => {
                 let mut interpolated_obj = HashMap::new();
                 for (k, v) in obj {
@@ -112,11 +129,15 @@ impl UiParser {
         self.resolve_child_with_props(child, &HashMap::new())
     }
 
-    fn resolve_child_with_props(&mut self, child: &UiChild, inherited_props: &HashMap<String, UiValue>) -> Result<UiChild, Box<dyn std::error::Error>> {
+    fn resolve_child_with_props(
+        &mut self,
+        child: &UiChild,
+        inherited_props: &HashMap<String, UiValue>,
+    ) -> Result<UiChild, Box<dyn std::error::Error>> {
         match child {
-            UiChild::Component(component) => {
-                Ok(UiChild::Component(self.resolve_component_with_props(component, inherited_props)?))
-            }
+            UiChild::Component(component) => Ok(UiChild::Component(
+                self.resolve_component_with_props(component, inherited_props)?,
+            )),
             UiChild::Text(text) => Ok(UiChild::Text(text.clone())),
             UiChild::Reference { reference, props } => {
                 let referenced_path = self.base_path.join(reference);
@@ -127,20 +148,30 @@ impl UiParser {
                     merged_props.insert(key.clone(), value.clone());
                 }
 
-                referenced_component.props = self.interpolate_props(&referenced_component.props, &merged_props);
-                referenced_component.children = self.resolve_children_with_props(&referenced_component.children, &merged_props)?;
+                referenced_component.props =
+                    self.interpolate_props(&referenced_component.props, &merged_props);
+                referenced_component.children = self
+                    .resolve_children_with_props(&referenced_component.children, &merged_props)?;
 
                 Ok(UiChild::Component(referenced_component))
             }
         }
     }
 
-    fn resolve_children(&mut self, children: &[UiChild]) -> Result<Vec<UiChild>, Box<dyn std::error::Error>> {
+    fn resolve_children(
+        &mut self,
+        children: &[UiChild],
+    ) -> Result<Vec<UiChild>, Box<dyn std::error::Error>> {
         self.resolve_children_with_props(children, &HashMap::new())
     }
 
-    fn resolve_children_with_props(&mut self, children: &[UiChild], inherited_props: &HashMap<String, UiValue>) -> Result<Vec<UiChild>, Box<dyn std::error::Error>> {
-        children.iter()
+    fn resolve_children_with_props(
+        &mut self,
+        children: &[UiChild],
+        inherited_props: &HashMap<String, UiValue>,
+    ) -> Result<Vec<UiChild>, Box<dyn std::error::Error>> {
+        children
+            .iter()
             .map(|child| self.resolve_child_with_props(child, inherited_props))
             .collect()
     }
@@ -149,7 +180,10 @@ impl UiParser {
         self.cache.clear();
     }
 
-    pub fn parse_from_string(&mut self, content: &str) -> Result<UiComponent, Box<dyn std::error::Error>> {
+    pub fn parse_from_string(
+        &mut self,
+        content: &str,
+    ) -> Result<UiComponent, Box<dyn std::error::Error>> {
         let document: UiDocument = serde_json::from_str(content)?;
         self.resolve_component(&document.root)
     }

@@ -1,10 +1,9 @@
+use crate::{
+    AliasAsset, EnumAsset, Result, StructAsset, TraitAsset, TypeAstNode, TypeIndex, TypeKind,
+    TypeRef, TypeSystemError, VariantPayload, PRIMITIVES,
+};
 use regex::Regex;
 use std::collections::HashSet;
-use crate::{
-    TypeRef, TypeAstNode, TypeIndex, TypeKind, AliasAsset,
-    StructAsset, EnumAsset, TraitAsset, TypeSystemError, Result, PRIMITIVES,
-    VariantPayload,
-};
 
 lazy_static::lazy_static! {
     static ref NAME_REGEX: Regex = Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*$").unwrap();
@@ -61,7 +60,8 @@ pub fn validate_type_ref(type_ref: &TypeRef, index: &TypeIndex) -> Result<()> {
 /// Validates generic arity for constructors
 pub fn validate_constructor_arity(name: &str, params: &[TypeAstNode]) -> Result<()> {
     let expected = match name {
-        "Box" | "Arc" | "Rc" | "Option" | "Vec" | "Pin" | "Cell" | "RefCell" | "Mutex" | "RwLock" => 1,
+        "Box" | "Arc" | "Rc" | "Option" | "Vec" | "Pin" | "Cell" | "RefCell" | "Mutex"
+        | "RwLock" => 1,
         "Result" | "Cow" => 2,
         "HashMap" | "HashSet" => {
             if params.len() == 1 || params.len() == 2 {
@@ -114,7 +114,10 @@ pub fn validate_ast_node(node: &TypeAstNode, index: &TypeIndex) -> Result<()> {
                 validate_ast_node(elem, index)?;
             }
         }
-        TypeAstNode::FnPointer { params, return_type } => {
+        TypeAstNode::FnPointer {
+            params,
+            return_type,
+        } => {
             for param in params {
                 validate_ast_node(param, index)?;
             }
@@ -171,7 +174,10 @@ pub fn detect_alias_cycles(alias: &AliasAsset, index: &TypeIndex) -> Result<()> 
                     visit(alias_name, elem, index, visited, stack)?;
                 }
             }
-            TypeAstNode::FnPointer { params, return_type } => {
+            TypeAstNode::FnPointer {
+                params,
+                return_type,
+            } => {
                 for param in params {
                     visit(alias_name, param, index, visited, stack)?;
                 }

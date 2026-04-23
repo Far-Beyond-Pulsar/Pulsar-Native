@@ -114,7 +114,7 @@ fn generate_ico(img: &image::DynamicImage, output_dir: &Path, dry_run: bool) -> 
     for &size in &[16u32, 32, 48, 256] {
         let resized = img.resize_exact(size, size, image::imageops::FilterType::Lanczos3);
         let rgba = resized.to_rgba8();
-        
+
         let ico_image = ico::IconImage::from_rgba_data(size, size, rgba.into_raw());
         ico_dir.add_entry(ico::IconDirEntry::encode(&ico_image)?);
         tracing::trace!("      ✓ {}x{}", size, size);
@@ -145,7 +145,7 @@ fn generate_icns(img: &image::DynamicImage, output_dir: &Path, dry_run: bool) ->
     for size in mac_sizes.iter() {
         let resized = img.resize_exact(*size, *size, image::imageops::FilterType::Lanczos3);
         let rgba = resized.to_rgba8();
-        
+
         let icon_image = icns::Image::from_data(
             icns::PixelFormat::RGBA,
             *size,
@@ -206,7 +206,7 @@ Keywords=game;engine;development;
     let mut file = BufWriter::new(File::create(&desktop_path)?);
     file.write_all(desktop_content.as_bytes())?;
     file.flush()?;
-    
+
     tracing::trace!("      ✓ Desktop entry created");
     tracing::trace!("      Note: You may need to adjust paths in the .desktop file");
 

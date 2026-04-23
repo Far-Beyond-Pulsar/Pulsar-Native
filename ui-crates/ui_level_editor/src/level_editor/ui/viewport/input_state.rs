@@ -14,9 +14,9 @@ const MAX_MOVE_SPEED: f32 = 100.0;
 /// Lock-free input state using atomics - no mutex contention!
 pub struct InputState {
     // Keyboard movement (atomic for lock-free access)
-    pub forward: Arc<AtomicI32>,  // -1, 0, 1
-    pub right: Arc<AtomicI32>,    // -1, 0, 1
-    pub up: Arc<AtomicI32>,       // -1, 0, 1
+    pub forward: Arc<AtomicI32>, // -1, 0, 1
+    pub right: Arc<AtomicI32>,   // -1, 0, 1
+    pub up: Arc<AtomicI32>,      // -1, 0, 1
     pub boost: Arc<AtomicBool>,
 
     // Mouse position (stored as i32 * 1000 for fractional precision)
@@ -33,7 +33,7 @@ pub struct InputState {
     // Input latency tracking (measured on input thread)
     // Stores microseconds since last input was received, as i64
     pub input_latency_us: Arc<AtomicU64>,
-    
+
     // Camera move speed (stored as u32 bits for atomic access)
     pub move_speed: Arc<AtomicU32>,
 }
@@ -167,8 +167,6 @@ impl InputState {
     }
 }
 
-
-
 impl Default for InputState {
     fn default() -> Self {
         Self::new()
@@ -183,9 +181,10 @@ impl CameraSpeedControl for InputState {
     fn adjust_move_speed(&self, delta: f32) {
         let current = f32::from_bits(self.move_speed.load(Ordering::Relaxed));
         let new_speed = (current + delta).max(MIN_MOVE_SPEED).min(MAX_MOVE_SPEED);
-        self.move_speed.store(new_speed.to_bits(), Ordering::Relaxed);
+        self.move_speed
+            .store(new_speed.to_bits(), Ordering::Relaxed);
         let verify = f32::from_bits(self.move_speed.load(Ordering::Relaxed));
-        tracing::info!("[INPUT_STATE] 🔧 adjust_move_speed: current={:.2}, delta={:.2}, new={:.2}, verify={:.2}, ptr={:p}", 
+        tracing::info!("[INPUT_STATE] 🔧 adjust_move_speed: current={:.2}, delta={:.2}, new={:.2}, verify={:.2}, ptr={:p}",
             current, delta, new_speed, verify, &self.move_speed as *const _);
     }
 }

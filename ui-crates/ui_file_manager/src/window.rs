@@ -21,11 +21,10 @@ impl FileManagerWindow {
         cx: &mut Context<Self>,
     ) -> Self {
         // Subscribe to file selected events and forward them to parent window
-        cx.subscribe_in(&file_manager, window, Self::on_file_selected).detach();
+        cx.subscribe_in(&file_manager, window, Self::on_file_selected)
+            .detach();
 
-        Self { 
-            file_manager,
-        }
+        Self { file_manager }
     }
 
     pub fn file_manager(&self) -> &Entity<FileManagerDrawer> {

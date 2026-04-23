@@ -1,16 +1,17 @@
+use crate::manual_docs::{FileEntry, ManualDocsState, ViewMode};
 use gpui::{prelude::*, *};
-use ui::{
-    ActiveTheme, Sizable, StyledExt,
-    button::{Button, ButtonVariants as _},
-    h_flex, v_flex, IconName, Icon,
-    text::TextView,
-    resizable::{h_resizable, resizable_panel, ResizableState},
-    input::TextInput,
-    scroll::ScrollbarAxis,
-    hierarchical_tree::tree_colors,
-};
 use ui::render_tree_folder;
-use crate::manual_docs::{ManualDocsState, FileEntry, ViewMode};
+use ui::{
+    ActiveTheme, Icon, IconName, Sizable, StyledExt,
+    button::{Button, ButtonVariants as _},
+    h_flex,
+    hierarchical_tree::tree_colors,
+    input::TextInput,
+    resizable::{ResizableState, h_resizable, resizable_panel},
+    scroll::ScrollbarAxis,
+    text::TextView,
+    v_flex,
+};
 
 pub struct ManualDocsPanel;
 
@@ -28,21 +29,25 @@ impl ManualDocsPanel {
         on_mode_change: impl Fn(&mut V, ViewMode, &mut Window, &mut Context<V>) + 'static + Clone,
         window: &mut Window,
         cx: &mut Context<V>,
-    ) -> impl IntoElement 
+    ) -> impl IntoElement
     where
         V: Render,
     {
-        let visible_files: Vec<_> = state.visible_entries.iter()
+        let visible_files: Vec<_> = state
+            .visible_entries
+            .iter()
             .map(|&idx| state.file_tree[idx].clone())
             .collect();
-        
-        let file_entries: Vec<AnyElement> = visible_files.into_iter().map(|entry| {
-            Self::render_file_entry(&entry, state, cx)
-        }).collect();
-        
+
+        let file_entries: Vec<AnyElement> = visible_files
+            .into_iter()
+            .map(|entry| Self::render_file_entry(&entry, state, cx))
+            .collect();
+
         let theme = cx.theme().clone();
         let has_selection = state.selected_file.is_some();
-        let file_name = state.selected_file
+        let file_name = state
+            .selected_file
             .as_ref()
             .and_then(|p| p.file_name())
             .and_then(|n| n.to_str())
@@ -53,21 +58,18 @@ impl ManualDocsPanel {
             .child(
                 resizable_panel()
                     .size(px(260.0))
-                    .child(Self::render_sidebar(file_entries, &theme, cx, on_new_file))
+                    .child(Self::render_sidebar(file_entries, &theme, cx, on_new_file)),
             )
-            .child(
-                resizable_panel()
-                    .child(Self::render_editor_area(
-                        state,
-                        has_selection,
-                        file_name,
-                        on_save_file,
-                        on_mode_change,
-                        window,
-                        &theme,
-                        cx,
-                    ))
-            )
+            .child(resizable_panel().child(Self::render_editor_area(
+                state,
+                has_selection,
+                file_name,
+                on_save_file,
+                on_mode_change,
+                window,
+                &theme,
+                cx,
+            )))
     }
 
     fn render_sidebar<V: 'static>(
@@ -75,12 +77,12 @@ impl ManualDocsPanel {
         theme: &ui::ThemeColor,
         cx: &mut Context<V>,
         on_new_file: impl Fn(&mut V, &gpui::ClickEvent, &mut Window, &mut Context<V>) + 'static,
-    ) -> impl IntoElement 
+    ) -> impl IntoElement
     where
         V: Render,
     {
         let file_count = file_entries.len();
-        
+
         v_flex()
             .size_full()
             .bg(theme.sidebar.opacity(0.95))
@@ -103,14 +105,14 @@ impl ManualDocsPanel {
                             .child(
                                 Icon::new(IconName::BookOpen)
                                     .size_4()
-                                    .text_color(tree_colors::DOC_TEAL)
+                                    .text_color(tree_colors::DOC_TEAL),
                             )
                             .child(
                                 div()
                                     .text_sm()
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(theme.foreground)
-                                    .child("Files")
+                                    .child("Files"),
                             )
                             .child(
                                 div()
@@ -121,8 +123,8 @@ impl ManualDocsPanel {
                                     .text_xs()
                                     .font_weight(gpui::FontWeight::MEDIUM)
                                     .text_color(theme.accent)
-                                    .child(format!("{}", file_count))
-                            )
+                                    .child(format!("{}", file_count)),
+                            ),
                     )
                     .child(
                         Button::new("new-file")
@@ -130,20 +132,17 @@ impl ManualDocsPanel {
                             .ghost()
                             .small()
                             .tooltip("New File")
-                            .on_click(cx.listener(on_new_file))
-                    )
+                            .on_click(cx.listener(on_new_file)),
+                    ),
             )
             .child(
-                div()
-                    .flex_1()
-                    .overflow_hidden()
-                    .child(
-                        v_flex()
-                            .size_full()
-                            .py_2()
-                            .scrollable(ScrollbarAxis::Vertical)
-                            .children(file_entries)
-                    )
+                div().flex_1().overflow_hidden().child(
+                    v_flex()
+                        .size_full()
+                        .py_2()
+                        .scrollable(ScrollbarAxis::Vertical)
+                        .children(file_entries),
+                ),
             )
     }
 
@@ -187,7 +186,7 @@ impl ManualDocsPanel {
                                 this.child(
                                     Icon::new(IconName::BookOpen)
                                         .size_4()
-                                        .text_color(theme.accent)
+                                        .text_color(theme.accent),
                                 )
                             })
                             .child(
@@ -199,8 +198,10 @@ impl ManualDocsPanel {
                                     } else {
                                         theme.muted_foreground
                                     })
-                                    .child(file_name.unwrap_or_else(|| "No file selected".to_string()))
-                            )
+                                    .child(
+                                        file_name.unwrap_or_else(|| "No file selected".to_string()),
+                                    ),
+                            ),
                     )
                     .child(
                         h_flex()
@@ -222,10 +223,19 @@ impl ManualDocsPanel {
                                                 btn.bg(theme.accent)
                                                     .text_color(theme.accent_foreground)
                                             })
-                                            .when(state.view_mode != ViewMode::Editor, |btn| btn.ghost())
-                                            .on_click(cx.listener(move |view, _event, window, cx| {
-                                                on_editor_mode(view, ViewMode::Editor, window, cx);
-                                            }))
+                                            .when(state.view_mode != ViewMode::Editor, |btn| {
+                                                btn.ghost()
+                                            })
+                                            .on_click(cx.listener(
+                                                move |view, _event, window, cx| {
+                                                    on_editor_mode(
+                                                        view,
+                                                        ViewMode::Editor,
+                                                        window,
+                                                        cx,
+                                                    );
+                                                },
+                                            )),
                                     )
                                     .child(
                                         Button::new("mode-preview")
@@ -236,10 +246,19 @@ impl ManualDocsPanel {
                                                 btn.bg(theme.accent)
                                                     .text_color(theme.accent_foreground)
                                             })
-                                            .when(state.view_mode != ViewMode::Preview, |btn| btn.ghost())
-                                            .on_click(cx.listener(move |view, _event, window, cx| {
-                                                on_preview_mode(view, ViewMode::Preview, window, cx);
-                                            }))
+                                            .when(state.view_mode != ViewMode::Preview, |btn| {
+                                                btn.ghost()
+                                            })
+                                            .on_click(cx.listener(
+                                                move |view, _event, window, cx| {
+                                                    on_preview_mode(
+                                                        view,
+                                                        ViewMode::Preview,
+                                                        window,
+                                                        cx,
+                                                    );
+                                                },
+                                            )),
                                     )
                                     .child(
                                         Button::new("mode-split")
@@ -250,31 +269,33 @@ impl ManualDocsPanel {
                                                 btn.bg(theme.accent)
                                                     .text_color(theme.accent_foreground)
                                             })
-                                            .when(state.view_mode != ViewMode::Split, |btn| btn.ghost())
-                                            .on_click(cx.listener(move |view, _event, window, cx| {
-                                                on_split_mode(view, ViewMode::Split, window, cx);
-                                            }))
-                                    )
+                                            .when(state.view_mode != ViewMode::Split, |btn| {
+                                                btn.ghost()
+                                            })
+                                            .on_click(cx.listener(
+                                                move |view, _event, window, cx| {
+                                                    on_split_mode(
+                                                        view,
+                                                        ViewMode::Split,
+                                                        window,
+                                                        cx,
+                                                    );
+                                                },
+                                            )),
+                                    ),
                             )
-                            .child(
-                                div()
-                                    .h_6()
-                                    .w_px()
-                                    .bg(theme.border.opacity(0.4))
-                            )
+                            .child(div().h_6().w_px().bg(theme.border.opacity(0.4)))
                             .child(
                                 Button::new("save-file")
                                     .icon(IconName::Check)
                                     .ghost()
                                     .xsmall()
                                     .tooltip("Save File")
-                                    .on_click(cx.listener(on_save_file))
-                            )
-                    )
+                                    .on_click(cx.listener(on_save_file)),
+                            ),
+                    ),
             )
-            .child(
-                Self::render_view_mode_content(state, window, cx, theme)
-            )
+            .child(Self::render_view_mode_content(state, window, cx, theme))
     }
 
     fn render_view_mode_content<V: 'static>(
@@ -290,106 +311,91 @@ impl ManualDocsPanel {
         let markdown = state.markdown_preview.clone();
         let editor_state = state.editor_input_state.clone();
 
-        div()
-            .flex_1()
-            .overflow_hidden()
-            .child(match view_mode {
-                ViewMode::Editor => {
+        div().flex_1().overflow_hidden().child(match view_mode {
+            ViewMode::Editor => div()
+                .size_full()
+                .bg(theme.background)
+                .p_4()
+                .child(
+                    TextInput::new(&editor_state)
+                        .w_full()
+                        .h_full()
+                        .appearance(true)
+                        .bordered(true),
+                )
+                .into_any_element(),
+            ViewMode::Preview => div()
+                .size_full()
+                .bg(theme.background)
+                .overflow_hidden()
+                .child(
+                    div().size_full().scrollable(ScrollbarAxis::Vertical).child(
+                        div()
+                            .w_full()
+                            .max_w(px(1200.0))
+                            .mx_auto()
+                            .px_8()
+                            .py_8()
+                            .child(
+                                TextView::markdown(
+                                    "manual-docs-preview",
+                                    markdown.clone(),
+                                    window,
+                                    cx,
+                                )
+                                .debounce_ms(30)
+                                .selectable(),
+                            ),
+                    ),
+                )
+                .into_any_element(),
+            ViewMode::Split => h_flex()
+                .size_full()
+                .child(
                     div()
+                        .flex_1()
                         .size_full()
                         .bg(theme.background)
-                        .p_4()
+                        .border_r_1()
+                        .border_color(theme.border)
+                        .p_3()
                         .child(
                             TextInput::new(&editor_state)
                                 .w_full()
                                 .h_full()
                                 .appearance(true)
-                                .bordered(true)
-                        )
-                        .into_any_element()
-                }
-                ViewMode::Preview => {
+                                .bordered(true),
+                        ),
+                )
+                .child(
                     div()
+                        .flex_1()
                         .size_full()
                         .bg(theme.background)
                         .overflow_hidden()
                         .child(
-                            div()
-                                .size_full()
-                                .scrollable(ScrollbarAxis::Vertical)
-                                .child(
-                                    div()
-                                        .w_full()
-                                        .max_w(px(1200.0))
-                                        .mx_auto()
-                                        .px_8()
-                                        .py_8()
-                                        .child(
-                                            TextView::markdown(
-                                                "manual-docs-preview",
-                                                markdown.clone(),
-                                                window,
-                                                cx,
-                                            )
-                                            .debounce_ms(30)
-                                            .selectable()
+                            div().size_full().scrollable(ScrollbarAxis::Vertical).child(
+                                div()
+                                    .w_full()
+                                    .max_w(px(900.0))
+                                    .mx_auto()
+                                    .px_6()
+                                    .py_6()
+                                    .child(
+                                        TextView::markdown(
+                                            "manual-docs-preview-split",
+                                            markdown,
+                                            window,
+                                            cx,
                                         )
-                                )
-                        )
-                        .into_any_element()
-                }
-                ViewMode::Split => {
-                    h_flex()
-                        .size_full()
-                        .child(
-                            div()
-                                .flex_1()
-                                .size_full()
-                                .bg(theme.background)
-                                .border_r_1()
-                                .border_color(theme.border)
-                                .p_3()
-                                .child(
-                                    TextInput::new(&editor_state)
-                                        .w_full()
-                                        .h_full()
-                                        .appearance(true)
-                                        .bordered(true)
-                                )
-                        )
-                        .child(
-                            div()
-                                .flex_1()
-                                .size_full()
-                                .bg(theme.background)
-                                .overflow_hidden()
-                                .child(
-                                    div()
-                                        .size_full()
-                                        .scrollable(ScrollbarAxis::Vertical)
-                                        .child(
-                                            div()
-                                                .w_full()
-                                                .max_w(px(900.0))
-                                                .mx_auto()
-                                                .px_6()
-                                                .py_6()
-                                                .child(
-                                                    TextView::markdown(
-                                                        "manual-docs-preview-split",
-                                                        markdown,
-                                                        window,
-                                                        cx,
-                                                    )
-                                                    .debounce_ms(30)
-                                                    .selectable()
-                                                )
-                                        )
-                                )
-                        )
-                        .into_any_element()
-                }
-            })
+                                        .debounce_ms(30)
+                                        .selectable(),
+                                    ),
+                            ),
+                        ),
+                )
+                .into_any_element(),
+        })
     }
 
     fn render_file_entry<V: 'static>(
@@ -402,10 +408,14 @@ impl ManualDocsPanel {
     {
         let is_selected = state.selected_file.as_ref() == Some(&entry.path);
         let is_expanded = state.expanded_folders.contains(&entry.path);
-        
+
         // Use render_tree_folder for directories
         if entry.is_directory {
-            let icon = if is_expanded { IconName::FolderOpen } else { IconName::Folder };
+            let icon = if is_expanded {
+                IconName::FolderOpen
+            } else {
+                IconName::Folder
+            };
             return render_tree_folder(
                 &format!("doc-folder-{:#?}", entry.path),
                 &entry.name,
@@ -419,7 +429,7 @@ impl ManualDocsPanel {
                 cx,
             );
         }
-        
+
         // For files, render custom since they have different styling needs
         let theme = cx.theme();
         let indent = px(entry.depth as f32 * 16.0);
@@ -433,11 +443,7 @@ impl ManualDocsPanel {
             .pr_3()
             .mx_2()
             .rounded(px(6.0))
-            .when(is_selected, |style| {
-                style
-                    .bg(theme.accent)
-                    .shadow_sm()
-            })
+            .when(is_selected, |style| style.bg(theme.accent).shadow_sm())
             .when(!is_selected, |style| {
                 style.hover(|s| s.bg(theme.accent.opacity(0.1)))
             })
@@ -449,7 +455,7 @@ impl ManualDocsPanel {
                         theme.accent_foreground
                     } else {
                         tree_colors::DOC_TEAL
-                    })
+                    }),
             )
             .child(
                 div()
@@ -460,7 +466,7 @@ impl ManualDocsPanel {
                     } else {
                         theme.foreground
                     })
-                    .child(entry.name.clone())
+                    .child(entry.name.clone()),
             )
             .into_any_element()
     }

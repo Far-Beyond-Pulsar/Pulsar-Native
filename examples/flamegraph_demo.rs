@@ -1,5 +1,5 @@
 //! Flamegraph Demo
-//! 
+//!
 //! Demonstrates the high-performance flamegraph viewer with thousands of spans
 
 use gpui::*;
@@ -360,11 +360,11 @@ fn generate_demo_trace(trace: &TraceData) {
 fn main() {
     App::new().run(|cx| {
         cx.activate(true);
-        
+
         // Generate demo trace data
         let trace_data = TraceData::new();
         generate_demo_trace(&trace_data);
-        
+
         // Open flamegraph window
         FlamegraphWindow::open(trace_data, cx);
     });

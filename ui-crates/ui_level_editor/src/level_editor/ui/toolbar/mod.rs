@@ -1,28 +1,31 @@
 use gpui::*;
-use ui::{button::{Button, ButtonVariants as _}, h_flex, ActiveTheme};
-use std::sync::Arc;
 use rust_i18n::t;
+use std::sync::Arc;
+use ui::{
+    button::{Button, ButtonVariants as _},
+    h_flex, ActiveTheme,
+};
 
 mod actions;
+mod build_dropdowns;
+mod feature_toggles;
+mod mode_indicator;
+mod multiplayer_dropdown;
 mod playback_controls;
 mod time_scale_dropdown;
-mod multiplayer_dropdown;
-mod build_dropdowns;
-mod mode_indicator;
-mod feature_toggles;
 
 pub use actions::*;
+use build_dropdowns::BuildDropdowns;
+use feature_toggles::FeatureToggles;
+use mode_indicator::ModeIndicator;
+use multiplayer_dropdown::MultiplayerDropdown;
 use playback_controls::PlaybackControls;
 use time_scale_dropdown::TimeScaleDropdown;
-use multiplayer_dropdown::MultiplayerDropdown;
-use build_dropdowns::BuildDropdowns;
-use mode_indicator::ModeIndicator;
-use feature_toggles::FeatureToggles;
 
 use super::state::LevelEditorState;
 
 /// Premium Toolbar - A beautifully crafted control panel for game development
-/// 
+///
 /// Features:
 /// - **Playback Controls**: Intuitive play/pause/stop for simulation
 /// - **Time Scale**: Smooth dropdown for speed control with checkmarks
@@ -30,7 +33,7 @@ use super::state::LevelEditorState;
 /// - **Build Settings**: Professional dropdowns for config & platform
 /// - **Mode Indicator**: Polished badge showing current mode
 /// - **Performance Toggle**: Quick access to profiling overlay
-/// 
+///
 /// Design Philosophy:
 /// - Use dropdowns where choice clarity matters (time scale, multiplayer, build)
 /// - Use badges for status display (mode indicator)
@@ -55,7 +58,7 @@ impl ToolbarPanel {
         V: EventEmitter<ui::dock::PanelEvent> + Render,
     {
         let theme = cx.theme();
-        
+
         h_flex()
             .w_full()
             .h(px(48.0))
@@ -74,7 +77,12 @@ impl ToolbarPanel {
             .child(self.render_separator(cx))
             .child(BuildDropdowns::render(state, state_arc.clone(), cx))
             .child(self.render_separator(cx))
-            .child(FeatureToggles::render(state, state_arc.clone(), gpu_engine, cx))
+            .child(FeatureToggles::render(
+                state,
+                state_arc.clone(),
+                gpu_engine,
+                cx,
+            ))
             .child(div().flex_1())
             .child(ModeIndicator::render(state, cx))
             .child(self.render_separator(cx))
@@ -82,10 +90,7 @@ impl ToolbarPanel {
     }
 
     fn render_separator<V: 'static>(&self, cx: &mut Context<V>) -> impl IntoElement {
-        div()
-            .h_6()
-            .w_px()
-            .bg(cx.theme().border.opacity(0.4))
+        div().h_6().w_px().bg(cx.theme().border.opacity(0.4))
     }
 
     fn render_profiling_button<V: 'static>(

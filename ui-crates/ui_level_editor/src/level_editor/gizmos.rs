@@ -1,5 +1,5 @@
 //! Gizmos - 3D manipulation tools for the viewport
-//! 
+//!
 //! This module provides interactive 3D gizmos for transforming objects:
 //! - Translation (move) gizmo - 3 colored arrows for X, Y, Z axes
 //! - Rotation gizmo - 3 colored rings for pitch, yaw, roll
@@ -11,7 +11,6 @@
 //! - Dragging with visual feedback
 //! - Snapping to grid
 //! - Local vs World space modes
-
 
 /// Simple 2D vector
 #[derive(Clone, Copy, Debug)]
@@ -45,10 +44,26 @@ pub struct Vec3 {
 }
 
 impl Vec3 {
-    pub const ZERO: Self = Self { x: 0.0, y: 0.0, z: 0.0 };
-    pub const X: Self = Self { x: 1.0, y: 0.0, z: 0.0 };
-    pub const Y: Self = Self { x: 0.0, y: 1.0, z: 0.0 };
-    pub const Z: Self = Self { x: 0.0, y: 0.0, z: 1.0 };
+    pub const ZERO: Self = Self {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+    };
+    pub const X: Self = Self {
+        x: 1.0,
+        y: 0.0,
+        z: 0.0,
+    };
+    pub const Y: Self = Self {
+        x: 0.0,
+        y: 1.0,
+        z: 0.0,
+    };
+    pub const Z: Self = Self {
+        x: 0.0,
+        y: 0.0,
+        z: 1.0,
+    };
 
     pub fn new(x: f32, y: f32, z: f32) -> Self {
         Self { x, y, z }
@@ -127,7 +142,12 @@ pub struct Quat {
 }
 
 impl Quat {
-    pub const IDENTITY: Self = Self { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
+    pub const IDENTITY: Self = Self {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+        w: 1.0,
+    };
 
     pub fn from_rotation_x(angle: f32) -> Self {
         let half = angle * 0.5;
@@ -247,7 +267,7 @@ pub struct GizmoState {
 
 /// Gizmo colors (matches industry standards)
 pub struct GizmoColors {
-    pub x_axis: [f32; 4],      // RGBA
+    pub x_axis: [f32; 4], // RGBA
     pub y_axis: [f32; 4],
     pub z_axis: [f32; 4],
     pub selected: [f32; 4],
@@ -257,11 +277,11 @@ pub struct GizmoColors {
 impl Default for GizmoColors {
     fn default() -> Self {
         Self {
-            x_axis: [1.0, 0.2, 0.2, 1.0],     // Red for X
-            y_axis: [0.2, 1.0, 0.2, 1.0],     // Green for Y
-            z_axis: [0.2, 0.5, 1.0, 1.0],     // Blue for Z
-            selected: [1.0, 1.0, 0.0, 1.0],   // Yellow when selected
-            hover: [1.0, 0.8, 0.0, 1.0],      // Orange when hovering
+            x_axis: [1.0, 0.2, 0.2, 1.0],   // Red for X
+            y_axis: [0.2, 1.0, 0.2, 1.0],   // Green for Y
+            z_axis: [0.2, 0.5, 1.0, 1.0],   // Blue for Z
+            selected: [1.0, 1.0, 0.0, 1.0], // Yellow when selected
+            hover: [1.0, 0.8, 0.0, 1.0],    // Orange when hovering
         }
     }
 }
@@ -478,26 +498,65 @@ impl GizmoState {
                 };
 
                 // Test each axis arrow
-                if self.ray_intersects_arrow(ray_origin, ray_direction, gizmo_position, x_axis, threshold) {
+                if self.ray_intersects_arrow(
+                    ray_origin,
+                    ray_direction,
+                    gizmo_position,
+                    x_axis,
+                    threshold,
+                ) {
                     return Some(GizmoAxis::X);
                 }
-                if self.ray_intersects_arrow(ray_origin, ray_direction, gizmo_position, y_axis, threshold) {
+                if self.ray_intersects_arrow(
+                    ray_origin,
+                    ray_direction,
+                    gizmo_position,
+                    y_axis,
+                    threshold,
+                ) {
                     return Some(GizmoAxis::Y);
                 }
-                if self.ray_intersects_arrow(ray_origin, ray_direction, gizmo_position, z_axis, threshold) {
+                if self.ray_intersects_arrow(
+                    ray_origin,
+                    ray_direction,
+                    gizmo_position,
+                    z_axis,
+                    threshold,
+                ) {
                     return Some(GizmoAxis::Z);
                 }
             }
             GizmoType::Rotate => {
                 // Check each rotation ring
                 // Simplified: check distance to circle on each plane
-                if self.ray_intersects_circle(ray_origin, ray_direction, gizmo_position, Vec3::X, 1.0, threshold) {
+                if self.ray_intersects_circle(
+                    ray_origin,
+                    ray_direction,
+                    gizmo_position,
+                    Vec3::X,
+                    1.0,
+                    threshold,
+                ) {
                     return Some(GizmoAxis::X);
                 }
-                if self.ray_intersects_circle(ray_origin, ray_direction, gizmo_position, Vec3::Y, 1.0, threshold) {
+                if self.ray_intersects_circle(
+                    ray_origin,
+                    ray_direction,
+                    gizmo_position,
+                    Vec3::Y,
+                    1.0,
+                    threshold,
+                ) {
                     return Some(GizmoAxis::Y);
                 }
-                if self.ray_intersects_circle(ray_origin, ray_direction, gizmo_position, Vec3::Z, 1.0, threshold) {
+                if self.ray_intersects_circle(
+                    ray_origin,
+                    ray_direction,
+                    gizmo_position,
+                    Vec3::Z,
+                    1.0,
+                    threshold,
+                ) {
                     return Some(GizmoAxis::Z);
                 }
             }
@@ -507,13 +566,31 @@ impl GizmoState {
                 let y_axis = Vec3::Y;
                 let z_axis = Vec3::Z;
 
-                if self.ray_intersects_arrow(ray_origin, ray_direction, gizmo_position, x_axis, threshold) {
+                if self.ray_intersects_arrow(
+                    ray_origin,
+                    ray_direction,
+                    gizmo_position,
+                    x_axis,
+                    threshold,
+                ) {
                     return Some(GizmoAxis::X);
                 }
-                if self.ray_intersects_arrow(ray_origin, ray_direction, gizmo_position, y_axis, threshold) {
+                if self.ray_intersects_arrow(
+                    ray_origin,
+                    ray_direction,
+                    gizmo_position,
+                    y_axis,
+                    threshold,
+                ) {
                     return Some(GizmoAxis::Y);
                 }
-                if self.ray_intersects_arrow(ray_origin, ray_direction, gizmo_position, z_axis, threshold) {
+                if self.ray_intersects_arrow(
+                    ray_origin,
+                    ray_direction,
+                    gizmo_position,
+                    z_axis,
+                    threshold,
+                ) {
                     return Some(GizmoAxis::Z);
                 }
 
@@ -539,25 +616,26 @@ impl GizmoState {
     ) -> bool {
         // Simplified: distance from ray to line segment
         let arrow_end = arrow_base + arrow_direction * 2.0;
-        
+
         // Closest point on ray to arrow
         let v = arrow_end - arrow_base;
         let w = ray_origin - arrow_base;
         let c1 = w.dot(v);
         let c2 = v.dot(v);
-        
+
         if c2 == 0.0 {
             return false;
         }
-        
+
         let b = c1 / c2;
         if b < 0.0 || b > 1.0 {
             return false; // Outside arrow segment
         }
-        
+
         let point_on_arrow = arrow_base + (v * b);
-        let closest_point_on_ray = ray_origin + (ray_direction * ((point_on_arrow - ray_origin).dot(ray_direction)));
-        
+        let closest_point_on_ray =
+            ray_origin + (ray_direction * ((point_on_arrow - ray_origin).dot(ray_direction)));
+
         let distance = (point_on_arrow - closest_point_on_ray).length();
         distance < threshold
     }
@@ -577,15 +655,15 @@ impl GizmoState {
         if denom.abs() < 0.0001 {
             return false; // Ray parallel to plane
         }
-        
+
         let t = (circle_center - ray_origin).dot(circle_normal) / denom;
         if t < 0.0 {
             return false; // Behind ray origin
         }
-        
+
         let intersection_point = ray_origin + ray_direction * t;
         let distance_to_center = (intersection_point - circle_center).length();
-        
+
         // Check if point is on the circle (within threshold)
         (distance_to_center - circle_radius).abs() < threshold
     }

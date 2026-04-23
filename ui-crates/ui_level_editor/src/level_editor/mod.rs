@@ -1,3 +1,5 @@
+mod gizmos;
+mod scene_database;
 /// Modular Level Editor
 ///
 /// A professional, studio-quality level editor with multi-panel layout
@@ -12,15 +14,12 @@
 /// - Toolbar: Transform tools and quick actions
 /// - Scene Database: In-memory scene management with undo/redo
 /// - Gizmos: 3D manipulation tools (translate, rotate, scale)
-
 mod ui;
-mod scene_database;
-mod gizmos;
 mod workspace_panels;
 mod world_settings_data;
 
-pub use ui::LevelEditorPanel;
-pub use scene_database::SceneDatabase;
 pub use gizmos::{GizmoState, GizmoType};
+pub use scene_database::SceneDatabase;
+pub use ui::LevelEditorPanel;
 pub use workspace_panels::*;
 pub use world_settings_data::*;

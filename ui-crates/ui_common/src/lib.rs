@@ -38,10 +38,10 @@ pub use open_window::open_pulsar_window;
 pub use shared_state::SharedState;
 
 // Re-export commonly used types
+pub use file_utils::{find_openable_files, FileInfo, FileType};
 pub use menu::AppTitleBar;
-pub use file_utils::{FileInfo, FileType, find_openable_files};
 pub use panel::{PanelBase, PanelEvent};
-pub use shared::{StatusBar, ViewportControls, Toolbar, ToolbarButton, PropertyField};
+pub use shared::{PropertyField, StatusBar, Toolbar, ToolbarButton, ViewportControls};
 
 // Re-export diagnostics from ui crate
-pub use ui::diagnostics::{Diagnostic, DiagnosticSeverity, TextEdit, CodeAction};
+pub use ui::diagnostics::{CodeAction, Diagnostic, DiagnosticSeverity, TextEdit};

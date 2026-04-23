@@ -1,26 +1,22 @@
-use std::sync::Arc;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use gpui::{
-    App, AppContext, Context, FocusHandle, Focusable, IntoElement,
-    ParentElement as _, Styled, Render, SharedString, Window, div,
-    prelude::FluentBuilder as _,
+    div, prelude::FluentBuilder as _, App, AppContext, Context, FocusHandle, Focusable,
+    IntoElement, ParentElement as _, Render, SharedString, Styled, Window,
 };
 
 use engine_state::{
-    global_config, ConfigValue, FieldType, GlobalSettings,
-    ProjectSettings, SettingInfo, NS_EDITOR, NS_PROJECT,
+    global_config, ConfigValue, FieldType, GlobalSettings, ProjectSettings, SettingInfo, NS_EDITOR,
+    NS_PROJECT,
 };
 
 use ui::{
-    ActiveTheme, Icon, IconName, Sizable, Size, StyledExt as _, Theme, ThemeMode,
     button::{Button, ButtonVariants as _},
     group_box::GroupBoxVariant,
-    h_flex, v_flex,
-    setting::{
-        NumberFieldOptions, SettingField, SettingGroup,
-        SettingItem, SettingPage, Settings,
-    },
+    h_flex,
+    setting::{NumberFieldOptions, SettingField, SettingGroup, SettingItem, SettingPage, Settings},
+    v_flex, ActiveTheme, Icon, IconName, Sizable, Size, StyledExt as _, Theme, ThemeMode,
 };
 
 pub struct ModernSettingsScreen {
@@ -67,11 +63,7 @@ impl ModernSettingsScreen {
         }
     }
 
-    pub fn new(
-        project_path: Option<PathBuf>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub fn new(project_path: Option<PathBuf>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let _ = window;
         Self {
             focus_handle: cx.focus_handle(),
@@ -94,7 +86,11 @@ impl ModernSettingsScreen {
         let ns = info.namespace.clone();
         let owner = info.owner.clone();
         let key = info.key.clone();
-        let label: SharedString = info.label.clone().unwrap_or_else(|| info.key.clone()).into();
+        let label: SharedString = info
+            .label
+            .clone()
+            .unwrap_or_else(|| info.key.clone())
+            .into();
         let desc: SharedString = info.description.clone().into();
 
         let field_type = info.field_type.clone()?;
@@ -107,8 +103,11 @@ impl ModernSettingsScreen {
                     label,
                     SettingField::checkbox(
                         move |_cx: &App| {
-                            global_config().get(&ns, &owner, &key)
-                                .ok().and_then(|v| v.as_bool().ok()).unwrap_or(false)
+                            global_config()
+                                .get(&ns, &owner, &key)
+                                .ok()
+                                .and_then(|v| v.as_bool().ok())
+                                .unwrap_or(false)
                         },
                         move |val: bool, cx: &mut App| {
                             if let Some(h) = global_config().owner_handle(&ns2, &owner2) {
@@ -127,9 +126,12 @@ impl ModernSettingsScreen {
                     label,
                     SettingField::input(
                         move |_cx: &App| {
-                            global_config().get(&ns, &owner, &key)
+                            global_config()
+                                .get(&ns, &owner, &key)
                                 .ok()
-                                .and_then(|v| v.as_str().ok().map(|s| SharedString::from(s.to_owned())))
+                                .and_then(|v| {
+                                    v.as_str().ok().map(|s| SharedString::from(s.to_owned()))
+                                })
                                 .unwrap_or_default()
                         },
                         move |val: SharedString, cx: &mut App| {
@@ -156,8 +158,11 @@ impl ModernSettingsScreen {
                     SettingField::number_input(
                         opts,
                         move |_cx: &App| {
-                            global_config().get(&ns, &owner, &key)
-                                .ok().and_then(|v| v.as_float().ok()).unwrap_or(0.0)
+                            global_config()
+                                .get(&ns, &owner, &key)
+                                .ok()
+                                .and_then(|v| v.as_float().ok())
+                                .unwrap_or(0.0)
                         },
                         move |val: f64, cx: &mut App| {
                             if let Some(h) = global_config().owner_handle(&ns2, &owner2) {
@@ -184,8 +189,11 @@ impl ModernSettingsScreen {
                     SettingField::number_input(
                         opts,
                         move |_cx: &App| {
-                            global_config().get(&ns, &owner, &key)
-                                .ok().and_then(|v| v.as_float().ok()).unwrap_or(0.0)
+                            global_config()
+                                .get(&ns, &owner, &key)
+                                .ok()
+                                .and_then(|v| v.as_float().ok())
+                                .unwrap_or(0.0)
                         },
                         move |val: f64, cx: &mut App| {
                             if let Some(h) = global_config().owner_handle(&ns2, &owner2) {
@@ -202,16 +210,24 @@ impl ModernSettingsScreen {
                 let notify = mark_dirty.clone();
                 let opts: Vec<(SharedString, SharedString)> = options
                     .iter()
-                    .map(|o| (SharedString::from(o.value.clone()), SharedString::from(o.label.clone())))
+                    .map(|o| {
+                        (
+                            SharedString::from(o.value.clone()),
+                            SharedString::from(o.label.clone()),
+                        )
+                    })
                     .collect();
                 SettingItem::new(
                     label,
                     SettingField::dropdown(
                         opts,
                         move |_cx: &App| {
-                            global_config().get(&ns, &owner, &key)
+                            global_config()
+                                .get(&ns, &owner, &key)
                                 .ok()
-                                .and_then(|v| v.as_str().ok().map(|s| SharedString::from(s.to_owned())))
+                                .and_then(|v| {
+                                    v.as_str().ok().map(|s| SharedString::from(s.to_owned()))
+                                })
                                 .unwrap_or_default()
                         },
                         move |val: SharedString, cx: &mut App| {
@@ -239,35 +255,42 @@ impl ModernSettingsScreen {
         let mut owners = global_config().list_owners(ns);
         owners.sort();
 
-        owners.into_iter().filter_map(|owner_segs| {
-            let owner_path = owner_segs.join("/");
-            let mut settings = global_config().list_settings(ns, &owner_path)?;
-            settings.sort_by(|a, b| {
-                let la = a.label.as_deref().unwrap_or(&a.key);
-                let lb = b.label.as_deref().unwrap_or(&b.key);
-                la.cmp(lb)
-            });
+        owners
+            .into_iter()
+            .filter_map(|owner_segs| {
+                let owner_path = owner_segs.join("/");
+                let mut settings = global_config().list_settings(ns, &owner_path)?;
+                settings.sort_by(|a, b| {
+                    let la = a.label.as_deref().unwrap_or(&a.key);
+                    let lb = b.label.as_deref().unwrap_or(&b.key);
+                    la.cmp(lb)
+                });
 
-            let group_title = owner_segs.first()
-                .map(|s| {
-                    let mut c = s.chars();
-                    match c.next() {
-                        None => String::new(),
-                        Some(f) => f.to_uppercase().collect::<String>() + &c.as_str().replace('_', " "),
-                    }
-                })
-                .unwrap_or_else(|| owner_path.clone());
+                let group_title = owner_segs
+                    .first()
+                    .map(|s| {
+                        let mut c = s.chars();
+                        match c.next() {
+                            None => String::new(),
+                            Some(f) => {
+                                f.to_uppercase().collect::<String>() + &c.as_str().replace('_', " ")
+                            }
+                        }
+                    })
+                    .unwrap_or_else(|| owner_path.clone());
 
-            let items: Vec<SettingItem> = settings.iter()
-                .filter_map(|info| Self::item_from_info(info, mark_dirty.clone()))
-                .collect();
+                let items: Vec<SettingItem> = settings
+                    .iter()
+                    .filter_map(|info| Self::item_from_info(info, mark_dirty.clone()))
+                    .collect();
 
-            if items.is_empty() {
-                return None;
-            }
+                if items.is_empty() {
+                    return None;
+                }
 
-            Some(SettingGroup::new().title(group_title).items(items))
-        }).collect()
+                Some(SettingGroup::new().title(group_title).items(items))
+            })
+            .collect()
     }
 
     fn setting_pages(&self, _window: &mut Window, cx: &mut Context<Self>) -> Vec<SettingPage> {
@@ -290,14 +313,17 @@ impl ModernSettingsScreen {
             SettingPage::new("UI Controls")
                 .default_open(true)
                 .icon(Icon::new(IconName::Settings2))
-                .group(
-                    SettingGroup::new().title("Settings Display").items(vec![
+                .group(SettingGroup::new().title("Settings Display").items(vec![
                         SettingItem::new(
                             "Dark Mode",
                             SettingField::switch(
                                 |cx: &App| cx.theme().mode.is_dark(),
                                 |val: bool, cx: &mut App| {
-                                    let mode = if val { ThemeMode::Dark } else { ThemeMode::Light };
+                                    let mode = if val {
+                                        ThemeMode::Dark
+                                    } else {
+                                        ThemeMode::Light
+                                    };
                                     Theme::global_mut(cx).mode = mode;
                                     Theme::change(mode, None, cx);
                                 },
@@ -314,13 +340,16 @@ impl ModernSettingsScreen {
                                 ],
                                 {
                                     let v = view.clone();
-                                    move |cx: &App| Self::group_variant_to_value(v.read(cx).group_variant)
+                                    move |cx: &App| {
+                                        Self::group_variant_to_value(v.read(cx).group_variant)
+                                    }
                                 },
                                 {
                                     let v = view2.clone();
                                     move |val: SharedString, cx: &mut App| {
                                         v.update(cx, |this, cx| {
-                                            this.group_variant = Self::group_variant_from_value(val.as_ref());
+                                            this.group_variant =
+                                                Self::group_variant_from_value(val.as_ref());
                                             cx.notify();
                                         });
                                     }
@@ -354,8 +383,7 @@ impl ModernSettingsScreen {
                             .default_value("medium"),
                         )
                         .description("Select the size for the setting group."),
-                    ]),
-                )
+                    ]))
         };
 
         // ── Editor settings page (NS_EDITOR) ──
@@ -440,4 +468,3 @@ impl Render for ModernSettingsScreen {
             )
     }
 }
-

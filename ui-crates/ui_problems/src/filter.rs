@@ -1,8 +1,8 @@
 //! Diagnostic type definitions and filter logic for the Problems panel.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
 
 use gpui::*;
 use ui::ActiveTheme as _;
@@ -23,7 +23,10 @@ pub enum DiffLineType {
 pub fn compute_aligned_diff(
     before: &str,
     after: &str,
-) -> (Vec<(Option<usize>, DiffLineType, String)>, Vec<(Option<usize>, DiffLineType, String)>) {
+) -> (
+    Vec<(Option<usize>, DiffLineType, String)>,
+    Vec<(Option<usize>, DiffLineType, String)>,
+) {
     use similar::{ChangeTag, TextDiff};
     let diff = TextDiff::from_lines(before, after);
 
@@ -37,7 +40,8 @@ pub fn compute_aligned_diff(
             ChangeTag::Equal => {
                 left.push((Some(ln), DiffLineType::Unchanged, content.clone()));
                 right.push((Some(rn), DiffLineType::Unchanged, content));
-                ln += 1; rn += 1;
+                ln += 1;
+                rn += 1;
             }
             ChangeTag::Delete => {
                 left.push((Some(ln), DiffLineType::Deleted, content));
@@ -108,9 +112,24 @@ impl DiagnosticSeverity {
 
     pub fn color(&self, cx: &App) -> Hsla {
         match self {
-            Self::Error => Hsla { h: 0.0, s: 0.85, l: 0.55, a: 1.0 },
-            Self::Warning => Hsla { h: 38.0, s: 0.95, l: 0.55, a: 1.0 },
-            Self::Information => Hsla { h: 210.0, s: 0.80, l: 0.60, a: 1.0 },
+            Self::Error => Hsla {
+                h: 0.0,
+                s: 0.85,
+                l: 0.55,
+                a: 1.0,
+            },
+            Self::Warning => Hsla {
+                h: 38.0,
+                s: 0.95,
+                l: 0.55,
+                a: 1.0,
+            },
+            Self::Information => Hsla {
+                h: 210.0,
+                s: 0.80,
+                l: 0.60,
+                a: 1.0,
+            },
             Self::Hint => cx.theme().muted_foreground,
         }
     }
@@ -141,17 +160,25 @@ impl ProblemsDrawer {
             None
         };
 
-        diagnostics.iter().filter(|d| {
-            if let Some(sev) = &self.filtered_severity {
-                if &d.severity != sev { return false; }
-            }
-            if let Some(q) = &query {
-                return d.message.to_lowercase().contains(q)
-                    || d.file_path.to_lowercase().contains(q)
-                    || d.source.as_ref().map_or(false, |s| s.to_lowercase().contains(q));
-            }
-            true
-        }).cloned().collect()
+        diagnostics
+            .iter()
+            .filter(|d| {
+                if let Some(sev) = &self.filtered_severity {
+                    if &d.severity != sev {
+                        return false;
+                    }
+                }
+                if let Some(q) = &query {
+                    return d.message.to_lowercase().contains(q)
+                        || d.file_path.to_lowercase().contains(q)
+                        || d.source
+                            .as_ref()
+                            .map_or(false, |s| s.to_lowercase().contains(q));
+                }
+                true
+            })
+            .cloned()
+            .collect()
     }
 
     pub(crate) fn get_grouped_diagnostics(&self) -> HashMap<String, Vec<Diagnostic>> {
@@ -163,15 +190,23 @@ impl ProblemsDrawer {
     }
 
     pub fn count_by_severity(&self, severity: DiagnosticSeverity) -> usize {
-        self.diagnostics.lock().unwrap()
-            .iter().filter(|d| d.severity == severity).count()
+        self.diagnostics
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|d| d.severity == severity)
+            .count()
     }
 
     pub fn total_count(&self) -> usize {
         self.diagnostics.lock().unwrap().len()
     }
 
-    pub(crate) fn set_filter(&mut self, severity: Option<DiagnosticSeverity>, cx: &mut Context<Self>) {
+    pub(crate) fn set_filter(
+        &mut self,
+        severity: Option<DiagnosticSeverity>,
+        cx: &mut Context<Self>,
+    ) {
         self.filtered_severity = severity;
         self.selected_index = None;
         cx.notify();

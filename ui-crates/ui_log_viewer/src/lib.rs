@@ -1,35 +1,40 @@
 //! Mission Control - Engine monitoring and logging interface
 
+mod atomic_memory_tracking;
+mod caller_tracking;
+mod gpu_engines;
+mod gpu_info;
 mod log_drawer_v2;
 mod log_reader;
+mod mem_details;
+mod memory_database;
+mod memory_tracking;
 mod panels;
 mod performance_metrics;
 mod system_info;
-mod gpu_info;
-mod gpu_engines;
-mod mem_details;
-mod memory_tracking;
-mod atomic_memory_tracking;
-mod caller_tracking;
-mod type_tracking;
-mod memory_database;
 pub mod tracking_allocator;
+mod type_tracking;
 
+pub use atomic_memory_tracking::{AllocationEntry, SizeBucket, ATOMIC_MEMORY_COUNTERS};
 pub use log_drawer_v2::LogDrawer;
-pub use panels::{LogsPanel, ResourceMonitorPanel, SystemInfoPanel, MemoryBreakdownPanel, AdvancedMetricsPanel, GpuMetricsPanel, CallerSitesPanel};
-pub use performance_metrics::{PerformanceMetrics, SharedPerformanceMetrics, create_shared_metrics};
-pub use system_info::{SystemInfo, SharedSystemInfo, create_shared_info};
-pub use memory_tracking::{MemoryTracker, SharedMemoryTracker, create_memory_tracker, MemoryCategory, MemoryStatsSnapshot};
-pub use tracking_allocator::{TrackingAllocator, MemoryCategoryGuard, is_tracking_active, enable_tracking, disable_tracking};
-pub use atomic_memory_tracking::{ATOMIC_MEMORY_COUNTERS, AllocationEntry, SizeBucket};
-pub use type_tracking::{TYPE_TRACKER, AllocationSite};
+pub use memory_tracking::{
+    create_memory_tracker, MemoryCategory, MemoryStatsSnapshot, MemoryTracker, SharedMemoryTracker,
+};
+pub use panels::{
+    AdvancedMetricsPanel, CallerSitesPanel, GpuMetricsPanel, LogsPanel, MemoryBreakdownPanel,
+    ResourceMonitorPanel, SystemInfoPanel,
+};
+pub use performance_metrics::{
+    create_shared_metrics, PerformanceMetrics, SharedPerformanceMetrics,
+};
+pub use system_info::{create_shared_info, SharedSystemInfo, SystemInfo};
+pub use tracking_allocator::{
+    disable_tracking, enable_tracking, is_tracking_active, MemoryCategoryGuard, TrackingAllocator,
+};
+pub use type_tracking::{AllocationSite, TYPE_TRACKER};
 
 use gpui::*;
-use ui::{
-    dock::DockItem,
-    workspace::Workspace,
-    v_flex, h_flex, ActiveTheme, TitleBar,
-};
+use ui::{dock::DockItem, h_flex, v_flex, workspace::Workspace, ActiveTheme, TitleBar};
 
 /// Mission Control - Main panel with workspace layout
 pub struct MissionControlPanel {
@@ -100,7 +105,7 @@ impl MissionControlPanel {
                 "mission-control-workspace",
                 ui::dock::DockChannel(4), // Different channel from level editor (3)
                 window,
-                cx
+                cx,
             )
         });
 
@@ -218,35 +223,30 @@ impl Render for MissionControlPanel {
             .bg(theme.background)
             .child(
                 // Title bar
-                TitleBar::new()
-                    .child(
-                        h_flex()
-                            .flex_1()
-                            .items_center()
-                            .px_4()
-                            .child(
-                                div()
-                                    .text_size(px(14.0))
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(theme.foreground)
-                                    .child("Mission Control")
-                            )
-                    )
+                TitleBar::new().child(
+                    h_flex().flex_1().items_center().px_4().child(
+                        div()
+                            .text_size(px(14.0))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(theme.foreground)
+                            .child("Mission Control"),
+                    ),
+                ),
             )
-            .child(
-                if let Some(ref workspace) = self.workspace {
-                    workspace.clone().into_any_element()
-                } else {
-                    div().child("Loading Mission Control...").into_any_element()
-                }
-            )
+            .child(if let Some(ref workspace) = self.workspace {
+                workspace.clone().into_any_element()
+            } else {
+                div().child("Loading Mission Control...").into_any_element()
+            })
     }
 }
 
 impl window_manager::PulsarWindow for MissionControlPanel {
     type Params = ();
 
-    fn window_name() -> &'static str { "MissionControlPanel" }
+    fn window_name() -> &'static str {
+        "MissionControlPanel"
+    }
 
     fn window_options(_: &()) -> gpui::WindowOptions {
         window_manager::default_window_options(1920.0, 1080.0)

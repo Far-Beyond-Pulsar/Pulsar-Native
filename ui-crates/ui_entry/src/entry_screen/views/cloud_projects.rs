@@ -5,21 +5,16 @@
 //!  - Server detail (drill-down): header with back + refresh, then a project card grid.
 //!  - Add-server panel: inline form shown over the server list.
 
+use crate::entry_screen::{CloudProject, CloudProjectStatus, CloudServerStatus, EntryScreen};
 use gpui::{prelude::*, *};
+use ui::popup_menu::PopupMenuExt as _;
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex,
+    h_flex,
     input::TextInput,
-    Icon, IconName,
-    ActiveTheme as _, Colorize as _,
-    tag::Tag,
     spinner::Spinner,
-    Sizable,
-};
-use ui::popup_menu::PopupMenuExt as _;
-use crate::entry_screen::{
-    EntryScreen,
-    CloudServerStatus, CloudProject, CloudProjectStatus,
+    tag::Tag,
+    v_flex, ActiveTheme as _, Colorize as _, Icon, IconName, Sizable,
 };
 
 // ── Entry point ──────────────────────────────────────────────────────────────
@@ -28,10 +23,10 @@ pub fn render_cloud_projects(
     screen: &mut EntryScreen,
     cx: &mut Context<EntryScreen>,
 ) -> impl IntoElement {
-    let show_add    = screen.show_add_server;
+    let show_add = screen.show_add_server;
     let show_create = screen.show_create_project;
-    let selected    = screen.selected_cloud_server;
-    let srv_count   = screen.cloud_servers.len();
+    let selected = screen.selected_cloud_server;
+    let srv_count = screen.cloud_servers.len();
 
     if show_add {
         render_add_server_panel(screen, cx)
@@ -50,12 +45,9 @@ pub fn render_cloud_projects(
 
 // ── Server list ───────────────────────────────────────────────────────────────
 
-fn render_server_list(
-    screen: &mut EntryScreen,
-    cx: &mut Context<EntryScreen>,
-) -> Div {
-    let theme    = cx.theme();
-    let fg       = theme.foreground;
+fn render_server_list(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) -> Div {
+    let theme = cx.theme();
+    let fg = theme.foreground;
     let muted_fg = theme.muted_foreground;
 
     let server_count = screen.cloud_servers.len();
@@ -65,7 +57,15 @@ fn render_server_list(
         .cloud_servers
         .iter()
         .enumerate()
-        .map(|(i, s)| (s.alias.clone(), s.url.clone(), s.id.clone(), s.status.clone(), i))
+        .map(|(i, s)| {
+            (
+                s.alias.clone(),
+                s.url.clone(),
+                s.id.clone(),
+                s.status.clone(),
+                i,
+            )
+        })
         .collect();
 
     v_flex()
@@ -133,9 +133,9 @@ fn render_server_list(
 }
 
 fn render_empty_state(cx: &mut Context<EntryScreen>) -> Div {
-    let theme    = cx.theme();
+    let theme = cx.theme();
     let muted_fg = theme.muted_foreground;
-    let border   = theme.border;
+    let border = theme.border;
 
     v_flex()
         .flex_1()
@@ -180,29 +180,37 @@ fn render_server_card(
     idx: usize,
     cx: &mut Context<EntryScreen>,
 ) -> impl IntoElement {
-    let theme    = cx.theme();
-    let fg       = theme.foreground;
+    let theme = cx.theme();
+    let fg = theme.foreground;
     let muted_fg = theme.muted_foreground;
-    let border   = theme.border;
-    let sidebar  = theme.sidebar;
-    let accent   = theme.accent;
+    let border = theme.border;
+    let sidebar = theme.sidebar;
+    let accent = theme.accent;
 
     let hover_bg = sidebar.lighten(0.04);
 
     // Status bar colour and indicator dot colour
     let (bar_color, dot_color, status_label): (Hsla, Hsla, &'static str) = match &status {
-        CloudServerStatus::Online { .. }  => (theme.success, theme.success, "Online"),
-        CloudServerStatus::Offline        => (theme.danger,  theme.danger,  "Offline"),
-        CloudServerStatus::Unauthorized   => (theme.warning, theme.warning, "Auth Error"),
-        CloudServerStatus::Connecting     => (theme.info,    theme.info,    "Connecting…"),
-        CloudServerStatus::Unknown        => (muted_fg,      muted_fg,      "Unknown"),
+        CloudServerStatus::Online { .. } => (theme.success, theme.success, "Online"),
+        CloudServerStatus::Offline => (theme.danger, theme.danger, "Offline"),
+        CloudServerStatus::Unauthorized => (theme.warning, theme.warning, "Auth Error"),
+        CloudServerStatus::Connecting => (theme.info, theme.info, "Connecting…"),
+        CloudServerStatus::Unknown => (muted_fg, muted_fg, "Unknown"),
     };
 
     // Stats from Online variant
     let (latency, version, active_users, active_projects) = match &status {
-        CloudServerStatus::Online { latency_ms, version, active_users, active_projects } => {
-            (Some(*latency_ms), Some(version.clone()), *active_users, *active_projects)
-        }
+        CloudServerStatus::Online {
+            latency_ms,
+            version,
+            active_users,
+            active_projects,
+        } => (
+            Some(*latency_ms),
+            Some(version.clone()),
+            *active_users,
+            *active_projects,
+        ),
         _ => (None, None, 0, 0),
     };
 
@@ -276,7 +284,9 @@ fn render_server_card(
                                 .justify_center()
                                 .rounded_md()
                                 .text_color(muted_fg)
-                                .hover(|this| this.bg(theme.danger.opacity(0.12)).text_color(theme.danger))
+                                .hover(|this| {
+                                    this.bg(theme.danger.opacity(0.12)).text_color(theme.danger)
+                                })
                                 .cursor_pointer()
                                 .child(Icon::new(IconName::Xmark).size(px(12.)))
                                 .on_click(cx.listener(move |this, _, _, cx| {
@@ -289,7 +299,11 @@ fn render_server_card(
                     h_flex()
                         .gap_1p5()
                         .items_center()
-                        .child(Icon::new(IconName::Globe).size(px(11.)).text_color(muted_fg))
+                        .child(
+                            Icon::new(IconName::Globe)
+                                .size(px(11.))
+                                .text_color(muted_fg),
+                        )
                         .child(
                             div()
                                 .text_xs()
@@ -317,7 +331,7 @@ fn render_server_card(
                                 &format!("{} projects", active_projects),
                                 muted_fg,
                                 cx,
-                            ))
+                            )),
                     )
                 })
                 // ── Footer: latency + version ──
@@ -331,7 +345,11 @@ fn render_server_card(
                                     h_flex()
                                         .gap_1()
                                         .items_center()
-                                        .child(Icon::new(IconName::Activity).size(px(11.)).text_color(muted_fg))
+                                        .child(
+                                            Icon::new(IconName::Activity)
+                                                .size(px(11.))
+                                                .text_color(muted_fg),
+                                        )
                                         .child(
                                             div()
                                                 .text_xs()
@@ -352,20 +370,33 @@ fn render_server_card(
                 })
                 // ── Status badge ──
                 .child(
-                    h_flex().child(
-                        match &status {
-                            CloudServerStatus::Online { .. } =>
-                                Tag::success().xsmall().rounded_full().child(status_label).into_any_element(),
-                            CloudServerStatus::Offline =>
-                                Tag::danger().xsmall().rounded_full().child(status_label).into_any_element(),
-                            CloudServerStatus::Unauthorized =>
-                                Tag::warning().xsmall().rounded_full().child(status_label).into_any_element(),
-                            CloudServerStatus::Connecting =>
-                                Tag::info().xsmall().rounded_full().child(status_label).into_any_element(),
-                            CloudServerStatus::Unknown =>
-                                Tag::secondary().xsmall().rounded_full().child(status_label).into_any_element(),
-                        }
-                    ),
+                    h_flex().child(match &status {
+                        CloudServerStatus::Online { .. } => Tag::success()
+                            .xsmall()
+                            .rounded_full()
+                            .child(status_label)
+                            .into_any_element(),
+                        CloudServerStatus::Offline => Tag::danger()
+                            .xsmall()
+                            .rounded_full()
+                            .child(status_label)
+                            .into_any_element(),
+                        CloudServerStatus::Unauthorized => Tag::warning()
+                            .xsmall()
+                            .rounded_full()
+                            .child(status_label)
+                            .into_any_element(),
+                        CloudServerStatus::Connecting => Tag::info()
+                            .xsmall()
+                            .rounded_full()
+                            .child(status_label)
+                            .into_any_element(),
+                        CloudServerStatus::Unknown => Tag::secondary()
+                            .xsmall()
+                            .rounded_full()
+                            .child(status_label)
+                            .into_any_element(),
+                    }),
                 ),
         )
         // Entire card navigates to detail view (registers on the outer div)
@@ -377,12 +408,7 @@ fn render_server_card(
 }
 
 /// Tiny icon + text chip used for stats.
-fn stat_chip(
-    icon: IconName,
-    label: &str,
-    color: Hsla,
-    _cx: &mut Context<EntryScreen>,
-) -> Div {
+fn stat_chip(icon: IconName, label: &str, color: Hsla, _cx: &mut Context<EntryScreen>) -> Div {
     h_flex()
         .gap_1()
         .items_center()
@@ -397,24 +423,27 @@ fn render_server_detail(
     server_idx: usize,
     cx: &mut Context<EntryScreen>,
 ) -> Div {
-    let theme    = cx.theme();
-    let fg       = theme.foreground;
+    let theme = cx.theme();
+    let fg = theme.foreground;
     let muted_fg = theme.muted_foreground;
-    let border   = theme.border;
-    let accent   = theme.accent;
+    let border = theme.border;
+    let accent = theme.accent;
 
     // Snapshot all data we need before handing cx to closures
-    let alias   = screen.cloud_servers[server_idx].alias.clone();
-    let url     = screen.cloud_servers[server_idx].url.clone();
-    let status  = screen.cloud_servers[server_idx].status.clone();
+    let alias = screen.cloud_servers[server_idx].alias.clone();
+    let url = screen.cloud_servers[server_idx].url.clone();
+    let status = screen.cloud_servers[server_idx].status.clone();
     let projects: Vec<CloudProject> = screen.cloud_servers[server_idx].projects.clone();
 
     let is_online = matches!(status, CloudServerStatus::Online { .. });
     let is_connecting = matches!(status, CloudServerStatus::Connecting);
 
     let (active_users, active_projects) = match &status {
-        CloudServerStatus::Online { active_users, active_projects, .. } =>
-            (*active_users, *active_projects),
+        CloudServerStatus::Online {
+            active_users,
+            active_projects,
+            ..
+        } => (*active_users, *active_projects),
         _ => (0, 0),
     };
 
@@ -435,7 +464,11 @@ fn render_server_detail(
                         .cursor_pointer()
                         .text_color(muted_fg)
                         .hover(|this| this.text_color(fg))
-                        .child(Icon::new(IconName::NavArrowLeft).size(px(14.)).text_color(muted_fg))
+                        .child(
+                            Icon::new(IconName::NavArrowLeft)
+                                .size(px(14.))
+                                .text_color(muted_fg),
+                        )
                         .child(div().text_sm().child("Cloud Servers"))
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.selected_cloud_server = None;
@@ -463,35 +496,28 @@ fn render_server_detail(
                 .border_1()
                 .border_color(border)
                 .child(
-                    div()
-                        .flex_1()
-                        .child(
-                            v_flex()
-                                .gap_0p5()
-                                .child(
-                                    div()
-                                        .text_base()
-                                        .font_weight(gpui::FontWeight::BOLD)
-                                        .text_color(fg)
-                                        .child(alias.clone()),
-                                )
-                                .child(
-                                    h_flex()
-                                        .gap_2()
-                                        .items_center()
-                                        .child(
-                                            Icon::new(IconName::Globe)
-                                                .size(px(11.))
-                                                .text_color(muted_fg),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_xs()
-                                                .text_color(muted_fg)
-                                                .child(url),
-                                        ),
-                                ),
-                        )
+                    div().flex_1().child(
+                        v_flex()
+                            .gap_0p5()
+                            .child(
+                                div()
+                                    .text_base()
+                                    .font_weight(gpui::FontWeight::BOLD)
+                                    .text_color(fg)
+                                    .child(alias.clone()),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        Icon::new(IconName::Globe)
+                                            .size(px(11.))
+                                            .text_color(muted_fg),
+                                    )
+                                    .child(div().text_xs().text_color(muted_fg).child(url)),
+                            ),
+                    ),
                 )
                 // Status badge + stats
                 .child(
@@ -501,25 +527,47 @@ fn render_server_detail(
                         .when(is_connecting, |this| {
                             this.child(Spinner::new().small().color(theme.info))
                         })
-                        .child(
-                            match &status {
-                                CloudServerStatus::Online { .. } =>
-                                    Tag::success().xsmall().rounded_full().child("Online").into_any_element(),
-                                CloudServerStatus::Offline =>
-                                    Tag::danger().xsmall().rounded_full().child("Offline").into_any_element(),
-                                CloudServerStatus::Unauthorized =>
-                                    Tag::warning().xsmall().rounded_full().child("Auth Error").into_any_element(),
-                                CloudServerStatus::Connecting =>
-                                    Tag::info().xsmall().rounded_full().child("Connecting").into_any_element(),
-                                CloudServerStatus::Unknown =>
-                                    Tag::secondary().xsmall().rounded_full().child("Unknown").into_any_element(),
-                            }
-                        )
-                        .when(is_online, |this| {
-                            this
-                                .child(stat_chip(IconName::Group, &format!("{} users", active_users), muted_fg, cx))
-                                .child(stat_chip(IconName::Database, &format!("{} projects", active_projects), muted_fg, cx))
+                        .child(match &status {
+                            CloudServerStatus::Online { .. } => Tag::success()
+                                .xsmall()
+                                .rounded_full()
+                                .child("Online")
+                                .into_any_element(),
+                            CloudServerStatus::Offline => Tag::danger()
+                                .xsmall()
+                                .rounded_full()
+                                .child("Offline")
+                                .into_any_element(),
+                            CloudServerStatus::Unauthorized => Tag::warning()
+                                .xsmall()
+                                .rounded_full()
+                                .child("Auth Error")
+                                .into_any_element(),
+                            CloudServerStatus::Connecting => Tag::info()
+                                .xsmall()
+                                .rounded_full()
+                                .child("Connecting")
+                                .into_any_element(),
+                            CloudServerStatus::Unknown => Tag::secondary()
+                                .xsmall()
+                                .rounded_full()
+                                .child("Unknown")
+                                .into_any_element(),
                         })
+                        .when(is_online, |this| {
+                            this.child(stat_chip(
+                                IconName::Group,
+                                &format!("{} users", active_users),
+                                muted_fg,
+                                cx,
+                            ))
+                            .child(stat_chip(
+                                IconName::Database,
+                                &format!("{} projects", active_projects),
+                                muted_fg,
+                                cx,
+                            ))
+                        }),
                 )
                 // New Project button — primary action
                 .child(
@@ -572,14 +620,11 @@ fn render_server_detail(
         // ── Project cards ──
         .when(!projects.is_empty(), |this| {
             this.child(
-                h_flex()
-                    .flex_wrap()
-                    .gap_5()
-                    .children(
-                        projects.into_iter().map(|project| {
-                            render_project_card(project, server_idx, cx)
-                        }),
-                    ),
+                h_flex().flex_wrap().gap_5().children(
+                    projects
+                        .into_iter()
+                        .map(|project| render_project_card(project, server_idx, cx)),
+                ),
             )
         })
 }
@@ -589,16 +634,16 @@ fn render_project_card(
     server_idx: usize,
     cx: &mut Context<EntryScreen>,
 ) -> impl IntoElement {
-    let theme    = cx.theme();
-    let fg       = theme.foreground;
+    let theme = cx.theme();
+    let fg = theme.foreground;
     let muted_fg = theme.muted_foreground;
-    let border   = theme.border;
-    let sidebar  = theme.sidebar;
+    let border = theme.border;
+    let sidebar = theme.sidebar;
 
     let hover_bg = sidebar.lighten(0.04);
 
-    let project_id   = project.id.clone();
-    let is_running   = matches!(&project.status, CloudProjectStatus::Running { .. });
+    let project_id = project.id.clone();
+    let is_running = matches!(&project.status, CloudProjectStatus::Running { .. });
     let is_preparing = matches!(&project.status, CloudProjectStatus::Preparing);
 
     // Weak handle for popup-menu closures (must be 'static).
@@ -611,7 +656,11 @@ fn render_project_card(
             Tag::success()
                 .xsmall()
                 .rounded_full()
-                .child(format!("Running  •  {} editor{}", user_count, if *user_count == 1 { "" } else { "s" }))
+                .child(format!(
+                    "Running  •  {} editor{}",
+                    user_count,
+                    if *user_count == 1 { "" } else { "s" }
+                ))
                 .into_any_element(),
         ),
         CloudProjectStatus::Preparing => (
@@ -633,14 +682,18 @@ fn render_project_card(
         ),
         CloudProjectStatus::Idle => (
             theme.muted,
-            Tag::secondary().xsmall().rounded_full().child("Idle").into_any_element(),
+            Tag::secondary()
+                .xsmall()
+                .rounded_full()
+                .child("Idle")
+                .into_any_element(),
         ),
     };
 
     let size_str = format_bytes(project.size_bytes);
 
     // ── "⋯" overflow menu ────────────────────────────────────────────────────
-    let pid_menu  = project_id.clone();
+    let pid_menu = project_id.clone();
     let weak_menu = weak.clone();
     let more_button = Button::new(SharedString::from(format!("proj-more-{}", project.id)))
         .icon(IconName::MoreHoriz)
@@ -648,49 +701,60 @@ fn render_project_card(
         .xsmall()
         .popup_menu_with_anchor(Corner::BottomRight, move |menu, _window, _cx| {
             let pid = pid_menu.clone();
-            let w   = weak_menu.clone();
+            let w = weak_menu.clone();
 
             // Open / Prepare — mutually exclusive depending on status
             let menu = if is_running {
                 let (w2, pid2) = (w.clone(), pid.clone());
-                menu.menu_handler_with_icon("Open in Editor", IconName::OpenInWindow,
+                menu.menu_handler_with_icon(
+                    "Open in Editor",
+                    IconName::OpenInWindow,
                     move |_, app| {
                         if let Some(e) = w2.upgrade() {
-                            e.update(app, |this, cx| this.open_cloud_project(server_idx, pid2.clone(), cx));
+                            e.update(app, |this, cx| {
+                                this.open_cloud_project(server_idx, pid2.clone(), cx)
+                            });
                         }
-                    })
+                    },
+                )
             } else {
                 let (w2, pid2) = (w.clone(), pid.clone());
-                menu.menu_handler_with_icon("Prepare / Warm Up", IconName::Play,
-                    move |_, app| {
-                        if let Some(e) = w2.upgrade() {
-                            e.update(app, |this, cx| this.prepare_cloud_project(server_idx, pid2.clone(), cx));
-                        }
-                    })
+                menu.menu_handler_with_icon("Prepare / Warm Up", IconName::Play, move |_, app| {
+                    if let Some(e) = w2.upgrade() {
+                        e.update(app, |this, cx| {
+                            this.prepare_cloud_project(server_idx, pid2.clone(), cx)
+                        });
+                    }
+                })
             };
 
             // Stop — only when active
             let menu = if is_running || is_preparing {
                 let (w2, pid2) = (w.clone(), pid.clone());
-                menu.menu_handler_with_icon("Stop Project", IconName::SystemShut,
-                    move |_, app| {
-                        if let Some(e) = w2.upgrade() {
-                            e.update(app, |this, cx| this.stop_cloud_project(server_idx, pid2.clone(), cx));
-                        }
-                    })
+                menu.menu_handler_with_icon("Stop Project", IconName::SystemShut, move |_, app| {
+                    if let Some(e) = w2.upgrade() {
+                        e.update(app, |this, cx| {
+                            this.stop_cloud_project(server_idx, pid2.clone(), cx)
+                        });
+                    }
+                })
             } else {
                 menu
             };
 
             // Separator + Delete (always available)
             let (w2, pid2) = (w.clone(), pid.clone());
-            menu.separator()
-                .menu_handler_with_icon("Delete Project", IconName::Trash,
-                    move |_, app| {
-                        if let Some(e) = w2.upgrade() {
-                            e.update(app, |this, cx| this.delete_cloud_project(server_idx, pid2.clone(), cx));
-                        }
-                    })
+            menu.separator().menu_handler_with_icon(
+                "Delete Project",
+                IconName::Trash,
+                move |_, app| {
+                    if let Some(e) = w2.upgrade() {
+                        e.update(app, |this, cx| {
+                            this.delete_cloud_project(server_idx, pid2.clone(), cx)
+                        });
+                    }
+                },
+            )
         });
 
     // ── Card root ─────────────────────────────────────────────────────────────
@@ -706,7 +770,7 @@ fn render_project_card(
         .bg(sidebar)
         .shadow_sm()
         .when(!is_preparing, |this| this.cursor_pointer())
-        .when(is_preparing,  |this| this.cursor_default())
+        .when(is_preparing, |this| this.cursor_default())
         .hover(|this| this.bg(hover_bg).shadow_md())
         // Accent bar
         .child(
@@ -719,13 +783,7 @@ fn render_project_card(
                 .bg(bar_color),
         )
         // ⋯ button — top-right corner
-        .child(
-            div()
-                .absolute()
-                .top_1()
-                .right_1()
-                .child(more_button),
-        )
+        .child(div().absolute().top_1().right_1().child(more_button))
         .child(
             v_flex()
                 .w_full()
@@ -788,12 +846,7 @@ fn render_project_card(
                                             .size(px(11.))
                                             .text_color(muted_fg),
                                     )
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .text_color(muted_fg)
-                                            .child(size_str),
-                                    ),
+                                    .child(div().text_xs().text_color(muted_fg).child(size_str)),
                             )
                         }),
                 )
@@ -818,7 +871,9 @@ fn render_project_card(
                 }),
         )
         .on_click(cx.listener(move |this, _, _, cx| {
-            if is_preparing { return; }
+            if is_preparing {
+                return;
+            }
             if is_running {
                 this.open_cloud_project(server_idx, pid_click.clone(), cx);
             } else {
@@ -834,10 +889,10 @@ fn render_create_project_panel(
     server_idx: usize,
     cx: &mut Context<EntryScreen>,
 ) -> Div {
-    let theme    = cx.theme();
-    let fg       = theme.foreground;
+    let theme = cx.theme();
+    let fg = theme.foreground;
     let muted_fg = theme.muted_foreground;
-    let border   = theme.border;
+    let border = theme.border;
 
     let alias = screen.cloud_servers[server_idx].alias.clone();
 
@@ -858,7 +913,11 @@ fn render_create_project_panel(
                         .cursor_pointer()
                         .text_color(muted_fg)
                         .hover(|this| this.text_color(fg))
-                        .child(Icon::new(IconName::NavArrowLeft).size(px(14.)).text_color(muted_fg))
+                        .child(
+                            Icon::new(IconName::NavArrowLeft)
+                                .size(px(14.))
+                                .text_color(muted_fg),
+                        )
                         .child(div().text_sm().child(alias))
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.show_create_project = false;
@@ -919,12 +978,7 @@ fn render_create_project_panel(
                                         .text_color(fg)
                                         .child("Description"),
                                 )
-                                .child(
-                                    Tag::secondary()
-                                        .xsmall()
-                                        .rounded_full()
-                                        .child("Optional"),
-                                ),
+                                .child(Tag::secondary().xsmall().rounded_full().child("Optional")),
                         )
                         .child(TextInput::new(&screen.create_project_description_input)),
                 )
@@ -959,15 +1013,12 @@ fn render_create_project_panel(
 
 // ── Add server panel ──────────────────────────────────────────────────────────
 
-fn render_add_server_panel(
-    screen: &mut EntryScreen,
-    cx: &mut Context<EntryScreen>,
-) -> Div {
-    let theme    = cx.theme();
-    let fg       = theme.foreground;
+fn render_add_server_panel(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) -> Div {
+    let theme = cx.theme();
+    let fg = theme.foreground;
     let muted_fg = theme.muted_foreground;
-    let border   = theme.border;
-    let primary  = theme.primary;
+    let border = theme.border;
+    let primary = theme.primary;
 
     v_flex()
         .size_full()
@@ -986,7 +1037,11 @@ fn render_add_server_panel(
                         .cursor_pointer()
                         .text_color(muted_fg)
                         .hover(|this| this.text_color(fg))
-                        .child(Icon::new(IconName::NavArrowLeft).size(px(14.)).text_color(muted_fg))
+                        .child(
+                            Icon::new(IconName::NavArrowLeft)
+                                .size(px(14.))
+                                .text_color(muted_fg),
+                        )
                         .child(div().text_sm().child("Cancel"))
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.show_add_server = false;
@@ -1043,12 +1098,9 @@ fn render_add_server_panel(
                                 .text_color(fg)
                                 .child("Server URL"),
                         )
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(muted_fg)
-                                .child("Base URL of the Pulsar Host server, e.g. https://studio.example.com"),
-                        )
+                        .child(div().text_xs().text_color(muted_fg).child(
+                            "Base URL of the Pulsar Host server, e.g. https://studio.example.com",
+                        ))
                         .child(TextInput::new(&screen.add_server_url_input)),
                 )
                 // Auth Token (optional)
@@ -1066,19 +1118,11 @@ fn render_add_server_panel(
                                         .text_color(fg)
                                         .child("Auth Token"),
                                 )
-                                .child(
-                                    Tag::secondary()
-                                        .xsmall()
-                                        .rounded_full()
-                                        .child("Optional"),
-                                ),
+                                .child(Tag::secondary().xsmall().rounded_full().child("Optional")),
                         )
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(muted_fg)
-                                .child("Bearer token for authenticated servers. Leave blank for open servers."),
-                        )
+                        .child(div().text_xs().text_color(muted_fg).child(
+                            "Bearer token for authenticated servers. Leave blank for open servers.",
+                        ))
                         .child(TextInput::new(&screen.add_server_token_input)),
                 )
                 // ── Actions ──
@@ -1102,7 +1146,7 @@ fn render_add_server_panel(
                                 .primary()
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     let alias = this.add_server_alias.trim().to_string();
-                                    let url   = this.add_server_url.trim().to_string();
+                                    let url = this.add_server_url.trim().to_string();
                                     let token = this.add_server_token.trim().to_string();
                                     this.add_cloud_server(alias, url, token, cx);
                                 })),

@@ -1,9 +1,9 @@
 //! Actions for the Pulsar application
 
-use std::path::PathBuf;
 use gpui::Action;
 use schemars::JsonSchema;
 use serde::Deserialize;
+use std::path::PathBuf;
 
 /// Action to toggle the file manager drawer
 #[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]

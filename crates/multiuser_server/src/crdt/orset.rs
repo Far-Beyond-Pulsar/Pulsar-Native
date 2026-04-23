@@ -136,7 +136,10 @@ impl<T: Clone + Eq + Hash + Debug> ORSet<T> {
     /// Merge with another OR-Set
     pub fn merge(&mut self, other: &ORSet<T>) {
         for (element, other_tags) in &other.elements {
-            let entry = self.elements.entry(element.clone()).or_insert_with(HashSet::new);
+            let entry = self
+                .elements
+                .entry(element.clone())
+                .or_insert_with(HashSet::new);
             for tag in other_tags {
                 entry.insert(tag.clone());
             }

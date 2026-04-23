@@ -147,7 +147,11 @@ pub fn set_cursor_position(screen_x: i32, screen_y: i32) {
 /// # Returns
 /// `Some((x, y))` if successful, `None` if the window handle is invalid.
 #[cfg(target_os = "windows")]
-pub fn window_to_screen_position(window: &Window, window_x: f32, window_y: f32) -> Option<(i32, i32)> {
+pub fn window_to_screen_position(
+    window: &Window,
+    window_x: f32,
+    window_y: f32,
+) -> Option<(i32, i32)> {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
     use winapi::shared::windef::POINT;
     use winapi::um::winuser::ClientToScreen;
@@ -196,7 +200,11 @@ pub fn set_cursor_position(screen_x: i32, screen_y: i32) {
 }
 
 #[cfg(target_os = "macos")]
-pub fn window_to_screen_position(window: &Window, window_x: f32, window_y: f32) -> Option<(i32, i32)> {
+pub fn window_to_screen_position(
+    window: &Window,
+    window_x: f32,
+    window_y: f32,
+) -> Option<(i32, i32)> {
     use objc2::runtime::AnyObject;
     use objc2::{msg_send, msg_send_id};
     use objc2_foundation::NSPoint;
@@ -255,7 +263,11 @@ pub fn set_cursor_position(_screen_x: i32, _screen_y: i32) {
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-pub fn window_to_screen_position(_window: &Window, _window_x: f32, _window_y: f32) -> Option<(i32, i32)> {
+pub fn window_to_screen_position(
+    _window: &Window,
+    _window_x: f32,
+    _window_y: f32,
+) -> Option<(i32, i32)> {
     None
 }
 

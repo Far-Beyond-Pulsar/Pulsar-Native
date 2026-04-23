@@ -35,7 +35,7 @@ pub struct SnapshotRecord {
     pub id: Uuid,
     pub snapshot_id: String,
     pub session_id: String,
-    pub file_path: String,  // Local file path instead of S3 key
+    pub file_path: String, // Local file path instead of S3 key
     pub size_bytes: i64,
     pub compressed: bool,
     pub hash: Vec<u8>,
@@ -45,7 +45,7 @@ pub struct SnapshotRecord {
 /// Persistence layer (local storage only, no AWS)
 pub struct PersistenceLayer {
     db_pool: Option<Arc<PgPool>>,
-    storage_dir: Option<String>,  // Local directory for snapshots
+    storage_dir: Option<String>, // Local directory for snapshots
     config: Config,
 }
 
@@ -180,10 +180,7 @@ impl PersistenceLayer {
         expires_at: DateTime<Utc>,
         metadata: serde_json::Value,
     ) -> Result<SessionRecord> {
-        let pool = self
-            .db_pool
-            .as_ref()
-            .context("Database not configured")?;
+        let pool = self.db_pool.as_ref().context("Database not configured")?;
 
         let record = sqlx::query_as::<_, SessionRecord>(
             r#"
@@ -207,10 +204,7 @@ impl PersistenceLayer {
 
     /// Get a session by ID
     pub async fn get_session(&self, session_id: &str) -> Result<Option<SessionRecord>> {
-        let pool = self
-            .db_pool
-            .as_ref()
-            .context("Database not configured")?;
+        let pool = self.db_pool.as_ref().context("Database not configured")?;
 
         let record = sqlx::query_as::<_, SessionRecord>(
             r#"
@@ -229,10 +223,7 @@ impl PersistenceLayer {
 
     /// Update session status
     pub async fn update_session_status(&self, session_id: &str, status: &str) -> Result<()> {
-        let pool = self
-            .db_pool
-            .as_ref()
-            .context("Database not configured")?;
+        let pool = self.db_pool.as_ref().context("Database not configured")?;
 
         sqlx::query(
             r#"
@@ -259,10 +250,7 @@ impl PersistenceLayer {
 
     /// List active sessions
     pub async fn list_active_sessions(&self) -> Result<Vec<SessionRecord>> {
-        let pool = self
-            .db_pool
-            .as_ref()
-            .context("Database not configured")?;
+        let pool = self.db_pool.as_ref().context("Database not configured")?;
 
         let records = sqlx::query_as::<_, SessionRecord>(
             r#"
@@ -281,10 +269,7 @@ impl PersistenceLayer {
 
     /// Expire old sessions
     pub async fn expire_old_sessions(&self) -> Result<u64> {
-        let pool = self
-            .db_pool
-            .as_ref()
-            .context("Database not configured")?;
+        let pool = self.db_pool.as_ref().context("Database not configured")?;
 
         let result = sqlx::query(
             r#"
@@ -313,17 +298,23 @@ impl PersistenceLayer {
         _data: Vec<u8>,
         _compressed: bool,
     ) -> Result<SnapshotRecord> {
-        anyhow::bail!("Snapshot storage not implemented - S3 was removed, use local file storage instead")
+        anyhow::bail!(
+            "Snapshot storage not implemented - S3 was removed, use local file storage instead"
+        )
     }
 
     /// Download snapshot (S3 removed - stub)
     pub async fn download_snapshot(&self, _snapshot_id: &str) -> Result<Vec<u8>> {
-        anyhow::bail!("Snapshot storage not implemented - S3 was removed, use local file storage instead")
+        anyhow::bail!(
+            "Snapshot storage not implemented - S3 was removed, use local file storage instead"
+        )
     }
 
     /// Delete snapshot (S3 removed - stub)
     pub async fn delete_snapshot(&self, _snapshot_id: &str) -> Result<()> {
-        anyhow::bail!("Snapshot storage not implemented - S3 was removed, use local file storage instead")
+        anyhow::bail!(
+            "Snapshot storage not implemented - S3 was removed, use local file storage instead"
+        )
     }
 
     /// Health check for database

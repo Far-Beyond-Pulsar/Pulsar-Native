@@ -1,12 +1,12 @@
 //! Type-level allocation tracking using Layout (size + alignment)
 //! Uses channel to offload expensive processing from allocator
 
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use dashmap::DashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::alloc::Layout;
-use std::sync::Arc;
 use parking_lot::Mutex;
-use crossbeam_channel::{Sender, Receiver, unbounded};
+use std::alloc::Layout;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 /// Allocation site information (identified by Layout)
 #[derive(Clone, Debug)]
@@ -39,31 +39,34 @@ pub struct TypeTracker {
 impl TypeTracker {
     pub fn new() -> Self {
         let (sender, receiver) = unbounded();
-        
+
         // Spawn background processor thread
         std::thread::spawn(move || {
             background_processor(receiver);
         });
-        
+
         Self {
             layouts: DashMap::new(),
             sender,
             db_writer: Mutex::new(None),
         }
     }
-    
+
     /// Initialize database writer (called once at startup)
     pub fn init_db_writer(&self) {
         if self.db_writer.lock().is_some() {
             return; // Already initialized
         }
-        
+
         match crate::memory_database::get_memory_db_path() {
             Ok(db_path) => {
                 match crate::memory_database::MemoryDatabaseWriter::new(db_path.clone()) {
                     Ok(writer) => {
                         *self.db_writer.lock() = Some(Arc::new(writer));
-                        tracing::info!("[MEMORY] Database writer initialized: {}", db_path.display());
+                        tracing::info!(
+                            "[MEMORY] Database writer initialized: {}",
+                            db_path.display()
+                        );
                     }
                     Err(e) => {
                         tracing::error!("[MEMORY] Failed to initialize database writer: {}", e);
@@ -75,7 +78,7 @@ impl TypeTracker {
             }
         }
     }
-    
+
     /// Record an allocation by its layout (FAST - just send to channel)
     #[inline]
     pub fn record_alloc(&self, layout: Layout) {
@@ -92,7 +95,7 @@ impl TypeTracker {
         if let Some(entry) = self.layouts.get(&key) {
             entry.1.fetch_add(layout.size(), Ordering::Relaxed);
         }
-        
+
         // Send to background thread for DB processing (non-blocking)
         let _ = self.sender.send(AllocRecord {
             size: layout.size(),
@@ -113,7 +116,7 @@ impl TypeTracker {
                 Ordering::Relaxed,
             );
         }
-        
+
         // Send to background thread for DB processing (non-blocking)
         let _ = self.sender.send(AllocRecord {
             size: layout.size(),
@@ -149,7 +152,9 @@ impl TypeTracker {
             (40, 8) => "Medium Struct (40B)".to_string(),
 
             // Generic patterns
-            _ if size >= 1024 * 1024 => format!("Large Buffer ({}MB, align {})", size / 1024 / 1024, align),
+            _ if size >= 1024 * 1024 => {
+                format!("Large Buffer ({}MB, align {})", size / 1024 / 1024, align)
+            }
             _ if size >= 1024 => format!("Buffer ({}KB, align {})", size / 1024, align),
             _ if size > 64 => format!("Struct ({}B, align {})", size, align),
             _ => format!("Type ({}B, align {})", size, align),
@@ -193,31 +198,31 @@ fn background_processor(receiver: Receiver<AllocRecord>) {
     // Build aggregated snapshot periodically
     let mut last_write = std::time::Instant::now();
     let mut pending_records = Vec::with_capacity(10000);
-    
+
     loop {
         // Drain channel in batches
         while let Ok(record) = receiver.try_recv() {
             pending_records.push(record);
-            
+
             // Process in chunks to avoid unbounded growth
             if pending_records.len() >= 10000 {
                 break;
             }
         }
-        
+
         // Write to DB every 5 seconds if we have data
         if !pending_records.is_empty() && last_write.elapsed().as_secs() >= 5 {
             // Get current snapshot from TYPE_TRACKER and write to DB
             let sites = crate::TYPE_TRACKER.get_sites();
-            
+
             if let Some(writer) = crate::TYPE_TRACKER.db_writer.lock().as_ref() {
                 writer.write_batch(sites);
             }
-            
+
             pending_records.clear();
             last_write = std::time::Instant::now();
         }
-        
+
         // Sleep to avoid busy loop
         std::thread::sleep(std::time::Duration::from_millis(100));
     }

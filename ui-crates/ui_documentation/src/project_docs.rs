@@ -1,8 +1,8 @@
-use gpui::{prelude::*, *};
-use ui::input::InputState;
-use std::path::PathBuf;
-use std::collections::HashSet;
 use crate::doc_source::{DocSource, make_search_input};
+use gpui::{prelude::*, *};
+use std::collections::HashSet;
+use std::path::PathBuf;
+use ui::input::InputState;
 
 #[derive(Clone, Debug)]
 pub enum ProjectTreeNode {
@@ -63,7 +63,8 @@ impl ProjectDocsState {
 
         // Try to get project root from engine if not provided
         let project_path = project_root.or_else(|| {
-            engine_state::get_project_path().and_then(|p| PathBuf::from(p).parent().map(|parent| parent.to_path_buf()))
+            engine_state::get_project_path()
+                .and_then(|p| PathBuf::from(p).parent().map(|parent| parent.to_path_buf()))
         });
 
         // Parse project documentation if we have a project root
@@ -222,7 +223,11 @@ impl ProjectDocsState {
                         self.flat_visible_items.push(idx);
                     }
                 }
-                ProjectTreeNode::Item { category, item_name, .. } => {
+                ProjectTreeNode::Item {
+                    category,
+                    item_name,
+                    ..
+                } => {
                     let matches = item_name.to_lowercase().contains(&query);
                     let parent_expanded = self.expanded_paths.contains(category);
 
@@ -230,7 +235,8 @@ impl ProjectDocsState {
                         self.expanded_paths.insert(category.clone());
                     }
 
-                    if (parent_expanded || (is_searching && matches)) && (!is_searching || matches) {
+                    if (parent_expanded || (is_searching && matches)) && (!is_searching || matches)
+                    {
                         self.flat_visible_items.push(idx);
                     }
                 }

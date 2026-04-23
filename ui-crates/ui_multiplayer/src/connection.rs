@@ -9,12 +9,13 @@ use tokio::sync::RwLock;
 
 use super::state::MultiplayerWindow;
 use super::types::*;
+use engine_backend::subsystems::networking::multiuser::{
+    ClientMessage, MultiuserClient, ServerMessage,
+};
 use engine_backend::subsystems::networking::simple_sync;
-use engine_backend::subsystems::networking::multiuser::{ClientMessage, MultiuserClient, ServerMessage};
-
 
 impl MultiplayerWindow {
-        pub(super) fn disconnect(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn disconnect(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         if let (Some(client), Some(session)) = (&self.client, &self.active_session) {
             let client = client.clone();
             let session_id = session.session_id.clone();
@@ -33,9 +34,12 @@ impl MultiplayerWindow {
                         this.chat_messages.clear();
                         this.current_tab = SessionTab::Info;
                         cx.notify();
-                    }).ok();
-                }).ok();
-            }).detach();
+                    })
+                    .ok();
+                })
+                .ok();
+            })
+            .detach();
         } else {
             self.connection_status = ConnectionStatus::Disconnected;
             self.active_session = None;
@@ -46,5 +50,4 @@ impl MultiplayerWindow {
             cx.notify();
         }
     }
-
 }

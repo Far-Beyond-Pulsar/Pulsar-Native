@@ -130,7 +130,10 @@ impl SessionContext {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        self.inner.write().active_edits.insert(element_id, timestamp);
+        self.inner
+            .write()
+            .active_edits
+            .insert(element_id, timestamp);
     }
 
     pub fn stop_editing(&self, element_id: &str) {

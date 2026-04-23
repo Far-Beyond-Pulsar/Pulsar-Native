@@ -1,7 +1,7 @@
 use std::ops::Range;
 
-use ropey::{LineType, Rope, RopeSlice};
 use gpui_sum_tree::Bias;
+use ropey::{LineType, Rope, RopeSlice};
 use tree_sitter::Point;
 
 use crate::input::Position;
@@ -392,8 +392,8 @@ impl RopeExt for Rope {
 
 #[cfg(test)]
 mod tests {
-    use ropey::Rope;
     use gpui_sum_tree::Bias;
+    use ropey::Rope;
     use tree_sitter::Point;
 
     use crate::input::{Position, RopeExt};

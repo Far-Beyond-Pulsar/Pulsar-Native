@@ -3,7 +3,7 @@
 //! This module provides a trait-based system for declaratively mapping UI input fields
 //! to scene data fields with automatic bidirectional synchronization and undo/redo support.
 
-use crate::level_editor::scene_database::{SceneDatabase, SceneObjectData, ObjectId};
+use crate::level_editor::scene_database::{ObjectId, SceneDatabase, SceneObjectData};
 use std::sync::Arc;
 
 /// Core trait for field bindings that connect UI inputs to scene data
@@ -79,7 +79,9 @@ impl FieldBinding for F32FieldBinding {
     }
 
     fn from_string(&self, s: &str) -> Result<f32, String> {
-        s.trim().parse().map_err(|_| format!("Invalid number: {}", s))
+        s.trim()
+            .parse()
+            .map_err(|_| format!("Invalid number: {}", s))
     }
 }
 
@@ -131,13 +133,22 @@ impl FieldBinding for Vec3FieldBinding {
 
         // Try parsing "[x, y, z]" format
         if s.starts_with('[') && s.ends_with(']') {
-            let inner = &s[1..s.len()-1];
+            let inner = &s[1..s.len() - 1];
             let parts: Vec<&str> = inner.split(',').collect();
 
             if parts.len() == 3 {
-                let x = parts[0].trim().parse::<f32>().map_err(|_| format!("Invalid X value"))?;
-                let y = parts[1].trim().parse::<f32>().map_err(|_| format!("Invalid Y value"))?;
-                let z = parts[2].trim().parse::<f32>().map_err(|_| format!("Invalid Z value"))?;
+                let x = parts[0]
+                    .trim()
+                    .parse::<f32>()
+                    .map_err(|_| format!("Invalid X value"))?;
+                let y = parts[1]
+                    .trim()
+                    .parse::<f32>()
+                    .map_err(|_| format!("Invalid Y value"))?;
+                let z = parts[2]
+                    .trim()
+                    .parse::<f32>()
+                    .map_err(|_| format!("Invalid Z value"))?;
                 return Ok([x, y, z]);
             }
         }
@@ -286,7 +297,10 @@ impl FieldBinding for ColorFieldBinding {
     }
 
     fn to_string(&self, value: &[f32; 4]) -> String {
-        format!("rgba({:.3}, {:.3}, {:.3}, {:.3})", value[0], value[1], value[2], value[3])
+        format!(
+            "rgba({:.3}, {:.3}, {:.3}, {:.3})",
+            value[0], value[1], value[2], value[3]
+        )
     }
 
     fn from_string(&self, s: &str) -> Result<[f32; 4], String> {
@@ -294,14 +308,26 @@ impl FieldBinding for ColorFieldBinding {
 
         // Try parsing "rgba(r, g, b, a)" format
         if s.starts_with("rgba(") && s.ends_with(')') {
-            let inner = &s[5..s.len()-1];
+            let inner = &s[5..s.len() - 1];
             let parts: Vec<&str> = inner.split(',').collect();
 
             if parts.len() == 4 {
-                let r = parts[0].trim().parse::<f32>().map_err(|_| format!("Invalid R value"))?;
-                let g = parts[1].trim().parse::<f32>().map_err(|_| format!("Invalid G value"))?;
-                let b = parts[2].trim().parse::<f32>().map_err(|_| format!("Invalid B value"))?;
-                let a = parts[3].trim().parse::<f32>().map_err(|_| format!("Invalid A value"))?;
+                let r = parts[0]
+                    .trim()
+                    .parse::<f32>()
+                    .map_err(|_| format!("Invalid R value"))?;
+                let g = parts[1]
+                    .trim()
+                    .parse::<f32>()
+                    .map_err(|_| format!("Invalid G value"))?;
+                let b = parts[2]
+                    .trim()
+                    .parse::<f32>()
+                    .map_err(|_| format!("Invalid B value"))?;
+                let a = parts[3]
+                    .trim()
+                    .parse::<f32>()
+                    .map_err(|_| format!("Invalid A value"))?;
                 return Ok([r, g, b, a]);
             }
         }
@@ -333,7 +359,7 @@ impl EnumFieldBinding {
             variants,
         }
     }
-    
+
     pub fn variants(&self) -> &[String] {
         &self.variants
     }
@@ -350,7 +376,7 @@ impl FieldBinding for EnumFieldBinding {
         if value >= self.variants.len() {
             return false;
         }
-        
+
         if let Some(mut obj) = db.get_object(object_id) {
             (self.setter)(&mut obj, value);
             db.update_object(obj)
@@ -360,7 +386,10 @@ impl FieldBinding for EnumFieldBinding {
     }
 
     fn to_string(&self, value: &usize) -> String {
-        self.variants.get(*value).cloned().unwrap_or_else(|| "Unknown".to_string())
+        self.variants
+            .get(*value)
+            .cloned()
+            .unwrap_or_else(|| "Unknown".to_string())
     }
 
     fn from_string(&self, s: &str) -> Result<usize, String> {
@@ -445,7 +474,7 @@ macro_rules! bind_bool_field {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::level_editor::scene_database::{SceneObjectData, ObjectType, Transform};
+    use crate::level_editor::scene_database::{ObjectType, SceneObjectData, Transform};
 
     #[test]
     fn test_f32_binding() {
@@ -453,22 +482,25 @@ mod tests {
 
         // Add test object
         let object_id = "test_object".to_string();
-        db.add_object(SceneObjectData {
-            id: object_id.clone(),
-            name: "Test".to_string(),
-            object_type: ObjectType::Empty,
-            transform: Transform {
-                position: [1.0, 2.0, 3.0],
-                rotation: [0.0, 0.0, 0.0],
-                scale: [1.0, 1.0, 1.0],
+        db.add_object(
+            SceneObjectData {
+                id: object_id.clone(),
+                name: "Test".to_string(),
+                object_type: ObjectType::Empty,
+                transform: Transform {
+                    position: [1.0, 2.0, 3.0],
+                    rotation: [0.0, 0.0, 0.0],
+                    scale: [1.0, 1.0, 1.0],
+                },
+                parent: None,
+                children: Vec::new(),
+                visible: true,
+                locked: false,
+                components: Vec::new(),
+                scene_path: String::new(),
             },
-            parent: None,
-            children: Vec::new(),
-            visible: true,
-            locked: false,
-            components: Vec::new(),
-            scene_path: String::new(),
-        }, None);
+            None,
+        );
 
         // Create binding for position.x
         let binding = F32FieldBinding::new(
@@ -499,7 +531,10 @@ mod tests {
         );
 
         // Test to_string
-        assert_eq!(binding.to_string(&[1.0, 2.5, 3.14]), "[1.000, 2.500, 3.140]");
+        assert_eq!(
+            binding.to_string(&[1.0, 2.5, 3.14]),
+            "[1.000, 2.500, 3.140]"
+        );
 
         // Test from_string
         assert_eq!(binding.from_string("[1, 2, 3]"), Ok([1.0, 2.0, 3.0]));
@@ -510,10 +545,7 @@ mod tests {
 
     #[test]
     fn test_string_binding() {
-        let binding = StringFieldBinding::new(
-            |obj| obj.name.clone(),
-            |obj, val| obj.name = val,
-        );
+        let binding = StringFieldBinding::new(|obj| obj.name.clone(), |obj, val| obj.name = val);
 
         assert_eq!(binding.to_string(&"Test".to_string()), "Test");
         assert_eq!(binding.from_string("Hello"), Ok("Hello".to_string()));
@@ -521,10 +553,7 @@ mod tests {
 
     #[test]
     fn test_bool_binding() {
-        let binding = BoolFieldBinding::new(
-            |obj| obj.visible,
-            |obj, val| obj.visible = val,
-        );
+        let binding = BoolFieldBinding::new(|obj| obj.visible, |obj, val| obj.visible = val);
 
         assert_eq!(binding.to_string(&true), "true");
         assert_eq!(binding.to_string(&false), "false");

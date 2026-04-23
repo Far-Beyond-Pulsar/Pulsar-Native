@@ -92,7 +92,10 @@ impl QuicServer {
 
         info!("QUIC server listening on {}", endpoint.local_addr()?);
 
-        METRICS.connections_total.with_label_values(&["quic", "server"]).inc();
+        METRICS
+            .connections_total
+            .with_label_values(&["quic", "server"])
+            .inc();
 
         Ok(Self {
             endpoint,
@@ -138,19 +141,21 @@ impl QuicServer {
     }
 
     /// Handle an incoming connection (after it's been accepted)
-    async fn handle_connection_inner(
-        &self,
-        connection: quinn::Connection,
-    ) -> Result<()> {
+    async fn handle_connection_inner(&self, connection: quinn::Connection) -> Result<()> {
         let remote_addr = connection.remote_address();
         debug!("New QUIC connection from {}", remote_addr);
 
         info!("QUIC connection established with {}", remote_addr);
 
         self.stats.total_connections.fetch_add(1, Ordering::Relaxed);
-        self.stats.active_connections.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .active_connections
+            .fetch_add(1, Ordering::Relaxed);
 
-        METRICS.connections_total.with_label_values(&["quic", "relay"]).inc();
+        METRICS
+            .connections_total
+            .with_label_values(&["quic", "relay"])
+            .inc();
         METRICS.relay_connections_active.inc();
 
         // Generate session ID
@@ -164,12 +169,12 @@ impl QuicServer {
         });
 
         // Handle bidirectional streams
-        let result = self
-            .handle_streams(connection, session_id.clone())
-            .await;
+        let result = self.handle_streams(connection, session_id.clone()).await;
 
         // Cleanup
-        self.stats.active_connections.fetch_sub(1, Ordering::Relaxed);
+        self.stats
+            .active_connections
+            .fetch_sub(1, Ordering::Relaxed);
         METRICS.relay_connections_active.dec();
 
         let mut connections = self.connections.write().await;
@@ -177,7 +182,10 @@ impl QuicServer {
 
         if let Err(e) = result {
             warn!("Stream handling error for {}: {}", remote_addr, e);
-            METRICS.connection_failures.with_label_values(&["quic", "stream_error"]).inc();
+            METRICS
+                .connection_failures
+                .with_label_values(&["quic", "stream_error"])
+                .inc();
         }
 
         Ok(())
@@ -322,11 +330,16 @@ impl QuicServer {
     }
 
     /// Generate a self-signed certificate for testing/development
-    fn generate_self_signed_cert() -> Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>)> {
+    fn generate_self_signed_cert() -> Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>)>
+    {
         let mut params = CertificateParams::default();
         params.distinguished_name = DistinguishedName::new();
-        params.distinguished_name.push(DnType::CommonName, "pulsar-multiedit");
-        params.distinguished_name.push(DnType::OrganizationName, "Pulsar");
+        params
+            .distinguished_name
+            .push(DnType::CommonName, "pulsar-multiedit");
+        params
+            .distinguished_name
+            .push(DnType::OrganizationName, "Pulsar");
 
         let key_pair = KeyPair::generate()?;
         let cert = params.self_signed(&key_pair)?;
@@ -358,7 +371,8 @@ impl QuicServer {
 
     /// Create a QUIC client endpoint for P2P connections with post-quantum key exchange
     pub async fn create_p2p_endpoint(bind_addr: SocketAddr) -> Result<Endpoint> {
-        let mut endpoint = Endpoint::client(bind_addr).context("Failed to create client endpoint")?;
+        let mut endpoint =
+            Endpoint::client(bind_addr).context("Failed to create client endpoint")?;
 
         // Use ring crypto provider (post-quantum disabled for Windows compatibility)
         let provider = rustls::crypto::ring::default_provider();
@@ -382,7 +396,10 @@ impl QuicServer {
         client_config.transport_config(Arc::new(transport));
         endpoint.set_default_client_config(client_config);
 
-        METRICS.connections_total.with_label_values(&["quic", "p2p"]).inc();
+        METRICS
+            .connections_total
+            .with_label_values(&["quic", "p2p"])
+            .inc();
 
         Ok(endpoint)
     }
@@ -508,9 +525,7 @@ mod tests {
         let (_tx, rx) = mpsc::channel(1);
 
         let server_clone = server.clone();
-        let handle = tokio::spawn(async move {
-            server_clone.run(rx).await
-        });
+        let handle = tokio::spawn(async move { server_clone.run(rx).await });
 
         // Give it a moment to start
         tokio::time::sleep(Duration::from_millis(100)).await;

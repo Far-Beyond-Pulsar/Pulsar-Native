@@ -3,8 +3,8 @@
 //! This component eliminates repetitive boilerplate for rendering performance graphs
 //! with consistent styling and layout.
 
-use gpui::*;
 use gpui::prelude::FluentBuilder;
+use gpui::*;
 use ui::{
     chart::{AreaChart, BarChart},
     h_flex, v_flex, ActiveTheme, Icon, IconName, StyledExt,
@@ -101,12 +101,7 @@ impl<T: Clone + 'static> GraphPanel<T> {
     }
 
     /// Build an area chart.
-    pub fn build_area<X, Y, V: 'static>(
-        self,
-        x_fn: X,
-        y_fn: Y,
-        cx: &Context<V>,
-    ) -> impl IntoElement
+    pub fn build_area<X, Y, V: 'static>(self, x_fn: X, y_fn: Y, cx: &Context<V>) -> impl IntoElement
     where
         X: Fn(&T) -> SharedString + 'static,
         Y: Fn(&T) -> f64 + 'static,
@@ -168,23 +163,19 @@ impl<T: Clone + 'static> GraphPanel<T> {
     where
         V: Render,
     {
-        let mut header = h_flex()
-            .w_full()
-            .items_center()
-            .justify_between()
-            .child(
-                h_flex()
-                    .gap_2()
-                    .items_center()
-                    .child(Icon::new(icon).size_4().text_color(cx.theme().accent))
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(cx.theme().foreground)
-                            .child(title),
-                    ),
-            );
+        let mut header = h_flex().w_full().items_center().justify_between().child(
+            h_flex()
+                .gap_2()
+                .items_center()
+                .child(Icon::new(icon).size_4().text_color(cx.theme().accent))
+                .child(
+                    div()
+                        .text_sm()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(cx.theme().foreground)
+                        .child(title),
+                ),
+        );
 
         if let Some(subtitle) = subtitle {
             header = header.child(

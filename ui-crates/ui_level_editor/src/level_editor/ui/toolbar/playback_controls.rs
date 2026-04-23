@@ -1,7 +1,10 @@
 use gpui::*;
-use ui::{button::{Button, ButtonVariants as _}, ActiveTheme, IconName, Selectable, Sizable, Disableable};
-use std::sync::Arc;
 use rust_i18n::t;
+use std::sync::Arc;
+use ui::{
+    button::{Button, ButtonVariants as _},
+    ActiveTheme, Disableable, IconName, Selectable, Sizable,
+};
 
 use super::super::state::LevelEditorState;
 

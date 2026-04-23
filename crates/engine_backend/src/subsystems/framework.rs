@@ -7,8 +7,8 @@
 //! - Shared context for runtime handles and configuration
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use tokio::runtime::Handle;
 use thiserror::Error;
+use tokio::runtime::Handle;
 
 /// Unique identifier for a subsystem
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -245,17 +245,19 @@ impl SubsystemRegistry {
 
         // Resolve initialization order
         let order = self.resolve_dependencies()?;
-        tracing::info!("Subsystem initialization order: {:?}",
-            order.iter().map(|id| id.as_str()).collect::<Vec<_>>());
+        tracing::info!(
+            "Subsystem initialization order: {:?}",
+            order.iter().map(|id| id.as_str()).collect::<Vec<_>>()
+        );
 
         // Initialize in order
         for id in &order {
             let subsystem = self.subsystems.get_mut(id).unwrap();
             tracing::debug!("Initializing subsystem: {}", id.as_str());
 
-            subsystem.init(context).map_err(|e| {
-                SubsystemError::InitFailed(format!("{}: {}", id.as_str(), e))
-            })?;
+            subsystem
+                .init(context)
+                .map_err(|e| SubsystemError::InitFailed(format!("{}: {}", id.as_str(), e)))?;
         }
 
         self.init_order = order;
@@ -276,9 +278,9 @@ impl SubsystemRegistry {
             let subsystem = self.subsystems.get_mut(id).unwrap();
             tracing::debug!("Shutting down subsystem: {}", id.as_str());
 
-            subsystem.shutdown().map_err(|e| {
-                SubsystemError::ShutdownFailed(format!("{}: {}", id.as_str(), e))
-            })?;
+            subsystem
+                .shutdown()
+                .map_err(|e| SubsystemError::ShutdownFailed(format!("{}: {}", id.as_str(), e)))?;
         }
 
         self.initialized = false;
@@ -394,7 +396,10 @@ mod tests {
         registry.register(MockSubsystem::new(b, vec![a])).unwrap();
 
         let result = registry.resolve_dependencies();
-        assert!(matches!(result, Err(SubsystemError::DependencyCycle { .. })));
+        assert!(matches!(
+            result,
+            Err(SubsystemError::DependencyCycle { .. })
+        ));
     }
 
     #[test]
@@ -408,6 +413,9 @@ mod tests {
         registry.register(MockSubsystem::new(b, vec![a])).unwrap();
 
         let result = registry.resolve_dependencies();
-        assert!(matches!(result, Err(SubsystemError::MissingDependency { .. })));
+        assert!(matches!(
+            result,
+            Err(SubsystemError::MissingDependency { .. })
+        ));
     }
 }

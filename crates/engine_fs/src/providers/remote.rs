@@ -148,7 +148,10 @@ impl RemoteFsProvider {
         let rel = if let Some(tail) = s.strip_prefix("cloud+pulsar://") {
             // Strip  HOST / PROJECT_ID /  to get the bare relative path.
             let after_host = tail.find('/').map(|i| &tail[i + 1..]).unwrap_or("");
-            let after_proj = after_host.find('/').map(|i| &after_host[i + 1..]).unwrap_or("");
+            let after_proj = after_host
+                .find('/')
+                .map(|i| &after_host[i + 1..])
+                .unwrap_or("");
             after_proj.to_string()
         } else {
             // Already a relative path (or some other non-cloud form).
@@ -176,7 +179,9 @@ impl FsProvider for RemoteFsProvider {
             .auth(self.agent.get(&url))
             .call()
             .context("RemoteFs read HTTP call failed")?;
-        let body: ApiReadResponse = resp.into_json().context("RemoteFs read: JSON parse error")?;
+        let body: ApiReadResponse = resp
+            .into_json()
+            .context("RemoteFs read: JSON parse error")?;
         decode_b64(&body.content)
     }
 
@@ -195,7 +200,11 @@ impl FsProvider for RemoteFsProvider {
     fn create_file(&self, path: &Path, content: &[u8]) -> Result<()> {
         let rel = self.to_rel(path)?;
         debug!("RemoteFs: create_file {rel:?}");
-        let url = format!("{}?path={}&create=true", self.files_base(), Self::encode(&rel));
+        let url = format!(
+            "{}?path={}&create=true",
+            self.files_base(),
+            Self::encode(&rel)
+        );
         let b64 = encode_b64(content);
         self.auth(self.agent.put(&url))
             .set("Content-Type", "application/json")
@@ -238,8 +247,9 @@ impl FsProvider for RemoteFsProvider {
             .auth(self.agent.get(&url))
             .call()
             .context("RemoteFs list HTTP call failed")?;
-        let entries: Vec<ApiDirEntry> =
-            resp.into_json().context("RemoteFs list: JSON parse error")?;
+        let entries: Vec<ApiDirEntry> = resp
+            .into_json()
+            .context("RemoteFs list: JSON parse error")?;
         Ok(entries
             .into_iter()
             .map(|e| FsEntry {
@@ -282,7 +292,9 @@ impl FsProvider for RemoteFsProvider {
             .auth(self.agent.get(&url))
             .call()
             .context("RemoteFs stat HTTP call failed")?;
-        let r: ApiStatResponse = resp.into_json().context("RemoteFs stat: JSON parse error")?;
+        let r: ApiStatResponse = resp
+            .into_json()
+            .context("RemoteFs stat: JSON parse error")?;
         Ok(FsMetadata {
             is_dir: r.is_dir,
             size: r.size,
@@ -302,8 +314,9 @@ impl FsProvider for RemoteFsProvider {
             .auth(self.agent.get(&url))
             .call()
             .context("RemoteFs manifest HTTP call failed")?;
-        let entries: Vec<ManifestEntry> =
-            resp.into_json().context("RemoteFs manifest: JSON parse error")?;
+        let entries: Vec<ManifestEntry> = resp
+            .into_json()
+            .context("RemoteFs manifest: JSON parse error")?;
         Ok(entries)
     }
 

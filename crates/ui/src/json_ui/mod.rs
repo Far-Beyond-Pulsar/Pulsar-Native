@@ -1,15 +1,15 @@
 use gpui::*;
 use std::path::{Path, PathBuf};
 
-pub mod schema;
+pub mod hot_reload;
 pub mod parser;
 pub mod renderer;
-pub mod hot_reload;
+pub mod schema;
 
-pub use schema::*;
+pub use hot_reload::*;
 pub use parser::*;
 pub use renderer::*;
-pub use hot_reload::*;
+pub use schema::*;
 
 pub struct JsonCanvas {
     root_path: PathBuf,
@@ -67,7 +67,10 @@ impl JsonCanvas {
         self.current_ui.as_ref()
     }
 
-    pub fn load_from_string(&mut self, json_content: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn load_from_string(
+        &mut self,
+        json_content: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let ui = self.parser.parse_from_string(json_content)?;
         self.current_ui = Some(ui);
         Ok(())
@@ -85,15 +88,15 @@ impl Render for JsonCanvas {
         if let Some(ref ui) = self.current_ui {
             UiRenderer::render_component(ui, cx)
         } else {
-            div()
-                .p_4()
-                .child("Loading JSON UI...")
-                .into_any_element()
+            div().p_4().child("Loading JSON UI...").into_any_element()
         }
     }
 }
 
-pub fn create_json_canvas_view(root_path: impl AsRef<Path>, cx: &mut Context<impl Render>) -> Entity<JsonCanvas> {
+pub fn create_json_canvas_view(
+    root_path: impl AsRef<Path>,
+    cx: &mut Context<impl Render>,
+) -> Entity<JsonCanvas> {
     cx.new(|_cx| {
         let mut canvas = JsonCanvas::new(root_path);
         if let Err(e) = canvas.load() {

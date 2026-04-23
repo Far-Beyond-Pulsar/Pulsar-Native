@@ -29,7 +29,10 @@ pub fn fetch_and_decode(url: &str) -> Result<Arc<RenderImage>, String> {
             .build()
             .map_err(|e: reqwest::Error| e.to_string())?;
 
-        let response = client.get(&url).send().await
+        let response = client
+            .get(&url)
+            .send()
+            .await
             .map_err(|e: reqwest::Error| e.to_string())?;
 
         if !response.status().is_success() {

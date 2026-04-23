@@ -22,7 +22,7 @@ use std::path::Path;
 /// ```
 pub fn path_to_uri(path: &Path) -> String {
     let path_str = path.to_string_lossy().replace("\\", "/");
-    
+
     // Windows drive letter detection (C:/, c:/, D:/, etc.)
     if path_str.len() >= 2 && path_str.chars().nth(1) == Some(':') {
         format!("file:///{}", path_str)

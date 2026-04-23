@@ -6,18 +6,18 @@
 
 pub mod commands;
 pub mod hooks;
+pub mod manager;
 pub mod pulsar_window;
 pub mod state;
-pub mod validation;
 pub mod telemetry;
-pub mod manager;
+pub mod validation;
 
-pub use commands::{WindowCommand, WindowCommandResult, CreateWindowCommand, CloseWindowCommand};
+pub use commands::{CloseWindowCommand, CreateWindowCommand, WindowCommand, WindowCommandResult};
 pub use hooks::{HookContext, HookRegistry, HookType, WindowHook};
-pub use pulsar_window::{PulsarWindow, default_window_options};
-pub use state::{WindowState, WindowInfo};
-pub use validation::{WindowValidator, ValidationRule, WindowError, WindowResult};
+pub use pulsar_window::{default_window_options, PulsarWindow};
+pub use state::{WindowInfo, WindowState};
 pub use telemetry::TelemetrySender;
 pub use ui_types_common::window_types::WindowRequest;
+pub use validation::{ValidationRule, WindowError, WindowResult, WindowValidator};
 
 pub use manager::WindowManager;

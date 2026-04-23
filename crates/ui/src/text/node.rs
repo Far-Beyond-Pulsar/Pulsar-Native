@@ -330,11 +330,7 @@ impl CodeBlock {
             styles = highlighter.styles(&(0..code.len()), highlight_theme);
         };
 
-        Self {
-            lang,
-            styles,
-            code,
-        }
+        Self { lang, styles, code }
     }
 
     fn code(&self) -> SharedString {
@@ -349,10 +345,10 @@ impl CodeBlock {
     fn render(&self, node_cx: &NodeContext, _: &mut Window, cx: &mut App) -> AnyElement {
         let style = &node_cx.style;
         let code = self.code();
-        
+
         // Split code into lines to preserve line breaks (StyledText doesn't preserve \n)
         let lines: Vec<&str> = code.as_str().lines().collect();
-        
+
         // If code is empty or has no lines, render empty block
         if lines.is_empty() {
             return v_flex()
@@ -367,17 +363,18 @@ impl CodeBlock {
                 .refine_style(&style.code_block)
                 .into_any_element();
         }
-        
+
         // Render each line as a separate Inline element to preserve line breaks
         let mut line_elements = Vec::new();
         let mut current_offset = 0;
-        
+
         for (line_idx, line) in lines.iter().enumerate() {
             let line_len = line.len();
             let line_end = current_offset + line_len;
-            
+
             // Filter and remap highlights that apply to this line
-            let line_highlights: Vec<(Range<usize>, HighlightStyle)> = self.styles
+            let line_highlights: Vec<(Range<usize>, HighlightStyle)> = self
+                .styles
                 .iter()
                 .filter_map(|(range, style)| {
                     // Check if this highlight overlaps with current line
@@ -394,7 +391,7 @@ impl CodeBlock {
                     }
                 })
                 .collect();
-            
+
             // Create entity for this line
             let text: SharedString = line.to_string().into();
             let line_entity = cx.new(|_| {
@@ -403,20 +400,18 @@ impl CodeBlock {
                 s
             });
 
-            line_elements.push(
-                Inline::new(
-                    ("code-line", line_idx),
-                    text,
-                    line_entity,
-                    vec![],
-                    line_highlights,
-                )
-            );
-            
+            line_elements.push(Inline::new(
+                ("code-line", line_idx),
+                text,
+                line_entity,
+                vec![],
+                line_highlights,
+            ));
+
             // +1 for the newline character (except for the last line)
             current_offset = line_end + 1;
         }
-        
+
         v_flex()
             .id("codeblock")
             .mb(style.paragraph_gap)
@@ -705,7 +700,8 @@ impl Paragraph {
             let entity = self.state.as_ref().unwrap();
             entity.update(cx, |s, _| s.set_text(text.clone().into()));
             let entity = entity.clone();
-            child_nodes.push(Inline::new(ix, text.into(), entity, links, highlights).into_any_element());
+            child_nodes
+                .push(Inline::new(ix, text.into(), entity, links, highlights).into_any_element());
         }
 
         div().id(span.unwrap_or_default()).children(child_nodes)

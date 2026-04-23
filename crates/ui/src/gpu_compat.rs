@@ -24,7 +24,11 @@ impl GpuTextureHandle {
     /// Construct a new handle wrapper.  This mirrors the old GPUI API so our
     /// code can remain unchanged.
     pub fn new(handle: isize, width: u32, height: u32) -> Self {
-        Self { handle, width, height }
+        Self {
+            handle,
+            width,
+            height,
+        }
     }
 }
 
@@ -42,7 +46,10 @@ pub struct GpuCanvasSource {
 impl GpuCanvasSource {
     /// Create a new source with the two texture handles.
     pub fn new(h0: GpuTextureHandle, h1: GpuTextureHandle) -> Self {
-        Self { handles: [h0, h1], active: 0 }
+        Self {
+            handles: [h0, h1],
+            active: 0,
+        }
     }
 
     /// Swap the active buffer (no‑op for now).

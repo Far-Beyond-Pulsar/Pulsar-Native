@@ -1,24 +1,25 @@
 use gpui::{prelude::*, *};
+use std::path::PathBuf;
 use ui::{
-    ActiveTheme, Root, Sizable, StyledExt, TitleBar,
+    ActiveTheme, Icon, IconName, Root, Sizable, StyledExt, TitleBar,
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, IconName, Icon,
-    resizable::ResizableState,
+    h_flex,
     input::{InputState, TextInput},
+    resizable::ResizableState,
+    v_flex,
 };
 use ui_common::translate;
-use std::path::PathBuf;
 
 pub mod doc_source;
 mod engine_docs;
-mod project_docs;
 mod manual_docs;
 mod panels;
+mod project_docs;
 
 use engine_docs::EngineDocsState;
-use project_docs::ProjectDocsState;
 use manual_docs::{ManualDocsState, ViewMode};
-use panels::{EngineDocsPanel, ProjectDocsPanel, ManualDocsPanel};
+use panels::{EngineDocsPanel, ManualDocsPanel, ProjectDocsPanel};
+use project_docs::ProjectDocsState;
 
 // ============================================================================
 // Main Documentation Window
@@ -58,7 +59,11 @@ impl DocumentationWindow {
         Self::new_with_project(window, cx, None)
     }
 
-    pub fn new_with_project(window: &mut Window, cx: &mut Context<Self>, project_path: Option<PathBuf>) -> Self {
+    pub fn new_with_project(
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        project_path: Option<PathBuf>,
+    ) -> Self {
         let sidebar_resizable_state = ResizableState::new(cx);
         let project_root = project_path.or_else(|| std::env::current_dir().ok());
 
@@ -74,23 +79,35 @@ impl DocumentationWindow {
 
         // Subscribe to search inputs
         let engine_search_state = engine_docs.search_input_state.clone();
-        cx.subscribe(&engine_search_state, |this: &mut Self, state, _event: &ui::input::InputEvent, cx| {
-            this.engine_docs.search_query = state.read(cx).value().to_string();
-            this.engine_docs.rebuild_visible_list();
-            cx.notify();
-        }).detach();
+        cx.subscribe(
+            &engine_search_state,
+            |this: &mut Self, state, _event: &ui::input::InputEvent, cx| {
+                this.engine_docs.search_query = state.read(cx).value().to_string();
+                this.engine_docs.rebuild_visible_list();
+                cx.notify();
+            },
+        )
+        .detach();
 
         let manual_editor_state = manual_docs.editor_input_state.clone();
-        cx.subscribe(&manual_editor_state, |this: &mut Self, _state, _event: &ui::input::InputEvent, cx| {
-            this.manual_docs.update_preview(cx);
-            cx.notify();
-        }).detach();
+        cx.subscribe(
+            &manual_editor_state,
+            |this: &mut Self, _state, _event: &ui::input::InputEvent, cx| {
+                this.manual_docs.update_preview(cx);
+                cx.notify();
+            },
+        )
+        .detach();
 
         let new_file_state = new_file_input_state.clone();
-        cx.subscribe(&new_file_state, |this: &mut Self, state, _event: &ui::input::InputEvent, cx| {
-            this.new_file_name = state.read(cx).value().to_string();
-            cx.notify();
-        }).detach();
+        cx.subscribe(
+            &new_file_state,
+            |this: &mut Self, state, _event: &ui::input::InputEvent, cx| {
+                this.new_file_name = state.read(cx).value().to_string();
+                cx.notify();
+            },
+        )
+        .detach();
 
         Self {
             focus_handle: cx.focus_handle(),
@@ -187,16 +204,16 @@ impl DocumentationWindow {
                             .child(
                                 Icon::new(IconName::BookOpen)
                                     .size(px(18.0))
-                                    .text_color(theme.accent)
-                            )
+                                    .text_color(theme.accent),
+                            ),
                     )
                     .child(
                         div()
                             .text_lg()
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(theme.foreground)
-                            .child("Documentation")
-                    )
+                            .child("Documentation"),
+                    ),
             )
             .child(
                 Button::new("refresh-docs")
@@ -207,7 +224,7 @@ impl DocumentationWindow {
                     .on_click(cx.listener(|this, _event, _window, cx| {
                         this.refresh_current_category();
                         cx.notify();
-                    }))
+                    })),
             )
     }
 
@@ -239,16 +256,13 @@ impl DocumentationWindow {
                             .icon(IconName::Code)
                             .small()
                             .when(current_category == DocCategory::Engine, |btn| {
-                                btn.bg(theme.accent)
-                                    .text_color(theme.accent_foreground)
+                                btn.bg(theme.accent).text_color(theme.accent_foreground)
                             })
-                            .when(current_category != DocCategory::Engine, |btn| {
-                                btn.ghost()
-                            })
+                            .when(current_category != DocCategory::Engine, |btn| btn.ghost())
                             .on_click(cx.listener(|this, _event, _window, cx| {
                                 this.current_category = DocCategory::Engine;
                                 cx.notify();
-                            }))
+                            })),
                     )
                     .child(
                         Button::new("tab-project")
@@ -256,16 +270,13 @@ impl DocumentationWindow {
                             .icon(IconName::Folder)
                             .small()
                             .when(current_category == DocCategory::Project, |btn| {
-                                btn.bg(theme.accent)
-                                    .text_color(theme.accent_foreground)
+                                btn.bg(theme.accent).text_color(theme.accent_foreground)
                             })
-                            .when(current_category != DocCategory::Project, |btn| {
-                                btn.ghost()
-                            })
+                            .when(current_category != DocCategory::Project, |btn| btn.ghost())
                             .on_click(cx.listener(|this, _event, _window, cx| {
                                 this.current_category = DocCategory::Project;
                                 cx.notify();
-                            }))
+                            })),
                     )
                     .child(
                         Button::new("tab-manual")
@@ -273,17 +284,14 @@ impl DocumentationWindow {
                             .icon(IconName::BookOpen)
                             .small()
                             .when(current_category == DocCategory::Manual, |btn| {
-                                btn.bg(theme.accent)
-                                    .text_color(theme.accent_foreground)
+                                btn.bg(theme.accent).text_color(theme.accent_foreground)
                             })
-                            .when(current_category != DocCategory::Manual, |btn| {
-                                btn.ghost()
-                            })
+                            .when(current_category != DocCategory::Manual, |btn| btn.ghost())
                             .on_click(cx.listener(|this, _event, _window, cx| {
                                 this.current_category = DocCategory::Manual;
                                 cx.notify();
-                            }))
-                    )
+                            })),
+                    ),
             )
     }
 
@@ -297,52 +305,61 @@ impl DocumentationWindow {
             .flex_1()
             .overflow_hidden()
             .child(match current_category {
-                DocCategory::Engine => self.engine_panel.render(
-                    &self.engine_docs,
-                    self.sidebar_resizable_state.clone(),
-                    |this: &mut Self, path, _window, cx| {
-                        this.engine_docs.toggle_expansion(path);
-                        cx.notify();
-                    },
-                    |this: &mut Self, path, _window, cx| {
-                        this.engine_docs.load_content(&path);
-                        cx.notify();
-                    },
-                    window,
-                    cx,
-                ).into_any_element(),
-                DocCategory::Project => self.project_panel.render(
-                    &self.project_docs,
-                    self.sidebar_resizable_state.clone(),
-                    |this: &mut Self, path, _window, cx| {
-                        this.project_docs.toggle_expansion(path);
-                        cx.notify();
-                    },
-                    |this: &mut Self, path, _window, cx| {
-                        this.project_docs.load_content(&path);
-                        cx.notify();
-                    },
-                    window,
-                    cx,
-                ).into_any_element(),
-                DocCategory::Manual => self.manual_panel.render(
-                    &self.manual_docs,
-                    self.sidebar_resizable_state.clone(),
-                    |this: &mut Self, _event, _window, cx| {
-                        this.show_new_file_dialog = true;
-                        cx.notify();
-                    },
-                    |this: &mut Self, _event, window, cx| {
-                        let _ = this.manual_docs.save_current_file(window, cx);
-                        cx.notify();
-                    },
-                    |this: &mut Self, mode, _window, cx| {
-                        this.manual_docs.set_view_mode(mode);
-                        cx.notify();
-                    },
-                    window,
-                    cx,
-                ).into_any_element(),
+                DocCategory::Engine => self
+                    .engine_panel
+                    .render(
+                        &self.engine_docs,
+                        self.sidebar_resizable_state.clone(),
+                        |this: &mut Self, path, _window, cx| {
+                            this.engine_docs.toggle_expansion(path);
+                            cx.notify();
+                        },
+                        |this: &mut Self, path, _window, cx| {
+                            this.engine_docs.load_content(&path);
+                            cx.notify();
+                        },
+                        window,
+                        cx,
+                    )
+                    .into_any_element(),
+                DocCategory::Project => self
+                    .project_panel
+                    .render(
+                        &self.project_docs,
+                        self.sidebar_resizable_state.clone(),
+                        |this: &mut Self, path, _window, cx| {
+                            this.project_docs.toggle_expansion(path);
+                            cx.notify();
+                        },
+                        |this: &mut Self, path, _window, cx| {
+                            this.project_docs.load_content(&path);
+                            cx.notify();
+                        },
+                        window,
+                        cx,
+                    )
+                    .into_any_element(),
+                DocCategory::Manual => self
+                    .manual_panel
+                    .render(
+                        &self.manual_docs,
+                        self.sidebar_resizable_state.clone(),
+                        |this: &mut Self, _event, _window, cx| {
+                            this.show_new_file_dialog = true;
+                            cx.notify();
+                        },
+                        |this: &mut Self, _event, window, cx| {
+                            let _ = this.manual_docs.save_current_file(window, cx);
+                            cx.notify();
+                        },
+                        |this: &mut Self, mode, _window, cx| {
+                            this.manual_docs.set_view_mode(mode);
+                            cx.notify();
+                        },
+                        window,
+                        cx,
+                    )
+                    .into_any_element(),
             })
     }
 
@@ -359,10 +376,13 @@ impl DocumentationWindow {
             .items_center()
             .justify_center()
             .bg(gpui::black().opacity(0.6))
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
-                this.show_new_file_dialog = false;
-                cx.notify();
-            }))
+            .on_mouse_down(
+                gpui::MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.show_new_file_dialog = false;
+                    cx.notify();
+                }),
+            )
             .child(
                 div()
                     .w(px(480.0))
@@ -379,8 +399,8 @@ impl DocumentationWindow {
                         v_flex()
                             .child(self.render_dialog_header(theme, cx))
                             .child(self.render_dialog_body(theme))
-                            .child(self.render_dialog_footer(theme, window, cx))
-                    )
+                            .child(self.render_dialog_footer(theme, window, cx)),
+                    ),
             )
     }
 
@@ -402,18 +422,14 @@ impl DocumentationWindow {
                 h_flex()
                     .gap_3()
                     .items_center()
-                    .child(
-                        Icon::new(IconName::Plus)
-                            .size_4()
-                            .text_color(theme.accent)
-                    )
+                    .child(Icon::new(IconName::Plus).size_4().text_color(theme.accent))
                     .child(
                         div()
                             .text_base()
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(theme.foreground)
-                            .child("Create Documentation File")
-                    )
+                            .child("Create Documentation File"),
+                    ),
             )
             .child(
                 Button::new("close-dialog")
@@ -424,38 +440,34 @@ impl DocumentationWindow {
                         this.show_new_file_dialog = false;
                         this.new_file_name.clear();
                         cx.notify();
-                    }))
+                    })),
             )
     }
 
     fn render_dialog_body(&self, theme: &ui::ThemeColor) -> impl IntoElement {
-        v_flex()
-            .w_full()
-            .p_6()
-            .gap_4()
-            .child(
-                v_flex()
-                    .gap_2()
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_weight(gpui::FontWeight::MEDIUM)
-                            .text_color(theme.foreground)
-                            .child("File Name")
-                    )
-                    .child(
-                        TextInput::new(&self.new_file_input_state)
-                            .w_full()
-                            .appearance(true)
-                            .bordered(true)
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(theme.muted_foreground)
-                            .child("File will be saved with .md extension")
-                    )
-            )
+        v_flex().w_full().p_6().gap_4().child(
+            v_flex()
+                .gap_2()
+                .child(
+                    div()
+                        .text_sm()
+                        .font_weight(gpui::FontWeight::MEDIUM)
+                        .text_color(theme.foreground)
+                        .child("File Name"),
+                )
+                .child(
+                    TextInput::new(&self.new_file_input_state)
+                        .w_full()
+                        .appearance(true)
+                        .bordered(true),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(theme.muted_foreground)
+                        .child("File will be saved with .md extension"),
+                ),
+        )
     }
 
     fn render_dialog_footer(
@@ -482,7 +494,7 @@ impl DocumentationWindow {
                         this.show_new_file_dialog = false;
                         this.new_file_name.clear();
                         cx.notify();
-                    }))
+                    })),
             )
             .child(
                 Button::new("create-new-file")
@@ -492,14 +504,15 @@ impl DocumentationWindow {
                     .on_click(cx.listener(move |this, _, window, cx| {
                         if !this.new_file_name.is_empty() {
                             let file_name = this.new_file_name.clone();
-                            if let Err(e) = this.manual_docs.create_new_file(file_name, window, cx) {
+                            if let Err(e) = this.manual_docs.create_new_file(file_name, window, cx)
+                            {
                                 tracing::error!("Failed to create file: {}", e);
                             }
                             this.show_new_file_dialog = false;
                             this.new_file_name.clear();
                             cx.notify();
                         }
-                    }))
+                    })),
             )
     }
 }

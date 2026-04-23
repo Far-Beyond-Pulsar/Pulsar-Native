@@ -1,11 +1,11 @@
 //! Cache and network fetch layer for Sketchfab search.
 
 use std::collections::VecDeque;
+use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use std::path::PathBuf;
 
-use crate::parser::{SketchfabModel, SketchfabModelDetail, SketchfabDownloadInfo, SketchfabMe};
+use crate::parser::{SketchfabDownloadInfo, SketchfabMe, SketchfabModel, SketchfabModelDetail};
 
 // ── Cache ────────────────────────────────────────────────────────────────────
 
@@ -19,7 +19,10 @@ pub(crate) struct SearchPage {
 
 #[allow(dead_code)]
 pub(crate) enum CacheValue {
-    Page { models: Vec<SketchfabModel>, next: Option<String> },
+    Page {
+        models: Vec<SketchfabModel>,
+        next: Option<String>,
+    },
     Detail(Box<SketchfabModelDetail>),
 }
 
@@ -34,7 +37,11 @@ pub(crate) struct SearchCache {
 }
 
 impl SearchCache {
-    pub fn new() -> Self { Self { entries: VecDeque::with_capacity(CACHE_CAP) } }
+    pub fn new() -> Self {
+        Self {
+            entries: VecDeque::with_capacity(CACHE_CAP),
+        }
+    }
 
     pub fn evict(&mut self) {
         self.entries.retain(|e| e.inserted_at.elapsed() < CACHE_TTL);
@@ -43,14 +50,24 @@ impl SearchCache {
     pub fn get_detail(&mut self, key: &str) -> Option<Box<SketchfabModelDetail>> {
         self.evict();
         self.entries.iter().find(|e| e.key == key).and_then(|e| {
-            if let CacheValue::Detail(ref d) = e.value { Some(d.clone()) } else { None }
+            if let CacheValue::Detail(ref d) = e.value {
+                Some(d.clone())
+            } else {
+                None
+            }
         })
     }
 
     pub fn insert(&mut self, key: String, value: CacheValue) {
         self.entries.retain(|e| e.key != key);
-        if self.entries.len() >= CACHE_CAP { self.entries.pop_front(); }
-        self.entries.push_back(CacheEntry { key, value, inserted_at: Instant::now() });
+        if self.entries.len() >= CACHE_CAP {
+            self.entries.pop_front();
+        }
+        self.entries.push_back(CacheEntry {
+            key,
+            value,
+            inserted_at: Instant::now(),
+        });
     }
 }
 
@@ -77,8 +94,12 @@ pub(crate) fn make_auth_client(token: &str) -> Result<reqwest::blocking::Client,
 // ── Fetch functions ──────────────────────────────────────────────────────────
 
 pub(crate) fn fetch_sketchfab_models(url: &str) -> (Vec<String>, Result<SearchPage, String>) {
-    let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
-        Ok(r) => r, Err(e) => return (vec![], Err(format!("tokio: {}", e))),
+    let rt = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(r) => r,
+        Err(e) => return (vec![], Err(format!("tokio: {}", e))),
     };
     let url = url.to_string();
     let (log, result) = rt.block_on(async move {
@@ -120,7 +141,9 @@ pub(crate) fn fetch_sketchfab_models(url: &str) -> (Vec<String>, Result<SearchPa
     (log, result)
 }
 
-pub(crate) fn fetch_sketchfab_model_detail(uid: &str) -> (Vec<String>, Result<Box<SketchfabModelDetail>, String>) {
+pub(crate) fn fetch_sketchfab_model_detail(
+    uid: &str,
+) -> (Vec<String>, Result<Box<SketchfabModelDetail>, String>) {
     let url = format!("https://api.sketchfab.com/v3/models/{}", uid);
 
     if let Ok(mut cache) = global_cache().lock() {
@@ -129,8 +152,12 @@ pub(crate) fn fetch_sketchfab_model_detail(uid: &str) -> (Vec<String>, Result<Bo
         }
     }
 
-    let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
-        Ok(r) => r, Err(e) => return (vec![], Err(format!("tokio: {}", e))),
+    let rt = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(r) => r,
+        Err(e) => return (vec![], Err(format!("tokio: {}", e))),
     };
     let url2 = url.clone();
     let (log, result) = rt.block_on(async move {
@@ -172,26 +199,39 @@ pub(crate) fn fetch_sketchfab_model_detail(uid: &str) -> (Vec<String>, Result<Bo
 
 pub(crate) fn fetch_sketchfab_me(token: &str) -> Result<Box<SketchfabMe>, String> {
     let client = make_auth_client(token)?;
-    let resp = client.get("https://api.sketchfab.com/v3/me")
-        .send().map_err(|e| e.to_string())?;
+    let resp = client
+        .get("https://api.sketchfab.com/v3/me")
+        .send()
+        .map_err(|e| e.to_string())?;
     let status = resp.status();
     let text = resp.text().map_err(|e| e.to_string())?;
     if !status.is_success() {
-        return Err(format!("HTTP {} — {}", status, &text[..text.len().min(120)]));
+        return Err(format!(
+            "HTTP {} — {}",
+            status,
+            &text[..text.len().min(120)]
+        ));
     }
     serde_json::from_str::<SketchfabMe>(&text)
         .map(Box::new)
         .map_err(|e| format!("parse /me: {e}"))
 }
 
-pub(crate) fn fetch_sketchfab_download_info(uid: &str, token: &str) -> Result<SketchfabDownloadInfo, String> {
+pub(crate) fn fetch_sketchfab_download_info(
+    uid: &str,
+    token: &str,
+) -> Result<SketchfabDownloadInfo, String> {
     let client = make_auth_client(token)?;
     let url = format!("https://api.sketchfab.com/v3/models/{}/download", uid);
     let resp = client.get(&url).send().map_err(|e| e.to_string())?;
     let status = resp.status();
     let text = resp.text().map_err(|e| e.to_string())?;
     if !status.is_success() {
-        return Err(format!("HTTP {} — {}", status, &text[..text.len().min(200)]));
+        return Err(format!(
+            "HTTP {} — {}",
+            status,
+            &text[..text.len().min(200)]
+        ));
     }
     serde_json::from_str::<SketchfabDownloadInfo>(&text)
         .map_err(|e| format!("parse download info: {e}"))
@@ -200,13 +240,19 @@ pub(crate) fn fetch_sketchfab_download_info(uid: &str, token: &str) -> Result<Sk
 pub(crate) fn sketchfab_like_model(uid: &str, token: &str) -> Result<(), String> {
     let client = make_auth_client(token)?;
     let params = [("model", uid)];
-    let resp = client.post("https://api.sketchfab.com/v3/me/likes")
+    let resp = client
+        .post("https://api.sketchfab.com/v3/me/likes")
         .form(&params)
-        .send().map_err(|e| e.to_string())?;
+        .send()
+        .map_err(|e| e.to_string())?;
     let status = resp.status();
     if !status.is_success() && status.as_u16() != 204 {
         let text = resp.text().unwrap_or_default();
-        return Err(format!("HTTP {} — {}", status, &text[..text.len().min(120)]));
+        return Err(format!(
+            "HTTP {} — {}",
+            status,
+            &text[..text.len().min(120)]
+        ));
     }
     Ok(())
 }
@@ -218,7 +264,11 @@ pub(crate) fn sketchfab_unlike_model(uid: &str, token: &str) -> Result<(), Strin
     let status = resp.status();
     if !status.is_success() && status.as_u16() != 204 {
         let text = resp.text().unwrap_or_default();
-        return Err(format!("HTTP {} — {}", status, &text[..text.len().min(120)]));
+        return Err(format!(
+            "HTTP {} — {}",
+            status,
+            &text[..text.len().min(120)]
+        ));
     }
     Ok(())
 }

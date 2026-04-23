@@ -27,15 +27,15 @@
 //! - All new subsystems should implement the Subsystem trait from the start
 
 // Subsystem framework
-pub mod framework;
 pub mod assets;
 pub mod classes;
-pub mod world;
-pub mod render;
-pub mod physics;
+pub mod framework;
 pub mod game;
-pub mod networking;
 pub mod game_network;
-pub mod ui;
-pub mod themes;
+pub mod networking;
+pub mod physics;
+pub mod render;
 pub mod settings;
+pub mod themes;
+pub mod ui;
+pub mod world;

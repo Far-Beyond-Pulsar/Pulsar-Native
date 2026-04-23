@@ -19,5 +19,8 @@ pub fn parse_args() -> ParsedArgs {
         Ok(cmd) => cmd,
         Err(_) => None,
     };
-    ParsedArgs { verbose, uri_command }
+    ParsedArgs {
+        verbose,
+        uri_command,
+    }
 }

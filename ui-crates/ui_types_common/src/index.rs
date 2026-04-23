@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
+use crate::{Result, TypeKind};
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use crate::{TypeKind, Result};
 
 /// Metadata for a type in the index
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

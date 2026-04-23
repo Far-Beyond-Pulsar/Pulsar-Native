@@ -1,19 +1,19 @@
 //! Main HelioRenderer — wgpu + Helio scene renderer with built-in editor state.
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, mpsc};
-use std::time::Instant;
 use glam::{EulerRot, Mat4, Quat, Vec2, Vec3};
+use std::collections::HashMap;
+use std::sync::{mpsc, Arc, Mutex};
+use std::time::Instant;
 
 use helio::{
-    Camera, EditorState, GizmoMode, GroupMask, GpuLight, GpuMaterial, LightType,
-    MaterialId, MeshId, MeshUpload, Movability, ObjectDescriptor, ObjectId,
-    PackedVertex, Renderer, RendererConfig, SceneActor, ScenePicker, SkyActor,
+    Camera, EditorState, GizmoMode, GpuLight, GpuMaterial, GroupMask, LightType, MaterialId,
+    MeshId, MeshUpload, Movability, ObjectDescriptor, ObjectId, PackedVertex, Renderer,
+    RendererConfig, SceneActor, ScenePicker, SkyActor,
 };
 
 use crate::scene::{GizmoState, MeshType, ObjectType, SceneObjectSnapshot};
 
-use super::core::{CameraInput, RenderMetrics, GpuProfilerData};
+use super::core::{CameraInput, GpuProfilerData, RenderMetrics};
 
 // ── Legacy types (unused but referenced by UI code) ──────────────────────────
 
@@ -46,47 +46,58 @@ pub struct ViewportMouseInput {
 fn box_mesh(half_extents: [f32; 3]) -> MeshUpload {
     let e = glam::Vec3::from_array(half_extents);
     let corners = [
-        glam::Vec3::new(-e.x, -e.y,  e.z), glam::Vec3::new( e.x, -e.y,  e.z),
-        glam::Vec3::new( e.x,  e.y,  e.z), glam::Vec3::new(-e.x,  e.y,  e.z),
-        glam::Vec3::new(-e.x, -e.y, -e.z), glam::Vec3::new( e.x, -e.y, -e.z),
-        glam::Vec3::new( e.x,  e.y, -e.z), glam::Vec3::new(-e.x,  e.y, -e.z),
+        glam::Vec3::new(-e.x, -e.y, e.z),
+        glam::Vec3::new(e.x, -e.y, e.z),
+        glam::Vec3::new(e.x, e.y, e.z),
+        glam::Vec3::new(-e.x, e.y, e.z),
+        glam::Vec3::new(-e.x, -e.y, -e.z),
+        glam::Vec3::new(e.x, -e.y, -e.z),
+        glam::Vec3::new(e.x, e.y, -e.z),
+        glam::Vec3::new(-e.x, e.y, -e.z),
     ];
     let faces: [([usize; 4], [f32; 3], [f32; 3]); 6] = [
-        ([0,1,2,3], [0.,0.,1.],  [1.,0.,0.]),
-        ([5,4,7,6], [0.,0.,-1.], [-1.,0.,0.]),
-        ([4,0,3,7], [-1.,0.,0.], [0.,0.,1.]),
-        ([1,5,6,2], [1.,0.,0.],  [0.,0.,-1.]),
-        ([3,2,6,7], [0.,1.,0.],  [1.,0.,0.]),
-        ([4,5,1,0], [0.,-1.,0.], [1.,0.,0.]),
+        ([0, 1, 2, 3], [0., 0., 1.], [1., 0., 0.]),
+        ([5, 4, 7, 6], [0., 0., -1.], [-1., 0., 0.]),
+        ([4, 0, 3, 7], [-1., 0., 0.], [0., 0., 1.]),
+        ([1, 5, 6, 2], [1., 0., 0.], [0., 0., -1.]),
+        ([3, 2, 6, 7], [0., 1., 0.], [1., 0., 0.]),
+        ([4, 5, 1, 0], [0., -1., 0.], [1., 0., 0.]),
     ];
     let mut vertices = Vec::with_capacity(24);
-    let mut indices  = Vec::with_capacity(36);
+    let mut indices = Vec::with_capacity(36);
     for (fi, (quad, normal, tangent)) in faces.iter().enumerate() {
         let base = (fi * 4) as u32;
         let uvs = [[0.0f32, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]];
         for (i, &ci) in quad.iter().enumerate() {
             vertices.push(PackedVertex::from_components(
-                corners[ci].to_array(), *normal, uvs[i], *tangent, 1.0,
+                corners[ci].to_array(),
+                *normal,
+                uvs[i],
+                *tangent,
+                1.0,
             ));
         }
-        indices.extend_from_slice(&[base, base+1, base+2, base, base+2, base+3]);
+        indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
     }
     MeshUpload { vertices, indices }
 }
 
 fn plane_mesh(half_extent: f32) -> MeshUpload {
     let e = half_extent;
-    let normal  = [0.0, 1.0, 0.0];
+    let normal = [0.0, 1.0, 0.0];
     let tangent = [1.0, 0.0, 0.0];
-    let positions = [
-        [-e, 0.0, -e], [ e, 0.0, -e], [ e, 0.0,  e], [-e, 0.0,  e],
-    ];
+    let positions = [[-e, 0.0, -e], [e, 0.0, -e], [e, 0.0, e], [-e, 0.0, e]];
     let uvs = [[0.0f32, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
-    let vertices = positions.iter().zip(uvs.iter())
+    let vertices = positions
+        .iter()
+        .zip(uvs.iter())
         .map(|(p, uv)| PackedVertex::from_components(*p, normal, *uv, tangent, 1.0))
         .collect();
     // Counter-clockwise winding when viewed from above (positive Y)
-    MeshUpload { vertices, indices: vec![0, 2, 1, 0, 3, 2] }
+    MeshUpload {
+        vertices,
+        indices: vec![0, 2, 1, 0, 3, 2],
+    }
 }
 
 fn sphere_mesh(radius: f32) -> MeshUpload {
@@ -110,7 +121,13 @@ fn sphere_mesh(radius: f32) -> MeshUpload {
             let uv = [j as f32 / lon_steps as f32, i as f32 / lat_steps as f32];
             let tangent_vec = Vec3::new(-z, 0.0, x).normalize_or_zero();
             let tangent = tangent_vec.to_array();
-            vertices.push(PackedVertex::from_components(position.to_array(), normal, uv, tangent, 1.0));
+            vertices.push(PackedVertex::from_components(
+                position.to_array(),
+                normal,
+                uv,
+                tangent,
+                1.0,
+            ));
         }
     }
 
@@ -133,10 +150,10 @@ fn make_material(base_color: [f32; 4], roughness: f32, metallic: f32) -> GpuMate
         emissive: [0.0, 0.0, 0.0, 0.0],
         roughness_metallic: [roughness, metallic, 1.5, 0.5],
         tex_base_color: GpuMaterial::NO_TEXTURE,
-        tex_normal:     GpuMaterial::NO_TEXTURE,
-        tex_roughness:  GpuMaterial::NO_TEXTURE,
-        tex_emissive:   GpuMaterial::NO_TEXTURE,
-        tex_occlusion:  GpuMaterial::NO_TEXTURE,
+        tex_normal: GpuMaterial::NO_TEXTURE,
+        tex_roughness: GpuMaterial::NO_TEXTURE,
+        tex_emissive: GpuMaterial::NO_TEXTURE,
+        tex_occlusion: GpuMaterial::NO_TEXTURE,
         workflow: 0,
         flags: 0,
         _pad: 0,
@@ -144,18 +161,27 @@ fn make_material(base_color: [f32; 4], roughness: f32, metallic: f32) -> GpuMate
 }
 
 fn build_transform(snap: &SceneObjectSnapshot) -> Mat4 {
-    let pos   = Vec3::from_array(snap.position);
-    let rot   = snap.rotation;
+    let pos = Vec3::from_array(snap.position);
+    let rot = snap.rotation;
     let scale = Vec3::from_array(snap.scale);
-    let quat  = Quat::from_euler(EulerRot::YXZ,
-        rot[1].to_radians(), rot[0].to_radians(), rot[2].to_radians());
+    let quat = Quat::from_euler(
+        EulerRot::YXZ,
+        rot[1].to_radians(),
+        rot[0].to_radians(),
+        rot[2].to_radians(),
+    );
     Mat4::from_scale_rotation_translation(scale, quat, pos)
 }
 
 // ── Per-mesh-type cache ───────────────────────────────────────────────────────
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-enum MeshKey { Cube, Sphere, Plane, Cylinder }
+enum MeshKey {
+    Cube,
+    Sphere,
+    Plane,
+    Cylinder,
+}
 
 impl From<MeshType> for MeshKey {
     fn from(t: MeshType) -> Self {
@@ -191,7 +217,7 @@ pub struct HelioRenderer {
 
     // ── Renderer State ──
     inner: Option<HelioInner>,
-    
+
     // ── Camera State ──
     cam_pos: Vec3,
     cam_yaw: f32,
@@ -230,9 +256,9 @@ impl HelioRenderer {
             viewport_mouse_input: Arc::new(Mutex::new(ViewportMouseInput::default())),
             gizmo_state: Arc::new(Mutex::new(GizmoState::default())),
             inner: None,
-            cam_pos: Vec3::new(8.0, 6.0, 12.0),  // Better view angle
-            cam_yaw: -0.5,                        // Look left a bit
-            cam_pitch: -0.3,                      // Look down to see objects
+            cam_pos: Vec3::new(8.0, 6.0, 12.0), // Better view angle
+            cam_yaw: -0.5,                      // Look left a bit
+            cam_pitch: -0.3,                    // Look down to see objects
             viewport_size: (0, 0),
             metrics: Arc::new(Mutex::new(RenderMetrics::default())),
             gpu_profiler: Arc::new(Mutex::new(GpuProfilerData::default())),
@@ -245,15 +271,15 @@ impl HelioRenderer {
     pub fn render_frame(
         &mut self,
         _device: &wgpu::Device,
-        _queue:  &wgpu::Queue,
-        view:   &wgpu::TextureView,
-        width:  u32,
+        _queue: &wgpu::Queue,
+        view: &wgpu::TextureView,
+        width: u32,
         height: u32,
         format: wgpu::TextureFormat,
     ) {
         let now = Instant::now();
-        let dt  = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
-        self.last_frame   = now;
+        let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
+        self.last_frame = now;
         self.frame_count += 1;
 
         // Lazy init
@@ -284,16 +310,20 @@ impl HelioRenderer {
             self.populate_initial_scene(&mut inner);
             self.inner = Some(inner);
             self.viewport_size = (width, height);
-            
-            tracing::info!("[HELIO] Renderer initialized - camera at {:?}, yaw={}, pitch={}", 
-                self.cam_pos, self.cam_yaw, self.cam_pitch);
+
+            tracing::info!(
+                "[HELIO] Renderer initialized - camera at {:?}, yaw={}, pitch={}",
+                self.cam_pos,
+                self.cam_yaw,
+                self.cam_pitch
+            );
         }
 
         self.apply_camera_input(dt);
 
         let inner = match self.inner.as_mut() {
             Some(i) => i,
-            None    => return,
+            None => return,
         };
 
         if self.viewport_size != (width, height) {
@@ -308,8 +338,13 @@ impl HelioRenderer {
         let fwd = Vec3::new(sy * cp, sp, -cy * cp);
         let aspect = width as f32 / height.max(1) as f32;
         let camera = Camera::perspective_look_at(
-            self.cam_pos, self.cam_pos + fwd, Vec3::Y,
-            std::f32::consts::FRAC_PI_4, aspect, 0.1, 10_000.0,
+            self.cam_pos,
+            self.cam_pos + fwd,
+            Vec3::Y,
+            std::f32::consts::FRAC_PI_4,
+            aspect,
+            0.1,
+            10_000.0,
         );
 
         if let Err(e) = inner.renderer.render(&camera, &view) {
@@ -317,8 +352,8 @@ impl HelioRenderer {
         }
 
         if let Ok(mut m) = self.metrics.lock() {
-            m.fps            = if dt > 0.0 { 1.0 / dt } else { 0.0 };
-            m.frame_time_ms  = dt * 1000.0;
+            m.fps = if dt > 0.0 { 1.0 / dt } else { 0.0 };
+            m.frame_time_ms = dt * 1000.0;
             m.frames_rendered = self.frame_count;
         }
     }
@@ -331,17 +366,17 @@ impl HelioRenderer {
                 let snap = lock.clone();
                 lock.mouse_delta_x = 0.0;
                 lock.mouse_delta_y = 0.0;
-                lock.pan_delta_x   = 0.0;
-                lock.pan_delta_y   = 0.0;
-                lock.zoom_delta    = 0.0;
+                lock.pan_delta_x = 0.0;
+                lock.pan_delta_y = 0.0;
+                lock.zoom_delta = 0.0;
                 snap
             }
             Err(_) => return,
         };
 
-        self.cam_yaw   += input.mouse_delta_x * LOOK;
+        self.cam_yaw += input.mouse_delta_x * LOOK;
         self.cam_pitch -= input.mouse_delta_y * LOOK;
-        self.cam_pitch  = self.cam_pitch.clamp(-1.5, 1.5);
+        self.cam_pitch = self.cam_pitch.clamp(-1.5, 1.5);
 
         let (sy, cy) = self.cam_yaw.sin_cos();
         let fwd = Vec3::new(sy, 0.0, -cy);
@@ -366,7 +401,10 @@ impl HelioRenderer {
     }
 
     pub fn get_gpu_profiler_data(&self) -> GpuProfilerData {
-        self.gpu_profiler.lock().map(|m| m.clone()).unwrap_or_default()
+        self.gpu_profiler
+            .lock()
+            .map(|m| m.clone())
+            .unwrap_or_default()
     }
 
     // ── Editor Integration ───────────────────────────────────────────────────
@@ -401,12 +439,18 @@ impl HelioRenderer {
     pub fn handle_left_click(&mut self, cursor_x: f32, cursor_y: f32) {
         let (ray_o, ray_d) = self.build_pick_ray(cursor_x, cursor_y);
         let Some(inner) = &mut self.inner else { return };
-        
+
         // Try to start gizmo drag first
-        if !inner.editor_state.try_start_drag(ray_o, ray_d, inner.renderer.scene()) {
+        if !inner
+            .editor_state
+            .try_start_drag(ray_o, ray_d, inner.renderer.scene())
+        {
             // No gizmo hit, try object picking
             inner.scene_picker.rebuild_instances(inner.renderer.scene());
-            if let Some(hit) = inner.scene_picker.cast_ray(inner.renderer.scene(), ray_o, ray_d) {
+            if let Some(hit) = inner
+                .scene_picker
+                .cast_ray(inner.renderer.scene(), ray_o, ray_d)
+            {
                 inner.editor_state.select(hit.actor_id);
                 tracing::info!("[HELIO] Selected object: {:?}", hit.actor_id);
             } else {
@@ -420,11 +464,15 @@ impl HelioRenderer {
     pub fn handle_mouse_move(&mut self, cursor_x: f32, cursor_y: f32) {
         let (ray_o, ray_d) = self.build_pick_ray(cursor_x, cursor_y);
         let Some(inner) = &mut self.inner else { return };
-        
+
         if inner.editor_state.is_dragging() {
-            inner.editor_state.update_drag(ray_o, ray_d, inner.renderer.scene_mut());
+            inner
+                .editor_state
+                .update_drag(ray_o, ray_d, inner.renderer.scene_mut());
         } else {
-            inner.editor_state.update_hover(ray_o, ray_d, inner.renderer.scene());
+            inner
+                .editor_state
+                .update_hover(ray_o, ray_d, inner.renderer.scene());
         }
     }
 
@@ -439,7 +487,7 @@ impl HelioRenderer {
 
     fn populate_initial_scene(&self, inner: &mut HelioInner) {
         tracing::info!("[HELIO SCENE] Populating initial scene...");
-        
+
         // Sky
         inner.renderer.scene_mut().insert_actor(SceneActor::Sky(
             SkyActor::new().with_sky_color([0.5, 0.7, 1.0]),
@@ -448,68 +496,89 @@ impl HelioRenderer {
 
         // Sun (directional light)
         let sun_dir = Vec3::new(-0.5, -1.0, -0.3).normalize();
-        inner.renderer.scene_mut().insert_actor(SceneActor::light(GpuLight {
-            position_range:  [0.0, 0.0, 0.0, f32::MAX],
-            direction_outer: [sun_dir.x, sun_dir.y, sun_dir.z, 0.0],
-            color_intensity: [1.0, 0.95, 0.9, 5.0],
-            shadow_index:    0,
-            light_type:      LightType::Directional as u32,
-            inner_angle:     0.0,
-            _pad:            0,
-        }));
+        inner
+            .renderer
+            .scene_mut()
+            .insert_actor(SceneActor::light(GpuLight {
+                position_range: [0.0, 0.0, 0.0, f32::MAX],
+                direction_outer: [sun_dir.x, sun_dir.y, sun_dir.z, 0.0],
+                color_intensity: [1.0, 0.95, 0.9, 5.0],
+                shadow_index: 0,
+                light_type: LightType::Directional as u32,
+                inner_angle: 0.0,
+                _pad: 0,
+            }));
         tracing::info!("[HELIO SCENE] Added directional light");
 
         // Fill light (softer ambient)
-        inner.renderer.scene_mut().insert_actor(SceneActor::light(GpuLight {
-            position_range:  [0.0, 10.0, 0.0, 100.0],
-            direction_outer: [0.0, -1.0, 0.0, 0.0],
-            color_intensity: [0.4, 0.5, 0.7, 2.0],
-            shadow_index:    u32::MAX,
-            light_type:      LightType::Point as u32,
-            inner_angle:     0.0,
-            _pad:            0,
-        }));
+        inner
+            .renderer
+            .scene_mut()
+            .insert_actor(SceneActor::light(GpuLight {
+                position_range: [0.0, 10.0, 0.0, 100.0],
+                direction_outer: [0.0, -1.0, 0.0, 0.0],
+                color_intensity: [0.4, 0.5, 0.7, 2.0],
+                shadow_index: u32::MAX,
+                light_type: LightType::Point as u32,
+                inner_angle: 0.0,
+                _pad: 0,
+            }));
         tracing::info!("[HELIO SCENE] Added fill light");
 
         // Ground plane
         let ground_upload = plane_mesh(50.0);
-        let ground_mesh = match inner.renderer.scene_mut()
+        let ground_mesh = match inner
+            .renderer
+            .scene_mut()
             .insert_actor(SceneActor::mesh(ground_upload.clone()))
             .as_mesh()
         {
             Some(id) => id,
-            None     => {
+            None => {
                 tracing::error!("[HELIO SCENE] Failed to insert ground mesh");
                 return;
             }
         };
-        inner.scene_picker.register_mesh(ground_mesh, &ground_upload);
+        inner
+            .scene_picker
+            .register_mesh(ground_mesh, &ground_upload);
         tracing::info!("[HELIO SCENE] Ground mesh registered: {:?}", ground_mesh);
-        
-        let ground_mat = inner.renderer.scene_mut()
-            .insert_material(make_material([0.35, 0.35, 0.35, 1.0], 0.9, 0.0));
-        let ground_obj = inner.renderer.scene_mut()
-            .insert_actor(SceneActor::object(ObjectDescriptor {
-                mesh:       ground_mesh,
-                material:   ground_mat,
-                transform:  Mat4::IDENTITY,
-                bounds:     [0.0, 0.0, 0.0, 50.0],
-                flags:      0,
-                groups:     GroupMask::NONE,
-                movability: None, // Ground stays static
-            }));
+
+        let ground_mat = inner.renderer.scene_mut().insert_material(make_material(
+            [0.35, 0.35, 0.35, 1.0],
+            0.9,
+            0.0,
+        ));
+        let ground_obj =
+            inner
+                .renderer
+                .scene_mut()
+                .insert_actor(SceneActor::object(ObjectDescriptor {
+                    mesh: ground_mesh,
+                    material: ground_mat,
+                    transform: Mat4::IDENTITY,
+                    bounds: [0.0, 0.0, 0.0, 50.0],
+                    flags: 0,
+                    groups: GroupMask::NONE,
+                    movability: None, // Ground stays static
+                }));
         tracing::info!("[HELIO SCENE] Ground object created: {:?}", ground_obj);
 
         // Test cubes
         let cube_upload = box_mesh([0.5, 0.5, 0.5]);
-        tracing::info!("[HELIO SCENE] Created cube mesh with {} vertices, {} indices", 
-            cube_upload.vertices.len(), cube_upload.indices.len());
-        let cube_mesh = match inner.renderer.scene_mut()
+        tracing::info!(
+            "[HELIO SCENE] Created cube mesh with {} vertices, {} indices",
+            cube_upload.vertices.len(),
+            cube_upload.indices.len()
+        );
+        let cube_mesh = match inner
+            .renderer
+            .scene_mut()
             .insert_actor(SceneActor::mesh(cube_upload.clone()))
             .as_mesh()
         {
             Some(id) => id,
-            None     => {
+            None => {
                 tracing::error!("[HELIO SCENE] Failed to insert cube mesh");
                 return;
             }
@@ -519,30 +588,35 @@ impl HelioRenderer {
         tracing::info!("[HELIO SCENE] Cube mesh registered: {:?}", cube_mesh);
 
         let positions_and_colors: &[([f32; 3], [f32; 4])] = &[
-            ([ 0.0, 1.0,  0.0], [0.8, 0.2, 0.2, 1.0]),  // red center
-            ([ 3.0, 1.0,  0.0], [0.2, 0.7, 0.2, 1.0]),  // green right
-            ([-3.0, 1.0,  0.0], [0.2, 0.3, 0.9, 1.0]),  // blue left
-            ([ 0.0, 1.0,  5.0], [0.9, 0.9, 0.2, 1.0]),  // yellow front
-            ([ 0.0, 1.0, -5.0], [0.8, 0.3, 0.8, 1.0]),  // magenta back
+            ([0.0, 1.0, 0.0], [0.8, 0.2, 0.2, 1.0]),  // red center
+            ([3.0, 1.0, 0.0], [0.2, 0.7, 0.2, 1.0]),  // green right
+            ([-3.0, 1.0, 0.0], [0.2, 0.3, 0.9, 1.0]), // blue left
+            ([0.0, 1.0, 5.0], [0.9, 0.9, 0.2, 1.0]),  // yellow front
+            ([0.0, 1.0, -5.0], [0.8, 0.3, 0.8, 1.0]), // magenta back
         ];
 
         for (idx, &(pos, color)) in positions_and_colors.iter().enumerate() {
-            let mat = inner.renderer.scene_mut()
+            let mat = inner
+                .renderer
+                .scene_mut()
                 .insert_material(make_material(color, 0.5, 0.1));
             let transform = Mat4::from_translation(Vec3::from_array(pos));
-            let obj = inner.renderer.scene_mut()
-                .insert_actor(SceneActor::object(ObjectDescriptor {
-                    mesh:       cube_mesh,
-                    material:   mat,
-                    transform,
-                    bounds:     [pos[0], pos[1], pos[2], 1.0],
-                    flags:      0,
-                    groups:     GroupMask::NONE,
-                    movability: Some(Movability::Movable), // Make cubes movable!
-                }));
+            let obj =
+                inner
+                    .renderer
+                    .scene_mut()
+                    .insert_actor(SceneActor::object(ObjectDescriptor {
+                        mesh: cube_mesh,
+                        material: mat,
+                        transform,
+                        bounds: [pos[0], pos[1], pos[2], 1.0],
+                        flags: 0,
+                        groups: GroupMask::NONE,
+                        movability: Some(Movability::Movable), // Make cubes movable!
+                    }));
             tracing::info!("[HELIO SCENE] Cube #{} at {:?}: {:?}", idx, pos, obj);
         }
-        
+
         tracing::info!("[HELIO SCENE] Scene population complete!");
     }
 
@@ -554,17 +628,23 @@ impl HelioRenderer {
                 ObjectType::Mesh(mt) => MeshKey::from(mt),
                 _ => continue,
             };
-            if !snap.visible { continue; }
+            if !snap.visible {
+                continue;
+            }
 
             if let Some(&(obj_id, _)) = inner.object_map.get(&snap.id) {
                 // Update transform
-                let _ = inner.renderer.scene_mut()
+                let _ = inner
+                    .renderer
+                    .scene_mut()
                     .update_object_transform(obj_id, build_transform(snap));
             } else {
                 // Insert new object
                 let (mesh_id, mat_id) = *inner.mesh_cache.entry(key).or_insert_with(|| {
                     let upload = mesh_for_key(key);
-                    let mid = inner.renderer.scene_mut()
+                    let mid = inner
+                        .renderer
+                        .scene_mut()
                         .insert_actor(SceneActor::mesh(upload.clone()))
                         .as_mesh()
                         .expect("mesh insert");
@@ -575,16 +655,18 @@ impl HelioRenderer {
 
                 let transform = build_transform(snap);
                 let radius = Vec3::from_array(snap.scale).length() * 0.5;
-                let pos    = transform.w_axis.truncate();
+                let pos = transform.w_axis.truncate();
 
-                if let Some(obj_id) = inner.renderer.scene_mut()
+                if let Some(obj_id) = inner
+                    .renderer
+                    .scene_mut()
                     .insert_actor(SceneActor::object(ObjectDescriptor {
-                        mesh:       mesh_id,
-                        material:   mat_id,
+                        mesh: mesh_id,
+                        material: mat_id,
                         transform,
-                        bounds:     [pos.x, pos.y, pos.z, radius.max(0.1)],
-                        flags:      0,
-                        groups:     GroupMask::NONE,
+                        bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
+                        flags: 0,
+                        groups: GroupMask::NONE,
                         movability: Some(Movability::Movable),
                     }))
                     .as_object()
@@ -593,6 +675,5 @@ impl HelioRenderer {
                 }
             }
         }
-
     }
 }

@@ -1,7 +1,7 @@
 //! Git operations using git2
 
 use crate::models::*;
-use git2::{Repository, StatusOptions, BranchType};
+use git2::{BranchType, Repository, StatusOptions};
 use std::path::Path;
 
 /// Load the complete repository state (blocking — run on background executor)
@@ -36,7 +36,11 @@ fn load_branches(repo: &Repository) -> Result<Vec<Branch>, git2::Error> {
         let (branch, _) = branch?;
         let name = branch.name()?.unwrap_or("").to_string();
         let is_current = branch.is_head();
-        let last_commit = branch.get().peel_to_commit().ok().map(|c| c.id().to_string());
+        let last_commit = branch
+            .get()
+            .peel_to_commit()
+            .ok()
+            .map(|c| c.id().to_string());
 
         branches.push(Branch {
             name,
@@ -50,7 +54,11 @@ fn load_branches(repo: &Repository) -> Result<Vec<Branch>, git2::Error> {
     for branch in repo.branches(Some(BranchType::Remote))? {
         let (branch, _) = branch?;
         let name = branch.name()?.unwrap_or("").to_string();
-        let last_commit = branch.get().peel_to_commit().ok().map(|c| c.id().to_string());
+        let last_commit = branch
+            .get()
+            .peel_to_commit()
+            .ok()
+            .map(|c| c.id().to_string());
 
         branches.push(Branch {
             name,
@@ -102,7 +110,9 @@ fn load_commits(repo: &Repository, limit: usize) -> Result<Vec<Commit>, git2::Er
     Ok(commits)
 }
 
-fn load_file_changes(repo: &Repository) -> Result<(Vec<FileChange>, Vec<FileChange>, Vec<String>), git2::Error> {
+fn load_file_changes(
+    repo: &Repository,
+) -> Result<(Vec<FileChange>, Vec<FileChange>, Vec<String>), git2::Error> {
     let mut staged = Vec::new();
     let mut unstaged = Vec::new();
     let mut untracked = Vec::new();
@@ -168,10 +178,15 @@ fn get_ahead_behind(repo: &Repository) -> Result<(usize, usize), git2::Error> {
         return Ok((0, 0));
     }
 
-    let local_oid = head.target().ok_or_else(|| git2::Error::from_str("No target"))?;
+    let local_oid = head
+        .target()
+        .ok_or_else(|| git2::Error::from_str("No target"))?;
     let branch = repo.find_branch(head.shorthand().unwrap_or(""), BranchType::Local)?;
     let upstream = branch.upstream()?;
-    let upstream_oid = upstream.get().target().ok_or_else(|| git2::Error::from_str("No upstream target"))?;
+    let upstream_oid = upstream
+        .get()
+        .target()
+        .ok_or_else(|| git2::Error::from_str("No upstream target"))?;
 
     let (ahead, behind) = repo.graph_ahead_behind(local_oid, upstream_oid)?;
     Ok((ahead, behind))
@@ -204,15 +219,20 @@ pub fn discard_file_changes(repo_path: &Path, file_path: &str) -> Result<(), git
 
     // Check status to determine how to discard
     let mut opts = StatusOptions::new();
-    opts.pathspec(&git_path).include_untracked(true).include_ignored(false);
+    opts.pathspec(&git_path)
+        .include_untracked(true)
+        .include_ignored(false);
     let statuses = repo.statuses(Some(&mut opts))?;
-    let status = statuses.iter().next().map(|s| s.status()).unwrap_or(git2::Status::empty());
+    let status = statuses
+        .iter()
+        .next()
+        .map(|s| s.status())
+        .unwrap_or(git2::Status::empty());
 
     if status.contains(git2::Status::WT_NEW) {
         // Untracked — delete the file
         let full_path = repo_path.join(file_path);
-        std::fs::remove_file(&full_path)
-            .map_err(|e| git2::Error::from_str(&e.to_string()))?;
+        std::fs::remove_file(&full_path).map_err(|e| git2::Error::from_str(&e.to_string()))?;
         return Ok(());
     }
 
@@ -232,7 +252,10 @@ pub fn discard_file_changes(repo_path: &Path, file_path: &str) -> Result<(), git
     let head_tree = head_commit.tree()?;
 
     let mut checkout = git2::build::CheckoutBuilder::default();
-    checkout.path(std::path::Path::new(&git_path)).force().update_index(false);
+    checkout
+        .path(std::path::Path::new(&git_path))
+        .force()
+        .update_index(false);
     repo.checkout_tree(head_tree.as_object(), Some(&mut checkout))?;
     Ok(())
 }
@@ -252,14 +275,21 @@ pub fn open_in_explorer(path: &Path) {
     #[cfg(target_os = "macos")]
     {
         if path.is_file() {
-            let _ = std::process::Command::new("open").arg("-R").arg(path).spawn();
+            let _ = std::process::Command::new("open")
+                .arg("-R")
+                .arg(path)
+                .spawn();
         } else {
             let _ = std::process::Command::new("open").arg(path).spawn();
         }
     }
     #[cfg(target_os = "linux")]
     {
-        let dir = if path.is_file() { path.parent().unwrap_or(path) } else { path };
+        let dir = if path.is_file() {
+            path.parent().unwrap_or(path)
+        } else {
+            path
+        };
         let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
     }
 }
@@ -270,7 +300,11 @@ pub fn append_to_gitignore(repo_path: &Path, line: &str) -> Result<(), git2::Err
     let existing = std::fs::read_to_string(&gitignore).unwrap_or_default();
     // Don't duplicate
     if !existing.lines().any(|l| l.trim() == line.trim()) {
-        let separator = if existing.is_empty() || existing.ends_with('\n') { "" } else { "\n" };
+        let separator = if existing.is_empty() || existing.ends_with('\n') {
+            ""
+        } else {
+            "\n"
+        };
         std::fs::write(&gitignore, format!("{}{}{}\n", existing, separator, line))
             .map_err(|e| git2::Error::from_str(&e.to_string()))?;
     }
@@ -285,7 +319,10 @@ pub fn unstage_file(repo_path: &Path, file_path: &str) -> Result<(), git2::Error
         Ok(head) => {
             // Reset the index entry to match HEAD, which removes it from staging
             let head_commit = head.peel_to_commit()?;
-            repo.reset_default(Some(head_commit.as_object()), std::iter::once(git_path.as_str()))?;
+            repo.reset_default(
+                Some(head_commit.as_object()),
+                std::iter::once(git_path.as_str()),
+            )?;
         }
         Err(_) => {
             // No HEAD (initial repo) — remove from index entirely
@@ -303,10 +340,7 @@ pub fn unstage_all_files(repo_path: &Path) -> Result<(), git2::Error> {
     match repo.head() {
         Ok(head) => {
             let head_commit = head.peel_to_commit()?;
-            repo.reset_default(
-                Some(head_commit.as_object()),
-                std::iter::empty::<&str>(),
-            )?;
+            repo.reset_default(Some(head_commit.as_object()), std::iter::empty::<&str>())?;
             // reset_default with empty paths resets everything staged
             // Alternatively use reset --mixed HEAD which is what we want:
             repo.reset(head_commit.as_object(), git2::ResetType::Mixed, None)?;
@@ -371,7 +405,9 @@ fn find_remote_name(repo: &Repository) -> Result<String, git2::Error> {
 /// Returns true if the git2 error indicates an authentication failure.
 pub fn is_auth_error(e: &git2::Error) -> bool {
     let msg = e.message().to_lowercase();
-    msg.contains("authentication") || msg.contains("401") || msg.contains("credentials")
+    msg.contains("authentication")
+        || msg.contains("401")
+        || msg.contains("credentials")
         || e.class() == git2::ErrorClass::Http
 }
 
@@ -380,7 +416,10 @@ pub fn is_auth_error(e: &git2::Error) -> bool {
 fn remote_url_for_keyring(repo_path: &Path) -> Option<String> {
     let repo = Repository::open(repo_path).ok()?;
     let remote_name = find_remote_name(&repo).ok()?;
-    repo.find_remote(&remote_name).ok()?.url().map(|u| u.to_string())
+    repo.find_remote(&remote_name)
+        .ok()?
+        .url()
+        .map(|u| u.to_string())
 }
 
 /// Save credentials to the OS keychain, keyed by the remote URL.
@@ -434,7 +473,10 @@ fn make_callbacks(creds: Option<(String, String)>) -> git2::RemoteCallbacks<'sta
 
 /// Fetch from remote without merging (blocking — run on background executor).
 /// Pass `creds` to retry after an auth failure.
-pub fn fetch_from_remote(repo_path: &Path, creds: Option<(String, String)>) -> Result<(), git2::Error> {
+pub fn fetch_from_remote(
+    repo_path: &Path,
+    creds: Option<(String, String)>,
+) -> Result<(), git2::Error> {
     let repo = Repository::open(repo_path)?;
     let remote_name = find_remote_name(&repo)?;
     let mut remote = repo.find_remote(&remote_name)?;
@@ -447,7 +489,10 @@ pub fn fetch_from_remote(repo_path: &Path, creds: Option<(String, String)>) -> R
 
 /// Push to remote (blocking — run on background executor).
 /// Pass `creds` to retry after an auth failure.
-pub fn push_to_remote(repo_path: &Path, creds: Option<(String, String)>) -> Result<(), git2::Error> {
+pub fn push_to_remote(
+    repo_path: &Path,
+    creds: Option<(String, String)>,
+) -> Result<(), git2::Error> {
     let repo = Repository::open(repo_path)?;
     let remote_name = find_remote_name(&repo)?;
     let mut remote = repo.find_remote(&remote_name)?;
@@ -455,13 +500,22 @@ pub fn push_to_remote(repo_path: &Path, creds: Option<(String, String)>) -> Resu
     let branch_name = head.shorthand().unwrap_or("HEAD");
     let mut opts = git2::PushOptions::new();
     opts.remote_callbacks(make_callbacks(creds));
-    remote.push(&[format!("refs/heads/{}:refs/heads/{}", branch_name, branch_name)], Some(&mut opts))?;
+    remote.push(
+        &[format!(
+            "refs/heads/{}:refs/heads/{}",
+            branch_name, branch_name
+        )],
+        Some(&mut opts),
+    )?;
     Ok(())
 }
 
 /// Pull from remote (blocking — run on background executor).
 /// Pass `creds` to retry after an auth failure.
-pub fn pull_from_remote(repo_path: &Path, creds: Option<(String, String)>) -> Result<(), git2::Error> {
+pub fn pull_from_remote(
+    repo_path: &Path,
+    creds: Option<(String, String)>,
+) -> Result<(), git2::Error> {
     let repo = Repository::open(repo_path)?;
     let remote_name = find_remote_name(&repo)?;
     let mut remote = repo.find_remote(&remote_name)?;
@@ -508,9 +562,9 @@ pub fn switch_branch(repo_path: &Path, branch_name: &str) -> Result<(), git2::Er
     };
 
     let stashed = if has_changes {
-        let sig = repo.signature().or_else(|_| {
-            git2::Signature::now("Pulsar", "pulsar@local")
-        })?;
+        let sig = repo
+            .signature()
+            .or_else(|_| git2::Signature::now("Pulsar", "pulsar@local"))?;
         match repo.stash_save(
             &sig,
             "pulsar: auto-stash before branch switch",
@@ -549,7 +603,11 @@ pub fn switch_branch(repo_path: &Path, branch_name: &str) -> Result<(), git2::Er
 
 /// Load the content of a file for display (blocking — run on background executor).
 /// Returns `None` if the file is binary, or the line count exceeds `limit`.
-pub fn load_file_content(repo_path: &Path, file_path: &str, line_limit: usize) -> FileContentResult {
+pub fn load_file_content(
+    repo_path: &Path,
+    file_path: &str,
+    line_limit: usize,
+) -> FileContentResult {
     let full_path = repo_path.join(file_path);
     let bytes = match std::fs::read(&full_path) {
         Ok(b) => b,
@@ -607,7 +665,10 @@ pub enum DiffSegment {
     /// Lines that should always be shown (changed + their context)
     Hunk(Vec<DiffLine>),
     /// Unchanged lines that are collapsed by default; user can expand them
-    Collapsed { lines: Vec<DiffLine>, region_idx: usize },
+    Collapsed {
+        lines: Vec<DiffLine>,
+        region_idx: usize,
+    },
 }
 
 /// Full diff result — ready for direct rendering
@@ -617,7 +678,10 @@ pub struct DiffResult {
 }
 
 /// Get the list of files changed in a specific commit (blocking — run on background executor)
-pub fn get_commit_files(repo_path: &Path, commit_hash: &str) -> Result<Vec<FileChange>, git2::Error> {
+pub fn get_commit_files(
+    repo_path: &Path,
+    commit_hash: &str,
+) -> Result<Vec<FileChange>, git2::Error> {
     let repo = Repository::open(repo_path)?;
     let oid = git2::Oid::from_str(commit_hash)?;
     let commit = repo.find_commit(oid)?;
@@ -645,7 +709,12 @@ pub fn get_commit_files(repo_path: &Path, commit_hash: &str) -> Result<Vec<FileC
             _ => ChangeStatus::Modified,
         };
 
-        files.push(FileChange { path, status, additions: 0, deletions: 0 });
+        files.push(FileChange {
+            path,
+            status,
+            additions: 0,
+            deletions: 0,
+        });
     }
     Ok(files)
 }
@@ -713,11 +782,24 @@ fn diff_lines(old_text: &str, new_text: &str) -> DiffResult {
     for change in diff.iter_all_changes() {
         let content = change.value().trim_end_matches('\n').to_string();
         let (kind, new_num, old_num) = match change.tag() {
-            ChangeTag::Insert => (DiffLineKind::Added,   change.new_index().map(|i| i + 1), None),
-            ChangeTag::Delete => (DiffLineKind::Removed, None, change.old_index().map(|i| i + 1)),
-            ChangeTag::Equal  => (DiffLineKind::Context, change.new_index().map(|i| i + 1), change.old_index().map(|i| i + 1)),
+            ChangeTag::Insert => (DiffLineKind::Added, change.new_index().map(|i| i + 1), None),
+            ChangeTag::Delete => (
+                DiffLineKind::Removed,
+                None,
+                change.old_index().map(|i| i + 1),
+            ),
+            ChangeTag::Equal => (
+                DiffLineKind::Context,
+                change.new_index().map(|i| i + 1),
+                change.old_index().map(|i| i + 1),
+            ),
         };
-        all_lines.push(DiffLine { kind, content, new_line_num: new_num, old_line_num: old_num });
+        all_lines.push(DiffLine {
+            kind,
+            content,
+            new_line_num: new_num,
+            old_line_num: old_num,
+        });
     }
 
     let n = all_lines.len();
@@ -725,7 +807,9 @@ fn diff_lines(old_text: &str, new_text: &str) -> DiffResult {
 
     // No changes — return whole file as a single hunk (no collapse bars)
     if !has_changes || n == 0 {
-        return DiffResult { segments: vec![DiffSegment::Hunk(all_lines)] };
+        return DiffResult {
+            segments: vec![DiffSegment::Hunk(all_lines)],
+        };
     }
 
     // Mark lines within CONTEXT_LINES of any change as visible
@@ -734,7 +818,9 @@ fn diff_lines(old_text: &str, new_text: &str) -> DiffResult {
         if all_lines[i].kind != DiffLineKind::Context {
             let lo = i.saturating_sub(CONTEXT_LINES);
             let hi = (i + CONTEXT_LINES + 1).min(n);
-            for j in lo..hi { visible[j] = true; }
+            for j in lo..hi {
+                visible[j] = true;
+            }
         }
     }
 
@@ -745,11 +831,15 @@ fn diff_lines(old_text: &str, new_text: &str) -> DiffResult {
     while i < n {
         if visible[i] {
             let start = i;
-            while i < n && visible[i] { i += 1; }
+            while i < n && visible[i] {
+                i += 1;
+            }
             segments.push(DiffSegment::Hunk(all_lines[start..i].to_vec()));
         } else {
             let start = i;
-            while i < n && !visible[i] { i += 1; }
+            while i < n && !visible[i] {
+                i += 1;
+            }
             segments.push(DiffSegment::Collapsed {
                 lines: all_lines[start..i].to_vec(),
                 region_idx,
@@ -764,7 +854,8 @@ fn diff_lines(old_text: &str, new_text: &str) -> DiffResult {
 /// Load old blob content for a file from HEAD (empty string for new files).
 fn load_blob_from_head(repo: &Repository, file_path: &str) -> String {
     let normalized = file_path.replace('\\', "/");
-    repo.head().ok()
+    repo.head()
+        .ok()
         .and_then(|h| h.peel_to_tree().ok())
         .and_then(|t| t.get_path(Path::new(&normalized)).ok())
         .and_then(|e| repo.find_blob(e.id()).ok())
@@ -775,7 +866,9 @@ fn load_blob_from_head(repo: &Repository, file_path: &str) -> String {
 /// Load old blob content from a commit's parent (empty string for added files).
 fn load_blob_from_parent(repo: &Repository, commit: &git2::Commit, file_path: &str) -> String {
     let normalized = file_path.replace('\\', "/");
-    commit.parent(0).ok()
+    commit
+        .parent(0)
+        .ok()
         .and_then(|p| p.tree().ok())
         .and_then(|t| t.get_path(Path::new(&normalized)).ok())
         .and_then(|e| repo.find_blob(e.id()).ok())
@@ -786,8 +879,7 @@ fn load_blob_from_parent(repo: &Repository, commit: &git2::Commit, file_path: &s
 /// Compute the working-tree diff for a single file vs HEAD (blocking).
 pub fn load_file_diff_working(repo_path: &Path, file_path: &str) -> Result<DiffResult, String> {
     let repo = Repository::open(repo_path).map_err(|e| e.message().to_string())?;
-    let new_text = std::fs::read_to_string(repo_path.join(file_path))
-        .map_err(|e| e.to_string())?;
+    let new_text = std::fs::read_to_string(repo_path.join(file_path)).map_err(|e| e.to_string())?;
     if new_text.contains('\0') {
         return Err("Binary file".to_string());
     }
@@ -805,7 +897,9 @@ pub fn load_file_diff_at_commit(
     let oid = git2::Oid::from_str(commit_hash).map_err(|e| e.message().to_string())?;
     let commit = repo.find_commit(oid).map_err(|e| e.message().to_string())?;
     let normalized = file_path.replace('\\', "/");
-    let new_text = commit.tree().ok()
+    let new_text = commit
+        .tree()
+        .ok()
         .and_then(|t| t.get_path(Path::new(&normalized)).ok())
         .and_then(|e| repo.find_blob(e.id()).ok())
         .and_then(|b| String::from_utf8(b.content().to_vec()).ok())

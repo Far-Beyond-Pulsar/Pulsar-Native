@@ -1,14 +1,18 @@
+use super::{helpers::render_info_section, types::ProjectSettings};
+use crate::entry_screen::EntryScreen;
 use gpui::{prelude::*, *};
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, Icon, IconName, divider::Divider, ActiveTheme as _,
+    divider::Divider,
+    h_flex, v_flex, ActiveTheme as _, Icon, IconName,
 };
-use super::{types::ProjectSettings, helpers::render_info_section};
-use crate::entry_screen::EntryScreen;
 
-pub fn render_git_ci_tab(settings: &ProjectSettings, cx: &mut Context<EntryScreen>) -> impl IntoElement {
+pub fn render_git_ci_tab(
+    settings: &ProjectSettings,
+    cx: &mut Context<EntryScreen>,
+) -> impl IntoElement {
     let theme = cx.theme();
-    
+
     v_flex()
         .gap_6()
         .child(
@@ -16,19 +20,31 @@ pub fn render_git_ci_tab(settings: &ProjectSettings, cx: &mut Context<EntryScree
                 .text_2xl()
                 .font_weight(gpui::FontWeight::BOLD)
                 .text_color(theme.foreground)
-                .child("Git CI/CD Integration")
+                .child("Git CI/CD Integration"),
         )
         .child(Divider::horizontal())
         .child(
             div()
                 .text_sm()
                 .text_color(theme.muted_foreground)
-                .child("Continuous Integration and Deployment workflows for your project")
+                .child("Continuous Integration and Deployment workflows for your project"),
         )
-        .child(render_info_section("GitHub Actions", vec![
-            ("Workflow Files", settings.workflow_files.len().to_string()),
-            ("Status", if settings.workflow_files.is_empty() { "Not configured" } else { "Active" }.to_string()),
-        ], &theme))
+        .child(render_info_section(
+            "GitHub Actions",
+            vec![
+                ("Workflow Files", settings.workflow_files.len().to_string()),
+                (
+                    "Status",
+                    if settings.workflow_files.is_empty() {
+                        "Not configured"
+                    } else {
+                        "Active"
+                    }
+                    .to_string(),
+                ),
+            ],
+            &theme,
+        ))
         .child(
             v_flex()
                 .gap_2()
@@ -36,41 +52,43 @@ pub fn render_git_ci_tab(settings: &ProjectSettings, cx: &mut Context<EntryScree
                     div()
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(theme.foreground)
-                        .child("Detected Workflows")
+                        .child("Detected Workflows"),
                 )
                 .children(if settings.workflow_files.is_empty() {
-                    vec![
-                        div()
-                            .text_sm()
-                            .text_color(theme.muted_foreground)
-                            .child("No workflow files found in .github/workflows/")
-                            .into_any_element()
-                    ]
+                    vec![div()
+                        .text_sm()
+                        .text_color(theme.muted_foreground)
+                        .child("No workflow files found in .github/workflows/")
+                        .into_any_element()]
                 } else {
-                    settings.workflow_files.iter().map(|workflow| {
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .px_3()
-                            .py_2()
-                            .border_1()
-                            .border_color(theme.border)
-                            .rounded_md()
-                            .bg(theme.sidebar)
-                            .child(
-                                Icon::new(IconName::Folder)
-                                    .size(px(16.))
-                                    .text_color(theme.accent)
-                            )
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(theme.foreground)
-                                    .child(workflow.clone())
-                            )
-                            .into_any_element()
-                    }).collect()
-                })
+                    settings
+                        .workflow_files
+                        .iter()
+                        .map(|workflow| {
+                            h_flex()
+                                .gap_2()
+                                .items_center()
+                                .px_3()
+                                .py_2()
+                                .border_1()
+                                .border_color(theme.border)
+                                .rounded_md()
+                                .bg(theme.sidebar)
+                                .child(
+                                    Icon::new(IconName::Folder)
+                                        .size(px(16.))
+                                        .text_color(theme.accent),
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(theme.foreground)
+                                        .child(workflow.clone()),
+                                )
+                                .into_any_element()
+                        })
+                        .collect()
+                }),
         )
         .child(
             v_flex()
@@ -90,7 +108,7 @@ pub fn render_git_ci_tab(settings: &ProjectSettings, cx: &mut Context<EntryScree
                                 use crate::entry_screen::integration_launcher;
                                 let _ = integration_launcher::launch_file_manager(&workflows_dir);
                             }
-                        })
+                        }),
                 )
                 .child(
                     Button::new("view-actions")
@@ -102,13 +120,12 @@ pub fn render_git_ci_tab(settings: &ProjectSettings, cx: &mut Context<EntryScree
                             let remote = settings.remote_url.clone();
                             move |_, _, _| {
                                 if let Some(url) = &remote {
-                                    let actions_url = url
-                                        .trim_end_matches(".git")
-                                        .to_string() + "/actions";
+                                    let actions_url =
+                                        url.trim_end_matches(".git").to_string() + "/actions";
                                     let _ = open::that(actions_url);
                                 }
                             }
-                        })
-                )
+                        }),
+                ),
         )
 }

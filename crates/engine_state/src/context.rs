@@ -4,23 +4,21 @@
 //! Each context represents a specific domain (windows, projects, etc.) with
 //! proper types instead of string key-value pairs.
 
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use dashmap::DashMap;
 use gpui::AppContext;
 use parking_lot::RwLock;
-use window_manager;
-use dashmap::DashMap;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use type_db::TypeDatabase;
-use ui_types_common::window_types::{WindowRequest, WindowId};
+use ui_types_common::window_types::{WindowId, WindowRequest};
+use window_manager;
 
 use crate::DiscordPresence;
 
+use gpui::{AnyView, Context, IntoElement, Render, Window, WindowOptions};
 
-use gpui::{WindowOptions, Window, AnyView, Render, IntoElement, Context};
-
-
-use window_manager::{WindowManager, WindowError};
+use window_manager::{WindowError, WindowManager};
 
 /// Context for a specific window
 #[derive(Clone)]
@@ -129,7 +127,6 @@ pub struct EngineContext {
     next_id: Arc<AtomicU64>,
 
     /// Optional window manager instance (enabled via feature)
-
     pub window_manager: Arc<RwLock<Option<window_manager::WindowManager>>>,
 }
 
@@ -164,8 +161,6 @@ impl EngineContext {
         self.next_id.fetch_add(1, Ordering::Relaxed)
     }
 
-
-
     /// Register a window context
     pub fn register_window(&self, window_id: WindowId, context: WindowContext) {
         self.windows.insert(window_id, context);
@@ -175,7 +170,6 @@ impl EngineContext {
     pub fn unregister_window(&self, window_id: &WindowId) -> Option<WindowContext> {
         self.windows.remove(window_id).map(|(_, ctx)| ctx)
     }
-
 
     /// Convenience wrapper that either routes through the WindowManager
     /// Create a window through the window manager using a generic content builder.
@@ -224,7 +218,6 @@ impl EngineContext {
             )
         })
     }
-
 
     /// Get window count
     pub fn window_count(&self) -> usize {
@@ -315,7 +308,8 @@ impl EngineContext {
 
     /// Check if we're the host of the current session
     pub fn are_we_multiuser_host(&self) -> bool {
-        self.multiuser.read()
+        self.multiuser
+            .read()
             .as_ref()
             .map(|ctx| ctx.is_host)
             .unwrap_or(false)
@@ -448,7 +442,10 @@ mod tests {
         context.set_project(project.clone());
 
         assert!(context.project.read().is_some());
-        assert_eq!(context.project.read().as_ref().unwrap().path, PathBuf::from("/test"));
+        assert_eq!(
+            context.project.read().as_ref().unwrap().path,
+            PathBuf::from("/test")
+        );
 
         context.clear_project();
         assert!(context.project.read().is_none());

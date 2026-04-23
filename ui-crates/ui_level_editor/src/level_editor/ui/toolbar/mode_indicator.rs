@@ -7,15 +7,12 @@ use super::super::state::LevelEditorState;
 pub struct ModeIndicator;
 
 impl ModeIndicator {
-    pub fn render<V: 'static>(
-        state: &LevelEditorState,
-        cx: &mut Context<V>,
-    ) -> impl IntoElement
+    pub fn render<V: 'static>(state: &LevelEditorState, cx: &mut Context<V>) -> impl IntoElement
     where
         V: EventEmitter<ui::dock::PanelEvent> + Render,
     {
         let theme = cx.theme();
-        
+
         div()
             .flex()
             .items_center()
@@ -42,7 +39,7 @@ impl ModeIndicator {
                         gpui::green()
                     } else {
                         theme.muted_foreground.opacity(0.6)
-                    })
+                    }),
             )
             .child(
                 div()
@@ -57,7 +54,7 @@ impl ModeIndicator {
                         "Playing"
                     } else {
                         "Editing"
-                    })
+                    }),
             )
     }
 }

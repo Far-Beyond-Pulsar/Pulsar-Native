@@ -59,7 +59,9 @@ impl ElementReplicationState {
             ReplicationMode::NoRep => true,
             ReplicationMode::MultiEdit => {
                 if let Some(max) = self.config.max_concurrent_editors {
-                    if self.active_editors.len() >= max && !self.active_editors.contains(&peer_id.to_string()) {
+                    if self.active_editors.len() >= max
+                        && !self.active_editors.contains(&peer_id.to_string())
+                    {
                         return false;
                     }
                 }
@@ -68,9 +70,7 @@ impl ElementReplicationState {
             ReplicationMode::LockedEdit => {
                 self.locked_by.is_none() || self.locked_by.as_deref() == Some(peer_id)
             }
-            ReplicationMode::RequestEdit => {
-                self.active_editors.contains(&peer_id.to_string())
-            }
+            ReplicationMode::RequestEdit => self.active_editors.contains(&peer_id.to_string()),
             ReplicationMode::BroadcastOnly => peer_id == "0",
             ReplicationMode::Follow => true,
             ReplicationMode::QueuedEdit => true,
@@ -180,14 +180,18 @@ impl ReplicationRegistry {
     }
 
     pub fn get_editors(&self, element_id: &str) -> Vec<String> {
-        self.inner.read().elements
+        self.inner
+            .read()
+            .elements
             .get(element_id)
             .map(|state| state.active_editors.clone())
             .unwrap_or_default()
     }
 
     pub fn add_panel_presence(&self, panel_id: &str, peer_id: &str) {
-        self.inner.write().panel_presences
+        self.inner
+            .write()
+            .panel_presences
             .entry(panel_id.to_string())
             .or_insert_with(Vec::new)
             .push(peer_id.to_string());
@@ -204,11 +208,19 @@ impl ReplicationRegistry {
     }
 
     pub fn get_panel_users(&self, panel_id: &str) -> Vec<String> {
-        self.inner.read().panel_presences.get(panel_id).cloned().unwrap_or_default()
+        self.inner
+            .read()
+            .panel_presences
+            .get(panel_id)
+            .cloned()
+            .unwrap_or_default()
     }
 
     pub fn update_user_presence(&self, presence: UserPresence) {
-        self.inner.write().user_presences.insert(presence.peer_id.clone(), presence);
+        self.inner
+            .write()
+            .user_presences
+            .insert(presence.peer_id.clone(), presence);
     }
 
     pub fn get_user_presence(&self, peer_id: &str) -> Option<UserPresence> {

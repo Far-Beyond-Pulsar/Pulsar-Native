@@ -45,17 +45,23 @@ mod tests {
 
     #[test]
     fn test_is_cloud_path() {
-        assert!(is_cloud_path(Path::new("cloud+pulsar://host/project/file.txt")));
+        assert!(is_cloud_path(Path::new(
+            "cloud+pulsar://host/project/file.txt"
+        )));
         assert!(!is_cloud_path(Path::new("/local/path/file.txt")));
         assert!(!is_cloud_path(Path::new("C:\\local\\file.txt")));
     }
 
     #[test]
     fn test_cloud_join() {
-        assert_eq!(cloud_join("cloud+pulsar://host/proj", "subdir/file.txt"),
-                   "cloud+pulsar://host/proj/subdir/file.txt");
-        assert_eq!(cloud_join("cloud+pulsar://host/proj/", "/subdir/file.txt"),
-                   "cloud+pulsar://host/proj/subdir/file.txt");
+        assert_eq!(
+            cloud_join("cloud+pulsar://host/proj", "subdir/file.txt"),
+            "cloud+pulsar://host/proj/subdir/file.txt"
+        );
+        assert_eq!(
+            cloud_join("cloud+pulsar://host/proj/", "/subdir/file.txt"),
+            "cloud+pulsar://host/proj/subdir/file.txt"
+        );
         assert_eq!(cloud_join("", "file.txt"), "file.txt");
         assert_eq!(cloud_join("base", ""), "base");
     }

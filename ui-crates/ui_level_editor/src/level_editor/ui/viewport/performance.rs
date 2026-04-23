@@ -211,10 +211,11 @@ impl PerformanceMetrics {
         if self.ui_consistency_history.len() >= MAX_HISTORY_SIZE {
             self.ui_consistency_history.pop_front();
         }
-        self.ui_consistency_history.push_back(UiConsistencyDataPoint {
-            index: self.ui_consistency_counter,
-            consistency_score,
-        });
+        self.ui_consistency_history
+            .push_back(UiConsistencyDataPoint {
+                index: self.ui_consistency_counter,
+                consistency_score,
+            });
         self.ui_consistency_counter += 1;
     }
 }

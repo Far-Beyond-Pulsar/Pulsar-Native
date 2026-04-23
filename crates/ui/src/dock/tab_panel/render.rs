@@ -209,9 +209,7 @@ impl TabPanel {
                 .when_some(title_style, |this, theme| {
                     this.bg(theme.background).text_color(theme.foreground)
                 })
-                .when(title_style.is_none(), |this| {
-                    this.bg(cx.theme().tab_bar)
-                })
+                .when(title_style.is_none(), |this| this.bg(cx.theme().tab_bar))
                 .when(
                     left_dock_button.is_some() || bottom_dock_button.is_some(),
                     |this| {
@@ -237,8 +235,7 @@ impl TabPanel {
                         .when(state.draggable, |this| {
                             let channel = state.channel;
                             this.on_drag(
-                                DragPanel::new(panel.clone(), view.clone(), channel)
-                                    .with_index(0),
+                                DragPanel::new(panel.clone(), view.clone(), channel).with_index(0),
                                 move |drag, position, _, cx| {
                                     let mut drag_with_pos = drag.clone();
                                     drag_with_pos.drag_start_position = Some(position);
@@ -246,9 +243,15 @@ impl TabPanel {
                                     cx.new(|_| drag_with_pos)
                                 },
                             )
-                            .on_drag_move(cx.listener(|this, event: &DragMoveEvent<DragPanel>, window, cx| {
-                                this.check_drag_outside_window(event.event.position, window, cx);
-                            }))
+                            .on_drag_move(cx.listener(
+                                |this, event: &DragMoveEvent<DragPanel>, window, cx| {
+                                    this.check_drag_outside_window(
+                                        event.event.position,
+                                        window,
+                                        cx,
+                                    );
+                                },
+                            ))
                         }),
                 )
                 .children(panel.title_suffix(window, cx))
@@ -509,7 +512,8 @@ impl TabPanel {
                         let clicked_index_ref = clicked_tab_index.clone();
                         let tab_index = clicked_index_ref.borrow().unwrap_or(0);
 
-                        let can_close = panels_for_menu.get(tab_index)
+                        let can_close = panels_for_menu
+                            .get(tab_index)
                             .map(|p| p.closable(cx) && p.panel_name(cx) != "Level Editor")
                             .unwrap_or(false);
 
@@ -608,7 +612,7 @@ impl TabPanel {
                         });
 
                         result
-                    })
+                    }),
             )
             .into_any_element()
     }

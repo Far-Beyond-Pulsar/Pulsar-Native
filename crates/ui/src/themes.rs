@@ -21,7 +21,7 @@
 //! ```rust,ignore
 //! // Initialize themes in GPUI app
 //! crate::themes::init(cx);
-//! 
+//!
 //! // Theme will be loaded from last session
 //! // or default to "Default Dark"
 //! ```
@@ -33,14 +33,14 @@
 
 use std::path::PathBuf;
 
-use gpui::{
-    div, px, Action, App, InteractiveElement as _, ParentElement as _, Render, SharedString,
-};
 use crate::{
     button::{Button, ButtonVariants},
     popup_menu::PopupMenuExt,
     scroll::ScrollbarShow,
     ActiveTheme, IconName, Sizable, Theme, ThemeRegistry,
+};
+use gpui::{
+    div, px, Action, App, InteractiveElement as _, ParentElement as _, Render, SharedString,
 };
 use rust_embed::RustEmbed;
 

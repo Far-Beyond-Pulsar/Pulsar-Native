@@ -2,20 +2,20 @@ use anyhow::Result;
 use gpui::{App, Context, MouseMoveEvent, Task, Window};
 use std::rc::Rc;
 
-use crate::input::{popovers::ContextMenu, InputState, RopeExt, GoToDefinition, ToggleCodeActions};
+use crate::input::{popovers::ContextMenu, GoToDefinition, InputState, RopeExt, ToggleCodeActions};
 
+mod autocomplete;
 mod code_actions;
 mod completions;
 mod definitions;
 mod hover;
-mod autocomplete;
 mod rust_analyzer;
 
+pub use autocomplete::*;
 pub use code_actions::*;
 pub use completions::*;
 pub use definitions::*;
 pub use hover::*;
-pub use autocomplete::*;
 pub use rust_analyzer::*;
 
 /// LSP ServerCapabilities
@@ -91,7 +91,11 @@ impl InputState {
                 if action.as_any().downcast_ref::<GoToDefinition>().is_some() {
                     self.on_action_go_to_definition(&GoToDefinition, window, cx);
                     handled = true;
-                } else if action.as_any().downcast_ref::<ToggleCodeActions>().is_some() {
+                } else if action
+                    .as_any()
+                    .downcast_ref::<ToggleCodeActions>()
+                    .is_some()
+                {
                     self.on_action_toggle_code_actions(&ToggleCodeActions, window, cx);
                     handled = true;
                 }

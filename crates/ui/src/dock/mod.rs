@@ -8,12 +8,13 @@ mod tiles;
 
 use anyhow::Result;
 use gpui::{
-    actions, canvas, div, prelude::FluentBuilder, AnyElement, AnyView, AnyWindowHandle, App, AppContext, Axis,
-    Bounds, Context, Edges, Entity, EntityId, EventEmitter, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, ReadGlobal, Render, SharedString, Styled, Subscription, UpdateGlobal, WeakEntity, Window,
+    actions, canvas, div, prelude::FluentBuilder, AnyElement, AnyView, AnyWindowHandle, App,
+    AppContext, Axis, Bounds, Context, Edges, Entity, EntityId, EventEmitter,
+    InteractiveElement as _, IntoElement, ParentElement as _, Pixels, ReadGlobal, Render,
+    SharedString, Styled, Subscription, UpdateGlobal, WeakEntity, Window,
 };
 use std::sync::{Arc, OnceLock};
-use ui_types_common::window_types::{WindowRequest, WindowId};
+use ui_types_common::window_types::{WindowId, WindowRequest};
 use window_manager;
 
 pub use dock::*;
@@ -310,7 +311,10 @@ impl DockItem {
     ) -> Self {
         let active_ix = active_ix.unwrap_or(0);
         let tab_panel = cx.new(|cx| {
-            let channel = dock_area.upgrade().map(|d| d.read(cx).channel).unwrap_or_default();
+            let channel = dock_area
+                .upgrade()
+                .map(|d| d.read(cx).channel)
+                .unwrap_or_default();
             let mut tab_panel = TabPanel::new(None, dock_area.clone(), channel, window, cx);
             for item in items.iter() {
                 tab_panel.add_panel(item.clone(), window, cx)
@@ -391,8 +395,12 @@ impl DockItem {
             Self::Tiles { view, items } => {
                 let tile_item = TileItem::new(
                     Arc::new(cx.new(|cx| {
-                        let channel = dock_area.upgrade().map(|d| d.read(cx).channel).unwrap_or_default();
-                        let mut tab_panel = TabPanel::new(None, dock_area.clone(), channel, window, cx);
+                        let channel = dock_area
+                            .upgrade()
+                            .map(|d| d.read(cx).channel)
+                            .unwrap_or_default();
+                        let mut tab_panel =
+                            TabPanel::new(None, dock_area.clone(), channel, window, cx);
                         tab_panel.add_panel(panel.clone(), window, cx);
                         tab_panel
                     })),
@@ -558,8 +566,6 @@ impl DockArea {
         self.version = Some(version);
         cx.notify();
     }
-
-
 
     /// The the DockItem as the center of the dock area.
     ///
@@ -991,26 +997,26 @@ impl DockArea {
                     PanelEvent::TabClosed(_) => {
                         // Do nothing for TabClosed
                     }
-                    PanelEvent::MoveToNewWindow { panel, position, source_tab_panel, source_index } => {
+                    PanelEvent::MoveToNewWindow {
+                        panel,
+                        position,
+                        source_tab_panel,
+                        source_index,
+                    } => {
                         tracing::trace!("[DOCK_AREA] Received MoveToNewWindow from TabPanel");
                         tracing::trace!("[DOCK_AREA] Source index: {}", source_index);
                         let parent_window_handle = window.window_handle();
-                        
+
                         let source = PanelSource {
                             tab_panel: source_tab_panel.clone(),
                             parent_window: parent_window_handle.into(),
                             tab_index: Some(*source_index),
                         };
-                        
-                        Self::create_popout_window(
-                            panel.clone(), 
-                            *position, 
-                            Some(source),
-                            cx
-                        );
+
+                        Self::create_popout_window(panel.clone(), *position, Some(source), cx);
                     }
                     PanelEvent::TabChanged { active_index: _ } => {
-                        // Do nothing for TabChanged     
+                        // Do nothing for TabChanged
                     }
                 },
             );
@@ -1104,49 +1110,50 @@ impl DockArea {
         // Replace direct cx.open_window with window_manager::WindowManager::global().create_window
         let _ = window_manager::WindowManager::update_global(cx, |wm, cx| {
             wm.create_window(
-            WindowRequest::DetachedPanel,
-            window_options,
-            move |window: &mut gpui::Window, cx: &mut gpui::App| {
-                tracing::trace!("[DOCK_AREA] Inside window creation callback");
+                WindowRequest::DetachedPanel,
+                window_options,
+                move |window: &mut gpui::Window, cx: &mut gpui::App| {
+                    tracing::trace!("[DOCK_AREA] Inside window creation callback");
 
-                // Create a minimal new dock area for this detached window
-                let new_dock_area = cx.new(|cx| DockArea::new("detached-dock", Some(1), window, cx));
-                let weak_new_dock = new_dock_area.downgrade();
+                    // Create a minimal new dock area for this detached window
+                    let new_dock_area =
+                        cx.new(|cx| DockArea::new("detached-dock", Some(1), window, cx));
+                    let weak_new_dock = new_dock_area.downgrade();
 
-                // Create a tab panel with just the one panel
-                let new_tab_panel = cx.new(|cx| {
-                    let channel = weak_new_dock.upgrade().map(|d| d.read(cx).channel).unwrap_or_default();
-                    let mut tab_panel = TabPanel::new(None, weak_new_dock.clone(), channel, window, cx);
-                    tab_panel.closable = true;
-                    tab_panel
-                });
+                    // Create a tab panel with just the one panel
+                    let new_tab_panel = cx.new(|cx| {
+                        let channel = weak_new_dock
+                            .upgrade()
+                            .map(|d| d.read(cx).channel)
+                            .unwrap_or_default();
+                        let mut tab_panel =
+                            TabPanel::new(None, weak_new_dock.clone(), channel, window, cx);
+                        tab_panel.closable = true;
+                        tab_panel
+                    });
 
-                new_tab_panel.update(cx, |view: &mut TabPanel, cx: &mut Context<TabPanel>| {
-                    view.add_panel(panel.clone(), window, cx);
-                });
+                    new_tab_panel.update(cx, |view: &mut TabPanel, cx: &mut Context<TabPanel>| {
+                        view.add_panel(panel.clone(), window, cx);
+                    });
 
-                // Set up the dock area with just this panel
-                new_dock_area.update(cx, |dock: &mut DockArea, cx: &mut Context<DockArea>| {
-                    let dock_item = DockItem::Tabs {
-                        view: new_tab_panel.clone(),
-                        active_ix: 0,
-                        items: vec![panel.clone()],
-                    };
-                    dock.set_center(dock_item, window, cx);
-                });
+                    // Set up the dock area with just this panel
+                    new_dock_area.update(cx, |dock: &mut DockArea, cx: &mut Context<DockArea>| {
+                        let dock_item = DockItem::Tabs {
+                            view: new_tab_panel.clone(),
+                            active_ix: 0,
+                            items: vec![panel.clone()],
+                        };
+                        dock.set_center(dock_item, window, cx);
+                    });
 
-                tracing::trace!("[DOCK_AREA] Popout window created successfully");
-                let popout_window = cx.new(|cx| PopoutDockWindow::new(
-                    new_dock_area, 
-                    panel.clone(),
-                    source,
-                    window, 
-                    cx
-                ));
-                cx.new(|cx| crate::Root::new(popout_window.into(), window, cx))
-            },
-            cx
-        )
+                    tracing::trace!("[DOCK_AREA] Popout window created successfully");
+                    let popout_window = cx.new(|cx| {
+                        PopoutDockWindow::new(new_dock_area, panel.clone(), source, window, cx)
+                    });
+                    cx.new(|cx| crate::Root::new(popout_window.into(), window, cx))
+                },
+                cx,
+            )
         });
     }
 }
@@ -1166,7 +1173,7 @@ impl PopoutDockWindow {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Self {
-        Self { 
+        Self {
             dock_area,
             original_panel,
             source,
@@ -1178,38 +1185,50 @@ impl Render for PopoutDockWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         use crate::{v_flex, ActiveTheme, TitleBar};
         let theme = cx.theme();
-        
+
         let panel = self.original_panel.clone();
         let source = self.source.clone();
 
         let mut title_bar = TitleBar::new();
-        
+
         // Add close handler to restore panel to its original location
         if let Some(source_info) = source {
             title_bar = title_bar.on_close_window(move |_, window, cx| {
-                tracing::trace!("[POPOUT] Close button clicked, restoring panel to original location");
-                
+                tracing::trace!(
+                    "[POPOUT] Close button clicked, restoring panel to original location"
+                );
+
                 let panel_to_restore = panel.clone();
                 let tab_index = source_info.tab_index;
-                
+
                 let _ = cx.update_window(source_info.parent_window, |_root, window, cx| {
                     if let Some(source_tab_panel) = source_info.tab_panel.upgrade() {
                         cx.update_entity(&source_tab_panel, |tab_panel, cx| {
-                            tracing::trace!("[POPOUT] Adding panel back to original tab panel at index {:?}", tab_index);
-                            
+                            tracing::trace!(
+                                "[POPOUT] Adding panel back to original tab panel at index {:?}",
+                                tab_index
+                            );
+
                             if let Some(idx) = tab_index {
                                 // Restore to the specific index
-                                tab_panel.insert_panel_at(panel_to_restore.clone(), idx, window, cx);
+                                tab_panel.insert_panel_at(
+                                    panel_to_restore.clone(),
+                                    idx,
+                                    window,
+                                    cx,
+                                );
                             } else {
                                 // Add at the end
                                 tab_panel.add_panel(panel_to_restore.clone(), window, cx);
                             }
                         });
                     } else {
-                        tracing::trace!("[POPOUT] Warning: source tab panel was dropped, cannot restore");
+                        tracing::trace!(
+                            "[POPOUT] Warning: source tab panel was dropped, cannot restore"
+                        );
                     }
                 });
-                
+
                 // Close this window
                 window.remove_window();
             });
@@ -1225,7 +1244,7 @@ impl Render for PopoutDockWindow {
                 div()
                     .flex_1()
                     .overflow_hidden()
-                    .child(self.dock_area.clone())
+                    .child(self.dock_area.clone()),
             )
     }
 }
@@ -1235,7 +1254,7 @@ impl Render for DockArea {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Store bounds directly - we already have mutable access via &mut self
         let bounds_setter = cx.entity().downgrade();
-        
+
         div()
             .id("dock-area")
             .relative()

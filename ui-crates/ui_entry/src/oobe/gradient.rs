@@ -27,7 +27,7 @@ impl AnimatedGradient {
     pub fn new() -> Self {
         Self {
             start_time: Instant::now(),
-            primary_hue: 220.0,      // Start with blue
+            primary_hue: 220.0,         // Start with blue
             secondary_hue_offset: 60.0, // Purple/pink offset
             speed: 0.3,
         }
@@ -57,7 +57,7 @@ impl AnimatedGradient {
     pub fn aurora() -> Self {
         Self {
             start_time: Instant::now(),
-            primary_hue: 160.0,         // Teal
+            primary_hue: 160.0,          // Teal
             secondary_hue_offset: 100.0, // Purple
             speed: 0.25,
         }
@@ -98,11 +98,12 @@ impl AnimatedGradient {
     /// Returns colors for a 3-stop gradient
     pub fn gradient_colors(&self) -> (Hsla, Hsla, Hsla) {
         let t = self.elapsed_seconds() * self.speed;
-        
+
         // Three colors that shift over time
         let hue1 = (self.primary_hue + (t.sin() * 20.0)) / 360.0;
         let hue2 = (self.primary_hue + self.secondary_hue_offset + (t.cos() * 25.0)) / 360.0;
-        let hue3 = (self.primary_hue + self.secondary_hue_offset * 1.5 + ((t * 0.7).sin() * 15.0)) / 360.0;
+        let hue3 =
+            (self.primary_hue + self.secondary_hue_offset * 1.5 + ((t * 0.7).sin() * 15.0)) / 360.0;
 
         let color1 = hsla(hue1.rem_euclid(1.0), 0.9, 0.5, 1.0);
         let color2 = hsla(hue2.rem_euclid(1.0), 0.85, 0.4, 1.0);

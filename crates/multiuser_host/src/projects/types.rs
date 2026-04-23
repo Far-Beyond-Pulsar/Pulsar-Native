@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 /// Persisted status of a project on disk.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,10 +25,10 @@ impl Default for ProjectStatus {
 impl ProjectStatus {
     pub fn as_str(&self) -> &'static str {
         match self {
-            ProjectStatus::Idle      => "idle",
+            ProjectStatus::Idle => "idle",
             ProjectStatus::Preparing => "preparing",
-            ProjectStatus::Running   => "running",
-            ProjectStatus::Error(_)  => "error",
+            ProjectStatus::Running => "running",
+            ProjectStatus::Error(_) => "error",
         }
     }
 }

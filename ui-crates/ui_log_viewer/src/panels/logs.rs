@@ -1,8 +1,11 @@
 //! Logs panel — streams engine log output in the center dock.
 
-use gpui::*;
-use ui::{ActiveTheme, dock::{Panel, PanelEvent}, v_flex};
 use crate::log_drawer_v2::LogDrawer;
+use gpui::*;
+use ui::{
+    dock::{Panel, PanelEvent},
+    v_flex, ActiveTheme,
+};
 
 pub struct LogsPanel {
     pub(crate) log_drawer: Entity<LogDrawer>,
@@ -11,7 +14,10 @@ pub struct LogsPanel {
 
 impl LogsPanel {
     pub fn new(log_drawer: Entity<LogDrawer>, cx: &mut Context<Self>) -> Self {
-        Self { log_drawer, focus_handle: cx.focus_handle() }
+        Self {
+            log_drawer,
+            focus_handle: cx.focus_handle(),
+        }
     }
 }
 
@@ -29,6 +35,10 @@ impl Render for LogsPanel {
 }
 
 impl Panel for LogsPanel {
-    fn panel_name(&self) -> &'static str { "logs" }
-    fn title(&self, _window: &Window, _cx: &App) -> AnyElement { "Logs".into_any_element() }
+    fn panel_name(&self) -> &'static str {
+        "logs"
+    }
+    fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
+        "Logs".into_any_element()
+    }
 }

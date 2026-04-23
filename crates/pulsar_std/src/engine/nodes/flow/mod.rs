@@ -14,7 +14,7 @@
 //! All flow control nodes use `NodeTypes::control_flow` and manage execution flow through
 //! execution pins created with the `exec_output!()` macro.
 
-use crate::{blueprint, NodeTypes, exec_output};
+use crate::{blueprint, exec_output, NodeTypes};
 
 // =============================================================================
 // Branching Operations

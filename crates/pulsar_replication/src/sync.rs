@@ -15,28 +15,16 @@ pub enum ReplicationMessage {
     },
 
     /// User started editing an element
-    EditorJoined {
-        element_id: String,
-        peer_id: String,
-    },
+    EditorJoined { element_id: String, peer_id: String },
 
     /// User stopped editing an element
-    EditorLeft {
-        element_id: String,
-        peer_id: String,
-    },
+    EditorLeft { element_id: String, peer_id: String },
 
     /// User entered a panel/tab
-    PanelJoined {
-        panel_id: String,
-        peer_id: String,
-    },
+    PanelJoined { panel_id: String, peer_id: String },
 
     /// User left a panel/tab
-    PanelLeft {
-        panel_id: String,
-        peer_id: String,
-    },
+    PanelLeft { panel_id: String, peer_id: String },
 
     /// User presence update (cursor position, selection, etc.)
     PresenceUpdate {
@@ -45,22 +33,13 @@ pub enum ReplicationMessage {
     },
 
     /// Request edit lock (for LockedEdit mode)
-    RequestLock {
-        element_id: String,
-        peer_id: String,
-    },
+    RequestLock { element_id: String, peer_id: String },
 
     /// Release edit lock (for LockedEdit mode)
-    ReleaseLock {
-        element_id: String,
-        peer_id: String,
-    },
+    ReleaseLock { element_id: String, peer_id: String },
 
     /// Grant edit lock to a user
-    LockGranted {
-        element_id: String,
-        peer_id: String,
-    },
+    LockGranted { element_id: String, peer_id: String },
 
     /// Deny edit lock request
     LockDenied {
@@ -70,16 +49,10 @@ pub enum ReplicationMessage {
     },
 
     /// Request edit permission (for RequestEdit mode)
-    RequestPermission {
-        element_id: String,
-        peer_id: String,
-    },
+    RequestPermission { element_id: String, peer_id: String },
 
     /// Grant edit permission
-    PermissionGranted {
-        element_id: String,
-        peer_id: String,
-    },
+    PermissionGranted { element_id: String, peer_id: String },
 
     /// Deny edit permission
     PermissionDenied {
@@ -89,10 +62,7 @@ pub enum ReplicationMessage {
     },
 
     /// Request full state sync for an element
-    RequestSync {
-        element_id: String,
-        peer_id: String,
-    },
+    RequestSync { element_id: String, peer_id: String },
 
     /// Full state sync response
     SyncResponse {
@@ -127,12 +97,18 @@ impl ReplicationMessageHandler {
                 None
             }
 
-            ReplicationMessage::EditorJoined { element_id, peer_id } => {
+            ReplicationMessage::EditorJoined {
+                element_id,
+                peer_id,
+            } => {
                 self.handle_editor_joined(&element_id, &peer_id);
                 None
             }
 
-            ReplicationMessage::EditorLeft { element_id, peer_id } => {
+            ReplicationMessage::EditorLeft {
+                element_id,
+                peer_id,
+            } => {
                 self.handle_editor_left(&element_id, &peer_id);
                 None
             }
@@ -152,23 +128,31 @@ impl ReplicationMessageHandler {
                 None
             }
 
-            ReplicationMessage::RequestLock { element_id, peer_id } => {
-                self.handle_lock_request(&element_id, &peer_id)
-            }
+            ReplicationMessage::RequestLock {
+                element_id,
+                peer_id,
+            } => self.handle_lock_request(&element_id, &peer_id),
 
-            ReplicationMessage::ReleaseLock { element_id, peer_id } => {
+            ReplicationMessage::ReleaseLock {
+                element_id,
+                peer_id,
+            } => {
                 self.handle_lock_release(&element_id, &peer_id);
                 None
             }
 
-            ReplicationMessage::RequestPermission { element_id, peer_id } => {
+            ReplicationMessage::RequestPermission {
+                element_id,
+                peer_id,
+            } => {
                 self.handle_permission_request(&element_id, &peer_id);
                 None
             }
 
-            ReplicationMessage::RequestSync { element_id, peer_id } => {
-                self.handle_sync_request(&element_id, &peer_id)
-            }
+            ReplicationMessage::RequestSync {
+                element_id,
+                peer_id,
+            } => self.handle_sync_request(&element_id, &peer_id),
 
             // These are responses - typically handled by caller
             ReplicationMessage::LockGranted { .. }
@@ -251,14 +235,14 @@ impl ReplicationMessageHandler {
         tracing::debug!("Updated presence for user {}", peer_id);
     }
 
-    fn handle_lock_request(&mut self, element_id: &str, peer_id: &str) -> Option<ReplicationMessage> {
+    fn handle_lock_request(
+        &mut self,
+        element_id: &str,
+        peer_id: &str,
+    ) -> Option<ReplicationMessage> {
         if let Some(mut elem_state) = self.registry.get_element_state(element_id) {
             if elem_state.acquire_lock(peer_id) {
-                tracing::debug!(
-                    "Granted lock on {} to user {}",
-                    element_id,
-                    peer_id
-                );
+                tracing::debug!("Granted lock on {} to user {}", element_id, peer_id);
                 return Some(ReplicationMessage::LockGranted {
                     element_id: element_id.to_string(),
                     peer_id: peer_id.to_string(),
@@ -292,11 +276,7 @@ impl ReplicationMessageHandler {
     fn handle_permission_request(&mut self, element_id: &str, peer_id: &str) {
         if let Some(mut elem_state) = self.registry.get_element_state(element_id) {
             elem_state.request_permission(peer_id);
-            tracing::debug!(
-                "User {} requested permission for {}",
-                peer_id,
-                element_id
-            );
+            tracing::debug!("User {} requested permission for {}", peer_id, element_id);
             tracing::info!(
                 "Permission request pending for element {} from user {}",
                 element_id,
@@ -305,7 +285,11 @@ impl ReplicationMessageHandler {
         }
     }
 
-    fn handle_sync_request(&mut self, element_id: &str, _peer_id: &str) -> Option<ReplicationMessage> {
+    fn handle_sync_request(
+        &mut self,
+        element_id: &str,
+        _peer_id: &str,
+    ) -> Option<ReplicationMessage> {
         if let Some(elem_state) = self.registry.get_element_state(element_id) {
             if let Some(state) = elem_state.last_state {
                 return Some(ReplicationMessage::SyncResponse {

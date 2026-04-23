@@ -1,15 +1,20 @@
-use gpui::*;
-use gpui::prelude::FluentBuilder as _;
-use ui::{
-    h_flex, v_flex, Icon, IconName, ActiveTheme as _,
-    button::{Button, ButtonVariants as _},
-    switch::Switch,
-};
-use crate::settings::SettingsScreen;
 use super::components::*;
+use crate::settings::SettingsScreen;
+use gpui::prelude::FluentBuilder as _;
+use gpui::*;
+use ui::{
+    button::{Button, ButtonVariants as _},
+    h_flex,
+    switch::Switch,
+    v_flex, ActiveTheme as _, Icon, IconName,
+};
 
 impl SettingsScreen {
-    pub fn render_advanced_view(&self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    pub fn render_advanced_view(
+        &self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         v_flex()
             .w_full()
             .gap_4()
@@ -46,7 +51,7 @@ impl SettingsScreen {
                                     cx
                                 )
                             )
-                            
+
                     )
                     .child(
                         div()
@@ -205,7 +210,7 @@ impl SettingsScreen {
                                             }))
                                     )
                             )
-                            
+
                     )
                     .child(
                         div()
@@ -249,7 +254,7 @@ impl SettingsScreen {
                                             }))
                                     )
                             )
-                            
+
                     )
                     .when(experimental_features, |this| {
                         let warning_color = hsla(0.05, 0.8, 0.5, 1.0); // Orange warning color

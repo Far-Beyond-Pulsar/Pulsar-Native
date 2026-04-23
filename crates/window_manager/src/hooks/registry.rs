@@ -27,7 +27,11 @@ impl HookRegistry {
 
         if let Some(hook_list) = hooks.get(&context.hook_type) {
             for hook in hook_list.iter() {
-                tracing::debug!("Executing before hook: {} for {:?}", hook.name(), context.hook_type);
+                tracing::debug!(
+                    "Executing before hook: {} for {:?}",
+                    hook.name(),
+                    context.hook_type
+                );
 
                 match hook.execute(context) {
                     Ok(()) => {
@@ -57,7 +61,11 @@ impl HookRegistry {
 
         if let Some(hook_list) = hooks.get(&context.hook_type) {
             for hook in hook_list.iter() {
-                tracing::debug!("Executing after hook: {} for {:?}", hook.name(), context.hook_type);
+                tracing::debug!(
+                    "Executing after hook: {} for {:?}",
+                    hook.name(),
+                    context.hook_type
+                );
 
                 match hook.execute(context) {
                     Ok(()) => {

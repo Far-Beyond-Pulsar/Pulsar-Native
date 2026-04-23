@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TypeInfo {
@@ -39,15 +39,15 @@ pub struct PinStyle {
 
 #[derive(Debug, Clone)]
 pub enum PinIcon {
-    Circle,        // Default for primitives
-    Square,        // Vec
-    Diamond,       // HashMap/HashSet
-    Triangle,      // Arc
-    Hexagon,       // Box
-    HollowCircle,  // Ref/RefMut
-    Star,          // Option
-    Cross,         // Result
-    Rainbow,       // Wildcard
+    Circle,       // Default for primitives
+    Square,       // Vec
+    Diamond,      // HashMap/HashSet
+    Triangle,     // Arc
+    Hexagon,      // Box
+    HollowCircle, // Ref/RefMut
+    Star,         // Option
+    Cross,        // Result
+    Rainbow,      // Wildcard
 }
 
 impl TypeInfo {
@@ -101,11 +101,17 @@ impl TypeInfo {
         }
 
         // Check if the inner type is a wildcard
-        let is_wildcard = remaining == "?" || remaining == "_" || remaining == "T" ||
-                         remaining.len() == 1 && remaining.chars().next().unwrap().is_uppercase();
+        let is_wildcard = remaining == "?"
+            || remaining == "_"
+            || remaining == "T"
+            || remaining.len() == 1 && remaining.chars().next().unwrap().is_uppercase();
 
         Self {
-            base_type: if is_wildcard { "wildcard".to_string() } else { remaining.to_string() },
+            base_type: if is_wildcard {
+                "wildcard".to_string()
+            } else {
+                remaining.to_string()
+            },
             wrappers,
             is_wildcard,
         }
@@ -129,7 +135,12 @@ impl TypeInfo {
     pub fn generate_color(&self) -> PinColor {
         if self.is_wildcard {
             // Rainbow color will be handled specially in rendering
-            return PinColor { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
+            return PinColor {
+                r: 1.0,
+                g: 1.0,
+                b: 1.0,
+                a: 1.0,
+            };
         }
 
         // Create a deterministic hash of the base type
@@ -140,7 +151,7 @@ impl TypeInfo {
         // Convert hash to HSV color space for better distribution
         let hue = (hash % 360) as f32;
         let saturation = 0.7; // Fixed saturation for consistent look
-        let value = 0.8;      // Fixed value for consistent brightness
+        let value = 0.8; // Fixed value for consistent brightness
 
         // Convert HSV to RGB
         let (r, g, b) = Self::hsv_to_rgb(hue, saturation, value);
@@ -279,7 +290,10 @@ mod tests {
         // Nested wrappers
         let complex_type = TypeInfo::parse("Arc<Vec<String>>");
         assert_eq!(complex_type.base_type, "String");
-        assert_eq!(complex_type.wrappers, vec![WrapperType::Arc, WrapperType::Vec]);
+        assert_eq!(
+            complex_type.wrappers,
+            vec![WrapperType::Arc, WrapperType::Vec]
+        );
 
         // Wildcard types
         let wildcard = TypeInfo::parse("?");
@@ -315,17 +329,26 @@ mod tests {
         let color3 = type3.generate_color();
 
         // Same type should generate same color
-        assert_eq!((color1.r, color1.g, color1.b), (color2.r, color2.g, color2.b));
+        assert_eq!(
+            (color1.r, color1.g, color1.b),
+            (color2.r, color2.g, color2.b)
+        );
 
         // Different types should generate different colors
-        assert_ne!((color1.r, color1.g, color1.b), (color3.r, color3.g, color3.b));
+        assert_ne!(
+            (color1.r, color1.g, color1.b),
+            (color3.r, color3.g, color3.b)
+        );
     }
 
     #[test]
     fn test_display() {
         assert_eq!(TypeInfo::parse("i32").to_string(), "i32");
         assert_eq!(TypeInfo::parse("Vec<i32>").to_string(), "Vec<i32>");
-        assert_eq!(TypeInfo::parse("Arc<Vec<String>>").to_string(), "Arc<Vec<String>>");
+        assert_eq!(
+            TypeInfo::parse("Arc<Vec<String>>").to_string(),
+            "Arc<Vec<String>>"
+        );
         assert_eq!(TypeInfo::parse("?").to_string(), "?");
     }
 }

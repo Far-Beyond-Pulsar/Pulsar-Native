@@ -6,16 +6,16 @@
 //! The renderer holds the SAME `Arc<SceneDb>` directly and reads from it
 //! every frame without ever acquiring a lock — transforms are stored as atomics.
 
+use serde::{Deserialize, Serialize};
+use std::fs;
 use std::path::Path;
 use std::sync::Arc;
-use std::fs;
-use serde::{Deserialize, Serialize};
 
 // Re-export the shared types from engine_backend so downstream code
 // that imports from this module still compiles unchanged.
 pub use engine_backend::scene::{
-    ObjectId, ObjectType, LightType, MeshType, Component, ColliderShape,
-    SceneDb, SceneObjectSnapshot,
+    ColliderShape, Component, LightType, MeshType, ObjectId, ObjectType, SceneDb,
+    SceneObjectSnapshot,
 };
 
 // ─── Transform (kept for backwards compat with existing UI code) ──────────────
@@ -42,9 +42,18 @@ impl Transform {
     pub fn new() -> Self {
         Self::default()
     }
-    pub fn with_position(mut self, position: [f32; 3]) -> Self { self.position = position; self }
-    pub fn with_rotation(mut self, rotation: [f32; 3]) -> Self { self.rotation = rotation; self }
-    pub fn with_scale(mut self, scale: [f32; 3]) -> Self { self.scale = scale; self }
+    pub fn with_position(mut self, position: [f32; 3]) -> Self {
+        self.position = position;
+        self
+    }
+    pub fn with_rotation(mut self, rotation: [f32; 3]) -> Self {
+        self.rotation = rotation;
+        self
+    }
+    pub fn with_scale(mut self, scale: [f32; 3]) -> Self {
+        self.scale = scale;
+        self
+    }
 }
 
 // ─── SceneObjectData (backwards-compat UI representation) ────────────────────
@@ -116,10 +125,21 @@ struct UndoHistory {
 
 #[derive(Clone, Debug)]
 enum SceneCommand {
-    AddObject { object: SceneObjectData },
-    RemoveObject { object: SceneObjectData },
-    ModifyObject { old: SceneObjectData, new: SceneObjectData },
-    ModifyTransform { object_id: ObjectId, old: Transform, new: Transform },
+    AddObject {
+        object: SceneObjectData,
+    },
+    RemoveObject {
+        object: SceneObjectData,
+    },
+    ModifyObject {
+        old: SceneObjectData,
+        new: SceneObjectData,
+    },
+    ModifyTransform {
+        object_id: ObjectId,
+        old: Transform,
+        new: Transform,
+    },
 }
 
 // ─── SceneDatabase ────────────────────────────────────────────────────────────
@@ -169,64 +189,242 @@ impl SceneDatabase {
     }
 
     fn populate_default_scene(&self) {
-        let mk = |id: &str, name: &str, ot: ObjectType, pos: [f32;3], rot: [f32;3], scale: [f32;3], comps: Vec<Component>| {
+        let mk = |id: &str,
+                  name: &str,
+                  ot: ObjectType,
+                  pos: [f32; 3],
+                  rot: [f32; 3],
+                  scale: [f32; 3],
+                  comps: Vec<Component>| {
             SceneObjectData {
-                id: id.to_string(), name: name.to_string(), object_type: ot,
-                transform: Transform { position: pos, rotation: rot, scale },
-                parent: None, children: Vec::new(), visible: true, locked: false, components: comps,
+                id: id.to_string(),
+                name: name.to_string(),
+                object_type: ot,
+                transform: Transform {
+                    position: pos,
+                    rotation: rot,
+                    scale,
+                },
+                parent: None,
+                children: Vec::new(),
+                visible: true,
+                locked: false,
+                components: comps,
                 scene_path: String::new(), // auto-computed by SceneDb::add_object
             }
         };
 
         // Root objects
-        self.add_object(mk("main_camera",     "Main Camera",      ObjectType::Camera,
-            [-3.0, 3.0, 6.0], [0.0;3], [1.0;3], vec![]), None);
-        self.add_object(mk("directional_light","Directional Light",ObjectType::Light(LightType::Directional),
-            [4.0, 8.0, 4.0], [-45.0, 45.0, 0.0], [1.0;3], vec![]), None);
+        self.add_object(
+            mk(
+                "main_camera",
+                "Main Camera",
+                ObjectType::Camera,
+                [-3.0, 3.0, 6.0],
+                [0.0; 3],
+                [1.0; 3],
+                vec![],
+            ),
+            None,
+        );
+        self.add_object(
+            mk(
+                "directional_light",
+                "Directional Light",
+                ObjectType::Light(LightType::Directional),
+                [4.0, 8.0, 4.0],
+                [-45.0, 45.0, 0.0],
+                [1.0; 3],
+                vec![],
+            ),
+            None,
+        );
 
         // Geometry folder
-        self.add_object(mk("geometry_folder", "Geometry", ObjectType::Folder,
-            [0.0;3], [0.0;3], [1.0;3], vec![]), None);
-        self.add_object(mk("cube_red", "Red Cube", ObjectType::Mesh(MeshType::Cube),
-            [-2.0, 1.0, 0.0], [0.0;3], [2.0;3],
-            vec![Component::Material { id: "red_metal".into(), color: [0.9,0.2,0.2,1.0], metallic: 0.8, roughness: 0.3 }]),
-            Some("geometry_folder".into()));
+        self.add_object(
+            mk(
+                "geometry_folder",
+                "Geometry",
+                ObjectType::Folder,
+                [0.0; 3],
+                [0.0; 3],
+                [1.0; 3],
+                vec![],
+            ),
+            None,
+        );
+        self.add_object(
+            mk(
+                "cube_red",
+                "Red Cube",
+                ObjectType::Mesh(MeshType::Cube),
+                [-2.0, 1.0, 0.0],
+                [0.0; 3],
+                [2.0; 3],
+                vec![Component::Material {
+                    id: "red_metal".into(),
+                    color: [0.9, 0.2, 0.2, 1.0],
+                    metallic: 0.8,
+                    roughness: 0.3,
+                }],
+            ),
+            Some("geometry_folder".into()),
+        );
 
         // Spheres sub-folder
-        self.add_object(mk("spheres_folder", "Spheres", ObjectType::Folder,
-            [0.0;3], [0.0;3], [1.0;3], vec![]), Some("geometry_folder".into()));
-        self.add_object(mk("sphere_blue", "Blue Sphere", ObjectType::Mesh(MeshType::Sphere),
-            [2.0, 1.0, 0.0], [0.0;3], [1.0;3],
-            vec![Component::Material { id: "blue_metal".into(), color: [0.2,0.5,0.9,1.0], metallic: 0.9, roughness: 0.1 }]),
-            Some("spheres_folder".into()));
-        self.add_object(mk("sphere_gold", "Gold Sphere", ObjectType::Mesh(MeshType::Sphere),
-            [0.0, 3.0, 0.0], [0.0;3], [1.0;3],
-            vec![Component::Material { id: "gold_metal".into(), color: [1.0,0.843,0.0,1.0], metallic: 0.95, roughness: 0.2 }]),
-            Some("spheres_folder".into()));
-        self.add_object(mk("sphere_green", "Green Sphere", ObjectType::Mesh(MeshType::Sphere),
-            [4.0, 1.5, 2.0], [0.0;3], [0.8;3],
-            vec![Component::Material { id: "green_metal".into(), color: [0.2,0.8,0.3,1.0], metallic: 0.7, roughness: 0.4 }]),
-            Some("spheres_folder".into()));
+        self.add_object(
+            mk(
+                "spheres_folder",
+                "Spheres",
+                ObjectType::Folder,
+                [0.0; 3],
+                [0.0; 3],
+                [1.0; 3],
+                vec![],
+            ),
+            Some("geometry_folder".into()),
+        );
+        self.add_object(
+            mk(
+                "sphere_blue",
+                "Blue Sphere",
+                ObjectType::Mesh(MeshType::Sphere),
+                [2.0, 1.0, 0.0],
+                [0.0; 3],
+                [1.0; 3],
+                vec![Component::Material {
+                    id: "blue_metal".into(),
+                    color: [0.2, 0.5, 0.9, 1.0],
+                    metallic: 0.9,
+                    roughness: 0.1,
+                }],
+            ),
+            Some("spheres_folder".into()),
+        );
+        self.add_object(
+            mk(
+                "sphere_gold",
+                "Gold Sphere",
+                ObjectType::Mesh(MeshType::Sphere),
+                [0.0, 3.0, 0.0],
+                [0.0; 3],
+                [1.0; 3],
+                vec![Component::Material {
+                    id: "gold_metal".into(),
+                    color: [1.0, 0.843, 0.0, 1.0],
+                    metallic: 0.95,
+                    roughness: 0.2,
+                }],
+            ),
+            Some("spheres_folder".into()),
+        );
+        self.add_object(
+            mk(
+                "sphere_green",
+                "Green Sphere",
+                ObjectType::Mesh(MeshType::Sphere),
+                [4.0, 1.5, 2.0],
+                [0.0; 3],
+                [0.8; 3],
+                vec![Component::Material {
+                    id: "green_metal".into(),
+                    color: [0.2, 0.8, 0.3, 1.0],
+                    metallic: 0.7,
+                    roughness: 0.4,
+                }],
+            ),
+            Some("spheres_folder".into()),
+        );
 
         // Lights folder
-        self.add_object(mk("lights_folder", "Lights", ObjectType::Folder,
-            [0.0;3], [0.0;3], [1.0;3], vec![]), None);
-        self.add_object(mk("point_light_1", "Point Light", ObjectType::Light(LightType::Point),
-            [0.0, 5.0, 0.0], [0.0;3], [1.0;3], vec![]), Some("lights_folder".into()));
-        self.add_object(mk("spot_light_1", "Spot Light", ObjectType::Light(LightType::Spot),
-            [-5.0, 6.0, 3.0], [-30.0, 45.0, 0.0], [1.0;3], vec![]), Some("lights_folder".into()));
+        self.add_object(
+            mk(
+                "lights_folder",
+                "Lights",
+                ObjectType::Folder,
+                [0.0; 3],
+                [0.0; 3],
+                [1.0; 3],
+                vec![],
+            ),
+            None,
+        );
+        self.add_object(
+            mk(
+                "point_light_1",
+                "Point Light",
+                ObjectType::Light(LightType::Point),
+                [0.0, 5.0, 0.0],
+                [0.0; 3],
+                [1.0; 3],
+                vec![],
+            ),
+            Some("lights_folder".into()),
+        );
+        self.add_object(
+            mk(
+                "spot_light_1",
+                "Spot Light",
+                ObjectType::Light(LightType::Spot),
+                [-5.0, 6.0, 3.0],
+                [-30.0, 45.0, 0.0],
+                [1.0; 3],
+                vec![],
+            ),
+            Some("lights_folder".into()),
+        );
 
         // Audio folder
-        self.add_object(mk("audio_folder", "Audio", ObjectType::Folder,
-            [0.0;3], [0.0;3], [1.0;3], vec![]), None);
-        self.add_object(mk("ambient_audio", "Ambient Sound", ObjectType::AudioSource,
-            [0.0, 2.0, 0.0], [0.0;3], [1.0;3], vec![]), Some("audio_folder".into()));
+        self.add_object(
+            mk(
+                "audio_folder",
+                "Audio",
+                ObjectType::Folder,
+                [0.0; 3],
+                [0.0; 3],
+                [1.0; 3],
+                vec![],
+            ),
+            None,
+        );
+        self.add_object(
+            mk(
+                "ambient_audio",
+                "Ambient Sound",
+                ObjectType::AudioSource,
+                [0.0, 2.0, 0.0],
+                [0.0; 3],
+                [1.0; 3],
+                vec![],
+            ),
+            Some("audio_folder".into()),
+        );
 
         // Effects folder
-        self.add_object(mk("effects_folder", "Effects", ObjectType::Folder,
-            [0.0;3], [0.0;3], [1.0;3], vec![]), None);
-        self.add_object(mk("particles_fire", "Fire Particles", ObjectType::ParticleSystem,
-            [3.0, 0.5, -2.0], [0.0;3], [1.0;3], vec![]), Some("effects_folder".into()));
+        self.add_object(
+            mk(
+                "effects_folder",
+                "Effects",
+                ObjectType::Folder,
+                [0.0; 3],
+                [0.0; 3],
+                [1.0; 3],
+                vec![],
+            ),
+            None,
+        );
+        self.add_object(
+            mk(
+                "particles_fire",
+                "Fire Particles",
+                ObjectType::ParticleSystem,
+                [3.0, 0.5, -2.0],
+                [0.0; 3],
+                [1.0; 3],
+                vec![],
+            ),
+            Some("effects_folder".into()),
+        );
     }
 
     // ── Object creation / deletion ────────────────────────────────────────
@@ -238,7 +436,9 @@ impl SceneDatabase {
         let mut h = self.history.lock();
         h.undo_stack.push(SceneCommand::AddObject { object });
         h.redo_stack.clear();
-        if h.undo_stack.len() > h.max_history { h.undo_stack.remove(0); }
+        if h.undo_stack.len() > h.max_history {
+            h.undo_stack.remove(0);
+        }
         drop(h);
 
         self.db.add_object(snap, parent_id)
@@ -266,12 +466,20 @@ impl SceneDatabase {
     }
 
     pub fn get_root_objects(&self) -> Vec<SceneObjectData> {
-        self.db.get_root_snapshots().into_iter().map(snapshot_to_data).collect()
+        self.db
+            .get_root_snapshots()
+            .into_iter()
+            .map(snapshot_to_data)
+            .collect()
     }
 
     pub fn get_all_objects(&self) -> Vec<SceneObjectData> {
         // DFS order so parents always precede children (important for save/load).
-        self.db.get_all_snapshots().into_iter().map(snapshot_to_data).collect()
+        self.db
+            .get_all_snapshots()
+            .into_iter()
+            .map(snapshot_to_data)
+            .collect()
     }
 
     /// Return the ordered child ids of `parent_id`, or root ids if `None`.
@@ -306,7 +514,9 @@ impl SceneDatabase {
             if ok {
                 let mut h = self.history.lock();
                 h.undo_stack.push(SceneCommand::ModifyTransform {
-                    object_id: id.clone(), old, new: t,
+                    object_id: id.clone(),
+                    old,
+                    new: t,
                 });
                 h.redo_stack.clear();
             }
@@ -322,7 +532,12 @@ impl SceneDatabase {
             let old = snapshot_to_data(old_snap);
             // Apply atomic hot-path updates
             let id = &object.id;
-            self.db.apply_transform(id, object.transform.position, object.transform.rotation, object.transform.scale);
+            self.db.apply_transform(
+                id,
+                object.transform.position,
+                object.transform.rotation,
+                object.transform.scale,
+            );
             self.db.set_visible(id, object.visible);
             self.db.set_locked(id, object.locked);
             // Apply cold updates
@@ -333,7 +548,8 @@ impl SceneDatabase {
                 meta.components = object.components.clone();
             }
             let mut h = self.history.lock();
-            h.undo_stack.push(SceneCommand::ModifyObject { old, new: object });
+            h.undo_stack
+                .push(SceneCommand::ModifyObject { old, new: object });
             h.redo_stack.clear();
             true
         } else {
@@ -380,13 +596,19 @@ impl SceneDatabase {
                 SceneCommand::ModifyObject { old, .. } => {
                     drop(h);
                     let id = old.id.clone();
-                    self.db.apply_transform(&id, old.transform.position, old.transform.rotation, old.transform.scale);
+                    self.db.apply_transform(
+                        &id,
+                        old.transform.position,
+                        old.transform.rotation,
+                        old.transform.scale,
+                    );
                     self.db.set_visible(&id, old.visible);
                     self.db.set_name(&id, old.name);
                 }
                 SceneCommand::ModifyTransform { object_id, old, .. } => {
                     drop(h);
-                    self.db.apply_transform(&object_id, old.position, old.rotation, old.scale);
+                    self.db
+                        .apply_transform(&object_id, old.position, old.rotation, old.scale);
                 }
             }
             // Push to redo — need to re-lock
@@ -415,13 +637,19 @@ impl SceneDatabase {
                 SceneCommand::ModifyObject { new, .. } => {
                     drop(h);
                     let id = new.id.clone();
-                    self.db.apply_transform(&id, new.transform.position, new.transform.rotation, new.transform.scale);
+                    self.db.apply_transform(
+                        &id,
+                        new.transform.position,
+                        new.transform.rotation,
+                        new.transform.scale,
+                    );
                     self.db.set_visible(&id, new.visible);
                     self.db.set_name(&id, new.name);
                 }
                 SceneCommand::ModifyTransform { object_id, new, .. } => {
                     drop(h);
-                    self.db.apply_transform(&object_id, new.position, new.rotation, new.scale);
+                    self.db
+                        .apply_transform(&object_id, new.position, new.rotation, new.scale);
                 }
             }
             let mut h = self.history.lock();
@@ -457,22 +685,24 @@ impl SceneDatabase {
                 editor_version: "0.1.0".into(),
             },
         };
-        let json = serde_json::to_string_pretty(&scene_file).map_err(|e| format!("serialize: {e}"))?;
+        let json =
+            serde_json::to_string_pretty(&scene_file).map_err(|e| format!("serialize: {e}"))?;
         fs::write(&path, json).map_err(|e| format!("write: {e}"))?;
-                Ok(())
+        Ok(())
     }
 
     /// Load scene from JSON, clearing current content first.
     pub fn load_from_file<P: AsRef<Path>>(&self, path: P) -> Result<(), String> {
         let json = fs::read_to_string(&path).map_err(|e| format!("read: {e}"))?;
-        let scene_file: SceneFile = serde_json::from_str(&json).map_err(|e| format!("parse: {e}"))?;
+        let scene_file: SceneFile =
+            serde_json::from_str(&json).map_err(|e| format!("parse: {e}"))?;
         self.clear();
         for obj in scene_file.objects {
             let parent = obj.parent.clone();
             let snap = obj.into_snapshot();
             self.db.add_object(snap, parent);
         }
-                Ok(())
+        Ok(())
     }
 }
 

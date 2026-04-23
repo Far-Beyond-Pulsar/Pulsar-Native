@@ -7,8 +7,8 @@
 
 use std::sync::{Arc, Mutex};
 
-use gpui::*;
 use engine_backend::services::gpu_renderer::GpuRenderer;
+use gpui::*;
 
 /// A GPUI component that drives the Helio renderer into a `WgpuSurfaceHandle`.
 pub struct HelioViewport {

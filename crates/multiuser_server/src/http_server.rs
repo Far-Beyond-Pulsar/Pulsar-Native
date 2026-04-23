@@ -74,10 +74,7 @@ impl IntoResponse for ErrorResponse {
     }
 }
 
-pub async fn run_server(
-    config: Arc<Config>,
-    shutdown: mpsc::Receiver<()>,
-) -> Result<()> {
+pub async fn run_server(config: Arc<Config>, shutdown: mpsc::Receiver<()>) -> Result<()> {
     let bind_addr = config.http_bind;
 
     // Initialize services
@@ -127,7 +124,7 @@ fn create_router(state: AppState) -> Router {
         .route("/v1/sessions/:id", get(get_session))
         // WebSocket signaling
         .route("/v1/signaling", get(websocket_handler))
-        .route("/ws", get(websocket_handler))  // Simple /ws endpoint for client compatibility
+        .route("/ws", get(websocket_handler)) // Simple /ws endpoint for client compatibility
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(state)
@@ -176,8 +173,11 @@ async fn create_session(
     State(state): State<AppState>,
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<Json<CreateSessionResponse>, ErrorResponse> {
-    info!("📝 Received create_session request from host: {}", req.host_id);
-    
+    info!(
+        "📝 Received create_session request from host: {}",
+        req.host_id
+    );
+
     let metadata = req.metadata.unwrap_or_else(|| serde_json::json!({}));
     info!("📋 Session metadata: {:?}", metadata);
 
@@ -199,11 +199,7 @@ async fn create_session(
     info!("🔑 Generating join token for session: {}", session.id);
     let join_token = state
         .auth
-        .create_join_token(
-            session.id.clone(),
-            Role::Host,
-            Duration::from_secs(3600),
-        )
+        .create_join_token(session.id.clone(), Role::Host, Duration::from_secs(3600))
         .map_err(|e| {
             error!("❌ Token generation failed: {}", e);
             ErrorResponse {
@@ -227,14 +223,15 @@ async fn join_session(
     Path(session_id): Path<String>,
     Json(req): Json<JoinSessionRequest>,
 ) -> Result<Json<JoinSessionResponse>, ErrorResponse> {
-    info!("👥 Received join_session request - Session: {}, Peer: {}", session_id, req.peer_id);
-    
+    info!(
+        "👥 Received join_session request - Session: {}, Peer: {}",
+        session_id, req.peer_id
+    );
+
     // Verify join token
     info!("🔐 Verifying join token...");
-    let (verified_session_id, role) = state
-        .auth
-        .verify_join_token(&req.join_token)
-        .map_err(|e| {
+    let (verified_session_id, role) =
+        state.auth.verify_join_token(&req.join_token).map_err(|e| {
             error!("❌ Token verification failed: {}", e);
             ErrorResponse {
                 error: "invalid_token".to_string(),
@@ -242,10 +239,16 @@ async fn join_session(
             }
         })?;
 
-    info!("✅ Token verified - Session: {}, Role: {:?}", verified_session_id, role);
+    info!(
+        "✅ Token verified - Session: {}, Role: {:?}",
+        verified_session_id, role
+    );
 
     if verified_session_id != session_id {
-        error!("❌ Session ID mismatch - Token: {}, Requested: {}", verified_session_id, session_id);
+        error!(
+            "❌ Session ID mismatch - Token: {}, Requested: {}",
+            verified_session_id, session_id
+        );
         return Err(ErrorResponse {
             error: "session_mismatch".to_string(),
             message: "Token session ID does not match".to_string(),
@@ -265,7 +268,12 @@ async fn join_session(
             }
         })?;
 
-    info!("✅ Peer {} joined session {} - Total participants: {}", req.peer_id, session_id, session.participants.len());
+    info!(
+        "✅ Peer {} joined session {} - Total participants: {}",
+        req.peer_id,
+        session_id,
+        session.participants.len()
+    );
 
     Ok(Json(JoinSessionResponse {
         session_id: session.id,
@@ -312,7 +320,6 @@ async fn websocket_handler(
     // Delegate to the rendezvous coordinator
     RendezvousCoordinator::handle_websocket(State(state.rendezvous.clone()), ws).await
 }
-
 
 async fn shutdown_signal(mut shutdown: mpsc::Receiver<()>) {
     shutdown.recv().await;

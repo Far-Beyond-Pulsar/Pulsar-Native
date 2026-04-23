@@ -1,8 +1,7 @@
 use anyhow::Result;
 use once_cell::sync::Lazy;
 use prometheus::{
-    CounterVec, Encoder, Gauge, GaugeVec, HistogramOpts, HistogramVec, Opts, Registry,
-    TextEncoder,
+    CounterVec, Encoder, Gauge, GaugeVec, HistogramOpts, HistogramVec, Opts, Registry, TextEncoder,
 };
 use std::sync::Arc;
 
@@ -56,11 +55,16 @@ impl Metrics {
     pub fn new() -> Result<Self, prometheus::Error> {
         let registry = Registry::new();
 
-        let sessions_total =
-            CounterVec::new(Opts::new("pulsar_sessions_total", "Total number of sessions created"), &["host_id"])?;
+        let sessions_total = CounterVec::new(
+            Opts::new("pulsar_sessions_total", "Total number of sessions created"),
+            &["host_id"],
+        )?;
         registry.register(Box::new(sessions_total.clone()))?;
 
-        let sessions_active = Gauge::new("pulsar_sessions_active", "Number of currently active sessions")?;
+        let sessions_active = Gauge::new(
+            "pulsar_sessions_active",
+            "Number of currently active sessions",
+        )?;
         registry.register(Box::new(sessions_active.clone()))?;
 
         let sessions_closed = CounterVec::new(
@@ -70,19 +74,27 @@ impl Metrics {
         registry.register(Box::new(sessions_closed.clone()))?;
 
         let connections_total = CounterVec::new(
-            Opts::new("pulsar_connections_total", "Total number of connection attempts"),
+            Opts::new(
+                "pulsar_connections_total",
+                "Total number of connection attempts",
+            ),
             &["proto", "type"],
         )?;
         registry.register(Box::new(connections_total.clone()))?;
 
         let connection_failures = CounterVec::new(
-            Opts::new("pulsar_connection_failures_total", "Total number of connection failures"),
+            Opts::new(
+                "pulsar_connection_failures_total",
+                "Total number of connection failures",
+            ),
             &["proto", "reason"],
         )?;
         registry.register(Box::new(connection_failures.clone()))?;
 
-        let p2p_success_ratio =
-            Gauge::new("pulsar_p2p_success_ratio", "Ratio of successful P2P connections")?;
+        let p2p_success_ratio = Gauge::new(
+            "pulsar_p2p_success_ratio",
+            "Ratio of successful P2P connections",
+        )?;
         registry.register(Box::new(p2p_success_ratio.clone()))?;
 
         let relay_bytes_total = CounterVec::new(
@@ -91,8 +103,10 @@ impl Metrics {
         )?;
         registry.register(Box::new(relay_bytes_total.clone()))?;
 
-        let relay_connections_active =
-            Gauge::new("pulsar_relay_connections_active", "Number of active relay connections")?;
+        let relay_connections_active = Gauge::new(
+            "pulsar_relay_connections_active",
+            "Number of active relay connections",
+        )?;
         registry.register(Box::new(relay_connections_active.clone()))?;
 
         let relay_bandwidth_usage = GaugeVec::new(
@@ -105,20 +119,29 @@ impl Metrics {
         registry.register(Box::new(relay_bandwidth_usage.clone()))?;
 
         let hole_punch_attempts = CounterVec::new(
-            Opts::new("pulsar_hole_punch_attempts_total", "Total number of hole punch attempts"),
+            Opts::new(
+                "pulsar_hole_punch_attempts_total",
+                "Total number of hole punch attempts",
+            ),
             &["nat_type"],
         )?;
         registry.register(Box::new(hole_punch_attempts.clone()))?;
 
         let hole_punch_success = CounterVec::new(
-            Opts::new("pulsar_hole_punch_success_total", "Total number of successful hole punches"),
+            Opts::new(
+                "pulsar_hole_punch_success_total",
+                "Total number of successful hole punches",
+            ),
             &["nat_type"],
         )?;
         registry.register(Box::new(hole_punch_success.clone()))?;
 
         let hole_punch_duration = HistogramVec::new(
-            HistogramOpts::new("pulsar_hole_punch_duration_seconds", "Time taken for hole punching")
-                .buckets(vec![0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0]),
+            HistogramOpts::new(
+                "pulsar_hole_punch_duration_seconds",
+                "Time taken for hole punching",
+            )
+            .buckets(vec![0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0]),
             &["nat_type"],
         )?;
         registry.register(Box::new(hole_punch_duration.clone()))?;
@@ -130,14 +153,20 @@ impl Metrics {
         registry.register(Box::new(nat_type_detected.clone()))?;
 
         let signaling_messages = CounterVec::new(
-            Opts::new("pulsar_signaling_messages_total", "Total signaling messages processed"),
+            Opts::new(
+                "pulsar_signaling_messages_total",
+                "Total signaling messages processed",
+            ),
             &["message_type"],
         )?;
         registry.register(Box::new(signaling_messages.clone()))?;
 
         let rendezvous_latency = HistogramVec::new(
-            HistogramOpts::new("pulsar_rendezvous_latency_seconds", "Rendezvous message latency")
-                .buckets(vec![0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]),
+            HistogramOpts::new(
+                "pulsar_rendezvous_latency_seconds",
+                "Rendezvous message latency",
+            )
+            .buckets(vec![0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]),
             &["operation"],
         )?;
         registry.register(Box::new(rendezvous_latency.clone()))?;
@@ -149,8 +178,11 @@ impl Metrics {
         registry.register(Box::new(http_requests.clone()))?;
 
         let http_request_duration = HistogramVec::new(
-            HistogramOpts::new("pulsar_http_request_duration_seconds", "HTTP request duration")
-                .buckets(vec![0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0]),
+            HistogramOpts::new(
+                "pulsar_http_request_duration_seconds",
+                "HTTP request duration",
+            )
+            .buckets(vec![0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0]),
             &["method", "path"],
         )?;
         registry.register(Box::new(http_request_duration.clone()))?;

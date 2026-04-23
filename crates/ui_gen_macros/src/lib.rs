@@ -6,7 +6,7 @@
 use darling::FromField;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, Data, Fields, Type};
+use syn::{Data, DeriveInput, Fields, Type, parse_macro_input};
 
 // ─── CompositeField Derive Macro ─────────────────────────────────────────────
 
@@ -16,10 +16,10 @@ use syn::{parse_macro_input, DeriveInput, Data, Fields, Type};
 struct FieldAttrs {
     ident: Option<syn::Ident>,
     ty: syn::Type,
-    
+
     #[darling(default)]
     label: Option<String>,
-    
+
     #[darling(default)]
     color: Option<String>,
 }
@@ -42,7 +42,7 @@ struct FieldAttrs {
 pub fn derive_composite_field(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
-    
+
     let fields = match &input.data {
         Data::Struct(data) => match &data.fields {
             Fields::Named(fields) => &fields.named,
@@ -50,7 +50,7 @@ pub fn derive_composite_field(input: TokenStream) -> TokenStream {
         },
         _ => panic!("CompositeField can only be derived for structs"),
     };
-    
+
     let mut get_f32_arms = vec![];
     let mut set_f32_arms = vec![];
     let mut get_bool_arms = vec![];
@@ -58,7 +58,7 @@ pub fn derive_composite_field(input: TokenStream) -> TokenStream {
     let mut get_string_arms = vec![];
     let mut set_string_arms = vec![];
     let mut descriptors = vec![];
-    
+
     for field in fields {
         let field_attrs = match FieldAttrs::from_field(field) {
             Ok(attrs) => attrs,
@@ -66,11 +66,11 @@ pub fn derive_composite_field(input: TokenStream) -> TokenStream {
                 return TokenStream::from(e.write_errors());
             }
         };
-        
+
         let field_name = field_attrs.ident.as_ref().unwrap();
         let field_name_str = field_name.to_string();
         let field_type = &field_attrs.ty;
-        
+
         // Determine label (default to capitalized field name)
         let label = field_attrs.label.unwrap_or_else(|| {
             let name = field_name_str.clone();
@@ -80,7 +80,7 @@ pub fn derive_composite_field(input: TokenStream) -> TokenStream {
                 Some(f) => f.to_uppercase().chain(c).collect(),
             }
         });
-        
+
         // Parse color hint
         let color_hint = if let Some(color_str) = field_attrs.color {
             match color_str.as_str() {
@@ -92,10 +92,10 @@ pub fn derive_composite_field(input: TokenStream) -> TokenStream {
         } else {
             quote! { None }
         };
-        
+
         // Check field type and generate appropriate accessor
         let type_str = quote!(#field_type).to_string();
-        
+
         if type_str.contains("f32") {
             get_f32_arms.push(quote! {
                 #field_name_str => Some(self.#field_name),
@@ -131,20 +131,20 @@ pub fn derive_composite_field(input: TokenStream) -> TokenStream {
             });
         }
     }
-    
+
     let expanded = quote! {
         impl crate::FieldRenderer for #name {
             fn type_name(&self) -> &'static str {
                 stringify!(#name)
             }
-            
+
             fn representation(&self) -> crate::FieldRepresentation {
                 crate::FieldRepresentation::Composite(vec![
                     #(#descriptors),*
                 ])
             }
         }
-        
+
         impl crate::CompositeField for #name {
             fn get_field_f32(&self, field_name: &str) -> Option<f32> {
                 match field_name {
@@ -152,35 +152,35 @@ pub fn derive_composite_field(input: TokenStream) -> TokenStream {
                     _ => None,
                 }
             }
-            
+
             fn set_field_f32(&mut self, field_name: &str, value: f32) {
                 match field_name {
                     #(#set_f32_arms)*
                     _ => {},
                 }
             }
-            
+
             fn get_field_bool(&self, field_name: &str) -> Option<bool> {
                 match field_name {
                     #(#get_bool_arms)*
                     _ => None,
                 }
             }
-            
+
             fn set_field_bool(&mut self, field_name: &str, value: bool) {
                 match field_name {
                     #(#set_bool_arms)*
                     _ => {},
                 }
             }
-            
+
             fn get_field_string(&self, field_name: &str) -> Option<String> {
                 match field_name {
                     #(#get_string_arms)*
                     _ => None,
                 }
             }
-            
+
             fn set_field_string(&mut self, field_name: &str, value: String) {
                 match field_name {
                     #(#set_string_arms)*
@@ -189,7 +189,7 @@ pub fn derive_composite_field(input: TokenStream) -> TokenStream {
             }
         }
     };
-    
+
     TokenStream::from(expanded)
 }
 
@@ -226,17 +226,17 @@ pub fn derive_composite_field(input: TokenStream) -> TokenStream {
 pub fn generate_field_metadata(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as DeriveInput);
     let enum_name = &input.ident;
-    
+
     let variants = match &input.data {
         Data::Enum(data_enum) => &data_enum.variants,
         _ => panic!("generate_field_metadata can only be used on enums"),
     };
-    
+
     let mut variant_match_arms = vec![];
-    
+
     for variant in variants {
         let variant_name = &variant.ident;
-        
+
         let fields = match &variant.fields {
             Fields::Named(fields) => &fields.named,
             _ => {
@@ -247,35 +247,35 @@ pub fn generate_field_metadata(_attr: TokenStream, item: TokenStream) -> TokenSt
                 continue;
             }
         };
-        
+
         let mut field_info = vec![];
-        
+
         for field in fields {
             let field_name = field.ident.as_ref().unwrap();
             let field_name_str = field_name.to_string();
             let field_ty = &field.ty;
-            
+
             let type_info = rust_type_to_type_info(field_ty);
-            
+
             field_info.push(quote! {
                 (#field_name_str, #type_info)
             });
         }
-        
+
         variant_match_arms.push(quote! {
             Self::#variant_name { .. } => vec![
                 #(#field_info),*
             ],
         });
     }
-    
+
     // Collect variant names for the variant_name method
     let variant_names_for_method: Vec<_> = variants.iter().map(|v| &v.ident).collect();
-    
+
     // Generate the original enum + new method
     let expanded = quote! {
         #input
-        
+
         impl #enum_name {
             /// Get field metadata for this component variant
             /// Returns Vec<(field_name, field_type_info)>
@@ -284,7 +284,7 @@ pub fn generate_field_metadata(_attr: TokenStream, item: TokenStream) -> TokenSt
                     #(#variant_match_arms)*
                 }
             }
-            
+
             /// Get variant name as string
             pub fn variant_name(&self) -> &'static str {
                 match self {
@@ -293,7 +293,7 @@ pub fn generate_field_metadata(_attr: TokenStream, item: TokenStream) -> TokenSt
             }
         }
     };
-    
+
     TokenStream::from(expanded)
 }
 
@@ -302,7 +302,7 @@ fn rust_type_to_type_info(ty: &Type) -> proc_macro2::TokenStream {
     match ty {
         Type::Path(type_path) => {
             let type_name = &type_path.path.segments.last().unwrap().ident.to_string();
-            
+
             match type_name.as_str() {
                 "f32" => quote! { FieldTypeInfo::F32 },
                 "f64" => quote! { FieldTypeInfo::F64 },
@@ -314,7 +314,7 @@ fn rust_type_to_type_info(ty: &Type) -> proc_macro2::TokenStream {
                 "String" => quote! { FieldTypeInfo::String },
                 _ => quote! { FieldTypeInfo::Other(stringify!(#type_name)) },
             }
-        },
+        }
         Type::Array(type_array) => {
             // Check if it's [f32; 3] or [f32; 4]
             if let Type::Path(elem_path) = &*type_array.elem {
@@ -330,10 +330,7 @@ fn rust_type_to_type_info(ty: &Type) -> proc_macro2::TokenStream {
                 }
             }
             quote! { FieldTypeInfo::Other("Array") }
-        },
+        }
         _ => quote! { FieldTypeInfo::Other("Unknown") },
     }
 }
-
-
-

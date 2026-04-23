@@ -2,11 +2,11 @@
 //!
 //! Parses command-line arguments and pulsar:// URIs into structured commands
 
+use super::commands::UriCommand;
+use anyhow::{Context, Result};
 use std::env;
 use std::path::PathBuf;
-use anyhow::{Context, Result};
 use urlencoding::decode;
-use super::commands::UriCommand;
 
 /// Parse command-line arguments for URI launch
 ///
@@ -48,20 +48,23 @@ pub fn parse_uri(uri: &str) -> Result<UriCommand> {
     }
 
     // Extract command and path: pulsar://open_project/path
-    let without_scheme = uri.strip_prefix("pulsar://")
+    let without_scheme = uri
+        .strip_prefix("pulsar://")
         .context("Invalid URI format")?;
 
     let parts: Vec<&str> = without_scheme.splitn(2, '/').collect();
     if parts.len() != 2 {
-        anyhow::bail!("Invalid URI format: expected pulsar://command/path, got '{}'", uri);
+        anyhow::bail!(
+            "Invalid URI format: expected pulsar://command/path, got '{}'",
+            uri
+        );
     }
 
     let command = parts[0];
     let encoded_path = parts[1];
 
     // Decode URL-encoded path
-    let decoded = decode(encoded_path)
-        .context("Failed to decode URI path")?;
+    let decoded = decode(encoded_path).context("Failed to decode URI path")?;
     let path = PathBuf::from(decoded.to_string());
 
     match command {
@@ -73,7 +76,10 @@ pub fn parse_uri(uri: &str) -> Result<UriCommand> {
 
             // Validate Pulsar.toml exists
             if !path.join("Pulsar.toml").exists() {
-                anyhow::bail!("Not a valid Pulsar project (missing Pulsar.toml): {:?}", path);
+                anyhow::bail!(
+                    "Not a valid Pulsar project (missing Pulsar.toml): {:?}",
+                    path
+                );
             }
 
             Ok(UriCommand::OpenProject { path })
@@ -93,7 +99,10 @@ mod tests {
         let uri = "http://example.com";
         let result = parse_uri(uri);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid URI scheme"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid URI scheme"));
     }
 
     #[test]
@@ -101,7 +110,10 @@ mod tests {
         let uri = "pulsar://invalid";
         let result = parse_uri(uri);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid URI format"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid URI format"));
     }
 
     #[test]
@@ -109,7 +121,10 @@ mod tests {
         let uri = "pulsar://unknown_command/path";
         let result = parse_uri(uri);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Unknown URI command"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unknown URI command"));
     }
 
     #[test]
@@ -159,6 +174,9 @@ mod tests {
         // Parse the URI - should fail
         let result = parse_uri(&uri);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("missing Pulsar.toml"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("missing Pulsar.toml"));
     }
 }

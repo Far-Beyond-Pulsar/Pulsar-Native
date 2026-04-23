@@ -1,7 +1,7 @@
-use std::{path::PathBuf, sync::Arc};
 use anyhow::{Context as _, Result};
 use chrono::Utc;
 use parking_lot::RwLock;
+use std::{path::PathBuf, sync::Arc};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
@@ -42,8 +42,7 @@ impl ProjectManager {
         let mut projects: Vec<ProjectRecord> = if path.exists() {
             let raw = std::fs::read_to_string(&path)
                 .with_context(|| format!("reading {}", path.display()))?;
-            serde_json::from_str(&raw)
-                .with_context(|| format!("parsing {}", path.display()))?
+            serde_json::from_str(&raw).with_context(|| format!("parsing {}", path.display()))?
         } else {
             Vec::new()
         };
@@ -68,7 +67,12 @@ impl ProjectManager {
     }
 
     pub fn get(&self, id: &str) -> Option<ProjectRecord> {
-        self.inner.read().projects.iter().find(|p| p.id == id).cloned()
+        self.inner
+            .read()
+            .projects
+            .iter()
+            .find(|p| p.id == id)
+            .cloned()
     }
 
     pub fn count(&self) -> usize {
@@ -76,7 +80,10 @@ impl ProjectManager {
     }
 
     pub fn active_count(&self) -> usize {
-        self.inner.read().projects.iter()
+        self.inner
+            .read()
+            .projects
+            .iter()
             .filter(|p| matches!(p.status, ProjectStatus::Running | ProjectStatus::Preparing))
             .count()
     }
@@ -84,7 +91,12 @@ impl ProjectManager {
     // ── Write operations ──────────────────────────────────────────────────────
 
     /// Create a new project and persist it.
-    pub fn create(&self, name: String, description: String, owner: String) -> Result<ProjectRecord> {
+    pub fn create(
+        &self,
+        name: String,
+        description: String,
+        owner: String,
+    ) -> Result<ProjectRecord> {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now();
 
@@ -141,7 +153,10 @@ impl ProjectManager {
             anyhow::bail!("project {} not found", id);
         };
 
-        if matches!(project.status, ProjectStatus::Preparing | ProjectStatus::Running) {
+        if matches!(
+            project.status,
+            ProjectStatus::Preparing | ProjectStatus::Running
+        ) {
             return Ok(false); // Already active; idempotent.
         }
 
@@ -222,8 +237,7 @@ impl ProjectManager {
     fn persist_locked(guard: &Inner) -> Result<()> {
         let path = guard.projects_json_path();
         let json = serde_json::to_string_pretty(&guard.projects)?;
-        std::fs::write(&path, json)
-            .with_context(|| format!("writing {}", path.display()))?;
+        std::fs::write(&path, json).with_context(|| format!("writing {}", path.display()))?;
         Ok(())
     }
 }

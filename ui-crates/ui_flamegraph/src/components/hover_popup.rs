@@ -1,11 +1,11 @@
 //! Hover popup component showing span details
 
+use crate::constants::STATS_SIDEBAR_WIDTH;
+use crate::state::ViewState;
+use crate::trace_data::TraceFrame;
 use gpui::*;
 use rust_i18n::t;
 use std::sync::Arc;
-use crate::trace_data::TraceFrame;
-use crate::state::ViewState;
-use crate::constants::STATS_SIDEBAR_WIDTH;
 use ui::ActiveTheme;
 
 /// Render the hover popup when a span is hovered
@@ -23,7 +23,11 @@ pub fn render_hover_popup(
     let duration_ms = span.duration_ns as f64 / 1_000_000.0;
     let start_ms = (span.start_ns - frame.min_time_ns) as f64 / 1_000_000.0;
     let end_ms = (span.end_ns() - frame.min_time_ns) as f64 / 1_000_000.0;
-    let thread_name = frame.threads.get(&span.thread_id).map(|t| t.name.clone()).unwrap_or_else(|| t!("Flamegraph.Unknown").to_string());
+    let thread_name = frame
+        .threads
+        .get(&span.thread_id)
+        .map(|t| t.name.clone())
+        .unwrap_or_else(|| t!("Flamegraph.Unknown").to_string());
 
     let popup_width = 300.0;
     let mouse_x = view_state.mouse_x;
@@ -68,8 +72,8 @@ pub fn render_hover_popup(
                             .text_sm()
                             .font_weight(FontWeight::BOLD)
                             .text_color(theme.foreground)
-                            .child(span.name.clone())
-                    )
+                            .child(span.name.clone()),
+                    ),
             )
             .child(
                 // Content
@@ -79,24 +83,49 @@ pub fn render_hover_popup(
                     .flex()
                     .flex_col()
                     .gap_2p5()
-                    .child(popup_row_improved(t!("Flamegraph.Duration").to_string(), format!("{:.3} ms", duration_ms), theme, true))
-                    .child(popup_row_improved(t!("Flamegraph.Start").to_string(), format!("{:.3} ms", start_ms), theme, false))
-                    .child(popup_row_improved(t!("Flamegraph.End").to_string(), format!("{:.3} ms", end_ms), theme, false))
-                    .child(
-                        div()
-                            .h(px(1.0))
-                            .w_full()
-                            .bg(theme.border.opacity(0.3))
-                    )
-                    .child(popup_row_improved(t!("Flamegraph.Thread").to_string(), thread_name, theme, false))
-                    .child(popup_row_improved(t!("Flamegraph.Depth").to_string(), format!("{}", span.depth), theme, false))
-            )
+                    .child(popup_row_improved(
+                        t!("Flamegraph.Duration").to_string(),
+                        format!("{:.3} ms", duration_ms),
+                        theme,
+                        true,
+                    ))
+                    .child(popup_row_improved(
+                        t!("Flamegraph.Start").to_string(),
+                        format!("{:.3} ms", start_ms),
+                        theme,
+                        false,
+                    ))
+                    .child(popup_row_improved(
+                        t!("Flamegraph.End").to_string(),
+                        format!("{:.3} ms", end_ms),
+                        theme,
+                        false,
+                    ))
+                    .child(div().h(px(1.0)).w_full().bg(theme.border.opacity(0.3)))
+                    .child(popup_row_improved(
+                        t!("Flamegraph.Thread").to_string(),
+                        thread_name,
+                        theme,
+                        false,
+                    ))
+                    .child(popup_row_improved(
+                        t!("Flamegraph.Depth").to_string(),
+                        format!("{}", span.depth),
+                        theme,
+                        false,
+                    )),
+            ),
     );
     result
 }
 
 /// Helper function to create an improved popup info row
-fn popup_row_improved(label: String, value: String, theme: &ui::theme::Theme, bold_value: bool) -> impl IntoElement {
+fn popup_row_improved(
+    label: String,
+    value: String,
+    theme: &ui::theme::Theme,
+    bold_value: bool,
+) -> impl IntoElement {
     div()
         .flex()
         .items_center()
@@ -109,27 +138,31 @@ fn popup_row_improved(label: String, value: String, theme: &ui::theme::Theme, bo
             div()
                 .text_xs()
                 .text_color(theme.muted_foreground)
-                .child(label)
+                .child(label),
         )
-        .child(
-            if bold_value {
-                div()
-                    .text_xs()
-                    .font_weight(FontWeight::BOLD)
-                    .text_color(theme.accent)
-                    .child(value)
-            } else {
-                div()
-                    .text_xs()
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(theme.foreground)
-                    .child(value)
-            }
-        )
+        .child(if bold_value {
+            div()
+                .text_xs()
+                .font_weight(FontWeight::BOLD)
+                .text_color(theme.accent)
+                .child(value)
+        } else {
+            div()
+                .text_xs()
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(theme.foreground)
+                .child(value)
+        })
 }
 
 /// Helper function to create a popup info row (legacy)
-fn popup_row(label: impl Into<SharedString>, value: String, label_color: Hsla, value_color: Hsla, bold_value: bool) -> impl IntoElement {
+fn popup_row(
+    label: impl Into<SharedString>,
+    value: String,
+    label_color: Hsla,
+    value_color: Hsla,
+    bold_value: bool,
+) -> impl IntoElement {
     let value_div = if bold_value {
         div()
             .text_xs()
@@ -137,20 +170,12 @@ fn popup_row(label: impl Into<SharedString>, value: String, label_color: Hsla, v
             .text_color(value_color)
             .child(value)
     } else {
-        div()
-            .text_xs()
-            .text_color(value_color)
-            .child(value)
+        div().text_xs().text_color(value_color).child(value)
     };
 
     div()
         .flex()
         .justify_between()
-        .child(
-            div()
-                .text_xs()
-                .text_color(label_color)
-                .child(label.into())
-        )
+        .child(div().text_xs().text_color(label_color).child(label.into()))
         .child(value_div)
 }

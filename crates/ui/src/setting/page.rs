@@ -1,18 +1,16 @@
 use gpui::{
-    App, Entity, InteractiveElement as _, IntoElement, ListAlignment, ListState,
-    ParentElement as _, SharedString, StyleRefinement, Styled, Window, div, list,
-    prelude::FluentBuilder as _, px,
+    div, list, prelude::FluentBuilder as _, px, App, Entity, InteractiveElement as _, IntoElement,
+    ListAlignment, ListState, ParentElement as _, SharedString, StyleRefinement, Styled, Window,
 };
 use rust_i18n::t;
 
 use crate::{
-    ActiveTheme, Icon, IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     h_flex,
     label::Label,
     scroll::ScrollableElement,
-    setting::{RenderOptions, SettingGroup, settings::SettingsState},
-    v_flex,
+    setting::{settings::SettingsState, RenderOptions, SettingGroup},
+    v_flex, ActiveTheme, Icon, IconName, Sizable, StyledExt,
 };
 
 /// A setting page that can contain multiple setting groups.

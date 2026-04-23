@@ -134,16 +134,16 @@ impl RelayServer {
         {
             // Load from files
             // Load certificate
-            let cert_file = std::fs::File::open(cert_path)
-                .context("Failed to open TLS certificate")?;
+            let cert_file =
+                std::fs::File::open(cert_path).context("Failed to open TLS certificate")?;
             let mut cert_reader = BufReader::new(cert_file);
             let certs = rustls_pemfile::certs(&mut cert_reader)
                 .collect::<Result<Vec<_>, _>>()
                 .context("Failed to parse TLS certificate")?;
 
             // Load private key
-            let key_file = std::fs::File::open(key_path)
-                .context("Failed to open TLS private key")?;
+            let key_file =
+                std::fs::File::open(key_path).context("Failed to open TLS private key")?;
             let mut key_reader = BufReader::new(key_file);
             let key = rustls_pemfile::private_key(&mut key_reader)
                 .context("Failed to read TLS private key")?
@@ -155,7 +155,8 @@ impl RelayServer {
             let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])
                 .context("Failed to generate self-signed certificate")?;
             let cert_der = rustls::pki_types::CertificateDer::from(cert.cert);
-            let key_der = rustls::pki_types::PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der());
+            let key_der =
+                rustls::pki_types::PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der());
             (vec![cert_der], key_der.into())
         };
 

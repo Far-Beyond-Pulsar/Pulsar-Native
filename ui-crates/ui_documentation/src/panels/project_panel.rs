@@ -1,14 +1,14 @@
+use crate::project_docs::{ProjectDocsState, ProjectTreeNode};
 use gpui::{prelude::*, *};
 use ui::{
-    ActiveTheme, StyledExt,
-    h_flex, v_flex, IconName, Icon,
-    text::TextView,
-    resizable::{h_resizable, resizable_panel, ResizableState},
-    input::TextInput,
-    scroll::ScrollbarAxis,
+    ActiveTheme, Icon, IconName, StyledExt, h_flex,
     hierarchical_tree::{render_tree_folder, render_tree_item, tree_colors},
+    input::TextInput,
+    resizable::{ResizableState, h_resizable, resizable_panel},
+    scroll::ScrollbarAxis,
+    text::TextView,
+    v_flex,
 };
-use crate::project_docs::{ProjectDocsState, ProjectTreeNode};
 
 pub struct ProjectDocsPanel;
 
@@ -25,33 +25,41 @@ impl ProjectDocsPanel {
         on_load_content: impl Fn(&mut V, String, &mut Window, &mut Context<V>) + 'static + Clone,
         window: &mut Window,
         cx: &mut Context<V>,
-    ) -> impl IntoElement 
+    ) -> impl IntoElement
     where
         V: Render,
     {
         let markdown = state.markdown_content.clone();
-        
+
         let theme = cx.theme().clone();
 
-        let visible_items: Vec<_> = state.flat_visible_items.iter()
+        let visible_items: Vec<_> = state
+            .flat_visible_items
+            .iter()
             .map(|&idx| state.tree_items[idx].clone())
             .collect();
-        
-        let tree_nodes: Vec<AnyElement> = visible_items.iter().map(|node| {
-            Self::render_tree_node(node, state, on_toggle_expansion.clone(), on_load_content.clone(), cx)
-        }).collect();
+
+        let tree_nodes: Vec<AnyElement> = visible_items
+            .iter()
+            .map(|node| {
+                Self::render_tree_node(
+                    node,
+                    state,
+                    on_toggle_expansion.clone(),
+                    on_load_content.clone(),
+                    cx,
+                )
+            })
+            .collect();
 
         h_resizable("docs-horizontal")
             .state(sidebar_resizable)
             .child(
                 resizable_panel()
                     .size(px(280.0))
-                    .child(Self::render_sidebar(state, tree_nodes, &theme))
+                    .child(Self::render_sidebar(state, tree_nodes, &theme)),
             )
-            .child(
-                resizable_panel()
-                    .child(Self::render_content(markdown, window, cx, &theme))
-            )
+            .child(resizable_panel().child(Self::render_content(markdown, window, cx, &theme)))
     }
 
     fn render_sidebar(
@@ -82,15 +90,15 @@ impl ProjectDocsPanel {
                             .child(
                                 Icon::new(IconName::Folder)
                                     .size_4()
-                                    .text_color(tree_colors::CODE_PURPLE)
+                                    .text_color(tree_colors::CODE_PURPLE),
                             )
                             .child(
                                 div()
                                     .text_sm()
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(theme.foreground)
-                                    .child("Project API")
-                            )
+                                    .child("Project API"),
+                            ),
                     )
                     .child(
                         div()
@@ -101,8 +109,8 @@ impl ProjectDocsPanel {
                             .text_xs()
                             .font_weight(gpui::FontWeight::MEDIUM)
                             .text_color(theme.accent)
-                            .child(format!("{}", tree_nodes.len()))
-                    )
+                            .child(format!("{}", tree_nodes.len())),
+                    ),
             )
             .child(
                 // Search bar
@@ -118,26 +126,23 @@ impl ProjectDocsPanel {
                             .prefix(
                                 Icon::new(IconName::Search)
                                     .size_4()
-                                    .text_color(theme.secondary_foreground)
+                                    .text_color(theme.secondary_foreground),
                             )
                             .appearance(true)
-                            .bordered(true)
-                    )
+                            .bordered(true),
+                    ),
             )
             .child(
                 // Tree items with scroll
-                div()
-                    .flex_1()
-                    .overflow_hidden()
-                    .child(
-                        v_flex()
-                            .size_full()
-                            .p_2()
-                            .gap_px()
-                            .font_family("monospace")
-                            .scrollable(ScrollbarAxis::Vertical)
-                            .children(tree_nodes)
-                    )
+                div().flex_1().overflow_hidden().child(
+                    v_flex()
+                        .size_full()
+                        .p_2()
+                        .gap_px()
+                        .font_family("monospace")
+                        .scrollable(ScrollbarAxis::Vertical)
+                        .children(tree_nodes),
+                ),
             )
     }
 
@@ -147,31 +152,20 @@ impl ProjectDocsPanel {
         cx: &mut App,
         theme: &ui::ThemeColor,
     ) -> impl IntoElement {
-        div()
-            .size_full()
-            .bg(theme.background)
-            .child(
+        div().size_full().bg(theme.background).child(
+            div().size_full().scrollable(ScrollbarAxis::Vertical).child(
                 div()
-                    .size_full()
-                    .scrollable(ScrollbarAxis::Vertical)
+                    .w_full()
+                    .max_w(px(1200.0))
+                    .mx_auto()
+                    .px_8()
+                    .py_8()
                     .child(
-                        div()
-                            .w_full()
-                            .max_w(px(1200.0))
-                            .mx_auto()
-                            .px_8()
-                            .py_8()
-                            .child(
-                                TextView::markdown(
-                                    "project-docs-markdown",
-                                    markdown,
-                                    window,
-                                    cx,
-                                )
-                                .selectable()
-                            )
-                    )
-            )
+                        TextView::markdown("project-docs-markdown", markdown, window, cx)
+                            .selectable(),
+                    ),
+            ),
+        )
     }
 
     fn render_tree_node<V: 'static>(
@@ -180,7 +174,7 @@ impl ProjectDocsPanel {
         on_toggle_expansion: impl Fn(&mut V, String, &mut Window, &mut Context<V>) + 'static + Clone,
         on_load_content: impl Fn(&mut V, String, &mut Window, &mut Context<V>) + 'static + Clone,
         cx: &mut Context<V>,
-    ) -> AnyElement 
+    ) -> AnyElement
     where
         V: Render,
     {
@@ -188,11 +182,15 @@ impl ProjectDocsPanel {
             ProjectTreeNode::Category { name, depth, .. } => {
                 let is_expanded = state.expanded_paths.contains(name);
                 let category_name = name.clone();
-                
+
                 render_tree_folder(
                     &format!("category-{}", name),
                     name,
-                    if is_expanded { IconName::FolderOpen } else { IconName::Folder },
+                    if is_expanded {
+                        IconName::FolderOpen
+                    } else {
+                        IconName::Folder
+                    },
                     tree_colors::CODE_PURPLE,
                     *depth,
                     is_expanded,
@@ -202,7 +200,12 @@ impl ProjectDocsPanel {
                     cx,
                 )
             }
-            ProjectTreeNode::Item { item_name, path, depth, .. } => {
+            ProjectTreeNode::Item {
+                item_name,
+                path,
+                depth,
+                ..
+            } => {
                 let is_selected = state.current_path.as_ref() == Some(&path.to_string());
                 let path_for_click = path.to_string();
 

@@ -3,12 +3,12 @@
 //! Manages ambient sounds and UI audio for the intro experience
 //! Uses rodio for audio playback with embedded MP3 file
 
+use parking_lot::Mutex;
+use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
 use std::io::Cursor;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
-use parking_lot::Mutex;
-use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
 
 // Embedded intro audio from assets/sound/intro.mp3
 const INTRO_AUDIO: &[u8] = include_bytes!("../../../../assets/sound/intro.mp3");
@@ -57,14 +57,14 @@ impl IntroAudio {
     pub fn new() -> Self {
         let enabled = Arc::new(AtomicBool::new(true));
         let (command_tx, command_rx) = std::sync::mpsc::channel::<AudioCommand>();
-        
+
         // Spawn audio thread to avoid blocking the main thread
         // Audio initialization can hang on some systems
         let audio_thread = thread::Builder::new()
             .name("oobe-audio".to_string())
             .spawn(move || {
                 tracing::debug!("🔊 [OOBE] Audio thread starting...");
-                
+
                 // Try to create audio output with a timeout approach
                 // OutputStream::try_default() can hang on some systems
                 let audio_state = match OutputStream::try_default() {
@@ -81,9 +81,9 @@ impl IntroAudio {
                         None
                     }
                 };
-                
+
                 let mut state = audio_state;
-                
+
                 // Process commands until shutdown
                 while let Ok(cmd) = command_rx.recv() {
                     match cmd {
@@ -136,10 +136,10 @@ impl IntroAudio {
                         }
                     }
                 }
-                
+
                 tracing::debug!("🔊 [OOBE] Audio thread exited");
             });
-        
+
         let audio_thread = match audio_thread {
             Ok(handle) => Some(handle),
             Err(e) => {
@@ -147,7 +147,7 @@ impl IntroAudio {
                 None
             }
         };
-        
+
         Self {
             enabled,
             command_tx: Some(command_tx),
@@ -173,7 +173,7 @@ impl IntroAudio {
         if !self.is_enabled() {
             return;
         }
-        
+
         if let Some(ref tx) = self.command_tx {
             let _ = tx.send(AudioCommand::PlayAmbient);
         }

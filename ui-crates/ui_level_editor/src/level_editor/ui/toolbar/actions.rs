@@ -1,5 +1,5 @@
+use super::super::state::{BuildConfig, MultiplayerMode, TargetPlatform};
 use gpui::*;
-use super::super::state::{MultiplayerMode, BuildConfig, TargetPlatform};
 
 // Actions for toolbar dropdowns
 #[derive(Action, Clone, PartialEq)]
@@ -17,4 +17,3 @@ pub struct SetBuildConfig(pub BuildConfig);
 #[derive(Action, Clone, PartialEq)]
 #[action(namespace = level_editor_toolbar, no_json)]
 pub struct SetTargetPlatform(pub TargetPlatform);
-

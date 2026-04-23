@@ -3,8 +3,8 @@
 //! This module provides the data model for world settings that can be replicated
 //! across multiuser sessions.
 
-use serde::{Deserialize, Serialize};
 use gpui::Hsla;
+use serde::{Deserialize, Serialize};
 
 /// World settings data that can be serialized and replicated
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -109,15 +109,35 @@ impl Default for WorldSettingsData {
     fn default() -> Self {
         Self {
             // Environment
-            sky_color: hsla_to_rgba(Hsla { h: 210.0, s: 0.6, l: 0.7, a: 1.0 }),
-            horizon_color: hsla_to_rgba(Hsla { h: 30.0, s: 0.7, l: 0.8, a: 1.0 }),
-            ground_color: hsla_to_rgba(Hsla { h: 30.0, s: 0.3, l: 0.3, a: 1.0 }),
+            sky_color: hsla_to_rgba(Hsla {
+                h: 210.0,
+                s: 0.6,
+                l: 0.7,
+                a: 1.0,
+            }),
+            horizon_color: hsla_to_rgba(Hsla {
+                h: 30.0,
+                s: 0.7,
+                l: 0.8,
+                a: 1.0,
+            }),
+            ground_color: hsla_to_rgba(Hsla {
+                h: 30.0,
+                s: 0.3,
+                l: 0.3,
+                a: 1.0,
+            }),
             sky_intensity: 1.0,
             enable_clouds: true,
             skybox: "Default Sky".to_string(),
 
             // Global Illumination
-            ambient_color: hsla_to_rgba(Hsla { h: 220.0, s: 0.2, l: 0.4, a: 1.0 }),
+            ambient_color: hsla_to_rgba(Hsla {
+                h: 220.0,
+                s: 0.2,
+                l: 0.4,
+                a: 1.0,
+            }),
             ambient_intensity: 0.3,
             gi_mode: GIMode::Baked,
             bounce_count: 2,
@@ -127,7 +147,12 @@ impl Default for WorldSettingsData {
             // Fog & Atmosphere
             enable_fog: true,
             fog_mode: FogMode::Exponential,
-            fog_color: hsla_to_rgba(Hsla { h: 210.0, s: 0.3, l: 0.7, a: 1.0 }),
+            fog_color: hsla_to_rgba(Hsla {
+                h: 210.0,
+                s: 0.3,
+                l: 0.7,
+                a: 1.0,
+            }),
             fog_density: 0.02,
             fog_start: 10.0,
             fog_end: 500.0,
@@ -153,8 +178,11 @@ impl WorldSettingsData {
     /// Apply world settings to the engine/renderer
     pub fn apply(&self) {
         // TODO: Wire up to actual renderer/physics/audio systems
-        tracing::info!("Applying world settings: gravity={:?}, time_scale={}",
-            self.gravity, self.time_scale);
+        tracing::info!(
+            "Applying world settings: gravity={:?}, time_scale={}",
+            self.gravity,
+            self.time_scale
+        );
     }
 
     /// Serialize to JSON for network transmission

@@ -1,5 +1,5 @@
-use gpui::Styled;
 use gpui::ParentElement;
+use gpui::Styled;
 use gpui::{
     div, px, AnyElement, AnyView, App, ClickEvent, Context, ElementId, IntoElement, Pixels, Point,
     Render, SharedString, Window,

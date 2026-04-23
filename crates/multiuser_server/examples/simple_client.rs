@@ -14,7 +14,8 @@ use serde_json::json;
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
-    let base_url = std::env::var("PULSAR_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let base_url =
+        std::env::var("PULSAR_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
     let client = reqwest::Client::new();
 
     tracing::debug!("Pulsar MultiEdit - Example Client");
@@ -87,10 +88,7 @@ async fn main() -> Result<()> {
 
     // Step 4: Check health
     tracing::debug!("4. Checking service health...");
-    let health_resp = client
-        .get(format!("{}/health", base_url))
-        .send()
-        .await?;
+    let health_resp = client.get(format!("{}/health", base_url)).send().await?;
 
     if health_resp.status().is_success() {
         let health_data: serde_json::Value = health_resp.json().await?;

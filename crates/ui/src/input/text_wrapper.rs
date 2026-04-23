@@ -154,7 +154,7 @@ impl TextWrapper {
         // Performance optimization: For very large files, avoid recalculating everything
         let total_lines = changed_text.lines_len();
         let is_large_file = total_lines > 10000;
-        
+
         // Remove the old changed lines.
         let start_row = self.text.offset_to_point(range.start).row;
         let start_row = start_row.min(self.lines.len().saturating_sub(1));
@@ -231,7 +231,7 @@ impl TextWrapper {
         }
 
         self.text = changed_text.clone();
-        
+
         // Performance optimization: For large files, calculate soft_lines incrementally
         if is_large_file {
             // Only recalculate the changed portion
@@ -239,7 +239,7 @@ impl TextWrapper {
         } else {
             self.soft_lines = self.lines.iter().map(|l| l.lines_len()).sum();
         }
-        
+
         self.longest_row = LongestRow {
             row: longest_row_ix,
             len: longest_row_len,

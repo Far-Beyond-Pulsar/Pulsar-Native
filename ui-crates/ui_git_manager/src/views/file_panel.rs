@@ -1,16 +1,21 @@
 //! File diff preview panel (right side) — Monaco-style collapsible diff viewer
 
-use crate::{GitManager, DiffResult, DiffSegment, DiffLineKind};
+use crate::{DiffLineKind, DiffResult, DiffSegment, GitManager};
 use gpui::*;
-use ui::{h_flex, v_flex, Icon, IconName, ActiveTheme as _};
+use ui::{ActiveTheme as _, Icon, IconName, h_flex, v_flex};
 
 /// Render the right-side diff panel for the Changes / Branches view
-pub fn render_file_panel(git_manager: &GitManager, cx: &mut Context<GitManager>) -> impl IntoElement {
-    let border     = cx.theme().border;
-    let muted_fg   = cx.theme().muted_foreground;
-    let danger     = cx.theme().danger;
+pub fn render_file_panel(
+    git_manager: &GitManager,
+    cx: &mut Context<GitManager>,
+) -> impl IntoElement {
+    let border = cx.theme().border;
+    let muted_fg = cx.theme().muted_foreground;
+    let danger = cx.theme().danger;
 
-    let header_label = git_manager.selected_file.clone()
+    let header_label = git_manager
+        .selected_file
+        .clone()
         .unwrap_or_else(|| "File Preview".to_string());
 
     let header = h_flex()
@@ -32,22 +37,32 @@ pub fn render_file_panel(git_manager: &GitManager, cx: &mut Context<GitManager>)
         None => empty_placeholder(muted_fg, "Select a file to view its diff").into_any_element(),
 
         Some(_) => match (&git_manager.file_diff, &git_manager.file_diff_error) {
-            (Some(diff), _) => {
-                render_diff_segments(diff, &git_manager.file_diff_expanded, "file-diff", false, cx)
-                    .into_any_element()
-            }
-            (None, Some(err)) => {
-                v_flex()
-                    .flex_1().items_center().justify_center().gap_2()
-                    .child(Icon::new(IconName::CircleX).size(px(28.)).text_color(danger))
-                    .child(div().text_sm().text_color(danger).child(err.clone()))
-                    .into_any_element()
-            }
-            (None, None) => {
-                v_flex().flex_1().items_center().justify_center()
-                    .child(div().text_xs().text_color(muted_fg).child("Loading…"))
-                    .into_any_element()
-            }
+            (Some(diff), _) => render_diff_segments(
+                diff,
+                &git_manager.file_diff_expanded,
+                "file-diff",
+                false,
+                cx,
+            )
+            .into_any_element(),
+            (None, Some(err)) => v_flex()
+                .flex_1()
+                .items_center()
+                .justify_center()
+                .gap_2()
+                .child(
+                    Icon::new(IconName::CircleX)
+                        .size(px(28.))
+                        .text_color(danger),
+                )
+                .child(div().text_sm().text_color(danger).child(err.clone()))
+                .into_any_element(),
+            (None, None) => v_flex()
+                .flex_1()
+                .items_center()
+                .justify_center()
+                .child(div().text_xs().text_color(muted_fg).child("Loading…"))
+                .into_any_element(),
         },
     };
 
@@ -56,7 +71,10 @@ pub fn render_file_panel(git_manager: &GitManager, cx: &mut Context<GitManager>)
 
 fn empty_placeholder(muted_fg: Hsla, msg: &'static str) -> impl IntoElement {
     v_flex()
-        .flex_1().items_center().justify_center().gap_2()
+        .flex_1()
+        .items_center()
+        .justify_center()
+        .gap_2()
         .child(Icon::new(IconName::Code).size(px(32.)).text_color(muted_fg))
         .child(div().text_xs().text_color(muted_fg).child(msg))
 }
@@ -71,15 +89,15 @@ pub fn render_diff_segments(
     is_commit: bool,
     cx: &mut Context<GitManager>,
 ) -> impl IntoElement {
-    let theme         = cx.theme();
-    let muted_fg      = theme.muted_foreground;
-    let foreground    = theme.foreground;
-    let border        = theme.border;
-    let add_bg: Hsla  = rgba(0x00cc0033).into();
-    let rem_bg: Hsla  = rgba(0xff222233).into();
-    let add_fg: Hsla  = rgba(0x22dd22ff).into();
-    let rem_fg: Hsla  = rgba(0xff5555ff).into();
-    let col_bg: Hsla  = rgba(0x00000044).into(); // collapse bar bg
+    let theme = cx.theme();
+    let muted_fg = theme.muted_foreground;
+    let foreground = theme.foreground;
+    let border = theme.border;
+    let add_bg: Hsla = rgba(0x00cc0033).into();
+    let rem_bg: Hsla = rgba(0xff222233).into();
+    let add_fg: Hsla = rgba(0x22dd22ff).into();
+    let rem_fg: Hsla = rgba(0xff5555ff).into();
+    let col_bg: Hsla = rgba(0x00000044).into(); // collapse bar bg
 
     let mono_font = Font {
         family: "JetBrains Mono".to_string().into(),
@@ -96,11 +114,12 @@ pub fn render_diff_segments(
             DiffSegment::Hunk(lines) => {
                 for line in lines {
                     let (bg, gutter_char, gutter_color) = match line.kind {
-                        DiffLineKind::Added   => (Some(add_bg), "+", add_fg),
+                        DiffLineKind::Added => (Some(add_bg), "+", add_fg),
                         DiffLineKind::Removed => (Some(rem_bg), "-", rem_fg),
-                        DiffLineKind::Context => (None,         " ", muted_fg),
+                        DiffLineKind::Context => (None, " ", muted_fg),
                     };
-                    let line_num_text = line.new_line_num
+                    let line_num_text = line
+                        .new_line_num
                         .or(line.old_line_num)
                         .map(|n| format!("{:>5}", n))
                         .unwrap_or_else(|| "     ".to_string());
@@ -155,7 +174,8 @@ pub fn render_diff_segments(
                 if expanded.contains(&idx) {
                     // Show expanded lines
                     for line in lines {
-                        let line_num_text = line.new_line_num
+                        let line_num_text = line
+                            .new_line_num
                             .or(line.old_line_num)
                             .map(|n| format!("{:>5}", n))
                             .unwrap_or_else(|| "     ".to_string());
@@ -166,9 +186,22 @@ pub fn render_diff_segments(
                                 .py(px(1.))
                                 .font(mono_font.clone())
                                 .text_size(px(13.))
-                                .child(div().w(px(48.)).px_1().flex_shrink_0().text_color(muted_fg).child(line_num_text))
+                                .child(
+                                    div()
+                                        .w(px(48.))
+                                        .px_1()
+                                        .flex_shrink_0()
+                                        .text_color(muted_fg)
+                                        .child(line_num_text),
+                                )
                                 .child(div().w(px(16.)).flex_shrink_0().child(" "))
-                                .child(div().flex_1().text_color(foreground).overflow_hidden().child(content))
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .text_color(foreground)
+                                        .overflow_hidden()
+                                        .child(content),
+                                )
                                 .into_any_element(),
                         );
                     }

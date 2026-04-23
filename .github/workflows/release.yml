@@ -36,6 +36,9 @@ jobs:
       should_release: ${{ steps.check.outputs.should_release }}
       version: ${{ steps.check.outputs.version }}
       package_name: ${{ steps.get-name.outputs.package_name }}
+      first_crate: ${{ steps.get-crate.outputs.first_crate }}
+      previous_version: ${{ steps.check.outputs.previous_version }}
+      current_version: ${{ steps.check.outputs.current_version }}
     steps:
       - uses: actions/checkout@v3
         with:
@@ -69,6 +72,8 @@ jobs:
           CURRENT_VERSION=$(grep -m1 version "$CRATE_PATH/Cargo.toml" | cut -d '"' -f2)
           git checkout HEAD^1
           PREVIOUS_VERSION=$(grep -m1 version "$CRATE_PATH/Cargo.toml" | cut -d '"' -f2)
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "previous_version=$PREVIOUS_VERSION" >> $GITHUB_OUTPUT
           if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
             echo "should_release=true" >> $GITHUB_OUTPUT
             echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
@@ -945,4 +950,67 @@ jobs:
             --repo "$REPO" \
             --notes-file release-notes-final.md \
             --draft=false
+
+  rollback-release-on-failure:
+    needs: [check-version, create-release, fmt-check, clippy, unit-tests, check-lockfile, build-release, cross-builds, upload-release, docker-release, finalize-release]
+    if: |
+      always() &&
+      needs.check-version.outputs.should_release == 'true' &&
+      (
+        needs.fmt-check.result != 'success' ||
+        needs.clippy.result != 'success' ||
+        needs.unit-tests.result != 'success' ||
+        needs.check-lockfile.result != 'success' ||
+        needs.build-release.result != 'success' ||
+        needs.cross-builds.result != 'success' ||
+        needs.upload-release.result != 'success' ||
+        needs.docker-release.result != 'success' ||
+        needs.finalize-release.result != 'success'
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Delete release and tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v${{ needs.check-version.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh release delete "$TAG" --repo "$REPO" --yes --cleanup-tag || true
+          git push origin ":refs/tags/$TAG" || true
+          git tag -d "$TAG" || true
+
+      - name: Revert version bump in Cargo.toml
+        env:
+          PREV_VERSION: ${{ needs.check-version.outputs.previous_version }}
+          CUR_VERSION: ${{ needs.check-version.outputs.current_version }}
+          FIRST_CRATE: ${{ needs.check-version.outputs.first_crate }}
+        run: |
+          if [ -z "$PREV_VERSION" ] || [ -z "$CUR_VERSION" ] || [ -z "$FIRST_CRATE" ]; then
+            echo "Missing version metadata; skipping auto-revert"
+            exit 0
+          fi
+
+          TARGET_FILE="$FIRST_CRATE/Cargo.toml"
+          if [ ! -f "$TARGET_FILE" ]; then
+            echo "Target file not found: $TARGET_FILE"
+            exit 0
+          fi
+
+          sed -i "0,/version = \"$CUR_VERSION\"/s//version = \"$PREV_VERSION\"/" "$TARGET_FILE"
+          if git diff --quiet -- "$TARGET_FILE"; then
+            echo "No version change to revert"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$TARGET_FILE"
+          git commit -m "ci: rollback version to $PREV_VERSION after failed release [skip ci]"
+          git push origin "${{ github.ref_name }}" || echo "Push blocked (likely branch protection); manual revert required"
 

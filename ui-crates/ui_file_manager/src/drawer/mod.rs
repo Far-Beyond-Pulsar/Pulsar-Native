@@ -10,23 +10,23 @@
 // - content: Content area rendering (header, grid, list)
 
 pub mod actions;
-pub mod types;
-pub mod tree;
-pub mod utils;
-pub mod operations;
 pub mod context_menus;
 pub mod fs_metadata;
+pub mod operations;
+pub mod tree;
+pub mod types;
+pub mod utils;
 // pub mod content; // TODO: Fix lifetime issues in grid/list rendering
 
 // Re-export commonly used types
 pub use actions::*;
-pub use types::{
-    ViewMode, SortBy, SortOrder, DragState, DraggedFile,
-    FileItem, FileSelected, PopoutFileManagerEvent,
-};
-pub use tree::FolderNode;
-pub use operations::FileOperations;
 pub use fs_metadata::FsMetadataManager;
+pub use operations::FileOperations;
+pub use tree::FolderNode;
+pub use types::{
+    DragState, DraggedFile, FileItem, FileSelected, PopoutFileManagerEvent, SortBy, SortOrder,
+    ViewMode,
+};
 
 // Public API note:
 // The full FileManagerDrawer implementation is in the monolithic file_manager_drawer.rs

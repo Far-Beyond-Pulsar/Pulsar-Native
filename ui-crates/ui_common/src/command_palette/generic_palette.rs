@@ -1,5 +1,13 @@
-use gpui::{prelude::*, div, px, Axis, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable, KeyDownEvent, MouseButton, Render, Window};
-use ui::{h_flex, input::{Escape, InputEvent, InputState, TextInput}, text::TextView, v_flex, ActiveTheme as _, Icon, IconName, StyledExt};
+use gpui::{
+    div, prelude::*, px, Axis, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
+    KeyDownEvent, MouseButton, Render, Window,
+};
+use ui::{
+    h_flex,
+    input::{Escape, InputEvent, InputState, TextInput},
+    text::TextView,
+    v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
+};
 
 use super::palette_trait::{PaletteDelegate, PaletteItem};
 
@@ -46,16 +54,17 @@ impl<D: PaletteDelegate> GenericPalette<D> {
         let filtered_categories = categories.clone();
 
         // Subscribe to input changes
-        cx.subscribe(&search_input, |this, _input, event: &InputEvent, cx| {
-            match event {
+        cx.subscribe(
+            &search_input,
+            |this, _input, event: &InputEvent, cx| match event {
                 InputEvent::Change => {
                     let query = this.search_input.read(cx).text().to_string();
                     this.update_filter(&query);
                     cx.notify();
                 }
                 _ => {}
-            }
-        })
+            },
+        )
         .detach();
 
         Self {
@@ -91,7 +100,7 @@ impl<D: PaletteDelegate> GenericPalette<D> {
         // Update placeholder
         self.search_input.update(cx, |input, cx| {
             input.set_placeholder(&placeholder, window, cx);
-            input.set_value("", window, cx);  // Clear search
+            input.set_value("", window, cx); // Clear search
         });
 
         // Update categories
@@ -116,21 +125,27 @@ impl<D: PaletteDelegate> GenericPalette<D> {
 
         // Update category states
         let collapsed = self.delegate.categories_collapsed_by_default();
-        self.category_states = self.filtered_categories
+        self.category_states = self
+            .filtered_categories
             .iter()
             .map(|(name, items)| CategoryState {
                 name: name.clone(),
                 // Auto-expand categories with matches when searching, or respect default
-                expanded: if query.is_empty() { !collapsed } else { !items.is_empty() },
+                expanded: if query.is_empty() {
+                    !collapsed
+                } else {
+                    !items.is_empty()
+                },
             })
             .collect();
 
         // Only reset selection if the filtered results actually changed
         // This prevents arrow key navigation from resetting selection
         let categories_changed = old_categories.len() != self.filtered_categories.len()
-            || old_categories.iter().zip(self.filtered_categories.iter()).any(|(a, b)| {
-                a.0 != b.0 || a.1.len() != b.1.len()
-            });
+            || old_categories
+                .iter()
+                .zip(self.filtered_categories.iter())
+                .any(|(a, b)| a.0 != b.0 || a.1.len() != b.1.len());
 
         if categories_changed {
             self.selected_index = 0;
@@ -147,7 +162,12 @@ impl<D: PaletteDelegate> GenericPalette<D> {
         self.filtered_categories
             .iter()
             .enumerate()
-            .filter(|(idx, _)| self.category_states.get(*idx).map(|s| s.expanded).unwrap_or(true))
+            .filter(|(idx, _)| {
+                self.category_states
+                    .get(*idx)
+                    .map(|s| s.expanded)
+                    .unwrap_or(true)
+            })
             .flat_map(|(_, (_, items))| items.iter().cloned())
             .collect()
     }
@@ -610,7 +630,9 @@ impl<D: PaletteDelegate> GenericPalette<D> {
             .gap_3()
             .items_center()
             .cursor_pointer()
-            .when(is_selected, |this| this.bg(cx.theme().primary.opacity(0.15)))
+            .when(is_selected, |this| {
+                this.bg(cx.theme().primary.opacity(0.15))
+            })
             .hover(|s| s.bg(cx.theme().muted.opacity(0.2)))
             .on_mouse_down(
                 MouseButton::Left,

@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 #[derive(Clone, Debug, PartialEq)]
 pub enum FileType {
     Folder,
-    Class,  // A folder containing graph_save.json  
+    Class,  // A folder containing graph_save.json
     File,   // Any other file - plugin system will determine if openable
 }
 

@@ -1,10 +1,5 @@
 use gpui::*;
-use ui::{
-    button::Button,
-    h_flex, v_flex,
-    ActiveTheme as _, StyledExt, Selectable,
-    IconName,
-};
+use ui::{button::Button, h_flex, v_flex, ActiveTheme as _, IconName, Selectable, StyledExt};
 
 pub struct ToolbarButton {
     icon: IconName,
@@ -44,7 +39,7 @@ impl ToolbarButton {
     }
 
     pub fn render(self) -> Button {
-    let mut button = Button::new("toolbar-btn")
+        let mut button = Button::new("toolbar-btn")
             .label(self.label.clone())
             .icon(self.icon)
             .tooltip(self.tooltip);
@@ -93,7 +88,7 @@ impl Toolbar {
             .children(
                 self.buttons
                     .into_iter()
-                    .map(|button| button.render().into_any_element())
+                    .map(|button| button.render().into_any_element()),
             )
     }
 }
@@ -134,32 +129,24 @@ impl StatusBar {
             .child(
                 h_flex()
                     .gap_4()
-                    .children(
-                        self.left_items
-                            .into_iter()
-                            .map(|item| {
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(item)
-                                    .into_any_element()
-                            })
-                    )
+                    .children(self.left_items.into_iter().map(|item| {
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(item)
+                            .into_any_element()
+                    })),
             )
             .child(
                 h_flex()
                     .gap_4()
-                    .children(
-                        self.right_items
-                            .into_iter()
-                            .map(|item| {
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(item)
-                                    .into_any_element()
-                            })
-                    )
+                    .children(self.right_items.into_iter().map(|item| {
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(item)
+                            .into_any_element()
+                    })),
             )
     }
 }
@@ -197,20 +184,20 @@ impl ViewportControls {
                         Button::new("grid")
                             .icon(IconName::LayoutDashboard)
                             .tooltip("Toggle Grid")
-                            .selected(self.show_grid)
+                            .selected(self.show_grid),
                     )
                     .child(
                         Button::new("axes")
                             .icon(IconName::Axes)
                             .tooltip("Toggle Axes")
-                            .selected(self.show_axes)
+                            .selected(self.show_axes),
                     )
                     .child(
                         Button::new("perspective")
                             .icon(IconName::Cube)
                             .tooltip("Toggle Perspective")
-                            .selected(self.perspective_mode)
-                    )
+                            .selected(self.perspective_mode),
+                    ),
             )
     }
 }
@@ -243,7 +230,7 @@ impl PropertyField {
                     .text_sm()
                     .font_medium()
                     .text_color(cx.theme().foreground)
-                    .child(self.label)
+                    .child(self.label),
             )
             .child(
                 div()
@@ -255,8 +242,12 @@ impl PropertyField {
                     .border_color(cx.theme().border)
                     .rounded(cx.theme().radius)
                     .text_sm()
-                    .text_color(if self.readonly { cx.theme().muted_foreground } else { cx.theme().foreground })
-                    .child(self.value)
+                    .text_color(if self.readonly {
+                        cx.theme().muted_foreground
+                    } else {
+                        cx.theme().foreground
+                    })
+                    .child(self.value),
             )
     }
 }

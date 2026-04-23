@@ -2,22 +2,32 @@
 //! Displays all registered types with professional UI and search capabilities
 
 use gpui::{prelude::*, *};
+use plugin_editor_api::FileTypeId;
 use rust_i18n::t;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use type_db::TypeInfo;
+use ui::StyledExt;
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _,
+    h_flex,
     input::{InputState, TextInput},
-    scroll::ScrollbarAxis,
     popup_menu::PopupMenuExt,
+    scroll::ScrollbarAxis,
+    v_flex, ActiveTheme as _, Icon, IconName, Sizable as _,
 };
-use ui::StyledExt;
-use std::path::PathBuf;
-use std::collections::HashMap;
-use type_db::TypeInfo;
-use plugin_editor_api::FileTypeId;
 
 // Define actions for filter menu
-actions!(type_debugger_drawer, [FilterAll, FilterAliases, FilterStructs, FilterEnums, FilterTraits]);
+actions!(
+    type_debugger_drawer,
+    [
+        FilterAll,
+        FilterAliases,
+        FilterStructs,
+        FilterEnums,
+        FilterTraits
+    ]
+);
 
 // Navigation event
 #[derive(Clone, Debug)]
@@ -47,10 +57,7 @@ impl TypeDebuggerDrawer {
         let focus_handle = cx.focus_handle();
 
         // Create search input state
-        let search_input = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder("Search types...")
-        });
+        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search types..."));
 
         Self {
             focus_handle,
@@ -97,7 +104,7 @@ impl TypeDebuggerDrawer {
                 }
             }
         }
-        
+
         // Fallback to absolute path if project root not set or path doesn't match
         absolute_path.to_string_lossy().replace('\\', "/")
     }
@@ -114,10 +121,14 @@ impl TypeDebuggerDrawer {
         if !self.search_query.is_empty() {
             let query = self.search_query.to_lowercase();
             filtered.retain(|t| {
-                t.name.to_lowercase().contains(&query) ||
-                t.display_name.to_lowercase().contains(&query) ||
-                t.description.as_ref().map_or(false, |d| d.to_lowercase().contains(&query)) ||
-                t.file_path.as_ref().map_or(false, |p| p.to_string_lossy().to_lowercase().contains(&query))
+                t.name.to_lowercase().contains(&query)
+                    || t.display_name.to_lowercase().contains(&query)
+                    || t.description
+                        .as_ref()
+                        .map_or(false, |d| d.to_lowercase().contains(&query))
+                    || t.file_path.as_ref().map_or(false, |p| {
+                        p.to_string_lossy().to_lowercase().contains(&query)
+                    })
             });
         }
 
@@ -139,7 +150,10 @@ impl TypeDebuggerDrawer {
     }
 
     pub fn count_by_kind(&self, kind: &FileTypeId) -> usize {
-        self.types.iter().filter(|t| &t.file_type_id == kind).count()
+        self.types
+            .iter()
+            .filter(|t| &t.file_type_id == kind)
+            .count()
     }
 
     pub fn total_count(&self) -> usize {
@@ -208,7 +222,7 @@ impl TypeDebuggerDrawer {
                 "enum" => format!("Enums ({})", enum_count),
                 "trait" => format!("Traits ({})", trait_count),
                 _ => format!("{} ({})", Self::kind_label(kind), total_count),
-            }
+            },
         };
 
         v_flex()
@@ -234,7 +248,7 @@ impl TypeDebuggerDrawer {
                                     .text_base()
                                     .font_weight(gpui::FontWeight::BOLD)
                                     .text_color(cx.theme().foreground)
-                                    .child(t!("TypeDebugger.Title").to_string())
+                                    .child(t!("TypeDebugger.Title").to_string()),
                             )
                             // Type counts with professional styling
                             .child(
@@ -245,31 +259,31 @@ impl TypeDebuggerDrawer {
                                         this.child(self.render_type_badge(
                                             &FileTypeId::new("alias"),
                                             alias_count,
-                                            cx
+                                            cx,
                                         ))
                                     })
                                     .when(struct_count > 0, |this| {
                                         this.child(self.render_type_badge(
                                             &FileTypeId::new("struct"),
                                             struct_count,
-                                            cx
+                                            cx,
                                         ))
                                     })
                                     .when(enum_count > 0, |this| {
                                         this.child(self.render_type_badge(
                                             &FileTypeId::new("enum"),
                                             enum_count,
-                                            cx
+                                            cx,
                                         ))
                                     })
                                     .when(trait_count > 0, |this| {
                                         this.child(self.render_type_badge(
                                             &FileTypeId::new("trait"),
                                             trait_count,
-                                            cx
+                                            cx,
                                         ))
-                                    })
-                            )
+                                    }),
+                            ),
                     )
                     .child(
                         h_flex()
@@ -290,7 +304,7 @@ impl TypeDebuggerDrawer {
                                     })
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.toggle_grouping(cx);
-                                    }))
+                                    })),
                             )
                             .child(
                                 Button::new("clear-all")
@@ -300,9 +314,9 @@ impl TypeDebuggerDrawer {
                                     .tooltip(t!("TypeDebugger.Action.ClearAll").to_string())
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.clear_types(cx);
-                                    }))
-                            )
-                    )
+                                    })),
+                            ),
+                    ),
             )
             // Search and filter row
             .child(
@@ -312,50 +326,67 @@ impl TypeDebuggerDrawer {
                     .items_center()
                     // Functional search bar
                     .child(
-                        div()
-                            .flex_1()
-                            .min_w(px(200.0))
-                            .child(
-                                TextInput::new(&self.search_input)
-                                    .w_full()
-                                    .prefix(
-                                        ui::Icon::new(IconName::Search)
-                                            .size_4()
-                                            .text_color(cx.theme().muted_foreground)
-                                    )
-                            )
+                        div().flex_1().min_w(px(200.0)).child(
+                            TextInput::new(&self.search_input).w_full().prefix(
+                                ui::Icon::new(IconName::Search)
+                                    .size_4()
+                                    .text_color(cx.theme().muted_foreground),
+                            ),
+                        ),
                     )
                     // Filter dropdown button using proper PopupMenu
                     .child({
                         let is_all_selected = self.filtered_kind.is_none();
-                        let is_aliases_selected = self.filtered_kind.as_ref().map(|k| k.as_str()) == Some("alias");
-                        let is_structs_selected = self.filtered_kind.as_ref().map(|k| k.as_str()) == Some("struct");
-                        let is_enums_selected = self.filtered_kind.as_ref().map(|k| k.as_str()) == Some("enum");
-                        let is_traits_selected = self.filtered_kind.as_ref().map(|k| k.as_str()) == Some("trait");
+                        let is_aliases_selected =
+                            self.filtered_kind.as_ref().map(|k| k.as_str()) == Some("alias");
+                        let is_structs_selected =
+                            self.filtered_kind.as_ref().map(|k| k.as_str()) == Some("struct");
+                        let is_enums_selected =
+                            self.filtered_kind.as_ref().map(|k| k.as_str()) == Some("enum");
+                        let is_traits_selected =
+                            self.filtered_kind.as_ref().map(|k| k.as_str()) == Some("trait");
 
                         Button::new("filter-dropdown")
                             .ghost()
                             .small()
                             .icon(IconName::Filter)
                             .label(current_filter_label.clone())
-                            .popup_menu_with_anchor(Corner::BottomRight, move |menu, _window, _cx| {
-                                menu.menu_with_check("All Types", is_all_selected, Box::new(FilterAll))
+                            .popup_menu_with_anchor(
+                                Corner::BottomRight,
+                                move |menu, _window, _cx| {
+                                    menu.menu_with_check(
+                                        "All Types",
+                                        is_all_selected,
+                                        Box::new(FilterAll),
+                                    )
                                     .separator()
-                                    .menu_with_check("Aliases", is_aliases_selected, Box::new(FilterAliases))
-                                    .menu_with_check("Structs", is_structs_selected, Box::new(FilterStructs))
-                                    .menu_with_check("Enums", is_enums_selected, Box::new(FilterEnums))
-                                    .menu_with_check("Traits", is_traits_selected, Box::new(FilterTraits))
-                            })
-                    })
+                                    .menu_with_check(
+                                        "Aliases",
+                                        is_aliases_selected,
+                                        Box::new(FilterAliases),
+                                    )
+                                    .menu_with_check(
+                                        "Structs",
+                                        is_structs_selected,
+                                        Box::new(FilterStructs),
+                                    )
+                                    .menu_with_check(
+                                        "Enums",
+                                        is_enums_selected,
+                                        Box::new(FilterEnums),
+                                    )
+                                    .menu_with_check(
+                                        "Traits",
+                                        is_traits_selected,
+                                        Box::new(FilterTraits),
+                                    )
+                                },
+                            )
+                    }),
             )
     }
 
-    fn render_type_badge(
-        &self,
-        kind: &FileTypeId,
-        count: usize,
-        cx: &App,
-    ) -> impl IntoElement {
+    fn render_type_badge(&self, kind: &FileTypeId, count: usize, cx: &App) -> impl IntoElement {
         h_flex()
             .gap_1()
             .items_center()
@@ -366,14 +397,14 @@ impl TypeDebuggerDrawer {
             .child(
                 self.kind_icon(kind)
                     .size_3()
-                    .text_color(self.kind_color(kind, cx))
+                    .text_color(self.kind_color(kind, cx)),
             )
             .child(
                 div()
                     .text_xs()
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(self.kind_color(&kind, cx))
-                    .child(count.to_string())
+                    .child(count.to_string()),
             )
     }
 
@@ -442,131 +473,133 @@ impl TypeDebuggerDrawer {
     ) -> impl IntoElement {
         let type_info_clone = type_info.clone();
 
-        div()
-            .w_full()
-            .px_3()
-            .py_2()
-            .child(
-                div()
-                    .w_full()
-                    .px_4()
-                    .py_3()
-                    .rounded_lg()
-                    .border_1()
-                    .border_color(if is_selected {
-                        cx.theme().accent
-                    } else {
-                        cx.theme().border.opacity(0.5)
-                    })
-                    .bg(if is_selected {
-                        cx.theme().accent.opacity(0.08)
-                    } else {
-                        cx.theme().sidebar.opacity(0.5)
-                    })
-                    .shadow_sm()
-                    .when(is_selected, |this| {
-                        this.border_l_3()
-                            .border_color(cx.theme().accent)
-                    })
-                    .hover(|this| {
-                        this.bg(cx.theme().secondary.opacity(0.7))
-                            .border_color(cx.theme().accent.opacity(0.5))
-                    })
-                    .cursor_pointer()
-                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _, _window, cx| {
+        div().w_full().px_3().py_2().child(
+            div()
+                .w_full()
+                .px_4()
+                .py_3()
+                .rounded_lg()
+                .border_1()
+                .border_color(if is_selected {
+                    cx.theme().accent
+                } else {
+                    cx.theme().border.opacity(0.5)
+                })
+                .bg(if is_selected {
+                    cx.theme().accent.opacity(0.08)
+                } else {
+                    cx.theme().sidebar.opacity(0.5)
+                })
+                .shadow_sm()
+                .when(is_selected, |this| {
+                    this.border_l_3().border_color(cx.theme().accent)
+                })
+                .hover(|this| {
+                    this.bg(cx.theme().secondary.opacity(0.7))
+                        .border_color(cx.theme().accent.opacity(0.5))
+                })
+                .cursor_pointer()
+                .on_mouse_down(
+                    gpui::MouseButton::Left,
+                    cx.listener(move |this, _, _window, cx| {
                         this.navigate_to_type(&type_info_clone, cx);
-                    }))
-                    .child(
-                        v_flex()
-                            .gap_2()
-                            .w_full()
-                            // Type kind and name
-                            .child(
-                                h_flex()
-                                    .gap_3()
-                                    .items_center()
+                    }),
+                )
+                .child(
+                    v_flex()
+                        .gap_2()
+                        .w_full()
+                        // Type kind and name
+                        .child(
+                            h_flex()
+                                .gap_3()
+                                .items_center()
+                                .w_full()
+                                .child(
+                                    h_flex()
+                                        .gap_1p5()
+                                        .items_center()
+                                        .child(
+                                            self.kind_icon(&type_info.file_type_id)
+                                                .size_4()
+                                                .text_color(
+                                                    self.kind_color(&type_info.file_type_id, cx),
+                                                ),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                .text_color(
+                                                    self.kind_color(&type_info.file_type_id, cx),
+                                                )
+                                                .child(Self::kind_label(&type_info.file_type_id)),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .text_xs()
+                                        .font_family("monospace")
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(format!("ID: {}", type_info.id)),
+                                ),
+                        )
+                        // Display name
+                        .child(
+                            div()
+                                .w_full()
+                                .text_sm()
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_color(cx.theme().foreground)
+                                .line_height(rems(1.4))
+                                .child(type_info.display_name.clone()),
+                        )
+                        // Description
+                        .when_some(type_info.description.as_ref(), |container, desc| {
+                            container.child(
+                                div()
                                     .w_full()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .line_height(rems(1.4))
+                                    .child(desc.clone()),
+                            )
+                        })
+                        // File path
+                        .when_some(type_info.file_path.as_ref(), |container, file_path| {
+                            let display_path = self.get_display_path(file_path);
+                            container.child(
+                                div()
+                                    .w_full()
+                                    .px_2()
+                                    .py_1()
+                                    .mt_1()
+                                    .rounded_md()
+                                    .bg(cx.theme().background.opacity(0.5))
+                                    .border_1()
+                                    .border_color(cx.theme().border.opacity(0.3))
                                     .child(
                                         h_flex()
-                                            .gap_1p5()
+                                            .gap_2()
                                             .items_center()
                                             .child(
-                                                self.kind_icon(&type_info.file_type_id)
-                                                    .size_4()
-                                                    .text_color(self.kind_color(&type_info.file_type_id, cx))
+                                                ui::Icon::new(IconName::Folder)
+                                                    .size_3()
+                                                    .text_color(cx.theme().muted_foreground),
                                             )
                                             .child(
                                                 div()
                                                     .text_xs()
-                                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                                    .text_color(self.kind_color(&type_info.file_type_id, cx))
-                                                    .child(Self::kind_label(&type_info.file_type_id))
-                                            )
-                                    )
-                                    .child(
-                                        div()
-                                            .flex_1()
-                                            .text_xs()
-                                            .font_family("monospace")
-                                            .text_color(cx.theme().muted_foreground)
-                                            .child(format!("ID: {}", type_info.id))
-                                    )
+                                                    .font_family("monospace")
+                                                    .text_color(cx.theme().muted_foreground)
+                                                    .child(display_path),
+                                            ),
+                                    ),
                             )
-                            // Display name
-                            .child(
-                                div()
-                                    .w_full()
-                                    .text_sm()
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(cx.theme().foreground)
-                                    .line_height(rems(1.4))
-                                    .child(type_info.display_name.clone())
-                            )
-                            // Description
-                            .when_some(type_info.description.as_ref(), |container, desc| {
-                                container.child(
-                                    div()
-                                        .w_full()
-                                        .text_xs()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .line_height(rems(1.4))
-                                        .child(desc.clone())
-                                )
-                            })
-                            // File path
-                            .when_some(type_info.file_path.as_ref(), |container, file_path| {
-                                let display_path = self.get_display_path(file_path);
-                                container.child(
-                                    div()
-                                        .w_full()
-                                        .px_2()
-                                        .py_1()
-                                        .mt_1()
-                                        .rounded_md()
-                                        .bg(cx.theme().background.opacity(0.5))
-                                        .border_1()
-                                        .border_color(cx.theme().border.opacity(0.3))
-                                        .child(
-                                            h_flex()
-                                                .gap_2()
-                                                .items_center()
-                                                .child(
-                                                    ui::Icon::new(IconName::Folder)
-                                                        .size_3()
-                                                        .text_color(cx.theme().muted_foreground)
-                                                )
-                                                .child(
-                                                    div()
-                                                        .text_xs()
-                                                        .font_family("monospace")
-                                                        .text_color(cx.theme().muted_foreground)
-                                                        .child(display_path)
-                                                )
-                                        )
-                                )
-                            })
-                    )
-            )
+                        }),
+                ),
+        )
     }
 
     fn kind_icon(&self, kind: &FileTypeId) -> Icon {
@@ -582,11 +615,11 @@ impl TypeDebuggerDrawer {
 
     fn kind_color(&self, kind: &FileTypeId, _cx: &App) -> Hsla {
         match kind.as_str() {
-            "alias" => gpui::rgb(0x607D8B).into(),   // Blue Gray
-            "struct" => gpui::rgb(0x00BCD4).into(),  // Cyan
-            "enum" => gpui::rgb(0x673AB7).into(),    // Deep Purple
-            "trait" => gpui::rgb(0x3F51B5).into(),   // Indigo
-            _ => gpui::rgb(0x9E9E9E).into(),         // Gray for unknown types
+            "alias" => gpui::rgb(0x607D8B).into(),  // Blue Gray
+            "struct" => gpui::rgb(0x00BCD4).into(), // Cyan
+            "enum" => gpui::rgb(0x673AB7).into(),   // Deep Purple
+            "trait" => gpui::rgb(0x3F51B5).into(),  // Indigo
+            _ => gpui::rgb(0x9E9E9E).into(),        // Gray for unknown types
         }
     }
 
@@ -615,12 +648,10 @@ impl TypeDebuggerDrawer {
                     .w_full()
                     .p_2()
                     .gap_2()
-                    .children(
-                        types.into_iter().enumerate().map(|(index, type_info)| {
-                            let is_selected = selected_index == Some(index);
-                            self.render_type_item(&type_info, is_selected, cx)
-                        })
-                    )
+                    .children(types.into_iter().enumerate().map(|(index, type_info)| {
+                        let is_selected = selected_index == Some(index);
+                        self.render_type_item(&type_info, is_selected, cx)
+                    })),
             )
     }
 
@@ -636,76 +667,80 @@ impl TypeDebuggerDrawer {
             .id("type-debugger-scroll-container-grouped")
             .size_full()
             .scrollable(ScrollbarAxis::Vertical)
-            .child(
-                v_flex()
-                    .w_full()
-                    .p_2()
-                    .gap_2()
-                    .children({
-                        let mut groups = Vec::new();
-                        // Order: Aliases, Structs, Enums, Traits
-                        let ordered_kinds = vec![
-                            FileTypeId::new("alias"),
-                            FileTypeId::new("struct"),
-                            FileTypeId::new("enum"),
-                            FileTypeId::new("trait"),
-                        ];
-                        
-                        for kind in ordered_kinds {
-                            if let Some(types) = grouped.get(&kind) {
-                                if !types.is_empty() {
-                                    let kind_clone = kind.clone();
-                                    let types_clone = types.clone();
-                                    
-                                    groups.push(
-                                        v_flex()
+            .child(v_flex().w_full().p_2().gap_2().children({
+                let mut groups = Vec::new();
+                // Order: Aliases, Structs, Enums, Traits
+                let ordered_kinds = vec![
+                    FileTypeId::new("alias"),
+                    FileTypeId::new("struct"),
+                    FileTypeId::new("enum"),
+                    FileTypeId::new("trait"),
+                ];
+
+                for kind in ordered_kinds {
+                    if let Some(types) = grouped.get(&kind) {
+                        if !types.is_empty() {
+                            let kind_clone = kind.clone();
+                            let types_clone = types.clone();
+
+                            groups.push(
+                                v_flex()
+                                    .w_full()
+                                    .px_3()
+                                    .child(
+                                        // Kind header - styled like a section header
+                                        div()
                                             .w_full()
                                             .px_3()
+                                            .py_2()
+                                            .mb_2()
+                                            .rounded_md()
+                                            .bg(cx.theme().secondary.opacity(0.3))
+                                            .border_1()
+                                            .border_color(cx.theme().border.opacity(0.3))
                                             .child(
-                                                // Kind header - styled like a section header
-                                                div()
+                                                h_flex()
                                                     .w_full()
-                                                    .px_3()
-                                                    .py_2()
-                                                    .mb_2()
-                                                    .rounded_md()
-                                                    .bg(cx.theme().secondary.opacity(0.3))
-                                                    .border_1()
-                                                    .border_color(cx.theme().border.opacity(0.3))
+                                                    .gap_3()
+                                                    .items_center()
                                                     .child(
-                                                        h_flex()
-                                                            .w_full()
-                                                            .gap_3()
-                                                            .items_center()
-                                                            .child(
-                                                                self.kind_icon(&kind_clone)
-                                                                    .size_4()
-                                                                    .text_color(self.kind_color(&kind_clone, cx))
-                                                            )
-                                                            .child(
-                                                                div()
-                                                                    .flex_1()
-                                                                    .text_sm()
-                                                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                                                    .text_color(cx.theme().foreground)
-                                                                    .child(format!("{} ({})", Self::kind_label(&kind_clone), types_clone.len()))
-                                                            )
+                                                        self.kind_icon(&kind_clone)
+                                                            .size_4()
+                                                            .text_color(
+                                                                self.kind_color(&kind_clone, cx),
+                                                            ),
                                                     )
-                                            )
-                                            .children(
-                                                types_clone.iter().map(|type_info| {
-                                                    let is_selected = selected_index == Some(global_index);
-                                                    global_index += 1;
-                                                    self.render_type_item(type_info, is_selected, cx)
-                                                }).collect::<Vec<_>>()
-                                            )
-                                    );
-                                }
-                            }
+                                                    .child(
+                                                        div()
+                                                            .flex_1()
+                                                            .text_sm()
+                                                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                            .text_color(cx.theme().foreground)
+                                                            .child(format!(
+                                                                "{} ({})",
+                                                                Self::kind_label(&kind_clone),
+                                                                types_clone.len()
+                                                            )),
+                                                    ),
+                                            ),
+                                    )
+                                    .children(
+                                        types_clone
+                                            .iter()
+                                            .map(|type_info| {
+                                                let is_selected =
+                                                    selected_index == Some(global_index);
+                                                global_index += 1;
+                                                self.render_type_item(type_info, is_selected, cx)
+                                            })
+                                            .collect::<Vec<_>>(),
+                                    ),
+                            );
                         }
-                        groups
-                    })
-            )
+                    }
+                }
+                groups
+            }))
     }
 }
 
@@ -737,9 +772,11 @@ impl Render for TypeDebuggerDrawer {
         let content: AnyElement = if filtered_types.is_empty() {
             self.render_empty_state(cx).into_any_element()
         } else if group_by_kind {
-            self.render_grouped_view(selected_index, cx).into_any_element()
+            self.render_grouped_view(selected_index, cx)
+                .into_any_element()
         } else {
-            self.render_flat_view(filtered_types, selected_index, cx).into_any_element()
+            self.render_flat_view(filtered_types, selected_index, cx)
+                .into_any_element()
         };
 
         v_flex()
@@ -753,14 +790,14 @@ impl Render for TypeDebuggerDrawer {
             .on_action(cx.listener(Self::on_filter_traits))
             // Professional header with search
             .child(self.render_header(
-                alias_count, struct_count, enum_count, trait_count, total_count, cx
+                alias_count,
+                struct_count,
+                enum_count,
+                trait_count,
+                total_count,
+                cx,
             ))
             // Main content area - flex_1 + overflow_hidden to constrain scroll
-            .child(
-                div()
-                    .flex_1()
-                    .overflow_hidden()
-                    .child(content)
-            )
+            .child(div().flex_1().overflow_hidden().child(content))
     }
 }

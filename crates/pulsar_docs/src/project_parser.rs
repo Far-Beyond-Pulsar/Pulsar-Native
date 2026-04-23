@@ -1,14 +1,13 @@
+use serde::{Deserialize, Serialize};
 /// Runtime project documentation parser
 ///
 /// Parses Rust source files from a project directory at runtime to generate
 /// documentation from doc comments. Uses full AST parsing via syn for accuracy.
-
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
-use syn::{Item, Attribute, Visibility};
+use syn::{Attribute, Item, Visibility};
 use walkdir::WalkDir;
-use serde::{Deserialize, Serialize};
 
 /// Project documentation structure
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -234,14 +233,20 @@ fn extract_item_docs(item: &Item, current_path: &[String], file_docs: &mut FileD
             let doc_comment = extract_doc_comments(&item_struct.attrs);
             let visibility = visibility_to_string(&item_struct.vis);
 
-            let fields = item_struct.fields.iter().map(|field| {
-                FieldDoc {
-                    name: field.ident.as_ref().map(|i| i.to_string()).unwrap_or_else(|| "unnamed".to_string()),
+            let fields = item_struct
+                .fields
+                .iter()
+                .map(|field| FieldDoc {
+                    name: field
+                        .ident
+                        .as_ref()
+                        .map(|i| i.to_string())
+                        .unwrap_or_else(|| "unnamed".to_string()),
                     ty: quote::quote!(#field.ty).to_string(),
                     doc_comment: extract_doc_comments(&field.attrs),
                     visibility: visibility_to_string(&field.vis),
-                }
-            }).collect();
+                })
+                .collect();
 
             file_docs.structs.push(StructDoc {
                 name: item_struct.ident.to_string(),
@@ -255,12 +260,14 @@ fn extract_item_docs(item: &Item, current_path: &[String], file_docs: &mut FileD
             let doc_comment = extract_doc_comments(&item_enum.attrs);
             let visibility = visibility_to_string(&item_enum.vis);
 
-            let variants = item_enum.variants.iter().map(|variant| {
-                VariantDoc {
+            let variants = item_enum
+                .variants
+                .iter()
+                .map(|variant| VariantDoc {
                     name: variant.ident.to_string(),
                     doc_comment: extract_doc_comments(&variant.attrs),
-                }
-            }).collect();
+                })
+                .collect();
 
             file_docs.enums.push(EnumDoc {
                 name: item_enum.ident.to_string(),
@@ -274,17 +281,21 @@ fn extract_item_docs(item: &Item, current_path: &[String], file_docs: &mut FileD
             let doc_comment = extract_doc_comments(&item_trait.attrs);
             let visibility = visibility_to_string(&item_trait.vis);
 
-            let methods = item_trait.items.iter().filter_map(|trait_item| {
-                if let syn::TraitItem::Fn(method) = trait_item {
-                    Some(MethodDoc {
-                        name: method.sig.ident.to_string(),
-                        signature: quote::quote!(#method.sig).to_string(),
-                        doc_comment: extract_doc_comments(&method.attrs),
-                    })
-                } else {
-                    None
-                }
-            }).collect();
+            let methods = item_trait
+                .items
+                .iter()
+                .filter_map(|trait_item| {
+                    if let syn::TraitItem::Fn(method) = trait_item {
+                        Some(MethodDoc {
+                            name: method.sig.ident.to_string(),
+                            signature: quote::quote!(#method.sig).to_string(),
+                            doc_comment: extract_doc_comments(&method.attrs),
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect();
 
             file_docs.traits.push(TraitDoc {
                 name: item_trait.ident.to_string(),
@@ -367,7 +378,10 @@ pub fn generate_markdown(docs: &ProjectDocumentation) -> String {
     let mut markdown = String::new();
 
     markdown.push_str(&format!("# {} Documentation\n\n", docs.project_name));
-    markdown.push_str(&format!("**Project Path:** `{}`\n\n", docs.project_path.display()));
+    markdown.push_str(&format!(
+        "**Project Path:** `{}`\n\n",
+        docs.project_path.display()
+    ));
 
     // Table of contents
     markdown.push_str("## Table of Contents\n\n");
@@ -376,7 +390,11 @@ pub fn generate_markdown(docs: &ProjectDocumentation) -> String {
         markdown.push_str("### Modules\n\n");
         for module in &docs.modules {
             let module_name = format_path_with_name(&module.path, &module.name);
-            markdown.push_str(&format!("- [`{}`](#module-{})\n", module_name, slugify(&module_name)));
+            markdown.push_str(&format!(
+                "- [`{}`](#module-{})\n",
+                module_name,
+                slugify(&module_name)
+            ));
         }
         markdown.push_str("\n");
     }
@@ -385,7 +403,11 @@ pub fn generate_markdown(docs: &ProjectDocumentation) -> String {
         markdown.push_str("### Structs\n\n");
         for struct_doc in &docs.structs {
             let struct_name = format_path_with_name(&struct_doc.path, &struct_doc.name);
-            markdown.push_str(&format!("- [`{}`](#struct-{})\n", struct_name, slugify(&struct_name)));
+            markdown.push_str(&format!(
+                "- [`{}`](#struct-{})\n",
+                struct_name,
+                slugify(&struct_name)
+            ));
         }
         markdown.push_str("\n");
     }
@@ -394,7 +416,11 @@ pub fn generate_markdown(docs: &ProjectDocumentation) -> String {
         markdown.push_str("### Enums\n\n");
         for enum_doc in &docs.enums {
             let enum_name = format_path_with_name(&enum_doc.path, &enum_doc.name);
-            markdown.push_str(&format!("- [`{}`](#enum-{})\n", enum_name, slugify(&enum_name)));
+            markdown.push_str(&format!(
+                "- [`{}`](#enum-{})\n",
+                enum_name,
+                slugify(&enum_name)
+            ));
         }
         markdown.push_str("\n");
     }
@@ -403,7 +429,11 @@ pub fn generate_markdown(docs: &ProjectDocumentation) -> String {
         markdown.push_str("### Traits\n\n");
         for trait_doc in &docs.traits {
             let trait_name = format_path_with_name(&trait_doc.path, &trait_doc.name);
-            markdown.push_str(&format!("- [`{}`](#trait-{})\n", trait_name, slugify(&trait_name)));
+            markdown.push_str(&format!(
+                "- [`{}`](#trait-{})\n",
+                trait_name,
+                slugify(&trait_name)
+            ));
         }
         markdown.push_str("\n");
     }
@@ -412,7 +442,11 @@ pub fn generate_markdown(docs: &ProjectDocumentation) -> String {
         markdown.push_str("### Functions\n\n");
         for fn_doc in &docs.functions {
             let fn_name = format_path_with_name(&fn_doc.path, &fn_doc.name);
-            markdown.push_str(&format!("- [`{}`](#function-{})\n", fn_name, slugify(&fn_name)));
+            markdown.push_str(&format!(
+                "- [`{}`](#function-{})\n",
+                fn_name,
+                slugify(&fn_name)
+            ));
         }
         markdown.push_str("\n");
     }
@@ -422,7 +456,11 @@ pub fn generate_markdown(docs: &ProjectDocumentation) -> String {
         markdown.push_str("---\n\n## Modules\n\n");
         for module in &docs.modules {
             let module_name = format_path_with_name(&module.path, &module.name);
-            markdown.push_str(&format!("### <a name=\"module-{}\"></a>`{}`\n\n", slugify(&module_name), module_name));
+            markdown.push_str(&format!(
+                "### <a name=\"module-{}\"></a>`{}`\n\n",
+                slugify(&module_name),
+                module_name
+            ));
             markdown.push_str(&format!("**Visibility:** `{}`\n\n", module.visibility));
             if let Some(doc) = &module.doc_comment {
                 markdown.push_str(doc);
@@ -435,7 +473,11 @@ pub fn generate_markdown(docs: &ProjectDocumentation) -> String {
         markdown.push_str("---\n\n## Structs\n\n");
         for struct_doc in &docs.structs {
             let struct_name = format_path_with_name(&struct_doc.path, &struct_doc.name);
-            markdown.push_str(&format!("### <a name=\"struct-{}\"></a>`{}`\n\n", slugify(&struct_name), struct_name));
+            markdown.push_str(&format!(
+                "### <a name=\"struct-{}\"></a>`{}`\n\n",
+                slugify(&struct_name),
+                struct_name
+            ));
             markdown.push_str(&format!("**Visibility:** `{}`\n\n", struct_doc.visibility));
 
             if let Some(doc) = &struct_doc.doc_comment {
@@ -446,7 +488,10 @@ pub fn generate_markdown(docs: &ProjectDocumentation) -> String {
             if !struct_doc.fields.is_empty() {
                 markdown.push_str("**Fields:**\n\n");
                 for field in &struct_doc.fields {
-                    markdown.push_str(&format!("- `{}`: `{}` ({})\n", field.name, field.ty, field.visibility));
+                    markdown.push_str(&format!(
+                        "- `{}`: `{}` ({})\n",
+                        field.name, field.ty, field.visibility
+                    ));
                     if let Some(field_doc) = &field.doc_comment {
                         markdown.push_str(&format!("  - {}\n", field_doc));
                     }
@@ -460,7 +505,11 @@ pub fn generate_markdown(docs: &ProjectDocumentation) -> String {
         markdown.push_str("---\n\n## Enums\n\n");
         for enum_doc in &docs.enums {
             let enum_name = format_path_with_name(&enum_doc.path, &enum_doc.name);
-            markdown.push_str(&format!("### <a name=\"enum-{}\"></a>`{}`\n\n", slugify(&enum_name), enum_name));
+            markdown.push_str(&format!(
+                "### <a name=\"enum-{}\"></a>`{}`\n\n",
+                slugify(&enum_name),
+                enum_name
+            ));
             markdown.push_str(&format!("**Visibility:** `{}`\n\n", enum_doc.visibility));
 
             if let Some(doc) = &enum_doc.doc_comment {
@@ -485,7 +534,11 @@ pub fn generate_markdown(docs: &ProjectDocumentation) -> String {
         markdown.push_str("---\n\n## Traits\n\n");
         for trait_doc in &docs.traits {
             let trait_name = format_path_with_name(&trait_doc.path, &trait_doc.name);
-            markdown.push_str(&format!("### <a name=\"trait-{}\"></a>`{}`\n\n", slugify(&trait_name), trait_name));
+            markdown.push_str(&format!(
+                "### <a name=\"trait-{}\"></a>`{}`\n\n",
+                slugify(&trait_name),
+                trait_name
+            ));
             markdown.push_str(&format!("**Visibility:** `{}`\n\n", trait_doc.visibility));
 
             if let Some(doc) = &trait_doc.doc_comment {
@@ -511,7 +564,11 @@ pub fn generate_markdown(docs: &ProjectDocumentation) -> String {
         markdown.push_str("---\n\n## Functions\n\n");
         for fn_doc in &docs.functions {
             let fn_name = format_path_with_name(&fn_doc.path, &fn_doc.name);
-            markdown.push_str(&format!("### <a name=\"function-{}\"></a>`{}`\n\n", slugify(&fn_name), fn_name));
+            markdown.push_str(&format!(
+                "### <a name=\"function-{}\"></a>`{}`\n\n",
+                slugify(&fn_name),
+                fn_name
+            ));
             markdown.push_str(&format!("**Visibility:** `{}`\n\n", fn_doc.visibility));
             markdown.push_str(&format!("**Signature:** `{}`\n\n", fn_doc.signature));
 

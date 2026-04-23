@@ -1,13 +1,13 @@
 //! Physics query service for raycasting and spatial queries.
-//! 
+//!
 //! Provides viewport picking and gizmo interaction using Rapier3d QueryPipeline.
 
-use std::sync::{Arc, Mutex};
+use crate::scene::{ObjectId, SceneDb};
 use dashmap::DashMap;
-use rapier3d::prelude::*;
-use rapier3d::na::{Point3, Vector3, Isometry3};
 use glam::Vec3;
-use crate::scene::{SceneDb, ObjectId};
+use rapier3d::na::{Isometry3, Point3, Vector3};
+use rapier3d::prelude::*;
+use std::sync::{Arc, Mutex};
 
 /// Result of a raycast query
 #[derive(Debug, Clone)]
@@ -53,7 +53,9 @@ impl PhysicsQueryService {
     }
 
     /// Compatibility shim — `island_manager` is no longer stored here.
-    #[deprecated(note = "island_manager is no longer used by PhysicsQueryService; use `new` instead")]
+    #[deprecated(
+        note = "island_manager is no longer used by PhysicsQueryService; use `new` instead"
+    )]
     pub fn new_with_island_manager(
         collider_set: Arc<Mutex<ColliderSet>>,
         rigid_body_set: Arc<Mutex<RigidBodySet>>,
@@ -63,13 +65,20 @@ impl PhysicsQueryService {
     }
 
     /// Perform a raycast from origin in direction
-    /// 
+    ///
     /// Note: This creates a temporary QueryPipeline each call. For better performance
     /// when doing multiple queries, consider batching or using PhysicsEngine's query pipeline.
     pub fn raycast(&self, origin: Vec3, direction: Vec3, max_distance: f32) -> Option<RaycastHit> {
-        tracing::info!("[PHYSICS] 🎯 Raycast from [{:.2}, {:.2}, {:.2}] dir [{:.2}, {:.2}, {:.2}]", 
-            origin.x, origin.y, origin.z, direction.x, direction.y, direction.z);
-        
+        tracing::info!(
+            "[PHYSICS] 🎯 Raycast from [{:.2}, {:.2}, {:.2}] dir [{:.2}, {:.2}, {:.2}]",
+            origin.x,
+            origin.y,
+            origin.z,
+            direction.x,
+            direction.y,
+            direction.z
+        );
+
         let ray = Ray::new(
             Point3::new(origin.x, origin.y, origin.z).into(),
             Vector3::new(direction.x, direction.y, direction.z).into(),
@@ -77,12 +86,12 @@ impl PhysicsQueryService {
 
         let rigid_body_set = self.rigid_body_set.lock().ok()?;
         let collider_set = self.collider_set.lock().ok()?;
-        
+
         tracing::info!("[PHYSICS] Checking {} colliders", collider_set.len());
 
         // Perform raycast directly on collider set
         let mut closest_hit: Option<(ColliderHandle, f32)> = None;
-        
+
         let mut tested_count = 0;
         for (handle, collider) in collider_set.iter() {
             // Only test colliders that are registered as scene objects
@@ -90,27 +99,32 @@ impl PhysicsQueryService {
                 continue;
             }
             tested_count += 1;
-            
-            if let Some(toi) = collider.shape().cast_ray(
-                collider.position(),
-                &ray,
-                max_distance,
-                true,
-            ) {
+
+            if let Some(toi) =
+                collider
+                    .shape()
+                    .cast_ray(collider.position(), &ray, max_distance, true)
+            {
                 tracing::debug!("[PHYSICS] Hit collider at distance {:.2}", toi);
                 if closest_hit.map_or(true, |h| toi < h.1) {
                     closest_hit = Some((handle, toi));
                 }
             }
         }
-        
-        tracing::info!("[PHYSICS] Tested {} scene object colliders, closest_hit: {}", 
-            tested_count, closest_hit.is_some());
+
+        tracing::info!(
+            "[PHYSICS] Tested {} scene object colliders, closest_hit: {}",
+            tested_count,
+            closest_hit.is_some()
+        );
 
         closest_hit.and_then(|(handle, toi)| {
             // Get object ID for this collider
-            let object_id = self.collider_to_object.get(&handle).map(|r| r.value().clone())?;
-            
+            let object_id = self
+                .collider_to_object
+                .get(&handle)
+                .map(|r| r.value().clone())?;
+
             // Get hit point and normal
             let hit_point_rapier = ray.point_at(toi);
             let hit_point = Vec3::new(hit_point_rapier.x, hit_point_rapier.y, hit_point_rapier.z);
@@ -158,16 +172,15 @@ impl PhysicsQueryService {
 
         // Iterate gizmo colliders and find closest hit
         let mut closest_hit: Option<(ColliderHandle, f32)> = None;
-        
+
         for entry in self.collider_to_gizmo.iter() {
             let handle = *entry.key();
             if let Some(collider) = collider_set.get(handle) {
-                if let Some(toi) = collider.shape().cast_ray(
-                    collider.position(),
-                    &ray,
-                    max_distance,
-                    true,
-                ) {
+                if let Some(toi) =
+                    collider
+                        .shape()
+                        .cast_ray(collider.position(), &ray, max_distance, true)
+                {
                     if closest_hit.map_or(true, |h| toi < h.1) {
                         closest_hit = Some((handle, toi));
                     }
@@ -175,9 +188,7 @@ impl PhysicsQueryService {
             }
         }
 
-        closest_hit.and_then(|(handle, _)| {
-            self.collider_to_gizmo.get(&handle).map(|r| *r.value())
-        })
+        closest_hit.and_then(|(handle, _)| self.collider_to_gizmo.get(&handle).map(|r| *r.value()))
     }
 
     /// Register a scene object's collider for raycasting
@@ -199,80 +210,90 @@ impl PhysicsQueryService {
     /// Sync colliders from SceneDB (recreate all scene colliders)
     pub fn sync_from_scene(&self, scene_db: &crate::scene::SceneDb) {
         let start_count = self.collider_to_object.len();
-        
+
         // Clear existing scene colliders (but not gizmo colliders)
         {
             let handles_to_remove: Vec<ColliderHandle> =
                 self.collider_to_object.iter().map(|r| *r.key()).collect();
             let mut collider_set = self.collider_set.lock().unwrap_or_else(|e| e.into_inner());
-            let mut rigid_body_set = self.rigid_body_set.lock().unwrap_or_else(|e| e.into_inner());
+            let mut rigid_body_set = self
+                .rigid_body_set
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             for handle in handles_to_remove {
                 collider_set.remove(handle, &mut Default::default(), &mut rigid_body_set, false);
                 self.collider_to_object.remove(&handle);
             }
         }
-        
+
         let mut created_count = 0;
-        
+
         // Recreate colliders for all visible scene objects
         scene_db.for_each_entry(|entry| {
-            use crate::scene::{ObjectType, MeshType};
+            use crate::scene::{MeshType, ObjectType};
             if !entry.is_visible() {
                 return;
             }
-            
+
             // Skip sky sphere - it should not participate in raycasting
             if entry.id == "sky_sphere" {
                 return;
             }
-            
+
             let pos = entry.get_position();
             let scale = entry.get_scale();
             let position = Isometry3::translation(pos[0], pos[1], pos[2]);
-            
+
             // Create collider based on object type
             let shape: Option<SharedShape> = match entry.object_type {
                 ObjectType::Mesh(MeshType::Cube) | ObjectType::Mesh(MeshType::Plane) => {
                     let half_extents = Vector3::new(scale[0] * 0.5, scale[1] * 0.5, scale[2] * 0.5);
-                    Some(SharedShape::cuboid(half_extents.x, half_extents.y, half_extents.z))
-                },
+                    Some(SharedShape::cuboid(
+                        half_extents.x,
+                        half_extents.y,
+                        half_extents.z,
+                    ))
+                }
                 ObjectType::Mesh(MeshType::Sphere) => {
                     let radius = (scale[0] + scale[1] + scale[2]) / 3.0 * 0.5;
                     Some(SharedShape::ball(radius))
-                },
+                }
                 ObjectType::Mesh(MeshType::Cylinder) => {
                     let radius = (scale[0] + scale[2]) / 2.0 * 0.5;
                     let half_height = scale[1] * 0.5;
                     Some(SharedShape::cylinder(half_height, radius))
-                },
+                }
                 _ => None,
             };
-            
+
             if let Some(shape) = shape {
-                let collider = ColliderBuilder::new(shape).position(position.into()).build();
+                let collider = ColliderBuilder::new(shape)
+                    .position(position.into())
+                    .build();
                 let handle = {
-                    let mut collider_set = self.collider_set.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut collider_set =
+                        self.collider_set.lock().unwrap_or_else(|e| e.into_inner());
                     collider_set.insert(collider)
                 };
                 self.register_scene_collider(handle, entry.id.clone());
                 created_count += 1;
-                
-                tracing::debug!("[PHYSICS] Created collider for object '{}' at pos [{:.2}, {:.2}, {:.2}]", 
-                    entry.id, pos[0], pos[1], pos[2]);
+
+                tracing::debug!(
+                    "[PHYSICS] Created collider for object '{}' at pos [{:.2}, {:.2}, {:.2}]",
+                    entry.id,
+                    pos[0],
+                    pos[1],
+                    pos[2]
+                );
             }
         });
     }
 
     /// Create gizmo colliders for the currently selected object
-    /// 
+    ///
     /// Gizmo colliders are simple shapes positioned at the object's location
     /// and are tagged with axis information for interaction
-    pub fn create_gizmo_colliders(
-        &self,
-        position: Vec3,
-        gizmo_type: super::GizmoType,
-        scale: f32,
-    ) {
+    pub fn create_gizmo_colliders(&self, position: Vec3, gizmo_type: super::GizmoType, scale: f32) {
         self.clear_gizmo_colliders();
 
         if gizmo_type == super::GizmoType::None {
@@ -359,7 +380,8 @@ impl PhysicsQueryService {
                 let cube_size = 0.15 * scale;
 
                 // X axis
-                let x_shape = SharedShape::cuboid(shaft_length / 2.0, cube_size / 2.0, cube_size / 2.0);
+                let x_shape =
+                    SharedShape::cuboid(shaft_length / 2.0, cube_size / 2.0, cube_size / 2.0);
                 let x_pos = Isometry3::new(
                     Vector3::new(position.x + shaft_length / 2.0, position.y, position.z),
                     Vector3::new(0.0, 0.0, 0.0),
@@ -369,7 +391,8 @@ impl PhysicsQueryService {
                 self.register_gizmo_collider(x_handle, ColliderTag::GizmoAxisX);
 
                 // Y axis
-                let y_shape = SharedShape::cuboid(cube_size / 2.0, shaft_length / 2.0, cube_size / 2.0);
+                let y_shape =
+                    SharedShape::cuboid(cube_size / 2.0, shaft_length / 2.0, cube_size / 2.0);
                 let y_pos = Isometry3::new(
                     Vector3::new(position.x, position.y + shaft_length / 2.0, position.z),
                     Vector3::new(0.0, 0.0, 0.0),
@@ -379,7 +402,8 @@ impl PhysicsQueryService {
                 self.register_gizmo_collider(y_handle, ColliderTag::GizmoAxisY);
 
                 // Z axis
-                let z_shape = SharedShape::cuboid(cube_size / 2.0, cube_size / 2.0, shaft_length / 2.0);
+                let z_shape =
+                    SharedShape::cuboid(cube_size / 2.0, cube_size / 2.0, shaft_length / 2.0);
                 let z_pos = Isometry3::new(
                     Vector3::new(position.x, position.y, position.z + shaft_length / 2.0),
                     Vector3::new(0.0, 0.0, 0.0),
@@ -394,10 +418,16 @@ impl PhysicsQueryService {
 
     /// Remove all gizmo colliders
     pub fn clear_gizmo_colliders(&self) {
-        let gizmo_handles: Vec<ColliderHandle> = self.collider_to_gizmo.iter().map(|r| *r.key()).collect();
+        let gizmo_handles: Vec<ColliderHandle> =
+            self.collider_to_gizmo.iter().map(|r| *r.key()).collect();
         let mut collider_set = self.collider_set.lock().unwrap_or_else(|e| e.into_inner());
         for handle in gizmo_handles {
-            collider_set.remove(handle, &mut Default::default(), &mut Default::default(), false);
+            collider_set.remove(
+                handle,
+                &mut Default::default(),
+                &mut Default::default(),
+                false,
+            );
             self.collider_to_gizmo.remove(&handle);
         }
     }

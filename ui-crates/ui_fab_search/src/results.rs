@@ -5,22 +5,21 @@ use std::rc::Rc;
 
 use gpui::{prelude::*, *};
 use ui::{
-    ActiveTheme, h_flex, v_flex, button::Button,
+    ActiveTheme, IconName, Sizable, StyledExt,
+    button::Button,
+    download_item::DownloadItemStatus,
+    download_manager::{DownloadEntry, DownloadManagerDrawer},
+    h_flex,
     input::TextInput,
     scroll::Scrollbar,
     skeleton::Skeleton,
     spinner::Spinner,
-    Sizable,
-    v_virtual_list,
-    IconName,
-    StyledExt,
-    download_manager::{DownloadEntry, DownloadManagerDrawer},
-    download_item::DownloadItemStatus,
+    v_flex, v_virtual_list,
 };
 
-use crate::dispatch::{DownloadState, SortBy, LicenseFilter};
-use crate::parser::fmt_count;
 use crate::FabSearchWindow;
+use crate::dispatch::{DownloadState, LicenseFilter, SortBy};
+use crate::parser::fmt_count;
 
 impl FabSearchWindow {
     pub(crate) fn render_filter_bar(
@@ -33,96 +32,167 @@ impl FabSearchWindow {
         active_fg: gpui::Hsla,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let dl_active  = self.filter_downloadable;
-        let an_active  = self.filter_animated;
-        let sp_active  = self.filter_staffpicked;
+        let dl_active = self.filter_downloadable;
+        let an_active = self.filter_animated;
+        let sp_active = self.filter_staffpicked;
         let lic_active = self.filter_license != LicenseFilter::All;
-        let lic_label  = self.filter_license.label();
-        let show_lic   = self.show_license_menu;
+        let lic_label = self.filter_license.label();
+        let show_lic = self.show_license_menu;
 
         let filter_bar = div()
-            .w_full().px_4().py_2()
-            .border_b_1().border_color(border_col)
-            .flex().flex_row().flex_wrap().gap_2().items_center()
-            .child(div().text_xs().font_bold().text_color(muted_fg).child("Sort:"))
+            .w_full()
+            .px_4()
+            .py_2()
+            .border_b_1()
+            .border_color(border_col)
+            .flex()
+            .flex_row()
+            .flex_wrap()
+            .gap_2()
+            .items_center()
+            .child(
+                div()
+                    .text_xs()
+                    .font_bold()
+                    .text_color(muted_fg)
+                    .child("Sort:"),
+            )
             .children(SortBy::all().into_iter().map(|s| {
                 let active = self.sort_by == s;
                 let lbl = s.label();
                 div()
                     .id(SharedString::from(format!("sort-{}", lbl)))
-                    .cursor_pointer().px_2().py(px(3.0)).rounded_full()
-                    .text_xs().font_medium()
+                    .cursor_pointer()
+                    .px_2()
+                    .py(px(3.0))
+                    .rounded_full()
+                    .text_xs()
+                    .font_medium()
                     .bg(if active { active_bg } else { accent_bg })
                     .text_color(if active { active_fg } else { accent_fg })
                     .child(lbl)
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.sort_by = s;
-                        if !this.search_query.is_empty() { this.begin_search(cx); }
-                        else { cx.notify(); }
+                        if !this.search_query.is_empty() {
+                            this.begin_search(cx);
+                        } else {
+                            cx.notify();
+                        }
                     }))
             }))
             .child(div().w(px(1.0)).h(px(16.0)).bg(border_col))
-            .child(div().id("f-dl").cursor_pointer().px_2().py(px(3.0)).rounded_full()
-                .text_xs().font_medium()
-                .bg(if dl_active { active_bg } else { accent_bg })
-                .text_color(if dl_active { active_fg } else { accent_fg })
-                .child("↓ Download")
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.filter_downloadable = !this.filter_downloadable;
-                    if !this.search_query.is_empty() { this.begin_search(cx); }
-                    else { cx.notify(); }
-                }))
+            .child(
+                div()
+                    .id("f-dl")
+                    .cursor_pointer()
+                    .px_2()
+                    .py(px(3.0))
+                    .rounded_full()
+                    .text_xs()
+                    .font_medium()
+                    .bg(if dl_active { active_bg } else { accent_bg })
+                    .text_color(if dl_active { active_fg } else { accent_fg })
+                    .child("↓ Download")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.filter_downloadable = !this.filter_downloadable;
+                        if !this.search_query.is_empty() {
+                            this.begin_search(cx);
+                        } else {
+                            cx.notify();
+                        }
+                    })),
             )
-            .child(div().id("f-an").cursor_pointer().px_2().py(px(3.0)).rounded_full()
-                .text_xs().font_medium()
-                .bg(if an_active { active_bg } else { accent_bg })
-                .text_color(if an_active { active_fg } else { accent_fg })
-                .child("▶ Animated")
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.filter_animated = !this.filter_animated;
-                    if !this.search_query.is_empty() { this.begin_search(cx); }
-                    else { cx.notify(); }
-                }))
+            .child(
+                div()
+                    .id("f-an")
+                    .cursor_pointer()
+                    .px_2()
+                    .py(px(3.0))
+                    .rounded_full()
+                    .text_xs()
+                    .font_medium()
+                    .bg(if an_active { active_bg } else { accent_bg })
+                    .text_color(if an_active { active_fg } else { accent_fg })
+                    .child("▶ Animated")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.filter_animated = !this.filter_animated;
+                        if !this.search_query.is_empty() {
+                            this.begin_search(cx);
+                        } else {
+                            cx.notify();
+                        }
+                    })),
             )
-            .child(div().id("f-sp").cursor_pointer().px_2().py(px(3.0)).rounded_full()
-                .text_xs().font_medium()
-                .bg(if sp_active { active_bg } else { accent_bg })
-                .text_color(if sp_active { active_fg } else { accent_fg })
-                .child("★ Staff Pick")
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.filter_staffpicked = !this.filter_staffpicked;
-                    if !this.search_query.is_empty() { this.begin_search(cx); }
-                    else { cx.notify(); }
-                }))
+            .child(
+                div()
+                    .id("f-sp")
+                    .cursor_pointer()
+                    .px_2()
+                    .py(px(3.0))
+                    .rounded_full()
+                    .text_xs()
+                    .font_medium()
+                    .bg(if sp_active { active_bg } else { accent_bg })
+                    .text_color(if sp_active { active_fg } else { accent_fg })
+                    .child("★ Staff Pick")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.filter_staffpicked = !this.filter_staffpicked;
+                        if !this.search_query.is_empty() {
+                            this.begin_search(cx);
+                        } else {
+                            cx.notify();
+                        }
+                    })),
             )
             .child(div().w(px(1.0)).h(px(16.0)).bg(border_col))
-            .child(div().id("f-lic").cursor_pointer().px_2().py(px(3.0)).rounded_full()
-                .text_xs().font_medium()
-                .bg(if lic_active { active_bg } else { accent_bg })
-                .text_color(if lic_active { active_fg } else { accent_fg })
-                .child(format!("© {}", lic_label))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.show_license_menu = !this.show_license_menu;
-                    cx.notify();
-                }))
-            )
-            .when(show_lic, |el| el.children(LicenseFilter::all().into_iter().map(|lic| {
-                let sel = self.filter_license == lic;
-                let lbl = lic.label();
+            .child(
                 div()
-                    .id(SharedString::from(format!("lic-{}", lbl)))
-                    .cursor_pointer().px_2().py(px(3.0)).rounded_full()
-                    .text_xs().border_1().border_color(border_col)
-                    .bg(if sel { active_bg } else { cx.theme().background })
-                    .text_color(if sel { active_fg } else { muted_fg })
-                    .child(lbl)
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.filter_license = lic;
-                        this.show_license_menu = false;
-                        if !this.search_query.is_empty() { this.begin_search(cx); }
-                        else { cx.notify(); }
-                    }))
-            })));
+                    .id("f-lic")
+                    .cursor_pointer()
+                    .px_2()
+                    .py(px(3.0))
+                    .rounded_full()
+                    .text_xs()
+                    .font_medium()
+                    .bg(if lic_active { active_bg } else { accent_bg })
+                    .text_color(if lic_active { active_fg } else { accent_fg })
+                    .child(format!("© {}", lic_label))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.show_license_menu = !this.show_license_menu;
+                        cx.notify();
+                    })),
+            )
+            .when(show_lic, |el| {
+                el.children(LicenseFilter::all().into_iter().map(|lic| {
+                    let sel = self.filter_license == lic;
+                    let lbl = lic.label();
+                    div()
+                        .id(SharedString::from(format!("lic-{}", lbl)))
+                        .cursor_pointer()
+                        .px_2()
+                        .py(px(3.0))
+                        .rounded_full()
+                        .text_xs()
+                        .border_1()
+                        .border_color(border_col)
+                        .bg(if sel {
+                            active_bg
+                        } else {
+                            cx.theme().background
+                        })
+                        .text_color(if sel { active_fg } else { muted_fg })
+                        .child(lbl)
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.filter_license = lic;
+                            this.show_license_menu = false;
+                            if !this.search_query.is_empty() {
+                                this.begin_search(cx);
+                            } else {
+                                cx.notify();
+                            }
+                        }))
+                }))
+            });
 
         filter_bar.into_any_element()
     }
@@ -134,23 +204,36 @@ impl FabSearchWindow {
         border_col: gpui::Hsla,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let logged_in   = self.api_token.is_some();
-        let me_name     = self.me.as_ref().map(|m| m.display().to_string());
-        let me_avatar   = self.me.as_ref()
+        let logged_in = self.api_token.is_some();
+        let me_name = self.me.as_ref().map(|m| m.display().to_string());
+        let me_avatar = self
+            .me
+            .as_ref()
             .and_then(|m| m.avatar_url(64).map(|s| s.to_string()))
             .and_then(|url| self.image_cache.get(&url).and_then(|o| o.clone()));
-        let me_loading  = self.me_loading;
-        let show_tok    = self.show_token_input;
+        let me_loading = self.me_loading;
+        let show_tok = self.show_token_input;
         let account_tier = self.me.as_ref().and_then(|m| m.account.clone());
 
         if me_loading {
-            div().text_xs().text_color(muted_fg).child("Verifying…").into_any_element()
+            div()
+                .text_xs()
+                .text_color(muted_fg)
+                .child("Verifying…")
+                .into_any_element()
         } else if logged_in {
-            h_flex().gap_2().items_center()
+            h_flex()
+                .gap_2()
+                .items_center()
                 .map(|el| {
                     if let Some(arc) = me_avatar {
-                        el.child(img(gpui::ImageSource::Render(arc))
-                            .w_6().h_6().rounded_full().overflow_hidden())
+                        el.child(
+                            img(gpui::ImageSource::Render(arc))
+                                .w_6()
+                                .h_6()
+                                .rounded_full()
+                                .overflow_hidden(),
+                        )
                     } else {
                         el.child(div().w_6().h_6().rounded_full().bg(border_col))
                     }
@@ -159,32 +242,58 @@ impl FabSearchWindow {
                     el.child(div().text_xs().font_medium().text_color(fg).child(name))
                 })
                 .when_some(account_tier, |el, tier| {
-                    el.child(div().text_xs().px_2().py(px(2.0)).rounded_full()
-                        .bg(gpui::rgb(0x6366F1)).text_color(gpui::rgb(0xFFFFFF))
-                        .child(tier))
+                    el.child(
+                        div()
+                            .text_xs()
+                            .px_2()
+                            .py(px(2.0))
+                            .rounded_full()
+                            .bg(gpui::rgb(0x6366F1))
+                            .text_color(gpui::rgb(0xFFFFFF))
+                            .child(tier),
+                    )
                 })
-                .child(Button::new("logout-btn").label("Logout")
-                    .on_click(cx.listener(|this, _, _, cx| this.clear_token(cx))))
+                .child(
+                    Button::new("logout-btn")
+                        .label("Logout")
+                        .on_click(cx.listener(|this, _, _, cx| this.clear_token(cx))),
+                )
                 .into_any_element()
         } else if show_tok {
-            h_flex().gap_2().items_center()
-                .child(div().w(px(300.0))
-                    .child(TextInput::new(&self.token_input).w_full()))
-                .child(Button::new("verify-tok").label("Verify & Save")
-                    .on_click(cx.listener(|this, _, _window, cx| {
-                        let tok = this.token_input.read(cx).value().to_string();
-                        this.set_token(tok, cx);
-                    })))
-                .child(Button::new("cancel-tok").label("Cancel")
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.show_token_input = false;
-                        cx.notify();
-                    })))
-                .child(div().text_xs().text_color(muted_fg)
-                    .child("Get your token at sketchfab.com/settings/password"))
+            h_flex()
+                .gap_2()
+                .items_center()
+                .child(
+                    div()
+                        .w(px(300.0))
+                        .child(TextInput::new(&self.token_input).w_full()),
+                )
+                .child(
+                    Button::new("verify-tok")
+                        .label("Verify & Save")
+                        .on_click(cx.listener(|this, _, _window, cx| {
+                            let tok = this.token_input.read(cx).value().to_string();
+                            this.set_token(tok, cx);
+                        })),
+                )
+                .child(
+                    Button::new("cancel-tok")
+                        .label("Cancel")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.show_token_input = false;
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(muted_fg)
+                        .child("Get your token at sketchfab.com/settings/password"),
+                )
                 .into_any_element()
         } else {
-            Button::new("login-btn").label("Login with API Token")
+            Button::new("login-btn")
+                .label("Login with API Token")
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.show_token_input = true;
                     cx.notify();
@@ -202,9 +311,9 @@ impl FabSearchWindow {
     ) -> AnyElement {
         const CARD_W: f32 = 260.0;
         const CARD_H: f32 = 260.0;
-        const GAP:    f32 = 16.0;
-        const PAD:    f32 = 16.0;
-        const ROW_H:  f32 = CARD_H + GAP;
+        const GAP: f32 = 16.0;
+        const PAD: f32 = 16.0;
+        const ROW_H: f32 = CARD_H + GAP;
 
         let avail_w = avail_w - 2.0 * PAD;
         let cols: usize = (((avail_w + GAP) / (CARD_W + GAP)).floor() as usize).max(1);
@@ -214,11 +323,17 @@ impl FabSearchWindow {
         let total_results = self.results.len();
         let result_rows = total_results.div_ceil(cols);
         let skel_rows: usize = if self.is_loading_more { 2 } else { 0 };
-        let end_row: usize = if !self.is_loading_more && self.next_url.is_none() { 1 } else { 0 };
+        let end_row: usize = if !self.is_loading_more && self.next_url.is_none() {
+            1
+        } else {
+            0
+        };
         let total_items = result_rows + skel_rows + end_row;
 
         let item_sizes = Rc::new(
-            (0..total_items).map(|_| size(px(0.0), px(ROW_H))).collect::<Vec<_>>()
+            (0..total_items)
+                .map(|_| size(px(0.0), px(ROW_H)))
+                .collect::<Vec<_>>(),
         );
 
         div().relative().flex_1().min_h_0().overflow_hidden()
@@ -375,9 +490,16 @@ impl FabSearchWindow {
     }
 
     pub(crate) fn build_download_entries(&self) -> Vec<DownloadEntry> {
-        self.download_state.iter().map(|(uid, state)| {
-            match state {
-                DownloadState::InProgress { filename, bytes_received, total_bytes, speed_bps, speed_history } => {
+        self.download_state
+            .iter()
+            .map(|(uid, state)| match state {
+                DownloadState::InProgress {
+                    filename,
+                    bytes_received,
+                    total_bytes,
+                    speed_bps,
+                    speed_history,
+                } => {
                     let progress_pct = total_bytes
                         .filter(|&t| t > 0)
                         .map(|t| (*bytes_received as f32 / t as f32 * 100.0).min(100.0))
@@ -394,34 +516,33 @@ impl FabSearchWindow {
                         path: None,
                     }
                 }
-                DownloadState::Done { filename, path, total_bytes } => {
-                    DownloadEntry {
-                        uid: SharedString::from(uid.clone()),
-                        filename: SharedString::from(filename.clone()),
-                        progress_pct: 100.0,
-                        speed_bps: 0.0,
-                        speed_history: Vec::new(),
-                        status: DownloadItemStatus::Done,
-                        bytes_received: *total_bytes,
-                        total_bytes: Some(*total_bytes),
-                        path: Some(path.clone()),
-                    }
-                }
-                DownloadState::Error { filename, message } => {
-                    DownloadEntry {
-                        uid: SharedString::from(uid.clone()),
-                        filename: SharedString::from(filename.clone()),
-                        progress_pct: 0.0,
-                        speed_bps: 0.0,
-                        speed_history: Vec::new(),
-                        status: DownloadItemStatus::Error(message.clone()),
-                        bytes_received: 0,
-                        total_bytes: None,
-                        path: None,
-                    }
-                }
-            }
-        }).collect()
+                DownloadState::Done {
+                    filename,
+                    path,
+                    total_bytes,
+                } => DownloadEntry {
+                    uid: SharedString::from(uid.clone()),
+                    filename: SharedString::from(filename.clone()),
+                    progress_pct: 100.0,
+                    speed_bps: 0.0,
+                    speed_history: Vec::new(),
+                    status: DownloadItemStatus::Done,
+                    bytes_received: *total_bytes,
+                    total_bytes: Some(*total_bytes),
+                    path: Some(path.clone()),
+                },
+                DownloadState::Error { filename, message } => DownloadEntry {
+                    uid: SharedString::from(uid.clone()),
+                    filename: SharedString::from(filename.clone()),
+                    progress_pct: 0.0,
+                    speed_bps: 0.0,
+                    speed_history: Vec::new(),
+                    status: DownloadItemStatus::Error(message.clone()),
+                    bytes_received: 0,
+                    total_bytes: None,
+                    path: None,
+                },
+            })
+            .collect()
     }
 }
-

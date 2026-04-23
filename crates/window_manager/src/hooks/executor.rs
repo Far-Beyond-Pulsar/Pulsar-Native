@@ -51,4 +51,3 @@ impl WindowHook for TelemetryHook {
         "TelemetryHook"
     }
 }
-

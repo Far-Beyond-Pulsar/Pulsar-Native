@@ -1,19 +1,19 @@
 //! Constructor methods for PulsarApp
 
-use std::{path::PathBuf, sync::Arc};
+use engine_backend::services::rust_analyzer_manager::RustAnalyzerManager;
 use gpui::{AppContext, Context, Entity, Window};
+use plugin_manager::PluginManager;
+use std::{path::PathBuf, sync::Arc};
 use ui::dock::DockItem;
 use ui::ContextModal;
-use ui_file_manager::FileManagerDrawer;
-use ui_problems::ProblemsDrawer;
-use ui_level_editor::LevelEditorPanel;
-use ui_type_debugger::TypeDebuggerDrawer;
-use ui_log_viewer::MissionControlPanel;
 use ui_entry::EntryScreen;
-use plugin_manager::PluginManager;
-use engine_backend::services::rust_analyzer_manager::RustAnalyzerManager;
+use ui_file_manager::FileManagerDrawer;
+use ui_level_editor::LevelEditorPanel;
+use ui_log_viewer::MissionControlPanel;
+use ui_problems::ProblemsDrawer;
+use ui_type_debugger::TypeDebuggerDrawer;
 
-use super::{PulsarApp, event_handlers};
+use super::{event_handlers, PulsarApp};
 
 impl PulsarApp {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -41,7 +41,8 @@ impl PulsarApp {
     ) -> Self {
         tracing::debug!(
             "PulsarApp::new_with_project_and_window_id called with path: {:?}, window_id: {}",
-            project_path, window_id
+            project_path,
+            window_id
         );
         Self::new_internal(Some(project_path), None, Some(window_id), true, window, cx)
     }
@@ -57,7 +58,14 @@ impl PulsarApp {
             "PulsarApp::new_with_project_and_analyzer called with path: {:?}",
             project_path
         );
-        let app = Self::new_internal(Some(project_path.clone()), Some(rust_analyzer.clone()), None, true, window, cx);
+        let app = Self::new_internal(
+            Some(project_path.clone()),
+            Some(rust_analyzer.clone()),
+            None,
+            true,
+            window,
+            cx,
+        );
 
         // Start rust-analyzer in the background
         rust_analyzer.update(cx, |analyzer, cx| {
@@ -104,13 +112,7 @@ impl PulsarApp {
                 cx,
             )
         } else {
-            DockItem::tabs(
-                vec![],
-                None,
-                &weak_dock,
-                window,
-                cx,
-            )
+            DockItem::tabs(vec![], None, &weak_dock, window, cx)
         };
 
         let center_tabs = match &center_dock_item {
@@ -143,15 +145,31 @@ impl PulsarApp {
         }
 
         // Create drawers
-        let file_manager_drawer = cx.new(|cx| FileManagerDrawer::new(project_path.clone(), window, cx));
+        let file_manager_drawer =
+            cx.new(|cx| FileManagerDrawer::new(project_path.clone(), window, cx));
         let problems_drawer = cx.new(|cx| ProblemsDrawer::new(window, cx));
         let type_debugger_drawer = cx.new(|cx| TypeDebuggerDrawer::new(window, cx));
         let mission_control = cx.new(|cx| MissionControlPanel::new(cx));
 
         // Subscribe to drawer events
-        cx.subscribe_in(&file_manager_drawer, window, event_handlers::on_file_selected).detach();
-        cx.subscribe_in(&file_manager_drawer, window, event_handlers::on_popout_file_manager).detach();
-        cx.subscribe_in(&problems_drawer, window, event_handlers::on_navigate_to_diagnostic).detach();
+        cx.subscribe_in(
+            &file_manager_drawer,
+            window,
+            event_handlers::on_file_selected,
+        )
+        .detach();
+        cx.subscribe_in(
+            &file_manager_drawer,
+            window,
+            event_handlers::on_popout_file_manager,
+        )
+        .detach();
+        cx.subscribe_in(
+            &problems_drawer,
+            window,
+            event_handlers::on_navigate_to_diagnostic,
+        )
+        .detach();
 
         // Create rust analyzer manager or use shared one
         let rust_analyzer = if let Some(shared_analyzer) = shared_rust_analyzer {
@@ -170,16 +188,22 @@ impl PulsarApp {
         };
 
         // Subscribe to analyzer events
-        cx.subscribe_in(&rust_analyzer, window, event_handlers::on_analyzer_event).detach();
+        cx.subscribe_in(&rust_analyzer, window, event_handlers::on_analyzer_event)
+            .detach();
 
         // Subscribe to tab panel events
-        tracing::trace!("[SUBSCRIPTION] Setting up subscription to center_tabs (ID: {:?}) for PanelEvent", center_tabs.entity_id());
-        cx.subscribe_in(&center_tabs, window, event_handlers::on_tab_panel_event).detach();
+        tracing::trace!(
+            "[SUBSCRIPTION] Setting up subscription to center_tabs (ID: {:?}) for PanelEvent",
+            center_tabs.entity_id()
+        );
+        cx.subscribe_in(&center_tabs, window, event_handlers::on_tab_panel_event)
+            .detach();
         tracing::trace!("[SUBSCRIPTION] Subscription to center_tabs set up successfully");
 
         // Subscribe to entry screen events
         if let Some(screen) = &entry_screen {
-            cx.subscribe_in(screen, window, event_handlers::on_project_selected).detach();
+            cx.subscribe_in(screen, window, event_handlers::on_project_selected)
+                .detach();
         }
 
         // Initialize palette manager global
@@ -188,11 +212,11 @@ impl PulsarApp {
         // Initialize plugin manager
         tracing::debug!("🔌 Initializing plugin system");
         let mut plugin_manager = PluginManager::new();
-        
+
         // Register built-in editors
         tracing::debug!("📝 Registering built-in editors");
         crate::register_all_builtin_editors(plugin_manager.builtin_registry_mut());
-        
+
         // Register them with the file type and editor registries
         plugin_manager.register_builtin_editors();
         tracing::debug!("✅ Built-in editors registered");
@@ -208,7 +232,12 @@ impl PulsarApp {
                 let loaded_plugins = plugin_manager.get_plugins();
                 tracing::debug!("✅ Loaded {} editor plugin(s)", loaded_plugins.len());
                 for plugin in loaded_plugins {
-                    tracing::debug!("   📦 {} v{} by {}", plugin.name, plugin.version, plugin.author);
+                    tracing::debug!(
+                        "   📦 {} v{} by {}",
+                        plugin.name,
+                        plugin.version,
+                        plugin.author
+                    );
                 }
             }
         }
@@ -257,19 +286,20 @@ impl PulsarApp {
         };
 
         // Update file manager drawer with registered file types from plugin manager
-        let file_types: Vec<plugin_editor_api::FileTypeDefinition> = if let Some(pm_lock) = plugin_manager::global() {
-            if let Ok(pm) = pm_lock.read() {
-                pm.file_type_registry()
-                    .get_all_file_types()
-                    .into_iter()
-                    .cloned()
-                    .collect()
+        let file_types: Vec<plugin_editor_api::FileTypeDefinition> =
+            if let Some(pm_lock) = plugin_manager::global() {
+                if let Ok(pm) = pm_lock.read() {
+                    pm.file_type_registry()
+                        .get_all_file_types()
+                        .into_iter()
+                        .cloned()
+                        .collect()
+                } else {
+                    Vec::new()
+                }
             } else {
                 Vec::new()
-            }
-        } else {
-            Vec::new()
-        };
+            };
 
         app.state.file_manager_drawer.update(cx, |drawer, cx| {
             drawer.update_file_types(file_types);
@@ -287,7 +317,7 @@ impl PulsarApp {
                     });
                 }
             }
-            
+
             // Set project root for problems drawer to display relative paths
             app.state.problems_drawer.update(cx, |drawer, cx| {
                 drawer.set_project_root(app.state.project_path.clone(), cx);
@@ -306,11 +336,12 @@ impl PulsarApp {
 
         // Register command palette
         {
-            use ui_common::command_palette::PaletteManager;
-            use ui::IconName;
             use crate::actions::*;
+            use ui::IconName;
+            use ui_common::command_palette::PaletteManager;
 
-            let (palette_id, palette_ref) = PaletteManager::register_palette("commands", window, cx);
+            let (palette_id, palette_ref) =
+                PaletteManager::register_palette("commands", window, cx);
 
             // Populate with command items
             palette_ref.update(cx, |palette, cx| {
@@ -367,7 +398,7 @@ impl PulsarApp {
                         window.push_notification(
                             ui::notification::Notification::info("Build")
                                 .message("Building project..."),
-                            cx
+                            cx,
                         );
                     },
                     cx,
@@ -382,7 +413,7 @@ impl PulsarApp {
                         window.push_notification(
                             ui::notification::Notification::info("Run")
                                 .message("Running project..."),
-                            cx
+                            cx,
                         );
                     },
                     cx,
@@ -401,7 +432,8 @@ impl PulsarApp {
                             IconName::SubmitDocument,
                             "Files",
                             move |window, cx| {
-                                window.dispatch_action(Box::new(OpenFile { path: path.clone() }), cx);
+                                window
+                                    .dispatch_action(Box::new(OpenFile { path: path.clone() }), cx);
                             },
                             cx,
                         );

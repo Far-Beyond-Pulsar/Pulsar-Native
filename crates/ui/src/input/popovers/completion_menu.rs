@@ -28,7 +28,7 @@ struct ContextMenuDelegate {
     query: SharedString,
     menu: Entity<CompletionMenu>,
     items: Vec<Rc<CompletionItem>>,
-    filtered_indices: Vec<usize>,  // Indices of items that match the filter
+    filtered_indices: Vec<usize>, // Indices of items that match the filter
     selected_ix: usize,
 }
 
@@ -37,19 +37,22 @@ impl ContextMenuDelegate {
         // Sort items by sortText (or label if sortText is absent)
         // This is how VSCode and other LSP clients handle completions
         let mut items: Vec<Rc<CompletionItem>> = items.into_iter().map(Rc::new).collect();
-        
+
         items.sort_by(|a, b| {
             // Use sortText if present, otherwise fall back to label
             let sort_a = a.sort_text.as_ref().unwrap_or(&a.label);
             let sort_b = b.sort_text.as_ref().unwrap_or(&b.label);
             sort_a.cmp(sort_b)
         });
-        
+
         self.items = items;
         self.filtered_indices = (0..self.items.len()).collect();
         self.selected_ix = 0;
-        
-        tracing::info!("📋 Showing {} completions (sorted by relevance)", self.items.len());
+
+        tracing::info!(
+            "📋 Showing {} completions (sorted by relevance)",
+            self.items.len()
+        );
     }
 
     fn selected_item(&self) -> Option<&Rc<CompletionItem>> {
@@ -111,28 +114,28 @@ impl RenderOnce for CompletionMenuItem {
         let item = self.item;
 
         let deprecated = item.deprecated.unwrap_or(false);
-        
+
         // Don't highlight based on filter text - server already ranked items
         // Just show the label as-is
         let highlights = vec![];
 
         // Get icon based on completion kind
         let icon = match item.kind {
-            Some(lsp_types::CompletionItemKind::FUNCTION) | 
-            Some(lsp_types::CompletionItemKind::METHOD) => "🔧",  // Function/Method
-            Some(lsp_types::CompletionItemKind::STRUCT) => "📦",  // Struct
-            Some(lsp_types::CompletionItemKind::ENUM) => "📋",  // Enum
-            Some(lsp_types::CompletionItemKind::INTERFACE) |
-            Some(lsp_types::CompletionItemKind::CLASS) => "🎯",  // Interface/Class
-            Some(lsp_types::CompletionItemKind::MODULE) => "📂",  // Module
-            Some(lsp_types::CompletionItemKind::FIELD) |
-            Some(lsp_types::CompletionItemKind::PROPERTY) => "🏷️",  // Field/Property
-            Some(lsp_types::CompletionItemKind::VARIABLE) |
-            Some(lsp_types::CompletionItemKind::CONSTANT) => "💎",  // Variable/Constant
-            Some(lsp_types::CompletionItemKind::KEYWORD) => "🔑",  // Keyword
-            Some(lsp_types::CompletionItemKind::SNIPPET) => "✂️",  // Snippet
-            Some(lsp_types::CompletionItemKind::TYPE_PARAMETER) => "🔤",  // Type param
-            _ => "📄",  // Default
+            Some(lsp_types::CompletionItemKind::FUNCTION)
+            | Some(lsp_types::CompletionItemKind::METHOD) => "🔧", // Function/Method
+            Some(lsp_types::CompletionItemKind::STRUCT) => "📦", // Struct
+            Some(lsp_types::CompletionItemKind::ENUM) => "📋",   // Enum
+            Some(lsp_types::CompletionItemKind::INTERFACE)
+            | Some(lsp_types::CompletionItemKind::CLASS) => "🎯", // Interface/Class
+            Some(lsp_types::CompletionItemKind::MODULE) => "📂", // Module
+            Some(lsp_types::CompletionItemKind::FIELD)
+            | Some(lsp_types::CompletionItemKind::PROPERTY) => "🏷️", // Field/Property
+            Some(lsp_types::CompletionItemKind::VARIABLE)
+            | Some(lsp_types::CompletionItemKind::CONSTANT) => "💎", // Variable/Constant
+            Some(lsp_types::CompletionItemKind::KEYWORD) => "🔑", // Keyword
+            Some(lsp_types::CompletionItemKind::SNIPPET) => "✂️", // Snippet
+            Some(lsp_types::CompletionItemKind::TYPE_PARAMETER) => "🔤", // Type param
+            _ => "📄",                                           // Default
         };
 
         // Determine source label (always [LSP] for rust-analyzer completions)
@@ -166,13 +169,12 @@ impl RenderOnce for CompletionMenuItem {
             })
             // Source label (right-aligned)
             .child(
-                div()
-                    .flex_1()  // Push source to the right
+                div().flex_1(), // Push source to the right
             )
             .child(
                 Label::new(format!("[{}]", source))
                     .text_color(cx.theme().muted_foreground.opacity(0.6))
-                    .italic()
+                    .italic(),
             )
             .children(self.children)
     }
@@ -255,7 +257,7 @@ impl CompletionMenu {
 
             let list = cx.new(|cx| {
                 List::new(menu, window, cx)
-                    .no_query()  // Hide the search input - we filter client-side based on typing
+                    .no_query() // Hide the search input - we filter client-side based on typing
                     .max_h(MAX_MENU_HEIGHT)
             });
 
@@ -340,7 +342,7 @@ impl CompletionMenu {
     fn strip_snippet_syntax(text: &str) -> String {
         let mut result = String::with_capacity(text.len());
         let mut chars = text.chars().peekable();
-        
+
         while let Some(ch) = chars.next() {
             if ch == '$' {
                 // Check if next char is a digit or {
@@ -356,7 +358,7 @@ impl CompletionMenu {
                         let mut depth = 1;
                         let mut in_default = false;
                         let mut default_text = String::new();
-                        
+
                         while depth > 0 {
                             match chars.next() {
                                 Some('}') => {
@@ -383,7 +385,7 @@ impl CompletionMenu {
             }
             result.push(ch);
         }
-        
+
         result
     }
 
@@ -399,8 +401,9 @@ impl CompletionMenu {
 
         // Use Tab to accept completions (like most editors)
         // Both TabComplete and IndentInline should accept the completion
-        if action.partial_eq(&super::super::tab_completion::TabComplete) 
-            || action.partial_eq(&input::IndentInline) {
+        if action.partial_eq(&super::super::tab_completion::TabComplete)
+            || action.partial_eq(&input::IndentInline)
+        {
             self.on_action_tab(window, cx);
             return true; // Return immediately to prevent any further action handling
         } else if action.partial_eq(&input::Escape) {
@@ -459,7 +462,11 @@ impl CompletionMenu {
     }
 
     /// Update just the query without changing trigger offset (for server tracking only)
-    pub(crate) fn update_query_only(&mut self, query: impl Into<SharedString>, cx: &mut Context<Self>) {
+    pub(crate) fn update_query_only(
+        &mut self,
+        query: impl Into<SharedString>,
+        cx: &mut Context<Self>,
+    ) {
         self.query = query.into();
         // Just update query reference, no filtering needed
         self.list.update(cx, |list, _cx| {
@@ -537,20 +544,16 @@ impl Render for CompletionMenu {
             };
 
             return deferred(
-                div()
-                    .absolute()
-                    .left(pos.x)
-                    .top(pos.y)
-                    .child(
-                        editor_popover("completion-loading", cx)
-                            .max_w(MAX_MENU_WIDTH)
-                            .child(
-                                div()
-                                    .p_2()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child("Loading completions...")
-                            )
-                    )
+                div().absolute().left(pos.x).top(pos.y).child(
+                    editor_popover("completion-loading", cx)
+                        .max_w(MAX_MENU_WIDTH)
+                        .child(
+                            div()
+                                .p_2()
+                                .text_color(cx.theme().muted_foreground)
+                                .child("Loading completions..."),
+                        ),
+                ),
             )
             .into_any_element();
         }

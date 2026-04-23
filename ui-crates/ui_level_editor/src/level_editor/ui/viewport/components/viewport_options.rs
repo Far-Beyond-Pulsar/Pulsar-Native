@@ -5,16 +5,21 @@
 
 use std::sync::Arc;
 
-use gpui::*;
 use gpui::prelude::FluentBuilder;
-use ui::{button::{Button, ButtonVariants as _}, h_flex, switch::Switch, ActiveTheme, IconName, Selectable, StyledExt};
+use gpui::*;
 use rust_i18n::t;
+use ui::{
+    button::{Button, ButtonVariants as _},
+    h_flex,
+    switch::Switch,
+    ActiveTheme, IconName, Selectable, StyledExt,
+};
 
-use crate::level_editor::ui::state::LevelEditorState;
-use crate::level_editor::ui::actions::{SelectTool, MoveTool, RotateTool, ScaleTool};
-use crate::level_editor::ui::TransformTool;
+use super::floating_toolbar::{create_drag_handle, toolbar_with_drag_handle};
 use super::toggle_button::create_state_toggle;
-use super::floating_toolbar::{toolbar_with_drag_handle, create_drag_handle};
+use crate::level_editor::ui::actions::{MoveTool, RotateTool, ScaleTool, SelectTool};
+use crate::level_editor::ui::state::LevelEditorState;
+use crate::level_editor::ui::TransformTool;
 
 /// Visual toggle configuration.
 struct VisualToggle {
@@ -101,9 +106,7 @@ where
                     Switch::new("toggle_perf")
                         .checked(state.show_performance_overlay)
                         .on_click(move |checked, _, _| {
-                            state_clone
-                                .write()
-                                .set_show_performance_overlay(*checked);
+                            state_clone.write().set_show_performance_overlay(*checked);
                         })
                 }),
         )
@@ -148,9 +151,7 @@ where
                     Switch::new("toggle_gpu")
                         .checked(state.show_gpu_pipeline_overlay)
                         .on_click(move |checked, _, _| {
-                            state_clone
-                                .write()
-                                .set_show_gpu_pipeline_overlay(*checked);
+                            state_clone.write().set_show_gpu_pipeline_overlay(*checked);
                         })
                 }),
         )
@@ -169,9 +170,7 @@ where
                     Switch::new("toggle_cam")
                         .checked(state.show_camera_mode_selector)
                         .on_click(move |checked, _, _| {
-                            state_clone
-                                .write()
-                                .set_show_camera_mode_selector(*checked);
+                            state_clone.write().set_show_camera_mode_selector(*checked);
                         })
                 }),
         )

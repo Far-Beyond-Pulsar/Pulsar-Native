@@ -6,15 +6,16 @@
 use std::path::PathBuf;
 
 use gpui::{
-    div, prelude::FluentBuilder as _, px, App, Hsla, IntoElement, InteractiveElement as _,
+    div, prelude::FluentBuilder as _, px, App, Hsla, InteractiveElement as _, IntoElement,
     ParentElement, RenderOnce, SharedString, Styled, Window,
 };
 
 use crate::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme, Sizable, StyledExt as _,
+    h_flex,
     progress::Progress,
     speed_graph::{fmt_bytes, fmt_speed, SpeedGraph},
+    v_flex, ActiveTheme, Sizable, StyledExt as _,
 };
 
 // ── Status ────────────────────────────────────────────────────────────────────
@@ -130,8 +131,7 @@ impl RenderOnce for DownloadItem {
                     .when(!self.speed_history.is_empty(), |el| {
                         el.child(
                             // SpeedGraph defaults to w_full() — fills card width
-                            SpeedGraph::new(&self.speed_history)
-                                .height(px(44.)),
+                            SpeedGraph::new(&self.speed_history).height(px(44.)),
                         )
                     })
                     // ── Progress bar ─────────────────────────────────────
@@ -159,7 +159,12 @@ impl RenderOnce for DownloadItem {
                             }))
                             // ETA (active, known size, positive speed)
                             .when_some(
-                                eta_str(is_active, self.bytes_received, self.total_bytes, self.speed_bps),
+                                eta_str(
+                                    is_active,
+                                    self.bytes_received,
+                                    self.total_bytes,
+                                    self.speed_bps,
+                                ),
                                 |el, eta| el.child(div().child(format!("ETA {}", eta))),
                             )
                             // Done / error messages
@@ -179,15 +184,19 @@ impl RenderOnce for DownloadItem {
                         if is_done { self.path.clone() } else { None },
                         |el, path| {
                             el.child(
-                                h_flex().justify_end()
-                                    .child(
-                                        Button::new(SharedString::from(format!("open-folder-{}", self.id)))
-                                            .label("📂 Open Folder")
-                                            .with_size(crate::Size::Small)
-                                            .on_click(move |_, _, _cx| {
-                                                reveal_in_file_manager(&path);
-                                            }),
+                                h_flex().justify_end().child(
+                                    Button::new(SharedString::from(format!(
+                                        "open-folder-{}",
+                                        self.id
+                                    )))
+                                    .label("📂 Open Folder")
+                                    .with_size(crate::Size::Small)
+                                    .on_click(
+                                        move |_, _, _cx| {
+                                            reveal_in_file_manager(&path);
+                                        },
                                     ),
+                                ),
                             )
                         },
                     ),

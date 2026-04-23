@@ -10,7 +10,6 @@ pub enum UriCommand {
     /// Open a project directly
     /// Format: pulsar://open_project/url_encoded_path
     OpenProject { path: PathBuf },
-
     // Future commands can be added here:
     // /// Open a specific file within a project
     // /// Format: pulsar://open_file/project_path/file_path

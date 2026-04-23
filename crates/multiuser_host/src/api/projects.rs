@@ -14,10 +14,10 @@ use crate::state::AppState;
 
 fn project_to_json(p: &crate::projects::ProjectRecord, user_count: usize) -> Value {
     let (status_str, error_msg) = match &p.status {
-        ProjectStatus::Idle      => ("idle", None),
+        ProjectStatus::Idle => ("idle", None),
         ProjectStatus::Preparing => ("preparing", None),
-        ProjectStatus::Running   => ("running", None),
-        ProjectStatus::Error(m)  => ("error", Some(m.as_str())),
+        ProjectStatus::Running => ("running", None),
+        ProjectStatus::Error(m) => ("error", Some(m.as_str())),
     };
 
     let mut v = json!({
@@ -64,7 +64,12 @@ pub async fn get_project(
         StatusCode::NOT_FOUND
     })?;
     let user_count = state.sessions.user_count(&id);
-    debug!("GET /projects/{id} — '{}' [{}] {} user(s)", project.name, project.status.as_str(), user_count);
+    debug!(
+        "GET /projects/{id} — '{}' [{}] {} user(s)",
+        project.name,
+        project.status.as_str(),
+        user_count
+    );
     Ok(Json(project_to_json(&project, user_count)))
 }
 
@@ -84,7 +89,10 @@ pub async fn create_project(
     State(state): State<AppState>,
     Json(body): Json<CreateProjectBody>,
 ) -> Result<(StatusCode, Json<Value>), StatusCode> {
-    info!("POST /projects — name={:?} owner={:?}", body.name, body.owner);
+    info!(
+        "POST /projects — name={:?} owner={:?}",
+        body.name, body.owner
+    );
 
     if body.name.trim().is_empty() {
         warn!("POST /projects — rejected empty name");
@@ -100,13 +108,13 @@ pub async fn create_project(
         return Err(StatusCode::INSUFFICIENT_STORAGE);
     }
 
-    match state.projects.create(body.name.clone(), body.description, body.owner) {
+    match state
+        .projects
+        .create(body.name.clone(), body.description, body.owner)
+    {
         Ok(record) => {
             info!("POST /projects — created '{}' ({})", record.name, record.id);
-            Ok((
-                StatusCode::CREATED,
-                Json(project_to_json(&record, 0)),
-            ))
+            Ok((StatusCode::CREATED, Json(project_to_json(&record, 0))))
         }
         Err(e) => {
             error!("POST /projects — failed to create '{}': {e}", body.name);
@@ -162,7 +170,10 @@ pub async fn prepare_project(
 
     let project = state.projects.get(&id).ok_or(StatusCode::NOT_FOUND)?;
     let user_count = state.sessions.user_count(&id);
-    debug!("POST /projects/{id}/prepare — returning status={}", project.status.as_str());
+    debug!(
+        "POST /projects/{id}/prepare — returning status={}",
+        project.status.as_str()
+    );
     Ok(Json(project_to_json(&project, user_count)))
 }
 
@@ -198,13 +209,10 @@ pub async fn stop_project(
 // ── Delete project ────────────────────────────────────────────────────────────
 
 /// `DELETE /api/v1/projects/:id`
-pub async fn delete_project(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> StatusCode {
+pub async fn delete_project(State(state): State<AppState>, Path(id): Path<String>) -> StatusCode {
     info!("DELETE /projects/{id}");
     match state.projects.delete(&id) {
-        Ok(true)  => {
+        Ok(true) => {
             info!("DELETE /projects/{id} — deleted");
             StatusCode::NO_CONTENT
         }

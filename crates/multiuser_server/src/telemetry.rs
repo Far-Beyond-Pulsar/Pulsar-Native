@@ -1,7 +1,7 @@
 use anyhow::Result;
 use opentelemetry::{global, KeyValue};
-use opentelemetry_sdk::{runtime, Resource};
 use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::{runtime, Resource};
 use tracing_subscriber::layer::SubscriberExt;
 
 use crate::config::Config;
@@ -21,13 +21,12 @@ pub fn init_telemetry(config: &Config) -> Result<()> {
                     .tonic()
                     .with_endpoint(otlp_endpoint),
             )
-            .with_trace_config(
-                opentelemetry_sdk::trace::Config::default()
-                    .with_resource(Resource::new(vec![
-                        KeyValue::new("service.name", "pulsar-multiedit"),
-                        KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
-                    ])),
-            )
+            .with_trace_config(opentelemetry_sdk::trace::Config::default().with_resource(
+                Resource::new(vec![
+                    KeyValue::new("service.name", "pulsar-multiedit"),
+                    KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
+                ]),
+            ))
             .install_batch(runtime::Tokio)?;
 
         global::set_tracer_provider(provider);

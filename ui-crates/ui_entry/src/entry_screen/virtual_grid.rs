@@ -49,33 +49,41 @@ where
             .collect::<Vec<_>>(),
     );
 
-    div().relative().flex_1().min_h_0().overflow_hidden().child(
-        v_virtual_list(
-            view_entity,
-            id,
-            item_sizes,
-            move |view, range, window, cx| {
-                range
-                    .map(|row_idx| {
-                        let start = row_idx * cols;
-                        let end = (start + cols).min(total_items);
+    div()
+        .relative()
+        .flex_1()
+        .min_h_0()
+        .overflow_hidden()
+        .child(
+            v_virtual_list(
+                view_entity,
+                id,
+                item_sizes,
+                move |view, range, window, cx| {
+                    range
+                        .map(|row_idx| {
+                            let start = row_idx * cols;
+                            let end = (start + cols).min(total_items);
 
-                        let row_cards: Vec<AnyElement> = (start..end)
-                            .map(|item_idx| render_card(view, item_idx, actual_card_w, window, cx).into_any_element())
-                            .collect();
+                            let row_cards: Vec<AnyElement> = (start..end)
+                                .map(|item_idx| {
+                                    render_card(view, item_idx, actual_card_w, window, cx)
+                                        .into_any_element()
+                                })
+                                .collect();
 
-                        h_flex()
-                            .px(px(padding))
-                            .py(px(padding))
-                            .gap(px(gap))
-                            .items_start()
-                            .children(row_cards)
-                            .into_any_element()
-                    })
-                    .collect()
-            },
+                            h_flex()
+                                .px(px(padding))
+                                .py(px(padding))
+                                .gap(px(gap))
+                                .items_start()
+                                .children(row_cards)
+                                .into_any_element()
+                        })
+                        .collect()
+                },
+            )
+            .track_scroll(scroll_handle),
         )
-        .track_scroll(scroll_handle),
-    )
-    .into_any_element()
+        .into_any_element()
 }

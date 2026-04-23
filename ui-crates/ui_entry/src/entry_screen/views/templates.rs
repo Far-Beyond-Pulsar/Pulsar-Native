@@ -1,16 +1,14 @@
-use gpui::{ prelude::*, * };
+use crate::entry_screen::{virtual_grid::render_card_grid, EntryScreen, Template};
+use gpui::{prelude::*, *};
+use ui::Sizable;
 use ui::{
-    h_flex, v_flex, Icon, IconName, ActiveTheme as _, StyledExt,
-    progress::Progress,
-    tag::Tag,
+    h_flex, progress::Progress, tag::Tag, v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
 };
- use ui::Sizable;
-use crate::entry_screen::{ EntryScreen, Template, virtual_grid::render_card_grid };
 
 pub fn render_templates(
     screen: &mut EntryScreen,
     available_width: f32,
-    cx: &mut Context<EntryScreen>
+    cx: &mut Context<EntryScreen>,
 ) -> impl IntoElement {
     let theme = cx.theme();
     let border_col = theme.border;
@@ -35,50 +33,48 @@ pub fn render_templates(
                         .text_3xl()
                         .font_weight(gpui::FontWeight::BOLD)
                         .text_color(fg)
-                        .child("Project Templates")
+                        .child("Project Templates"),
                 )
                 .child(
                     div()
                         .text_sm()
                         .text_color(muted_fg)
-                        .child("Choose a template to start your project quickly")
-                )
+                        .child("Choose a template to start your project quickly"),
+                ),
         )
-        .children(
-            if has_progress {
-                Some(
-                    v_flex()
-                        .gap_4()
-                        .p_6()
-                        .border_1()
-                        .border_color(primary)
-                        .rounded_lg()
-                        .bg(sidebar_bg)
-                        .child(
-                            div()
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .text_color(fg)
-                                .child("Cloning Repository...")
-                        )
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(muted_fg)
-                                .child("Please wait while we clone the template...")
-                        )
-                        .child(Progress::new().value(50.0))
-                )
-            } else {
-                None
-            }
-        )
+        .children(if has_progress {
+            Some(
+                v_flex()
+                    .gap_4()
+                    .p_6()
+                    .border_1()
+                    .border_color(primary)
+                    .rounded_lg()
+                    .bg(sidebar_bg)
+                    .child(
+                        div()
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(fg)
+                            .child("Cloning Repository..."),
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(muted_fg)
+                            .child("Please wait while we clone the template..."),
+                    )
+                    .child(Progress::new().value(50.0)),
+            )
+        } else {
+            None
+        })
         .child(render_template_grid(screen, available_width, cx))
 }
 
 fn render_template_grid(
     screen: &mut EntryScreen,
     available_width: f32,
-    cx: &mut Context<EntryScreen>
+    cx: &mut Context<EntryScreen>,
 ) -> impl IntoElement {
     let theme = cx.theme();
     let border_col = theme.border;
@@ -120,12 +116,12 @@ fn render_template_grid(
             let icon = template.icon.clone();
 
             let category_accent = match category.as_str() {
-                "2D"       => cx.theme().success,
-                "3D"       => cx.theme().primary,
+                "2D" => cx.theme().success,
+                "3D" => cx.theme().primary,
                 "Strategy" => cx.theme().warning,
-                "RPG"      => cx.theme().info,
-                "Racing"   => cx.theme().danger,
-                _          => cx.theme().muted,
+                "RPG" => cx.theme().info,
+                "Racing" => cx.theme().danger,
+                _ => cx.theme().muted,
             };
 
             v_flex()
@@ -141,17 +137,19 @@ fn render_template_grid(
                 .rounded_xl()
                 .bg(sidebar_bg)
                 .shadow_sm()
-                .hover(|this| {
-                    this.border_color(primary)
-                        .shadow_lg()
-                        .bg(sidebar_hover_bg)
-                })
+                .hover(|this| this.border_color(primary).shadow_lg().bg(sidebar_hover_bg))
                 .cursor_pointer()
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.clone_template(&template, window, cx);
                 }))
                 .child(
-                    div().absolute().top_0().left_0().w_full().h(px(3.0)).bg(category_accent)
+                    div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .w_full()
+                        .h(px(3.0))
+                        .bg(category_accent),
                 )
                 .child(
                     h_flex()
@@ -182,12 +180,12 @@ fn render_template_grid(
                                 )
                                 .child(
                                     match category.as_str() {
-                                        "2D"       => Tag::success(),
-                                        "3D"       => Tag::primary(),
+                                        "2D" => Tag::success(),
+                                        "3D" => Tag::primary(),
                                         "Strategy" => Tag::warning(),
-                                        "RPG"      => Tag::info(),
-                                        "Racing"   => Tag::danger(),
-                                        _          => Tag::secondary(),
+                                        "RPG" => Tag::info(),
+                                        "Racing" => Tag::danger(),
+                                        _ => Tag::secondary(),
                                     }
                                     .xsmall()
                                     .rounded_full()

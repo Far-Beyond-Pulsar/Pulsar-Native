@@ -23,9 +23,10 @@ use gpui::{
 use crate::{
     download_item::{DownloadItem, DownloadItemStatus},
     drawer::Drawer,
-    h_flex, v_flex, ActiveTheme, StyledExt as _,
+    h_flex,
     root::ContextModal as _,
     speed_graph::{fmt_bytes, fmt_speed},
+    v_flex, ActiveTheme, StyledExt as _,
 };
 
 // ── DownloadEntry (data record) ───────────────────────────────────────────────
@@ -69,10 +70,7 @@ impl DownloadManagerDrawer {
     }
 
     /// Callback invoked when the user closes the drawer (overlay click or Esc).
-    pub fn on_close(
-        mut self,
-        f: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-    ) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
         self.on_close = Rc::new(f);
         self
     }
@@ -149,12 +147,7 @@ impl RenderOnce for DownloadManagerDrawer {
                     .w_full()
                     .border_t_1()
                     .border_color(cx.theme().border)
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(muted_fg)
-                            .child(footer_text),
-                    ),
+                    .child(div().text_xs().text_color(muted_fg).child(footer_text)),
             )
             .size(px(420.))
             .resizable(true)

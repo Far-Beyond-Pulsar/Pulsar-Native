@@ -1,18 +1,17 @@
 use gpui::{
-    AnyElement, App, Axis, Div, InteractiveElement as _, IntoElement, ParentElement, SharedString,
-    Stateful, Styled, Window, div, prelude::FluentBuilder as _,
+    div, prelude::FluentBuilder as _, AnyElement, App, Axis, Div, InteractiveElement as _,
+    IntoElement, ParentElement, SharedString, Stateful, Styled, Window,
 };
 use std::{any::TypeId, ops::Deref, rc::Rc};
 
 use crate::{
-    ActiveTheme as _, AxisExt, StyledExt as _,
     label::Label,
     setting::{
-        AnySettingField, ElementField, RenderOptions,
         fields::{BoolField, DropdownField, NumberField, SettingFieldRender, StringField},
+        AnySettingField, ElementField, RenderOptions,
     },
     text::Text,
-    v_flex,
+    v_flex, ActiveTheme as _, AxisExt, StyledExt as _,
 };
 
 /// Setting item.

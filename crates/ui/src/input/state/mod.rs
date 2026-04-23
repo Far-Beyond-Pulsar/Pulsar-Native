@@ -1,21 +1,18 @@
 mod core;
 mod events;
+mod ime;
 mod layout;
 mod lsp;
-mod ime;
 
-pub use core::{
-    LineHighlight, Enter, InputEvent, InputState,
-    Backspace, Delete, DeleteToBeginningOfLine, DeleteToEndOfLine,
-    DeleteToPreviousWordStart, DeleteToNextWordEnd, Indent, Outdent,
-    IndentInline, OutdentInline, MoveUp, MoveDown, MoveLeft, MoveRight,
-    MoveHome, MoveEnd, MovePageUp, MovePageDown,
-    SelectUp, SelectDown, SelectLeft, SelectRight, SelectAll,
-    SelectToStartOfLine, SelectToEndOfLine, SelectToStart, SelectToEnd,
-    SelectToPreviousWordStart, SelectToNextWordEnd,
-    ShowCharacterPalette, Copy, Cut, Paste, Undo, Redo,
-    MoveToStartOfLine, MoveToEndOfLine, MoveToStart, MoveToEnd,
-    MoveToPreviousWord, MoveToNextWord, Escape, ToggleCodeActions, Search, GoToDefinition,
-};
-pub(in crate::input) use core::{CONTEXT, LastLayout};
 pub(crate) use core::init;
+pub use core::{
+    Backspace, Copy, Cut, Delete, DeleteToBeginningOfLine, DeleteToEndOfLine, DeleteToNextWordEnd,
+    DeleteToPreviousWordStart, Enter, Escape, GoToDefinition, Indent, IndentInline, InputEvent,
+    InputState, LineHighlight, MoveDown, MoveEnd, MoveHome, MoveLeft, MovePageDown, MovePageUp,
+    MoveRight, MoveToEnd, MoveToEndOfLine, MoveToNextWord, MoveToPreviousWord, MoveToStart,
+    MoveToStartOfLine, MoveUp, Outdent, OutdentInline, Paste, Redo, Search, SelectAll, SelectDown,
+    SelectLeft, SelectRight, SelectToEnd, SelectToEndOfLine, SelectToNextWordEnd,
+    SelectToPreviousWordStart, SelectToStart, SelectToStartOfLine, SelectUp, ShowCharacterPalette,
+    ToggleCodeActions, Undo,
+};
+pub(in crate::input) use core::{LastLayout, CONTEXT};

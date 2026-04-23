@@ -68,19 +68,17 @@ pub async fn join_session(
     ws.on_upgrade(move |socket| handle_socket(socket, state, project_id, username))
 }
 
-async fn handle_socket(
-    socket: WebSocket,
-    state: AppState,
-    project_id: String,
-    username: String,
-) {
+async fn handle_socket(socket: WebSocket, state: AppState, project_id: String, username: String) {
     let (mut sender, mut receiver) = socket.split();
 
     // Register the user and get the broadcast channel + current user list.
     let (tx, user_list) = state.sessions.user_joined(&project_id, &username);
     let mut rx = tx.subscribe();
 
-    info!("WS '{username}' joined project '{project_id}' — {} user(s) now present", user_list.len());
+    info!(
+        "WS '{username}' joined project '{project_id}' — {} user(s) now present",
+        user_list.len()
+    );
 
     // Send the initial user list to the newly joined member.
     let list_msg = WsMessage::UserList { users: user_list };
@@ -105,27 +103,29 @@ async fn handle_socket(
     // ── Main loop: receive messages from this client ───────────────────────
     while let Some(Ok(msg)) = receiver.next().await {
         match msg {
-            Message::Text(text) => {
-                match serde_json::from_str::<WsMessage>(&text) {
-                    Ok(WsMessage::Ping) => {
-                        debug!("WS ping from '{username}' in project '{project_id}'");
-                        let _ = tx.send(WsMessage::Pong);
-                    }
-                    Ok(WsMessage::StatePatch { patch }) => {
-                        debug!("WS state-patch from '{username}' in project '{project_id}'");
-                        let _ = tx.send(WsMessage::StatePatch { patch });
-                    }
-                    Ok(WsMessage::Chat { text: chat_text, .. }) => {
-                        info!("WS chat from '{username}' in project '{project_id}': {chat_text:?}");
-                        let _ = tx.send(WsMessage::Chat {
-                            user:  username.clone(),
-                            text:  chat_text,
-                        });
-                    }
-                    Err(e) => warn!("WS unparseable message from '{username}' in project '{project_id}': {e}"),
-                    _ => {}
+            Message::Text(text) => match serde_json::from_str::<WsMessage>(&text) {
+                Ok(WsMessage::Ping) => {
+                    debug!("WS ping from '{username}' in project '{project_id}'");
+                    let _ = tx.send(WsMessage::Pong);
                 }
-            }
+                Ok(WsMessage::StatePatch { patch }) => {
+                    debug!("WS state-patch from '{username}' in project '{project_id}'");
+                    let _ = tx.send(WsMessage::StatePatch { patch });
+                }
+                Ok(WsMessage::Chat {
+                    text: chat_text, ..
+                }) => {
+                    info!("WS chat from '{username}' in project '{project_id}': {chat_text:?}");
+                    let _ = tx.send(WsMessage::Chat {
+                        user: username.clone(),
+                        text: chat_text,
+                    });
+                }
+                Err(e) => {
+                    warn!("WS unparseable message from '{username}' in project '{project_id}': {e}")
+                }
+                _ => {}
+            },
             Message::Close(_) => {
                 debug!("WS close frame from '{username}' in project '{project_id}'");
                 break;
@@ -139,7 +139,10 @@ async fn handle_socket(
     state.sessions.user_left(&project_id, &username);
 
     let users_remaining = state.sessions.user_count(&project_id);
-    info!("WS '{username}' left project '{project_id}' — {} user(s) remaining", users_remaining);
+    info!(
+        "WS '{username}' left project '{project_id}' — {} user(s) remaining",
+        users_remaining
+    );
 
     if users_remaining == 0 {
         state.sessions.cleanup_if_empty(&project_id);

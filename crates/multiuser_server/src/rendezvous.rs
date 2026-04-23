@@ -2,12 +2,12 @@
 //!
 //! This module wires together protocol types, peer state, and session lifecycle.
 
-mod sync_protocol;
 mod peer_discovery;
 mod session_manager;
+mod sync_protocol;
 
-pub use sync_protocol::{ClientMessage, ServerMessage, CandidateDto};
 pub use session_manager::RendezvousCoordinator;
+pub use sync_protocol::{CandidateDto, ClientMessage, ServerMessage};
 
 use anyhow::{Context, Result};
 use axum::{
@@ -82,18 +82,22 @@ impl RendezvousCoordinator {
 
                     match serde_json::from_str::<ClientMessage>(&text) {
                         Ok(client_msg) => {
-                            let result = self.handle_client_message(
-                                client_msg,
-                                tx.clone(),
-                                &mut peer_id,
-                                &mut session_id,
-                            ).await;
+                            let result = self
+                                .handle_client_message(
+                                    client_msg,
+                                    tx.clone(),
+                                    &mut peer_id,
+                                    &mut session_id,
+                                )
+                                .await;
 
                             if let Err(e) = result {
                                 error!(error = %e, "Failed to handle client message");
-                                let _ = tx.send(ServerMessage::Error {
-                                    message: e.to_string(),
-                                }).await;
+                                let _ = tx
+                                    .send(ServerMessage::Error {
+                                        message: e.to_string(),
+                                    })
+                                    .await;
                             }
                         }
                         Err(e) => {
@@ -160,10 +164,14 @@ impl RendezvousCoordinator {
                 session_id: sid,
                 peer_id: pid,
             } => {
-                self.forward_to_host(&sid, ServerMessage::RequestFileManifest {
-                    session_id: sid.clone(),
-                    from_peer_id: pid,
-                }).await?;
+                self.forward_to_host(
+                    &sid,
+                    ServerMessage::RequestFileManifest {
+                        session_id: sid.clone(),
+                        from_peer_id: pid,
+                    },
+                )
+                .await?;
             }
             ClientMessage::FileManifest {
                 session_id: sid,
@@ -177,11 +185,15 @@ impl RendezvousCoordinator {
                 peer_id: pid,
                 file_paths,
             } => {
-                self.forward_to_host(&sid, ServerMessage::RequestFiles {
-                    session_id: sid.clone(),
-                    from_peer_id: pid,
-                    file_paths,
-                }).await?;
+                self.forward_to_host(
+                    &sid,
+                    ServerMessage::RequestFiles {
+                        session_id: sid.clone(),
+                        from_peer_id: pid,
+                        file_paths,
+                    },
+                )
+                .await?;
             }
             ClientMessage::FilesChunk {
                 session_id: sid,
@@ -190,7 +202,8 @@ impl RendezvousCoordinator {
                 chunk_index,
                 total_chunks,
             } => {
-                self.relay_files_chunk(&sid, &pid, files_json, chunk_index, total_chunks).await?;
+                self.relay_files_chunk(&sid, &pid, files_json, chunk_index, total_chunks)
+                    .await?;
             }
             ClientMessage::P2PConnectionRequest {
                 session_id: sid,
@@ -198,7 +211,8 @@ impl RendezvousCoordinator {
                 public_ip,
                 public_port,
             } => {
-                self.relay_p2p_request(&sid, &pid, public_ip, public_port).await?;
+                self.relay_p2p_request(&sid, &pid, public_ip, public_port)
+                    .await?;
             }
             ClientMessage::P2PConnectionResponse {
                 session_id: sid,
@@ -206,7 +220,8 @@ impl RendezvousCoordinator {
                 public_ip,
                 public_port,
             } => {
-                self.relay_p2p_response(&sid, &pid, public_ip, public_port).await?;
+                self.relay_p2p_response(&sid, &pid, public_ip, public_port)
+                    .await?;
             }
             ClientMessage::RequestBinaryProxy {
                 session_id: sid,
@@ -220,16 +235,21 @@ impl RendezvousCoordinator {
                 sequence,
                 is_git_protocol,
             } => {
-                self.relay_binary_proxy_data(&sid, &pid, sequence, is_git_protocol).await?;
+                self.relay_binary_proxy_data(&sid, &pid, sequence, is_git_protocol)
+                    .await?;
             }
             ClientMessage::RequestProjectTree {
                 session_id: sid,
                 peer_id: pid,
             } => {
-                self.forward_to_host(&sid, ServerMessage::RequestProjectTree {
-                    session_id: sid.clone(),
-                    from_peer_id: pid,
-                }).await?;
+                self.forward_to_host(
+                    &sid,
+                    ServerMessage::RequestProjectTree {
+                        session_id: sid.clone(),
+                        from_peer_id: pid,
+                    },
+                )
+                .await?;
             }
             ClientMessage::ProjectTreeResponse {
                 session_id: sid,
@@ -243,11 +263,15 @@ impl RendezvousCoordinator {
                 peer_id: pid,
                 file_path,
             } => {
-                self.forward_to_host(&sid, ServerMessage::RequestFile {
-                    session_id: sid.clone(),
-                    from_peer_id: pid,
-                    file_path,
-                }).await?;
+                self.forward_to_host(
+                    &sid,
+                    ServerMessage::RequestFile {
+                        session_id: sid.clone(),
+                        from_peer_id: pid,
+                        file_path,
+                    },
+                )
+                .await?;
             }
             ClientMessage::FileChunk {
                 session_id: sid,
@@ -257,7 +281,8 @@ impl RendezvousCoordinator {
                 data,
                 is_last,
             } => {
-                self.relay_file_chunk(&sid, &pid, file_path, offset, data, is_last).await?;
+                self.relay_file_chunk(&sid, &pid, file_path, offset, data, is_last)
+                    .await?;
             }
             ClientMessage::Ping => {
                 tx.send(ServerMessage::Pong).await?;
@@ -790,4 +815,3 @@ mod tests {
         assert_eq!(coordinator.sessions.len(), 0);
     }
 }
-

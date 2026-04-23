@@ -1,7 +1,7 @@
 use crate::commands::{WindowCommand, WindowCommandResult};
 use crate::validation::errors::{HookError, HookResult};
-use ui_types_common::window_types::{WindowId, WindowRequest};
 use std::collections::HashMap;
+use ui_types_common::window_types::{WindowId, WindowRequest};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HookType {
@@ -39,13 +39,17 @@ impl HookContext {
             WindowCommand::Create(cmd) => {
                 let mut ctx = Self::new(HookType::BeforeCreate);
                 ctx.window_type = Some(cmd.window_type.clone());
-                ctx.metadata.insert("parent_window".to_string(), format!("{:?}", cmd.parent_window));
+                ctx.metadata.insert(
+                    "parent_window".to_string(),
+                    format!("{:?}", cmd.parent_window),
+                );
                 ctx
             }
             WindowCommand::Close(cmd) => {
                 let mut ctx = Self::new(HookType::BeforeClose);
                 ctx.window_id = Some(cmd.window_id);
-                ctx.metadata.insert("force".to_string(), cmd.force.to_string());
+                ctx.metadata
+                    .insert("force".to_string(), cmd.force.to_string());
                 ctx
             }
             WindowCommand::Focus(cmd) => {
@@ -61,7 +65,8 @@ impl HookContext {
             WindowCommand::Maximize(cmd) => {
                 let mut ctx = Self::new(HookType::BeforeMaximize);
                 ctx.window_id = Some(cmd.window_id);
-                ctx.metadata.insert("restore".to_string(), cmd.restore.to_string());
+                ctx.metadata
+                    .insert("restore".to_string(), cmd.restore.to_string());
                 ctx
             }
             WindowCommand::Move(cmd) => {

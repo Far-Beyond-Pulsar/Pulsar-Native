@@ -1,13 +1,13 @@
 //! Loading screen — runs background tasks, shows progress, then opens the editor.
 
+use directories::ProjectDirs;
+use engine_backend::services::rust_analyzer_manager::RustAnalyzerManager;
 use gpui::*;
-use ui::{ActiveTheme, Colorize};
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use engine_backend::services::rust_analyzer_manager::RustAnalyzerManager;
-use directories::ProjectDirs;
-use serde::{Deserialize, Serialize};
+use ui::{ActiveTheme, Colorize};
 
 static SPLASH_PNG: &[u8] = include_bytes!("../../../assets/images/Splash.png");
 
@@ -58,7 +58,11 @@ fn update_recent_projects(project_path: &Path) {
     let recent_path = proj_dirs.data_dir().join("recent_projects.json");
     let mut list = RecentProjectsList::load(&recent_path);
     list.add_or_update(RecentProject {
-        name: project_path.file_name().and_then(|n| n.to_str()).unwrap_or("Unknown").to_string(),
+        name: project_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("Unknown")
+            .to_string(),
         path: project_path.to_string_lossy().to_string(),
         last_opened: Some(chrono::Local::now().to_rfc3339()),
         is_git: project_path.join(".git").exists(),
@@ -69,42 +73,48 @@ fn update_recent_projects(project_path: &Path) {
 // ── task model ────────────────────────────────────────────────────────────────
 
 const TASKS: &[(&str, u64)] = &[
-    ("Initializing renderer",          1200),
-    ("Loading project data",           1000),
-    ("Starting Rust Analyzer",         1300),
-    ("Resolving workspace packages",   1100),
-    ("Indexing source files",          1400),
-    ("Building symbol database",       1250),
-    ("Loading editor configuration",    950),
-    ("Spawning asset pipeline",        1150),
-    ("Compiling shader cache",         1350),
-    ("Hydrating scene graph",          1050),
-    ("Connecting language server",     1200),
-    ("Finalizing workspace",           1100),
+    ("Initializing renderer", 1200),
+    ("Loading project data", 1000),
+    ("Starting Rust Analyzer", 1300),
+    ("Resolving workspace packages", 1100),
+    ("Indexing source files", 1400),
+    ("Building symbol database", 1250),
+    ("Loading editor configuration", 950),
+    ("Spawning asset pipeline", 1150),
+    ("Compiling shader cache", 1350),
+    ("Hydrating scene graph", 1050),
+    ("Connecting language server", 1200),
+    ("Finalizing workspace", 1100),
 ];
 
 #[derive(Clone, Copy, PartialEq)]
-enum TaskStatus { Pending, Running, Done }
+enum TaskStatus {
+    Pending,
+    Running,
+    Done,
+}
 
 #[derive(Debug)]
-enum LoadingEvent { TaskDone(usize) }
+enum LoadingEvent {
+    TaskDone(usize),
+}
 
 // ── component ─────────────────────────────────────────────────────────────────
 
 pub struct LoadingScreen {
     project_name: String,
     project_path: PathBuf,
-    statuses:     Vec<TaskStatus>,
-    progress:     f32,          // 0.0 – 1.0
-    message:      String,
-    all_done:     bool,
+    statuses: Vec<TaskStatus>,
+    progress: f32, // 0.0 – 1.0
+    message: String,
+    all_done: bool,
     opened_editor: bool,
-    anim_tick:    u32,
-    on_complete:  Arc<dyn Fn(PathBuf, &mut App) + Send + Sync>,
-    splash:       Option<Arc<RenderImage>>,
-    rx:           std::sync::mpsc::Receiver<LoadingEvent>,
+    anim_tick: u32,
+    on_complete: Arc<dyn Fn(PathBuf, &mut App) + Send + Sync>,
+    splash: Option<Arc<RenderImage>>,
+    rx: std::sync::mpsc::Receiver<LoadingEvent>,
     // keep the RustAnalyzerManager alive during loading
-    _analyzer:    Option<Entity<RustAnalyzerManager>>,
+    _analyzer: Option<Entity<RustAnalyzerManager>>,
 }
 
 impl LoadingScreen {
@@ -176,7 +186,7 @@ impl LoadingScreen {
 // ── render ────────────────────────────────────────────────────────────────────
 
 // Braille spinner frames
-const SPINNER: &[&str] = &["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"];
+const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 impl Render for LoadingScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -202,7 +212,8 @@ impl Render for LoadingScreen {
             let handle = window.window_handle();
             cx.defer(move |cx| {
                 on_complete(path, cx);
-                cx.update_window(handle, |_, window, _| window.remove_window()).ok();
+                cx.update_window(handle, |_, window, _| window.remove_window())
+                    .ok();
             });
         }
 
@@ -219,35 +230,38 @@ impl Render for LoadingScreen {
             .bg(gpui::black())
             // Background splash image
             .children(self.splash.clone().map(|splash| {
-                div()
-                    .absolute()
-                    .top_0().left_0().size_full()
-                    .child(
-                        img(ImageSource::Render(splash))
-                            .size_full()
-                            .object_fit(ObjectFit::Cover)
-                    )
+                div().absolute().top_0().left_0().size_full().child(
+                    img(ImageSource::Render(splash))
+                        .size_full()
+                        .object_fit(ObjectFit::Cover),
+                )
             }))
             // Dark vignette overlay — gradient from bottom
             .child(
                 div()
                     .absolute()
-                    .bottom_0().left_0().right_0()
+                    .bottom_0()
+                    .left_0()
+                    .right_0()
                     .h(px(260.0))
-                    .bg(gpui::black().opacity(0.82))
+                    .bg(gpui::black().opacity(0.82)),
             )
             // Full overlay for darker tint on top half
             .child(
                 div()
                     .absolute()
-                    .top_0().left_0().size_full()
-                    .bg(gpui::black().opacity(0.25))
+                    .top_0()
+                    .left_0()
+                    .size_full()
+                    .bg(gpui::black().opacity(0.25)),
             )
             // Content sits on top of overlays
             .child(
                 div()
                     .absolute()
-                    .top_0().left_0().size_full()
+                    .top_0()
+                    .left_0()
+                    .size_full()
                     .flex()
                     .flex_col()
                     .justify_end()
@@ -280,80 +294,82 @@ impl Render for LoadingScreen {
                                                     .text_2xl()
                                                     .font_weight(FontWeight::EXTRA_BOLD)
                                                     .text_color(gpui::white())
-                                                    .child("PULSAR ENGINE")
+                                                    .child("PULSAR ENGINE"),
                                             )
                                             .child(
                                                 div()
                                                     .text_sm()
                                                     .font_weight(FontWeight::MEDIUM)
                                                     .text_color(gpui::white().opacity(0.55))
-                                                    .child(self.project_name.clone())
-                                            )
+                                                    .child(self.project_name.clone()),
+                                            ),
                                     )
                                     // Right: scrolling task window (5 visible at a time)
                                     .child({
                                         // Find the currently running task (or last one if all done)
-                                        let running = self.statuses.iter().position(|s| *s == TaskStatus::Running)
+                                        let running = self
+                                            .statuses
+                                            .iter()
+                                            .position(|s| *s == TaskStatus::Running)
                                             .unwrap_or(self.statuses.len().saturating_sub(1));
                                         const VISIBLE: usize = 5;
                                         const ABOVE: usize = 2; // done tasks to show above current
-                                        // Window start: keep `running` at position ABOVE inside the window
+                                                                // Window start: keep `running` at position ABOVE inside the window
                                         let window_start = running.saturating_sub(ABOVE);
-                                        let window_end = (window_start + VISIBLE).min(self.statuses.len());
+                                        let window_end =
+                                            (window_start + VISIBLE).min(self.statuses.len());
                                         let window_start = window_end.saturating_sub(VISIBLE); // clamp at end
 
-                                        div()
-                                            .flex()
-                                            .flex_col()
-                                            .items_end()
-                                            .gap(px(6.0))
-                                            .children(
-                                                (window_start..window_end).map(|i| {
-                                                    let status = self.statuses[i];
-                                                    let label = TASKS[i].0;
-                                                    // Tasks above the window fade out toward the top
-                                                    let dist_above = if i < running { running - i } else { 0 };
-                                                    let (icon, base_opacity): (&str, f32) = match status {
-                                                        TaskStatus::Done    => ("✓", 0.9),
-                                                        TaskStatus::Running => (spinner, 1.0),
-                                                        TaskStatus::Pending => ("·", 0.35),
-                                                    };
-                                                    // Fade completed tasks as they get further from the current
-                                                    let opacity = if dist_above > 0 {
-                                                        (base_opacity - dist_above as f32 * 0.25).max(0.18)
-                                                    } else {
-                                                        base_opacity
-                                                    };
-                                                    let color: Hsla = gpui::white().opacity(opacity);
-                                                    let weight = if status == TaskStatus::Running {
-                                                        FontWeight::SEMIBOLD
-                                                    } else {
-                                                        FontWeight::NORMAL
-                                                    };
-                                                    div()
-                                                        .flex()
-                                                        .flex_row()
-                                                        .items_center()
-                                                        .gap(px(8.0))
-                                                        .child(
-                                                            div()
-                                                                .text_sm()
-                                                                .font_weight(weight)
-                                                                .text_color(color)
-                                                                .child(label)
-                                                        )
-                                                        .child(
-                                                            div()
-                                                                .text_sm()
-                                                                .font_weight(FontWeight::BOLD)
-                                                                .text_color(color)
-                                                                .w(px(16.0))
-                                                                .text_center()
-                                                                .child(icon)
-                                                        )
-                                                })
-                                            )
-                                    })
+                                        div().flex().flex_col().items_end().gap(px(6.0)).children(
+                                            (window_start..window_end).map(|i| {
+                                                let status = self.statuses[i];
+                                                let label = TASKS[i].0;
+                                                // Tasks above the window fade out toward the top
+                                                let dist_above =
+                                                    if i < running { running - i } else { 0 };
+                                                let (icon, base_opacity): (&str, f32) = match status
+                                                {
+                                                    TaskStatus::Done => ("✓", 0.9),
+                                                    TaskStatus::Running => (spinner, 1.0),
+                                                    TaskStatus::Pending => ("·", 0.35),
+                                                };
+                                                // Fade completed tasks as they get further from the current
+                                                let opacity = if dist_above > 0 {
+                                                    (base_opacity - dist_above as f32 * 0.25)
+                                                        .max(0.18)
+                                                } else {
+                                                    base_opacity
+                                                };
+                                                let color: Hsla = gpui::white().opacity(opacity);
+                                                let weight = if status == TaskStatus::Running {
+                                                    FontWeight::SEMIBOLD
+                                                } else {
+                                                    FontWeight::NORMAL
+                                                };
+                                                div()
+                                                    .flex()
+                                                    .flex_row()
+                                                    .items_center()
+                                                    .gap(px(8.0))
+                                                    .child(
+                                                        div()
+                                                            .text_sm()
+                                                            .font_weight(weight)
+                                                            .text_color(color)
+                                                            .child(label),
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .text_sm()
+                                                            .font_weight(FontWeight::BOLD)
+                                                            .text_color(color)
+                                                            .w(px(16.0))
+                                                            .text_center()
+                                                            .child(icon),
+                                                    )
+                                            }),
+                                        )
+                                    }),
                             )
                             // Status message
                             .child(
@@ -361,8 +377,8 @@ impl Render for LoadingScreen {
                                     .text_xs()
                                     .text_color(gpui::white().opacity(0.45))
                                     .font_weight(FontWeight::MEDIUM)
-                                    .child(self.message.clone())
-                            )
+                                    .child(self.message.clone()),
+                            ),
                     )
                     // ── progress bar (flush to bottom) ───────────────────
                     .child(
@@ -374,12 +390,13 @@ impl Render for LoadingScreen {
                             .child(
                                 div()
                                     .absolute()
-                                    .top_0().left_0()
+                                    .top_0()
+                                    .left_0()
                                     .h_full()
                                     .w(bar_w)
-                                    .bg(gpui::white().opacity(0.85))
-                            )
-                    )
+                                    .bg(gpui::white().opacity(0.85)),
+                            ),
+                    ),
             )
     }
 }
@@ -389,10 +406,14 @@ impl Render for LoadingScreen {
 impl window_manager::PulsarWindow for LoadingScreen {
     type Params = (PathBuf, Arc<dyn Fn(PathBuf, &mut App) + Send + Sync>);
 
-    fn window_name() -> &'static str { "LoadingScreen" }
+    fn window_name() -> &'static str {
+        "LoadingScreen"
+    }
 
     fn window_options(_: &Self::Params) -> gpui::WindowOptions {
-        use gpui::{Bounds, Point, Size, WindowBounds, WindowDecorations, WindowKind, WindowIcon, px};
+        use gpui::{
+            px, Bounds, Point, Size, WindowBounds, WindowDecorations, WindowIcon, WindowKind,
+        };
         #[cfg(not(target_os = "macos"))]
         static ICON_PNG: &[u8] = include_bytes!("../../../assets/images/logo_sqrkl.png");
         #[cfg(target_os = "macos")]
@@ -402,8 +423,14 @@ impl window_manager::PulsarWindow for LoadingScreen {
             .ok();
         gpui::WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds {
-                origin: Point { x: px(200.0), y: px(150.0) },
-                size: Size { width: px(960.0), height: px(540.0) },
+                origin: Point {
+                    x: px(200.0),
+                    y: px(150.0),
+                },
+                size: Size {
+                    width: px(960.0),
+                    height: px(540.0),
+                },
             })),
             titlebar: None,
             kind: WindowKind::Normal,
@@ -415,7 +442,11 @@ impl window_manager::PulsarWindow for LoadingScreen {
         }
     }
 
-    fn build(params: Self::Params, window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {
+    fn build(
+        params: Self::Params,
+        window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) -> gpui::Entity<Self> {
         let (path, on_complete) = params;
         cx.new(|cx| LoadingScreen::new_with_on_complete(path, on_complete, window, cx))
     }

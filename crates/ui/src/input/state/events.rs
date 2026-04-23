@@ -10,14 +10,15 @@ use gpui::{
     MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, Render, ScrollHandle,
     ScrollWheelEvent, SharedString, Styled as _, Subscription, Task, UTF16Selection, Window,
 };
+use gpui_sum_tree::Bias;
 use ropey::{Rope, RopeSlice};
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::ops::Range;
 use std::rc::Rc;
-use gpui_sum_tree::Bias;
 use unicode_segmentation::*;
 
+use super::*;
 use crate::input::{
     blink_cursor::BlinkCursor,
     change::Change,
@@ -37,18 +38,32 @@ use crate::input::{
 use crate::input::{RopeExt as _, Selection};
 use crate::{highlighter::DiagnosticSet, input::text_wrapper::LineItem};
 use crate::{history::History, scroll::ScrollbarState, Root};
-use super::*;
 
 impl InputState {
-    pub(in crate::input) fn select_left(&mut self, _: &SelectLeft, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::input) fn select_left(
+        &mut self,
+        _: &SelectLeft,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.select_to(self.previous_boundary(self.cursor()), cx);
     }
 
-    pub(in crate::input) fn select_right(&mut self, _: &SelectRight, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::input) fn select_right(
+        &mut self,
+        _: &SelectRight,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.select_to(self.next_boundary(self.cursor()), cx);
     }
 
-    pub(in crate::input) fn select_up(&mut self, _: &SelectUp, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::input) fn select_up(
+        &mut self,
+        _: &SelectUp,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.mode.is_single_line() {
             return;
         }
@@ -56,7 +71,12 @@ impl InputState {
         self.select_to(self.previous_boundary(offset), cx);
     }
 
-    pub(in crate::input) fn select_down(&mut self, _: &SelectDown, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::input) fn select_down(
+        &mut self,
+        _: &SelectDown,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.mode.is_single_line() {
             return;
         }
@@ -64,7 +84,12 @@ impl InputState {
         self.select_to(self.next_boundary(offset), cx);
     }
 
-    pub(in crate::input) fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::input) fn select_all(
+        &mut self,
+        _: &SelectAll,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.selected_range = (0..self.text.len()).into();
         cx.notify();
     }
@@ -132,7 +157,7 @@ impl InputState {
     pub(in crate::input) fn previous_start_of_word(&mut self) -> usize {
         let offset = self.selected_range.start;
         let offset = self.offset_from_utf16(self.offset_to_utf16(offset));
-        
+
         // Note: Unicode segmentation requires String. Performance could be improved
         // with a custom iterator that works directly on Rope.
         let left_part = self.text.slice(0..offset).to_string();
@@ -238,7 +263,12 @@ impl InputState {
         }
     }
 
-    pub(in crate::input) fn backspace(&mut self, _: &Backspace, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::input) fn backspace(
+        &mut self,
+        _: &Backspace,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.selected_range.is_empty() {
             self.select_to(self.previous_boundary(self.cursor()), cx)
         }
@@ -246,7 +276,12 @@ impl InputState {
         self.pause_blink_cursor(cx);
     }
 
-    pub(in crate::input) fn delete(&mut self, _: &Delete, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::input) fn delete(
+        &mut self,
+        _: &Delete,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.selected_range.is_empty() {
             self.select_to(self.next_boundary(self.cursor()), cx)
         }
@@ -325,7 +360,12 @@ impl InputState {
         self.pause_blink_cursor(cx);
     }
 
-    pub(in crate::input) fn enter(&mut self, action: &Enter, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::input) fn enter(
+        &mut self,
+        action: &Enter,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.handle_action_for_context_menu(Box::new(action.clone()), window, cx) {
             return;
         }
@@ -364,12 +404,17 @@ impl InputState {
                 return;
             }
         }
-        
+
         // Otherwise, perform normal indentation
         self.indent(false, window, cx);
     }
 
-    pub(in crate::input) fn indent_block(&mut self, _: &Indent, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::input) fn indent_block(
+        &mut self,
+        _: &Indent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.indent(true, window, cx);
     }
 
@@ -391,7 +436,12 @@ impl InputState {
         self.outdent(true, window, cx);
     }
 
-    pub(in crate::input) fn indent(&mut self, block: bool, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::input) fn indent(
+        &mut self,
+        block: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(tab_size) = self.mode.tab_size() else {
             cx.propagate();
             return;
@@ -449,7 +499,12 @@ impl InputState {
         }
     }
 
-    pub(in crate::input) fn outdent(&mut self, block: bool, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::input) fn outdent(
+        &mut self,
+        block: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(tab_size) = self.mode.tab_size() else {
             cx.propagate();
             return;
@@ -503,11 +558,11 @@ impl InputState {
             let start_offset = self.selected_range.start;
             let offset = self.start_of_line_of_selection(window, cx);
             let offset = self.offset_from_utf16(self.offset_to_utf16(offset));
-            
+
             // Optimized: Check prefix without allocating a String
             if Self::rope_starts_with(
                 self.text.slice(offset..self.text.len()),
-                tab_indent.as_ref()
+                tab_indent.as_ref(),
             ) {
                 self.replace_text_in_range_silent(
                     Some(self.range_to_utf16(&(offset..offset + tab_indent.len()))),
@@ -528,7 +583,12 @@ impl InputState {
         self.scroll_to(0, cx);
     }
 
-    pub(in crate::input) fn escape(&mut self, action: &Escape, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::input) fn escape(
+        &mut self,
+        action: &Escape,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.handle_action_for_context_menu(Box::new(action.clone()), window, cx) {
             return;
         }
@@ -572,7 +632,12 @@ impl InputState {
         self.replace_text_in_range_silent(None, "", window, cx);
     }
 
-    pub(in crate::input) fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::input) fn paste(
+        &mut self,
+        _: &Paste,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(clipboard) = cx.read_from_clipboard() {
             let mut new_text = clipboard.text().unwrap_or_default();
             if !self.mode.is_multi_line() {
@@ -584,7 +649,12 @@ impl InputState {
         }
     }
 
-    pub(in crate::input::state) fn push_history(&mut self, text: &Rope, range: &Range<usize>, new_text: &str) {
+    pub(in crate::input::state) fn push_history(
+        &mut self,
+        text: &Rope,
+        range: &Range<usize>,
+        new_text: &str,
+    ) {
         if self.history.ignore {
             return;
         }
@@ -650,7 +720,12 @@ impl InputState {
         });
     }
 
-    pub(in crate::input) fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::input) fn on_key_down(
+        &mut self,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.pause_blink_cursor(cx);
 
         //FIX: This patched the inability to type in WINIT windows

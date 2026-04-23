@@ -2,11 +2,11 @@
 //!
 //! Handles create, delete, and move operations for all asset types.
 
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
+use plugin_editor_api::FileTypeId;
 use std::path::PathBuf;
 use std::sync::Arc;
 use type_db::TypeDatabase;
-use plugin_editor_api::FileTypeId;
 
 use crate::templates::AssetKind;
 
@@ -25,7 +25,12 @@ impl GeneralOperations {
     }
 
     /// Create a new asset of any kind
-    pub fn create_asset(&self, kind: AssetKind, name: &str, custom_dir: Option<&str>) -> Result<PathBuf> {
+    pub fn create_asset(
+        &self,
+        kind: AssetKind,
+        name: &str,
+        custom_dir: Option<&str>,
+    ) -> Result<PathBuf> {
         // Generate template content
         let content = kind.generate_template(name);
 
@@ -38,9 +43,7 @@ impl GeneralOperations {
             format!("{}.{}", name, extension)
         };
 
-        let file_path = self.project_root
-            .join(dir)
-            .join(&file_name);
+        let file_path = self.project_root.join(dir).join(&file_name);
 
         // Create parent directories
         if let Some(parent) = file_path.parent() {
@@ -58,8 +61,7 @@ impl GeneralOperations {
                 .context("Failed to create SQLite database")?;
         } else {
             // Write template content
-            std::fs::write(&file_path, content)
-                .context("Failed to write asset file")?;
+            std::fs::write(&file_path, content).context("Failed to write asset file")?;
         }
 
         // Register in appropriate index
@@ -105,8 +107,7 @@ impl GeneralOperations {
         self.type_database.unregister_by_path(file_path);
 
         // Delete file
-        std::fs::remove_file(file_path)
-            .context("Failed to delete asset file")?;
+        std::fs::remove_file(file_path).context("Failed to delete asset file")?;
 
         Ok(())
     }
@@ -122,14 +123,16 @@ impl GeneralOperations {
         }
 
         // Move file
-        std::fs::rename(old_path, new_path)
-            .context("Failed to move asset file")?;
+        std::fs::rename(old_path, new_path).context("Failed to move asset file")?;
 
         // Re-register at new location using registry
         if let Some(plugin_manager) = plugin_manager::global() {
             if let Ok(pm) = plugin_manager.read() {
-                if let Some(file_type_id) = pm.file_type_registry().get_file_type_for_path(new_path) {
-                    if let Some(file_type_def) = pm.file_type_registry().get_file_type(&file_type_id) {
+                if let Some(file_type_id) = pm.file_type_registry().get_file_type_for_path(new_path)
+                {
+                    if let Some(file_type_def) =
+                        pm.file_type_registry().get_file_type(&file_type_id)
+                    {
                         let name = new_path
                             .file_stem()
                             .and_then(|s| s.to_str())

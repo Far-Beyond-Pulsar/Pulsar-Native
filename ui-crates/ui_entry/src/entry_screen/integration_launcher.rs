@@ -7,7 +7,6 @@
 /// - File managers (Explorer, Finder, etc.)
 ///
 /// All launches use proper Windows APIs to avoid unwanted terminal windows.
-
 use std::path::Path;
 use std::process::Command;
 
@@ -161,9 +160,16 @@ fn launch_gui_app(command: &str, path: &Path) -> LaunchResult {
                 command,
                 path.to_string_lossy().replace("'", "''")
             );
-            
+
             match Command::new("powershell")
-                .args(&["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", &ps_command])
+                .args(&[
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-WindowStyle",
+                    "Hidden",
+                    "-Command",
+                    &ps_command,
+                ])
                 .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
                 .spawn()
             {
@@ -176,10 +182,7 @@ fn launch_gui_app(command: &str, path: &Path) -> LaunchResult {
 
 #[cfg(not(windows))]
 fn launch_gui_app(command: &str, path: &Path) -> LaunchResult {
-    match Command::new(command)
-        .arg(path)
-        .spawn()
-    {
+    match Command::new(command).arg(path).spawn() {
         Ok(_) => LaunchResult::success(),
         Err(e) => LaunchResult::error(format!("Failed to launch {}: {}", command, e)),
     }
@@ -195,20 +198,18 @@ fn launch_vscode(path: &Path) -> LaunchResult {
 
 fn launch_visual_studio(path: &Path) -> LaunchResult {
     // Try to find a solution file first
-    let sln_file = std::fs::read_dir(path)
-        .ok()
-        .and_then(|entries| {
-            entries
-                .filter_map(|e| e.ok())
-                .find(|e| {
-                    e.path()
-                        .extension()
-                        .and_then(|ext| ext.to_str())
-                        .map(|ext| ext == "sln")
-                        .unwrap_or(false)
-                })
-                .map(|e| e.path())
-        });
+    let sln_file = std::fs::read_dir(path).ok().and_then(|entries| {
+        entries
+            .filter_map(|e| e.ok())
+            .find(|e| {
+                e.path()
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .map(|ext| ext == "sln")
+                    .unwrap_or(false)
+            })
+            .map(|e| e.path())
+    });
 
     if let Some(sln) = sln_file {
         launch_gui_app("devenv", &sln)
@@ -269,9 +270,16 @@ fn launch_git_gui(path: &Path) -> LaunchResult {
             "Set-Location '{}'; Start-Process git -ArgumentList 'gui' -WindowStyle Hidden",
             path.to_string_lossy().replace("'", "''")
         );
-        
+
         match Command::new("powershell")
-            .args(&["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", &ps_command])
+            .args(&[
+                "-NoProfile",
+                "-NonInteractive",
+                "-WindowStyle",
+                "Hidden",
+                "-Command",
+                &ps_command,
+            ])
             .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
             .spawn()
         {
@@ -282,11 +290,7 @@ fn launch_git_gui(path: &Path) -> LaunchResult {
 
     #[cfg(not(windows))]
     {
-        match Command::new("git")
-            .args(&["gui"])
-            .current_dir(path)
-            .spawn()
-        {
+        match Command::new("git").args(&["gui"]).current_dir(path).spawn() {
             Ok(_) => LaunchResult::success(),
             Err(e) => LaunchResult::error(format!("Failed to launch Git GUI: {}", e)),
         }
@@ -365,10 +369,7 @@ fn launch_lazygit(path: &Path) -> LaunchResult {
 
     #[cfg(not(windows))]
     {
-        match Command::new("lazygit")
-            .current_dir(path)
-            .spawn()
-        {
+        match Command::new("lazygit").current_dir(path).spawn() {
             Ok(_) => LaunchResult::success(),
             Err(e) => LaunchResult::error(format!("Failed to launch Lazygit: {}", e)),
         }
@@ -445,7 +446,7 @@ fn launch_git_bash(path: &Path) -> LaunchResult {
     {
         Ok(_) => LaunchResult::success(),
         Err(e) => LaunchResult::error(format!("Failed to launch Git Bash: {}", e)),
-        }
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -488,11 +489,7 @@ fn launch_gnome_terminal(path: &Path) -> LaunchResult {
 
 #[cfg(target_os = "linux")]
 fn launch_konsole(path: &Path) -> LaunchResult {
-    match Command::new("konsole")
-        .arg("--workdir")
-        .arg(path)
-        .spawn()
-    {
+    match Command::new("konsole").arg("--workdir").arg(path).spawn() {
         Ok(_) => LaunchResult::success(),
         Err(e) => LaunchResult::error(format!("Failed to launch Konsole: {}", e)),
     }
@@ -522,11 +519,7 @@ fn launch_alacritty(path: &Path) -> LaunchResult {
 }
 
 fn launch_kitty(path: &Path) -> LaunchResult {
-    match Command::new("kitty")
-        .arg("--directory")
-        .arg(path)
-        .spawn()
-    {
+    match Command::new("kitty").arg("--directory").arg(path).spawn() {
         Ok(_) => LaunchResult::success(),
         Err(e) => LaunchResult::error(format!("Failed to launch Kitty: {}", e)),
     }
@@ -554,10 +547,7 @@ fn launch_windows_explorer(path: &Path) -> LaunchResult {
 
 #[cfg(target_os = "macos")]
 fn launch_finder(path: &Path) -> LaunchResult {
-    match Command::new("open")
-        .arg(path)
-        .spawn()
-    {
+    match Command::new("open").arg(path).spawn() {
         Ok(_) => LaunchResult::success(),
         Err(e) => LaunchResult::error(format!("Failed to launch Finder: {}", e)),
     }
@@ -565,10 +555,7 @@ fn launch_finder(path: &Path) -> LaunchResult {
 
 #[cfg(target_os = "linux")]
 fn launch_nautilus(path: &Path) -> LaunchResult {
-    match Command::new("nautilus")
-        .arg(path)
-        .spawn()
-    {
+    match Command::new("nautilus").arg(path).spawn() {
         Ok(_) => LaunchResult::success(),
         Err(e) => LaunchResult::error(format!("Failed to launch Nautilus: {}", e)),
     }

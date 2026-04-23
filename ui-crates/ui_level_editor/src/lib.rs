@@ -5,17 +5,12 @@
 // Initialize translations
 rust_i18n::i18n!("locales", fallback = "en");
 
-use gpui::{Window, App, AppContext};
+use gpui::{App, AppContext, Window};
 
 mod level_editor;
 
 // Re-export main types
-pub use level_editor::{
-    LevelEditorPanel,
-    SceneDatabase,
-    GizmoState,
-    GizmoType,
-};
+pub use level_editor::{GizmoState, GizmoType, LevelEditorPanel, SceneDatabase};
 
 /// Get current locale
 pub fn locale() -> String {
@@ -30,7 +25,9 @@ pub fn set_locale(locale: &str) {
 impl window_manager::PulsarWindow for LevelEditorPanel {
     type Params = ();
 
-    fn window_name() -> &'static str { "LevelEditorPanel" }
+    fn window_name() -> &'static str {
+        "LevelEditorPanel"
+    }
 
     fn window_options(_: &()) -> gpui::WindowOptions {
         window_manager::default_window_options(1600.0, 900.0)

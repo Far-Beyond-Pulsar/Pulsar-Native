@@ -84,7 +84,13 @@ macro_rules! pulsar_drawer_window {
 #[macro_export]
 macro_rules! drawer_window {
     ($window_type:ident, $inner_type:ty, $inner_field:ident, $title:expr) => {
-        $crate::pulsar_drawer_window!($window_type, $inner_type, $inner_field, $title, 900.0, 600.0);
+        $crate::pulsar_drawer_window!(
+            $window_type,
+            $inner_type,
+            $inner_field,
+            $title,
+            900.0,
+            600.0
+        );
     };
 }
-

@@ -15,7 +15,7 @@
 //!
 //! ```rust,ignore
 //! let mut recent = RecentProjectsList::load(&path);
-//! 
+//!
 //! // Add or update a project
 //! recent.add_or_update(RecentProject {
 //!     name: "My Game".to_string(),
@@ -23,7 +23,7 @@
 //!     last_opened: Some(chrono::Utc::now().to_rfc3339()),
 //!     is_git: true,
 //! });
-//! 
+//!
 //! // Save to disk
 //! recent.save(&path);
 //! ```

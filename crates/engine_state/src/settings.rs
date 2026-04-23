@@ -17,9 +17,9 @@
 use std::path::{Path, PathBuf};
 
 pub use pulsar_config::{
-    ChangeEvent, Color, ConfigError, ConfigManager, ConfigStore, ConfigValue,
-    DropdownOption, FieldType, ListenerId, NamespaceSchema, OwnerHandle,
-    PersistError, SchemaEntry, SearchResult, SettingInfo, Validator,
+    ChangeEvent, Color, ConfigError, ConfigManager, ConfigStore, ConfigValue, DropdownOption,
+    FieldType, ListenerId, NamespaceSchema, OwnerHandle, PersistError, SchemaEntry, SearchResult,
+    SettingInfo, Validator,
 };
 
 // ─── Global manager ───────────────────────────────────────────────────────────
@@ -52,8 +52,9 @@ pub struct GlobalSettings {
 impl GlobalSettings {
     pub fn new() -> Self {
         let manager = global_config().clone();
-        let store = ConfigStore::new(manager, "PulsarEngine")
-            .unwrap_or_else(|_| ConfigStore::with_dir(global_config().clone(), PathBuf::from("config")).unwrap());
+        let store = ConfigStore::new(manager, "PulsarEngine").unwrap_or_else(|_| {
+            ConfigStore::with_dir(global_config().clone(), PathBuf::from("config")).unwrap()
+        });
         Self { store }
     }
 
@@ -66,7 +67,9 @@ impl GlobalSettings {
     /// Load persisted values for all registered editor-namespace owners.
     pub fn load_all(&self) {
         for (ns, owner_segs) in global_config().list_all_owners() {
-            if ns != NS_EDITOR { continue; }
+            if ns != NS_EDITOR {
+                continue;
+            }
             let owner_path = owner_segs.join("/");
             if let Some(handle) = global_config().owner_handle(&ns, &owner_path) {
                 let _ = self.store.load(&handle);
@@ -88,12 +91,21 @@ impl GlobalSettings {
         global_config().get(NS_EDITOR, owner, key).ok()
     }
 
-    pub fn set(&self, owner: &str, key: &str, value: impl Into<ConfigValue>) -> Result<(), ConfigError> {
+    pub fn set(
+        &self,
+        owner: &str,
+        key: &str,
+        value: impl Into<ConfigValue>,
+    ) -> Result<(), ConfigError> {
         global_config()
             .owner_handle(NS_EDITOR, owner)
             .ok_or_else(|| ConfigError::OwnerNotFound {
                 namespace: NS_EDITOR.to_owned(),
-                owner: owner.split('/').filter(|s| !s.is_empty()).map(str::to_owned).collect(),
+                owner: owner
+                    .split('/')
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_owned)
+                    .collect(),
             })
             .and_then(|h| h.set(key, value.into()))
     }
@@ -117,11 +129,15 @@ impl ProjectSettings {
     /// Returns `None` if the project directory doesn't exist or can't be created.
     pub fn new(project_path: &Path) -> Option<Self> {
         match ConfigStore::with_dir(global_config().clone(), project_path.join(".pulsar")) {
-            Ok(store) => Some(Self { store, project_path: project_path.to_owned() }),
+            Ok(store) => Some(Self {
+                store,
+                project_path: project_path.to_owned(),
+            }),
             Err(e) => {
                 tracing::error!(
                     "ProjectSettings: cannot create config dir for {:?}: {:?}",
-                    project_path, e
+                    project_path,
+                    e
                 );
                 None
             }
@@ -130,7 +146,9 @@ impl ProjectSettings {
 
     pub fn load_all(&self) {
         for (ns, owner_segs) in global_config().list_all_owners() {
-            if ns != NS_PROJECT { continue; }
+            if ns != NS_PROJECT {
+                continue;
+            }
             let owner_path = owner_segs.join("/");
             if let Some(handle) = global_config().owner_handle(&ns, &owner_path) {
                 let _ = self.store.load(&handle);

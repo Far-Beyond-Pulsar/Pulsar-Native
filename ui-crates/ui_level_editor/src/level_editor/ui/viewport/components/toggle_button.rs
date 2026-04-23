@@ -68,9 +68,7 @@ impl ToggleButton {
 
     /// Build the button element.
     pub fn build(self) -> Button {
-        let mut button = Button::new(self.id)
-            .icon(self.icon)
-            .selected(self.selected);
+        let mut button = Button::new(self.id).icon(self.icon).selected(self.selected);
 
         if let Some(tooltip) = self.tooltip {
             button = button.tooltip(tooltip);

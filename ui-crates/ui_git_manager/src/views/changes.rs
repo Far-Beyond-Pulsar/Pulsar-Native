@@ -1,18 +1,26 @@
 //! Changes view: staged / unstaged file lists + commit section
 
-use crate::{GitManager, models::*, FileContentResult, DiscardFileChanges, IgnoreFile, IgnoreExtension, IgnoreFolder, CopyRelativePath, CopyFullPath, OpenInExplorer};
-use gpui::*;
+use super::toolbar::render_toolbar;
+use crate::{
+    CopyFullPath, CopyRelativePath, DiscardFileChanges, FileContentResult, GitManager,
+    IgnoreExtension, IgnoreFile, IgnoreFolder, OpenInExplorer, models::*,
+};
 use gpui::prelude::FluentBuilder as _;
+use gpui::*;
 use ui::{
-    h_flex, v_flex, Icon, IconName, ActiveTheme as _, StyledExt,
+    ActiveTheme as _, Icon, IconName, StyledExt,
     button::{Button, ButtonVariants as _},
-    scroll::ScrollbarAxis,
+    h_flex,
     input::TextInput,
     menu::context_menu::ContextMenuExt as _,
+    scroll::ScrollbarAxis,
+    v_flex,
 };
-use super::toolbar::render_toolbar;
 
-pub fn render_changes_view(git_manager: &mut GitManager, cx: &mut Context<GitManager>) -> impl IntoElement {
+pub fn render_changes_view(
+    git_manager: &mut GitManager,
+    cx: &mut Context<GitManager>,
+) -> impl IntoElement {
     let repo_state = git_manager.repo_state.read();
     let staged_files = repo_state.staged_files.clone();
     let unstaged_files = repo_state.unstaged_files.clone();
@@ -37,13 +45,17 @@ pub fn render_changes_view(git_manager: &mut GitManager, cx: &mut Context<GitMan
     let mut scroll_content = v_flex().id("git-changes-scroll").w_full().gap_2().p_2();
 
     if !staged_files.is_empty() {
-        scroll_content = scroll_content.child(render_file_section("Staged", &staged_files, true, cx));
+        scroll_content =
+            scroll_content.child(render_file_section("Staged", &staged_files, true, cx));
     }
     if !unstaged_all.is_empty() {
-        scroll_content = scroll_content.child(render_file_section("Changes", &unstaged_all, false, cx));
+        scroll_content =
+            scroll_content.child(render_file_section("Changes", &unstaged_all, false, cx));
     }
     if has_no_changes {
-        let check_icon = Icon::new(IconName::Check).size(px(24.)).text_color(muted_fg);
+        let check_icon = Icon::new(IconName::Check)
+            .size(px(24.))
+            .text_color(muted_fg);
         scroll_content = scroll_content.child(
             v_flex()
                 .py_8()
@@ -51,7 +63,12 @@ pub fn render_changes_view(git_manager: &mut GitManager, cx: &mut Context<GitMan
                 .justify_center()
                 .gap_2()
                 .child(check_icon)
-                .child(div().text_xs().text_color(muted_fg).child("Working directory clean")),
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(muted_fg)
+                        .child("Working directory clean"),
+                ),
         );
     }
 
@@ -161,7 +178,10 @@ fn render_file_section(
                 .context_menu(move |menu, window, cx| {
                     let fp = file_path_for_ctx.clone();
                     let menu = menu
-                        .menu("Discard File Changes", Box::new(DiscardFileChanges { path: fp.clone() }))
+                        .menu(
+                            "Discard File Changes",
+                            Box::new(DiscardFileChanges { path: fp.clone() }),
+                        )
                         .separator()
                         .menu("Ignore File", Box::new(IgnoreFile { path: fp.clone() }));
 
@@ -171,7 +191,9 @@ fn render_file_section(
                             for folder in &folders_for_sub {
                                 sub = sub.menu(
                                     SharedString::from(folder.clone()),
-                                    Box::new(IgnoreFolder { folder: folder.clone() }),
+                                    Box::new(IgnoreFolder {
+                                        folder: folder.clone(),
+                                    }),
                                 );
                             }
                             sub
@@ -189,10 +211,15 @@ fn render_file_section(
                         menu
                     };
 
-                    menu
-                        .separator()
-                        .menu("Copy Relative Path", Box::new(CopyRelativePath { path: fp.clone() }))
-                        .menu("Copy Full Path", Box::new(CopyFullPath { path: fp.clone() }))
+                    menu.separator()
+                        .menu(
+                            "Copy Relative Path",
+                            Box::new(CopyRelativePath { path: fp.clone() }),
+                        )
+                        .menu(
+                            "Copy Full Path",
+                            Box::new(CopyFullPath { path: fp.clone() }),
+                        )
                         .separator()
                         .menu("Show in Explorer", Box::new(OpenInExplorer { path: fp }))
                 })
@@ -222,10 +249,18 @@ fn render_file_section(
                 // Stage / unstage button
                 .child(
                     Button::new(SharedString::from(format!("stg-{}", file.path)))
-                        .icon(if is_staged { IconName::Minus } else { IconName::Plus })
+                        .icon(if is_staged {
+                            IconName::Minus
+                        } else {
+                            IconName::Plus
+                        })
                         .ghost()
                         .compact()
-                        .tooltip(if is_staged { "Unstage".to_string() } else { "Stage".to_string() })
+                        .tooltip(if is_staged {
+                            "Unstage".to_string()
+                        } else {
+                            "Stage".to_string()
+                        })
                         .on_click(cx.listener(move |this, _, _, cx| {
                             if is_staged {
                                 this.unstage_file(file_path.clone(), cx);

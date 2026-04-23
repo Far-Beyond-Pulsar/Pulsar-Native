@@ -12,7 +12,8 @@ use crate::{
 };
 
 use super::{
-    DockArea, DockError, Panel, PanelEvent, PanelInfo, PanelState, PanelView, StackPanel, TabPanel, TileMeta,
+    DockArea, DockError, Panel, PanelEvent, PanelInfo, PanelState, PanelView, StackPanel, TabPanel,
+    TileMeta,
 };
 use gpui::{
     actions, canvas, div, point, px, size, AnyElement, App, AppContext, Bounds, Context,
@@ -372,7 +373,9 @@ impl Tiles {
         cx: &mut Context<Self>,
     ) -> Result<(), DockError> {
         let Ok(tab_panel) = item.panel.view().downcast::<TabPanel>() else {
-            return Err(DockError::InvalidPanelType("only allows to add TabPanel type"));
+            return Err(DockError::InvalidPanelType(
+                "only allows to add TabPanel type",
+            ));
         };
 
         tab_panel.update(cx, |tab_panel, _| {

@@ -1,10 +1,6 @@
-use std::sync::Arc;
 use gpui::{prelude::*, *};
-use ui::{
-    avatar::Avatar,
-    h_flex, v_flex,
-    ActiveTheme, Sizable, Size, StyledExt,
-};
+use std::sync::Arc;
+use ui::{ActiveTheme, Sizable, Size, StyledExt, avatar::Avatar, h_flex, v_flex};
 
 use crate::parser::fmt_count;
 
@@ -81,12 +77,7 @@ impl RenderOnce for MetaBar {
                                     .child(self.seller_name),
                             )
                             .when_some(self.category, |el, cat| {
-                                el.child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(muted)
-                                        .child(cat),
-                                )
+                                el.child(div().text_xs().text_color(muted).child(cat))
                             }),
                     ),
             )
@@ -96,20 +87,25 @@ impl RenderOnce for MetaBar {
                     .gap_4()
                     .items_center()
                     .child(
-                        div().text_sm().text_color(muted)
+                        div()
+                            .text_sm()
+                            .text_color(muted)
                             .child(format!("👁 {} views", fmt_count(self.view_count))),
                     )
                     .child(
-                        div().text_sm().text_color(muted)
+                        div()
+                            .text_sm()
+                            .text_color(muted)
                             .child(format!("♥ {} likes", fmt_count(self.like_count))),
                     )
                     .when_some(self.published_at, |el, date| {
                         el.child(
-                            div().text_sm().text_color(muted)
+                            div()
+                                .text_sm()
+                                .text_color(muted)
                                 .child(format!("Published {}", &date[..date.len().min(10)])),
                         )
                     }),
             )
     }
 }
-

@@ -1,14 +1,12 @@
-use gpui::*;
-use ui::{
-    v_flex, h_flex,
-    ActiveTheme,
-    dock::{Panel, PanelEvent},
-    StyledExt,
-};
-use gpui::prelude::FluentBuilder;
 use crate::trace_data::TraceData;
-use std::sync::Arc;
+use gpui::prelude::FluentBuilder;
+use gpui::*;
 use std::collections::HashMap;
+use std::sync::Arc;
+use ui::{
+    dock::{Panel, PanelEvent},
+    h_flex, v_flex, ActiveTheme, StyledExt,
+};
 
 #[derive(Clone, Debug)]
 pub struct FunctionStats {
@@ -53,21 +51,22 @@ impl StatisticsPanel {
 
     fn compute_statistics(&mut self) {
         let frame = self.trace_data.get_frame();
-        
+
         // Only recompute if span count changed
         if frame.spans.len() == self.last_span_count && !self.stats_dirty {
             return;
         }
-        
+
         self.last_span_count = frame.spans.len();
         self.stats_dirty = false;
         let mut function_map: HashMap<String, (usize, u64, u64, u64)> = HashMap::new();
 
         // Aggregate statistics by function name
         for span in &frame.spans {
-            let entry = function_map.entry(span.name.clone())
+            let entry = function_map
+                .entry(span.name.clone())
                 .or_insert((0, 0, u64::MAX, 0));
-            
+
             entry.0 += 1; // call count
             entry.1 += span.duration_ns; // total duration
             entry.2 = entry.2.min(span.duration_ns); // min duration
@@ -75,16 +74,17 @@ impl StatisticsPanel {
         }
 
         // Convert to FunctionStats vec
-        self.stats = function_map.into_iter().map(|(name, (count, total, min, max))| {
-            FunctionStats {
+        self.stats = function_map
+            .into_iter()
+            .map(|(name, (count, total, min, max))| FunctionStats {
                 name,
                 call_count: count,
                 total_duration_ns: total,
                 avg_duration_ns: total / count as u64,
                 min_duration_ns: min,
                 max_duration_ns: max,
-            }
-        }).collect();
+            })
+            .collect();
 
         // Sort by current column
         self.sort_statistics();
@@ -133,7 +133,7 @@ impl StatisticsPanel {
 
     fn render_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
-        
+
         h_flex()
             .w_full()
             .h(px(32.0))
@@ -143,47 +143,52 @@ impl StatisticsPanel {
             .bg(theme.sidebar)
             .border_b_1()
             .border_color(theme.border)
-            .child(
-                self.render_header_cell("Function", SortColumn::Name, true, cx)
-            )
-            .child(
-                self.render_header_cell("Calls", SortColumn::Calls, false, cx)
-            )
-            .child(
-                self.render_header_cell("Total", SortColumn::TotalTime, false, cx)
-            )
-            .child(
-                self.render_header_cell("Avg", SortColumn::AvgTime, false, cx)
-            )
+            .child(self.render_header_cell("Function", SortColumn::Name, true, cx))
+            .child(self.render_header_cell("Calls", SortColumn::Calls, false, cx))
+            .child(self.render_header_cell("Total", SortColumn::TotalTime, false, cx))
+            .child(self.render_header_cell("Avg", SortColumn::AvgTime, false, cx))
     }
 
-    fn render_header_cell(&self, label: &str, column: SortColumn, flex_grow: bool, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_header_cell(
+        &self,
+        label: &str,
+        column: SortColumn,
+        flex_grow: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let theme = cx.theme();
         let is_active = self.sort_by == column;
         let label_owned = label.to_string();
-        
+
         let mut el = div();
         if flex_grow {
             el = el.flex_grow().flex_basis(relative(0.0));
         } else {
             el = el.w(px(80.0));
         }
-        
+
         el.text_xs()
             .font_weight(FontWeight::SEMIBOLD)
-            .text_color(if is_active { theme.accent } else { theme.muted_foreground })
+            .text_color(if is_active {
+                theme.accent
+            } else {
+                theme.muted_foreground
+            })
             .cursor_pointer()
             .hover(|style| style.text_color(theme.accent))
-            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _event, _window, cx| {
-                this.set_sort(column, cx);
-            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _event, _window, cx| {
+                    this.set_sort(column, cx);
+                }),
+            )
             .child(label_owned)
     }
 
     fn render_row(&self, index: usize, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         let stats = &self.stats[index];
-        
+
         h_flex()
             .w_full()
             .h(px(28.0))
@@ -201,7 +206,7 @@ impl StatisticsPanel {
                     .text_color(theme.foreground)
                     .overflow_hidden()
                     .text_ellipsis()
-                    .child(stats.name.clone())
+                    .child(stats.name.clone()),
             )
             .child(
                 div()
@@ -209,7 +214,7 @@ impl StatisticsPanel {
                     .text_sm()
                     .text_color(theme.muted_foreground)
                     .font_family("monospace")
-                    .child(format!("{}", stats.call_count))
+                    .child(format!("{}", stats.call_count)),
             )
             .child(
                 div()
@@ -217,7 +222,7 @@ impl StatisticsPanel {
                     .text_sm()
                     .text_color(theme.muted_foreground)
                     .font_family("monospace")
-                    .child(Self::format_duration(stats.total_duration_ns))
+                    .child(Self::format_duration(stats.total_duration_ns)),
             )
             .child(
                 div()
@@ -225,7 +230,7 @@ impl StatisticsPanel {
                     .text_sm()
                     .text_color(theme.muted_foreground)
                     .font_family("monospace")
-                    .child(Self::format_duration(stats.avg_duration_ns))
+                    .child(Self::format_duration(stats.avg_duration_ns)),
             )
     }
 }
@@ -240,9 +245,7 @@ impl Panel for StatisticsPanel {
     }
 
     fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
-        div()
-            .child("Statistics")
-            .into_any_element()
+        div().child("Statistics").into_any_element()
     }
 }
 
@@ -254,9 +257,9 @@ impl Render for StatisticsPanel {
         // Limit to top 100 items for performance
         let item_count = self.stats.len().min(100);
         let total_count = self.stats.len();
-        
+
         let theme = cx.theme();
-        
+
         v_flex()
             .size_full()
             .bg(theme.background)
@@ -266,11 +269,7 @@ impl Render for StatisticsPanel {
                     .id("stats-scroll")
                     .flex_1()
                     .overflow_y_scroll()
-                    .children(
-                        (0..item_count).map(|index| {
-                            self.render_row(index, cx)
-                        })
-                    )
+                    .children((0..item_count).map(|index| self.render_row(index, cx))),
             )
             .when(total_count > 100, |this| {
                 let theme = cx.theme();
@@ -281,7 +280,7 @@ impl Render for StatisticsPanel {
                         .py_2()
                         .text_xs()
                         .text_color(theme.muted_foreground)
-                        .child(format!("Showing top 100 of {} functions", total_count))
+                        .child(format!("Showing top 100 of {} functions", total_count)),
                 )
             })
     }

@@ -6,8 +6,8 @@
 //!
 //! Provides primitives for mutual exclusion and locking.
 
-use std::sync::{Arc, Mutex, MutexGuard};
 use crate::blueprint;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 /// A safe wrapper that owns both the Arc<Mutex<T>> and its guard.
 ///
@@ -31,7 +31,8 @@ impl<T: 'static> OwnedMutexGuard<T> {
         // 2. The guard is stored in a private field and cannot outlive self
         // 3. When OwnedMutexGuard is dropped, the guard is dropped before the Arc
         // 4. The Arc is never moved or dropped while the guard exists
-        let guard = unsafe { std::mem::transmute::<MutexGuard<'_, T>, MutexGuard<'static, T>>(guard) };
+        let guard =
+            unsafe { std::mem::transmute::<MutexGuard<'_, T>, MutexGuard<'static, T>>(guard) };
 
         Self {
             _arc: arc,
@@ -44,13 +45,17 @@ impl<T: 'static> std::ops::Deref for OwnedMutexGuard<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        self.guard.as_ref().expect("Guard should always exist until drop")
+        self.guard
+            .as_ref()
+            .expect("Guard should always exist until drop")
     }
 }
 
 impl<T: 'static> std::ops::DerefMut for OwnedMutexGuard<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.guard.as_mut().expect("Guard should always exist until drop")
+        self.guard
+            .as_mut()
+            .expect("Guard should always exist until drop")
     }
 }
 

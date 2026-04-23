@@ -5,17 +5,17 @@
 //!
 //! **Type-Safe Field Access**: Uses named fields instead of array indices for compile-time verification.
 
-use std::any::Any;
 use serde::{Deserialize, Serialize};
+use std::any::Any;
 
 /// How a field should be rendered
 pub enum FieldRepresentation {
     /// Primitive field - renders as a single input (f32, bool, String, etc.)
     Primitive,
-    
+
     /// Composite field - renders as multiple sub-fields using primitives
     Composite(Vec<SubFieldDescriptor>),
-    
+
     /// Custom rendering - type provides its own GPUI rendering logic
     /// (The actual rendering happens in the UI layer, this is just a marker)
     Custom,
@@ -25,12 +25,12 @@ pub enum FieldRepresentation {
 pub trait FieldRenderer: Any {
     /// Get the type name for debugging
     fn type_name(&self) -> &'static str;
-    
+
     /// Get the field representation (primitive, composite, or custom)
     fn representation(&self) -> FieldRepresentation {
         FieldRepresentation::Primitive
     }
-    
+
     /// For Custom representation types, return an identifier that the UI layer can use
     /// to look up the custom renderer. Defaults to type_name().
     fn custom_ui_key(&self) -> &'static str {
@@ -44,27 +44,27 @@ pub trait CompositeField {
     fn get_field_f32(&self, _field_name: &str) -> Option<f32> {
         None
     }
-    
+
     /// Set an f32 field by name
     fn set_field_f32(&mut self, _field_name: &str, _value: f32) {
         // Default no-op
     }
-    
+
     /// Get a bool field by name
     fn get_field_bool(&self, _field_name: &str) -> Option<bool> {
         None
     }
-    
+
     /// Set a bool field by name
     fn set_field_bool(&mut self, _field_name: &str, _value: bool) {
         // Default no-op
     }
-    
+
     /// Get a String field by name
     fn get_field_string(&self, _field_name: &str) -> Option<String> {
         None
     }
-    
+
     /// Set a String field by name
     fn set_field_string(&mut self, _field_name: &str, _value: String) {
         // Default no-op
@@ -98,7 +98,7 @@ impl SubFieldDescriptor {
             field_type: SubFieldType::F32,
         }
     }
-    
+
     /// Create a new bool sub-field descriptor
     pub fn bool(name: &'static str, label: &'static str) -> Self {
         Self {
@@ -108,7 +108,7 @@ impl SubFieldDescriptor {
             field_type: SubFieldType::Bool,
         }
     }
-    
+
     /// Create a new String sub-field descriptor
     pub fn string(name: &'static str, label: &'static str) -> Self {
         Self {
@@ -118,13 +118,13 @@ impl SubFieldDescriptor {
             field_type: SubFieldType::String,
         }
     }
-    
+
     /// Set the color hint for this sub-field
     pub fn with_color(mut self, color: [f32; 3]) -> Self {
         self.color_hint = Some(color);
         self
     }
-    
+
     /// Set the color hint for this sub-field (takes Option for convenience)
     pub fn with_color_opt(mut self, color: Option<[f32; 3]>) -> Self {
         self.color_hint = color;
@@ -170,7 +170,7 @@ impl Vec3 {
     pub const fn new(x: f32, y: f32, z: f32) -> Self {
         Self { x, y, z }
     }
-    
+
     pub const ZERO: Self = Self::new(0.0, 0.0, 0.0);
     pub const ONE: Self = Self::new(1.0, 1.0, 1.0);
     pub const X: Self = Self::new(1.0, 0.0, 0.0);
@@ -184,15 +184,12 @@ impl FieldRenderer for Vec3 {
     fn type_name(&self) -> &'static str {
         "Vec3"
     }
-    
+
     fn representation(&self) -> FieldRepresentation {
         FieldRepresentation::Composite(vec![
-            SubFieldDescriptor::f32("x", "X")
-                .with_color([1.0, 0.3, 0.3]),
-            SubFieldDescriptor::f32("y", "Y")
-                .with_color([0.3, 1.0, 0.3]),
-            SubFieldDescriptor::f32("z", "Z")
-                .with_color([0.3, 0.5, 1.0]),
+            SubFieldDescriptor::f32("x", "X").with_color([1.0, 0.3, 0.3]),
+            SubFieldDescriptor::f32("y", "Y").with_color([0.3, 1.0, 0.3]),
+            SubFieldDescriptor::f32("z", "Z").with_color([0.3, 0.5, 1.0]),
         ])
     }
 }
@@ -207,13 +204,13 @@ impl CompositeField for Vec3 {
             _ => None,
         }
     }
-    
+
     fn set_field_f32(&mut self, field_name: &str, value: f32) {
         match field_name {
             "x" => self.x = value,
             "y" => self.y = value,
             "z" => self.z = value,
-            _ => {},
+            _ => {}
         }
     }
 }
@@ -236,11 +233,11 @@ impl Color {
     pub const fn new(r: f32, g: f32, b: f32, a: f32) -> Self {
         Self { r, g, b, a }
     }
-    
+
     pub const fn rgb(r: f32, g: f32, b: f32) -> Self {
         Self::new(r, g, b, 1.0)
     }
-    
+
     pub const WHITE: Self = Self::new(1.0, 1.0, 1.0, 1.0);
     pub const BLACK: Self = Self::new(0.0, 0.0, 0.0, 1.0);
     pub const RED: Self = Self::new(1.0, 0.0, 0.0, 1.0);
@@ -254,15 +251,12 @@ impl FieldRenderer for Color {
     fn type_name(&self) -> &'static str {
         "Color"
     }
-    
+
     fn representation(&self) -> FieldRepresentation {
         FieldRepresentation::Composite(vec![
-            SubFieldDescriptor::f32("r", "R")
-                .with_color([1.0, 0.3, 0.3]),
-            SubFieldDescriptor::f32("g", "G")
-                .with_color([0.3, 1.0, 0.3]),
-            SubFieldDescriptor::f32("b", "B")
-                .with_color([0.3, 0.5, 1.0]),
+            SubFieldDescriptor::f32("r", "R").with_color([1.0, 0.3, 0.3]),
+            SubFieldDescriptor::f32("g", "G").with_color([0.3, 1.0, 0.3]),
+            SubFieldDescriptor::f32("b", "B").with_color([0.3, 0.5, 1.0]),
             SubFieldDescriptor::f32("a", "A"),
         ])
     }
@@ -279,14 +273,14 @@ impl CompositeField for Color {
             _ => None,
         }
     }
-    
+
     fn set_field_f32(&mut self, field_name: &str, value: f32) {
         match field_name {
             "r" => self.r = value,
             "g" => self.g = value,
             "b" => self.b = value,
             "a" => self.a = value,
-            _ => {},
+            _ => {}
         }
     }
 }

@@ -1,8 +1,9 @@
 use gpui::*;
-use ui::{
-    button::{Button, ButtonVariants as _}, v_flex, ActiveTheme as _, StyledExt,
-};
 use std::path::PathBuf;
+use ui::{
+    button::{Button, ButtonVariants as _},
+    v_flex, ActiveTheme as _, StyledExt,
+};
 
 pub struct ProjectSelector {
     focus_handle: FocusHandle,
@@ -40,9 +41,11 @@ impl ProjectSelector {
                         selector.selected_path = Some(path.clone());
                         cx.notify();
                     });
-                }).ok();
+                })
+                .ok();
             }
-        }).detach();
+        })
+        .detach();
     }
 
     fn confirm_project(&mut self, cx: &mut Context<Self>) {
@@ -92,7 +95,7 @@ impl Render for ProjectSelector {
                             .text_color(cx.theme().primary_foreground)
                             .text_2xl()
                             .font_bold()
-                            .child("P")
+                            .child("P"),
                     )
                     .child(
                         // Title
@@ -100,7 +103,7 @@ impl Render for ProjectSelector {
                             .text_2xl()
                             .font_bold()
                             .text_color(cx.theme().foreground)
-                            .child("Pulsar Engine")
+                            .child("Pulsar Engine"),
                     )
                     .child(
                         // Subtitle
@@ -108,7 +111,7 @@ impl Render for ProjectSelector {
                             .text_sm()
                             .text_color(cx.theme().muted_foreground)
                             .text_center()
-                            .child("Open a project to get started")
+                            .child("Open a project to get started"),
                     )
                     .children(self.selected_path.as_ref().map(|path| {
                         div()
@@ -131,7 +134,7 @@ impl Render for ProjectSelector {
                                     .w_full()
                                     .on_click(cx.listener(|selector, _, window, cx| {
                                         selector.open_folder_dialog(window, cx);
-                                    }))
+                                    })),
                             )
                             .children(if self.selected_path.is_some() {
                                 Some(
@@ -141,11 +144,11 @@ impl Render for ProjectSelector {
                                         .w_full()
                                         .on_click(cx.listener(|selector, _, _, cx| {
                                             selector.confirm_project(cx);
-                                        }))
+                                        })),
                                 )
                             } else {
                                 None
-                            })
+                            }),
                     )
                     .child(
                         //TODO: Recent projects (placeholder for future)
@@ -153,8 +156,8 @@ impl Render for ProjectSelector {
                             .mt_4()
                             .text_xs()
                             .text_color(cx.theme().muted_foreground)
-                            .child("Recent projects will appear here")
-                    )
+                            .child("Recent projects will appear here"),
+                    ),
             )
     }
 }

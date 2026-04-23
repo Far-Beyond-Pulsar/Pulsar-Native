@@ -93,14 +93,9 @@ pub enum P2PMessage {
         ice_candidates: Vec<IceCandidate>,
     },
     /// Hole punching keepalive
-    Keepalive {
-        peer_id: String,
-    },
+    Keepalive { peer_id: String },
     /// Request binary proxy mode
-    RequestBinaryProxy {
-        session_id: String,
-        peer_id: String,
-    },
+    RequestBinaryProxy { session_id: String, peer_id: String },
     /// Binary data chunk (proxied through server)
     BinaryChunk {
         session_id: String,
@@ -163,24 +158,27 @@ impl P2PManager {
     /// Try to establish direct TCP connection with NAT traversal
     async fn try_direct_p2p(&self, peer_address: &str) -> Result<TcpStream, std::io::Error> {
         // Step 1: Query STUN servers to determine public IP and NAT type
-        tracing::info!("Attempting STUN query to servers: {:?}", self.stun_config.servers);
-        
+        tracing::info!(
+            "Attempting STUN query to servers: {:?}",
+            self.stun_config.servers
+        );
+
         // TODO: Implement actual STUN binding request
         // This would use a STUN client library to:
         // - Send binding requests to STUN servers
         // - Parse responses to get public IP and port
         // - Determine NAT type (Full Cone, Restricted, Port Restricted, Symmetric)
-        
+
         // Step 2: Exchange ICE candidates with peer through signaling server
         // TODO: Send our candidate (public IP:port) to peer via WebSocket signaling
         // TODO: Receive peer's candidate from signaling server
-        
+
         // Step 3: Attempt simultaneous TCP connection (hole punching)
         // For symmetric NATs, both sides connect at the same time
         // This creates temporary port mapping that allows connection
-        
+
         tracing::debug!("Attempting direct connection to peer: {}", peer_address);
-        
+
         // Currently: Simple direct connection attempt
         // Will be replaced with full ICE connection establishment
         tokio::time::timeout(
@@ -243,9 +241,7 @@ impl P2PManager {
                 // Receive from WebSocket binary message
                 Err("Binary proxy not implemented".to_string())
             }
-            ConnectionMode::JsonFallback => {
-                Err("Use JSON message fallback".to_string())
-            }
+            ConnectionMode::JsonFallback => Err("Use JSON message fallback".to_string()),
         }
     }
 }

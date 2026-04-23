@@ -10,12 +10,12 @@ use gpui::{
     MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, Render, ScrollHandle,
     ScrollWheelEvent, SharedString, Styled as _, Subscription, Task, UTF16Selection, Window,
 };
+use gpui_sum_tree::Bias;
 use ropey::{Rope, RopeSlice};
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::ops::Range;
 use std::rc::Rc;
-use gpui_sum_tree::Bias;
 use unicode_segmentation::*;
 
 use crate::input::{
@@ -107,11 +107,17 @@ actions!(
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InputEvent {
     Change,
-    PressEnter { secondary: bool },
+    PressEnter {
+        secondary: bool,
+    },
     Focus,
     Blur,
     /// Request to navigate to a definition (possibly in another file)
-    GoToDefinition { path: std::path::PathBuf, line: u32, character: u32 },
+    GoToDefinition {
+        path: std::path::PathBuf,
+        line: u32,
+        character: u32,
+    },
 }
 
 pub(in crate::input) const CONTEXT: &str = "Input";
@@ -364,12 +370,12 @@ impl InputState {
         // Compare character by character without allocation
         let mut rope_chars = rope.chars();
         let mut pattern_chars = pattern.chars();
-        
+
         loop {
             match (rope_chars.next(), pattern_chars.next()) {
                 (Some(r), Some(p)) if r == p => continue,
-                (_, None) => return true,  // Pattern exhausted, match found
-                _ => return false,  // Mismatch or rope exhausted first
+                (_, None) => return true, // Pattern exhausted, match found
+                _ => return false,        // Mismatch or rope exhausted first
             }
         }
     }
@@ -663,7 +669,7 @@ impl InputState {
 
         cx.notify();
     }
-    
+
     /// Get a reference to the line cache for performance monitoring.
     ///
     /// This allows external code to check cache statistics and performance.
@@ -941,7 +947,11 @@ impl InputState {
             && self.blink_cursor.read(cx).visible()
             && window.is_window_active()
     }
-    pub(in crate::input::state) fn is_valid_input(&self, new_text: &str, cx: &mut Context<Self>) -> bool {
+    pub(in crate::input::state) fn is_valid_input(
+        &self,
+        new_text: &str,
+        cx: &mut Context<Self>,
+    ) -> bool {
         if new_text.is_empty() {
             return true;
         }
@@ -992,7 +1002,11 @@ impl InputState {
         }
         cx.notify();
     }
-    pub(in crate::input) fn set_input_bounds(&mut self, new_bounds: Bounds<Pixels>, cx: &mut Context<Self>) {
+    pub(in crate::input) fn set_input_bounds(
+        &mut self,
+        new_bounds: Bounds<Pixels>,
+        cx: &mut Context<Self>,
+    ) {
         let wrap_width_changed = self.input_bounds.size.width != new_bounds.size.width;
         self.input_bounds = new_bounds;
 

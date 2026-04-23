@@ -8,10 +8,10 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::info;
 
-use crate::config::Config;
-use crate::metrics::METRICS;
 use super::peer_discovery::RendezvousSession;
 use super::sync_protocol::ServerMessage;
+use crate::config::Config;
+use crate::metrics::METRICS;
 
 /// Rendezvous coordinator state
 #[derive(Clone)]
@@ -47,30 +47,29 @@ impl RendezvousCoordinator {
     pub(super) fn validate_jwt_token(&self, token: &str) -> Result<TokenClaims> {
         let mut validation = Validation::new(Algorithm::HS256);
         validation.validate_exp = true;
-        
-        let token_data = decode::<TokenClaims>(
-            token,
-            &self.jwt_decoding_key,
-            &validation,
-        )
-        .context("Failed to decode JWT token")?;
-        
+
+        let token_data = decode::<TokenClaims>(token, &self.jwt_decoding_key, &validation)
+            .context("Failed to decode JWT token")?;
+
         Ok(token_data.claims)
     }
 
     /// Generate JWT token for a peer joining a session
-    pub fn generate_join_token(&self, peer_id: &str, session_id: &str, ttl_secs: u64) -> Result<String> {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)?
-            .as_secs() as usize;
-        
+    pub fn generate_join_token(
+        &self,
+        peer_id: &str,
+        session_id: &str,
+        ttl_secs: u64,
+    ) -> Result<String> {
+        let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as usize;
+
         let claims = TokenClaims {
             sub: peer_id.to_string(),
             session: session_id.to_string(),
             iat: now,
             exp: now + ttl_secs as usize,
         };
-        
+
         encode(&Header::default(), &claims, &self.jwt_encoding_key)
             .context("Failed to encode JWT token")
     }
@@ -108,5 +107,4 @@ impl RendezvousCoordinator {
 
         Ok(())
     }
-
 }

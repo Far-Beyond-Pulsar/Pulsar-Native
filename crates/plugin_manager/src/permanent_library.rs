@@ -157,10 +157,7 @@ impl PermanentLibrary {
         // 3. The library dependencies are available
         let library = unsafe { Library::new(path)? };
 
-        tracing::info!(
-            "Loaded permanent library: {:?} (will never unload)",
-            path
-        );
+        tracing::info!("Loaded permanent library: {:?} (will never unload)", path);
 
         Ok(Self {
             library: ManuallyDrop::new(library),

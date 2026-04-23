@@ -4,14 +4,14 @@
 //! making them available in the visual type alias editor.
 
 use pulsar_macros::blueprint_type;
-use std::sync::{Arc, Mutex, RwLock};
-use std::rc::Rc;
-use std::cell::{Cell, RefCell};
-use std::pin::Pin;
 use std::borrow::Cow;
+use std::cell::{Cell, RefCell};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
-use std::collections::{HashMap, HashSet, BTreeMap, BTreeSet};
+use std::pin::Pin;
+use std::rc::Rc;
+use std::sync::{Arc, Mutex, RwLock};
 
 // =============================================================================
 // Smart Pointers

@@ -1,16 +1,15 @@
 use crate::{
-    ActiveTheme as _, Collapsible, Icon, IconName, Sizable as _, StyledExt,
     button::{Button, ButtonVariants as _},
     context_menu::ContextMenuExt,
     h_flex,
     popup_menu::PopupMenu,
     sidebar::SidebarItem,
-    v_flex,
+    v_flex, ActiveTheme as _, Collapsible, Icon, IconName, Sizable as _, StyledExt,
 };
 use gpui::{
-    AnyElement, App, ClickEvent, ElementId, InteractiveElement as _, IntoElement,
-    ParentElement as _, SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled,
-    Window, div, percentage, prelude::FluentBuilder,
+    div, percentage, prelude::FluentBuilder, AnyElement, App, ClickEvent, ElementId,
+    InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, Window,
 };
 use std::rc::Rc;
 

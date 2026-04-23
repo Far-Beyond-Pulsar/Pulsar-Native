@@ -6,13 +6,17 @@ mod git_operations;
 mod models;
 mod views;
 
-use gpui::*;
 use gpui::ClipboardItem;
-use ui::{v_flex, h_flex, TitleBar, ActiveTheme as _, input::{InputState, InputEvent}};
-use std::path::PathBuf;
-use std::collections::HashSet;
+use gpui::*;
 use parking_lot::RwLock;
+use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
+use ui::{
+    ActiveTheme as _, TitleBar, h_flex,
+    input::{InputEvent, InputState},
+    v_flex,
+};
 
 pub use git_operations::*;
 pub use models::*;
@@ -20,43 +24,61 @@ pub use models::*;
 // ── File context-menu actions ────────────────────────────────────────────────
 #[derive(Clone, Debug, PartialEq, serde::Deserialize, Action)]
 #[action(namespace = git_manager, no_json)]
-pub struct DiscardFileChanges { pub path: String }
+pub struct DiscardFileChanges {
+    pub path: String,
+}
 
 #[derive(Clone, Debug, PartialEq, serde::Deserialize, Action)]
 #[action(namespace = git_manager, no_json)]
-pub struct IgnoreFile { pub path: String }
+pub struct IgnoreFile {
+    pub path: String,
+}
 
 #[derive(Clone, Debug, PartialEq, serde::Deserialize, Action)]
 #[action(namespace = git_manager, no_json)]
-pub struct IgnoreExtension { pub path: String }
+pub struct IgnoreExtension {
+    pub path: String,
+}
 
 #[derive(Clone, Debug, PartialEq, serde::Deserialize, Action)]
 #[action(namespace = git_manager, no_json)]
-pub struct IgnoreFolder { pub folder: String }
+pub struct IgnoreFolder {
+    pub folder: String,
+}
 
 #[derive(Clone, Debug, PartialEq, serde::Deserialize, Action)]
 #[action(namespace = git_manager, no_json)]
-pub struct CopyRelativePath { pub path: String }
+pub struct CopyRelativePath {
+    pub path: String,
+}
 
 #[derive(Clone, Debug, PartialEq, serde::Deserialize, Action)]
 #[action(namespace = git_manager, no_json)]
-pub struct CopyFullPath { pub path: String }
+pub struct CopyFullPath {
+    pub path: String,
+}
 
 #[derive(Clone, Debug, PartialEq, serde::Deserialize, Action)]
 #[action(namespace = git_manager, no_json)]
-pub struct OpenInExplorer { pub path: String }
+pub struct OpenInExplorer {
+    pub path: String,
+}
 // ────────────────────────────────────────────────────────────────────────────
 
 /// Which remote operation is awaiting credential input
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum PendingAuthOp { Fetch, Push, Pull }
+pub enum PendingAuthOp {
+    Fetch,
+    Push,
+    Pull,
+}
 
 impl PendingAuthOp {
     pub fn label(self) -> &'static str {
         match self {
             PendingAuthOp::Fetch => "Fetch",
-            PendingAuthOp::Push  => "Push",
-            PendingAuthOp::Pull  => "Pull",
+            PendingAuthOp::Push => "Push",
+            PendingAuthOp::Pull => "Pull",
         }
     }
 }
@@ -118,11 +140,15 @@ impl GitManager {
         });
 
         // Subscribe to Enter key events on commit message input
-        cx.subscribe(&commit_message_input, |this, _input, event: &InputEvent, cx| {
-            if let InputEvent::PressEnter { secondary: false } = event {
-                this.commit_changes(cx);
-            }
-        }).detach();
+        cx.subscribe(
+            &commit_message_input,
+            |this, _input, event: &InputEvent, cx| {
+                if let InputEvent::PressEnter { secondary: false } = event {
+                    this.commit_changes(cx);
+                }
+            },
+        )
+        .detach();
 
         // Create auth credential inputs
         let auth_username_input = cx.new(|cx| {
@@ -141,11 +167,14 @@ impl GitManager {
         let path = project_path.clone();
         cx.spawn(async move |this, mut cx| {
             let path2 = path.clone();
-            let (state, stored_creds) = cx.background_executor().spawn(async move {
-                let state = load_repository_state(&path).ok();
-                let creds = load_git_credentials(&path);
-                (state, creds)
-            }).await;
+            let (state, stored_creds) = cx
+                .background_executor()
+                .spawn(async move {
+                    let state = load_repository_state(&path).ok();
+                    let creds = load_git_credentials(&path);
+                    (state, creds)
+                })
+                .await;
             cx.update(|cx| {
                 this.update(cx, |git_manager, cx| {
                     if let Some(s) = state {
@@ -153,9 +182,12 @@ impl GitManager {
                     }
                     git_manager.stored_creds = stored_creds;
                     cx.notify();
-                }).ok();
-            }).ok();
-        }).detach();
+                })
+                .ok();
+            })
+            .ok();
+        })
+        .detach();
 
         Self {
             project_path,
@@ -190,15 +222,22 @@ impl GitManager {
     fn refresh_state(&mut self, cx: &mut Context<Self>) {
         let path = self.project_path.clone();
         cx.spawn(async move |this, mut cx| {
-            if let Ok(state) = cx.background_executor().spawn(async move { load_repository_state(&path) }).await {
+            if let Ok(state) = cx
+                .background_executor()
+                .spawn(async move { load_repository_state(&path) })
+                .await
+            {
                 cx.update(|cx| {
                     this.update(cx, |git_manager, cx| {
                         *git_manager.repo_state.write() = state;
                         cx.notify();
-                    }).ok();
-                }).ok();
+                    })
+                    .ok();
+                })
+                .ok();
             }
-        }).detach();
+        })
+        .detach();
     }
 
     fn commit_changes(&mut self, cx: &mut Context<Self>) {
@@ -210,75 +249,105 @@ impl GitManager {
         let path = self.project_path.clone();
 
         cx.spawn(async move |this, mut cx| {
-            let result = cx.background_executor().spawn(async move { commit_staged_changes(&path, &message) }).await;
+            let result = cx
+                .background_executor()
+                .spawn(async move { commit_staged_changes(&path, &message) })
+                .await;
             if result.is_ok() {
                 cx.update(|cx| {
                     this.update(cx, |git_manager, cx| {
                         git_manager.refresh_state(cx);
-                    }).ok();
-                }).ok();
+                    })
+                    .ok();
+                })
+                .ok();
             }
-        }).detach();
+        })
+        .detach();
     }
 
     fn stage_file(&mut self, file_path: String, cx: &mut Context<Self>) {
         let path = self.project_path.clone();
         cx.spawn(async move |this, mut cx| {
-            let result = cx.background_executor().spawn(async move { stage_file(&path, &file_path) }).await;
+            let result = cx
+                .background_executor()
+                .spawn(async move { stage_file(&path, &file_path) })
+                .await;
             cx.update(|cx| {
                 this.update(cx, |gm, cx| {
                     if let Err(e) = &result {
                         gm.op_error = Some(format!("Stage failed: {}", e));
                     }
                     gm.refresh_state(cx);
-                }).ok();
-            }).ok();
-        }).detach();
+                })
+                .ok();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     pub fn stage_all(&mut self, cx: &mut Context<Self>) {
         let path = self.project_path.clone();
         cx.spawn(async move |this, mut cx| {
-            let result = cx.background_executor().spawn(async move { stage_all_files(&path) }).await;
+            let result = cx
+                .background_executor()
+                .spawn(async move { stage_all_files(&path) })
+                .await;
             cx.update(|cx| {
                 this.update(cx, |gm, cx| {
                     if let Err(e) = &result {
                         gm.op_error = Some(format!("Stage all failed: {}", e));
                     }
                     gm.refresh_state(cx);
-                }).ok();
-            }).ok();
-        }).detach();
+                })
+                .ok();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     pub fn unstage_all(&mut self, cx: &mut Context<Self>) {
         let path = self.project_path.clone();
         cx.spawn(async move |this, mut cx| {
-            let result = cx.background_executor().spawn(async move { unstage_all_files(&path) }).await;
+            let result = cx
+                .background_executor()
+                .spawn(async move { unstage_all_files(&path) })
+                .await;
             cx.update(|cx| {
                 this.update(cx, |gm, cx| {
                     if let Err(e) = &result {
                         gm.op_error = Some(format!("Unstage all failed: {}", e));
                     }
                     gm.refresh_state(cx);
-                }).ok();
-            }).ok();
-        }).detach();
+                })
+                .ok();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     fn unstage_file(&mut self, file_path: String, cx: &mut Context<Self>) {
         let path = self.project_path.clone();
         cx.spawn(async move |this, mut cx| {
-            let result = cx.background_executor().spawn(async move { unstage_file(&path, &file_path) }).await;
+            let result = cx
+                .background_executor()
+                .spawn(async move { unstage_file(&path, &file_path) })
+                .await;
             cx.update(|cx| {
                 this.update(cx, |gm, cx| {
                     if let Err(e) = &result {
                         gm.op_error = Some(format!("Unstage failed: {}", e));
                     }
                     gm.refresh_state(cx);
-                }).ok();
-            }).ok();
-        }).detach();
+                })
+                .ok();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     fn select_commit(&mut self, commit_hash: String, cx: &mut Context<Self>) {
@@ -292,15 +361,22 @@ impl GitManager {
 
         let path = self.project_path.clone();
         cx.spawn(async move |this, mut cx| {
-            if let Ok(files) = cx.background_executor().spawn(async move { get_commit_files(&path, &commit_hash) }).await {
+            if let Ok(files) = cx
+                .background_executor()
+                .spawn(async move { get_commit_files(&path, &commit_hash) })
+                .await
+            {
                 cx.update(|cx| {
                     this.update(cx, |git_manager, cx| {
                         git_manager.selected_commit_files = files;
                         cx.notify();
-                    }).ok();
-                }).ok();
+                    })
+                    .ok();
+                })
+                .ok();
             }
-        }).detach();
+        })
+        .detach();
     }
 
     pub fn select_commit_file(&mut self, file_path: String, cx: &mut Context<Self>) {
@@ -316,19 +392,31 @@ impl GitManager {
 
         let repo_path = self.project_path.clone();
         cx.spawn(async move |this, mut cx| {
-            let result = cx.background_executor()
-                .spawn(async move { load_file_diff_at_commit(&repo_path, &commit_hash, &file_path) })
+            let result = cx
+                .background_executor()
+                .spawn(
+                    async move { load_file_diff_at_commit(&repo_path, &commit_hash, &file_path) },
+                )
                 .await;
             cx.update(|cx| {
                 this.update(cx, |gm, cx| {
                     match result {
-                        Ok(diff) => { gm.commit_file_diff = Some(diff); gm.commit_file_diff_error = None; }
-                        Err(msg) => { gm.commit_file_diff = None; gm.commit_file_diff_error = Some(msg); }
+                        Ok(diff) => {
+                            gm.commit_file_diff = Some(diff);
+                            gm.commit_file_diff_error = None;
+                        }
+                        Err(msg) => {
+                            gm.commit_file_diff = None;
+                            gm.commit_file_diff_error = Some(msg);
+                        }
                     }
                     cx.notify();
-                }).ok();
-            }).ok();
-        }).detach();
+                })
+                .ok();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     pub fn select_file(&mut self, file_path: String, cx: &mut Context<Self>) {
@@ -339,19 +427,29 @@ impl GitManager {
         cx.notify();
         let repo_path = self.project_path.clone();
         cx.spawn(async move |this, mut cx| {
-            let result = cx.background_executor()
+            let result = cx
+                .background_executor()
                 .spawn(async move { load_file_diff_working(&repo_path, &file_path) })
                 .await;
             cx.update(|cx| {
                 this.update(cx, |gm, cx| {
                     match result {
-                        Ok(diff) => { gm.file_diff = Some(diff); gm.file_diff_error = None; }
-                        Err(msg) => { gm.file_diff = None; gm.file_diff_error = Some(msg); }
+                        Ok(diff) => {
+                            gm.file_diff = Some(diff);
+                            gm.file_diff_error = None;
+                        }
+                        Err(msg) => {
+                            gm.file_diff = None;
+                            gm.file_diff_error = Some(msg);
+                        }
                     }
                     cx.notify();
-                }).ok();
-            }).ok();
-        }).detach();
+                })
+                .ok();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     pub fn expand_file_diff_region(&mut self, region_idx: usize, cx: &mut Context<Self>) {
@@ -394,26 +492,34 @@ impl GitManager {
         cx.notify();
     }
 
-    fn run_remote_op(&mut self, op: PendingAuthOp, explicit_creds: Option<(String, String)>, cx: &mut Context<Self>) {
+    fn run_remote_op(
+        &mut self,
+        op: PendingAuthOp,
+        explicit_creds: Option<(String, String)>,
+        cx: &mut Context<Self>,
+    ) {
         let path = self.project_path.clone();
         self.op_error = None;
         let cached_creds = self.stored_creds.clone();
         let explicit_was_provided = explicit_creds.is_some();
         cx.spawn(async move |this, mut cx| {
             let path_clone = path.clone();
-            let result = cx.background_executor().spawn(async move {
-                // Priority: explicit (retry) → in-memory cache → OS keychain
-                let creds = explicit_creds
-                    .or(cached_creds)
-                    .or_else(|| load_git_credentials(&path));
-                let creds_used = creds.clone();
-                let res = match op {
-                    PendingAuthOp::Fetch => fetch_from_remote(&path, creds),
-                    PendingAuthOp::Push  => push_to_remote(&path, creds),
-                    PendingAuthOp::Pull  => pull_from_remote(&path, creds),
-                };
-                (res, creds_used)
-            }).await;
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    // Priority: explicit (retry) → in-memory cache → OS keychain
+                    let creds = explicit_creds
+                        .or(cached_creds)
+                        .or_else(|| load_git_credentials(&path));
+                    let creds_used = creds.clone();
+                    let res = match op {
+                        PendingAuthOp::Fetch => fetch_from_remote(&path, creds),
+                        PendingAuthOp::Push => push_to_remote(&path, creds),
+                        PendingAuthOp::Pull => pull_from_remote(&path, creds),
+                    };
+                    (res, creds_used)
+                })
+                .await;
             let (result, creds_used) = result;
             // On success with any creds: persist to keychain and update memory cache
             if result.is_ok() {
@@ -442,25 +548,34 @@ impl GitManager {
                         }
                     }
                     gm.refresh_state(cx);
-                }).ok();
-            }).ok();
-        }).detach();
+                })
+                .ok();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     fn switch_branch(&mut self, branch_name: String, cx: &mut Context<Self>) {
         let path = self.project_path.clone();
         self.op_error = None;
         cx.spawn(async move |this, mut cx| {
-            let result = cx.background_executor().spawn(async move { switch_branch(&path, &branch_name) }).await;
+            let result = cx
+                .background_executor()
+                .spawn(async move { switch_branch(&path, &branch_name) })
+                .await;
             cx.update(|cx| {
                 this.update(cx, |gm, cx| {
                     if let Err(e) = &result {
                         gm.op_error = Some(format!("Switch failed: {}", e));
                     }
                     gm.refresh_state(cx);
-                }).ok();
-            }).ok();
-        }).detach();
+                })
+                .ok();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     fn dismiss_error(&mut self, cx: &mut Context<Self>) {
@@ -472,35 +587,43 @@ impl GitManager {
         let repo_path = self.project_path.clone();
         let file_path = path.to_string();
         cx.spawn(async move |this, mut cx| {
-            let result = cx.background_executor().spawn(async move {
-                discard_file_changes(&repo_path, &file_path)
-            }).await;
+            let result = cx
+                .background_executor()
+                .spawn(async move { discard_file_changes(&repo_path, &file_path) })
+                .await;
             cx.update(|cx| {
                 this.update(cx, |gm, cx| {
                     if let Err(e) = &result {
                         gm.op_error = Some(format!("Discard failed: {}", e));
                     }
                     gm.refresh_state(cx);
-                }).ok();
-            }).ok();
-        }).detach();
+                })
+                .ok();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     fn append_gitignore(&mut self, line: String, cx: &mut Context<Self>) {
         let repo_path = self.project_path.clone();
         cx.spawn(async move |this, mut cx| {
-            let result = cx.background_executor().spawn(async move {
-                append_to_gitignore(&repo_path, &line)
-            }).await;
+            let result = cx
+                .background_executor()
+                .spawn(async move { append_to_gitignore(&repo_path, &line) })
+                .await;
             cx.update(|cx| {
                 this.update(cx, |gm, cx| {
                     if let Err(e) = &result {
                         gm.op_error = Some(format!("Gitignore failed: {}", e));
                     }
                     gm.refresh_state(cx);
-                }).ok();
-            }).ok();
-        }).detach();
+                })
+                .ok();
+            })
+            .ok();
+        })
+        .detach();
     }
     fn open_in_explorer(&mut self, path: &str, _cx: &mut Context<Self>) {
         let full_path = self.project_path.join(path);
@@ -523,9 +646,11 @@ impl Render for GitManager {
             .size_full()
             .bg(theme.background)
             .key_context("GitManager")
-            .on_action(cx.listener(|this, action: &DiscardFileChanges, _window, cx| {
-                this.discard_file_changes(&action.path, cx);
-            }))
+            .on_action(
+                cx.listener(|this, action: &DiscardFileChanges, _window, cx| {
+                    this.discard_file_changes(&action.path, cx);
+                }),
+            )
             .on_action(cx.listener(|this, action: &IgnoreFile, _window, cx| {
                 let filename = std::path::Path::new(&action.path)
                     .file_name()
@@ -547,13 +672,20 @@ impl Render for GitManager {
             .on_action(cx.listener(|this, action: &IgnoreFolder, _window, cx| {
                 this.append_gitignore(action.folder.clone(), cx);
             }))
-            .on_action(cx.listener(move |_this, action: &CopyRelativePath, _window, cx| {
-                cx.write_to_clipboard(ClipboardItem::new_string(action.path.clone()));
-            }))
-            .on_action(cx.listener(move |_this, action: &CopyFullPath, _window, cx| {
-                let full = project_path.join(&action.path).to_string_lossy().to_string();
-                cx.write_to_clipboard(ClipboardItem::new_string(full));
-            }))
+            .on_action(
+                cx.listener(move |_this, action: &CopyRelativePath, _window, cx| {
+                    cx.write_to_clipboard(ClipboardItem::new_string(action.path.clone()));
+                }),
+            )
+            .on_action(
+                cx.listener(move |_this, action: &CopyFullPath, _window, cx| {
+                    let full = project_path
+                        .join(&action.path)
+                        .to_string_lossy()
+                        .to_string();
+                    cx.write_to_clipboard(ClipboardItem::new_string(full));
+                }),
+            )
             .on_action(cx.listener(|this, action: &OpenInExplorer, _window, cx| {
                 this.open_in_explorer(&action.path, cx);
             }))
@@ -569,26 +701,26 @@ impl Render for GitManager {
                             .border_r_1()
                             .border_color(theme.border)
                             .overflow_hidden()
-                            .child(
-                                match self.current_view {
-                                    GitView::Changes => views::render_changes_view(self, cx).into_any_element(),
-                                    GitView::History => views::render_history_view(self, cx).into_any_element(),
-                                    GitView::Branches => views::render_branches_view(self, cx).into_any_element(),
+                            .child(match self.current_view {
+                                GitView::Changes => {
+                                    views::render_changes_view(self, cx).into_any_element()
                                 }
-                            )
-                    )
-                    .child(
-                        v_flex()
-                            .flex_1()
-                            .h_full()
-                            .overflow_hidden()
-                            .child(
-                                match self.current_view {
-                                    GitView::History => views::render_commit_detail(self, cx).into_any_element(),
-                                    _ => views::render_file_panel(self, cx).into_any_element(),
+                                GitView::History => {
+                                    views::render_history_view(self, cx).into_any_element()
                                 }
-                            )
+                                GitView::Branches => {
+                                    views::render_branches_view(self, cx).into_any_element()
+                                }
+                            }),
                     )
+                    .child(v_flex().flex_1().h_full().overflow_hidden().child(
+                        match self.current_view {
+                            GitView::History => {
+                                views::render_commit_detail(self, cx).into_any_element()
+                            }
+                            _ => views::render_file_panel(self, cx).into_any_element(),
+                        },
+                    )),
             )
     }
 }

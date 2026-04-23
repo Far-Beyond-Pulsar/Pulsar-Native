@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 pub mod type_system;
 pub use type_system::*;
@@ -10,18 +10,18 @@ pub use type_system::*;
 pub struct BlueprintAsset {
     /// File format version for backward compatibility
     pub format_version: u32,
-    
+
     /// The main event graph
     pub main_graph: GraphDescription,
-    
+
     /// All local macro graphs defined in this blueprint
     #[serde(default)]
     pub local_macros: Vec<SubGraphDefinition>,
-    
+
     /// Class variables
     #[serde(default)]
     pub variables: Vec<ClassVariable>,
-    
+
     /// Editor-only data (open tabs, UI state, etc.)
     #[serde(default)]
     pub editor_state: Option<BlueprintEditorState>,
@@ -72,11 +72,11 @@ impl Default for BlueprintMetadata {
 pub struct BlueprintEditorState {
     /// Which tabs were open (by ID)
     pub open_tab_ids: Vec<String>,
-    
+
     /// Which tab was active (index into open_tab_ids)
     #[serde(default)]
     pub active_tab_index: usize,
-    
+
     /// Camera position and zoom for each graph
     #[serde(default)]
     pub graph_view_states: HashMap<String, GraphViewState>,
@@ -136,9 +136,9 @@ pub struct BlueprintComment {
     #[serde(with = "tuple_or_object_f32_pair")]
     pub position: (f32, f32), // Simple tuple for position
     #[serde(with = "tuple_or_object_f32_pair")]
-    pub size: (f32, f32),     // Simple tuple for size  
+    pub size: (f32, f32), // Simple tuple for size
     #[serde(with = "array_or_hsla_color")]
-    pub color: [f32; 4],      // RGBA color as array
+    pub color: [f32; 4], // RGBA color as array
     pub contained_node_ids: Vec<String>,
 }
 
@@ -209,23 +209,33 @@ mod array_or_hsla_color {
         if s == 0.0 {
             return (l, l, l);
         }
-        
+
         let q = if l < 0.5 {
             l * (1.0 + s)
         } else {
             l + s - l * s
         };
         let p = 2.0 * l - q;
-        
+
         let hue_to_rgb = |p: f32, q: f32, mut t: f32| -> f32 {
-            if t < 0.0 { t += 1.0; }
-            if t > 1.0 { t -= 1.0; }
-            if t < 1.0 / 6.0 { return p + (q - p) * 6.0 * t; }
-            if t < 1.0 / 2.0 { return q; }
-            if t < 2.0 / 3.0 { return p + (q - p) * (2.0 / 3.0 - t) * 6.0; }
+            if t < 0.0 {
+                t += 1.0;
+            }
+            if t > 1.0 {
+                t -= 1.0;
+            }
+            if t < 1.0 / 6.0 {
+                return p + (q - p) * 6.0 * t;
+            }
+            if t < 1.0 / 2.0 {
+                return q;
+            }
+            if t < 2.0 / 3.0 {
+                return p + (q - p) * (2.0 / 3.0 - t) * 6.0;
+            }
             p
         };
-        
+
         (
             hue_to_rgb(p, q, h + 1.0 / 3.0),
             hue_to_rgb(p, q, h),
@@ -273,12 +283,17 @@ impl<'de> Deserialize<'de> for NodeInstance {
 
         fn parse_pins(val: &serde_json::Value) -> Vec<PinInstance> {
             if let Some(arr) = val.as_array() {
-                arr.iter().filter_map(|v| serde_json::from_value(v.clone()).ok()).collect()
+                arr.iter()
+                    .filter_map(|v| serde_json::from_value(v.clone()).ok())
+                    .collect()
             } else if let Some(obj) = val.as_object() {
                 obj.iter()
                     .filter_map(|(id, v)| {
                         let pin: Pin = serde_json::from_value(v.clone()).ok()?;
-                        Some(PinInstance { id: id.clone(), pin })
+                        Some(PinInstance {
+                            id: id.clone(),
+                            pin,
+                        })
                     })
                     .collect()
             } else {
@@ -439,49 +454,94 @@ impl DataType {
     pub fn generate_pin_style(&self) -> PinStyle {
         match self {
             DataType::Execution => PinStyle {
-                color: PinColor { r: 1.0, g: 0.0, b: 0.0, a: 1.0 }, // Red for execution
+                color: PinColor {
+                    r: 1.0,
+                    g: 0.0,
+                    b: 0.0,
+                    a: 1.0,
+                }, // Red for execution
                 icon: PinIcon::Triangle,
                 is_rainbow: false,
             },
             DataType::Typed(type_info) => type_info.generate_pin_style(),
             DataType::Any => PinStyle {
-                color: PinColor { r: 0.5, g: 0.5, b: 0.5, a: 1.0 }, // Gray for typeless
+                color: PinColor {
+                    r: 0.5,
+                    g: 0.5,
+                    b: 0.5,
+                    a: 1.0,
+                }, // Gray for typeless
                 icon: PinIcon::Circle,
                 is_rainbow: false,
             },
             // Legacy types
             DataType::String => PinStyle {
-                color: PinColor { r: 0.0, g: 1.0, b: 0.0, a: 1.0 }, // Green
+                color: PinColor {
+                    r: 0.0,
+                    g: 1.0,
+                    b: 0.0,
+                    a: 1.0,
+                }, // Green
                 icon: PinIcon::Circle,
                 is_rainbow: false,
             },
             DataType::Number => PinStyle {
-                color: PinColor { r: 0.0, g: 0.0, b: 1.0, a: 1.0 }, // Blue
+                color: PinColor {
+                    r: 0.0,
+                    g: 0.0,
+                    b: 1.0,
+                    a: 1.0,
+                }, // Blue
                 icon: PinIcon::Circle,
                 is_rainbow: false,
             },
             DataType::Boolean => PinStyle {
-                color: PinColor { r: 1.0, g: 1.0, b: 0.0, a: 1.0 }, // Yellow
+                color: PinColor {
+                    r: 1.0,
+                    g: 1.0,
+                    b: 0.0,
+                    a: 1.0,
+                }, // Yellow
                 icon: PinIcon::Circle,
                 is_rainbow: false,
             },
             DataType::Vector2 | DataType::Vector3 => PinStyle {
-                color: PinColor { r: 1.0, g: 0.0, b: 1.0, a: 1.0 }, // Magenta
+                color: PinColor {
+                    r: 1.0,
+                    g: 0.0,
+                    b: 1.0,
+                    a: 1.0,
+                }, // Magenta
                 icon: PinIcon::Circle,
                 is_rainbow: false,
             },
             DataType::Color => PinStyle {
-                color: PinColor { r: 0.5, g: 0.5, b: 0.5, a: 1.0 }, // Gray
+                color: PinColor {
+                    r: 0.5,
+                    g: 0.5,
+                    b: 0.5,
+                    a: 1.0,
+                }, // Gray
                 icon: PinIcon::Circle,
                 is_rainbow: false,
             },
             DataType::Object => PinStyle {
-                color: PinColor { r: 0.8, g: 0.4, b: 0.2, a: 1.0 }, // Brown
+                color: PinColor {
+                    r: 0.8,
+                    g: 0.4,
+                    b: 0.2,
+                    a: 1.0,
+                }, // Brown
                 icon: PinIcon::Hexagon,
                 is_rainbow: false,
             },
             DataType::Array(_) => PinStyle {
-                color: PinColor { r: 0.0, g: 0.8, b: 0.8, a: 1.0 }, // Cyan
+                color: PinColor {
+                    r: 0.0,
+                    g: 0.8,
+                    b: 0.8,
+                    a: 1.0,
+                }, // Cyan
                 icon: PinIcon::Square,
                 is_rainbow: false,
             },
@@ -554,13 +614,21 @@ impl GraphDescription {
     pub fn add_connection(&mut self, connection: Connection) {
         // Update pin connections
         if let Some(source_node) = self.nodes.get_mut(&connection.source_node) {
-            if let Some(output_pin) = source_node.outputs.iter_mut().find(|p| p.id == connection.source_pin) {
+            if let Some(output_pin) = source_node
+                .outputs
+                .iter_mut()
+                .find(|p| p.id == connection.source_pin)
+            {
                 output_pin.pin.connected_to.push(connection.id.clone());
             }
         }
 
         if let Some(target_node) = self.nodes.get_mut(&connection.target_node) {
-            if let Some(input_pin) = target_node.inputs.iter_mut().find(|p| p.id == connection.target_pin) {
+            if let Some(input_pin) = target_node
+                .inputs
+                .iter_mut()
+                .find(|p| p.id == connection.target_pin)
+            {
                 input_pin.pin.connected_to.push(connection.id.clone());
             }
         }
@@ -571,9 +639,8 @@ impl GraphDescription {
 
     pub fn remove_node(&mut self, node_id: &str) {
         // Remove all connections involving this node
-        self.connections.retain(|conn| {
-            conn.source_node != node_id && conn.target_node != node_id
-        });
+        self.connections
+            .retain(|conn| conn.source_node != node_id && conn.target_node != node_id);
 
         // Remove the node
         self.nodes.remove(node_id);
@@ -581,18 +648,30 @@ impl GraphDescription {
     }
 
     pub fn remove_connection(&mut self, connection_id: &str) {
-        if let Some(index) = self.connections.iter().position(|conn| conn.id == connection_id) {
+        if let Some(index) = self
+            .connections
+            .iter()
+            .position(|conn| conn.id == connection_id)
+        {
             let connection = &self.connections[index];
 
             // Update pin connections
             if let Some(source_node) = self.nodes.get_mut(&connection.source_node) {
-                if let Some(output_pin) = source_node.outputs.iter_mut().find(|p| p.id == connection.source_pin) {
+                if let Some(output_pin) = source_node
+                    .outputs
+                    .iter_mut()
+                    .find(|p| p.id == connection.source_pin)
+                {
                     output_pin.pin.connected_to.retain(|id| id != connection_id);
                 }
             }
 
             if let Some(target_node) = self.nodes.get_mut(&connection.target_node) {
-                if let Some(input_pin) = target_node.inputs.iter_mut().find(|p| p.id == connection.target_pin) {
+                if let Some(input_pin) = target_node
+                    .inputs
+                    .iter_mut()
+                    .find(|p| p.id == connection.target_pin)
+                {
                     input_pin.pin.connected_to.retain(|id| id != connection_id);
                 }
             }
@@ -626,7 +705,10 @@ impl GraphDescription {
         result: &mut Vec<String>,
     ) -> Result<(), String> {
         if temp_visited.contains_key(node_id) {
-            return Err(format!("Circular dependency detected involving node {}", node_id));
+            return Err(format!(
+                "Circular dependency detected involving node {}",
+                node_id
+            ));
         }
 
         if visited.contains_key(node_id) {
@@ -637,7 +719,9 @@ impl GraphDescription {
 
         // Visit all dependent nodes (those connected via execution pins)
         for connection in &self.connections {
-            if connection.source_node == node_id && matches!(connection.connection_type, ConnectionType::Execution) {
+            if connection.source_node == node_id
+                && matches!(connection.connection_type, ConnectionType::Execution)
+            {
                 self.visit_node(&connection.target_node, visited, temp_visited, result)?;
             }
         }
@@ -669,7 +753,10 @@ impl NodeInstance {
             data_type,
             connected_to: Vec::new(),
         };
-        self.inputs.push(PinInstance { id: name.to_string(), pin });
+        self.inputs.push(PinInstance {
+            id: name.to_string(),
+            pin,
+        });
     }
 
     pub fn add_output_pin(&mut self, name: &str, data_type: DataType) {
@@ -679,7 +766,10 @@ impl NodeInstance {
             data_type,
             connected_to: Vec::new(),
         };
-        self.outputs.push(PinInstance { id: name.to_string(), pin });
+        self.outputs.push(PinInstance {
+            id: name.to_string(),
+            pin,
+        });
     }
 
     pub fn set_property(&mut self, name: &str, value: PropertyValue) {
@@ -903,22 +993,26 @@ impl SubGraphDefinition {
     pub fn sync_interface_nodes(&mut self) {
         // Find or create the macro_entry node (replaces subgraph_input)
         let entry_node_id = "macro_entry";
-        
+
         // Check both old and new node IDs for backward compatibility
         let has_entry = self.graph.nodes.contains_key(entry_node_id);
         let has_old_entry = self.graph.nodes.contains_key("subgraph_input");
-        
+
         if has_entry || has_old_entry {
             // Determine which key to use
-            let key = if has_entry { entry_node_id } else { "subgraph_input" };
-            
+            let key = if has_entry {
+                entry_node_id
+            } else {
+                "subgraph_input"
+            };
+
             if let Some(entry_node) = self.graph.nodes.get_mut(key) {
                 // Update node type if it's the old one
                 if entry_node.node_type == "subgraph_input" {
                     entry_node.node_type = "macro_entry".to_string();
                     entry_node.id = entry_node_id.to_string();
                 }
-                
+
                 // Update existing node pins
                 entry_node.outputs.clear();
                 for pin in &self.interface.inputs {
@@ -935,7 +1029,11 @@ impl SubGraphDefinition {
             }
         } else {
             // Create new macro entry node
-            let mut entry_node = NodeInstance::new(entry_node_id, "macro_entry", Position { x: 100.0, y: 200.0 });
+            let mut entry_node = NodeInstance::new(
+                entry_node_id,
+                "macro_entry",
+                Position { x: 100.0, y: 200.0 },
+            );
             for pin in &self.interface.inputs {
                 entry_node.add_output_pin(&pin.id, pin.data_type.clone());
             }
@@ -943,28 +1041,34 @@ impl SubGraphDefinition {
         }
 
         // Remove old subgraph_input if it exists and we created a new macro_entry
-        if self.graph.nodes.contains_key("macro_entry") && self.graph.nodes.contains_key("subgraph_input") {
+        if self.graph.nodes.contains_key("macro_entry")
+            && self.graph.nodes.contains_key("subgraph_input")
+        {
             self.graph.nodes.remove("subgraph_input");
         }
 
         // Find or create the macro_exit node (replaces subgraph_output)
         let exit_node_id = "macro_exit";
-        
+
         // Check both old and new node IDs for backward compatibility
         let has_exit = self.graph.nodes.contains_key(exit_node_id);
         let has_old_exit = self.graph.nodes.contains_key("subgraph_output");
-        
+
         if has_exit || has_old_exit {
             // Determine which key to use
-            let key = if has_exit { exit_node_id } else { "subgraph_output" };
-            
+            let key = if has_exit {
+                exit_node_id
+            } else {
+                "subgraph_output"
+            };
+
             if let Some(exit_node) = self.graph.nodes.get_mut(key) {
                 // Update node type if it's the old one
                 if exit_node.node_type == "subgraph_output" {
                     exit_node.node_type = "macro_exit".to_string();
                     exit_node.id = exit_node_id.to_string();
                 }
-                
+
                 // Update existing node pins
                 exit_node.inputs.clear();
                 for pin in &self.interface.outputs {
@@ -981,7 +1085,8 @@ impl SubGraphDefinition {
             }
         } else {
             // Create new macro exit node
-            let mut exit_node = NodeInstance::new(exit_node_id, "macro_exit", Position { x: 800.0, y: 200.0 });
+            let mut exit_node =
+                NodeInstance::new(exit_node_id, "macro_exit", Position { x: 800.0, y: 200.0 });
             for pin in &self.interface.outputs {
                 exit_node.add_input_pin(&pin.id, pin.data_type.clone());
             }
@@ -989,7 +1094,9 @@ impl SubGraphDefinition {
         }
 
         // Remove old subgraph_output if it exists and we created a new macro_exit
-        if self.graph.nodes.contains_key("macro_exit") && self.graph.nodes.contains_key("subgraph_output") {
+        if self.graph.nodes.contains_key("macro_exit")
+            && self.graph.nodes.contains_key("subgraph_output")
+        {
             self.graph.nodes.remove("subgraph_output");
         }
     }
@@ -1004,7 +1111,7 @@ impl SubGraphDefinition {
 
         // Set macro_id property (for compiler expansion)
         node.set_property("macro_id", PropertyValue::String(self.id.clone()));
-        
+
         // Set display properties from macro config
         if let Some(ref icon) = self.macro_config.icon {
             node.set_property("icon", PropertyValue::String(icon.clone()));
@@ -1222,7 +1329,10 @@ impl LibraryManager {
     }
 
     /// Load all libraries from a directory
-    fn load_libraries_from_dir(&mut self, dir: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    fn load_libraries_from_dir(
+        &mut self,
+        dir: &std::path::Path,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         for entry in std::fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
@@ -1246,7 +1356,8 @@ impl LibraryManager {
     pub fn register_library(&mut self, library: SubGraphLibrary) {
         // Cache all subgraphs for quick lookup
         for subgraph in &library.subgraphs {
-            self.subgraph_cache.insert(subgraph.id.clone(), subgraph.clone());
+            self.subgraph_cache
+                .insert(subgraph.id.clone(), subgraph.clone());
         }
 
         self.libraries.insert(library.id.clone(), library);

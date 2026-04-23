@@ -1,17 +1,17 @@
 //! Main flamegraph view orchestration
 
-use gpui::*;
-use ui::v_flex;
 use crate::trace_data::{TraceData, TraceFrame};
+use gpui::*;
 use std::sync::Arc;
+use ui::v_flex;
 use ui::ActiveTheme;
 
 // Import modules
-use crate::constants::*;
 use crate::colors::get_palette;
-use crate::state::{ViewState, SpanCache};
-use crate::coordinates::{time_to_x, visible_range};
 use crate::components::*;
+use crate::constants::*;
+use crate::coordinates::{time_to_x, visible_range};
+use crate::state::{SpanCache, ViewState};
 
 pub struct FlamegraphView {
     trace_data: TraceData,
@@ -43,7 +43,7 @@ impl FlamegraphView {
 
         if needs_rebuild {
             let cache = SpanCache::build(&frame);
-            
+
             // Initialize zoom if this is the first frame
             if self.view_state.zoom == 0.0 && frame.duration_ns() > 0 {
                 let effective_width = self.view_state.viewport_width - THREAD_LABEL_WIDTH;
@@ -52,11 +52,13 @@ impl FlamegraphView {
             }
             // Note: When new data arrives, zoom stays constant (absolute pixels per nanosecond)
             // This prevents the "zooming out" effect as more data comes in
-            
+
             self.cache = Some((Arc::clone(&frame), cache));
         }
 
-        let (frame_ref, cache_ref) = self.cache.as_ref()
+        let (frame_ref, cache_ref) = self
+            .cache
+            .as_ref()
             .expect("Cache should be populated by get_or_build_cache");
         (frame_ref, cache_ref)
     }
@@ -100,41 +102,48 @@ impl Render for FlamegraphView {
                             // Store the canvas viewport dimensions
                             if let Some(canvas_bounds) = bounds.first() {
                                 *viewport_width.write().unwrap() = canvas_bounds.size.width.into();
-                                *viewport_height.write().unwrap() = canvas_bounds.size.height.into();
+                                *viewport_height.write().unwrap() =
+                                    canvas_bounds.size.height.into();
                             }
                         }
                     })
                     .child({
                         let canvas_start = std::time::Instant::now();
                         let frame = Arc::clone(&frame);
-                        
+
                         // Track viewport width in view_state
                         let width = *self.viewport_width.read().unwrap();
                         self.view_state.viewport_width = width;
-                        
+
                         let (_, cache) = self.get_or_build_cache();
                         let canvas = render_flamegraph_canvas(
                             Arc::clone(&frame),
                             Arc::clone(&lod_tree),
                             Arc::clone(&thread_offsets),
                             view_state_for_canvas.clone(),
-                            palette_for_canvas.clone()
+                            palette_for_canvas.clone(),
                         );
                         canvas
                     })
-                    .on_mouse_down(MouseButton::Right, cx.listener(|view, event: &MouseDownEvent, _window, cx| {
-                        view.view_state.dragging = true;
-                        let pos: Point<Pixels> = event.position;
-                        view.view_state.drag_start_x = pos.x.into();
-                        view.view_state.drag_start_y = pos.y.into();
-                        view.view_state.drag_pan_start_x = view.view_state.pan_x;
-                        view.view_state.drag_pan_start_y = view.view_state.pan_y;
-                        cx.notify();
-                    }))
-                    .on_mouse_up(MouseButton::Right, cx.listener(|view, _event: &MouseUpEvent, _window, cx| {
-                        view.view_state.dragging = false;
-                        cx.notify();
-                    }))
+                    .on_mouse_down(
+                        MouseButton::Right,
+                        cx.listener(|view, event: &MouseDownEvent, _window, cx| {
+                            view.view_state.dragging = true;
+                            let pos: Point<Pixels> = event.position;
+                            view.view_state.drag_start_x = pos.x.into();
+                            view.view_state.drag_start_y = pos.y.into();
+                            view.view_state.drag_pan_start_x = view.view_state.pan_x;
+                            view.view_state.drag_pan_start_y = view.view_state.pan_y;
+                            cx.notify();
+                        }),
+                    )
+                    .on_mouse_up(
+                        MouseButton::Right,
+                        cx.listener(|view, _event: &MouseUpEvent, _window, cx| {
+                            view.view_state.dragging = false;
+                            cx.notify();
+                        }),
+                    )
                     .on_mouse_move(cx.listener(|view, event: &MouseMoveEvent, _window, cx| {
                         let pos: Point<Pixels> = event.position;
                         let current_x: f32 = pos.x.into();
@@ -166,12 +175,28 @@ impl Render for FlamegraphView {
                             // Only check if mouse is within the canvas area
                             if canvas_y >= 0.0 && current_x >= THREAD_LABEL_WIDTH {
                                 for (idx, span) in frame.spans.iter().enumerate() {
-                                    let thread_y_offset = cache.thread_offsets.get(&span.thread_id).copied().unwrap_or(0.0);
-                                    let y = thread_y_offset + (span.depth as f32 * ROW_HEIGHT) + view_state_copy.pan_y;
+                                    let thread_y_offset = cache
+                                        .thread_offsets
+                                        .get(&span.thread_id)
+                                        .copied()
+                                        .unwrap_or(0.0);
+                                    let y = thread_y_offset
+                                        + (span.depth as f32 * ROW_HEIGHT)
+                                        + view_state_copy.pan_y;
 
                                     if canvas_y >= y && canvas_y <= y + ROW_HEIGHT {
-                                        let x1 = time_to_x(span.start_ns, &frame, viewport_width, &view_state_copy);
-                                        let x2 = time_to_x(span.end_ns(), &frame, viewport_width, &view_state_copy);
+                                        let x1 = time_to_x(
+                                            span.start_ns,
+                                            &frame,
+                                            viewport_width,
+                                            &view_state_copy,
+                                        );
+                                        let x2 = time_to_x(
+                                            span.end_ns(),
+                                            &frame,
+                                            viewport_width,
+                                            &view_state_copy,
+                                        );
 
                                         if current_x >= x1 && current_x <= x2 {
                                             new_hovered_span = Some(idx);
@@ -221,7 +246,8 @@ impl Render for FlamegraphView {
                     }))
                     .child({
                         let tl_start = std::time::Instant::now();
-                        let labels = render_thread_labels(&frame, &*thread_offsets, &view_state, cx);
+                        let labels =
+                            render_thread_labels(&frame, &*thread_offsets, &view_state, cx);
                         labels
                     })
                     .child({
@@ -231,9 +257,14 @@ impl Render for FlamegraphView {
                     })
                     .children({
                         let hp_start = std::time::Instant::now();
-                        let popup = render_hover_popup(&frame, &view_state, *self.viewport_width.read().unwrap(), cx);
+                        let popup = render_hover_popup(
+                            &frame,
+                            &view_state,
+                            *self.viewport_width.read().unwrap(),
+                            cx,
+                        );
                         popup
-                    })
+                    }),
             )
             .child(
                 // Status bar at bottom
@@ -251,26 +282,29 @@ impl Render for FlamegraphView {
                         div()
                             .text_sm()
                             .text_color(theme.foreground)
-                            .child(format!("Spans: {}", frame.spans.len()))
+                            .child(format!("Spans: {}", frame.spans.len())),
                     )
                     .child(
                         div()
                             .text_sm()
                             .text_color(theme.muted_foreground)
-                            .child(format!("Threads: {}", frame.threads.len()))
+                            .child(format!("Threads: {}", frame.threads.len())),
                     )
                     .child(
                         div()
                             .text_sm()
                             .text_color(theme.muted_foreground)
-                            .child(format!("Duration: {:.2}ms", frame.duration_ns() as f64 / 1_000_000.0))
+                            .child(format!(
+                                "Duration: {:.2}ms",
+                                frame.duration_ns() as f64 / 1_000_000.0
+                            )),
                     )
                     .child(
                         div()
                             .text_sm()
                             .text_color(theme.muted_foreground)
-                            .child(format!("Zoom: {:.1}x", view_state.zoom))
-                    )
+                            .child(format!("Zoom: {:.1}x", view_state.zoom)),
+                    ),
             );
 
         result

@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use gpui::{px, App, Background, Bounds, Hsla, Pixels, SharedString, TextAlign, Window};
 use gpui_component_macros::IntoPlot;
-use num_traits::{Num, ToPrimitive, FromPrimitive};
+use num_traits::{FromPrimitive, Num, ToPrimitive};
 
 use crate::{
     plot::{
@@ -103,8 +103,14 @@ where
         self
     }
 
-    pub fn reference_line(mut self, y_value: f64, stroke: impl Into<Hsla>, label: impl Into<SharedString>) -> Self {
-        self.reference_lines.push((y_value, stroke.into(), label.into()));
+    pub fn reference_line(
+        mut self,
+        y_value: f64,
+        stroke: impl Into<Hsla>,
+        label: impl Into<SharedString>,
+    ) -> Self {
+        self.reference_lines
+            .push((y_value, stroke.into(), label.into()));
         self
     }
 }
@@ -143,14 +149,14 @@ where
             .flat_map(|v| self.y.iter().map(|y_fn| y_fn(v)))
             .chain(Some(Y::zero()))
             .collect();
-        
+
         let mut domain = domain_vals.clone();
-        
+
         // Enforce minimum Y range if specified by ensuring domain spans at least min_y_range
         if let Some(min_range) = self.min_y_range {
             let mut min_f = f64::INFINITY;
             let mut max_f = f64::NEG_INFINITY;
-            
+
             // Calculate actual data range
             for &val in domain.iter() {
                 if let Some(f) = val.to_f64() {
@@ -158,19 +164,20 @@ where
                     max_f = max_f.max(f);
                 }
             }
-            
+
             // If range is smaller than minimum, extend it
             if !min_f.is_infinite() && !max_f.is_infinite() {
                 let range = max_f - min_f;
                 if range < min_range && range.is_finite() {
                     // Calculate the target maximum value
                     let target_max = min_f + min_range;
-                    
+
                     // Ensure target_max is in the domain
                     if let Some(target_y) = Y::from_f64(target_max) {
                         // Check if we already have this value
                         let already_present = domain.iter().any(|&v| {
-                            v.to_f64().map_or(false, |f| (f - target_max).abs() < 0.0001)
+                            v.to_f64()
+                                .map_or(false, |f| (f - target_max).abs() < 0.0001)
                         });
                         if !already_present {
                             domain.push(target_y);
@@ -179,14 +186,14 @@ where
                 }
             }
         }
-        
+
         // Enforce maximum Y range if specified
         if let Some(max_range) = self.max_y_range {
             if let Some(capped_max) = Y::from_f64(max_range) {
                 domain.push(capped_max);
             }
         }
-        
+
         let y = ScaleLinear::new(domain, vec![height, 10.]);
 
         // Draw X axis

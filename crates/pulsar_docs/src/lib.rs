@@ -1,7 +1,6 @@
 use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
 
-
 pub mod project_parser;
 
 // RustEmbed scans the doc folder at compile time
@@ -11,7 +10,7 @@ pub mod project_parser;
 // If files are present in target/doc, they will be embedded; if not, docs_available() returns false
 #[derive(RustEmbed)]
 #[folder = "../../target/doc"]
-#[prefix = ""] 
+#[prefix = ""]
 // Only include json and md files to avoid scanning everything
 #[include = "*.json"]
 #[include = "*.md"]
@@ -55,7 +54,7 @@ pub fn get_doc_content(path: &str) -> Option<String> {
 /// Get the index.json for a crate
 pub fn get_crate_index(crate_name: &str) -> Option<CrateIndex> {
     let index_path = format!("{}/index.json", crate_name);
-    
+
     if let Some(content) = DocAssets::get(&index_path) {
         let json_str = std::str::from_utf8(&content.data).ok()?;
         serde_json::from_str(json_str).ok()
@@ -67,7 +66,7 @@ pub fn get_crate_index(crate_name: &str) -> Option<CrateIndex> {
 /// Get list of all documented crates by scanning for index.json files
 pub fn list_crates() -> Vec<String> {
     let mut crates = Vec::new();
-    
+
     for file_path in DocAssets::iter() {
         let path = file_path.as_ref();
         if path.ends_with("/index.json") {
@@ -75,7 +74,7 @@ pub fn list_crates() -> Vec<String> {
             crates.push(crate_name.to_string());
         }
     }
-    
+
     crates.sort();
     crates
 }
@@ -94,26 +93,40 @@ mod tests {
         // This test verifies that documentation was successfully embedded
         let available = docs_available();
         tracing::trace!("docs_available: {}", available);
-        
+
         let crates = list_crates();
         tracing::trace!("Found {} crates", crates.len());
         for crate_name in crates.iter().take(5) {
             tracing::trace!("  - {}", crate_name);
         }
-        
-        assert!(available, "Documentation should be embedded after build script runs");
-        assert!(!crates.is_empty(), "Should have at least one documented crate");
+
+        assert!(
+            available,
+            "Documentation should be embedded after build script runs"
+        );
+        assert!(
+            !crates.is_empty(),
+            "Should have at least one documented crate"
+        );
     }
-    
+
     #[test]
     fn test_can_load_crate_index() {
         let crates = list_crates();
         if let Some(first_crate) = crates.first() {
             let index = get_crate_index(first_crate);
-            assert!(index.is_some(), "Should be able to load index.json for {}", first_crate);
-            
+            assert!(
+                index.is_some(),
+                "Should be able to load index.json for {}",
+                first_crate
+            );
+
             if let Some(idx) = index {
-                tracing::trace!("Loaded index for {}: {} sections", idx.name, idx.sections.len());
+                tracing::trace!(
+                    "Loaded index for {}: {} sections",
+                    idx.name,
+                    idx.sections.len()
+                );
             }
         }
     }

@@ -1,18 +1,18 @@
 //! Application state structure
 
+use gpui::{Entity, FocusHandle};
 use std::path::PathBuf;
 use std::sync::Arc;
-use gpui::{Entity, FocusHandle};
-use ui::dock::{DockArea, TabPanel, PanelView};
+use ui::dock::{DockArea, PanelView, TabPanel};
 use ui_file_manager::FileManagerDrawer;
 use ui_problems::ProblemsDrawer;
 // use ui_level_editor::LevelEditorPanel;
 // use ui_daw_editor::DawEditorPanel;
-use ui_type_debugger::TypeDebuggerDrawer;
-use ui_log_viewer::MissionControlPanel;
-use ui_entry::EntryScreen;
-use ui_common::command_palette::{GenericPalette, Palette, PaletteId, PaletteViewDelegate};
 use engine_backend::services::rust_analyzer_manager::RustAnalyzerManager;
+use ui_common::command_palette::{GenericPalette, Palette, PaletteId, PaletteViewDelegate};
+use ui_entry::EntryScreen;
+use ui_log_viewer::MissionControlPanel;
+use ui_type_debugger::TypeDebuggerDrawer;
 
 /// Core application state
 pub struct AppState {

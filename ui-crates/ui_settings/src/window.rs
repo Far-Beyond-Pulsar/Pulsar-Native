@@ -1,6 +1,6 @@
 use crate::settings_modern::ModernSettingsScreen;
 use gpui::{prelude::FluentBuilder as _, *};
-use ui::{ActiveTheme, TitleBar, v_flex};
+use ui::{v_flex, ActiveTheme, TitleBar};
 
 pub struct SettingsWindow {
     settings_screen: Option<Entity<ModernSettingsScreen>>,
@@ -13,12 +13,12 @@ impl SettingsWindow {
         engine_state::register_default_settings();
 
         // Get the current project path from the engine context
-        let project_path = engine_state::EngineContext::global()
-            .and_then(|ctx| {
-                ctx.project.read()
-                    .as_ref()
-                    .map(|project| project.path.clone())
-            });
+        let project_path = engine_state::EngineContext::global().and_then(|ctx| {
+            ctx.project
+                .read()
+                .as_ref()
+                .map(|project| project.path.clone())
+        });
 
         let settings_screen = cx.new(|cx| ModernSettingsScreen::new(project_path, window, cx));
 
@@ -34,13 +34,21 @@ impl Render for SettingsWindow {
         let _ = cx.theme();
         v_flex()
             .size_full()
-            .child(TitleBar::new().child(
-                div().flex().items_center().px_2().text_sm().font_weight(gpui::FontWeight::MEDIUM)
-                    .child("Settings"),
-            ))
-            .when_some(self.settings_screen.as_ref(), |this: gpui::Div, screen: &Entity<ModernSettingsScreen>| {
-                this.child(screen.clone())
-            })
+            .child(
+                TitleBar::new().child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .px_2()
+                        .text_sm()
+                        .font_weight(gpui::FontWeight::MEDIUM)
+                        .child("Settings"),
+                ),
+            )
+            .when_some(
+                self.settings_screen.as_ref(),
+                |this: gpui::Div, screen: &Entity<ModernSettingsScreen>| this.child(screen.clone()),
+            )
     }
 }
 

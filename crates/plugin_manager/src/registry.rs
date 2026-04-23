@@ -314,7 +314,9 @@ mod tests {
 
         registry.register(file_type, plugin_id.clone());
 
-        assert!(registry.get_file_type(&FileTypeId::new("test-file")).is_some());
+        assert!(registry
+            .get_file_type(&FileTypeId::new("test-file"))
+            .is_some());
         assert_eq!(
             registry.get_plugin_for_file_type(&FileTypeId::new("test-file")),
             Some(&plugin_id)

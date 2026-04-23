@@ -1,7 +1,7 @@
 //! Wire protocol types: ClientMessage, ServerMessage, CandidateDto
 
-use serde::{Deserialize, Serialize};
 use crate::nat::{ConnectionCandidate, NatType};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -13,10 +13,7 @@ pub enum ClientMessage {
         join_token: String,
     },
     /// Leave a session
-    Leave {
-        session_id: String,
-        peer_id: String,
-    },
+    Leave { session_id: String, peer_id: String },
     /// Kick a user (host only)
     KickUser {
         session_id: String,
@@ -30,10 +27,7 @@ pub enum ClientMessage {
         message: String,
     },
     /// Request file manifest from host
-    RequestFileManifest {
-        session_id: String,
-        peer_id: String,
-    },
+    RequestFileManifest { session_id: String, peer_id: String },
     /// Send file manifest (host response)
     FileManifest {
         session_id: String,
@@ -68,10 +62,7 @@ pub enum ClientMessage {
         public_port: u16,
     },
     /// Binary proxy mode (raw bytes, no JSON)
-    RequestBinaryProxy {
-        session_id: String,
-        peer_id: String,
-    },
+    RequestBinaryProxy { session_id: String, peer_id: String },
     BinaryProxyData {
         session_id: String,
         peer_id: String,
@@ -79,10 +70,7 @@ pub enum ClientMessage {
         is_git_protocol: bool,
     },
     /// Git sync messages
-    RequestProjectTree {
-        session_id: String,
-        peer_id: String,
-    },
+    RequestProjectTree { session_id: String, peer_id: String },
     ProjectTreeResponse {
         session_id: String,
         peer_id: String,
@@ -117,20 +105,11 @@ pub enum ServerMessage {
         participants: Vec<String>,
     },
     /// Another peer joined
-    PeerJoined {
-        session_id: String,
-        peer_id: String,
-    },
+    PeerJoined { session_id: String, peer_id: String },
     /// A peer left
-    PeerLeft {
-        session_id: String,
-        peer_id: String,
-    },
+    PeerLeft { session_id: String, peer_id: String },
     /// You were kicked from the session
-    Kicked {
-        session_id: String,
-        reason: String,
-    },
+    Kicked { session_id: String, reason: String },
     /// Chat message (relayed)
     ChatMessage {
         session_id: String,
@@ -238,4 +217,3 @@ impl From<ConnectionCandidate> for CandidateDto {
         }
     }
 }
-

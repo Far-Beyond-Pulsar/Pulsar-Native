@@ -3,13 +3,13 @@
 //! This module provides a single function to register all built-in editors
 //! with the plugin manager's registries.
 
-use plugin_manager::{BuiltinEditorRegistry, BuiltinEditorProvider, EditorContext};
-use plugin_editor_api::*;
-use std::sync::Arc;
-use std::path::PathBuf;
-use ui::dock::PanelView;
-use gpui::{Window, App};
 use gpui::AppContext;
+use gpui::{App, Window};
+use plugin_editor_api::*;
+use plugin_manager::{BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext};
+use std::path::PathBuf;
+use std::sync::Arc;
+use ui::dock::PanelView;
 
 // ---------------------------------------------------------------------------
 // Blueprint Editor — built-in provider (no DLL boundary)
@@ -72,19 +72,20 @@ impl BuiltinEditorProvider for BlueprintEditorBuiltinProvider {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
-        let panel = cx.new(|cx| {
-            match blueprint_editor_plugin::BlueprintEditorPanel::new_with_path(
-                file_path.clone(),
-                window,
-                cx,
-            ) {
-                Ok(p) => p,
-                Err(e) => {
-                    tracing::error!("Failed to create blueprint panel: {}", e);
-                    blueprint_editor_plugin::BlueprintEditorPanel::new(window, cx)
+        let panel =
+            cx.new(|cx| {
+                match blueprint_editor_plugin::BlueprintEditorPanel::new_with_path(
+                    file_path.clone(),
+                    window,
+                    cx,
+                ) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        tracing::error!("Failed to create blueprint panel: {}", e);
+                        blueprint_editor_plugin::BlueprintEditorPanel::new(window, cx)
+                    }
                 }
-            }
-        });
+            });
 
         Ok(Arc::new(panel))
     }

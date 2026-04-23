@@ -286,9 +286,7 @@ impl StyleMethods {
         STYLE_METHODS.get_or_init(|| {
             let table: Vec<_> = gpui::styled_reflection::methods::<StyleRefinement>()
                 .into_iter()
-                .map(|method| {
-                    (Box::new(method.invoke(StyleRefinement::default())), method)
-                })
+                .map(|method| (Box::new(method.invoke(StyleRefinement::default())), method))
                 .collect();
             let map = table
                 .iter()

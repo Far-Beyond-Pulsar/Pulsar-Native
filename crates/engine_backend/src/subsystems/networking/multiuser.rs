@@ -1,5 +1,8 @@
 use anyhow::{Context, Result};
-use async_tungstenite::{tokio::{connect_async, TokioAdapter}, tungstenite::Message};
+use async_tungstenite::{
+    tokio::{connect_async, TokioAdapter},
+    tungstenite::Message,
+};
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, OnceLock};
@@ -285,7 +288,7 @@ impl MultiuserClient {
         *self.status.write().await = ConnectionStatus::Connecting;
 
         let peer_id = uuid::Uuid::new_v4().to_string();
-        
+
         // Trim and sanitize server URL
         let server_url_clean = self.server_url.trim();
         let ws_url = format!("{}/ws", server_url_clean);
@@ -327,7 +330,8 @@ impl MultiuserClient {
                     if let Ok(join_json) = serde_json::to_string(&join_msg) {
                         if let Err(e) = write.send(Message::Text(join_json)).await {
                             error!("Failed to send join message: {}", e);
-                            let _ = result_tx.send(Err(anyhow::anyhow!("Failed to send join: {}", e)));
+                            let _ =
+                                result_tx.send(Err(anyhow::anyhow!("Failed to send join: {}", e)));
                             return;
                         }
                     }
@@ -343,7 +347,8 @@ impl MultiuserClient {
                             if let Ok(json) = serde_json::to_string(&msg) {
                                 if let Err(e) = write.send(Message::Text(json)).await {
                                     error!("Failed to send message: {}", e);
-                                    *status_clone_out.write().await = ConnectionStatus::Error(e.to_string());
+                                    *status_clone_out.write().await =
+                                        ConnectionStatus::Error(e.to_string());
                                     break;
                                 }
                             }
@@ -360,7 +365,8 @@ impl MultiuserClient {
 
                                         // Update status on successful join
                                         if matches!(msg, ServerMessage::Joined { .. }) {
-                                            *status_clone.write().await = ConnectionStatus::Connected;
+                                            *status_clone.write().await =
+                                                ConnectionStatus::Connected;
                                         }
 
                                         if event_tx.send(msg).is_err() {
@@ -384,7 +390,8 @@ impl MultiuserClient {
                             Ok(_) => {}
                             Err(e) => {
                                 error!("WebSocket error: {}", e);
-                                *status_clone.write().await = ConnectionStatus::Error(e.to_string());
+                                *status_clone.write().await =
+                                    ConnectionStatus::Error(e.to_string());
                                 break;
                             }
                         }
@@ -422,7 +429,10 @@ impl MultiuserClient {
     /// Disconnect from the session
     pub async fn disconnect(&mut self, session_id: String, peer_id: String) -> Result<()> {
         if let Some(tx) = &self.message_tx {
-            let leave_msg = ClientMessage::Leave { session_id, peer_id };
+            let leave_msg = ClientMessage::Leave {
+                session_id,
+                peer_id,
+            };
             tx.send(leave_msg)?;
         }
 

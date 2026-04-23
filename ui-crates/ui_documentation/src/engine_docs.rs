@@ -1,8 +1,8 @@
-use gpui::{prelude::*, *};
-use ui::input::InputState;
-use pulsar_docs::{get_doc_content, get_crate_index, list_crates, CrateIndex};
-use std::collections::HashSet;
 use crate::doc_source::{DocSource, make_search_input};
+use gpui::{prelude::*, *};
+use pulsar_docs::{CrateIndex, get_crate_index, get_doc_content, list_crates};
+use std::collections::HashSet;
+use ui::input::InputState;
 
 #[derive(Clone, Debug)]
 pub enum TreeNode {
@@ -43,7 +43,8 @@ impl DocSource for EngineDocsState {
     }
 
     fn initial_content() -> String {
-        "# Engine Documentation\n\nSelect an item from the sidebar to view its documentation.".to_string()
+        "# Engine Documentation\n\nSelect an item from the sidebar to view its documentation."
+            .to_string()
     }
 }
 
@@ -129,7 +130,11 @@ impl EngineDocsState {
                         self.flat_visible_items.push(idx);
                     }
                 }
-                TreeNode::Section { crate_name, section_name, .. } => {
+                TreeNode::Section {
+                    crate_name,
+                    section_name,
+                    ..
+                } => {
                     let matches = section_name.to_lowercase().contains(&query);
                     let parent_expanded = self.expanded_paths.contains(crate_name);
 
@@ -137,11 +142,18 @@ impl EngineDocsState {
                         self.expanded_paths.insert(crate_name.clone());
                     }
 
-                    if (parent_expanded || (is_searching && matches)) && (!is_searching || matches || parent_expanded) {
+                    if (parent_expanded || (is_searching && matches))
+                        && (!is_searching || matches || parent_expanded)
+                    {
                         self.flat_visible_items.push(idx);
                     }
                 }
-                TreeNode::Item { crate_name, section_name, item_name, .. } => {
+                TreeNode::Item {
+                    crate_name,
+                    section_name,
+                    item_name,
+                    ..
+                } => {
                     let section_path = format!("{}/{}", crate_name, section_name);
                     let matches = item_name.to_lowercase().contains(&query);
                     let section_expanded = self.expanded_paths.contains(&section_path);
@@ -151,7 +163,8 @@ impl EngineDocsState {
                         self.expanded_paths.insert(section_path.clone());
                     }
 
-                    if (section_expanded || (is_searching && matches)) && (!is_searching || matches) {
+                    if (section_expanded || (is_searching && matches)) && (!is_searching || matches)
+                    {
                         self.flat_visible_items.push(idx);
                     }
                 }
@@ -170,7 +183,8 @@ impl EngineDocsState {
         if self.expanded_paths.contains(&path) {
             self.expanded_paths.remove(&path);
 
-            let child_paths: Vec<String> = self.expanded_paths
+            let child_paths: Vec<String> = self
+                .expanded_paths
                 .iter()
                 .filter(|p| p.starts_with(&format!("{}/", path)))
                 .cloned()

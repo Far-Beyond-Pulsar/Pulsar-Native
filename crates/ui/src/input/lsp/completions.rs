@@ -90,13 +90,22 @@ impl InputState {
 
         // Determine completion context
         let last_char = new_text.chars().last().unwrap_or(' ');
-        
+
         // ALWAYS request new completions from server on every keystroke
         // The server does all filtering, sorting, and prioritization
-        
-        self.request_completions_now(new_offset, start, new_text, provider, self.text.clone(), existing_menu, window, cx);
+
+        self.request_completions_now(
+            new_offset,
+            start,
+            new_text,
+            provider,
+            self.text.clone(),
+            existing_menu,
+            window,
+            cx,
+        );
     }
-    
+
     fn request_completions_now(
         &mut self,
         new_offset: usize,
@@ -122,12 +131,16 @@ impl InputState {
 
         // Determine trigger kind based on what was typed
         let last_char = new_text.chars().last();
-        let (trigger_kind, trigger_char) = if last_char.map_or(false, |c| matches!(c, '.' | ':' | '<' | '(')) {
-            (lsp_types::CompletionTriggerKind::TRIGGER_CHARACTER, last_char.map(|c| c.to_string()))
-        } else {
-            (lsp_types::CompletionTriggerKind::INVOKED, None)
-        };
-        
+        let (trigger_kind, trigger_char) =
+            if last_char.map_or(false, |c| matches!(c, '.' | ':' | '<' | '(')) {
+                (
+                    lsp_types::CompletionTriggerKind::TRIGGER_CHARACTER,
+                    last_char.map(|c| c.to_string()),
+                )
+            } else {
+                (lsp_types::CompletionTriggerKind::INVOKED, None)
+            };
+
         let completion_context = CompletionContext {
             trigger_kind,
             trigger_character: trigger_char,
@@ -136,25 +149,24 @@ impl InputState {
         // Request completions from LSP server (non-blocking!)
         let provider_responses =
             provider.completions(&text, new_offset, completion_context, window, cx);
-            
+
         // Handle response asynchronously - UI stays responsive
         self._context_menu_task = cx.spawn_in(window, async move |editor, cx| {
             let mut completions: Vec<CompletionItem> = vec![];
-            
+
             match provider_responses.await {
-                Ok(provider_responses) => {
-                    match provider_responses {
-                        CompletionResponse::Array(items) => {
-                            tracing::info!("📦 Received {} completions (Array)", items.len());
-                            completions.extend(items);
-                        },
-                        CompletionResponse::List(list) => {
-                            tracing::info!("📦 Received {} completions (isIncomplete: {})", 
-                                list.items.len(), 
-                                list.is_incomplete
-                            );
-                            completions.extend(list.items);
-                        },
+                Ok(provider_responses) => match provider_responses {
+                    CompletionResponse::Array(items) => {
+                        tracing::info!("📦 Received {} completions (Array)", items.len());
+                        completions.extend(items);
+                    }
+                    CompletionResponse::List(list) => {
+                        tracing::info!(
+                            "📦 Received {} completions (isIncomplete: {})",
+                            list.items.len(),
+                            list.is_incomplete
+                        );
+                        completions.extend(list.items);
                     }
                 },
                 Err(e) => {

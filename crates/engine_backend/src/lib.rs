@@ -5,17 +5,17 @@
 //! It is designed to be modular and extensible, allowing developers to
 //! build high-performance games with ease.
 
-pub mod subsystems;
-pub mod services;
 pub mod scene;
+pub mod services;
+pub mod subsystems;
 
-pub use subsystems::physics::PhysicsEngine;
-pub use subsystems::game::{GameThread, ManagedGameThread, GameState, GameObject};
-pub use subsystems::world::World;
-pub use subsystems::render::{WgpuRenderer, Framebuffer as RenderFramebuffer};
-pub use subsystems::framework::{SubsystemRegistry, SubsystemContext, Subsystem, SubsystemError};
-pub use services::{GpuRenderer, GlobalRustAnalyzerCompletionProvider, RustAnalyzerManager};
+pub use services::{GlobalRustAnalyzerCompletionProvider, GpuRenderer, RustAnalyzerManager};
 use std::sync::Arc;
+pub use subsystems::framework::{Subsystem, SubsystemContext, SubsystemError, SubsystemRegistry};
+pub use subsystems::game::{GameObject, GameState, GameThread, ManagedGameThread};
+pub use subsystems::physics::PhysicsEngine;
+pub use subsystems::render::{Framebuffer as RenderFramebuffer, WgpuRenderer};
+pub use subsystems::world::World;
 
 // Re-export Helio types for UI integration
 pub use helio::GizmoMode;
@@ -31,8 +31,8 @@ pub const ENGINE_THREADS: [&str; 8] = [
     "InputThread",
 ];
 
-use tokio::sync::Mutex;
 use std::sync::OnceLock;
+use tokio::sync::Mutex;
 
 static GLOBAL_BACKEND: OnceLock<Arc<parking_lot::RwLock<EngineBackend>>> = OnceLock::new();
 
@@ -51,13 +51,15 @@ impl EngineBackend {
         let mut registry = SubsystemRegistry::new();
 
         // Register all subsystems
-        registry.register(PhysicsEngine::new())
+        registry
+            .register(PhysicsEngine::new())
             .expect("Failed to register PhysicsEngine subsystem");
 
         let managed_game_thread = ManagedGameThread::new(60.0); // 60 TPS target
         let game_thread_ref = managed_game_thread.game_thread().clone();
 
-        registry.register(managed_game_thread)
+        registry
+            .register(managed_game_thread)
             .expect("Failed to register ManagedGameThread subsystem");
 
         // NOTE: World subsystem cannot be registered here because PebbleVault::VaultManager
@@ -68,7 +70,8 @@ impl EngineBackend {
         let context = SubsystemContext::new(runtime_handle);
 
         // Initialize all subsystems in dependency order
-        registry.init_all(&context)
+        registry
+            .init_all(&context)
             .expect("Failed to initialize subsystems");
 
         tracing::info!("✅ Engine Backend initialized with all subsystems");
@@ -78,12 +81,13 @@ impl EngineBackend {
             game_thread: Some(game_thread_ref),
         }
     }
-    
+
     /// Get the physics query service for raycasting
     pub fn get_physics_query_service(&self) -> Option<Arc<crate::services::PhysicsQueryService>> {
         use crate::subsystems::framework::subsystem_ids;
-        
-        self.subsystems.get(subsystem_ids::PHYSICS)
+
+        self.subsystems
+            .get(subsystem_ids::PHYSICS)
             .and_then(|subsystem| {
                 // Downcast to PhysicsEngine
                 (subsystem as &dyn std::any::Any)

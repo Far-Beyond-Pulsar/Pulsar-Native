@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use ui::{tag::Tag, v_flex, ActiveTheme, Sizable as _, StyledExt};
+use ui::{ActiveTheme, Sizable as _, StyledExt, tag::Tag, v_flex};
 
 /// Engine/file format codes mapped to a friendly display name.
 const FORMAT_DISPLAY: &[(&str, &str)] = &[
@@ -29,7 +29,7 @@ fn display_name(code: &str, _raw_name: &str) -> &'static str {
 /// Displays asset format badges (Unreal, Unity, Blender, …) and keyword tags.
 #[derive(IntoElement)]
 pub struct FormatTagsSection {
-    pub formats: Vec<(String, String)>,    // (code, display_name)
+    pub formats: Vec<(String, String)>, // (code, display_name)
     pub tags: Vec<SharedString>,
 }
 
@@ -63,23 +63,19 @@ impl RenderOnce for FormatTagsSection {
                                 .text_color(muted)
                                 .child("Compatible Formats"),
                         )
-                        .child(
-                            div()
-                                .flex()
-                                .flex_row()
-                                .flex_wrap()
-                                .gap_2()
-                                .children(self.formats.iter().map(|(code, name)| {
-                                    let label = {
-                                        let mapped = display_name(code.as_str(), name.as_str());
-                                        if mapped.is_empty() { name.clone() } else { mapped.to_string() }
-                                    };
-                                    Tag::primary()
-                                        .rounded_full()
-                                        .small()
-                                        .child(label)
-                                })),
-                        ),
+                        .child(div().flex().flex_row().flex_wrap().gap_2().children(
+                            self.formats.iter().map(|(code, name)| {
+                                let label = {
+                                    let mapped = display_name(code.as_str(), name.as_str());
+                                    if mapped.is_empty() {
+                                        name.clone()
+                                    } else {
+                                        mapped.to_string()
+                                    }
+                                };
+                                Tag::primary().rounded_full().small().child(label)
+                            }),
+                        )),
                 )
             })
             // ── keyword tags ─────────────────────────────────────────────
@@ -87,25 +83,13 @@ impl RenderOnce for FormatTagsSection {
                 el.child(
                     v_flex()
                         .gap_2()
+                        .child(div().text_xs().font_bold().text_color(muted).child("Tags"))
                         .child(
-                            div()
-                                .text_xs()
-                                .font_bold()
-                                .text_color(muted)
-                                .child("Tags"),
-                        )
-                        .child(
-                            div()
-                                .flex()
-                                .flex_row()
-                                .flex_wrap()
-                                .gap_2()
-                                .children(self.tags.iter().map(|t| {
-                                    Tag::secondary()
-                                        .rounded_full()
-                                        .small()
-                                        .child(t.clone())
-                                })),
+                            div().flex().flex_row().flex_wrap().gap_2().children(
+                                self.tags.iter().map(|t| {
+                                    Tag::secondary().rounded_full().small().child(t.clone())
+                                }),
+                            ),
                         ),
                 )
             })

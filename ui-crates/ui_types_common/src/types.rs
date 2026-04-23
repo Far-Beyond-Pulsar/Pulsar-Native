@@ -1,19 +1,29 @@
-use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 /// Primitive Rust types supported by the type system
 pub const PRIMITIVES: &[&str] = &[
-    "i8", "i16", "i32", "i64", "i128", "isize",
-    "u8", "u16", "u32", "u64", "u128", "usize",
-    "f32", "f64",
-    "bool", "char", "str", "String",
-    "()", // unit type
+    "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128", "usize", "f32",
+    "f64", "bool", "char", "str", "String", "()", // unit type
 ];
 
 /// Type constructors for building complex types in aliases
 pub const CONSTRUCTORS: &[&str] = &[
-    "Box", "Arc", "Rc", "Option", "Result", "Vec", "HashMap", "HashSet",
-    "Cow", "Pin", "PhantomData", "Mutex", "RwLock", "RefCell", "Cell",
+    "Box",
+    "Arc",
+    "Rc",
+    "Option",
+    "Result",
+    "Vec",
+    "HashMap",
+    "HashSet",
+    "Cow",
+    "Pin",
+    "PhantomData",
+    "Mutex",
+    "RwLock",
+    "RefCell",
+    "Cell",
 ];
 
 /// Kind of type definition
@@ -70,7 +80,9 @@ impl TypeRef {
     }
 
     pub fn alias(alias: impl Into<String>) -> Self {
-        TypeRef::AliasRef { alias: alias.into() }
+        TypeRef::AliasRef {
+            alias: alias.into(),
+        }
     }
 }
 
@@ -78,8 +90,8 @@ impl TypeRef {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "nodeKind")]
 pub enum TypeAstNode {
-        /// Explicitly empty slot (for UI mapping)
-        None,
+    /// Explicitly empty slot (for UI mapping)
+    None,
     /// Primitive type
     Primitive { name: String },
 
@@ -226,7 +238,11 @@ pub struct MethodSignature {
 pub struct TraitMethod {
     pub name: String,
     pub signature: MethodSignature,
-    #[serde(default, skip_serializing_if = "Option::is_none", rename = "defaultBody")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "defaultBody"
+    )]
     pub default_body: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub doc: Option<String>,

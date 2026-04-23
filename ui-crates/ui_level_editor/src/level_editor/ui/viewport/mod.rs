@@ -8,11 +8,11 @@
 //!
 //! The viewport has been refactored into focused, reusable components for maintainability.
 
-pub mod platform;
-pub mod performance;
-pub mod input_state;
 pub mod components;
 pub mod helio_viewport;
+pub mod input_state;
+pub mod performance;
+pub mod platform;
 
 use std::cell::RefCell;
 use std::collections::{HashSet, VecDeque};
@@ -24,18 +24,18 @@ use device_query::{DeviceQuery, DeviceState, Keycode};
 use engine_backend::GameThread;
 use gpui::*;
 use helio_viewport::HelioViewport;
+use ui::Sizable;
 use ui::{h_flex, v_flex, ActiveTheme, StyledExt};
 use ui_common::ViewportControls;
-use ui::Sizable;
 
 use super::actions::*;
 use super::state::{CameraMode, LevelEditorState};
+use crate::level_editor::ui::viewport::components::camera_selector::CameraSpeedControl;
 use components::camera_selector::render_camera_selector;
 use components::gpu_pipeline_overlay::render_gpu_pipeline_overlay;
 use components::performance_overlay::render_performance_overlay;
 use components::viewport_options::render_viewport_options;
 use input_state::InputState;
-use crate::level_editor::ui::viewport::components::camera_selector::CameraSpeedControl;
 use performance::*;
 
 /// Viewport panel with zero-copy GPU rendering and professional camera controls.
@@ -151,11 +151,21 @@ impl ViewportPanel {
         self.send_input_to_gpu(gpu_engine, state);
 
         // Build the viewport UI
-        self.build_viewport_ui(state, state_arc, fps_graph_state, gpu_engine, game_thread, cx)
+        self.build_viewport_ui(
+            state,
+            state_arc,
+            fps_graph_state,
+            gpu_engine,
+            game_thread,
+            cx,
+        )
     }
 
     /// Spawn the input processing thread (only once).
-    fn spawn_input_thread_once(&self, gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>) {
+    fn spawn_input_thread_once(
+        &self,
+        gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
+    ) {
         if self.input_thread_spawned.load(Ordering::Relaxed) {
             return;
         }
@@ -216,29 +226,29 @@ impl ViewportPanel {
                     profiling::profile_scope!("keyboard_poll");
                     let keys: Vec<Keycode> = device_state.get_keys();
                     let forward = if keys.contains(&Keycode::W) {
-                    1
-                } else if keys.contains(&Keycode::S) {
-                    -1
-                } else {
-                    0
-                };
-                let right = if keys.contains(&Keycode::D) {
-                    1
-                } else if keys.contains(&Keycode::A) {
-                    -1
-                } else {
-                    0
-                };
-                let up = if keys.contains(&Keycode::E) || keys.contains(&Keycode::Space) {
-                    1
-                } else if keys.contains(&Keycode::Q)
-                    || keys.contains(&Keycode::LShift)
-                    || keys.contains(&Keycode::RShift)
-                {
-                    -1
-                } else {
-                    0
-                };
+                        1
+                    } else if keys.contains(&Keycode::S) {
+                        -1
+                    } else {
+                        0
+                    };
+                    let right = if keys.contains(&Keycode::D) {
+                        1
+                    } else if keys.contains(&Keycode::A) {
+                        -1
+                    } else {
+                        0
+                    };
+                    let up = if keys.contains(&Keycode::E) || keys.contains(&Keycode::Space) {
+                        1
+                    } else if keys.contains(&Keycode::Q)
+                        || keys.contains(&Keycode::LShift)
+                        || keys.contains(&Keycode::RShift)
+                    {
+                        -1
+                    } else {
+                        0
+                    };
                     let boost = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
 
                     input_state.set_forward(forward);
@@ -250,55 +260,54 @@ impl ViewportPanel {
                 // Poll mouse and calculate delta
                 {
                     profiling::profile_scope!("mouse_poll");
-                #[cfg(target_os = "windows")]
-                {
-                    let locked_screen_x = locked_cursor_x.load(Ordering::Relaxed);
-                    let locked_screen_y = locked_cursor_y.load(Ordering::Relaxed);
+                    #[cfg(target_os = "windows")]
+                    {
+                        let locked_screen_x = locked_cursor_x.load(Ordering::Relaxed);
+                        let locked_screen_y = locked_cursor_y.load(Ordering::Relaxed);
 
-                    if locked_screen_x > 0 && locked_screen_y > 0 {
-                        use winapi::shared::windef::POINT;
-                        use winapi::um::winuser::GetCursorPos;
+                        if locked_screen_x > 0 && locked_screen_y > 0 {
+                            use winapi::shared::windef::POINT;
+                            use winapi::um::winuser::GetCursorPos;
 
-                        unsafe {
-                            let mut point = POINT { x: 0, y: 0 };
-                            GetCursorPos(&mut point);
+                            unsafe {
+                                let mut point = POINT { x: 0, y: 0 };
+                                GetCursorPos(&mut point);
 
-                            // Calculate delta from locked position (not last position)
-                            let dx = point.x - locked_screen_x;
-                            let dy = point.y - locked_screen_y;
+                                // Calculate delta from locked position (not last position)
+                                let dx = point.x - locked_screen_x;
+                                let dy = point.y - locked_screen_y;
 
-                            if dx != 0 || dy != 0 {
-                                // Send deltas DIRECTLY to renderer - zero latency path!
-                                if let Ok(engine) = gpu_engine_clone.try_lock() {
-                                    if let Some(ref helio_renderer) = engine.helio_renderer {
-                                        if let Ok(mut input) = helio_renderer.camera_input.try_lock() {
-                                            if is_rotating {
-                                                input.mouse_delta_x = dx as f32;
-                                                input.mouse_delta_y = dy as f32;
-                                            } else if is_panning {
-                                                input.pan_delta_x = dx as f32;
-                                                input.pan_delta_y = dy as f32;
+                                if dx != 0 || dy != 0 {
+                                    // Send deltas DIRECTLY to renderer - zero latency path!
+                                    if let Ok(engine) = gpu_engine_clone.try_lock() {
+                                        if let Some(ref helio_renderer) = engine.helio_renderer {
+                                            if let Ok(mut input) =
+                                                helio_renderer.camera_input.try_lock()
+                                            {
+                                                if is_rotating {
+                                                    input.mouse_delta_x = dx as f32;
+                                                    input.mouse_delta_y = dy as f32;
+                                                } else if is_panning {
+                                                    input.pan_delta_x = dx as f32;
+                                                    input.pan_delta_y = dy as f32;
+                                                }
                                             }
                                         }
                                     }
-                                }
 
-                                // Also update atomics for UI feedback (optional)
-                                if is_rotating {
-                                    input_state.set_mouse_delta(dx as f32, dy as f32);
-                                } else if is_panning {
-                                    input_state.set_pan_delta(dx as f32, dy as f32);
-                                }
+                                    // Also update atomics for UI feedback (optional)
+                                    if is_rotating {
+                                        input_state.set_mouse_delta(dx as f32, dy as f32);
+                                    } else if is_panning {
+                                        input_state.set_pan_delta(dx as f32, dy as f32);
+                                    }
 
-                                // Reset cursor to locked position
-                                platform::set_cursor_position(
-                                    locked_screen_x,
-                                    locked_screen_y,
-                                );
+                                    // Reset cursor to locked position
+                                    platform::set_cursor_position(locked_screen_x, locked_screen_y);
+                                }
                             }
                         }
                     }
-                }
                 }
 
                 // Track latency
@@ -309,55 +318,69 @@ impl ViewportPanel {
     }
 
     /// Update performance metrics from GPU.
-    fn update_performance_metrics(&self, gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>, game_thread: &Arc<GameThread>) {
+    fn update_performance_metrics(
+        &self,
+        gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
+        game_thread: &Arc<GameThread>,
+    ) {
         if let Ok(engine) = gpu_engine.try_lock() {
             let ui_fps = engine.get_fps() as f64;
             let helio_fps = engine.get_helio_fps() as f64;
-            
+
             let metrics_opt = engine.get_render_metrics();
-            let (memory_mb, draw_calls, vertices, frame_time_ms) = if let Some(ref m) = metrics_opt {
-                (m.memory_usage_mb, m.draw_calls, m.vertices_drawn, m.frame_time_ms)
+            let (memory_mb, draw_calls, vertices, frame_time_ms) = if let Some(ref m) = metrics_opt
+            {
+                (
+                    m.memory_usage_mb,
+                    m.draw_calls,
+                    m.vertices_drawn,
+                    m.frame_time_ms,
+                )
             } else {
                 (0.0, 0, 0, 0.0)
             };
 
             let mut metrics = self.metrics.borrow_mut();
-            
+
             // Update FPS using the renderer metric when UI-side frame count is not yet available.
             let display_fps = if ui_fps > 0.0 { ui_fps } else { helio_fps };
             metrics.add_fps(display_fps);
-            
+
             // Update TPS from game thread
             let game_tps = game_thread.get_tps() as f64;
             metrics.add_tps(game_tps);
-            
+
             // Update frame time
             metrics.add_frame_time(frame_time_ms as f64);
-            
+
             // Update memory
             metrics.add_memory(memory_mb as f64);
-            
+
             // Update draw calls
             metrics.add_draw_calls(draw_calls as f64);
-            
+
             // Update vertices
             metrics.add_vertices(vertices as f64);
-            
+
             // Calculate UI consistency (FPS variance)
             if metrics.fps_history.len() >= 10 {
                 let sample_size = metrics.fps_history.len().min(30);
-                let recent_fps: Vec<f64> = metrics.fps_history.iter()
+                let recent_fps: Vec<f64> = metrics
+                    .fps_history
+                    .iter()
                     .rev()
                     .take(sample_size)
                     .map(|d| d.fps)
                     .collect();
-                
+
                 let mean = recent_fps.iter().sum::<f64>() / recent_fps.len() as f64;
-                let variance = recent_fps.iter()
+                let variance = recent_fps
+                    .iter()
                     .map(|fps| (fps - mean).powi(2))
-                    .sum::<f64>() / recent_fps.len() as f64;
+                    .sum::<f64>()
+                    / recent_fps.len() as f64;
                 let std_dev = variance.sqrt();
-                
+
                 metrics.add_ui_consistency(std_dev);
             }
         }
@@ -415,26 +438,32 @@ impl ViewportPanel {
         let viewport_entity = self.viewport.clone();
 
         // Get performance data
-        let (ui_fps, helio_fps, render_fps, renderer_ready) = if let Ok(engine) = gpu_engine.try_lock() {
-            let ui_fps = engine.get_fps() as f64;
-            let helio_fps = engine.get_helio_fps() as f64;
-            let render_fps = engine.get_render_fps() as f64;
-            let renderer_ready = engine.is_initialized();
-            (ui_fps, helio_fps, render_fps, renderer_ready)
-        } else {
-            (0.0, 0.0, 0.0, false)
-        };
+        let (ui_fps, helio_fps, render_fps, renderer_ready) =
+            if let Ok(engine) = gpu_engine.try_lock() {
+                let ui_fps = engine.get_fps() as f64;
+                let helio_fps = engine.get_helio_fps() as f64;
+                let render_fps = engine.get_render_fps() as f64;
+                let renderer_ready = engine.is_initialized();
+                (ui_fps, helio_fps, render_fps, renderer_ready)
+            } else {
+                (0.0, 0.0, 0.0, false)
+            };
 
         // Collect metric histories
         let metrics = self.metrics.borrow();
         let fps_data: Vec<FpsDataPoint> = metrics.fps_history.iter().cloned().collect();
         let tps_data: Vec<TpsDataPoint> = metrics.tps_history.iter().cloned().collect();
-        let frame_time_data: Vec<FrameTimeDataPoint> = metrics.frame_time_history.iter().cloned().collect();
+        let frame_time_data: Vec<FrameTimeDataPoint> =
+            metrics.frame_time_history.iter().cloned().collect();
         let memory_data: Vec<MemoryDataPoint> = metrics.memory_history.iter().cloned().collect();
-        let draw_calls_data: Vec<DrawCallsDataPoint> = metrics.draw_calls_history.iter().cloned().collect();
-        let vertices_data: Vec<VerticesDataPoint> = metrics.vertices_history.iter().cloned().collect();
-        let input_latency_data: Vec<InputLatencyDataPoint> = metrics.input_latency_history.iter().cloned().collect();
-        let ui_consistency_data: Vec<UiConsistencyDataPoint> = metrics.ui_consistency_history.iter().cloned().collect();
+        let draw_calls_data: Vec<DrawCallsDataPoint> =
+            metrics.draw_calls_history.iter().cloned().collect();
+        let vertices_data: Vec<VerticesDataPoint> =
+            metrics.vertices_history.iter().cloned().collect();
+        let input_latency_data: Vec<InputLatencyDataPoint> =
+            metrics.input_latency_history.iter().cloned().collect();
+        let ui_consistency_data: Vec<UiConsistencyDataPoint> =
+            metrics.ui_consistency_history.iter().cloned().collect();
         drop(metrics);
 
         // Clone for event handlers
@@ -613,7 +642,7 @@ impl ViewportPanel {
                             } else {
                                 None
                             };
-                            
+
                             let mut mouse_input = match helio_renderer.viewport_mouse_input.lock() {
                                 Ok(guard) => guard,
                                 Err(poisoned) => poisoned.into_inner(),
@@ -689,13 +718,13 @@ impl ViewportPanel {
             .on_scroll_wheel({
                 let mouse_right_captured = mouse_right_captured.clone();
                 let input_state_scroll = self.input_state.clone();
-                
+
                 move |event: &gpui::ScrollWheelEvent, _phase, _cx| {
                     let scroll_delta: f32 = event.delta.pixel_delta(px(1.0)).y.into();
-                    
+
                     // Check if right-click is held (camera rotation mode)
                     let is_rotating = mouse_right_captured.load(Ordering::Acquire);
-                    
+
                     if is_rotating {
                         // Right-click held: adjust camera move speed
                         let speed_delta = scroll_delta * 0.5; // Scale for reasonable adjustment
@@ -736,7 +765,7 @@ impl ViewportPanel {
                             // to normalized coordinates (0-1) within the GPUI viewport area
                             let normalized_x = (element_x / gpui_width).clamp(0.0, 1.0);
                             let normalized_y = (element_y / gpui_height).clamp(0.0, 1.0);
-                            
+
                             // Get viewport bounds from element_bounds if available
                             let viewport_bounds = if let Some(ref bounds) = *bounds_opt {
                                 Some(engine_backend::subsystems::render::helio_renderer::gizmo_types::ViewportBounds {
@@ -748,18 +777,18 @@ impl ViewportPanel {
                             } else {
                                 None
                             };
-                            
+
                             tracing::info!(
                                 "[VIEWPORT] 🖱️ Left click:\n  Screen: ({}, {})\n  GPUI element: ({:.2}, {:.2}) in viewport {}x{}\n  Normalized: ({:.4}, {:.4})",
-                                event.position.x, event.position.y, 
+                                event.position.x, event.position.y,
                                 element_x, element_y, gpui_width, gpui_height,
                                 normalized_x, normalized_y
                             );
-                            
+
                             // TODO: Check for gizmo interaction first
                             // If a gizmo axis is clicked, start drag operation
                             // Otherwise, do object selection raycast
-                            
+
                             let mut mouse_input = match helio_renderer.viewport_mouse_input.lock() {
                                 Ok(guard) => guard,
                                 Err(poisoned) => poisoned.into_inner(),
@@ -865,57 +894,39 @@ impl ViewportPanel {
 
         // Bottom-left: Performance overlay
         if state.show_performance_overlay {
-            overlays = overlays.child(
-                div()
-                    .absolute()
-                    .bottom_2()
-                    .left_2()
-                    .max_w(px(400.0))
-                    .child(render_performance_overlay(
-                        state,
-                        state_arc.clone(),
-                        ui_fps,
-                        render_fps,
-                        fps_data,
-                        tps_data,
-                        frame_time_data,
-                        memory_data,
-                        draw_calls_data,
-                        vertices_data,
-                        input_latency_data,
-                        ui_consistency_data,
-                        fps_graph_state,
-                        cx,
-                    )),
-            );
+            overlays = overlays.child(div().absolute().bottom_2().left_2().max_w(px(400.0)).child(
+                render_performance_overlay(
+                    state,
+                    state_arc.clone(),
+                    ui_fps,
+                    render_fps,
+                    fps_data,
+                    tps_data,
+                    frame_time_data,
+                    memory_data,
+                    draw_calls_data,
+                    vertices_data,
+                    input_latency_data,
+                    ui_consistency_data,
+                    fps_graph_state,
+                    cx,
+                ),
+            ));
         }
 
         // GPU Pipeline overlay - positions next to performance overlay if both visible
         if state.show_gpu_pipeline_overlay {
             let overlay_div = if state.show_performance_overlay {
                 // Position to the right of performance overlay
-                div()
-                    .absolute()
-                    .bottom_2()
-                    .left(px(300.0)) // 400px width + 10px gap
+                div().absolute().bottom_2().left(px(300.0)) // 400px width + 10px gap
             } else {
                 // Take performance overlay's position
-                div()
-                    .absolute()
-                    .bottom_2()
-                    .left_2()
+                div().absolute().bottom_2().left_2()
             };
 
-            overlays = overlays.child(
-                overlay_div
-                    .max_w(px(400.0))
-                    .child(render_gpu_pipeline_overlay(
-                        state,
-                        state_arc.clone(),
-                        gpu_engine,
-                        cx,
-                    )),
-            );
+            overlays = overlays.child(overlay_div.max_w(px(400.0)).child(
+                render_gpu_pipeline_overlay(state, state_arc.clone(), gpu_engine, cx),
+            ));
         }
 
         // Initialization overlay - show when renderer is still warming up (< 10 FPS)
@@ -932,27 +943,21 @@ impl ViewportPanel {
                         v_flex()
                             .gap_3()
                             .items_center()
-                            .child(
-                                ui::spinner::Spinner::new()
-                                    .with_size(ui::Size::Large)
-                            )
-                            .child(
-                                div()
-                                    .text_lg()
-                                    .text_color(cx.theme().foreground)
-                                    .child(if renderer_ready {
-                                        "Initializing 3D Renderer..."
-                                    } else {
-                                        "Waiting for 3D Renderer to initialize..."
-                                    })
-                            )
+                            .child(ui::spinner::Spinner::new().with_size(ui::Size::Large))
+                            .child(div().text_lg().text_color(cx.theme().foreground).child(
+                                if renderer_ready {
+                                    "Initializing 3D Renderer..."
+                                } else {
+                                    "Waiting for 3D Renderer to initialize..."
+                                },
+                            ))
                             .child(
                                 div()
                                     .text_sm()
                                     .text_color(cx.theme().muted_foreground)
-                                    .child(format!("FPS: {:.1}", render_fps))
-                            )
-                    )
+                                    .child(format!("FPS: {:.1}", render_fps)),
+                            ),
+                    ),
             );
         }
 

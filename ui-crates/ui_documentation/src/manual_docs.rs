@@ -1,10 +1,10 @@
-use gpui::{prelude::*, *};
-use ui::input::{InputState, TabSize};
-use std::path::{Path, PathBuf};
-use std::fs;
-use std::collections::HashSet;
-use regex::Regex;
 use crate::doc_source::DocSource;
+use gpui::{prelude::*, *};
+use regex::Regex;
+use std::collections::HashSet;
+use std::fs;
+use std::path::{Path, PathBuf};
+use ui::input::{InputState, TabSize};
 
 #[derive(Clone, Debug)]
 pub struct FileEntry {
@@ -100,7 +100,7 @@ impl ManualDocsState {
             let readme_path = docs_folder.join("README.md");
             let _ = fs::write(
                 &readme_path,
-                "# Project Documentation\n\nWelcome to your project documentation!\n\n## Getting Started\n\nAdd your documentation here."
+                "# Project Documentation\n\nWelcome to your project documentation!\n\n## Getting Started\n\nAdd your documentation here.",
             );
         }
 
@@ -205,7 +205,10 @@ impl ManualDocsState {
             let url = &caps[2];
 
             // Skip if already absolute URL (http://, https://, file://)
-            if url.starts_with("http://") || url.starts_with("https://") || url.starts_with("file://") {
+            if url.starts_with("http://")
+                || url.starts_with("https://")
+                || url.starts_with("file://")
+            {
                 return caps[0].to_string();
             }
 
@@ -214,7 +217,10 @@ impl ManualDocsState {
             if let Ok(absolute_path) = image_path.canonicalize() {
                 // Convert to file:// URL with proper path format
                 #[cfg(target_os = "windows")]
-                let file_url = format!("file:///{}", absolute_path.display().to_string().replace("\\", "/"));
+                let file_url = format!(
+                    "file:///{}",
+                    absolute_path.display().to_string().replace("\\", "/")
+                );
                 #[cfg(not(target_os = "windows"))]
                 let file_url = format!("file://{}", absolute_path.display());
 
@@ -223,10 +229,15 @@ impl ManualDocsState {
                 // If file doesn't exist, keep original
                 caps[0].to_string()
             }
-        }).to_string()
+        })
+        .to_string()
     }
 
-    pub fn save_current_file(&mut self, _window: &mut Window, cx: &App) -> Result<(), std::io::Error> {
+    pub fn save_current_file(
+        &mut self,
+        _window: &mut Window,
+        cx: &App,
+    ) -> Result<(), std::io::Error> {
         let Some(path) = &self.selected_file else {
             return Ok(());
         };
@@ -243,7 +254,12 @@ impl ManualDocsState {
         Ok(())
     }
 
-    pub fn create_new_file(&mut self, name: String, window: &mut Window, cx: &mut App) -> Result<(), std::io::Error> {
+    pub fn create_new_file(
+        &mut self,
+        name: String,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<(), std::io::Error> {
         let Some(docs_folder) = &self.docs_folder else {
             return Ok(());
         };
@@ -259,11 +275,14 @@ impl ManualDocsState {
         if file_path.exists() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::AlreadyExists,
-                "File already exists"
+                "File already exists",
             ));
         }
 
-        fs::write(&file_path, format!("# {}\n\n", name.trim_end_matches(".md")))?;
+        fs::write(
+            &file_path,
+            format!("# {}\n\n", name.trim_end_matches(".md")),
+        )?;
         self.load_file_tree();
         self.select_file(file_path, window, cx);
 

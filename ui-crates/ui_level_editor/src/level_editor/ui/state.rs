@@ -1,17 +1,17 @@
-use std::path::PathBuf;
-use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 // Import our scene database and gizmo systems
-use crate::level_editor::{SceneDatabase, GizmoState, GizmoType};
 use crate::level_editor::scene_database::SceneDb;
+use crate::level_editor::{GizmoState, GizmoType, SceneDatabase};
 
 /// Editor mode - Edit or Play
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EditorMode {
-    Edit,  // Editing mode - gizmos active, game thread paused
-    Play,  // Play mode - game running, gizmos hidden
+    Edit, // Editing mode - gizmos active, game thread paused
+    Play, // Play mode - game running, gizmos hidden
 }
 
 /// Hierarchy drag state for reparenting objects
@@ -30,7 +30,8 @@ pub struct LevelEditorState {
     /// Scene database - single source of truth for all scene data
     pub scene_database: SceneDatabase,
     /// Snapshot of scene state when entering play mode (for reset on stop)
-    pub scene_snapshot: Option<Arc<parking_lot::RwLock<Vec<crate::level_editor::scene_database::SceneObjectData>>>>,
+    pub scene_snapshot:
+        Option<Arc<parking_lot::RwLock<Vec<crate::level_editor::scene_database::SceneObjectData>>>>,
     /// Gizmo state for 3D manipulation
     pub gizmo_state: Arc<parking_lot::RwLock<GizmoState>>,
     /// Current editor mode
@@ -77,7 +78,7 @@ pub struct LevelEditorState {
     /// Drag state for hierarchy reparenting
     pub hierarchy_drag_state: HierarchyDragState,
     /// Overlay positions (in pixels from their default corners)
-    pub camera_overlay_pos: (f32, f32),  // bottom-left overlay position
+    pub camera_overlay_pos: (f32, f32), // bottom-left overlay position
     pub viewport_overlay_pos: (f32, f32), // top-left overlay position
     /// Dragging state for overlays
     pub is_dragging_camera_overlay: bool,
@@ -119,7 +120,7 @@ pub enum TargetPlatform {
     WindowsAarch64Msvc,
     WindowsX86_64Gnu,
     WindowsI686Gnu,
-    
+
     // Linux targets
     LinuxX86_64Gnu,
     LinuxI686Gnu,
@@ -142,49 +143,49 @@ pub enum TargetPlatform {
     LinuxArmv7Musleabihf,
     LinuxMipselMusl,
     LinuxMipsMusl,
-    
+
     // macOS targets
     MacOsX86_64,
     MacOsAarch64,
-    
+
     // iOS targets
     IosAarch64,
     IosX86_64,
     IosAarch64Sim,
-    
+
     // Android targets
     AndroidAarch64,
     AndroidArmv7,
     AndroidI686,
     AndroidX86_64,
-    
+
     // BSD targets
     FreeBsdX86_64,
     FreeBsdI686,
     NetBsdX86_64,
     OpenBsdX86_64,
     DragonFlyX86_64,
-    
+
     // Solaris
     SolarisSparcv9,
     SolarisX86_64,
     IlumosX86_64,
-    
+
     // Redox
     RedoxX86_64,
-    
+
     // Fuchsia
     FuchsiaAarch64,
     FuchsiaX86_64,
-    
+
     // Gaming Consoles - PlayStation
     PlayStationPs4,
     PlayStationPs5,
-    
+
     // Gaming Consoles - Xbox
     XboxOne,
     XboxSeriesXS,
-    
+
     // Gaming Consoles - Nintendo
     NintendoSwitch,
 }
@@ -207,20 +208,17 @@ pub enum CameraMode {
 }
 
 // Legacy types for backwards compatibility - now forwarded from scene_database
-pub use crate::level_editor::scene_database::{
-    Transform,
-    SceneObjectData as SceneObject,
-};
+pub use crate::level_editor::scene_database::{SceneObjectData as SceneObject, Transform};
 
 impl Default for LevelEditorState {
     fn default() -> Self {
         // Create scene database with default objects matching Helio renderer
         let scene_database = SceneDatabase::with_default_scene();
-        
+
         // Create gizmo state with translate tool active
         let mut gizmo_state = GizmoState::new();
         gizmo_state.set_gizmo_type(GizmoType::Translate);
-        
+
         Self {
             scene_database,
             scene_snapshot: None,
@@ -257,7 +255,7 @@ impl Default for LevelEditorState {
             show_ui_consistency_graph: false,
             expanded_objects: HashSet::new(),
             hierarchy_drag_state: HierarchyDragState::None,
-            camera_overlay_pos: (16.0, 16.0),  // default bottom-left position
+            camera_overlay_pos: (16.0, 16.0), // default bottom-left position
             viewport_overlay_pos: (16.0, 16.0), // default top-left position
             is_dragging_camera_overlay: false,
             is_dragging_viewport_overlay: false,
@@ -292,40 +290,36 @@ impl LevelEditorState {
 
     /// Enter play mode - snapshot scene and start game thread
     pub fn enter_play_mode(&mut self) {
-                
         // Save snapshot of current scene state for restoration
         let objects = self.scene_database.get_all_objects();
         self.scene_snapshot = Some(Arc::new(parking_lot::RwLock::new(objects)));
-        
+
         // Switch to play mode
         self.editor_mode = EditorMode::Play;
-        
+
         // Hide gizmos
         let mut gizmo = self.gizmo_state.write();
         gizmo.set_gizmo_type(GizmoType::None);
-        
-            }
+    }
 
     /// Exit play mode - restore scene state and stop game thread
     pub fn exit_play_mode(&mut self) {
-                
         // Restore scene from snapshot
         if let Some(ref snapshot) = self.scene_snapshot {
             let objects = snapshot.read().clone();
-            
+
             // Clear current scene
             self.scene_database.clear();
-            
+
             // Restore all objects
             for obj in objects {
                 self.scene_database.add_object(obj, None);
             }
-            
-                    }
-        
+        }
+
         // Switch back to edit mode
         self.editor_mode = EditorMode::Edit;
-        
+
         // Restore gizmo based on current tool
         let gizmo_type = match self.current_tool {
             TransformTool::Select => GizmoType::None,
@@ -333,14 +327,13 @@ impl LevelEditorState {
             TransformTool::Rotate => GizmoType::Rotate,
             TransformTool::Scale => GizmoType::Scale,
         };
-        
+
         let mut gizmo = self.gizmo_state.write();
         gizmo.set_gizmo_type(gizmo_type);
-        
+
         // Clear snapshot
         self.scene_snapshot = None;
-        
-            }
+    }
 
     /// Check if in edit mode
     pub fn is_edit_mode(&self) -> bool {
@@ -355,7 +348,7 @@ impl LevelEditorState {
     /// Get selected object ID
     pub fn selected_object(&self) -> Option<String> {
         let result = self.scene_database.get_selected_object_id();
-                result
+        result
     }
 
     /// Get all scene objects for hierarchy display
@@ -371,7 +364,6 @@ impl LevelEditorState {
         let mut gizmo = self.gizmo_state.write();
         gizmo.target_object_id = object_id;
     }
-
 
     /// Get selected object data
     pub fn get_selected_object(&self) -> Option<SceneObject> {
@@ -396,8 +388,7 @@ impl LevelEditorState {
 
         let mut gizmo = self.gizmo_state.write();
         gizmo.set_gizmo_type(gizmo_type);
-
-            }
+    }
 
     /// Set camera mode
     pub fn set_camera_mode(&mut self, mode: CameraMode) {

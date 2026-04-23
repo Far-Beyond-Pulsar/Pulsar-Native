@@ -9,11 +9,13 @@ use crate::state::AppState;
 /// Returns public server metadata and live statistics.  No authentication
 /// required so that launcher clients can poll reachability without a token.
 pub async fn get_info(State(state): State<AppState>) -> (StatusCode, Json<Value>) {
-    let active_users    = state.sessions.total_user_count();
+    let active_users = state.sessions.total_user_count();
     let active_projects = state.sessions.active_project_count();
-    let uptime          = state.uptime_seconds();
+    let uptime = state.uptime_seconds();
 
-    debug!("GET /info — {active_users} user(s), {active_projects} active project(s), uptime={uptime}s");
+    debug!(
+        "GET /info — {active_users} user(s), {active_projects} active project(s), uptime={uptime}s"
+    );
 
     let body = json!({
         "server_name":      state.config.server_name,

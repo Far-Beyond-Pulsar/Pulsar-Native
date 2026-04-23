@@ -4,8 +4,15 @@
 use gpui::EventEmitter;
 use ui_common::pulsar_drawer_window;
 
-use crate::{ProblemsDrawer, NavigateToDiagnostic};
+use crate::{NavigateToDiagnostic, ProblemsDrawer};
 
-pulsar_drawer_window!(ProblemsWindow, ProblemsDrawer, problems_drawer, "Window.Title.Problems", 900.0, 600.0);
+pulsar_drawer_window!(
+    ProblemsWindow,
+    ProblemsDrawer,
+    problems_drawer,
+    "Window.Title.Problems",
+    900.0,
+    600.0
+);
 
 impl EventEmitter<NavigateToDiagnostic> for ProblemsWindow {}

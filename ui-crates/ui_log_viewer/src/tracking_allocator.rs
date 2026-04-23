@@ -4,12 +4,12 @@
 //! RtlCaptureStackBackTrace). No sampling — accurate counts. Symbol resolution
 //! happens only in the background snapshot thread for the top 100 call sites.
 
-use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
-use std::cell::Cell;
-use crate::memory_tracking::MemoryCategory;
 use crate::atomic_memory_tracking::ATOMIC_MEMORY_COUNTERS;
 use crate::caller_tracking;
+use crate::memory_tracking::MemoryCategory;
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::cell::Cell;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 /// Global flag to enable/disable tracking. When false, allocator behaves exactly like System allocator.
 static TRACKING_ACTIVE: AtomicBool = AtomicBool::new(false);
@@ -36,7 +36,9 @@ thread_local! {
 pub struct TrackingAllocator;
 
 impl TrackingAllocator {
-    pub const fn new() -> Self { Self }
+    pub const fn new() -> Self {
+        Self
+    }
 
     fn categorize_allocation() -> MemoryCategory {
         CURRENT_CATEGORY.with(|cat| cat.load(Ordering::Relaxed).into())
@@ -49,7 +51,13 @@ impl TrackingAllocator {
             return;
         }
 
-        let was_enabled = TRACKING_ENABLED.with(|e| { let v = e.get(); if v { e.set(false); } v });
+        let was_enabled = TRACKING_ENABLED.with(|e| {
+            let v = e.get();
+            if v {
+                e.set(false);
+            }
+            v
+        });
         if !was_enabled {
             // Re-entry: this is the tracker's own internal allocation (DashMap resize, Vec, etc.).
             // We can't do per-site recording (CALLER_BUSY is set, doing DashMap ops would deadlock),
@@ -65,8 +73,13 @@ impl TrackingAllocator {
         let mut count = 0usize;
         unsafe {
             backtrace::trace_unsynchronized(|frame| {
-                if count < frames.len() { frames[count] = frame.ip() as usize; count += 1; true }
-                else { false }
+                if count < frames.len() {
+                    frames[count] = frame.ip() as usize;
+                    count += 1;
+                    true
+                } else {
+                    false
+                }
             });
         }
         if count > 0 {
@@ -83,7 +96,13 @@ impl TrackingAllocator {
             return;
         }
 
-        let was_enabled = TRACKING_ENABLED.with(|e| { let v = e.get(); if v { e.set(false); } v });
+        let was_enabled = TRACKING_ENABLED.with(|e| {
+            let v = e.get();
+            if v {
+                e.set(false);
+            }
+            v
+        });
         if !was_enabled {
             // Re-entry: tracker's own dealloc — keep global total accurate.
             caller_tracking::GLOBAL_LIVE_BYTES.fetch_sub(layout.size() as i64, Ordering::Relaxed);
@@ -100,7 +119,9 @@ impl TrackingAllocator {
 unsafe impl GlobalAlloc for TrackingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let ptr = System.alloc(layout);
-        if !ptr.is_null() { self.record_alloc(ptr, layout); }
+        if !ptr.is_null() {
+            self.record_alloc(ptr, layout);
+        }
         ptr
     }
 
@@ -111,7 +132,9 @@ unsafe impl GlobalAlloc for TrackingAllocator {
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
         let ptr = System.alloc_zeroed(layout);
-        if !ptr.is_null() { self.record_alloc(ptr, layout); }
+        if !ptr.is_null() {
+            self.record_alloc(ptr, layout);
+        }
         ptr
     }
 
@@ -130,7 +153,9 @@ thread_local! {
     static CURRENT_CATEGORY: AtomicUsize = const { AtomicUsize::new(0) };
 }
 
-pub struct MemoryCategoryGuard { previous: usize }
+pub struct MemoryCategoryGuard {
+    previous: usize,
+}
 
 impl MemoryCategoryGuard {
     pub fn new(category: MemoryCategory) -> Self {

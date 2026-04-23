@@ -1,4 +1,7 @@
-use crate::{ReplicationConfig, ReplicationMode, ReplicationMessageBuilder, ReplicationRegistry, SessionContext};
+use crate::{
+    ReplicationConfig, ReplicationMessageBuilder, ReplicationMode, ReplicationRegistry,
+    SessionContext,
+};
 use gpui::{App, Entity, Window};
 use serde_json::Value;
 
@@ -25,7 +28,12 @@ pub trait Replicator: Sized {
     fn serialize_state(&self, cx: &App) -> Result<Value, String>;
 
     /// Deserialize and apply state received from the network
-    fn deserialize_state(&mut self, state: Value, window: &mut Window, cx: &mut App) -> Result<(), String>;
+    fn deserialize_state(
+        &mut self,
+        state: Value,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<(), String>;
 
     /// Called when another user starts editing this element
     fn on_remote_user_joined(&mut self, peer_id: &str, _window: &mut Window, _cx: &mut App) {
@@ -242,11 +250,8 @@ impl<T: Replicator + 'static> ReplicatorExt<T> for Entity<T> {
 
         if session.is_active() {
             if let Some(our_peer_id) = session.our_peer_id() {
-                let message = ReplicationMessageBuilder::state_update(
-                    element_id.clone(),
-                    state,
-                    our_peer_id,
-                );
+                let message =
+                    ReplicationMessageBuilder::state_update(element_id.clone(), state, our_peer_id);
                 session.send_message(message);
 
                 tracing::debug!("Synced state for element {}", element_id);

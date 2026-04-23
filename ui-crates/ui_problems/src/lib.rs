@@ -5,13 +5,15 @@
 // Initialize translations
 rust_i18n::i18n!("locales", fallback = "en");
 
-mod problems_drawer;
-mod filter;
 mod diagnostic_item;
+mod filter;
+mod problems_drawer;
 pub mod window;
 
 // Re-export main types
-pub use problems_drawer::{ProblemsDrawer, NavigateToDiagnostic, Diagnostic, DiagnosticSeverity, Hint};
+pub use problems_drawer::{
+    Diagnostic, DiagnosticSeverity, Hint, NavigateToDiagnostic, ProblemsDrawer,
+};
 pub use window::ProblemsWindow;
 
 /// Get current locale

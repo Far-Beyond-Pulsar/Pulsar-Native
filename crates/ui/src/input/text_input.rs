@@ -9,12 +9,12 @@ use crate::button::{Button, ButtonVariants as _};
 use crate::indicator::Indicator;
 use crate::input::clear_button;
 use crate::input::element::{LINE_NUMBER_RIGHT_MARGIN, RIGHT_MARGIN};
-use std::cmp::{max, min};
 use crate::scroll::Scrollbar;
 use crate::{h_flex, StyledExt};
 use crate::{v_flex, ActiveTheme};
 use crate::{IconName, Size};
 use crate::{Sizable, StyleSized};
+use std::cmp::{max, min};
 
 use super::InputState;
 
@@ -182,7 +182,7 @@ impl TextInput {
         };
 
         const MIN_SCROLL_PADDING: Pixels = px(2.0);
-        
+
         // Determine if we should show minimap
         let show_minimap = state.show_minimap && state.mode.is_code_editor();
 
@@ -203,7 +203,7 @@ impl TextInput {
                         &state.scroll_size,
                         left,
                         paddings.right,
-                        &last_layout
+                        &last_layout,
                     );
 
                     // Always use standard scrollbar for interaction
@@ -222,23 +222,24 @@ impl TextInput {
                             .bottom(-paddings.bottom + MIN_SCROLL_PADDING)
                             .child(scrollbar.scroll_size(scroll_size)),
                     );
-                    
+
                     // Add minimap overlay if enabled
                     if show_minimap {
-                        use super::minimap::{MinimapConfig, render_minimap_content, render_viewport_indicator, calculate_viewport_indicator};
-                        use gpui::{Bounds, point, size};
+                        use super::minimap::{
+                            calculate_viewport_indicator, render_minimap_content,
+                            render_viewport_indicator, MinimapConfig,
+                        };
+                        use gpui::{point, size, Bounds};
                         use ropey::LineType;
-                        
+
                         let total_lines = state.text.len_lines(ropey::LineType::LF);
                         let visible_range = last_layout.visible_range.clone();
                         let config = MinimapConfig::default();
-                        
+
                         // Calculate minimap bounds
-                        let minimap_bounds = Bounds::new(
-                            point(px(0.0), px(0.0)),
-                            size(config.width, px(100.0)),
-                        );
-                        
+                        let minimap_bounds =
+                            Bounds::new(point(px(0.0), px(0.0)), size(config.width, px(100.0)));
+
                         // Render minimap content lines
                         let minimap_content_elements = render_minimap_content(
                             &state.text,
@@ -247,7 +248,7 @@ impl TextInput {
                             &config,
                             minimap_bounds,
                         );
-                        
+
                         container = container.child(
                             div()
                                 .absolute()
@@ -271,19 +272,22 @@ impl TextInput {
                                         .rounded_sm()
                                         // Position calculated based on scroll position
                                         .when(total_lines > 0, |div| {
-                                            let start_ratio = visible_range.start as f32 / total_lines as f32;
-                                            let height_ratio = (visible_range.len() as f32 / total_lines as f32).min(1.0);
+                                            let start_ratio =
+                                                visible_range.start as f32 / total_lines as f32;
+                                            let height_ratio = (visible_range.len() as f32
+                                                / total_lines as f32)
+                                                .min(1.0);
                                             let min_height_px = 20.0;
-                                            let calculated_height = height_ratio.max(min_height_px / 100.0); // Convert to relative
-                                            
-                                            div
-                                                .top(relative(start_ratio))
+                                            let calculated_height =
+                                                height_ratio.max(min_height_px / 100.0); // Convert to relative
+
+                                            div.top(relative(start_ratio))
                                                 .h(relative(calculated_height))
-                                        })
-                                )
+                                        }),
+                                ),
                         );
                     }
-                    
+
                     container
                 } else {
                     this
@@ -313,7 +317,8 @@ impl TextInput {
             width: base_scroll_size.width - left_offset + right_padding + RIGHT_MARGIN,
             height: if visible_height_ratio < 0.1 {
                 // For very large documents, estimate height more efficiently
-                base_scroll_size.height * 0.1 + (base_scroll_size.height * 0.9 * visible_height_ratio)
+                base_scroll_size.height * 0.1
+                    + (base_scroll_size.height * 0.9 * visible_height_ratio)
             } else {
                 base_scroll_size.height
             },
@@ -325,9 +330,9 @@ impl TextInput {
     /// for smoother scrolling experience.
     fn calculate_buffer_zone(visible_lines: usize, total_lines: usize) -> usize {
         match visible_lines {
-            0..=10 => 2,     // Small viewports: minimal buffer
-            11..=50 => 5,    // Medium viewports: moderate buffer
-            51..=100 => 10,  // Large viewports: larger buffer
+            0..=10 => 2,                    // Small viewports: minimal buffer
+            11..=50 => 5,                   // Medium viewports: moderate buffer
+            51..=100 => 10,                 // Large viewports: larger buffer
             _ => min(20, total_lines / 10), // Very large viewports: adaptive buffer
         }
     }
@@ -342,7 +347,7 @@ impl Styled for TextInput {
 impl RenderOnce for TextInput {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         const LINE_HEIGHT: Rems = Rems(1.25);
-        
+
         // Use monospace font for text editor (when multi-line with code)
         // This provides better readability for code and consistent character width
         let font = gpui::Font {
@@ -352,7 +357,7 @@ impl RenderOnce for TextInput {
             features: gpui::FontFeatures::default(),
             fallbacks: None,
         };
-        
+
         let font_size = window.text_style().font_size.to_pixels(window.rem_size());
 
         self.state.update(cx, |state, cx| {

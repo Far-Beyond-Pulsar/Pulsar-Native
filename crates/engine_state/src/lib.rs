@@ -55,23 +55,41 @@ pub use discord::DiscordPresence;
 pub use multiuser::{MultiuserContext, MultiuserStatus};
 
 // Re-export typed systems as primary API
-pub use context::{EngineContext, WindowContext, ProjectContext, LaunchContext};
-pub use renderers_typed::{TypedRendererHandle, TypedRendererRegistry, RendererType};
+pub use context::{EngineContext, LaunchContext, ProjectContext, WindowContext};
+pub use renderers_typed::{RendererType, TypedRendererHandle, TypedRendererRegistry};
 
 // Re-export settings system (PulsarConfig surface)
 pub use settings::{
     global_config,
-    GlobalSettings, ProjectSettings,
-    NS_EDITOR, NS_PROJECT,
     // PulsarConfig types
-    ChangeEvent, Color, ConfigError, ConfigManager, ConfigStore, ConfigValue,
-    DropdownOption, FieldType, ListenerId, NamespaceSchema, OwnerHandle,
-    PersistError, SchemaEntry, SearchResult, SettingInfo, Validator,
+    ChangeEvent,
+    Color,
+    ConfigError,
+    ConfigManager,
+    ConfigStore,
+    ConfigValue,
+    DropdownOption,
+    FieldType,
+    GlobalSettings,
+    ListenerId,
+    NamespaceSchema,
+    OwnerHandle,
+    PersistError,
+    ProjectSettings,
+    SchemaEntry,
+    SearchResult,
+    SettingInfo,
+    Validator,
+    NS_EDITOR,
+    NS_PROJECT,
 };
 pub use settings_defaults::register_default_settings;
 
 // Type alias for backward compatibility - EngineState is now EngineContext
-#[deprecated(since = "0.2.0", note = "Use EngineContext instead - provides typed context fields")]
+#[deprecated(
+    since = "0.2.0",
+    note = "Use EngineContext instead - provides typed context fields"
+)]
 pub type EngineState = EngineContext;
 
 /// Set the current project path.
@@ -89,8 +107,11 @@ pub fn set_project_path(path: String) {
 /// Get the current project path from EngineContext.
 pub fn get_project_path() -> Option<String> {
     EngineContext::global().and_then(|ctx| {
-        ctx.project.read().as_ref().map(|p| p.path.to_string_lossy().into_owned())
+        ctx.project
+            .read()
+            .as_ref()
+            .map(|p| p.path.to_string_lossy().into_owned())
     })
 }
 
-pub use ui_types_common::window_types::{WindowRequest, WindowId};
+pub use ui_types_common::window_types::{WindowId, WindowRequest};

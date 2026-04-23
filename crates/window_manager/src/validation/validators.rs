@@ -69,8 +69,7 @@ impl WindowValidator {
                     return Err(WindowError::WindowNotFound(cmd.window_id));
                 }
             }
-            WindowCommand::Create(_) => {
-            }
+            WindowCommand::Create(_) => {}
         }
 
         let rules = self.rules.read();

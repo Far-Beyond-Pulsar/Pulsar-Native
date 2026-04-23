@@ -1,13 +1,13 @@
+use crate::popup_menu::{PopupMenu, PopupMenuExt};
 use crate::{
     h_flex, indicator::Indicator, tooltip::Tooltip, ActiveTheme, Colorize as _, Disableable,
     FocusableExt as _, Icon, Selectable, Sizable, Size, StyleSized, StyledExt,
 };
-use crate::popup_menu::{PopupMenu, PopupMenuExt};
 use gpui::{
-    div, prelude::FluentBuilder as _, px, relative, Action, AnyElement, App, ClickEvent, Corners,
-    Context, Corner, Div, Edges, ElementId, Hsla, InteractiveElement, Interactivity,
-    IntoElement, ParentElement, Pixels, RenderOnce, SharedString, Stateful,
-    StatefulInteractiveElement as _, StyleRefinement, Styled, Window,
+    div, prelude::FluentBuilder as _, px, relative, Action, AnyElement, App, ClickEvent, Context,
+    Corner, Corners, Div, Edges, ElementId, Hsla, InteractiveElement, Interactivity, IntoElement,
+    ParentElement, Pixels, RenderOnce, SharedString, Stateful, StatefulInteractiveElement as _,
+    StyleRefinement, Styled, Window,
 };
 use std::rc::Rc;
 

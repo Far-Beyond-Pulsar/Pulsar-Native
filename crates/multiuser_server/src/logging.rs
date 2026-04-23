@@ -9,7 +9,9 @@
 
 use anyhow::Result;
 use colored::Colorize;
-use tracing_subscriber::{fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Registry};
+use tracing_subscriber::{
+    fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Registry,
+};
 
 use crate::config::Config;
 
@@ -22,8 +24,8 @@ use crate::config::Config;
 /// - Target module names
 /// - Span tracking for async operations
 pub fn init(config: &Config) -> Result<()> {
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(&config.log_level));
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&config.log_level));
 
     // Pretty formatted logs with colors
     let fmt_layer = tracing_subscriber::fmt::layer()
@@ -70,7 +72,7 @@ pub fn print_banner(config: &Config) {
 pub fn log_config(config: &Config) {
     tracing::debug!("\n{}", "📋 Configuration".bright_cyan().bold());
     tracing::debug!("{}", "━".repeat(60).bright_black());
-    
+
     log_config_item("HTTP Server", &format!("{}", config.http_bind), "🌐");
     log_config_item("QUIC Relay", &format!("{}", config.quic_bind), "⚡");
     log_config_item("UDP Hole Punch", &format!("{}", config.udp_bind), "🔌");
@@ -78,15 +80,15 @@ pub fn log_config(config: &Config) {
     log_config_item(
         "Bandwidth Limit",
         &format!("{}/s", format_bytes(config.relay_bandwidth_limit)),
-        "📊"
+        "📊",
     );
     log_config_item(
         "Session TTL",
         &format!("{}s", config.session_ttl.as_secs()),
-        "⏱️"
+        "⏱️",
     );
     log_config_item("Log Level", &config.log_level.to_uppercase(), "📝");
-    
+
     if let Some(db_url) = &config.database_url {
         let sanitized = sanitize_connection_string(db_url);
         log_config_item("Database", &sanitized, "💾");
@@ -101,11 +103,11 @@ pub fn log_config(config: &Config) {
     } else {
         log_config_item("TLS", "Self-signed certificate", "🔓");
     }
-    
+
     if let Some(endpoint) = &config.otlp_endpoint {
         log_config_item("Telemetry", endpoint, "📡");
     }
-    
+
     tracing::debug!("{}\n", "━".repeat(60).bright_black());
 }
 
@@ -155,7 +157,7 @@ pub fn log_status(icon: &str, message: &str, status: &str, is_success: bool) {
     } else {
         status.bright_red().bold()
     };
-    
+
     tracing::debug!("{} {} → {}", icon, message, colored_status);
 }
 

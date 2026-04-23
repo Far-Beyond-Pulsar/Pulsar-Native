@@ -1,10 +1,7 @@
-use gpui::*;
 use gpui::prelude::FluentBuilder as _;
+use gpui::*;
 use ui::{
-    h_flex, v_flex, Icon, IconName, ActiveTheme as _,
-    button::Button,
-    switch::Switch,
-    label::Label,
+    button::Button, h_flex, label::Label, switch::Switch, v_flex, ActiveTheme as _, Icon, IconName,
 };
 
 // Re-export the components from ui crate for convenience
@@ -26,7 +23,7 @@ pub fn render_value_display(value: impl Into<String>, cx: &mut App) -> impl Into
                 .text_xs()
                 .font_family("monospace")
                 .text_color(theme.foreground)
-                .child(value.into())
+                .child(value.into()),
         )
 }
 
@@ -44,6 +41,6 @@ pub fn render_section_header(title: impl Into<String>, cx: &mut App) -> impl Int
                 .text_lg()
                 .font_weight(FontWeight::BOLD)
                 .text_color(theme.foreground)
-                .child(title.into())
+                .child(title.into()),
         )
 }

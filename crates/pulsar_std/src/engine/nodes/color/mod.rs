@@ -123,7 +123,11 @@ pub fn break_color(color: (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
 /// # Color Lerp
 /// Linearly interpolates between two colors using parameter t.
 #[blueprint(type: NodeTypes::pure, category: "Color", color: "#FF6B9D")]
-pub fn color_lerp(a: (f32, f32, f32, f32), b: (f32, f32, f32, f32), t: f32) -> (f32, f32, f32, f32) {
+pub fn color_lerp(
+    a: (f32, f32, f32, f32),
+    b: (f32, f32, f32, f32),
+    t: f32,
+) -> (f32, f32, f32, f32) {
     let (r1, g1, b1, a1) = a;
     let (r2, g2, b2, a2) = b;
     (

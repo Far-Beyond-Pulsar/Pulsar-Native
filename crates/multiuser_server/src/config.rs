@@ -170,8 +170,8 @@ impl Config {
 
         // Load from config file if provided
         if let Some(config_path) = &cli.config {
-            let config_str = std::fs::read_to_string(config_path)
-                .context("Failed to read config file")?;
+            let config_str =
+                std::fs::read_to_string(config_path).context("Failed to read config file")?;
             let file_config: Config = serde_json::from_str(&config_str)
                 .or_else(|_| toml::from_str(&config_str))
                 .context("Failed to parse config file")?;

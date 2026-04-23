@@ -6,8 +6,4 @@
 //! (`engine_backend::services::rust_analyzer_manager::*`) continue to compile
 //! without touching every call-site.
 
-pub use pulsar_lsp::rust_analyzer::{
-    AnalyzerEvent,
-    AnalyzerStatus,
-    RustAnalyzerManager,
-};
+pub use pulsar_lsp::rust_analyzer::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager};

@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 
 // Simplified hot reload manager without external file watching for now
 pub struct HotReloadWatcher {
@@ -13,7 +13,10 @@ impl HotReloadWatcher {
         })
     }
 
-    pub fn watch_directory(&mut self, _path: impl AsRef<Path>) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn watch_directory(
+        &mut self,
+        _path: impl AsRef<Path>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // For now, just return Ok - we'll implement proper watching later
         Ok(())
     }
@@ -45,7 +48,10 @@ impl HotReloadManager {
         }
     }
 
-    pub fn start_watching(&mut self, root_path: impl AsRef<Path>) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn start_watching(
+        &mut self,
+        root_path: impl AsRef<Path>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut watcher = HotReloadWatcher::new()?;
 
         let parent_dir = root_path.as_ref().parent().unwrap_or(Path::new("."));

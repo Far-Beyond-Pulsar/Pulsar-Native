@@ -118,15 +118,14 @@ fn safe_join(root: &std::path::Path, rel: &str) -> Result<PathBuf, Response> {
     // Reject obviously-dangerous inputs up-front.
     if rel.contains("..") {
         warn!("Path traversal attempt rejected: {:?}", rel);
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Path traversal is not permitted",
-        )
-            .into_response());
+        return Err((StatusCode::BAD_REQUEST, "Path traversal is not permitted").into_response());
     }
 
     // Normalise separators so Windows paths don't confuse things.
-    let rel = rel.trim_start_matches('/').trim_start_matches('\\').replace('\\', "/");
+    let rel = rel
+        .trim_start_matches('/')
+        .trim_start_matches('\\')
+        .replace('\\', "/");
     let candidate = root.join(&rel);
 
     // After joining, canonicalize both paths if the target exists; otherwise
@@ -303,12 +302,18 @@ pub async fn write_file(
     match std::fs::write(&path, &bytes) {
         Ok(()) => {
             // Broadcast file-change event to WebSocket subscribers.
-            let kind = if q.create.unwrap_or(false) { "created" } else { "modified" };
+            let kind = if q.create.unwrap_or(false) {
+                "created"
+            } else {
+                "modified"
+            };
             let rel = path
                 .strip_prefix(&root)
                 .map(|p| p.to_string_lossy().replace('\\', "/"))
                 .unwrap_or_default();
-            state.sessions.broadcast_file_change(&project_id, rel, kind.to_string());
+            state
+                .sessions
+                .broadcast_file_change(&project_id, rel, kind.to_string());
 
             StatusCode::OK.into_response()
         }
@@ -347,7 +352,9 @@ pub async fn delete_path(
                 .strip_prefix(&root)
                 .map(|p| p.to_string_lossy().replace('\\', "/"))
                 .unwrap_or_default();
-            state.sessions.broadcast_file_change(&project_id, rel, "deleted".into());
+            state
+                .sessions
+                .broadcast_file_change(&project_id, rel, "deleted".into());
             StatusCode::OK.into_response()
         }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
@@ -446,7 +453,10 @@ pub async fn exists(
         },
         _ => root.clone(),
     };
-    Json(ExistsResponse { exists: path.exists() }).into_response()
+    Json(ExistsResponse {
+        exists: path.exists(),
+    })
+    .into_response()
 }
 
 pub async fn stat(

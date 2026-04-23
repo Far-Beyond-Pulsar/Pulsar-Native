@@ -2,8 +2,8 @@
 //!
 //! Contains all the template generation code for different asset types.
 
-use serde_json::json;
 use super::AssetKind;
+use serde_json::json;
 
 /// Template generator for various asset types
 pub struct TemplateGenerator;
@@ -45,7 +45,8 @@ impl TemplateGenerator {
                 "nodeKind": "Primitive",
                 "name": "i32"
             }
-        }).to_string()
+        })
+        .to_string()
     }
 
     fn struct_type(name: &str) -> String {
@@ -55,7 +56,8 @@ impl TemplateGenerator {
             "description": "",
             "visibility": "Public",
             "fields": []
-        }).to_string()
+        })
+        .to_string()
     }
 
     fn enum_type(name: &str) -> String {
@@ -65,7 +67,8 @@ impl TemplateGenerator {
             "description": "",
             "visibility": "Public",
             "variants": []
-        }).to_string()
+        })
+        .to_string()
     }
 
     fn trait_type(name: &str) -> String {
@@ -75,7 +78,8 @@ impl TemplateGenerator {
             "description": "",
             "visibility": "Public",
             "methods": []
-        }).to_string()
+        })
+        .to_string()
     }
 
     fn blueprint(name: &str) -> String {
@@ -84,7 +88,8 @@ impl TemplateGenerator {
             "version": "1.0.0",
             "nodes": [],
             "connections": []
-        }).to_string()
+        })
+        .to_string()
     }
 
     fn blueprint_class(name: &str) -> String {
@@ -93,7 +98,8 @@ impl TemplateGenerator {
             "base_class": null,
             "variables": [],
             "functions": []
-        }).to_string()
+        })
+        .to_string()
     }
 
     fn blueprint_function(name: &str) -> String {
@@ -102,7 +108,8 @@ impl TemplateGenerator {
             "parameters": [],
             "return_type": "void",
             "nodes": []
-        }).to_string()
+        })
+        .to_string()
     }
 
     fn rust_script(name: &str) -> String {
@@ -135,7 +142,8 @@ impl TemplateGenerator {
                 "ambient_light": [1.0, 1.0, 1.0],
                 "skybox": null
             }
-        }).to_string()
+        })
+        .to_string()
     }
 
     fn prefab(name: &str) -> String {
@@ -149,7 +157,8 @@ impl TemplateGenerator {
                 },
                 "components": []
             }
-        }).to_string()
+        })
+        .to_string()
     }
 
     fn material(name: &str) -> String {
@@ -162,7 +171,8 @@ impl TemplateGenerator {
                 "roughness": 0.5
             },
             "textures": {}
-        }).to_string()
+        })
+        .to_string()
     }
 
     fn shader(name: &str) -> String {
@@ -188,7 +198,8 @@ impl TemplateGenerator {
             "volume": 1.0,
             "loop": false,
             "spatial": false
-        }).to_string()
+        })
+        .to_string()
     }
 
     fn audio_mixer(name: &str) -> String {
@@ -196,7 +207,8 @@ impl TemplateGenerator {
             "name": name,
             "channels": [],
             "master_volume": 1.0
-        }).to_string()
+        })
+        .to_string()
     }
 
     fn ui_layout(name: &str) -> String {
@@ -206,7 +218,8 @@ impl TemplateGenerator {
                 "type": "Container",
                 "children": []
             }
-        }).to_string()
+        })
+        .to_string()
     }
 
     fn ui_theme(name: &str) -> String {
@@ -222,7 +235,8 @@ impl TemplateGenerator {
                 "default": "sans-serif",
                 "monospace": "monospace"
             }
-        }).to_string()
+        })
+        .to_string()
     }
 
     fn data_table(_name: &str) -> String {
@@ -234,7 +248,8 @@ impl TemplateGenerator {
         json!({
             "name": name,
             "data": {}
-        }).to_string()
+        })
+        .to_string()
     }
 
     fn project_config(name: &str) -> String {

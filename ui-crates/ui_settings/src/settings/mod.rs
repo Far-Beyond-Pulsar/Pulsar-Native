@@ -1,17 +1,17 @@
 mod views;
 pub use views::*;
 
-use ui::settings::EngineSettings;
+use gpui::prelude::FluentBuilder as _;
 use gpui::*;
+use std::path::PathBuf;
+use ui::settings::EngineSettings;
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme, Icon, IconName, Theme, ThemeRegistry,
+    h_flex,
     input::{InputState, TextInput},
     scroll::ScrollbarAxis,
-    StyledExt as _,
+    v_flex, ActiveTheme, Icon, IconName, StyledExt as _, Theme, ThemeRegistry,
 };
-use std::path::PathBuf;
-use gpui::prelude::FluentBuilder as _;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingsCategory {
@@ -103,14 +103,20 @@ impl Render for SettingsScreen {
         v_flex()
             .size_full()
             .bg(theme.background)
-            .on_action(cx.listener(|screen, action: &SelectThemeAction, _w: &mut Window, cx| {
-                screen.selected_theme = action.theme_name.to_string();
-                if let Some(theme_config) = ThemeRegistry::global(cx).themes().get(&action.theme_name).cloned() {
-                    Theme::global_mut(cx).apply_config(&theme_config);
-                    cx.refresh_windows();
-                }
-                cx.notify();
-            }))
+            .on_action(
+                cx.listener(|screen, action: &SelectThemeAction, _w: &mut Window, cx| {
+                    screen.selected_theme = action.theme_name.to_string();
+                    if let Some(theme_config) = ThemeRegistry::global(cx)
+                        .themes()
+                        .get(&action.theme_name)
+                        .cloned()
+                    {
+                        Theme::global_mut(cx).apply_config(&theme_config);
+                        cx.refresh_windows();
+                    }
+                    cx.notify();
+                }),
+            )
             .child(self.render_header(cx))
             .child(
                 // Main content: sidebar + settings with proper overflow
@@ -119,7 +125,7 @@ impl Render for SettingsScreen {
                     .min_h_0()
                     .overflow_hidden()
                     .child(self.render_sidebar(cx))
-                    .child(self.render_settings_content(window, cx))
+                    .child(self.render_settings_content(window, cx)),
             )
     }
 }
@@ -150,17 +156,27 @@ impl SettingsScreen {
                                     .w(px(56.0))
                                     .h(px(56.0))
                                     .rounded_xl()
-                                    .bg(hsla(theme.primary.h, theme.primary.s, theme.primary.l, 0.15))
+                                    .bg(hsla(
+                                        theme.primary.h,
+                                        theme.primary.s,
+                                        theme.primary.l,
+                                        0.15,
+                                    ))
                                     .border_1()
-                                    .border_color(hsla(theme.primary.h, theme.primary.s, theme.primary.l, 0.3))
+                                    .border_color(hsla(
+                                        theme.primary.h,
+                                        theme.primary.s,
+                                        theme.primary.l,
+                                        0.3,
+                                    ))
                                     .flex()
                                     .items_center()
                                     .justify_center()
                                     .child(
                                         Icon::new(IconName::Settings)
                                             .size(px(28.0))
-                                            .text_color(theme.primary)
-                                    )
+                                            .text_color(theme.primary),
+                                    ),
                             )
                             .child(
                                 v_flex()
@@ -170,15 +186,15 @@ impl SettingsScreen {
                                             .text_3xl()
                                             .font_weight(FontWeight::BOLD)
                                             .text_color(theme.foreground)
-                                            .child("Engine Settings")
+                                            .child("Engine Settings"),
                                     )
                                     .child(
                                         div()
                                             .text_sm()
                                             .text_color(theme.muted_foreground)
-                                            .child("Customize your Pulsar Engine experience")
-                                    )
-                            )
+                                            .child("Customize your Pulsar Engine experience"),
+                                    ),
+                            ),
                     )
                     .child(
                         h_flex()
@@ -190,9 +206,10 @@ impl SettingsScreen {
                                     .label("Reset")
                                     .on_click(cx.listener(|screen, _, _window, cx| {
                                         screen.settings = EngineSettings::load(&screen.config_path);
-                                        screen.selected_theme = screen.settings.active_theme.clone();
+                                        screen.selected_theme =
+                                            screen.settings.active_theme.clone();
                                         cx.notify();
-                                    }))
+                                    })),
                             )
                             .child(
                                 Button::new("save-all")
@@ -202,23 +219,18 @@ impl SettingsScreen {
                                     .on_click(cx.listener(|screen, _, _window, cx| {
                                         screen.settings.save(&screen.config_path);
                                         cx.notify();
-                                    }))
-                            )
-                    )
+                                    })),
+                            ),
+                    ),
             )
             .child(
-                div()
-                    .w_full()
-                    .max_w(px(600.0))
-                    .child(
-                        TextInput::new(&self.search_input)
-                            .w_full()
-                            .prefix(
-                                Icon::new(IconName::Search)
-                                    .size_4()
-                                    .text_color(theme.muted_foreground)
-                            )
-                    )
+                div().w_full().max_w(px(600.0)).child(
+                    TextInput::new(&self.search_input).w_full().prefix(
+                        Icon::new(IconName::Search)
+                            .size_4()
+                            .text_color(theme.muted_foreground),
+                    ),
+                ),
             )
     }
 
@@ -249,8 +261,8 @@ impl SettingsScreen {
                             .text_xs()
                             .font_weight(FontWeight::BOLD)
                             .text_color(theme.muted_foreground)
-                            .child("CATEGORIES")
-                    )
+                            .child("CATEGORIES"),
+                    ),
             )
             .child(
                 v_flex()
@@ -259,13 +271,19 @@ impl SettingsScreen {
                     .p_3()
                     .gap_2()
                     .scrollable(Axis::Vertical)
-                    .children(categories.iter().map(|category| {
-                        self.render_category_button(*category, cx)
-                    }))
+                    .children(
+                        categories
+                            .iter()
+                            .map(|category| self.render_category_button(*category, cx)),
+                    ),
             )
     }
 
-    fn render_category_button(&self, category: SettingsCategory, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_category_button(
+        &self,
+        category: SettingsCategory,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let theme = cx.theme();
         let is_active = self.active_category == category;
 
@@ -275,20 +293,31 @@ impl SettingsScreen {
             .py_3p5()
             .rounded_lg()
             .when(is_active, |this| {
-                this.bg(hsla(theme.primary.h, theme.primary.s, theme.primary.l, 0.15))
-                    .border_1()
-                    .border_color(hsla(theme.primary.h, theme.primary.s, theme.primary.l, 0.3))
+                this.bg(hsla(
+                    theme.primary.h,
+                    theme.primary.s,
+                    theme.primary.l,
+                    0.15,
+                ))
+                .border_1()
+                .border_color(hsla(
+                    theme.primary.h,
+                    theme.primary.s,
+                    theme.primary.l,
+                    0.3,
+                ))
             })
             .when(!is_active, |this| {
-                this.hover(|style| {
-                    style.bg(theme.secondary.opacity(0.5))
-                })
+                this.hover(|style| style.bg(theme.secondary.opacity(0.5)))
             })
             .cursor_pointer()
-            .on_mouse_down(MouseButton::Left, cx.listener(move |screen, _event, _window, cx| {
-                screen.active_category = category;
-                cx.notify();
-            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |screen, _event, _window, cx| {
+                    screen.active_category = category;
+                    cx.notify();
+                }),
+            )
             .child(
                 h_flex()
                     .gap_3()
@@ -306,15 +335,13 @@ impl SettingsScreen {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .child(
-                                Icon::new(category.icon())
-                                    .size(px(20.0))
-                                    .text_color(if is_active {
-                                        theme.primary
-                                    } else {
-                                        theme.muted_foreground
-                                    })
-                            )
+                            .child(Icon::new(category.icon()).size(px(20.0)).text_color(
+                                if is_active {
+                                    theme.primary
+                                } else {
+                                    theme.muted_foreground
+                                },
+                            )),
                     )
                     .child(
                         v_flex()
@@ -332,19 +359,23 @@ impl SettingsScreen {
                                     } else {
                                         theme.foreground.opacity(0.9)
                                     })
-                                    .child(category.label())
+                                    .child(category.label()),
                             )
                             .child(
                                 div()
                                     .text_xs()
                                     .text_color(theme.muted_foreground)
-                                    .child(category.description())
-                            )
-                    )
+                                    .child(category.description()),
+                            ),
+                    ),
             )
     }
 
-    fn render_settings_content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_settings_content(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let theme = cx.theme();
 
         v_flex()
@@ -352,19 +383,22 @@ impl SettingsScreen {
             .min_w_0()
             .size_full()
             .scrollable(ScrollbarAxis::Vertical)
-            .child(
-                v_flex()
-                    .w_full()
-                    .p_8()
-                    .pb(px(120.0))
-                    .gap_6()
-                    .child(match self.active_category {
-                        SettingsCategory::Appearance => self.render_appearance_view(window, cx).into_any_element(),
-                        SettingsCategory::Editor => self.render_editor_view(window, cx).into_any_element(),
-                        SettingsCategory::Project => self.render_project_view(window, cx).into_any_element(),
-                        SettingsCategory::Advanced => self.render_advanced_view(window, cx).into_any_element(),
-                    })
-            )
+            .child(v_flex().w_full().p_8().pb(px(120.0)).gap_6().child(
+                match self.active_category {
+                    SettingsCategory::Appearance => {
+                        self.render_appearance_view(window, cx).into_any_element()
+                    }
+                    SettingsCategory::Editor => {
+                        self.render_editor_view(window, cx).into_any_element()
+                    }
+                    SettingsCategory::Project => {
+                        self.render_project_view(window, cx).into_any_element()
+                    }
+                    SettingsCategory::Advanced => {
+                        self.render_advanced_view(window, cx).into_any_element()
+                    }
+                },
+            ))
     }
 }
 

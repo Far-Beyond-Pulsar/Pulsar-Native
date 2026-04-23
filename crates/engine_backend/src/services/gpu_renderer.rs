@@ -4,21 +4,25 @@
 //! wgpu resources on the first `render_frame_to_surface` call, once the
 //! WgpuSurface is available.
 
-use crate::subsystems::render::{HelioRenderer, RenderMetrics};
 use crate::scene::SceneDb;
+use crate::subsystems::render::{HelioRenderer, RenderMetrics};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 /// Builder for `GpuRenderer`.
 pub struct GpuRendererBuilder {
-    scene_db:           Option<Arc<SceneDb>>,
+    scene_db: Option<Arc<SceneDb>>,
     _game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
-    _physics_query:     Option<Arc<crate::services::PhysicsQueryService>>,
+    _physics_query: Option<Arc<crate::services::PhysicsQueryService>>,
 }
 
 impl GpuRendererBuilder {
     pub fn new(_width: u32, _height: u32) -> Self {
-        Self { scene_db: None, _game_thread_state: None, _physics_query: None }
+        Self {
+            scene_db: None,
+            _game_thread_state: None,
+            _physics_query: None,
+        }
     }
 
     pub fn scene_db(mut self, db: Arc<SceneDb>) -> Self {
@@ -40,8 +44,8 @@ impl GpuRendererBuilder {
         let scene_db = self.scene_db.unwrap_or_else(|| Arc::new(SceneDb::new()));
         GpuRenderer {
             helio_renderer: Some(HelioRenderer::new(scene_db)),
-            frame_count:    0,
-            start_time:     Instant::now(),
+            frame_count: 0,
+            start_time: Instant::now(),
         }
     }
 }
@@ -50,7 +54,7 @@ impl GpuRendererBuilder {
 pub struct GpuRenderer {
     pub helio_renderer: Option<HelioRenderer>,
     frame_count: u64,
-    start_time:  Instant,
+    start_time: Instant,
 }
 
 impl GpuRenderer {
@@ -58,9 +62,9 @@ impl GpuRenderer {
     pub fn render_frame_to_surface(
         &mut self,
         device: &wgpu::Device,
-        queue:  &wgpu::Queue,
-        view:   &wgpu::TextureView,
-        width:  u32,
+        queue: &wgpu::Queue,
+        view: &wgpu::TextureView,
+        width: u32,
         height: u32,
         format: wgpu::TextureFormat,
     ) {
@@ -80,7 +84,8 @@ impl GpuRenderer {
     }
 
     pub fn get_helio_fps(&self) -> f32 {
-        self.helio_renderer.as_ref()
+        self.helio_renderer
+            .as_ref()
             .map(|r| r.get_metrics().fps)
             .unwrap_or(0.0)
     }
@@ -90,7 +95,8 @@ impl GpuRenderer {
     }
 
     pub fn is_initialized(&self) -> bool {
-        self.helio_renderer.as_ref()
+        self.helio_renderer
+            .as_ref()
             .map(|r| r.is_initialized())
             .unwrap_or(false)
     }
@@ -100,10 +106,14 @@ impl GpuRenderer {
     }
 
     pub fn get_gpu_profiler_data(&self) -> Option<crate::subsystems::render::GpuProfilerData> {
-        self.helio_renderer.as_ref().map(|r| r.get_gpu_profiler_data())
+        self.helio_renderer
+            .as_ref()
+            .map(|r| r.get_gpu_profiler_data())
     }
 
-    pub fn get_frame_count(&self) -> u64 { self.frame_count }
+    pub fn get_frame_count(&self) -> u64 {
+        self.frame_count
+    }
 }
 
 unsafe impl Send for GpuRenderer {}

@@ -1,9 +1,9 @@
 //! System information gathering
 
-use sysinfo::System;
-use std::sync::Arc;
-use parking_lot::RwLock;
 use crate::gpu_info;
+use parking_lot::RwLock;
+use std::sync::Arc;
+use sysinfo::System;
 
 /// Comprehensive system information
 #[derive(Clone)]
@@ -47,19 +47,21 @@ impl SystemInfo {
         let host_name = System::host_name().unwrap_or_else(|| "Unknown".to_string());
 
         // CPU Information
-        let cpu_brand = sys.cpus().first()
+        let cpu_brand = sys
+            .cpus()
+            .first()
             .map(|cpu| cpu.brand().to_string())
             .unwrap_or_else(|| "Unknown".to_string());
 
-        let cpu_vendor = sys.cpus().first()
+        let cpu_vendor = sys
+            .cpus()
+            .first()
             .map(|cpu| cpu.vendor_id().to_string())
             .unwrap_or_else(|| "Unknown".to_string());
 
         let cpu_cores = sys.cpus().len();
 
-        let cpu_frequency = sys.cpus().first()
-            .map(|cpu| cpu.frequency())
-            .unwrap_or(0);
+        let cpu_frequency = sys.cpus().first().map(|cpu| cpu.frequency()).unwrap_or(0);
 
         // Memory Information
         let total_memory = sys.total_memory();
@@ -67,8 +69,16 @@ impl SystemInfo {
 
         // GPU Information — detected via wgpu adapter enumeration + platform APIs.
         let gpu = gpu_info::detect_primary_gpu();
-        let gpu_name = if gpu.name.is_empty() { "Unknown".to_string() } else { gpu.name };
-        let gpu_vendor = if gpu.vendor.is_empty() { "Unknown".to_string() } else { gpu.vendor };
+        let gpu_name = if gpu.name.is_empty() {
+            "Unknown".to_string()
+        } else {
+            gpu.name
+        };
+        let gpu_vendor = if gpu.vendor.is_empty() {
+            "Unknown".to_string()
+        } else {
+            gpu.vendor
+        };
         let gpu_driver_version = gpu.driver_version;
         let gpu_vram_total_mb = gpu.vram_total_mb;
 

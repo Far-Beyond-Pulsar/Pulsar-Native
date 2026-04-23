@@ -10,14 +10,15 @@ use gpui::{
     MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, Render, ScrollHandle,
     ScrollWheelEvent, SharedString, Styled as _, Subscription, Task, UTF16Selection, Window,
 };
+use gpui_sum_tree::Bias;
 use ropey::{Rope, RopeSlice};
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::ops::Range;
 use std::rc::Rc;
-use gpui_sum_tree::Bias;
 use unicode_segmentation::*;
 
+use super::*;
 use crate::input::{
     blink_cursor::BlinkCursor,
     change::Change,
@@ -37,7 +38,6 @@ use crate::input::{
 use crate::input::{RopeExt as _, Selection};
 use crate::{highlighter::DiagnosticSet, input::text_wrapper::LineItem};
 use crate::{history::History, scroll::ScrollbarState, Root};
-use super::*;
 
 impl InputState {
     pub(in crate::input) fn line_and_position_for_offset(

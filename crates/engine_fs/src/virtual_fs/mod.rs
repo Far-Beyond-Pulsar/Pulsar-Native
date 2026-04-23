@@ -5,26 +5,24 @@
 //! editor uses the free functions in this module and never needs to care
 //! which backend is active.
 
+use anyhow::Result;
+use parking_lot::RwLock;
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
-use parking_lot::RwLock;
-use anyhow::Result;
 
 use crate::providers::{FsEntry, FsMetadata, FsProvider, LocalFsProvider, ManifestEntry};
 
 pub mod path_utils;
 
 // Re-export commonly used path utilities
-pub use path_utils::{is_cloud_path, normalize_path, cloud_join};
+pub use path_utils::{cloud_join, is_cloud_path, normalize_path};
 
 // ── Singleton ─────────────────────────────────────────────────────────────────
 
 static VIRTUAL_FS: OnceLock<Arc<RwLock<Arc<dyn FsProvider>>>> = OnceLock::new();
 
 fn global() -> &'static Arc<RwLock<Arc<dyn FsProvider>>> {
-    VIRTUAL_FS.get_or_init(|| {
-        Arc::new(RwLock::new(Arc::new(LocalFsProvider)))
-    })
+    VIRTUAL_FS.get_or_init(|| Arc::new(RwLock::new(Arc::new(LocalFsProvider))))
 }
 
 // ── Configuration ─────────────────────────────────────────────────────────────

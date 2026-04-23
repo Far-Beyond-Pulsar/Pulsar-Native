@@ -72,12 +72,17 @@ impl TabPanel {
                 move |window: &mut gpui::Window, cx: &mut gpui::App| {
                     use crate::Root;
 
-                    let new_dock_area = cx.new(|cx| DockArea::new("detached-dock", Some(1), window, cx));
+                    let new_dock_area =
+                        cx.new(|cx| DockArea::new("detached-dock", Some(1), window, cx));
                     let weak_new_dock = new_dock_area.downgrade();
 
                     let new_tab_panel = cx.new(|cx| {
-                        let channel = weak_new_dock.upgrade().map(|d| d.read(cx).channel).unwrap_or_default();
-                        let mut tab_panel = Self::new(None, weak_new_dock.clone(), channel, window, cx);
+                        let channel = weak_new_dock
+                            .upgrade()
+                            .map(|d| d.read(cx).channel)
+                            .unwrap_or_default();
+                        let mut tab_panel =
+                            Self::new(None, weak_new_dock.clone(), channel, window, cx);
                         tab_panel.closable = true;
                         tab_panel
                     });
@@ -97,7 +102,7 @@ impl TabPanel {
 
                     cx.new(|cx| Root::new(new_dock_area.into(), window, cx))
                 },
-                cx
+                cx,
             )
         });
     }
@@ -150,14 +155,20 @@ impl TabPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        tracing::debug!("DROP: Panel being dropped on channel {:?}, drag from channel {:?}", self.channel, drag.channel);
+        tracing::debug!(
+            "DROP: Panel being dropped on channel {:?}, drag from channel {:?}",
+            self.channel,
+            drag.channel
+        );
 
         // Reset drag state
         self.in_valid_drag = false;
 
         // Verify that the drag is from the same channel
         if drag.channel != self.channel {
-            tracing::debug!("DROP: Rejected - drag from different channel (cross-channel drops not allowed)");
+            tracing::debug!(
+                "DROP: Rejected - drag from different channel (cross-channel drops not allowed)"
+            );
             return;
         }
 
@@ -173,7 +184,12 @@ impl TabPanel {
         let target_entity = cx.entity().clone();
         let panels_count = self.panels.len();
         let in_tiles = self.in_tiles;
-        tracing::debug!("DROP: is_same_tab={}, ix={:?}, will_split={:?}", is_same_tab, ix, will_split);
+        tracing::debug!(
+            "DROP: is_same_tab={}, ix={:?}, will_split={:?}",
+            is_same_tab,
+            ix,
+            will_split
+        );
 
         window.defer(cx, move |window, cx| {
             // Check if we should create a new window (dragged outside bounds)

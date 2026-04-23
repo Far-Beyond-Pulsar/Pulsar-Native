@@ -14,13 +14,13 @@
 //! Object storage uses `dashmap::DashMap` which provides concurrent access
 //! without a global lock — reads on different shards proceed in parallel.
 
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use dashmap::DashMap;
 use glam::{Mat4, Vec3};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::Arc;
 
 // ─── Public types ────────────────────────────────────────────────────────────
 
@@ -93,25 +93,49 @@ impl Component {
     /// Get field metadata for this component variant
     pub fn get_field_metadata(&self) -> Vec<ComponentFieldMetadata> {
         match self {
-            Component::Material { id, color, metallic, roughness } => vec![
-                ComponentFieldMetadata::String { name: "id", value: id },
-                ComponentFieldMetadata::Color { name: "color", value: color },
-                ComponentFieldMetadata::F32 { name: "metallic", value: metallic },
-                ComponentFieldMetadata::F32 { name: "roughness", value: roughness },
+            Component::Material {
+                id,
+                color,
+                metallic,
+                roughness,
+            } => vec![
+                ComponentFieldMetadata::String {
+                    name: "id",
+                    value: id,
+                },
+                ComponentFieldMetadata::Color {
+                    name: "color",
+                    value: color,
+                },
+                ComponentFieldMetadata::F32 {
+                    name: "metallic",
+                    value: metallic,
+                },
+                ComponentFieldMetadata::F32 {
+                    name: "roughness",
+                    value: roughness,
+                },
             ],
-            Component::Script { path } => vec![
-                ComponentFieldMetadata::String { name: "path", value: path },
-            ],
+            Component::Script { path } => vec![ComponentFieldMetadata::String {
+                name: "path",
+                value: path,
+            }],
             Component::Collider { shape } => vec![
                 // TODO: Handle nested enums like ColliderShape
             ],
             Component::RigidBody { mass, kinematic } => vec![
-                ComponentFieldMetadata::F32 { name: "mass", value: mass },
-                ComponentFieldMetadata::Bool { name: "kinematic", value: kinematic },
+                ComponentFieldMetadata::F32 {
+                    name: "mass",
+                    value: mass,
+                },
+                ComponentFieldMetadata::Bool {
+                    name: "kinematic",
+                    value: kinematic,
+                },
             ],
         }
     }
-    
+
     /// Get a field value by name and type
     pub fn get_field_f32(&self, field_name: &str) -> Option<f32> {
         match (self, field_name) {
@@ -121,30 +145,30 @@ impl Component {
             _ => None,
         }
     }
-    
+
     pub fn set_field_f32(&mut self, field_name: &str, value: f32) {
         match (self, field_name) {
             (Component::Material { metallic, .. }, "metallic") => *metallic = value,
             (Component::Material { roughness, .. }, "roughness") => *roughness = value,
             (Component::RigidBody { mass, .. }, "mass") => *mass = value,
-            _ => {},
+            _ => {}
         }
     }
-    
+
     pub fn get_field_bool(&self, field_name: &str) -> Option<bool> {
         match (self, field_name) {
             (Component::RigidBody { kinematic, .. }, "kinematic") => Some(*kinematic),
             _ => None,
         }
     }
-    
+
     pub fn set_field_bool(&mut self, field_name: &str, value: bool) {
         match (self, field_name) {
             (Component::RigidBody { kinematic, .. }, "kinematic") => *kinematic = value,
-            _ => {},
+            _ => {}
         }
     }
-    
+
     pub fn get_field_string(&self, field_name: &str) -> Option<String> {
         match (self, field_name) {
             (Component::Material { id, .. }, "id") => Some(id.clone()),
@@ -152,29 +176,29 @@ impl Component {
             _ => None,
         }
     }
-    
+
     pub fn set_field_string(&mut self, field_name: &str, value: String) {
         match (self, field_name) {
             (Component::Material { id, .. }, "id") => *id = value,
             (Component::Script { path }, "path") => *path = value,
-            _ => {},
+            _ => {}
         }
     }
-    
+
     pub fn get_field_color_component(&self, field_name: &str, index: usize) -> Option<f32> {
         match (self, field_name) {
             (Component::Material { color, .. }, "color") if index < 4 => Some(color[index]),
             _ => None,
         }
     }
-    
+
     pub fn set_field_color_component(&mut self, field_name: &str, index: usize, value: f32) {
         match (self, field_name) {
             (Component::Material { color, .. }, "color") if index < 4 => color[index] = value,
-            _ => {},
+            _ => {}
         }
     }
-    
+
     pub fn variant_name(&self) -> &'static str {
         match self {
             Component::Material { .. } => "Material",
@@ -187,18 +211,33 @@ impl Component {
 
 /// Metadata for a component field - describes type and provides a reference
 pub enum ComponentFieldMetadata<'a> {
-    F32 { name: &'static str, value: &'a f32 },
-    Bool { name: &'static str, value: &'a bool },
-    String { name: &'static str, value: &'a String },
-    Vec3 { name: &'static str, value: &'a [f32; 3] },
-    Color { name: &'static str, value: &'a [f32; 4] },
+    F32 {
+        name: &'static str,
+        value: &'a f32,
+    },
+    Bool {
+        name: &'static str,
+        value: &'a bool,
+    },
+    String {
+        name: &'static str,
+        value: &'a String,
+    },
+    Vec3 {
+        name: &'static str,
+        value: &'a [f32; 3],
+    },
+    Color {
+        name: &'static str,
+        value: &'a [f32; 4],
+    },
     /// Custom field type - requires special rendering in UI layer
     /// The ui_key is used to look up the custom renderer
     Custom {
         name: &'static str,
         type_name: &'static str,
         ui_key: &'static str,
-        value_ptr: *const (),  // Type-erased pointer to the value
+        value_ptr: *const (), // Type-erased pointer to the value
     },
 }
 
@@ -483,7 +522,11 @@ impl SceneDb {
     // ── Object creation / deletion ────────────────────────────────────────
 
     /// Add an object. Returns its id.
-    pub fn add_object(&self, mut snap: SceneObjectSnapshot, parent_id: Option<ObjectId>) -> ObjectId {
+    pub fn add_object(
+        &self,
+        mut snap: SceneObjectSnapshot,
+        parent_id: Option<ObjectId>,
+    ) -> ObjectId {
         // Assign id if empty
         if snap.id.is_empty() {
             let n = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
@@ -494,7 +537,8 @@ impl SceneDb {
 
         // Always recompute scene_path from the live parent chain so it is always accurate.
         snap.scene_path = {
-            let parent_path = parent_id.as_deref()
+            let parent_path = parent_id
+                .as_deref()
                 .and_then(|pid| self.inner.objects.get(pid))
                 .map(|p| p.meta.read().scene_path.clone())
                 .unwrap_or_default();
@@ -508,13 +552,17 @@ impl SceneDb {
         // Register in children_map under the parent key (or "" for roots).
         {
             let key = parent_id.as_deref().unwrap_or("").to_string();
-            self.inner.children_map.write()
+            self.inner
+                .children_map
+                .write()
                 .entry(key)
                 .or_insert_with(Vec::new)
                 .push(id.clone());
         }
 
-        self.inner.objects.insert(id.clone(), Arc::new(SceneEntry::new(&snap)));
+        self.inner
+            .objects
+            .insert(id.clone(), Arc::new(SceneEntry::new(&snap)));
         id
     }
 
@@ -583,7 +631,8 @@ impl SceneDb {
     }
 
     pub fn get_root_snapshots(&self) -> Vec<SceneObjectSnapshot> {
-        self.get_children(None).into_iter()
+        self.get_children(None)
+            .into_iter()
             .filter_map(|id| self.get_object(&id))
             .collect()
     }
@@ -673,7 +722,8 @@ impl SceneDb {
             None => return false,
         };
 
-        let parent_path = parent.as_deref()
+        let parent_path = parent
+            .as_deref()
             .and_then(|pid| self.inner.objects.get(pid))
             .map(|p| p.meta.read().scene_path.clone())
             .unwrap_or_default();
@@ -721,7 +771,9 @@ impl SceneDb {
                 siblings.retain(|c| c != id);
             }
             let new_key = new_parent.as_deref().unwrap_or("").to_string();
-            map.entry(new_key).or_insert_with(Vec::new).push(id.to_string());
+            map.entry(new_key)
+                .or_insert_with(Vec::new)
+                .push(id.to_string());
         }
 
         // Update the object's parent field.
@@ -730,14 +782,22 @@ impl SceneDb {
         }
 
         // Recompute scene_path for the moved subtree.
-        let parent_path = new_parent.as_deref()
+        let parent_path = new_parent
+            .as_deref()
             .and_then(|pid| self.inner.objects.get(pid))
             .map(|p| p.meta.read().scene_path.clone())
             .unwrap_or_default();
-        let name = self.inner.objects.get(id)
+        let name = self
+            .inner
+            .objects
+            .get(id)
             .map(|e| e.meta.read().name.clone())
             .unwrap_or_default();
-        let new_path = if parent_path.is_empty() { name } else { format!("{}/{}", parent_path, name) };
+        let new_path = if parent_path.is_empty() {
+            name
+        } else {
+            format!("{}/{}", parent_path, name)
+        };
         self.update_subtree_path(id, &new_path);
 
         true
@@ -791,7 +851,9 @@ impl SceneDb {
     /// Return the ordered child ids of `parent_id`, or root ids if `None`.
     pub fn get_children(&self, parent_id: Option<&str>) -> Vec<ObjectId> {
         let key = parent_id.unwrap_or("");
-        self.inner.children_map.read()
+        self.inner
+            .children_map
+            .read()
             .get(key)
             .cloned()
             .unwrap_or_default()
@@ -804,7 +866,10 @@ impl SceneDb {
         }
         // entry ref dropped — safe to recurse
         for child_id in self.get_children(Some(id)) {
-            let child_name = self.inner.objects.get(&child_id)
+            let child_name = self
+                .inner
+                .objects
+                .get(&child_id)
                 .map(|e| e.meta.read().name.clone())
                 .unwrap_or_default();
             let child_path = format!("{}/{}", new_path, child_name);

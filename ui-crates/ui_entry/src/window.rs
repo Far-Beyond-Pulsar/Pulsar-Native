@@ -1,7 +1,7 @@
-use gpui::*;
-use crate::entry_screen::EntryScreen;
 use crate::entry_screen::project_selector::ProjectSelected;
-use crate::oobe::{IntroScreen, IntroComplete, has_seen_intro, mark_intro_seen};
+use crate::entry_screen::EntryScreen;
+use crate::oobe::{has_seen_intro, mark_intro_seen, IntroComplete, IntroScreen};
+use gpui::*;
 
 /// The current screen state of the entry window
 enum ScreenState {
@@ -20,23 +20,28 @@ impl EntryWindow {
         // Check if we should show the OOBE intro
         let seen_intro = has_seen_intro();
         tracing::debug!("🎯 [EntryWindow] has_seen_intro() = {}", seen_intro);
-        
+
         if !seen_intro {
             tracing::debug!("🎉 [OOBE] Showing intro screen for first-time user");
             // Show the OOBE intro screen first
             let intro_screen = cx.new(|cx| IntroScreen::new(window, cx));
-            
+
             // Subscribe to intro completion
-            cx.subscribe_in(&intro_screen, window, |this: &mut Self, _screen, _event: &IntroComplete, window, cx| {
-                tracing::debug!("🎉 [OOBE] Intro complete, transitioning to entry screen");
-                mark_intro_seen();
-                
-                // Transition to entry screen
-                let entry_screen = cx.new(|cx| EntryScreen::new(window, cx));
-                this.screen_state = ScreenState::Entry(entry_screen);
-                cx.notify();
-            }).detach();
-            
+            cx.subscribe_in(
+                &intro_screen,
+                window,
+                |this: &mut Self, _screen, _event: &IntroComplete, window, cx| {
+                    tracing::debug!("🎉 [OOBE] Intro complete, transitioning to entry screen");
+                    mark_intro_seen();
+
+                    // Transition to entry screen
+                    let entry_screen = cx.new(|cx| EntryScreen::new(window, cx));
+                    this.screen_state = ScreenState::Entry(entry_screen);
+                    cx.notify();
+                },
+            )
+            .detach();
+
             Self {
                 screen_state: ScreenState::Intro(intro_screen),
             }

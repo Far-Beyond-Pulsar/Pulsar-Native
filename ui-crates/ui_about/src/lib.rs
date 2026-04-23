@@ -1,13 +1,13 @@
-use gpui::*;
-use ui::{
-    ActiveTheme, Root, Sizable, StyledExt, TitleBar, v_flex, h_flex,
-    button::{Button, ButtonVariants as _},
-    Icon, IconName,
-};
-use gpui::prelude::FluentBuilder;
-use ui_common::translate;
 use chrono::Datelike;
+use gpui::prelude::FluentBuilder;
+use gpui::*;
 use std::sync::Arc;
+use ui::{
+    ActiveTheme, Icon, IconName, Root, Sizable, StyledExt, TitleBar,
+    button::{Button, ButtonVariants as _},
+    h_flex, v_flex,
+};
+use ui_common::translate;
 
 static LOGO_PNG: &[u8] = include_bytes!("../../../assets/images/logo_sqrkl.png");
 

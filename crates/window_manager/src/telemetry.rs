@@ -2,8 +2,7 @@ use crate::commands::{WindowCommand, WindowCommandResult};
 use crate::validation::errors::WindowError;
 use ui_types_common::window_types::{WindowId, WindowRequest};
 
-pub struct TelemetrySender {
-}
+pub struct TelemetrySender {}
 
 impl TelemetrySender {
     pub fn new() -> Self {

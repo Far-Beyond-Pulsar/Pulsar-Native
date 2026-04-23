@@ -31,9 +31,9 @@ pub struct FileManifest {
 /// Diff between two manifests
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncDiff {
-    pub files_to_add: Vec<String>,      // New files
-    pub files_to_update: Vec<String>,   // Modified files
-    pub files_to_delete: Vec<String>,   // Deleted files
+    pub files_to_add: Vec<String>,    // New files
+    pub files_to_update: Vec<String>, // Modified files
+    pub files_to_delete: Vec<String>, // Deleted files
 }
 
 impl SyncDiff {
@@ -125,20 +125,23 @@ pub fn create_manifest(project_root: &Path) -> Result<FileManifest, std::io::Err
         }
 
         let path = entry.path();
-        let relative_path = path.strip_prefix(project_root)
+        let relative_path = path
+            .strip_prefix(project_root)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
         match hash_file(path) {
             Ok(hash) => {
                 let metadata = fs::metadata(path)?;
                 // Normalize path separators to forward slashes for cross-platform compatibility
-                let normalized_path = relative_path
-                    .to_string_lossy()
-                    .replace('\\', "/");
-                
-                tracing::debug!("SIMPLE_SYNC: Added file: {} (hash: {}, size: {})", 
-                    normalized_path, &hash[..8], metadata.len());
-                
+                let normalized_path = relative_path.to_string_lossy().replace('\\', "/");
+
+                tracing::debug!(
+                    "SIMPLE_SYNC: Added file: {} (hash: {}, size: {})",
+                    normalized_path,
+                    &hash[..8],
+                    metadata.len()
+                );
+
                 files.push(FileEntry {
                     path: normalized_path,
                     hash,
@@ -153,8 +156,10 @@ pub fn create_manifest(project_root: &Path) -> Result<FileManifest, std::io::Err
 
     tracing::debug!("SIMPLE_SYNC: Created manifest with {} files", files.len());
     if files.len() > 0 {
-        tracing::debug!("SIMPLE_SYNC: Sample files: {:?}", 
-            files.iter().take(3).map(|f| &f.path).collect::<Vec<_>>());
+        tracing::debug!(
+            "SIMPLE_SYNC: Sample files: {:?}",
+            files.iter().take(3).map(|f| &f.path).collect::<Vec<_>>()
+        );
     }
     Ok(FileManifest { files })
 }
@@ -164,16 +169,29 @@ pub fn compute_diff(
     project_root: &Path,
     remote_manifest: &FileManifest,
 ) -> Result<SyncDiff, std::io::Error> {
-    tracing::debug!("SIMPLE_SYNC: Computing diff against remote manifest ({} files)", remote_manifest.files.len());
-    
+    tracing::debug!(
+        "SIMPLE_SYNC: Computing diff against remote manifest ({} files)",
+        remote_manifest.files.len()
+    );
+
     if remote_manifest.files.len() > 0 {
-        tracing::debug!("SIMPLE_SYNC: Remote sample files: {:?}", 
-            remote_manifest.files.iter().take(3).map(|f| &f.path).collect::<Vec<_>>());
+        tracing::debug!(
+            "SIMPLE_SYNC: Remote sample files: {:?}",
+            remote_manifest
+                .files
+                .iter()
+                .take(3)
+                .map(|f| &f.path)
+                .collect::<Vec<_>>()
+        );
     }
 
     // Build local manifest
     let local_manifest = create_manifest(project_root)?;
-    tracing::debug!("SIMPLE_SYNC: Local manifest has {} files", local_manifest.files.len());
+    tracing::debug!(
+        "SIMPLE_SYNC: Local manifest has {} files",
+        local_manifest.files.len()
+    );
 
     // Build lookup maps
     let mut local_map: HashMap<String, String> = local_manifest
@@ -202,8 +220,12 @@ pub fn compute_diff(
             Some(local_hash) => {
                 // File exists - check if different
                 if local_hash != &file.hash {
-                    tracing::debug!("SIMPLE_SYNC: File to UPDATE: {} (local: {}, remote: {})", 
-                        file.path, &local_hash[..8], &file.hash[..8]);
+                    tracing::debug!(
+                        "SIMPLE_SYNC: File to UPDATE: {} (local: {}, remote: {})",
+                        file.path,
+                        &local_hash[..8],
+                        &file.hash[..8]
+                    );
                     files_to_update.push(file.path.clone());
                 }
                 // Remove from local map (used to find deletions)
@@ -214,7 +236,7 @@ pub fn compute_diff(
 
     // Remaining files in local_map are deleted in remote
     let files_to_delete: Vec<String> = local_map.keys().cloned().collect();
-    
+
     if !files_to_delete.is_empty() {
         tracing::debug!("SIMPLE_SYNC: Files to DELETE: {:?}", &files_to_delete);
     }
@@ -234,7 +256,11 @@ pub fn apply_files(
     project_root: &Path,
     files: Vec<(String, Vec<u8>)>,
 ) -> Result<usize, std::io::Error> {
-    tracing::debug!("SIMPLE_SYNC: Applying {} files to {:?}", files.len(), project_root);
+    tracing::debug!(
+        "SIMPLE_SYNC: Applying {} files to {:?}",
+        files.len(),
+        project_root
+    );
     let mut written_count = 0;
 
     for (relative_path, data) in files {
@@ -256,11 +282,12 @@ pub fn apply_files(
 }
 
 /// Delete files that were removed
-pub fn delete_files(
-    project_root: &Path,
-    file_paths: Vec<String>,
-) -> Result<usize, std::io::Error> {
-    tracing::debug!("SIMPLE_SYNC: Deleting {} files from {:?}", file_paths.len(), project_root);
+pub fn delete_files(project_root: &Path, file_paths: Vec<String>) -> Result<usize, std::io::Error> {
+    tracing::debug!(
+        "SIMPLE_SYNC: Deleting {} files from {:?}",
+        file_paths.len(),
+        project_root
+    );
     let mut deleted_count = 0;
 
     for relative_path in file_paths {
@@ -282,7 +309,11 @@ pub fn read_files(
     project_root: &Path,
     file_paths: Vec<String>,
 ) -> Result<Vec<(String, Vec<u8>)>, std::io::Error> {
-    tracing::debug!("SIMPLE_SYNC: Reading {} files from {:?}", file_paths.len(), project_root);
+    tracing::debug!(
+        "SIMPLE_SYNC: Reading {} files from {:?}",
+        file_paths.len(),
+        project_root
+    );
     let mut files = Vec::new();
 
     for relative_path in file_paths {

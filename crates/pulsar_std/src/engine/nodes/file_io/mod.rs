@@ -80,12 +80,14 @@ pub fn file_write(path: String, content: String) -> Result<(), String> {
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_append(path: String, content: String) -> Result<(), String> {
     use std::io::Write;
-    match std::fs::OpenOptions::new().create(true).append(true).open(path) {
-        Ok(mut file) => {
-            match file.write_all(content.as_bytes()) {
-                Ok(()) => Ok(()),
-                Err(e) => Err(format!("Failed to write to file: {}", e)),
-            }
+    match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        Ok(mut file) => match file.write_all(content.as_bytes()) {
+            Ok(()) => Ok(()),
+            Err(e) => Err(format!("Failed to write to file: {}", e)),
         },
         Err(e) => Err(format!("Failed to open file for append: {}", e)),
     }
@@ -220,11 +222,11 @@ pub fn file_permissions(path: String) -> Result<(bool, bool, bool), String> {
         Ok(metadata) => {
             let permissions = metadata.permissions();
             Ok((
-                !permissions.readonly(),  // writable
-                true,                     // readable (if we can get metadata, it's readable)
-                false,                    // executable (platform dependent)
+                !permissions.readonly(), // writable
+                true,                    // readable (if we can get metadata, it's readable)
+                false,                   // executable (platform dependent)
             ))
-        },
+        }
         Err(e) => Err(format!("Failed to get file permissions: {}", e)),
     }
 }
@@ -247,16 +249,12 @@ pub fn file_permissions(path: String) -> Result<(bool, bool, bool), String> {
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_modified_time(path: String) -> Result<u64, String> {
     match std::fs::metadata(path) {
-        Ok(metadata) => {
-            match metadata.modified() {
-                Ok(time) => {
-                    match time.duration_since(std::time::UNIX_EPOCH) {
-                        Ok(duration) => Ok(duration.as_secs()),
-                        Err(e) => Err(format!("Time error: {}", e)),
-                    }
-                },
-                Err(e) => Err(format!("Failed to get modified time: {}", e)),
-            }
+        Ok(metadata) => match metadata.modified() {
+            Ok(time) => match time.duration_since(std::time::UNIX_EPOCH) {
+                Ok(duration) => Ok(duration.as_secs()),
+                Err(e) => Err(format!("Time error: {}", e)),
+            },
+            Err(e) => Err(format!("Failed to get modified time: {}", e)),
         },
         Err(e) => Err(format!("Failed to get file metadata: {}", e)),
     }
@@ -439,7 +437,7 @@ pub fn dir_list(path: String) -> Result<Vec<String>, String> {
                 }
             }
             Ok(files)
-        },
+        }
         Err(e) => Err(format!("Failed to read directory: {}", e)),
     }
 }

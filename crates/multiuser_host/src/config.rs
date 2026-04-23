@@ -14,7 +14,11 @@ pub struct Cli {
     pub bind: String,
 
     /// Directory used to store project files and metadata.
-    #[arg(long, env = "PULSAR_HOST_DATA_DIR", default_value = "./pulsar-host-data")]
+    #[arg(
+        long,
+        env = "PULSAR_HOST_DATA_DIR",
+        default_value = "./pulsar-host-data"
+    )]
     pub data_dir: PathBuf,
 
     /// Human-readable name shown to connected Pulsar clients.

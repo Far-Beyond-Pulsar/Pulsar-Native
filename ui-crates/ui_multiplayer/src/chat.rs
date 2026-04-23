@@ -18,13 +18,19 @@ impl MultiplayerWindow {
 
         tracing::debug!("Preparing to send chat message: {}", message);
 
-        if let (Some(client), Some(session), Some(peer_id)) = (&self.client, &self.active_session, &self.current_peer_id) {
+        if let (Some(client), Some(session), Some(peer_id)) =
+            (&self.client, &self.active_session, &self.current_peer_id)
+        {
             let client = client.clone();
             let session_id = session.session_id.clone();
             let peer_id = peer_id.clone();
             let message_to_send = message.clone();
 
-            tracing::debug!("Sending chat message from peer {} in session {}", peer_id, session_id);
+            tracing::debug!(
+                "Sending chat message from peer {} in session {}",
+                peer_id,
+                session_id
+            );
 
             // Clear input immediately
             self.chat_input.update(cx, |state, cx| {
@@ -33,11 +39,14 @@ impl MultiplayerWindow {
 
             cx.spawn(async move |_this, _cx| {
                 let client_guard = client.read().await;
-                match client_guard.send(ClientMessage::ChatMessage {
-                    session_id: session_id.clone(),
-                    peer_id: peer_id.clone(),
-                    message: message_to_send.clone(),
-                }).await {
+                match client_guard
+                    .send(ClientMessage::ChatMessage {
+                        session_id: session_id.clone(),
+                        peer_id: peer_id.clone(),
+                        message: message_to_send.clone(),
+                    })
+                    .await
+                {
                     Ok(_) => {
                         tracing::debug!("Successfully sent chat message to server");
                     }
@@ -45,10 +54,10 @@ impl MultiplayerWindow {
                         tracing::error!("Failed to send chat message: {}", e);
                     }
                 }
-            }).detach();
+            })
+            .detach();
         } else {
             tracing::error!("Cannot send chat message - client, session, or peer_id is None");
         }
     }
-
 }

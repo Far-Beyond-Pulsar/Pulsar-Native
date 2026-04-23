@@ -58,13 +58,13 @@ pub struct FileAssetStatus {
 #[derive(Clone, Debug)]
 pub struct UserPresence {
     pub peer_id: String,
-    pub current_tab: Option<String>, // What tab they're viewing
-    pub editing_file: Option<String>, // What file they're editing
+    pub current_tab: Option<String>,     // What tab they're viewing
+    pub editing_file: Option<String>,    // What file they're editing
     pub selected_object: Option<String>, // What object they have selected in scene
     pub cursor_position: Option<(f32, f32, f32)>, // 3D cursor position in scene
-    pub last_activity: u64, // Timestamp of last activity
-    pub is_idle: bool, // Whether user is idle (no activity for X seconds)
-    pub color: [f32; 3], // RGB color to identify this user
+    pub last_activity: u64,              // Timestamp of last activity
+    pub is_idle: bool,                   // Whether user is idle (no activity for X seconds)
+    pub color: [f32; 3],                 // RGB color to identify this user
 }
 
 impl UserPresence {
@@ -76,7 +76,9 @@ impl UserPresence {
             .as_secs();
 
         // Generate a unique color based on peer_id
-        let hash = peer_id.bytes().fold(0u32, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u32));
+        let hash = peer_id
+            .bytes()
+            .fold(0u32, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u32));
         let r = ((hash & 0xFF) as f32) / 255.0;
         let g = (((hash >> 8) & 0xFF) as f32) / 255.0;
         let b = (((hash >> 16) & 0xFF) as f32) / 255.0;

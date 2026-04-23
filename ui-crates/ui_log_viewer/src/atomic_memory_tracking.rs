@@ -2,17 +2,17 @@
 //!
 //! Uses atomic counters for each category to track allocations without any locking.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::memory_tracking::MemoryCategory;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Allocation size bucket for detailed tracking
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SizeBucket {
-    Tiny,      // < 64 bytes
-    Small,     // 64B - 1KB
-    Medium,    // 1KB - 16KB
-    Large,     // 16KB - 256KB
-    Huge,      // > 256KB
+    Tiny,   // < 64 bytes
+    Small,  // 64B - 1KB
+    Medium, // 1KB - 16KB
+    Large,  // 16KB - 256KB
+    Huge,   // > 256KB
 }
 
 impl SizeBucket {

@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use ui::{v_flex, ActiveTheme, StyledExt};
+use ui::{ActiveTheme, StyledExt, v_flex};
 
 /// Renders the stripped-HTML description text in a readable, prose-like layout.
 #[derive(IntoElement)]

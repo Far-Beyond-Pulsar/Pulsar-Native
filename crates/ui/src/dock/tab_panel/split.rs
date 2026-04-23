@@ -48,7 +48,7 @@ impl TabPanel {
             Some(panel) => {
                 tracing::debug!("SPLIT: Found parent StackPanel");
                 panel
-            },
+            }
             None => {
                 tracing::debug!("SPLIT: No parent StackPanel - handling root-level split");
                 tracing::debug!("SPLIT: Current TabPanel entity: {:?}", cx.entity());
@@ -270,7 +270,8 @@ impl TabPanel {
                     tab_panel.update(cx, |view, cx| view.remove_self_if_empty(window, cx))
                 })
                 .ok();
-            }).detach();
+            })
+            .detach();
         }
 
         cx.emit(PanelEvent::LayoutChanged);

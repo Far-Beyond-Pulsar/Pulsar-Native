@@ -1,9 +1,11 @@
-/// Comprehensive autocomplete system with closure completion, 
+/// Comprehensive autocomplete system with closure completion,
 /// tab completion, dictionary support, and language server integration.
-
 use anyhow::Result;
 use gpui::{Context, Task, Window};
-use lsp_types::{CompletionContext, CompletionItem, CompletionItemKind, CompletionResponse, CompletionTriggerKind, InsertTextFormat};
+use lsp_types::{
+    CompletionContext, CompletionItem, CompletionItemKind, CompletionResponse,
+    CompletionTriggerKind, InsertTextFormat,
+};
 use ropey::Rope;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -57,7 +59,8 @@ impl ComprehensiveCompletionProvider {
         let mut all_completions = Vec::new();
 
         // 1. Check for closure/bracket completion first (highest priority)
-        if let Some(closure_completion) = self.closure_provider.get_closure_completion(text, offset) {
+        if let Some(closure_completion) = self.closure_provider.get_closure_completion(text, offset)
+        {
             all_completions.push(closure_completion);
         }
 
@@ -74,11 +77,11 @@ impl ComprehensiveCompletionProvider {
         // 4. Get LSP completions (if available)
         if let Some(lsp_provider) = &self.lsp_provider {
             let lsp_task = lsp_provider.completions(text, offset, trigger, window, cx);
-            
+
             // Merge LSP completions with our completions
             return cx.spawn_in(window, async move |_, _cx| {
                 let mut combined = all_completions;
-                
+
                 if let Ok(lsp_response) = lsp_task.await {
                     match lsp_response {
                         CompletionResponse::Array(items) => combined.extend(items),
@@ -88,7 +91,8 @@ impl ComprehensiveCompletionProvider {
 
                 // Sort by priority and remove duplicates
                 combined.sort_by(|a, b| {
-                    a.sort_text.as_ref()
+                    a.sort_text
+                        .as_ref()
                         .unwrap_or(&a.label)
                         .cmp(b.sort_text.as_ref().unwrap_or(&b.label))
                 });
@@ -100,7 +104,10 @@ impl ComprehensiveCompletionProvider {
 
         // If no LSP, fallback to language-specific completions
         let language = self.detect_language(text);
-        all_completions.extend(self.language_provider.get_completions(&language, text, offset));
+        all_completions.extend(
+            self.language_provider
+                .get_completions(&language, text, offset),
+        );
 
         // Return immediately if no LSP provider
         Task::ready(Ok(CompletionResponse::Array(all_completions)))
@@ -109,14 +116,22 @@ impl ComprehensiveCompletionProvider {
     /// Detect the language from the rope content
     fn detect_language(&self, text: &Rope) -> String {
         // Simple heuristic: check first few lines for language-specific patterns
-        let first_lines: String = text.slice(0..text.len().min(500))
-            .to_string();
-        
-        if first_lines.contains("fn ") || first_lines.contains("impl ") || first_lines.contains("pub struct") {
+        let first_lines: String = text.slice(0..text.len().min(500)).to_string();
+
+        if first_lines.contains("fn ")
+            || first_lines.contains("impl ")
+            || first_lines.contains("pub struct")
+        {
             "rust".to_string()
-        } else if first_lines.contains("function ") || first_lines.contains("const ") || first_lines.contains("let ") {
+        } else if first_lines.contains("function ")
+            || first_lines.contains("const ")
+            || first_lines.contains("let ")
+        {
             "javascript".to_string()
-        } else if first_lines.contains("def ") || first_lines.contains("class ") || first_lines.contains("import ") {
+        } else if first_lines.contains("def ")
+            || first_lines.contains("class ")
+            || first_lines.contains("import ")
+        {
             "python".to_string()
         } else {
             "text".to_string()
@@ -127,12 +142,17 @@ impl ComprehensiveCompletionProvider {
     fn get_current_word(&self, text: &Rope, offset: usize) -> String {
         let offset = offset.min(text.len());
         let mut start = offset;
-        
+
         // Move backwards to find word start
         while start > 0 {
             let prev_offset = start.saturating_sub(1);
             if prev_offset < text.len() {
-                let ch = text.slice(prev_offset..prev_offset+1).to_string().chars().next().unwrap_or(' ');
+                let ch = text
+                    .slice(prev_offset..prev_offset + 1)
+                    .to_string()
+                    .chars()
+                    .next()
+                    .unwrap_or(' ');
                 if !ch.is_alphanumeric() && ch != '_' {
                     break;
                 }
@@ -141,7 +161,7 @@ impl ComprehensiveCompletionProvider {
                 break;
             }
         }
-        
+
         text.slice(start..offset).to_string()
     }
 }
@@ -170,10 +190,10 @@ impl super::CompletionProvider for ComprehensiveCompletionProvider {
         // 3. Double colon (path completion)
         // 4. Opening brackets/braces (closure completion)
         let triggers = vec!['.', ':', '{', '(', '[', '<'];
-        
-        new_text.chars().any(|ch| {
-            ch.is_alphanumeric() || ch == '_' || triggers.contains(&ch)
-        })
+
+        new_text
+            .chars()
+            .any(|ch| ch.is_alphanumeric() || ch == '_' || triggers.contains(&ch))
     }
 }
 
@@ -190,57 +210,113 @@ pub struct DictionaryProvider {
 impl DictionaryProvider {
     pub fn new() -> Self {
         let mut common_words = HashSet::new();
-        
+
         // Add common English words
         for word in &[
-            "the", "be", "to", "of", "and", "a", "in", "that", "have", "I",
-            "it", "for", "not", "on", "with", "he", "as", "you", "do", "at",
-            "this", "but", "his", "by", "from", "they", "we", "say", "her", "she",
-            "or", "an", "will", "my", "one", "all", "would", "there", "their", "what",
-            "function", "return", "public", "private", "class", "interface", "implements",
-            "extends", "import", "export", "const", "let", "var", "async", "await",
+            "the",
+            "be",
+            "to",
+            "of",
+            "and",
+            "a",
+            "in",
+            "that",
+            "have",
+            "I",
+            "it",
+            "for",
+            "not",
+            "on",
+            "with",
+            "he",
+            "as",
+            "you",
+            "do",
+            "at",
+            "this",
+            "but",
+            "his",
+            "by",
+            "from",
+            "they",
+            "we",
+            "say",
+            "her",
+            "she",
+            "or",
+            "an",
+            "will",
+            "my",
+            "one",
+            "all",
+            "would",
+            "there",
+            "their",
+            "what",
+            "function",
+            "return",
+            "public",
+            "private",
+            "class",
+            "interface",
+            "implements",
+            "extends",
+            "import",
+            "export",
+            "const",
+            "let",
+            "var",
+            "async",
+            "await",
         ] {
             common_words.insert(word.to_string());
         }
-        
+
         let system_words = Self::load_system_dictionary();
-        
+
         Self {
             learned_words: HashSet::new(),
             common_words,
             system_words,
         }
     }
-    
+
     /// Load system dictionary from common locations
     fn load_system_dictionary() -> HashSet<String> {
         let mut words = HashSet::new();
-        
+
         // Try common dictionary file locations
         let dict_paths = vec![
-            "/usr/share/dict/words",           // Unix/Linux
+            "/usr/share/dict/words",            // Unix/Linux
             "/usr/dict/words",                  // Alternative Unix location
             "C:\\Windows\\System32\\en-US.dic", // Windows (hypothetical)
         ];
-        
+
         for path in dict_paths {
             if let Ok(content) = std::fs::read_to_string(path) {
                 for line in content.lines() {
                     let word = line.trim().to_lowercase();
                     // Only include words between 3 and 15 characters
-                    if word.len() >= 3 && word.len() <= 15 && word.chars().all(|c| c.is_alphabetic()) {
+                    if word.len() >= 3
+                        && word.len() <= 15
+                        && word.chars().all(|c| c.is_alphabetic())
+                    {
                         words.insert(word);
                     }
                 }
-                tracing::info!("✓ Loaded {} words from system dictionary: {}", words.len(), path);
+                tracing::info!(
+                    "✓ Loaded {} words from system dictionary: {}",
+                    words.len(),
+                    path
+                );
                 break; // Use first available dictionary
             }
         }
-        
+
         if words.is_empty() {
             tracing::warn!("⚠ No system dictionary found, using built-in word list only");
         }
-        
+
         words
     }
 
@@ -287,7 +363,7 @@ impl DictionaryProvider {
                 });
             }
         }
-        
+
         // Search system dictionary words (lowest priority)
         // Limit to 20 matches to avoid overwhelming the completion list
         let mut system_matches = 0;
@@ -327,56 +403,202 @@ pub struct LanguageProvider {
 impl LanguageProvider {
     pub fn new() -> Self {
         let mut rust_snippets = HashMap::new();
-        rust_snippets.insert("fn".to_string(), ("fn ${1:name}(${2}) ${3:-> ${4:ReturnType}} {\n    ${5}\n}".to_string(), "Function".to_string()));
-        rust_snippets.insert("impl".to_string(), ("impl ${1:Type} {\n    ${2}\n}".to_string(), "Implementation".to_string()));
-        rust_snippets.insert("struct".to_string(), ("struct ${1:Name} {\n    ${2}\n}".to_string(), "Struct".to_string()));
-        rust_snippets.insert("enum".to_string(), ("enum ${1:Name} {\n    ${2}\n}".to_string(), "Enum".to_string()));
-        rust_snippets.insert("match".to_string(), ("match ${1:expression} {\n    ${2:pattern} => ${3},\n}".to_string(), "Match expression".to_string()));
-        rust_snippets.insert("if".to_string(), ("if ${1:condition} {\n    ${2}\n}".to_string(), "If statement".to_string()));
-        rust_snippets.insert("for".to_string(), ("for ${1:item} in ${2:iterator} {\n    ${3}\n}".to_string(), "For loop".to_string()));
-        rust_snippets.insert("while".to_string(), ("while ${1:condition} {\n    ${2}\n}".to_string(), "While loop".to_string()));
+        rust_snippets.insert(
+            "fn".to_string(),
+            (
+                "fn ${1:name}(${2}) ${3:-> ${4:ReturnType}} {\n    ${5}\n}".to_string(),
+                "Function".to_string(),
+            ),
+        );
+        rust_snippets.insert(
+            "impl".to_string(),
+            (
+                "impl ${1:Type} {\n    ${2}\n}".to_string(),
+                "Implementation".to_string(),
+            ),
+        );
+        rust_snippets.insert(
+            "struct".to_string(),
+            (
+                "struct ${1:Name} {\n    ${2}\n}".to_string(),
+                "Struct".to_string(),
+            ),
+        );
+        rust_snippets.insert(
+            "enum".to_string(),
+            (
+                "enum ${1:Name} {\n    ${2}\n}".to_string(),
+                "Enum".to_string(),
+            ),
+        );
+        rust_snippets.insert(
+            "match".to_string(),
+            (
+                "match ${1:expression} {\n    ${2:pattern} => ${3},\n}".to_string(),
+                "Match expression".to_string(),
+            ),
+        );
+        rust_snippets.insert(
+            "if".to_string(),
+            (
+                "if ${1:condition} {\n    ${2}\n}".to_string(),
+                "If statement".to_string(),
+            ),
+        );
+        rust_snippets.insert(
+            "for".to_string(),
+            (
+                "for ${1:item} in ${2:iterator} {\n    ${3}\n}".to_string(),
+                "For loop".to_string(),
+            ),
+        );
+        rust_snippets.insert(
+            "while".to_string(),
+            (
+                "while ${1:condition} {\n    ${2}\n}".to_string(),
+                "While loop".to_string(),
+            ),
+        );
 
         let mut js_snippets = HashMap::new();
-        js_snippets.insert("fn".to_string(), ("function ${1:name}(${2:params}) {\n    ${3}\n}".to_string(), "Function".to_string()));
-        js_snippets.insert("arrow".to_string(), ("(${1:params}) => {\n    ${2}\n}".to_string(), "Arrow function".to_string()));
-        js_snippets.insert("class".to_string(), ("class ${1:Name} {\n    constructor(${2}) {\n        ${3}\n    }\n}".to_string(), "Class".to_string()));
-        js_snippets.insert("if".to_string(), ("if (${1:condition}) {\n    ${2}\n}".to_string(), "If statement".to_string()));
-        js_snippets.insert("for".to_string(), ("for (let ${1:i} = 0; ${1:i} < ${2:length}; ${1:i}++) {\n    ${3}\n}".to_string(), "For loop".to_string()));
+        js_snippets.insert(
+            "fn".to_string(),
+            (
+                "function ${1:name}(${2:params}) {\n    ${3}\n}".to_string(),
+                "Function".to_string(),
+            ),
+        );
+        js_snippets.insert(
+            "arrow".to_string(),
+            (
+                "(${1:params}) => {\n    ${2}\n}".to_string(),
+                "Arrow function".to_string(),
+            ),
+        );
+        js_snippets.insert(
+            "class".to_string(),
+            (
+                "class ${1:Name} {\n    constructor(${2}) {\n        ${3}\n    }\n}".to_string(),
+                "Class".to_string(),
+            ),
+        );
+        js_snippets.insert(
+            "if".to_string(),
+            (
+                "if (${1:condition}) {\n    ${2}\n}".to_string(),
+                "If statement".to_string(),
+            ),
+        );
+        js_snippets.insert(
+            "for".to_string(),
+            (
+                "for (let ${1:i} = 0; ${1:i} < ${2:length}; ${1:i}++) {\n    ${3}\n}".to_string(),
+                "For loop".to_string(),
+            ),
+        );
 
         let mut python_snippets = HashMap::new();
-        python_snippets.insert("def".to_string(), ("def ${1:name}(${2:params}):\n    ${3:pass}".to_string(), "Function".to_string()));
-        python_snippets.insert("class".to_string(), ("class ${1:Name}:\n    def __init__(self, ${2}):\n        ${3:pass}".to_string(), "Class".to_string()));
-        python_snippets.insert("if".to_string(), ("if ${1:condition}:\n    ${2:pass}".to_string(), "If statement".to_string()));
-        python_snippets.insert("for".to_string(), ("for ${1:item} in ${2:iterable}:\n    ${3:pass}".to_string(), "For loop".to_string()));
+        python_snippets.insert(
+            "def".to_string(),
+            (
+                "def ${1:name}(${2:params}):\n    ${3:pass}".to_string(),
+                "Function".to_string(),
+            ),
+        );
+        python_snippets.insert(
+            "class".to_string(),
+            (
+                "class ${1:Name}:\n    def __init__(self, ${2}):\n        ${3:pass}".to_string(),
+                "Class".to_string(),
+            ),
+        );
+        python_snippets.insert(
+            "if".to_string(),
+            (
+                "if ${1:condition}:\n    ${2:pass}".to_string(),
+                "If statement".to_string(),
+            ),
+        );
+        python_snippets.insert(
+            "for".to_string(),
+            (
+                "for ${1:item} in ${2:iterable}:\n    ${3:pass}".to_string(),
+                "For loop".to_string(),
+            ),
+        );
 
         Self {
             rust_keywords: vec![
-                "as", "break", "const", "continue", "crate", "else", "enum", "extern",
-                "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod",
-                "move", "mut", "pub", "ref", "return", "self", "Self", "static", "struct",
-                "super", "trait", "true", "type", "unsafe", "use", "where", "while",
-                "async", "await", "dyn",
-            ].iter().map(|s| s.to_string()).collect(),
+                "as", "break", "const", "continue", "crate", "else", "enum", "extern", "false",
+                "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut",
+                "pub", "ref", "return", "self", "Self", "static", "struct", "super", "trait",
+                "true", "type", "unsafe", "use", "where", "while", "async", "await", "dyn",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
             rust_snippets,
             js_keywords: vec![
-                "break", "case", "catch", "class", "const", "continue", "debugger", "default",
-                "delete", "do", "else", "export", "extends", "finally", "for", "function",
-                "if", "import", "in", "instanceof", "let", "new", "return", "super", "switch",
-                "this", "throw", "try", "typeof", "var", "void", "while", "with", "yield",
-                "async", "await",
-            ].iter().map(|s| s.to_string()).collect(),
+                "break",
+                "case",
+                "catch",
+                "class",
+                "const",
+                "continue",
+                "debugger",
+                "default",
+                "delete",
+                "do",
+                "else",
+                "export",
+                "extends",
+                "finally",
+                "for",
+                "function",
+                "if",
+                "import",
+                "in",
+                "instanceof",
+                "let",
+                "new",
+                "return",
+                "super",
+                "switch",
+                "this",
+                "throw",
+                "try",
+                "typeof",
+                "var",
+                "void",
+                "while",
+                "with",
+                "yield",
+                "async",
+                "await",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
             js_snippets,
             python_keywords: vec![
-                "False", "None", "True", "and", "as", "assert", "async", "await", "break",
-                "class", "continue", "def", "del", "elif", "else", "except", "finally",
-                "for", "from", "global", "if", "import", "in", "is", "lambda", "nonlocal",
-                "not", "or", "pass", "raise", "return", "try", "while", "with", "yield",
-            ].iter().map(|s| s.to_string()).collect(),
+                "False", "None", "True", "and", "as", "assert", "async", "await", "break", "class",
+                "continue", "def", "del", "elif", "else", "except", "finally", "for", "from",
+                "global", "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass",
+                "raise", "return", "try", "while", "with", "yield",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
             python_snippets,
         }
     }
 
-    pub fn get_completions(&self, language: &str, text: &Rope, offset: usize) -> Vec<CompletionItem> {
+    pub fn get_completions(
+        &self,
+        language: &str,
+        text: &Rope,
+        offset: usize,
+    ) -> Vec<CompletionItem> {
         let mut completions = Vec::new();
 
         let (keywords, snippets) = match language {
@@ -388,7 +610,7 @@ impl LanguageProvider {
 
         // Get current word
         let current_word = self.get_word_at_offset(text, offset);
-        
+
         if current_word.is_empty() {
             return completions;
         }
@@ -427,11 +649,16 @@ impl LanguageProvider {
     fn get_word_at_offset(&self, text: &Rope, offset: usize) -> String {
         let offset = offset.min(text.len());
         let mut start = offset;
-        
+
         while start > 0 {
             let prev_offset = start.saturating_sub(1);
             if prev_offset < text.len() {
-                let ch = text.slice(prev_offset..prev_offset+1).to_string().chars().next().unwrap_or(' ');
+                let ch = text
+                    .slice(prev_offset..prev_offset + 1)
+                    .to_string()
+                    .chars()
+                    .next()
+                    .unwrap_or(' ');
                 if !ch.is_alphanumeric() && ch != '_' {
                     break;
                 }
@@ -440,7 +667,7 @@ impl LanguageProvider {
                 break;
             }
         }
-        
+
         text.slice(start..offset).to_string()
     }
 }
@@ -459,7 +686,7 @@ impl ClosureProvider {
         bracket_pairs.insert('<', '>');
         bracket_pairs.insert('"', '"');
         bracket_pairs.insert('\'', '\'');
-        
+
         Self { bracket_pairs }
     }
 
@@ -477,12 +704,17 @@ impl ClosureProvider {
         }
 
         let ch = text.slice(prev_offset..offset).to_string().chars().next()?;
-        
+
         // Check if it's an opening bracket/quote
         if let Some(&closing) = self.bracket_pairs.get(&ch) {
             // Check if we should auto-close (don't auto-close if closing bracket already exists)
             if offset < text.len() {
-                let next_ch = text.slice(offset..offset+1).to_string().chars().next().unwrap_or(' ');
+                let next_ch = text
+                    .slice(offset..offset + 1)
+                    .to_string()
+                    .chars()
+                    .next()
+                    .unwrap_or(' ');
                 // Don't auto-close if the next character is the closing bracket
                 if next_ch == closing {
                     return None;
@@ -518,7 +750,7 @@ mod tests {
     fn test_dictionary_completions() {
         let mut dict = DictionaryProvider::new();
         dict.learn_from_text("hello world wonderful weather");
-        
+
         let completions = dict.get_completions("wor");
         assert!(completions.iter().any(|c| c.label == "world"));
     }
@@ -528,7 +760,7 @@ mod tests {
         let closure = ClosureProvider::new();
         let text = Rope::from("test(");
         let completion = closure.get_closure_completion(&text, 5);
-        
+
         assert!(completion.is_some());
         assert_eq!(completion.unwrap().insert_text, Some(")".to_string()));
     }
@@ -538,7 +770,7 @@ mod tests {
         let lang = LanguageProvider::new();
         let text = Rope::from("f");
         let completions = lang.get_completions("rust", &text, 1);
-        
+
         assert!(completions.iter().any(|c| c.label == "fn"));
     }
 }

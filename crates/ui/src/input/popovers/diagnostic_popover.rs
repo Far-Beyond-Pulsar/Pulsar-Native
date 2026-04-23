@@ -1,17 +1,13 @@
 use std::rc::Rc;
 
 use gpui::{
-    deferred, div, px, App, AppContext as _, Bounds, Context, Empty, Entity,
-    InteractiveElement, IntoElement, ParentElement, Pixels, Point, Render, 
-    StatefulInteractiveElement, Styled, Window,
+    deferred, div, px, App, AppContext as _, Bounds, Context, Empty, Entity, InteractiveElement,
+    IntoElement, ParentElement, Pixels, Point, Render, StatefulInteractiveElement, Styled, Window,
 };
 
 use crate::{
     highlighter::DiagnosticEntry,
-    input::{
-        popovers::render_markdown,
-        InputState,
-    },
+    input::{popovers::render_markdown, InputState},
     v_flex, ActiveTheme, StyledExt,
 };
 
@@ -130,8 +126,8 @@ impl Render for DiagnosticPopover {
                                 .h_full()
                                 .overflow_y_scroll()
                                 .overflow_x_hidden()
-                                .child(render_markdown("diagnostic-message", message, window, cx))
-                        )
+                                .child(render_markdown("diagnostic-message", message, window, cx)),
+                        ),
                 )
                 .on_mouse_down_out(cx.listener(|this, _, _, cx| {
                     this.hide(cx);

@@ -16,8 +16,17 @@ pub(super) struct PeerSession {
 }
 
 impl PeerSession {
-    pub(super) fn new(peer_id: String, session_id: String, tx: mpsc::Sender<ServerMessage>) -> Self {
-        Self { peer_id, session_id, tx, joined_at: SystemTime::now() }
+    pub(super) fn new(
+        peer_id: String,
+        session_id: String,
+        tx: mpsc::Sender<ServerMessage>,
+    ) -> Self {
+        Self {
+            peer_id,
+            session_id,
+            tx,
+            joined_at: SystemTime::now(),
+        }
     }
 }
 
@@ -32,11 +41,26 @@ pub(super) struct RendezvousSession {
 
 impl RendezvousSession {
     pub(super) fn new(session_id: String, host_id: String) -> Self {
-        Self { session_id, host_id, peers: DashMap::new(), created_at: SystemTime::now() }
+        Self {
+            session_id,
+            host_id,
+            peers: DashMap::new(),
+            created_at: SystemTime::now(),
+        }
     }
-    pub(super) fn add_peer(&self, peer: PeerSession) { self.peers.insert(peer.peer_id.clone(), peer); }
-    pub(super) fn remove_peer(&self, peer_id: &str) -> Option<PeerSession> { self.peers.remove(peer_id).map(|(_, p)| p) }
-    pub(super) fn get_peer(&self, peer_id: &str) -> Option<PeerSession> { self.peers.get(peer_id).map(|p| p.clone()) }
-    pub(super) fn list_peers(&self) -> Vec<PeerSession> { self.peers.iter().map(|p| p.value().clone()).collect() }
-    pub(super) fn peer_count(&self) -> usize { self.peers.len() }
+    pub(super) fn add_peer(&self, peer: PeerSession) {
+        self.peers.insert(peer.peer_id.clone(), peer);
+    }
+    pub(super) fn remove_peer(&self, peer_id: &str) -> Option<PeerSession> {
+        self.peers.remove(peer_id).map(|(_, p)| p)
+    }
+    pub(super) fn get_peer(&self, peer_id: &str) -> Option<PeerSession> {
+        self.peers.get(peer_id).map(|p| p.clone())
+    }
+    pub(super) fn list_peers(&self) -> Vec<PeerSession> {
+        self.peers.iter().map(|p| p.value().clone()).collect()
+    }
+    pub(super) fn peer_count(&self) -> usize {
+        self.peers.len()
+    }
 }

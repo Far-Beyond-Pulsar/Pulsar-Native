@@ -23,31 +23,30 @@
 //! will automatically target the right backend.
 
 // Module declarations
-pub mod providers;
-pub mod virtual_fs;
-pub mod operations;
-pub mod templates;
-pub mod watchers;
 mod engine_fs;
+pub mod operations;
+pub mod providers;
 mod scanner;
+pub mod templates;
+pub mod virtual_fs;
+pub mod watchers;
 
 // Re-export main types
 pub use engine_fs::EngineFs;
 
 // Re-export provider types
 pub use providers::{
-    FsProvider, FsEntry, FsMetadata, ManifestEntry,
-    LocalFsProvider, RemoteFsProvider, RemoteConfig,
+    FsEntry, FsMetadata, FsProvider, LocalFsProvider, ManifestEntry, RemoteConfig, RemoteFsProvider,
 };
 
 // Re-export operations
 pub use operations::AssetOperations;
 
 // Re-export template types
-pub use templates::{AssetKind, AssetCategory};
+pub use templates::{AssetCategory, AssetKind};
 
 // Re-export commonly used virtual_fs functions
-pub use virtual_fs::{is_cloud_path, cloud_join};
+pub use virtual_fs::{cloud_join, is_cloud_path};
 
 #[cfg(test)]
 mod tests {

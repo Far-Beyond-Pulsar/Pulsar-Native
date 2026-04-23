@@ -2,8 +2,8 @@
 //!
 //! This provides a simple way to create panels with custom content.
 
-use gpui::*;
 use crate::dock::{Panel, PanelEvent, PanelState};
+use gpui::*;
 use std::rc::Rc;
 
 /// A builder for creating custom workspace panels

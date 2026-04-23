@@ -1,14 +1,14 @@
 //! Gizmo interaction controller for handling mouse-based gizmo manipulation
-//! 
+//!
 //! Handles:
 //! - Mouse hover detection (raycasting to gizmo axes)
 //! - Click and drag operations
 //! - Transform delta calculations
 //! - Applying transforms to selected objects
 
-use glam::{Vec2, Vec3, Mat4, Quat};
-use crate::scene::{SceneDb, GizmoType, GizmoAxis};
-use crate::services::{PhysicsQueryService, ColliderTag};
+use crate::scene::{GizmoAxis, GizmoType, SceneDb};
+use crate::services::{ColliderTag, PhysicsQueryService};
+use glam::{Mat4, Quat, Vec2, Vec3};
 use std::sync::Arc;
 
 /// State of gizmo interaction
@@ -44,10 +44,7 @@ pub struct GizmoInteractionController {
 }
 
 impl GizmoInteractionController {
-    pub fn new(
-        physics_query: Arc<PhysicsQueryService>,
-        scene_db: Arc<SceneDb>,
-    ) -> Self {
+    pub fn new(physics_query: Arc<PhysicsQueryService>, scene_db: Arc<SceneDb>) -> Self {
         Self {
             interaction_state: InteractionState::Idle,
             drag_state: None,
@@ -57,7 +54,7 @@ impl GizmoInteractionController {
     }
 
     /// Update gizmo hover state based on mouse position
-    /// 
+    ///
     /// # Arguments
     /// * `mouse_pos` - Normalized screen coordinates (0-1 range)
     /// * `camera_*` - Camera parameters for raycasting
@@ -90,12 +87,16 @@ impl GizmoInteractionController {
         let ndc_y = 1.0 - (mouse_pos.y * 2.0);
         let half_height = (fov / 2.0).tan();
         let half_width = half_height * aspect_ratio;
-        let ray_dir = (camera_forward 
+        let ray_dir = (camera_forward
             + camera_right * (ndc_x * half_width)
-            + camera_up * (ndc_y * half_height)).normalize();
+            + camera_up * (ndc_y * half_height))
+            .normalize();
 
         // Check if we hit a gizmo
-        if let Some(collider_tag) = self.physics_query.raycast_gizmo(ray_origin, ray_dir, 1000.0) {
+        if let Some(collider_tag) = self
+            .physics_query
+            .raycast_gizmo(ray_origin, ray_dir, 1000.0)
+        {
             let axis = match collider_tag {
                 ColliderTag::GizmoAxisX => GizmoAxis::X,
                 ColliderTag::GizmoAxisY => GizmoAxis::Y,
@@ -137,7 +138,7 @@ impl GizmoInteractionController {
             None => return false,
         };
         let gizmo_state = self.scene_db.get_gizmo_state();
-        
+
         // Store initial transform
         let initial_position_arr = entry.get_position();
         let initial_rotation_arr = entry.get_rotation();
@@ -216,9 +217,10 @@ impl GizmoInteractionController {
         let ndc_y = 1.0 - (mouse_pos.y * 2.0);
         let half_height = (fov / 2.0).tan();
         let half_width = half_height * aspect_ratio;
-        let ray_dir = (camera_forward 
+        let ray_dir = (camera_forward
             + camera_right * (ndc_x * half_width)
-            + camera_up * (ndc_y * half_height)).normalize();
+            + camera_up * (ndc_y * half_height))
+            .normalize();
 
         // Intersect ray with drag plane
         let hit_point = intersect_ray_plane(
@@ -239,11 +241,11 @@ impl GizmoInteractionController {
                         GizmoAxis::Y => Vec3::Y,
                         GizmoAxis::Z => Vec3::Z,
                     };
-                    
+
                     // Project delta onto axis
                     let movement = delta.dot(axis_vec) * axis_vec;
                     let new_position = drag_state.initial_position + movement;
-                    
+
                     self.scene_db.set_position(
                         &selected_id,
                         [new_position.x, new_position.y, new_position.z],
@@ -251,13 +253,14 @@ impl GizmoInteractionController {
                 }
                 GizmoType::Rotate => {
                     // Calculate rotation delta
-                    let to_start = (drag_state.drag_plane_origin - drag_state.initial_position).normalize();
+                    let to_start =
+                        (drag_state.drag_plane_origin - drag_state.initial_position).normalize();
                     let to_current = (hit - drag_state.initial_position).normalize();
-                    
+
                     // Calculate angle between vectors
                     let cos_angle = to_start.dot(to_current).clamp(-1.0, 1.0);
                     let angle = cos_angle.acos();
-                    
+
                     // Determine sign based on cross product
                     let axis_vec = match drag_state.axis {
                         GizmoAxis::X => Vec3::X,
@@ -266,9 +269,9 @@ impl GizmoInteractionController {
                     };
                     let cross = to_start.cross(to_current);
                     let sign = if cross.dot(axis_vec) < 0.0 { -1.0 } else { 1.0 };
-                    
+
                     let rotation_delta = sign * angle.to_degrees();
-                    
+
                     // Apply rotation to initial rotation
                     let mut new_rotation = drag_state.initial_rotation;
                     match drag_state.axis {
@@ -276,7 +279,7 @@ impl GizmoInteractionController {
                         GizmoAxis::Y => new_rotation.y += rotation_delta,
                         GizmoAxis::Z => new_rotation.z += rotation_delta,
                     }
-                    
+
                     self.scene_db.set_rotation(
                         &selected_id,
                         [new_rotation.x, new_rotation.y, new_rotation.z],
@@ -290,21 +293,19 @@ impl GizmoInteractionController {
                         GizmoAxis::Y => Vec3::Y,
                         GizmoAxis::Z => Vec3::Z,
                     };
-                    
+
                     let scale_delta = delta.dot(axis_vec);
                     let scale_multiplier = 1.0 + scale_delta;
-                    
+
                     let mut new_scale = drag_state.initial_scale;
                     match drag_state.axis {
                         GizmoAxis::X => new_scale.x *= scale_multiplier.max(0.01),
                         GizmoAxis::Y => new_scale.y *= scale_multiplier.max(0.01),
                         GizmoAxis::Z => new_scale.z *= scale_multiplier.max(0.01),
                     }
-                    
-                    self.scene_db.set_scale(
-                        &selected_id,
-                        [new_scale.x, new_scale.y, new_scale.z],
-                    );
+
+                    self.scene_db
+                        .set_scale(&selected_id, [new_scale.x, new_scale.y, new_scale.z]);
                 }
                 GizmoType::None => {}
             }
@@ -343,7 +344,7 @@ fn calculate_drag_plane(
             // For translation, use a plane perpendicular to camera that contains the axis
             let to_camera = (camera_position - object_position).normalize();
             let plane_normal = to_camera.cross(axis_vec).normalize();
-            
+
             // If axis is parallel to camera, use a perpendicular plane
             let plane_normal = if plane_normal.length() < 0.01 {
                 // Find any perpendicular vector
@@ -355,7 +356,7 @@ fn calculate_drag_plane(
             } else {
                 plane_normal
             };
-            
+
             (object_position, plane_normal)
         }
         GizmoType::Rotate => {
@@ -366,7 +367,7 @@ fn calculate_drag_plane(
             // For scale, use same logic as translate
             let to_camera = (camera_position - object_position).normalize();
             let plane_normal = to_camera.cross(axis_vec).normalize();
-            
+
             let plane_normal = if plane_normal.length() < 0.01 {
                 if axis_vec.x.abs() < 0.9 {
                     Vec3::X.cross(axis_vec).normalize()
@@ -376,7 +377,7 @@ fn calculate_drag_plane(
             } else {
                 plane_normal
             };
-            
+
             (object_position, plane_normal)
         }
         GizmoType::None => (object_position, Vec3::Y),
@@ -391,18 +392,18 @@ fn intersect_ray_plane(
     plane_normal: Vec3,
 ) -> Option<Vec3> {
     let denom = plane_normal.dot(ray_direction);
-    
+
     // Ray is parallel to plane
     if denom.abs() < 0.0001 {
         return None;
     }
-    
+
     let t = (plane_origin - ray_origin).dot(plane_normal) / denom;
-    
+
     // Intersection is behind the ray origin
     if t < 0.0 {
         return None;
     }
-    
+
     Some(ray_origin + ray_direction * t)
 }

@@ -46,7 +46,11 @@ impl AppMenuBar {
     }
 
     /// Create a new app menu bar from a pre-built list of [`OwnedMenu`]s.
-    pub fn new_with_menus(menus: Vec<OwnedMenu>, window: &mut Window, cx: &mut App) -> Entity<Self> {
+    pub fn new_with_menus(
+        menus: Vec<OwnedMenu>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Entity<Self> {
         cx.new(|cx| {
             let menu_bar = cx.entity();
             let menus = menus

@@ -1,9 +1,9 @@
 //! Performance metrics tracking for Mission Control
 
-use std::collections::VecDeque;
-use sysinfo::{System, Networks, Components};
-use ui_common::SharedState;
 use crate::gpu_info;
+use std::collections::VecDeque;
+use sysinfo::{Components, Networks, System};
+use ui_common::SharedState;
 
 /// Maximum number of data points to keep in history
 pub const MAX_HISTORY_SIZE: usize = 20;
@@ -199,7 +199,9 @@ impl PerformanceMetrics {
             }
         };
 
-        let memory_mb = self.system.process(self.current_pid)
+        let memory_mb = self
+            .system
+            .process(self.current_pid)
             .map(|p| p.memory() as f64 / 1024.0 / 1024.0)
             .unwrap_or(0.0);
 
@@ -209,11 +211,15 @@ impl PerformanceMetrics {
         // ── Extended memory details ───────────────────────────────────────────
         self.mem_snapshot = crate::mem_details::collect(&self.system);
         if let Some(committed) = self.mem_snapshot.committed_mb {
-            if self.committed_history.len() >= MAX_HISTORY_SIZE { self.committed_history.pop_front(); }
+            if self.committed_history.len() >= MAX_HISTORY_SIZE {
+                self.committed_history.pop_front();
+            }
             self.committed_history.push_back(committed as f64);
         }
         if let Some(cached) = self.mem_snapshot.cached_mb {
-            if self.cached_history.len() >= MAX_HISTORY_SIZE { self.cached_history.pop_front(); }
+            if self.cached_history.len() >= MAX_HISTORY_SIZE {
+                self.cached_history.pop_front();
+            }
             self.cached_history.push_back(cached as f64);
         }
 
@@ -224,7 +230,9 @@ impl PerformanceMetrics {
         }
         for (i, cpu) in self.system.cpus().iter().enumerate() {
             let hist = &mut self.cpu_core_histories[i];
-            if hist.len() >= MAX_HISTORY_SIZE { hist.pop_front(); }
+            if hist.len() >= MAX_HISTORY_SIZE {
+                hist.pop_front();
+            }
             hist.push_back(cpu.cpu_usage() as f64);
         }
 
@@ -240,7 +248,9 @@ impl PerformanceMetrics {
                 let label = comp.label().to_string();
                 let temp = comp.temperature() as f64;
                 if let Some(entry) = self.temp_histories.iter_mut().find(|(l, _)| *l == label) {
-                    if entry.1.len() >= MAX_HISTORY_SIZE { entry.1.pop_front(); }
+                    if entry.1.len() >= MAX_HISTORY_SIZE {
+                        entry.1.pop_front();
+                    }
                     entry.1.push_back(temp);
                 } else {
                     let mut dq = VecDeque::with_capacity(MAX_HISTORY_SIZE);
@@ -261,10 +271,13 @@ impl PerformanceMetrics {
         // ── GPU engine utilization (PDH, Windows only) ────────────────────────
         let engine_map = crate::gpu_engines::collect();
         for (engine, pct) in &engine_map {
-            let hist = self.gpu_engine_histories
+            let hist = self
+                .gpu_engine_histories
                 .entry(engine.clone())
                 .or_insert_with(|| VecDeque::with_capacity(MAX_HISTORY_SIZE));
-            if hist.len() >= MAX_HISTORY_SIZE { hist.pop_front(); }
+            if hist.len() >= MAX_HISTORY_SIZE {
+                hist.pop_front();
+            }
             hist.push_back(*pct);
         }
         // Also push 0 for any known engine not seen this tick (keeps histories in sync)
@@ -272,7 +285,9 @@ impl PerformanceMetrics {
             for &eng in crate::gpu_engines::KNOWN_ENGINES {
                 if !engine_map.contains_key(eng) {
                     if let Some(hist) = self.gpu_engine_histories.get_mut(eng) {
-                        if hist.len() >= MAX_HISTORY_SIZE { hist.pop_front(); }
+                        if hist.len() >= MAX_HISTORY_SIZE {
+                            hist.pop_front();
+                        }
                         hist.push_back(0.0);
                     }
                 }
@@ -280,7 +295,8 @@ impl PerformanceMetrics {
         }
 
         // ── Network (bytes since last refresh ≈ bytes/s) ─────────────────────
-        let (total_rx, total_tx) = self.networks
+        let (total_rx, total_tx) = self
+            .networks
             .iter()
             .fold((0u64, 0u64), |(rx, tx), (_, data)| {
                 (rx + data.received(), tx + data.transmitted())
@@ -289,10 +305,15 @@ impl PerformanceMetrics {
         self.current_net_tx_kbps = total_tx as f64 / 1024.0;
 
         // ── Disk I/O (process-level, bytes since last refresh ≈ bytes/s) ─────
-        let (disk_r, disk_w) = self.system.process(self.current_pid)
+        let (disk_r, disk_w) = self
+            .system
+            .process(self.current_pid)
             .map(|p| {
                 let u = p.disk_usage();
-                (u.read_bytes as f64 / 1024.0, u.written_bytes as f64 / 1024.0)
+                (
+                    u.read_bytes as f64 / 1024.0,
+                    u.written_bytes as f64 / 1024.0,
+                )
             })
             .unwrap_or((0.0, 0.0));
         self.current_disk_read_kbps = disk_r;
@@ -338,24 +359,49 @@ impl PerformanceMetrics {
     }
 
     fn add_gpu(&mut self, vram_used_mb: f64) {
-        if self.gpu_history.len() >= MAX_HISTORY_SIZE { self.gpu_history.pop_front(); }
-        self.gpu_history.push_back(GpuDataPoint { index: self.gpu_counter, vram_used_mb });
+        if self.gpu_history.len() >= MAX_HISTORY_SIZE {
+            self.gpu_history.pop_front();
+        }
+        self.gpu_history.push_back(GpuDataPoint {
+            index: self.gpu_counter,
+            vram_used_mb,
+        });
         self.gpu_counter += 1;
     }
 
     fn add_net(&mut self, rx_kbps: f64, tx_kbps: f64) {
-        if self.net_rx_history.len() >= MAX_HISTORY_SIZE { self.net_rx_history.pop_front(); }
-        if self.net_tx_history.len() >= MAX_HISTORY_SIZE { self.net_tx_history.pop_front(); }
-        self.net_rx_history.push_back(NetDataPoint { index: self.net_counter, kbps: rx_kbps });
-        self.net_tx_history.push_back(NetDataPoint { index: self.net_counter, kbps: tx_kbps });
+        if self.net_rx_history.len() >= MAX_HISTORY_SIZE {
+            self.net_rx_history.pop_front();
+        }
+        if self.net_tx_history.len() >= MAX_HISTORY_SIZE {
+            self.net_tx_history.pop_front();
+        }
+        self.net_rx_history.push_back(NetDataPoint {
+            index: self.net_counter,
+            kbps: rx_kbps,
+        });
+        self.net_tx_history.push_back(NetDataPoint {
+            index: self.net_counter,
+            kbps: tx_kbps,
+        });
         self.net_counter += 1;
     }
 
     fn add_disk(&mut self, read_kbps: f64, write_kbps: f64) {
-        if self.disk_read_history.len() >= MAX_HISTORY_SIZE { self.disk_read_history.pop_front(); }
-        if self.disk_write_history.len() >= MAX_HISTORY_SIZE { self.disk_write_history.pop_front(); }
-        self.disk_read_history.push_back(DiskDataPoint { index: self.disk_counter, kbps: read_kbps });
-        self.disk_write_history.push_back(DiskDataPoint { index: self.disk_counter, kbps: write_kbps });
+        if self.disk_read_history.len() >= MAX_HISTORY_SIZE {
+            self.disk_read_history.pop_front();
+        }
+        if self.disk_write_history.len() >= MAX_HISTORY_SIZE {
+            self.disk_write_history.pop_front();
+        }
+        self.disk_read_history.push_back(DiskDataPoint {
+            index: self.disk_counter,
+            kbps: read_kbps,
+        });
+        self.disk_write_history.push_back(DiskDataPoint {
+            index: self.disk_counter,
+            kbps: write_kbps,
+        });
         self.disk_counter += 1;
     }
 

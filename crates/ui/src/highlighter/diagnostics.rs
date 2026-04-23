@@ -5,8 +5,8 @@ use std::{
 };
 
 use gpui::{px, App, HighlightStyle, Hsla, SharedString, UnderlineStyle};
-use ropey::Rope;
 use gpui_sum_tree::{Bias, SeekTarget, SumTree};
+use ropey::Rope;
 
 use crate::{
     input::{Position, RopeExt as _},

@@ -41,12 +41,12 @@
 //!
 //! Uses **Kahn's algorithm** for topological sorting to determine execution order.
 
+use crate::args::ParsedArgs;
+use crate::logging::LogGuard;
+use engine_state::EngineContext;
 use std::collections::{HashMap, HashSet, VecDeque};
 use thiserror::Error;
 use tokio::runtime::Runtime;
-use engine_state::EngineContext;
-use crate::args::ParsedArgs;
-use crate::logging::LogGuard;
 
 /// Unique identifier for an initialization task
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -120,7 +120,6 @@ pub struct InitContext {
     // legacy channel fields (unused)
     // pub window_tx: Option<WindowRequestSender>,
     // pub window_rx: Option<WindowRequestReceiver>,
-
     /// Engine context (replaces EngineState)
     pub engine_context: Option<EngineContext>,
 }

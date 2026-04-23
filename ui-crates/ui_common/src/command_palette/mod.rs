@@ -53,14 +53,13 @@ mod palette_trait;
 pub mod generic_palette;
 
 // New dynamic palette system
-pub mod palette_manager;
 pub mod palette_data;
 pub mod palette_delegate;
+pub mod palette_manager;
 
 // Public API exports
-pub use palette_trait::{PaletteDelegate, PaletteItem};
 pub use generic_palette::GenericPalette;
-pub use palette_manager::{PaletteManager, PaletteId};
-pub use palette_data::{Palette, ItemId, PaletteItemData};
+pub use palette_data::{ItemId, Palette, PaletteItemData};
 pub use palette_delegate::PaletteViewDelegate;
-
+pub use palette_manager::{PaletteId, PaletteManager};
+pub use palette_trait::{PaletteDelegate, PaletteItem};

@@ -1,6 +1,5 @@
 use gpui::{
-    div, AnyView, App, Entity, IntoElement, ParentElement, RenderOnce, SharedString, Styled,
-    Window,
+    div, AnyView, App, Entity, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window,
 };
 
 use crate::{v_flex, ActiveTheme as _, TitleBar};

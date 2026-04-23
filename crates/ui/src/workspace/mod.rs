@@ -24,8 +24,8 @@ mod workspace_panel;
 
 pub use workspace_panel::WorkspacePanel;
 
-use gpui::*;
 use crate::dock::{DockArea, DockChannel, DockItem, DockPlacement, Panel, PanelView};
+use gpui::*;
 use std::sync::Arc;
 
 /// A complete modular workspace with docking support
@@ -35,14 +35,8 @@ pub struct Workspace {
 
 impl Workspace {
     /// Create a new workspace
-    pub fn new(
-        id: impl Into<SharedString>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        let dock_area = cx.new(|cx| {
-            DockArea::new(id, None, window, cx)
-        });
+    pub fn new(id: impl Into<SharedString>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let dock_area = cx.new(|cx| DockArea::new(id, None, window, cx));
 
         Self { dock_area }
     }
@@ -54,9 +48,7 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let dock_area = cx.new(|cx| {
-            DockArea::new_with_channel(id, None, channel, window, cx)
-        });
+        let dock_area = cx.new(|cx| DockArea::new_with_channel(id, None, channel, window, cx));
 
         Self { dock_area }
     }

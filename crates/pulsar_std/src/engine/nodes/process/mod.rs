@@ -97,13 +97,9 @@ pub fn shell_execute(command: String) -> Result<String, String> {
     use std::process::Command;
 
     let output = if cfg!(target_os = "windows") {
-        Command::new("cmd")
-            .args(["/C", &command])
-            .output()
+        Command::new("cmd").args(["/C", &command]).output()
     } else {
-        Command::new("sh")
-            .args(["-c", &command])
-            .output()
+        Command::new("sh").args(["-c", &command]).output()
     };
 
     match output {
@@ -113,7 +109,7 @@ pub fn shell_execute(command: String) -> Result<String, String> {
             } else {
                 Err(String::from_utf8_lossy(&output.stderr).to_string())
             }
-        },
+        }
         Err(e) => Err(format!("Failed to execute command: {}", e)),
     }
 }
@@ -138,13 +134,9 @@ pub fn shell_execute_async(command: String) -> Result<u32, String> {
     use std::process::Command;
 
     let child = if cfg!(target_os = "windows") {
-        Command::new("cmd")
-            .args(["/C", &command])
-            .spawn()
+        Command::new("cmd").args(["/C", &command]).spawn()
     } else {
-        Command::new("sh")
-            .args(["-c", &command])
-            .spawn()
+        Command::new("sh").args(["-c", &command]).spawn()
     };
 
     match child {
@@ -211,7 +203,7 @@ pub fn shell_pipe(command1: String, command2: String) -> Result<String, String> 
             } else {
                 Err(String::from_utf8_lossy(&output.stderr).to_string())
             }
-        },
+        }
         Err(e) => Err(format!("Failed to execute second command: {}", e)),
     }
 }
@@ -269,7 +261,7 @@ pub fn shell_timeout(command: String, timeout: i64) -> Result<String, String> {
             } else {
                 Err(String::from_utf8_lossy(&output.stderr).to_string())
             }
-        },
+        }
         Ok(None) => {
             // Process still running - wait for timeout
             let timeout_secs = timeout as u64;
@@ -283,13 +275,13 @@ pub fn shell_timeout(command: String, timeout: i64) -> Result<String, String> {
                     } else {
                         Err(String::from_utf8_lossy(&output.stderr).to_string())
                     }
-                },
+                }
                 _ => {
                     let _ = child.kill();
                     Err("Command timed out".to_string())
                 }
             }
-        },
+        }
         Err(e) => Err(format!("Error checking process status: {}", e)),
     }
 }
@@ -314,13 +306,9 @@ pub fn shell_exit_code(command: String) -> Result<i32, String> {
     use std::process::Command;
 
     let status = if cfg!(target_os = "windows") {
-        Command::new("cmd")
-            .args(["/C", &command])
-            .status()
+        Command::new("cmd").args(["/C", &command]).status()
     } else {
-        Command::new("sh")
-            .args(["-c", &command])
-            .status()
+        Command::new("sh").args(["-c", &command]).status()
     };
 
     match status {
@@ -350,13 +338,9 @@ pub fn shell_which(command: String) -> Result<String, String> {
     use std::process::Command;
 
     let output = if cfg!(target_os = "windows") {
-        Command::new("where")
-            .arg(&command)
-            .output()
+        Command::new("where").arg(&command).output()
     } else {
-        Command::new("which")
-            .arg(&command)
-            .output()
+        Command::new("which").arg(&command).output()
     };
 
     match output {
@@ -371,7 +355,7 @@ pub fn shell_which(command: String) -> Result<String, String> {
             } else {
                 Err(format!("Command '{}' not found", command))
             }
-        },
+        }
         Err(e) => Err(format!("Failed to search for command: {}", e)),
     }
 }

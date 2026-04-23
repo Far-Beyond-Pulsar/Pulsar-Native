@@ -1,14 +1,14 @@
+use crate::engine_docs::{EngineDocsState, TreeNode};
 use gpui::{prelude::*, *};
 use ui::{
-    ActiveTheme, Sizable, StyledExt,
-    h_flex, v_flex, IconName, Icon,
-    text::TextView,
-    resizable::{h_resizable, resizable_panel, ResizableState},
+    ActiveTheme, Icon, IconName, Sizable, StyledExt, h_flex,
+    hierarchical_tree::{render_tree_category, render_tree_folder, render_tree_item, tree_colors},
     input::TextInput,
+    resizable::{ResizableState, h_resizable, resizable_panel},
     scroll::ScrollbarAxis,
-    hierarchical_tree::{render_tree_folder, render_tree_category, render_tree_item, tree_colors},
+    text::TextView,
+    v_flex,
 };
-use crate::engine_docs::{EngineDocsState, TreeNode};
 
 pub struct EngineDocsPanel;
 
@@ -25,34 +25,48 @@ impl EngineDocsPanel {
         on_load_content: impl Fn(&mut V, String, &mut Window, &mut Context<V>) + 'static + Clone,
         window: &mut Window,
         cx: &mut Context<V>,
-    ) -> impl IntoElement 
+    ) -> impl IntoElement
     where
         V: Render,
     {
         let breadcrumb_parts = Self::render_breadcrumbs(state);
         let markdown = state.markdown_content.clone();
-        
+
         let theme = cx.theme().clone();
 
-        let visible_items: Vec<_> = state.flat_visible_items.iter()
+        let visible_items: Vec<_> = state
+            .flat_visible_items
+            .iter()
             .map(|&idx| state.tree_items[idx].clone())
             .collect();
-        
-        let tree_nodes: Vec<AnyElement> = visible_items.iter().map(|node| {
-            Self::render_tree_node(node, state, on_toggle_expansion.clone(), on_load_content.clone(), cx)
-        }).collect();
+
+        let tree_nodes: Vec<AnyElement> = visible_items
+            .iter()
+            .map(|node| {
+                Self::render_tree_node(
+                    node,
+                    state,
+                    on_toggle_expansion.clone(),
+                    on_load_content.clone(),
+                    cx,
+                )
+            })
+            .collect();
 
         h_resizable("docs-horizontal")
             .state(sidebar_resizable)
             .child(
                 resizable_panel()
                     .size(px(280.0))
-                    .child(Self::render_sidebar(state, tree_nodes, &theme))
+                    .child(Self::render_sidebar(state, tree_nodes, &theme)),
             )
-            .child(
-                resizable_panel()
-                    .child(Self::render_content(breadcrumb_parts, markdown, window, cx, &theme))
-            )
+            .child(resizable_panel().child(Self::render_content(
+                breadcrumb_parts,
+                markdown,
+                window,
+                cx,
+                &theme,
+            )))
     }
 
     fn render_sidebar(
@@ -83,15 +97,15 @@ impl EngineDocsPanel {
                             .child(
                                 Icon::new(IconName::Code)
                                     .size_4()
-                                    .text_color(tree_colors::CODE_BLUE)
+                                    .text_color(tree_colors::CODE_BLUE),
                             )
                             .child(
                                 div()
                                     .text_sm()
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(theme.foreground)
-                                    .child("API Reference")
-                            )
+                                    .child("API Reference"),
+                            ),
                     )
                     .child(
                         div()
@@ -102,8 +116,8 @@ impl EngineDocsPanel {
                             .text_xs()
                             .font_weight(gpui::FontWeight::MEDIUM)
                             .text_color(theme.accent)
-                            .child(format!("{}", tree_nodes.len()))
-                    )
+                            .child(format!("{}", tree_nodes.len())),
+                    ),
             )
             .child(
                 // Search bar
@@ -119,26 +133,23 @@ impl EngineDocsPanel {
                             .prefix(
                                 Icon::new(IconName::Search)
                                     .size_4()
-                                    .text_color(theme.secondary_foreground)
+                                    .text_color(theme.secondary_foreground),
                             )
                             .appearance(true)
-                            .bordered(true)
-                    )
+                            .bordered(true),
+                    ),
             )
             .child(
                 // Tree items with scroll
-                div()
-                    .flex_1()
-                    .overflow_hidden()
-                    .child(
-                        v_flex()
-                            .size_full()
-                            .p_2()
-                            .gap_px()
-                            .font_family("monospace")
-                            .scrollable(ScrollbarAxis::Vertical)
-                            .children(tree_nodes)
-                    )
+                div().flex_1().overflow_hidden().child(
+                    v_flex()
+                        .size_full()
+                        .p_2()
+                        .gap_px()
+                        .font_family("monospace")
+                        .scrollable(ScrollbarAxis::Vertical)
+                        .children(tree_nodes),
+                ),
             )
     }
 
@@ -149,43 +160,32 @@ impl EngineDocsPanel {
         cx: &mut App,
         theme: &ui::ThemeColor,
     ) -> impl IntoElement {
-        div()
-            .size_full()
-            .bg(theme.background)
-            .child(
-                v_flex()
-                    .size_full()
-                    .when(breadcrumb_parts.is_some(), |this| {
-                        this.child(Self::render_breadcrumb_bar(breadcrumb_parts.unwrap(), theme))
-                    })
-                    .child(
-                        div()
-                            .flex_1()
-                            .overflow_hidden()
-                            .child(
-                                div()
-                                    .size_full()
-                                    .scrollable(ScrollbarAxis::Vertical)
-                                    .child(
-                                        div()
-                                            .w_full()
-                                            .max_w(px(1200.0))
-                                            .mx_auto()
-                                            .px_8()
-                                            .py_8()
-                                            .child(
-                                                TextView::markdown(
-                                                    "docs-markdown",
-                                                    markdown,
-                                                    window,
-                                                    cx,
-                                                )
-                                                .selectable()
-                                            )
-                                    )
-                            )
-                    )
-            )
+        div().size_full().bg(theme.background).child(
+            v_flex()
+                .size_full()
+                .when(breadcrumb_parts.is_some(), |this| {
+                    this.child(Self::render_breadcrumb_bar(
+                        breadcrumb_parts.unwrap(),
+                        theme,
+                    ))
+                })
+                .child(
+                    div().flex_1().overflow_hidden().child(
+                        div().size_full().scrollable(ScrollbarAxis::Vertical).child(
+                            div()
+                                .w_full()
+                                .max_w(px(1200.0))
+                                .mx_auto()
+                                .px_8()
+                                .py_8()
+                                .child(
+                                    TextView::markdown("docs-markdown", markdown, window, cx)
+                                        .selectable(),
+                                ),
+                        ),
+                    ),
+                ),
+        )
     }
 
     fn render_breadcrumb_bar(parts: Vec<String>, theme: &ui::ThemeColor) -> impl IntoElement {
@@ -203,14 +203,14 @@ impl EngineDocsPanel {
                 crumbs = crumbs.child(
                     Icon::new(IconName::BookOpen)
                         .size_4()
-                        .text_color(theme.accent)
+                        .text_color(theme.accent),
                 );
                 for (idx, part) in parts.iter().enumerate() {
                     if idx > 0 {
                         crumbs = crumbs.child(
                             Icon::new(IconName::ChevronRight)
                                 .size_3()
-                                .text_color(theme.secondary_foreground)
+                                .text_color(theme.secondary_foreground),
                         );
                     }
                     crumbs = crumbs.child(
@@ -222,7 +222,7 @@ impl EngineDocsPanel {
                             } else {
                                 theme.muted_foreground
                             })
-                            .child(part.clone())
+                            .child(part.clone()),
                     );
                 }
                 crumbs
@@ -244,7 +244,7 @@ impl EngineDocsPanel {
         on_toggle_expansion: impl Fn(&mut V, String, &mut Window, &mut Context<V>) + 'static + Clone,
         on_load_content: impl Fn(&mut V, String, &mut Window, &mut Context<V>) + 'static + Clone,
         cx: &mut Context<V>,
-    ) -> AnyElement 
+    ) -> AnyElement
     where
         V: Render,
     {
@@ -252,11 +252,15 @@ impl EngineDocsPanel {
             TreeNode::Crate { name, depth, .. } => {
                 let is_expanded = state.expanded_paths.contains(name);
                 let crate_name = name.clone();
-                
+
                 render_tree_folder(
                     &format!("crate-{}", name),
                     name,
-                    if is_expanded { IconName::FolderOpen } else { IconName::Folder },
+                    if is_expanded {
+                        IconName::FolderOpen
+                    } else {
+                        IconName::Folder
+                    },
                     tree_colors::FOLDER,
                     *depth,
                     is_expanded,
@@ -266,7 +270,12 @@ impl EngineDocsPanel {
                     cx,
                 )
             }
-            TreeNode::Section { crate_name, section_name, count, depth } => {
+            TreeNode::Section {
+                crate_name,
+                section_name,
+                count,
+                depth,
+            } => {
                 let section_path = format!("{}/{}", crate_name, section_name);
                 let is_expanded = state.expanded_paths.contains(&section_path);
                 let path_for_click = section_path.clone();
@@ -283,7 +292,12 @@ impl EngineDocsPanel {
                     cx,
                 )
             }
-            TreeNode::Item { item_name, path, depth, .. } => {
+            TreeNode::Item {
+                item_name,
+                path,
+                depth,
+                ..
+            } => {
                 let is_selected = state.current_path.as_ref() == Some(&path.to_string());
                 let path_for_click = path.to_string();
 

@@ -4,10 +4,12 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use gpui::*;
 use gpui::prelude::FluentBuilder;
+use gpui::*;
 use ui::{
-    button::{Button, ButtonVariants as _}, chart::AreaChart, h_flex, v_flex, ActiveTheme, Icon, IconName, StyledExt,
+    button::{Button, ButtonVariants as _},
+    chart::AreaChart,
+    h_flex, v_flex, ActiveTheme, Icon, IconName, StyledExt,
 };
 
 use super::super::performance::*;
@@ -30,14 +32,14 @@ where
             div()
                 .text_xs()
                 .text_color(cx.theme().muted_foreground)
-                .child(label.into())
+                .child(label.into()),
         )
         .child(
             div()
                 .text_xs()
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(color)
-                .child(value.into())
+                .child(value.into()),
         )
 }
 
@@ -52,18 +54,15 @@ fn mini_graph<T: Clone + 'static, V: 'static>(
 where
     V: Render,
 {
-    div()
-        .h(px(40.0))
-        .w_full()
-        .child(
-            AreaChart::new(data)
-                .x(x_fn)
-                .y(y_fn)
-                .stroke(color)
-                .fill(color.opacity(0.15))
-                .linear()
-                .tick_margin(0)
-        )
+    div().h(px(40.0)).w_full().child(
+        AreaChart::new(data)
+            .x(x_fn)
+            .y(y_fn)
+            .stroke(color)
+            .fill(color.opacity(0.15))
+            .linear()
+            .tick_margin(0),
+    )
 }
 
 /// Render the complete compact performance overlay.
@@ -97,8 +96,11 @@ where
             .into_any_element();
     }
 
-    let frame_time_ms = frame_time_data.last().map(|d| d.frame_time_ms).unwrap_or(0.0);
-    
+    let frame_time_ms = frame_time_data
+        .last()
+        .map(|d| d.frame_time_ms)
+        .unwrap_or(0.0);
+
     // Color coding for FPS
     let ui_fps_color = if ui_fps >= 240.0 {
         cx.theme().success
@@ -150,7 +152,8 @@ where
     };
 
     let avg_input_latency = if !input_latency_data.is_empty() {
-        input_latency_data.iter().map(|d| d.latency_ms).sum::<f64>() / input_latency_data.len() as f64
+        input_latency_data.iter().map(|d| d.latency_ms).sum::<f64>()
+            / input_latency_data.len() as f64
     } else {
         0.0
     };
@@ -174,14 +177,18 @@ where
                     h_flex()
                         .gap_1p5()
                         .items_center()
-                        .child(Icon::new(IconName::Activity).size_3().text_color(cx.theme().accent))
+                        .child(
+                            Icon::new(IconName::Activity)
+                                .size_3()
+                                .text_color(cx.theme().accent),
+                        )
                         .child(
                             div()
                                 .text_xs()
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .text_color(cx.theme().foreground)
-                                .child("Performance")
-                        )
+                                .child("Performance"),
+                        ),
                 )
                 .child({
                     let state_clone = state_arc.clone();
@@ -192,7 +199,7 @@ where
                         .on_click(move |_, _, _| {
                             state_clone.write().set_performance_overlay_collapsed(true);
                         })
-                })
+                }),
         )
         // Core metrics section
         .child(
@@ -204,9 +211,24 @@ where
                 .bg(cx.theme().sidebar.opacity(0.3))
                 .border_1()
                 .border_color(cx.theme().border.opacity(0.3))
-                .child(stat_line("UI FPS", format!("{:.0}", ui_fps), ui_fps_color, cx))
-                .child(stat_line("Render FPS", format!("{:.0}", render_fps), render_fps_color, cx))
-                .child(stat_line("Frame Time", format!("{:.2}ms", frame_time_ms), frame_color, cx))
+                .child(stat_line(
+                    "UI FPS",
+                    format!("{:.0}", ui_fps),
+                    ui_fps_color,
+                    cx,
+                ))
+                .child(stat_line(
+                    "Render FPS",
+                    format!("{:.0}", render_fps),
+                    render_fps_color,
+                    cx,
+                ))
+                .child(stat_line(
+                    "Frame Time",
+                    format!("{:.2}ms", frame_time_ms),
+                    frame_color,
+                    cx,
+                )),
         )
         // Rendering stats
         .child(
@@ -223,11 +245,26 @@ where
                         .text_xs()
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(cx.theme().muted_foreground)
-                        .child("Rendering")
+                        .child("Rendering"),
                 )
-                .child(stat_line("Draw Calls", format!("{:.0}", avg_draw_calls), cx.theme().chart_1, cx))
-                .child(stat_line("Vertices", format!("{:.0}k", avg_vertices / 1000.0), cx.theme().chart_2, cx))
-                .child(stat_line("GPU Memory", format!("{:.1}MB", avg_memory), cx.theme().chart_3, cx))
+                .child(stat_line(
+                    "Draw Calls",
+                    format!("{:.0}", avg_draw_calls),
+                    cx.theme().chart_1,
+                    cx,
+                ))
+                .child(stat_line(
+                    "Vertices",
+                    format!("{:.0}k", avg_vertices / 1000.0),
+                    cx.theme().chart_2,
+                    cx,
+                ))
+                .child(stat_line(
+                    "GPU Memory",
+                    format!("{:.1}MB", avg_memory),
+                    cx.theme().chart_3,
+                    cx,
+                )),
         )
         // Input latency
         .child(
@@ -244,9 +281,14 @@ where
                         .text_xs()
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(cx.theme().muted_foreground)
-                        .child("Input")
+                        .child("Input"),
                 )
-                .child(stat_line("Latency", format!("{:.2}ms", avg_input_latency), cx.theme().warning, cx))
+                .child(stat_line(
+                    "Latency",
+                    format!("{:.2}ms", avg_input_latency),
+                    cx.theme().warning,
+                    cx,
+                )),
         )
         // Mini graphs section
         .when(!fps_data.is_empty(), |el| {
@@ -264,15 +306,15 @@ where
                             .text_xs()
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(cx.theme().muted_foreground)
-                            .child("FPS History")
+                            .child("FPS History"),
                     )
                     .child(mini_graph(
                         fps_data,
                         |d| SharedString::from(format!("{}", d.index)),
                         |d| d.fps,
                         ui_fps_color,
-                        cx
-                    ))
+                        cx,
+                    )),
             )
         })
         .when(!frame_time_data.is_empty(), |el| {
@@ -290,15 +332,15 @@ where
                             .text_xs()
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(cx.theme().muted_foreground)
-                            .child("Frame Time (ms)")
+                            .child("Frame Time (ms)"),
                     )
                     .child(mini_graph(
                         frame_time_data,
                         |d| SharedString::from(format!("{}", d.index)),
                         |d| d.frame_time_ms.min(50.0), // Cap spikes at 50ms
                         frame_color,
-                        cx
-                    ))
+                        cx,
+                    )),
             )
         })
         .when(!input_latency_data.is_empty(), |el| {
@@ -316,15 +358,15 @@ where
                             .text_xs()
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(cx.theme().muted_foreground)
-                            .child("Input Latency (ms)")
+                            .child("Input Latency (ms)"),
                     )
                     .child(mini_graph(
                         input_latency_data,
                         |d| SharedString::from(format!("{}", d.index)),
                         |d| d.latency_ms,
                         cx.theme().warning,
-                        cx
-                    ))
+                        cx,
+                    )),
             )
         })
         .into_any_element()

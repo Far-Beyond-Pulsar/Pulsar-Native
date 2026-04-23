@@ -4,13 +4,10 @@
 //! at the top of the properties panel.
 
 use gpui::{prelude::*, *};
-use ui::{
-    h_flex, v_flex, ActiveTheme, IconName, Sizable, StyledExt,
-    checkbox::Checkbox,
-};
+use ui::{checkbox::Checkbox, h_flex, v_flex, ActiveTheme, IconName, Sizable, StyledExt};
 
+use super::bound_field::{BoolBoundField, StringBoundField};
 use crate::level_editor::scene_database::SceneDatabase;
-use super::bound_field::{StringBoundField, BoolBoundField};
 
 /// Object header section showing name, visibility, and locked status
 pub struct ObjectHeaderSection {
@@ -27,15 +24,12 @@ impl ObjectHeaderSection {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        use super::field_bindings::{StringFieldBinding, BoolFieldBinding};
+        use super::field_bindings::{BoolFieldBinding, StringFieldBinding};
 
         // Name field
         let name_field = cx.new(|cx| {
             StringBoundField::new(
-                StringFieldBinding::new(
-                    |obj| obj.name.clone(),
-                    |obj, val| obj.name = val,
-                ),
+                StringFieldBinding::new(|obj| obj.name.clone(), |obj, val| obj.name = val),
                 "Name",
                 object_id.clone(),
                 scene_db.clone(),
@@ -47,10 +41,7 @@ impl ObjectHeaderSection {
         // Visible field
         let visible_field = cx.new(|cx| {
             BoolBoundField::new(
-                BoolFieldBinding::new(
-                    |obj| obj.visible,
-                    |obj, val| obj.visible = val,
-                ),
+                BoolFieldBinding::new(|obj| obj.visible, |obj, val| obj.visible = val),
                 "Visible",
                 object_id.clone(),
                 scene_db.clone(),
@@ -62,10 +53,7 @@ impl ObjectHeaderSection {
         // Locked field
         let locked_field = cx.new(|cx| {
             BoolBoundField::new(
-                BoolFieldBinding::new(
-                    |obj| obj.locked,
-                    |obj, val| obj.locked = val,
-                ),
+                BoolFieldBinding::new(|obj| obj.locked, |obj, val| obj.locked = val),
                 "Locked",
                 object_id.clone(),
                 scene_db.clone(),
@@ -84,9 +72,12 @@ impl ObjectHeaderSection {
 
     /// Refresh all fields when scene data changes externally
     pub fn refresh(&self, window: &mut Window, cx: &mut App) {
-        self.name_field.update(cx, |field, cx| field.refresh(window, cx));
-        self.visible_field.update(cx, |field, cx| field.refresh(window, cx));
-        self.locked_field.update(cx, |field, cx| field.refresh(window, cx));
+        self.name_field
+            .update(cx, |field, cx| field.refresh(window, cx));
+        self.visible_field
+            .update(cx, |field, cx| field.refresh(window, cx));
+        self.locked_field
+            .update(cx, |field, cx| field.refresh(window, cx));
     }
 }
 
@@ -107,16 +98,8 @@ impl Render for ObjectHeaderSection {
                 h_flex()
                     .w_full()
                     .gap_4()
-                    .child(
-                        div()
-                            .flex_1()
-                            .child(self.visible_field.clone())
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .child(self.locked_field.clone())
-                    )
+                    .child(div().flex_1().child(self.visible_field.clone()))
+                    .child(div().flex_1().child(self.locked_field.clone())),
             )
     }
 }

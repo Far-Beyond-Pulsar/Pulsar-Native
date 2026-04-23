@@ -11,10 +11,10 @@
 pub struct SetupTask {
     /// Human-readable name of the task.
     pub name: String,
-    
+
     /// Detailed description of what the task does.
     pub description: String,
-    
+
     /// Current execution status of the task.
     pub status: TaskStatus,
 }
@@ -24,13 +24,13 @@ pub struct SetupTask {
 pub enum TaskStatus {
     /// Task has not started yet.
     Pending,
-    
+
     /// Task is currently executing.
     InProgress,
-    
+
     /// Task completed successfully.
     Completed,
-    
+
     /// Task failed with an error message.
     Failed(String),
 }

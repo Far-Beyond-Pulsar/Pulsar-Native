@@ -1,15 +1,20 @@
-use gpui::*;
-use gpui::prelude::FluentBuilder as _;
-use ui::{
-    h_flex, v_flex, Icon, IconName, ActiveTheme as _,
-    button::{Button, ButtonVariants as _},
-    switch::Switch,
-};
-use crate::settings::SettingsScreen;
 use super::components::*;
+use crate::settings::SettingsScreen;
+use gpui::prelude::FluentBuilder as _;
+use gpui::*;
+use ui::{
+    button::{Button, ButtonVariants as _},
+    h_flex,
+    switch::Switch,
+    v_flex, ActiveTheme as _, Icon, IconName,
+};
 
 impl SettingsScreen {
-    pub fn render_project_view(&self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    pub fn render_project_view(
+        &self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         v_flex()
             .w_full()
             .gap_4()
@@ -39,15 +44,15 @@ impl SettingsScreen {
                                 h_flex()
                                     .gap_3()
                                     .items_center()
-                                    .child(
-                                        render_value_display(
-                                            self.settings.project.default_project_path
-                                                .as_deref()
-                                                .unwrap_or("Not set")
-                                                .to_string(),
-                                            cx
-                                        )
-                                    )
+                                    .child(render_value_display(
+                                        self.settings
+                                            .project
+                                            .default_project_path
+                                            .as_deref()
+                                            .unwrap_or("Not set")
+                                            .to_string(),
+                                        cx,
+                                    ))
                                     .child(
                                         Button::new("browse-project-path")
                                             .ghost()
@@ -56,7 +61,7 @@ impl SettingsScreen {
                                             .on_click(cx.listener(|_this, _, _window, cx| {
                                                 // TODO: Implement folder picker
                                                 cx.notify();
-                                            }))
+                                            })),
                                     )
                                     .child(
                                         Button::new("save-project-path")
@@ -65,11 +70,10 @@ impl SettingsScreen {
                                             .on_click(cx.listener(|screen, _, _window, cx| {
                                                 screen.settings.save(&screen.config_path);
                                                 cx.notify();
-                                            }))
-                                    )
-                            )
-                            
-                    )
+                                            })),
+                                    ),
+                            ),
+                    ),
             )
     }
 
@@ -132,7 +136,7 @@ impl SettingsScreen {
                                             }))
                                     )
                             )
-                            
+
                     )
                     .when(auto_save_enabled, |this| {
                         this.child(
@@ -150,7 +154,7 @@ impl SettingsScreen {
                                         cx
                                     )
                                 )
-                                
+
                         )
                     })
                     .child(
@@ -233,7 +237,7 @@ impl SettingsScreen {
                                             }))
                                     )
                             )
-                            
+
                     )
                     .when(backups_enabled, |this| {
                         this.child(

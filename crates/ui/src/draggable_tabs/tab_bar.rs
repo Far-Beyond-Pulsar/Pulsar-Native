@@ -1,12 +1,17 @@
 use gpui::ParentElement;
 use gpui::{
     div, px, size, AnyElement, AnyView, App, AppContext, Bounds, Context, DragMoveEvent, ElementId,
-    EventEmitter, FocusHandle, Focusable, IntoElement, InteractiveElement, Pixels, Point, Render, SharedString,
-    StatefulInteractiveElement, Window, WindowBounds, WindowKind, WindowOptions,
+    EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement, Pixels, Point, Render,
+    SharedString, StatefulInteractiveElement, Window, WindowBounds, WindowKind, WindowOptions,
 };
 
 use super::{DraggableTab, DraggedTab};
-use crate::{button::{Button, ButtonVariants}, h_flex, v_flex, ActiveTheme, IconName, tab::Tab, StyledExt, Selectable, Sizable};
+use crate::{
+    button::{Button, ButtonVariants},
+    h_flex,
+    tab::Tab,
+    v_flex, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
+};
 use gpui::prelude::FluentBuilder;
 use gpui::Styled;
 
@@ -147,7 +152,10 @@ impl Render for DraggableTabBar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let view = cx.entity().clone();
         let view_entity_id = view.entity_id();
-        let tab_bar_element_id = ElementId::Name(SharedString::from(format!("tab-bar-{}", view_entity_id.as_u64())));
+        let tab_bar_element_id = ElementId::Name(SharedString::from(format!(
+            "tab-bar-{}",
+            view_entity_id.as_u64()
+        )));
 
         v_flex()
             .size_full()
@@ -230,22 +238,25 @@ impl Render for DraggableTabBar {
                                         ))
                                         .when(closable, |tab| {
                                             tab.suffix(
-                                                h_flex().gap_1().child(
-                                                    Button::new(SharedString::from(format!(
-                                                        "tab-close-{}",
-                                                        ix
-                                                    )))
-                                                    .icon(IconName::Close)
-                                                    .ghost()
-                                                    .with_size(crate::Size::XSmall)
-                                                    .on_click(cx.listener(
-                                                        move |this, _event, _window, cx| {
-                                                            this.remove_tab(ix);
-                                                            cx.emit(TabBarEvent::TabClosed(ix));
-                                                            cx.notify();
-                                                        },
-                                                    ))
-                                                ).into_any_element()
+                                                h_flex()
+                                                    .gap_1()
+                                                    .child(
+                                                        Button::new(SharedString::from(format!(
+                                                            "tab-close-{}",
+                                                            ix
+                                                        )))
+                                                        .icon(IconName::Close)
+                                                        .ghost()
+                                                        .with_size(crate::Size::XSmall)
+                                                        .on_click(cx.listener(
+                                                            move |this, _event, _window, cx| {
+                                                                this.remove_tab(ix);
+                                                                cx.emit(TabBarEvent::TabClosed(ix));
+                                                                cx.notify();
+                                                            },
+                                                        )),
+                                                    )
+                                                    .into_any_element(),
                                             )
                                         })
                                 },
@@ -265,5 +276,3 @@ impl Render for DraggableTabBar {
             )
     }
 }
-
-

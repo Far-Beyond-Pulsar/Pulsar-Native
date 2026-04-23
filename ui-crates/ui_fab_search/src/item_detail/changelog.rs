@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use ui::{h_flex, v_flex, ActiveTheme, StyledExt};
+use ui::{ActiveTheme, StyledExt, h_flex, v_flex};
 
 use crate::parser::fmt_count;
 
@@ -37,8 +37,16 @@ impl ModelStatsSection {
         pbr_type: Option<String>,
     ) -> Self {
         Self {
-            view_count, like_count, download_count, face_count, vertex_count,
-            material_count, texture_count, animation_count, sound_count, pbr_type,
+            view_count,
+            like_count,
+            download_count,
+            face_count,
+            vertex_count,
+            material_count,
+            texture_count,
+            animation_count,
+            sound_count,
+            pbr_type,
         }
     }
 }
@@ -50,31 +58,61 @@ impl RenderOnce for ModelStatsSection {
         let muted = cx.theme().muted_foreground;
 
         let mut rows: Vec<StatRow> = Vec::new();
-        rows.push(StatRow { label: "Views",      value: fmt_count(self.view_count) });
-        rows.push(StatRow { label: "Likes",      value: fmt_count(self.like_count) });
+        rows.push(StatRow {
+            label: "Views",
+            value: fmt_count(self.view_count),
+        });
+        rows.push(StatRow {
+            label: "Likes",
+            value: fmt_count(self.like_count),
+        });
         if self.download_count > 0 {
-            rows.push(StatRow { label: "Downloads",  value: fmt_count(self.download_count) });
+            rows.push(StatRow {
+                label: "Downloads",
+                value: fmt_count(self.download_count),
+            });
         }
         if let Some(f) = self.face_count {
-            rows.push(StatRow { label: "Faces",      value: fmt_count(f) });
+            rows.push(StatRow {
+                label: "Faces",
+                value: fmt_count(f),
+            });
         }
         if let Some(v) = self.vertex_count {
-            rows.push(StatRow { label: "Vertices",   value: fmt_count(v) });
+            rows.push(StatRow {
+                label: "Vertices",
+                value: fmt_count(v),
+            });
         }
         if let Some(m) = self.material_count {
-            rows.push(StatRow { label: "Materials",  value: m.to_string() });
+            rows.push(StatRow {
+                label: "Materials",
+                value: m.to_string(),
+            });
         }
         if let Some(t) = self.texture_count {
-            rows.push(StatRow { label: "Textures",   value: t.to_string() });
+            rows.push(StatRow {
+                label: "Textures",
+                value: t.to_string(),
+            });
         }
         if self.animation_count > 0 {
-            rows.push(StatRow { label: "Animations", value: self.animation_count.to_string() });
+            rows.push(StatRow {
+                label: "Animations",
+                value: self.animation_count.to_string(),
+            });
         }
         if self.sound_count > 0 {
-            rows.push(StatRow { label: "Sounds",     value: self.sound_count.to_string() });
+            rows.push(StatRow {
+                label: "Sounds",
+                value: self.sound_count.to_string(),
+            });
         }
         if let Some(pbr) = self.pbr_type {
-            rows.push(StatRow { label: "PBR Type",   value: pbr });
+            rows.push(StatRow {
+                label: "PBR Type",
+                value: pbr,
+            });
         }
 
         v_flex()
@@ -85,7 +123,11 @@ impl RenderOnce for ModelStatsSection {
             .border_t_1()
             .border_color(border)
             .child(
-                div().text_xs().font_bold().text_color(muted).child("Model Stats"),
+                div()
+                    .text_xs()
+                    .font_bold()
+                    .text_color(muted)
+                    .child("Model Stats"),
             )
             .children(rows.into_iter().map(|row| {
                 h_flex()
@@ -93,7 +135,13 @@ impl RenderOnce for ModelStatsSection {
                     .justify_between()
                     .py(px(3.0))
                     .child(div().text_xs().text_color(muted).child(row.label))
-                    .child(div().text_xs().font_medium().text_color(fg).child(row.value))
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_medium()
+                            .text_color(fg)
+                            .child(row.value),
+                    )
             }))
     }
 }

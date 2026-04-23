@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::Arc;
 
 /// Shared state container for data accessed by multiple UI components.
 ///
@@ -21,13 +21,17 @@ pub struct SharedState<T> {
 
 impl<T> Clone for SharedState<T> {
     fn clone(&self) -> Self {
-        Self { inner: Arc::clone(&self.inner) }
+        Self {
+            inner: Arc::clone(&self.inner),
+        }
     }
 }
 
 impl<T> SharedState<T> {
     pub fn new(value: T) -> Self {
-        Self { inner: Arc::new(RwLock::new(value)) }
+        Self {
+            inner: Arc::new(RwLock::new(value)),
+        }
     }
 
     pub fn read(&self) -> RwLockReadGuard<'_, T> {

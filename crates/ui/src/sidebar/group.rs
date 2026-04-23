@@ -1,7 +1,7 @@
-use crate::{ActiveTheme, Collapsible, h_flex, sidebar::SidebarItem, v_flex};
+use crate::{h_flex, sidebar::SidebarItem, v_flex, ActiveTheme, Collapsible};
 use gpui::{
-    App, ElementId, IntoElement, ParentElement, SharedString, Styled as _, Window, div,
-    prelude::FluentBuilder as _,
+    div, prelude::FluentBuilder as _, App, ElementId, IntoElement, ParentElement, SharedString,
+    Styled as _, Window,
 };
 
 /// A group of items in the [`super::Sidebar`].

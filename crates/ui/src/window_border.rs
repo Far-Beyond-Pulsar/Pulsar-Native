@@ -94,7 +94,8 @@ impl RenderOnce for WindowBorder {
                             move |_bounds, hitbox, window, _| {
                                 let mouse = window.mouse_position();
                                 let size = window.window_bounds().get_bounds().size;
-                                let Some(edge) = resize_edge(mouse, RESIZE_HANDLE_SIZE, size) else {
+                                let Some(edge) = resize_edge(mouse, RESIZE_HANDLE_SIZE, size)
+                                else {
                                     return;
                                 };
                                 window.set_cursor_style(

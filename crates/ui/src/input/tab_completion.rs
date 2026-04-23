@@ -1,6 +1,5 @@
 /// Tab completion handler that manages tab-based completion cycling
 /// Allows users to press Tab to cycle through completions
-
 use gpui::{actions, Context, Window};
 use lsp_types::CompletionItem;
 use std::rc::Rc;
@@ -123,7 +122,7 @@ impl InputState {
         // Otherwise, trigger completions
         // Get current cursor position
         let cursor = self.cursor();
-        
+
         // Get completion provider
         let Some(provider) = self.lsp.completion_provider.clone() else {
             // No provider - insert tab normally
@@ -139,26 +138,34 @@ impl InputState {
 
         let cursor_copy = cursor; // Make a copy to move into closure
         let completion_task = provider.completions(&self.text, cursor, trigger, window, cx);
-        
-        // Process completions asynchronously
-        let editor_task: gpui::Task<anyhow::Result<()>> = cx.spawn_in(window, async move |editor, cx| {
-            if let Ok(response) = completion_task.await {
-                let items = match response {
-                    lsp_types::CompletionResponse::Array(items) => items,
-                    lsp_types::CompletionResponse::List(list) => list.items,
-                };
 
-                if !items.is_empty() {
-                    editor.update_in(cx, |editor, window, cx| {
-                        // Show completion menu with items
-                        editor.handle_completion_trigger(&(cursor_copy..cursor_copy), "", window, cx);
-                        cx.notify();
-                    }).ok();
+        // Process completions asynchronously
+        let editor_task: gpui::Task<anyhow::Result<()>> =
+            cx.spawn_in(window, async move |editor, cx| {
+                if let Ok(response) = completion_task.await {
+                    let items = match response {
+                        lsp_types::CompletionResponse::Array(items) => items,
+                        lsp_types::CompletionResponse::List(list) => list.items,
+                    };
+
+                    if !items.is_empty() {
+                        editor
+                            .update_in(cx, |editor, window, cx| {
+                                // Show completion menu with items
+                                editor.handle_completion_trigger(
+                                    &(cursor_copy..cursor_copy),
+                                    "",
+                                    window,
+                                    cx,
+                                );
+                                cx.notify();
+                            })
+                            .ok();
+                    }
                 }
-            }
-            Ok(())
-        });
-        
+                Ok(())
+            });
+
         editor_task.detach();
 
         cx.notify();
@@ -173,11 +180,7 @@ impl InputState {
     ) {
         // If context menu is open, navigate backwards
         if self.is_context_menu_open(cx) {
-            let handled = self.handle_action_for_context_menu(
-                Box::new(super::MoveUp),
-                window,
-                cx,
-            );
+            let handled = self.handle_action_for_context_menu(Box::new(super::MoveUp), window, cx);
             if handled {
                 return;
             }
@@ -191,16 +194,16 @@ impl InputState {
 pub trait TabCompletionExt {
     /// Trigger tab completion at the current cursor position
     fn trigger_tab_completion(&mut self, window: &mut Window, cx: &mut Context<InputState>);
-    
+
     /// Cycle to the next tab completion
     fn cycle_tab_completion_next(&mut self, window: &mut Window, cx: &mut Context<InputState>);
-    
+
     /// Cycle to the previous tab completion
     fn cycle_tab_completion_prev(&mut self, window: &mut Window, cx: &mut Context<InputState>);
-    
+
     /// Accept the current tab completion
     fn accept_tab_completion(&mut self, window: &mut Window, cx: &mut Context<InputState>);
-    
+
     /// Cancel tab completion and restore original text
     fn cancel_tab_completion(&mut self, window: &mut Window, cx: &mut Context<InputState>);
 }
@@ -212,22 +215,14 @@ impl TabCompletionExt for InputState {
     }
 
     fn cycle_tab_completion_next(&mut self, window: &mut Window, cx: &mut Context<InputState>) {
-        let handled = self.handle_action_for_context_menu(
-            Box::new(super::MoveDown),
-            window,
-            cx,
-        );
+        let handled = self.handle_action_for_context_menu(Box::new(super::MoveDown), window, cx);
         if !handled {
             self.trigger_tab_completion(window, cx);
         }
     }
 
     fn cycle_tab_completion_prev(&mut self, window: &mut Window, cx: &mut Context<InputState>) {
-        let handled = self.handle_action_for_context_menu(
-            Box::new(super::MoveUp),
-            window,
-            cx,
-        );
+        let handled = self.handle_action_for_context_menu(Box::new(super::MoveUp), window, cx);
         if !handled {
             self.trigger_tab_completion(window, cx);
         }
@@ -242,11 +237,7 @@ impl TabCompletionExt for InputState {
     }
 
     fn cancel_tab_completion(&mut self, window: &mut Window, cx: &mut Context<InputState>) {
-        self.handle_action_for_context_menu(
-            Box::new(super::Escape),
-            window,
-            cx,
-        );
+        self.handle_action_for_context_menu(Box::new(super::Escape), window, cx);
     }
 }
 

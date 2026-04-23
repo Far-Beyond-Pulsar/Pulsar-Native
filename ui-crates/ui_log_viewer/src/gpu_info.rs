@@ -38,12 +38,14 @@ pub fn detect_primary_gpu() -> GpuInfo {
     let adapters = block_on(instance.enumerate_adapters(Backends::all()));
 
     // Prefer discrete GPU, then integrated, then anything else.
-    let best = adapters.into_iter().max_by_key(|a| match a.get_info().device_type {
-        wgpu::DeviceType::DiscreteGpu => 3,
-        wgpu::DeviceType::IntegratedGpu => 2,
-        wgpu::DeviceType::VirtualGpu => 1,
-        _ => 0,
-    });
+    let best = adapters
+        .into_iter()
+        .max_by_key(|a| match a.get_info().device_type {
+            wgpu::DeviceType::DiscreteGpu => 3,
+            wgpu::DeviceType::IntegratedGpu => 2,
+            wgpu::DeviceType::VirtualGpu => 1,
+            _ => 0,
+        });
 
     let Some(adapter) = best else {
         return GpuInfo::default();
@@ -90,24 +92,24 @@ pub fn query_vram_used_mb() -> Option<u64> {
 pub fn query_vram_shared_mb() -> Option<u64> {
     #[cfg(target_os = "windows")]
     {
-        use windows::Win32::Graphics::Dxgi::{
-            CreateDXGIFactory1, IDXGIAdapter3, IDXGIFactory1,
-            DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL, DXGI_QUERY_VIDEO_MEMORY_INFO,
-        };
         use windows::core::Interface;
+        use windows::Win32::Graphics::Dxgi::{
+            CreateDXGIFactory1, IDXGIAdapter3, IDXGIFactory1, DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL,
+            DXGI_QUERY_VIDEO_MEMORY_INFO,
+        };
         unsafe {
             let factory: IDXGIFactory1 = CreateDXGIFactory1().ok()?;
             let adapter3: IDXGIAdapter3 = factory.EnumAdapters1(0).ok()?.cast().ok()?;
             let mut info = DXGI_QUERY_VIDEO_MEMORY_INFO::default();
-            adapter3.QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL, &mut info).ok()?;
+            adapter3
+                .QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL, &mut info)
+                .ok()?;
             Some(info.CurrentUsage / (1024 * 1024))
         }
     }
     #[cfg(not(target_os = "windows"))]
     None
 }
-
-
 
 fn pci_vendor_name(vendor_id: u32) -> String {
     match vendor_id as u32 {
@@ -133,7 +135,9 @@ fn platform_driver_version(_gpu_name: &str) -> Option<String> {
     use winreg::RegKey;
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let class = hklm
-        .open_subkey(r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}")
+        .open_subkey(
+            r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}",
+        )
         .ok()?;
     for i in 0u32..=16 {
         let name = format!("{:04}", i);
@@ -166,16 +170,18 @@ fn query_vram_total_mb() -> Option<u64> {
 
 #[cfg(target_os = "windows")]
 fn platform_vram_used_mb() -> Option<u64> {
-    use windows::Win32::Graphics::Dxgi::{
-        CreateDXGIFactory1, IDXGIAdapter3, IDXGIFactory1,
-        DXGI_MEMORY_SEGMENT_GROUP_LOCAL, DXGI_QUERY_VIDEO_MEMORY_INFO,
-    };
     use windows::core::Interface;
+    use windows::Win32::Graphics::Dxgi::{
+        CreateDXGIFactory1, IDXGIAdapter3, IDXGIFactory1, DXGI_MEMORY_SEGMENT_GROUP_LOCAL,
+        DXGI_QUERY_VIDEO_MEMORY_INFO,
+    };
     unsafe {
         let factory: IDXGIFactory1 = CreateDXGIFactory1().ok()?;
         let adapter3: IDXGIAdapter3 = factory.EnumAdapters1(0).ok()?.cast().ok()?;
         let mut info = DXGI_QUERY_VIDEO_MEMORY_INFO::default();
-        adapter3.QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &mut info).ok()?;
+        adapter3
+            .QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &mut info)
+            .ok()?;
         Some(info.CurrentUsage / (1024 * 1024))
     }
 }
@@ -191,7 +197,12 @@ fn platform_driver_version(_gpu_name: &str) -> Option<String> {
         if let Some(line) = content.lines().next() {
             // "NVRM version: NVIDIA UNIX x86_64 Kernel Module  535.86.05  ..."
             if let Some(pos) = line.rfind("  ") {
-                let ver = line[pos..].trim().split_whitespace().next().unwrap_or("").to_string();
+                let ver = line[pos..]
+                    .trim()
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
+                    .to_string();
                 if !ver.is_empty() {
                     return Some(ver);
                 }
@@ -249,7 +260,9 @@ fn nvidia_smi_query(field: &str) -> Option<u64> {
         .output()
         .ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
-    text.lines().next().and_then(|l| l.trim().parse::<u64>().ok())
+    text.lines()
+        .next()
+        .and_then(|l| l.trim().parse::<u64>().ok())
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -317,11 +330,16 @@ fn parse_system_profiler_vram_field(text: &str, field_prefix: &str) -> Option<u6
 // ═══════════════════════════════════════════════════════════════════
 
 #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
-fn platform_driver_version(_gpu_name: &str) -> Option<String> { None }
+fn platform_driver_version(_gpu_name: &str) -> Option<String> {
+    None
+}
 
 #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
-fn query_vram_total_mb() -> Option<u64> { None }
+fn query_vram_total_mb() -> Option<u64> {
+    None
+}
 
 #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
-fn platform_vram_used_mb() -> Option<u64> { None }
-
+fn platform_vram_used_mb() -> Option<u64> {
+    None
+}

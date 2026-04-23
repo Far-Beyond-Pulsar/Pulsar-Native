@@ -10,7 +10,7 @@ pub fn run() -> anyhow::Result<()> {
     let listener = TcpListener::bind(bind_addr)?;
     tracing::debug!("✅ Simple test server listening on {}", bind_addr);
     tracing::debug!("Try: curl http://YOUR_PUBLIC_IP:8080/");
-    
+
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
@@ -21,19 +21,19 @@ pub fn run() -> anyhow::Result<()> {
             }
         }
     }
-    
+
     Ok(())
 }
 
 fn handle_client(mut stream: TcpStream) {
     let peer_addr = stream.peer_addr().unwrap();
     tracing::debug!("✅ Connection from: {}", peer_addr);
-    
+
     let mut buffer = [0; 1024];
     match stream.read(&mut buffer) {
         Ok(size) => {
             tracing::debug!("📨 Received {} bytes from {}", size, peer_addr);
-            
+
             // Send HTTP response
             let body = "Simple test server works!\n";
             let response = format!(
@@ -45,7 +45,7 @@ fn handle_client(mut stream: TcpStream) {
                 body.len(),
                 body
             );
-            
+
             if let Err(e) = stream.write_all(response.as_bytes()) {
                 tracing::error!("Failed to send response: {}", e);
             } else {

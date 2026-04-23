@@ -6,8 +6,8 @@
 
 use std::sync::Arc;
 
-use gpui::*;
 use gpui::prelude::FluentBuilder;
+use gpui::*;
 use ui::{h_flex, v_flex, ActiveTheme, StyledExt};
 
 /// Builder for creating a floating toolbar with drag functionality.
@@ -180,20 +180,17 @@ pub fn toolbar_with_drag_handle<V: 'static>(
 where
     V: Render,
 {
-    h_flex()
-        .gap_0()
-        .child(drag_handle_content)
-        .child(
-            h_flex()
-                .h_full()
-                .gap_2()
-                .p_1()
-                .bg(cx.theme().background.opacity(0.9))
-                .rounded_r(cx.theme().radius)
-                .border_y_1()
-                .border_r_1()
-                .border_color(cx.theme().border)
-                .items_center()
-                .child(toolbar_content),
-        )
+    h_flex().gap_0().child(drag_handle_content).child(
+        h_flex()
+            .h_full()
+            .gap_2()
+            .p_1()
+            .bg(cx.theme().background.opacity(0.9))
+            .rounded_r(cx.theme().radius)
+            .border_y_1()
+            .border_r_1()
+            .border_color(cx.theme().border)
+            .items_center()
+            .child(toolbar_content),
+    )
 }

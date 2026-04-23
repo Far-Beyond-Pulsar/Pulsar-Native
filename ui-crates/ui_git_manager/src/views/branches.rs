@@ -1,11 +1,14 @@
 //! Branches view: local / remote branch sections with click-to-switch
 
+use super::toolbar::render_toolbar;
 use crate::{GitManager, models::Branch};
 use gpui::*;
-use ui::{h_flex, v_flex, Icon, IconName, ActiveTheme as _, StyledExt, scroll::ScrollbarAxis};
-use super::toolbar::render_toolbar;
+use ui::{ActiveTheme as _, Icon, IconName, StyledExt, h_flex, scroll::ScrollbarAxis, v_flex};
 
-pub fn render_branches_view(git_manager: &mut GitManager, cx: &mut Context<GitManager>) -> impl IntoElement {
+pub fn render_branches_view(
+    git_manager: &mut GitManager,
+    cx: &mut Context<GitManager>,
+) -> impl IntoElement {
     let repo_state = git_manager.repo_state.read();
     let branches = repo_state.branches.clone();
     drop(repo_state);
@@ -60,7 +63,11 @@ fn render_branch_section(
         } else {
             gpui::FontWeight::NORMAL
         };
-        let bg = if is_current { list_active } else { gpui::transparent_black() };
+        let bg = if is_current {
+            list_active
+        } else {
+            gpui::transparent_black()
+        };
 
         let mut item = h_flex()
             .px_2()
@@ -70,7 +77,11 @@ fn render_branch_section(
             .items_center()
             .bg(bg)
             .hover(move |s| s.bg(if is_current { list_active } else { list_hover }))
-            .child(Icon::new(IconName::GitBranch).size(px(12.)).text_color(icon_color))
+            .child(
+                Icon::new(IconName::GitBranch)
+                    .size(px(12.))
+                    .text_color(icon_color),
+            )
             .child(
                 div()
                     .flex_1()

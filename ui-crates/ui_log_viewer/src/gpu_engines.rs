@@ -20,7 +20,14 @@ pub fn collect() -> EngineMap {
 
 /// Known GPU engine type display names (for consistent ordering in UI).
 pub const KNOWN_ENGINES: &[&str] = &[
-    "3D", "Copy", "VideoDecode", "VideoEncode", "VideoProcessing", "Compute_0", "Compute_1", "Overlay",
+    "3D",
+    "Copy",
+    "VideoDecode",
+    "VideoEncode",
+    "VideoProcessing",
+    "Compute_0",
+    "Compute_1",
+    "Overlay",
 ];
 
 // ─── Windows implementation ───────────────────────────────────────────────────
@@ -32,10 +39,8 @@ mod windows_impl {
     use std::sync::Mutex;
 
     use windows::Win32::System::Performance::{
-        PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData,
-        PdhGetFormattedCounterArrayW, PdhOpenQueryW,
-        PDH_FMT_COUNTERVALUE_ITEM_W, PDH_FMT_DOUBLE,
-        PDH_HCOUNTER, PDH_HQUERY,
+        PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData, PdhGetFormattedCounterArrayW,
+        PdhOpenQueryW, PDH_FMT_COUNTERVALUE_ITEM_W, PDH_FMT_DOUBLE, PDH_HCOUNTER, PDH_HQUERY,
     };
 
     struct PdhState {
@@ -143,6 +148,8 @@ mod windows_impl {
     }
 
     fn extract_engine_type(instance: &str) -> Option<String> {
-        instance.rfind("engtype_").map(|pos| instance[pos + 8..].to_string())
+        instance
+            .rfind("engtype_")
+            .map(|pos| instance[pos + 8..].to_string())
     }
 }

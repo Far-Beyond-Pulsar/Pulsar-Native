@@ -1,10 +1,13 @@
 //! Memory panel — system memory stats (cache, pools, committed) + engine allocation breakdown.
 
-use gpui::*;
-use gpui::prelude::FluentBuilder;
-use ui::{ActiveTheme, StyledExt, dock::{Panel, PanelEvent}, v_flex};
-use crate::performance_metrics::SharedPerformanceMetrics;
 use crate::memory_tracking::SharedMemoryTracker;
+use crate::performance_metrics::SharedPerformanceMetrics;
+use gpui::prelude::FluentBuilder;
+use gpui::*;
+use ui::{
+    dock::{Panel, PanelEvent},
+    v_flex, ActiveTheme, StyledExt,
+};
 
 pub struct MemoryBreakdownPanel {
     focus_handle: FocusHandle,
@@ -16,7 +19,11 @@ pub struct MemoryBreakdownPanel {
 }
 
 impl MemoryBreakdownPanel {
-    pub fn new(_memory_tracker: SharedMemoryTracker, metrics: SharedPerformanceMetrics, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        _memory_tracker: SharedMemoryTracker,
+        metrics: SharedPerformanceMetrics,
+        cx: &mut Context<Self>,
+    ) -> Self {
         Self {
             focus_handle: cx.focus_handle(),
             scroll_handle: ui::VirtualListScrollHandle::new(),
@@ -34,7 +41,7 @@ ui_common::panel_boilerplate!(MemoryBreakdownPanel);
 
 impl Render for MemoryBreakdownPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        use ui::{h_flex, v_virtual_list, chart::AreaChart, scroll::ScrollbarAxis};
+        use ui::{chart::AreaChart, h_flex, scroll::ScrollbarAxis, v_virtual_list};
 
         let theme = cx.theme().clone();
 
@@ -43,40 +50,84 @@ impl Render for MemoryBreakdownPanel {
         if now.duration_since(self.last_update).as_millis() >= 67 {
             self.last_update = now;
             use crate::atomic_memory_tracking::ATOMIC_MEMORY_COUNTERS;
-            self.cached_total   = ATOMIC_MEMORY_COUNTERS.total();
+            self.cached_total = ATOMIC_MEMORY_COUNTERS.total();
             self.cached_entries = ATOMIC_MEMORY_COUNTERS.get_all_entries();
         }
 
-        let snap           = self.metrics.read().mem_snapshot.clone();
-        let committed_hist: Vec<f64> = self.metrics.read().committed_history.iter().copied().collect();
-        let cached_hist:    Vec<f64> = self.metrics.read().cached_history.iter().copied().collect();
+        let snap = self.metrics.read().mem_snapshot.clone();
+        let committed_hist: Vec<f64> = self
+            .metrics
+            .read()
+            .committed_history
+            .iter()
+            .copied()
+            .collect();
+        let cached_hist: Vec<f64> = self.metrics.read().cached_history.iter().copied().collect();
 
-        let entry_count  = self.cached_entries.len();
-        let row_height   = px(50.0);
-        let item_sizes   = std::rc::Rc::new(vec![size(px(0.0), row_height); entry_count]);
-        let view         = cx.entity().clone();
+        let entry_count = self.cached_entries.len();
+        let row_height = px(50.0);
+        let item_sizes = std::rc::Rc::new(vec![size(px(0.0), row_height); entry_count]);
+        let view = cx.entity().clone();
         let cached_entries = self.cached_entries.clone();
-        let cached_alloc   = self.cached_total;
+        let cached_alloc = self.cached_total;
 
         let in_use_pct = if snap.total_mb > 0 {
             (snap.in_use_mb as f64 / snap.total_mb as f64 * 100.0).min(100.0)
-        } else { 0.0 };
-        let use_color = if in_use_pct > 85.0 { theme.danger } else if in_use_pct > 65.0 { theme.warning } else { theme.success };
+        } else {
+            0.0
+        };
+        let use_color = if in_use_pct > 85.0 {
+            theme.danger
+        } else if in_use_pct > 65.0 {
+            theme.warning
+        } else {
+            theme.success
+        };
 
         let stat_card = |label: &str, value: String, color: gpui::Hsla| -> Div {
             v_flex()
-                .p_2().gap_1().bg(theme.background)
-                .border_1().border_color(theme.border).rounded(px(6.0))
-                .child(div().text_size(px(10.0)).text_color(theme.muted_foreground).child(label.to_string()))
-                .child(div().text_size(px(12.0)).font_weight(gpui::FontWeight::BOLD).text_color(color).child(value))
+                .p_2()
+                .gap_1()
+                .bg(theme.background)
+                .border_1()
+                .border_color(theme.border)
+                .rounded(px(6.0))
+                .child(
+                    div()
+                        .text_size(px(10.0))
+                        .text_color(theme.muted_foreground)
+                        .child(label.to_string()),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.0))
+                        .font_weight(gpui::FontWeight::BOLD)
+                        .text_color(color)
+                        .child(value),
+                )
         };
 
         let mb_str = |v: u64| format!("{} MiB", v);
-        let opt_mb = |v: Option<u64>| v.map(|n| format!("{} MiB", n)).unwrap_or_else(|| "N/A".to_string());
+        let opt_mb = |v: Option<u64>| {
+            v.map(|n| format!("{} MiB", n))
+                .unwrap_or_else(|| "N/A".to_string())
+        };
 
-        #[derive(Clone)] struct Pt { i: usize, v: f64 }
-        let committed_pts: Vec<Pt> = committed_hist.into_iter().enumerate().map(|(i,v)| Pt{i,v}).collect();
-        let cached_pts:    Vec<Pt> = cached_hist.into_iter().enumerate().map(|(i,v)| Pt{i,v}).collect();
+        #[derive(Clone)]
+        struct Pt {
+            i: usize,
+            v: f64,
+        }
+        let committed_pts: Vec<Pt> = committed_hist
+            .into_iter()
+            .enumerate()
+            .map(|(i, v)| Pt { i, v })
+            .collect();
+        let cached_pts: Vec<Pt> = cached_hist
+            .into_iter()
+            .enumerate()
+            .map(|(i, v)| Pt { i, v })
+            .collect();
 
         v_flex()
             .size_full()
@@ -220,6 +271,10 @@ impl Render for MemoryBreakdownPanel {
 }
 
 impl Panel for MemoryBreakdownPanel {
-    fn panel_name(&self) -> &'static str { "memory_breakdown" }
-    fn title(&self, _window: &Window, _cx: &App) -> AnyElement { "Memory".into_any_element() }
+    fn panel_name(&self) -> &'static str {
+        "memory_breakdown"
+    }
+    fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
+        "Memory".into_any_element()
+    }
 }

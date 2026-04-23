@@ -46,7 +46,6 @@
 //! - [`telemetry`] - OpenTelemetry integration
 //! - [`persistence`] - Database and S3 storage
 
-pub mod simple_test_server;
 pub mod auth;
 pub mod config;
 pub mod crdt;
@@ -60,6 +59,7 @@ pub mod relay;
 pub mod rendezvous;
 pub mod session;
 pub mod shutdown;
+pub mod simple_test_server;
 pub mod telemetry;
 pub mod transport;
 

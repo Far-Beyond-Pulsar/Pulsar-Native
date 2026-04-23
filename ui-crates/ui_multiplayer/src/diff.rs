@@ -58,7 +58,12 @@ impl LineDiff {
 
     /// Check if there are any changes
     pub fn has_changes(&self) -> bool {
-        self.operations.iter().any(|op| matches!(op, DiffOperation::Insert { .. } | DiffOperation::Delete { .. }))
+        self.operations.iter().any(|op| {
+            matches!(
+                op,
+                DiffOperation::Insert { .. } | DiffOperation::Delete { .. }
+            )
+        })
     }
 }
 
@@ -94,7 +99,10 @@ fn myers_diff(old_lines: &[&str], new_lines: &[&str]) -> Vec<DiffOperation> {
         let mut current_v = v.clone();
 
         for k in (-(d as isize)..=(d as isize)).step_by(2) {
-            let mut x = if k == -(d as isize) || (k != d as isize && v.get(&(k - 1)).unwrap_or(&-1) < v.get(&(k + 1)).unwrap_or(&-1)) {
+            let mut x = if k == -(d as isize)
+                || (k != d as isize
+                    && v.get(&(k - 1)).unwrap_or(&-1) < v.get(&(k + 1)).unwrap_or(&-1))
+            {
                 *v.get(&(k + 1)).unwrap_or(&0)
             } else {
                 v.get(&(k - 1)).unwrap_or(&0) + 1
@@ -102,7 +110,8 @@ fn myers_diff(old_lines: &[&str], new_lines: &[&str]) -> Vec<DiffOperation> {
 
             let mut y = x - k;
 
-            while x < n as isize && y < m as isize && old_lines[x as usize] == new_lines[y as usize] {
+            while x < n as isize && y < m as isize && old_lines[x as usize] == new_lines[y as usize]
+            {
                 x += 1;
                 y += 1;
             }
@@ -122,16 +131,24 @@ fn myers_diff(old_lines: &[&str], new_lines: &[&str]) -> Vec<DiffOperation> {
     // Fallback: If no path found, treat as complete replacement
     let mut ops = Vec::new();
     for line in old_lines {
-        ops.push(DiffOperation::Delete { line: line.to_string() });
+        ops.push(DiffOperation::Delete {
+            line: line.to_string(),
+        });
     }
     for line in new_lines {
-        ops.push(DiffOperation::Insert { line: line.to_string() });
+        ops.push(DiffOperation::Insert {
+            line: line.to_string(),
+        });
     }
     ops
 }
 
 /// Backtrack through the trace to construct the diff
-fn backtrack(trace: &[HashMap<isize, isize>], old_lines: &[&str], new_lines: &[&str]) -> Vec<DiffOperation> {
+fn backtrack(
+    trace: &[HashMap<isize, isize>],
+    old_lines: &[&str],
+    new_lines: &[&str],
+) -> Vec<DiffOperation> {
     let mut x = old_lines.len() as isize;
     let mut y = new_lines.len() as isize;
     let mut operations = Vec::new();
@@ -140,7 +157,9 @@ fn backtrack(trace: &[HashMap<isize, isize>], old_lines: &[&str], new_lines: &[&
         let v = &trace[d];
         let k = x - y;
 
-        let prev_k = if k == -(d as isize) || (k != d as isize && v.get(&(k - 1)).unwrap_or(&-1) < v.get(&(k + 1)).unwrap_or(&-1)) {
+        let prev_k = if k == -(d as isize)
+            || (k != d as isize && v.get(&(k - 1)).unwrap_or(&-1) < v.get(&(k + 1)).unwrap_or(&-1))
+        {
             k + 1
         } else {
             k - 1

@@ -1,8 +1,8 @@
 //! Memory tracking and allocation monitoring
 
+use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
-use parking_lot::RwLock;
 
 /// Category of memory allocation
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
@@ -116,7 +116,9 @@ impl MemoryStats {
 
     /// Get category breakdown sorted by size
     pub fn category_breakdown(&self) -> Vec<(MemoryCategory, usize)> {
-        let mut categories: Vec<_> = self.by_category.iter()
+        let mut categories: Vec<_> = self
+            .by_category
+            .iter()
             .map(|(k, v)| (k.clone(), *v))
             .collect();
         categories.sort_by(|a, b| b.1.cmp(&a.1));

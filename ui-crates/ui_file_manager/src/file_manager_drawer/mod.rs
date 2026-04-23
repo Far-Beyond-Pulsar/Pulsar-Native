@@ -5,21 +5,16 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use ui::{
     button::{Button, ButtonGroup, ButtonVariants as _},
-    h_flex, v_flex,
+    h_flex,
     input::{InputState, TextInput},
-    resizable::{h_resizable, resizable_panel, ResizableState},
     menu::context_menu::ContextMenuExt,
-    ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt, Selectable as _,
+    resizable::{h_resizable, resizable_panel, ResizableState},
+    v_flex, ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, StyledExt,
 };
 
 // Import from our modular structure
 use crate::drawer::{
-    actions::*,
-    types::*,
-    tree::FolderNode,
-    operations::FileOperations,
-    utils::*,
-    context_menus,
+    actions::*, context_menus, operations::FileOperations, tree::FolderNode, types::*, utils::*,
     FsMetadataManager,
 };
 
@@ -95,11 +90,7 @@ include!("drawer_impl/drag_drop_handlers.rs");
 fn cloud_join(base: &Path, component: &str) -> PathBuf {
     if engine_fs::is_cloud_path(base) {
         let base_s = base.to_string_lossy().replace('\\', "/");
-        PathBuf::from(format!(
-            "{}/{}",
-            base_s.trim_end_matches('/'),
-            component
-        ))
+        PathBuf::from(format!("{}/{}", base_s.trim_end_matches('/'), component))
     } else {
         base.join(component)
     }
@@ -123,12 +114,14 @@ impl Render for FileManagerDrawer {
         div()
             .size_full()
             .key_context("FileManagerDrawer")
-            .on_action(cx.listener(|this, _action: &RefreshFileManager, _window, cx| {
-                if let Some(ref path) = this.project_path {
-                    this.folder_tree = FolderNode::from_path(path);
-                }
-                cx.notify();
-            }))
+            .on_action(
+                cx.listener(|this, _action: &RefreshFileManager, _window, cx| {
+                    if let Some(ref path) = this.project_path {
+                        this.folder_tree = FolderNode::from_path(path);
+                    }
+                    cx.notify();
+                }),
+            )
             .on_action(cx.listener(|this, action: &CreateAsset, _window, cx| {
                 this.handle_create_asset(action, cx);
             }))
@@ -141,15 +134,17 @@ impl Render for FileManagerDrawer {
             .on_action(cx.listener(|this, _action: &RenameItem, window, cx| {
                 this.handle_rename_item(window, cx);
             }))
-            .on_action(cx.listener(|this, _action: &ui::input::Escape, _window, cx| {
-                // Cancel rename on Escape - clear the input and close
-                if this.renaming_item.is_some() {
-                    this.renaming_item = None;
-                    cx.notify();
-                }
-                // Cancel drag on Escape
-                this.cancel_drag(cx);
-            }))
+            .on_action(
+                cx.listener(|this, _action: &ui::input::Escape, _window, cx| {
+                    // Cancel rename on Escape - clear the input and close
+                    if this.renaming_item.is_some() {
+                        this.renaming_item = None;
+                        cx.notify();
+                    }
+                    // Cancel drag on Escape
+                    this.cancel_drag(cx);
+                }),
+            )
             .on_action(cx.listener(|this, _action: &DuplicateItem, _window, cx| {
                 this.handle_duplicate_item(cx);
             }))
@@ -162,9 +157,11 @@ impl Render for FileManagerDrawer {
             .on_action(cx.listener(|this, _action: &Paste, _window, cx| {
                 this.handle_paste(cx);
             }))
-            .on_action(cx.listener(|this, action: &OpenInFileManager, _window, cx| {
-                this.handle_open_in_file_manager(action, cx);
-            }))
+            .on_action(
+                cx.listener(|this, action: &OpenInFileManager, _window, cx| {
+                    this.handle_open_in_file_manager(action, cx);
+                }),
+            )
             .on_action(cx.listener(|this, action: &OpenTerminalHere, _window, cx| {
                 this.handle_open_terminal_here(action, cx);
             }))
@@ -183,9 +180,11 @@ impl Render for FileManagerDrawer {
             .on_action(cx.listener(|this, action: &ShowHistory, _window, cx| {
                 this.handle_show_history(action, cx);
             }))
-            .on_action(cx.listener(|this, action: &CheckMultiuserSync, _window, cx| {
-                this.handle_check_multiuser_sync(action, cx);
-            }))
+            .on_action(
+                cx.listener(|this, action: &CheckMultiuserSync, _window, cx| {
+                    this.handle_check_multiuser_sync(action, cx);
+                }),
+            )
             .on_action(cx.listener(|this, action: &SetColorOverride, _window, cx| {
                 this.handle_set_color_override(action, cx);
             }))

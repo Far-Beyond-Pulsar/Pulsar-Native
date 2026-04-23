@@ -16,8 +16,7 @@
 /// Returns `true` on success.
 pub fn run_setup_script() -> bool {
     rustup::installer::install_rust_blocking(
-        /* no_prompt      */ true,
-        /* no_modify_path */ false,
+        /* no_prompt      */ true, /* no_modify_path */ false,
     )
     .is_ok()
 }

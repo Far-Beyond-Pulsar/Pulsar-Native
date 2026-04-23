@@ -9,7 +9,7 @@ pub use pulsar_replication::*;
 
 use crate::{h_flex, ActiveTheme, Icon, IconName, Sizable, StyledExt};
 use gpui::{
-    div, prelude::FluentBuilder, px, App, AnyElement, IntoElement, ParentElement, RenderOnce,
+    div, prelude::FluentBuilder, px, AnyElement, App, IntoElement, ParentElement, RenderOnce,
     Styled, Window,
 };
 use serde_json::{json, Value};
@@ -37,7 +37,12 @@ pub trait InputStateReplicationExt {
     fn sync_if_replicated(&self, cx: &mut App);
     fn replication_mode(&self, cx: &App) -> Option<ReplicationMode>;
     fn can_edit_replicated(&self, cx: &App) -> bool;
-    fn apply_remote_state(&self, state: Value, window: &mut Window, cx: &mut App) -> Result<(), String>;
+    fn apply_remote_state(
+        &self,
+        state: Value,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<(), String>;
 }
 
 impl InputStateReplicationExt for gpui::Entity<InputState> {
@@ -78,11 +83,8 @@ impl InputStateReplicationExt for gpui::Entity<InputState> {
 
             if session.is_active() {
                 if let Some(our_peer_id) = session.our_peer_id() {
-                    let message = ReplicationMessageBuilder::state_update(
-                        element_id,
-                        state,
-                        our_peer_id,
-                    );
+                    let message =
+                        ReplicationMessageBuilder::state_update(element_id, state, our_peer_id);
                     session.send_message(message);
                 }
             }
@@ -136,7 +138,12 @@ impl InputStateReplicationExt for gpui::Entity<InputState> {
         }
     }
 
-    fn apply_remote_state(&self, state: Value, window: &mut Window, cx: &mut App) -> Result<(), String> {
+    fn apply_remote_state(
+        &self,
+        state: Value,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<(), String> {
         let text = state
             .get("text")
             .and_then(|v| v.as_str())
@@ -183,14 +190,37 @@ pub struct PresencePill {
 
 impl PresencePill {
     pub fn new(presence: UserPresence) -> Self {
-        Self { presence, show_name: true, show_status: false, size: PresencePillSize::Medium }
+        Self {
+            presence,
+            show_name: true,
+            show_status: false,
+            size: PresencePillSize::Medium,
+        }
     }
 
-    pub fn small(mut self) -> Self { self.size = PresencePillSize::Small; self.show_name = false; self }
-    pub fn medium(mut self) -> Self { self.size = PresencePillSize::Medium; self.show_name = false; self }
-    pub fn large(mut self) -> Self { self.size = PresencePillSize::Large; self.show_name = true; self }
-    pub fn with_name(mut self, show: bool) -> Self { self.show_name = show; self }
-    pub fn with_status(mut self, show: bool) -> Self { self.show_status = show; self }
+    pub fn small(mut self) -> Self {
+        self.size = PresencePillSize::Small;
+        self.show_name = false;
+        self
+    }
+    pub fn medium(mut self) -> Self {
+        self.size = PresencePillSize::Medium;
+        self.show_name = false;
+        self
+    }
+    pub fn large(mut self) -> Self {
+        self.size = PresencePillSize::Large;
+        self.show_name = true;
+        self
+    }
+    pub fn with_name(mut self, show: bool) -> Self {
+        self.show_name = show;
+        self
+    }
+    pub fn with_status(mut self, show: bool) -> Self {
+        self.show_status = show;
+        self
+    }
 }
 
 impl RenderOnce for PresencePill {
@@ -269,12 +299,26 @@ pub struct PresenceStack {
 
 impl PresenceStack {
     pub fn new(presences: Vec<UserPresence>) -> Self {
-        Self { presences, max_visible: 3, show_count: true, size: PresencePillSize::Medium }
+        Self {
+            presences,
+            max_visible: 3,
+            show_count: true,
+            size: PresencePillSize::Medium,
+        }
     }
 
-    pub fn max_visible(mut self, max: usize) -> Self { self.max_visible = max; self }
-    pub fn show_count(mut self, show: bool) -> Self { self.show_count = show; self }
-    pub fn small(mut self) -> Self { self.size = PresencePillSize::Small; self }
+    pub fn max_visible(mut self, max: usize) -> Self {
+        self.max_visible = max;
+        self
+    }
+    pub fn show_count(mut self, show: bool) -> Self {
+        self.show_count = show;
+        self
+    }
+    pub fn small(mut self) -> Self {
+        self.size = PresencePillSize::Small;
+        self
+    }
 }
 
 impl RenderOnce for PresenceStack {
@@ -285,14 +329,19 @@ impl RenderOnce for PresenceStack {
         h_flex()
             .items_center()
             .gap_0p5()
-            .children(self.presences.iter().take(self.max_visible).map(|presence| {
-                let pill = PresencePill::new(presence.clone());
-                match self.size {
-                    PresencePillSize::Small => pill.small(),
-                    PresencePillSize::Medium => pill.medium(),
-                    PresencePillSize::Large => pill.large(),
-                }
-            }))
+            .children(
+                self.presences
+                    .iter()
+                    .take(self.max_visible)
+                    .map(|presence| {
+                        let pill = PresencePill::new(presence.clone());
+                        match self.size {
+                            PresencePillSize::Small => pill.small(),
+                            PresencePillSize::Medium => pill.medium(),
+                            PresencePillSize::Large => pill.large(),
+                        }
+                    }),
+            )
             .when(self.show_count && overflow > 0, |this| {
                 this.child(
                     div()
@@ -321,10 +370,16 @@ pub struct TabPresenceIndicator {
 
 impl TabPresenceIndicator {
     pub fn new(presences: Vec<UserPresence>) -> Self {
-        Self { presences, show_count: true }
+        Self {
+            presences,
+            show_count: true,
+        }
     }
 
-    pub fn show_count(mut self, show: bool) -> Self { self.show_count = show; self }
+    pub fn show_count(mut self, show: bool) -> Self {
+        self.show_count = show;
+        self
+    }
 }
 
 impl RenderOnce for TabPresenceIndicator {
@@ -353,10 +408,16 @@ pub struct FieldPresenceIndicator {
 
 impl FieldPresenceIndicator {
     pub fn new(presence: UserPresence) -> Self {
-        Self { presence, is_locked: false }
+        Self {
+            presence,
+            is_locked: false,
+        }
     }
 
-    pub fn locked(mut self, locked: bool) -> Self { self.is_locked = locked; self }
+    pub fn locked(mut self, locked: bool) -> Self {
+        self.is_locked = locked;
+        self
+    }
 }
 
 impl RenderOnce for FieldPresenceIndicator {

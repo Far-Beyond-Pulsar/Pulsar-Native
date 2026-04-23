@@ -1,15 +1,22 @@
 //! User presence tracking functionality
 
-use gpui::*;
 use super::state::MultiplayerWindow;
 use super::types::*;
 use engine_backend::subsystems::networking::multiuser::ClientMessage;
+use gpui::*;
 
 impl MultiplayerWindow {
     /// Kick a user from the session (host only)
-    pub(super) fn kick_user(&mut self, peer_id: String, _window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn kick_user(
+        &mut self,
+        peer_id: String,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         // Check if we're the host
-        let is_host = self.active_session.as_ref()
+        let is_host = self
+            .active_session
+            .as_ref()
             .and_then(|s| s.connected_users.first())
             .map(|first_peer| Some(first_peer) == self.current_peer_id.as_ref())
             .unwrap_or(false);
@@ -36,11 +43,13 @@ impl MultiplayerWindow {
             cx.spawn(async move |this, cx| {
                 {
                     let client_guard = client.read().await;
-                    let _ = client_guard.send(ClientMessage::KickUser {
-                        session_id,
-                        peer_id: our_peer_id,
-                        target_peer_id: peer_id.clone(),
-                    }).await;
+                    let _ = client_guard
+                        .send(ClientMessage::KickUser {
+                            session_id,
+                            peer_id: our_peer_id,
+                            target_peer_id: peer_id.clone(),
+                        })
+                        .await;
                 }
 
                 // Update local state (will also update when server confirms via PeerLeft)
@@ -53,14 +62,22 @@ impl MultiplayerWindow {
                         // Remove presence
                         this.user_presences.retain(|p| p.peer_id != peer_id);
                         cx.notify();
-                    }).ok();
-                }).ok();
-            }).detach();
+                    })
+                    .ok();
+                })
+                .ok();
+            })
+            .detach();
         }
     }
 
     /// Jump to the tab/file that a user is currently viewing
-    pub(super) fn jump_to_user_view(&mut self, peer_id: String, _window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn jump_to_user_view(
+        &mut self,
+        peer_id: String,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(presence) = self.user_presences.iter().find(|p| p.peer_id == peer_id) {
             // Switch to their current tab if known
             if let Some(tab_name) = &presence.current_tab {
@@ -98,7 +115,12 @@ impl MultiplayerWindow {
     }
 
     /// Update our own presence to broadcast to others
-    pub(super) fn update_own_presence(&mut self, tab: Option<String>, editing_file: Option<String>, cx: &mut Context<Self>) {
+    pub(super) fn update_own_presence(
+        &mut self,
+        tab: Option<String>,
+        editing_file: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(our_peer_id) = self.current_peer_id.clone() {
             if let Some(presence) = self.get_presence_mut(&our_peer_id) {
                 presence.current_tab = tab;

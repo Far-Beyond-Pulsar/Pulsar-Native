@@ -1,14 +1,14 @@
 //! Main flamegraph canvas component with span rendering
 
-use gpui::*;
-use std::sync::Arc;
-use std::collections::BTreeMap;
-use crate::trace_data::TraceFrame;
-use crate::state::ViewState;
-use crate::lod_tree::LODTree;
-use crate::constants::*;
-use crate::coordinates::{visible_range, time_to_x};
 use crate::colors::get_palette;
+use crate::constants::*;
+use crate::coordinates::{time_to_x, visible_range};
+use crate::lod_tree::LODTree;
+use crate::state::ViewState;
+use crate::trace_data::TraceFrame;
+use gpui::*;
+use std::collections::BTreeMap;
+use std::sync::Arc;
 
 /// Render the main flamegraph canvas with all spans
 pub fn render_flamegraph_canvas(
@@ -121,7 +121,7 @@ pub fn render_flamegraph_canvas(
                     FRAME_COUNT += 1;
                     if FRAME_COUNT % 60 == 0 {  // Log every 60 frames
                         let duration_ms = (visible_time.end - visible_time.start) as f64 / 1_000_000.0;
-                        tracing::trace!("[FLAMEGRAPH] Visible range: {} - {} ({:.2}ms), pan_x: {:.1}, zoom: {:.8}", 
+                        tracing::trace!("[FLAMEGRAPH] Visible range: {} - {} ({:.2}ms), pan_x: {:.1}, zoom: {:.8}",
                             visible_time.start, visible_time.end, duration_ms, view_state.pan_x, view_state.zoom);
                     }
                 }

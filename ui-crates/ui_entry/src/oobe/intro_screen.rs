@@ -7,10 +7,10 @@ use gpui::{prelude::*, *};
 use parking_lot::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use ui::{Icon, IconName, Sizable, h_flex, v_flex};
+use ui::{h_flex, v_flex, Icon, IconName, Sizable};
 
-use super::gradient::AnimatedGradient;
 use super::audio::IntroAudio;
+use super::gradient::AnimatedGradient;
 
 /// Guard to prevent multiple animation loops
 static INTRO_SCREEN_CREATED: AtomicBool = AtomicBool::new(false);
@@ -78,10 +78,10 @@ impl IntroScreen {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let instance_id = INSTANCE_COUNTER.fetch_add(1, Ordering::SeqCst);
         println!("🎬 [IntroScreen] Instance #{} created", instance_id);
-        
+
         // Initialize shared animation state (first call wins)
         let already_created = INTRO_SCREEN_CREATED.swap(true, Ordering::SeqCst);
-        
+
         {
             let mut state = SHARED_ANIM_STATE.lock();
             if state.is_none() {
@@ -96,17 +96,20 @@ impl IntroScreen {
                     swipe_direction: 1,
                 });
             } else {
-                println!("🎬 [IntroScreen] Instance #{} reusing existing shared state at phase {:?}", 
-                    instance_id, state.as_ref().map(|s| s.phase));
+                println!(
+                    "🎬 [IntroScreen] Instance #{} reusing existing shared state at phase {:?}",
+                    instance_id,
+                    state.as_ref().map(|s| s.phase)
+                );
             }
         }
-        
+
         if already_created {
             tracing::warn!("🎬 [IntroScreen::new] IntroScreen already exists, using shared state");
         } else {
             println!("🎬 [IntroScreen::new] Creating new IntroScreen instance (first time)");
         }
-        
+
         let audio = IntroAudio::new();
         if !already_created {
             audio.play_ambient();
@@ -199,10 +202,16 @@ impl IntroScreen {
             println!("🎬 [IntroScreen] Starting animation loop");
             cx.spawn(async move |this, mut cx| {
                 loop {
-                    cx.background_executor().timer(Duration::from_millis(16)).await;
+                    cx.background_executor()
+                        .timer(Duration::from_millis(16))
+                        .await;
 
                     // Check phase from shared state directly — don't rely on entity update succeeding
-                    let phase = SHARED_ANIM_STATE.lock().as_ref().map(|s| s.phase).unwrap_or(IntroPhase::Complete);
+                    let phase = SHARED_ANIM_STATE
+                        .lock()
+                        .as_ref()
+                        .map(|s| s.phase)
+                        .unwrap_or(IntroPhase::Complete);
                     if phase == IntroPhase::Complete {
                         println!("🎬 [IntroScreen] Animation loop complete");
                         break;
@@ -214,7 +223,8 @@ impl IntroScreen {
                         });
                     });
                 }
-            }).detach();
+            })
+            .detach();
         }
 
         screen
@@ -222,28 +232,44 @@ impl IntroScreen {
 
     /// Get current page index from shared state
     fn get_current_page(&self) -> usize {
-        SHARED_ANIM_STATE.lock().as_ref().map(|s| s.current_page).unwrap_or(0)
+        SHARED_ANIM_STATE
+            .lock()
+            .as_ref()
+            .map(|s| s.current_page)
+            .unwrap_or(0)
     }
 
     /// Get current phase from shared state
     fn get_phase(&self) -> IntroPhase {
-        SHARED_ANIM_STATE.lock().as_ref().map(|s| s.phase).unwrap_or(IntroPhase::Complete)
+        SHARED_ANIM_STATE
+            .lock()
+            .as_ref()
+            .map(|s| s.phase)
+            .unwrap_or(IntroPhase::Complete)
     }
-    
+
     /// Get phase elapsed time from shared state
     fn get_phase_elapsed(&self) -> Duration {
-        SHARED_ANIM_STATE.lock().as_ref().map(|s| s.phase_start_time.elapsed()).unwrap_or(Duration::ZERO)
+        SHARED_ANIM_STATE
+            .lock()
+            .as_ref()
+            .map(|s| s.phase_start_time.elapsed())
+            .unwrap_or(Duration::ZERO)
     }
 
     /// Get page elapsed time from shared state
     fn get_page_elapsed(&self) -> Duration {
-        SHARED_ANIM_STATE.lock().as_ref().map(|s| s.page_start_time.elapsed()).unwrap_or(Duration::ZERO)
+        SHARED_ANIM_STATE
+            .lock()
+            .as_ref()
+            .map(|s| s.page_start_time.elapsed())
+            .unwrap_or(Duration::ZERO)
     }
 
     /// Update animation state each frame
     fn tick(&mut self, cx: &mut Context<Self>) {
         self.frame_count += 1;
-        
+
         let (current_phase, phase_elapsed) = {
             let state = SHARED_ANIM_STATE.lock();
             if let Some(s) = state.as_ref() {
@@ -266,7 +292,10 @@ impl IntroScreen {
             }
             IntroPhase::PageTransition => {
                 if phase_elapsed > Duration::from_millis(500) {
-                    println!("🎬 [tick] PageTransition elapsed {:?}, advancing to Ready", phase_elapsed);
+                    println!(
+                        "🎬 [tick] PageTransition elapsed {:?}, advancing to Ready",
+                        phase_elapsed
+                    );
                     // Go directly to Ready - no fade in after swipe
                     self.advance_phase(IntroPhase::Ready, cx);
                 }
@@ -295,7 +324,7 @@ impl IntroScreen {
             s.phase = new_phase;
             s.phase_start_time = Instant::now();
         }
-        
+
         if new_phase == IntroPhase::PageReveal {
             self.audio.play_transition();
         }
@@ -312,7 +341,10 @@ impl IntroScreen {
             }
         };
 
-        println!("🎬 [next_page] called: page={}/{}, phase={:?}", current_page, total_pages, phase);
+        println!(
+            "🎬 [next_page] called: page={}/{}, phase={:?}",
+            current_page, total_pages, phase
+        );
 
         if matches!(phase, IntroPhase::FadeOut | IntroPhase::Complete) {
             println!("🔒 [next_page] BLOCKED by phase {:?}", phase);
@@ -377,7 +409,9 @@ impl IntroScreen {
         // Don't rely on tick() — schedule emit directly after fade duration.
         cx.spawn(async move |this, mut cx| {
             println!("🎬 [finish] spawn started, waiting 550ms");
-            cx.background_executor().timer(Duration::from_millis(550)).await;
+            cx.background_executor()
+                .timer(Duration::from_millis(550))
+                .await;
             println!("🎬 [finish] timer fired, emitting IntroComplete");
             let _ = cx.update(|cx| {
                 let _ = this.update(cx, |screen, cx| {
@@ -394,7 +428,8 @@ impl IntroScreen {
                 });
             });
             println!("🎬 [finish] spawn done");
-        }).detach();
+        })
+        .detach();
     }
 
     fn skip(&mut self, cx: &mut Context<Self>) {
@@ -421,7 +456,7 @@ impl IntroScreen {
     fn calculate_content_opacity(&self) -> f32 {
         let phase = self.get_phase();
         let phase_elapsed = self.get_phase_elapsed().as_secs_f32();
-        
+
         match phase {
             IntroPhase::FadeIn => ease_out_cubic((phase_elapsed / 0.6).min(1.0)),
             IntroPhase::PageReveal => ease_out_cubic((phase_elapsed / 0.5).min(1.0)),
@@ -443,7 +478,7 @@ impl IntroScreen {
     fn calculate_content_offset(&self) -> f32 {
         let phase = self.get_phase();
         let phase_elapsed = self.get_phase_elapsed().as_secs_f32();
-        
+
         match phase {
             IntroPhase::PageReveal => 30.0 * (1.0 - ease_out_quart((phase_elapsed / 0.5).min(1.0))),
             IntroPhase::PageTransition => {
@@ -458,81 +493,81 @@ impl IntroScreen {
         }
     }
 
-    fn render_page(&self, page: &OobePage, opacity: f32, offset: f32, page_elapsed_secs: f32, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_page(
+        &self,
+        page: &OobePage,
+        opacity: f32,
+        offset: f32,
+        page_elapsed_secs: f32,
+        _cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         // Staggered feature animations - each feature fades in with a delay
-        let features: Vec<_> = page.features.iter().enumerate().map(|(i, (emoji, text))| {
-            let delay = 0.3 + (i as f32 * 0.15); // Start at 0.3s, stagger by 0.15s
-            let feature_opacity = if page_elapsed_secs > delay {
-                ease_out_quart(((page_elapsed_secs - delay) / 0.5).min(1.0))
-            } else {
-                0.0
-            };
-            
-            div()
-                .opacity(feature_opacity * opacity)
-                .child(
+        let features: Vec<_> = page
+            .features
+            .iter()
+            .enumerate()
+            .map(|(i, (emoji, text))| {
+                let delay = 0.3 + (i as f32 * 0.15); // Start at 0.3s, stagger by 0.15s
+                let feature_opacity = if page_elapsed_secs > delay {
+                    ease_out_quart(((page_elapsed_secs - delay) / 0.5).min(1.0))
+                } else {
+                    0.0
+                };
+
+                div().opacity(feature_opacity * opacity).child(
                     h_flex()
                         .gap_3()
                         .items_center()
-                        .child(
-                            div()
-                                .text_xl()
-                                .child(emoji.to_string())
-                        )
+                        .child(div().text_xl().child(emoji.to_string()))
                         .child(
                             div()
                                 .text_base()
                                 .text_color(white().opacity(0.85))
-                                .child(text.to_string())
-                        )
+                                .child(text.to_string()),
+                        ),
                 )
-        }).collect();
+            })
+            .collect();
 
         v_flex()
             .items_center()
             .gap_6()
             .mt(px(offset))
             .child(
-                div()
-                    .opacity(opacity)
-                    .child(
-                        div()
-                            .w(px(100.0))
-                            .h(px(100.0))
-                            .rounded_full()
-                            .bg(white().opacity(0.1))
-                            .border_1()
-                            .border_color(white().opacity(0.2))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .child(
-                                ui::Icon::new(page.icon.clone())
-                                    .size(px(48.0))
-                                    .text_color(white())
-                            )
-                    )
+                div().opacity(opacity).child(
+                    div()
+                        .w(px(100.0))
+                        .h(px(100.0))
+                        .rounded_full()
+                        .bg(white().opacity(0.1))
+                        .border_1()
+                        .border_color(white().opacity(0.2))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            ui::Icon::new(page.icon.clone())
+                                .size(px(48.0))
+                                .text_color(white()),
+                        ),
+                ),
             )
             .child(
-                div()
-                    .opacity(opacity)
-                    .child(
-                        div()
-                            .text_size(px(42.0))
-                            .font_weight(FontWeight::BOLD)
-                            .text_color(white())
-                            .child(page.title)
-                    )
+                div().opacity(opacity).child(
+                    div()
+                        .text_size(px(42.0))
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(white())
+                        .child(page.title),
+                ),
             )
             .child(
-                div()
-                    .opacity(opacity * 0.9)
-                    .child(
-                        div()
-                            .text_xl()
-                            .text_color(white().opacity(0.8))
-                            .child(page.subtitle)
-                    )
+                div().opacity(opacity * 0.9).child(
+                    div()
+                        .text_xl()
+                        .text_color(white().opacity(0.8))
+                        .child(page.subtitle),
+                ),
             )
             .child(
                 v_flex()
@@ -541,11 +576,17 @@ impl IntroScreen {
                     .p_6()
                     .rounded_xl()
                     .bg(black().opacity(0.2))
-                    .children(features)
+                    .children(features),
             )
     }
 
-    fn render_navigation(&self, current_page: usize, total_pages: usize, opacity: f32, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_navigation(
+        &self,
+        current_page: usize,
+        total_pages: usize,
+        opacity: f32,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let is_last_page = current_page + 1 >= total_pages;
         let is_first_page = current_page == 0;
 
@@ -564,7 +605,13 @@ impl IntroScreen {
                     .border_1()
                     .border_color(white().opacity(if is_first_page { 0.1 } else { 0.2 }))
                     .when(!is_first_page, |s| s.cursor_pointer())
-                    .hover(|s| if !is_first_page { s.bg(white().opacity(0.2)) } else { s })
+                    .hover(|s| {
+                        if !is_first_page {
+                            s.bg(white().opacity(0.2))
+                        } else {
+                            s
+                        }
+                    })
                     .when(!is_first_page, |el| {
                         el.on_click(cx.listener(|this, _, _, cx| {
                             println!("🖱️ [back-btn] clicked");
@@ -576,32 +623,31 @@ impl IntroScreen {
                             .gap_2()
                             .items_center()
                             .child(
-                                ui::Icon::new(IconName::ArrowLeft)
-                                    .size_4()
-                                    .text_color(white().opacity(if is_first_page { 0.3 } else { 0.9 }))
+                                ui::Icon::new(IconName::ArrowLeft).size_4().text_color(
+                                    white().opacity(if is_first_page { 0.3 } else { 0.9 }),
+                                ),
                             )
                             .child(
                                 div()
                                     .text_sm()
                                     .font_weight(FontWeight::MEDIUM)
-                                    .text_color(white().opacity(if is_first_page { 0.3 } else { 0.9 }))
-                                    .child("Back")
-                            )
-                    )
+                                    .text_color(white().opacity(if is_first_page {
+                                        0.3
+                                    } else {
+                                        0.9
+                                    }))
+                                    .child("Back"),
+                            ),
+                    ),
             )
             // Page dots
-            .child(
-                h_flex()
-                    .gap_2()
-                    .px_4()
-                    .children((0..total_pages).map(|i| {
-                        div()
-                            .w(px(if i == current_page { 24.0 } else { 8.0 }))
-                            .h(px(8.0))
-                            .rounded_full()
-                            .bg(white().opacity(if i == current_page { 0.9 } else { 0.3 }))
-                    }))
-            )
+            .child(h_flex().gap_2().px_4().children((0..total_pages).map(|i| {
+                div()
+                    .w(px(if i == current_page { 24.0 } else { 8.0 }))
+                    .h(px(8.0))
+                    .rounded_full()
+                    .bg(white().opacity(if i == current_page { 0.9 } else { 0.3 }))
+            })))
             // Next / Get Started button — single div with id, styling, AND on_click
             .child(
                 div()
@@ -627,14 +673,18 @@ impl IntroScreen {
                                     .text_sm()
                                     .font_weight(FontWeight::MEDIUM)
                                     .text_color(white())
-                                    .child(if is_last_page { "Get Started" } else { "Next" })
+                                    .child(if is_last_page { "Get Started" } else { "Next" }),
                             )
                             .child(
-                                ui::Icon::new(if is_last_page { IconName::Check } else { IconName::ArrowRight })
-                                    .size_4()
-                                    .text_color(white())
-                            )
-                    )
+                                ui::Icon::new(if is_last_page {
+                                    IconName::Check
+                                } else {
+                                    IconName::ArrowRight
+                                })
+                                .size_4()
+                                .text_color(white()),
+                            ),
+                    ),
             )
     }
 }
@@ -665,23 +715,42 @@ impl Render for IntroScreen {
                 let total = s.start_time.elapsed().as_secs_f32();
                 // Page elapsed = time since this page started (from the absolute timeline)
                 let page_elapsed = s.page_start_time.elapsed().as_secs_f32();
-                (s.current_page, s.phase, total, page_elapsed, s.swipe_direction)
+                (
+                    s.current_page,
+                    s.phase,
+                    total,
+                    page_elapsed,
+                    s.swipe_direction,
+                )
             } else {
                 (0, IntroPhase::Complete, 10.0, 10.0, 1)
             }
         };
-        
+
         let total_pages = self.pages.len();
-        let page = self.pages.get(current_page).cloned().unwrap_or_else(|| self.pages[0].clone());
-        
+        let page = self
+            .pages
+            .get(current_page)
+            .cloned()
+            .unwrap_or_else(|| self.pages[0].clone());
+
         let (color1, color2, color3) = self.gradient.gradient_colors();
-        
+
         // Apply page-specific hue offset for variety
         let hue_offset = page.gradient_hue_offset;
-        let color1 = Hsla { h: (color1.h + hue_offset) % 1.0, ..color1 };
-        let color2 = Hsla { h: (color2.h + hue_offset) % 1.0, ..color2 };
-        let color3 = Hsla { h: (color3.h + hue_offset) % 1.0, ..color3 };
-        
+        let color1 = Hsla {
+            h: (color1.h + hue_offset) % 1.0,
+            ..color1
+        };
+        let color2 = Hsla {
+            h: (color2.h + hue_offset) % 1.0,
+            ..color2
+        };
+        let color3 = Hsla {
+            h: (color3.h + hue_offset) % 1.0,
+            ..color3
+        };
+
         // Calculate background opacity - fade in at start, fade out at end
         let bg_opacity = match phase {
             IntroPhase::FadeIn => ease_out_cubic((total_elapsed_secs / 0.8).min(1.0)),
@@ -692,7 +761,7 @@ impl Render for IntroScreen {
             IntroPhase::Complete => 0.0,
             _ => 1.0,
         };
-        
+
         // Content opacity based on page timeline
         // Only first page fades in - all others just swipe
         let content_opacity = match phase {
@@ -703,13 +772,15 @@ impl Render for IntroScreen {
             IntroPhase::FadeOut => ease_out_cubic(1.0 - (page_start_elapsed_secs / 0.5).min(1.0)),
             IntroPhase::Complete => 0.0,
         };
-        
+
         // Vertical content slide offset
         let content_offset = match phase {
-            IntroPhase::PageReveal => 20.0 * (1.0 - ease_out_quart((page_start_elapsed_secs / 0.6).min(1.0))),
+            IntroPhase::PageReveal => {
+                20.0 * (1.0 - ease_out_quart((page_start_elapsed_secs / 0.6).min(1.0)))
+            }
             _ => 0.0,
         };
-        
+
         // Horizontal swipe offset for page transitions
         // Single slide-in animation - new content slides in from swipe direction
         let swipe_offset: f32 = match phase {
@@ -738,13 +809,7 @@ impl Render for IntroScreen {
             .justify_center()
             .bg(bg_primary)
             // Overlay gradient
-            .child(
-                div()
-                    .absolute()
-                    .inset_0()
-                    .bg(bg_secondary)
-                    .opacity(0.6)
-            )
+            .child(div().absolute().inset_0().bg(bg_secondary).opacity(0.6))
             // Animated glow - top right
             .child(
                 div()
@@ -754,7 +819,7 @@ impl Render for IntroScreen {
                     .w(px(600.0))
                     .h(px(600.0))
                     .rounded_full()
-                    .bg(hsla(color1.h, 0.9, 0.5, bg_opacity * 0.25))
+                    .bg(hsla(color1.h, 0.9, 0.5, bg_opacity * 0.25)),
             )
             // Animated glow - bottom left
             .child(
@@ -765,7 +830,7 @@ impl Render for IntroScreen {
                     .w(px(500.0))
                     .h(px(500.0))
                     .rounded_full()
-                    .bg(hsla(color3.h, 0.85, 0.45, bg_opacity * 0.2))
+                    .bg(hsla(color3.h, 0.85, 0.45, bg_opacity * 0.2)),
             )
             // Main content with swipe animation (only page content swipes, not navigation)
             .child(
@@ -774,17 +839,20 @@ impl Render for IntroScreen {
                     .gap_8()
                     .max_w(px(600.0))
                     // Page content swipes
-                    .child(
-                        div()
-                            .ml(px(swipe_offset))
-                            .child(self.render_page(&page, content_opacity, content_offset, page_start_elapsed_secs, cx))
-                    )
+                    .child(div().ml(px(swipe_offset)).child(self.render_page(
+                        &page,
+                        content_opacity,
+                        content_offset,
+                        page_start_elapsed_secs,
+                        cx,
+                    )))
                     // Navigation stays in place
-                    .child(
-                        div()
-                            .mt_6()
-                            .child(self.render_navigation(current_page, total_pages, content_opacity, cx))
-                    )
+                    .child(div().mt_6().child(self.render_navigation(
+                        current_page,
+                        total_pages,
+                        content_opacity,
+                        cx,
+                    ))),
             )
             // Skip button
             .child(
@@ -805,8 +873,8 @@ impl Render for IntroScreen {
                             .child("Skip Tour")
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.skip(cx);
-                            }))
-                    )
+                            })),
+                    ),
             )
             // Page counter and mute button
             .child(
@@ -821,7 +889,7 @@ impl Render for IntroScreen {
                         div()
                             .text_sm()
                             .text_color(white().opacity(0.5))
-                            .child(format!("{} / {}", current_page + 1, total_pages))
+                            .child(format!("{} / {}", current_page + 1, total_pages)),
                     )
                     .child(
                         div()
@@ -831,13 +899,11 @@ impl Render for IntroScreen {
                             .rounded_lg()
                             .bg(hsla(0.0, 0.0, 0.0, 0.15))
                             .hover(|s| s.bg(hsla(0.0, 0.0, 0.0, 0.25)).cursor_pointer())
-                            .child(
-                                if muted {
-                                    Icon::new(IconName::SoundOff).large().render(_window, cx)
-                                } else {
-                                    Icon::new(IconName::SoundHigh).large().render(_window, cx)
-                                }
-                            )
+                            .child(if muted {
+                                Icon::new(IconName::SoundOff).large().render(_window, cx)
+                            } else {
+                                Icon::new(IconName::SoundHigh).large().render(_window, cx)
+                            })
                             .on_click(cx.listener(|this, _, _, _| {
                                 this.audio_muted = !this.audio_muted;
                                 if this.audio_muted {
@@ -847,8 +913,8 @@ impl Render for IntroScreen {
                                     this.audio.set_enabled(true);
                                     this.audio.play_ambient();
                                 }
-                            }))
-                    )
+                            })),
+                    ),
             )
     }
 }
@@ -863,7 +929,10 @@ pub fn has_seen_intro() -> bool {
     let args: Vec<String> = std::env::args().collect();
 
     // --skip-oobe / --no-oobe: always skip regardless of persistent states
-    if args.iter().any(|arg| arg == "--skip-oobe" || arg == "--no-oobe") {
+    if args
+        .iter()
+        .any(|arg| arg == "--skip-oobe" || arg == "--no-oobe")
+    {
         println!("🎯 [OOBE] --skip-oobe flag detected, skipping OOBE");
         return true;
     }
@@ -878,11 +947,11 @@ pub fn has_seen_intro() -> bool {
             println!("🎯 [OOBE] --OOBE flag present but OOBE already shown this session");
         }
     }
-    
+
     let prefs_path = directories::ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
         .map(|proj| proj.data_dir().join("oobe_complete"))
         .unwrap_or_else(|| std::path::PathBuf::from("oobe_complete"));
-    
+
     prefs_path.exists()
 }
 

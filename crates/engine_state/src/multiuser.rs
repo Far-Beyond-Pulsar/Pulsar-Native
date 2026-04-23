@@ -130,9 +130,8 @@ mod tests {
 
     #[test]
     fn test_multiuser_context_creation() {
-        let ctx = MultiuserContext::new(
-            "ws://localhost:8080", "session-123", "peer-abc", "peer-xyz",
-        );
+        let ctx =
+            MultiuserContext::new("ws://localhost:8080", "session-123", "peer-abc", "peer-xyz");
         assert_eq!(ctx.server_url, "ws://localhost:8080");
         assert_eq!(ctx.peer_id, "peer-abc");
         assert!(!ctx.is_host);
@@ -140,17 +139,15 @@ mod tests {
 
     #[test]
     fn test_host_detection() {
-        let ctx = MultiuserContext::new(
-            "ws://localhost:8080", "session-123", "peer-abc", "peer-abc",
-        );
+        let ctx =
+            MultiuserContext::new("ws://localhost:8080", "session-123", "peer-abc", "peer-abc");
         assert!(ctx.is_host);
     }
 
     #[test]
     fn test_participant_management() {
-        let mut ctx = MultiuserContext::new(
-            "ws://localhost:8080", "session-123", "peer-abc", "peer-abc",
-        );
+        let mut ctx =
+            MultiuserContext::new("ws://localhost:8080", "session-123", "peer-abc", "peer-abc");
         ctx.add_participant("peer-def");
         ctx.add_participant("peer-ghi");
         assert_eq!(ctx.participant_count(), 2);

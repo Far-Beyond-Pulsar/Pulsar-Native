@@ -2,11 +2,11 @@
 //!
 //! Handles create, update, delete, and move operations for type alias files.
 
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
+use plugin_editor_api::FileTypeId;
 use std::path::PathBuf;
 use std::sync::Arc;
 use type_db::TypeDatabase;
-use plugin_editor_api::FileTypeId;
 
 /// Type alias operations handler
 pub struct TypeOperations {
@@ -30,7 +30,8 @@ impl TypeOperations {
         }
 
         // Determine file path
-        let file_path = self.project_root
+        let file_path = self
+            .project_root
             .join("types")
             .join("aliases")
             .join(format!("{}.alias.json", name));
@@ -41,8 +42,7 @@ impl TypeOperations {
         }
 
         // Write file
-        std::fs::write(&file_path, content)
-            .context("Failed to write alias file")?;
+        std::fs::write(&file_path, content).context("Failed to write alias file")?;
 
         // Register in type database
         let file_type = FileTypeId::new("alias");
@@ -63,8 +63,8 @@ impl TypeOperations {
     /// Update an existing type alias file
     pub fn update_type_alias(&self, file_path: &PathBuf, content: &str) -> Result<()> {
         // Parse to validate before writing
-        let asset: ui_types_common::AliasAsset = serde_json::from_str(content)
-            .context("Invalid alias JSON")?;
+        let asset: ui_types_common::AliasAsset =
+            serde_json::from_str(content).context("Invalid alias JSON")?;
 
         // Validate name is still unique (or same file)
         let existing_types = self.type_database.get_by_name(&asset.name);
@@ -75,8 +75,7 @@ impl TypeOperations {
         }
 
         // Write file
-        std::fs::write(file_path, content)
-            .context("Failed to write alias file")?;
+        std::fs::write(file_path, content).context("Failed to write alias file")?;
 
         // Update in type database
         let file_type = FileTypeId::new("alias");
@@ -100,8 +99,7 @@ impl TypeOperations {
         self.type_database.unregister_by_path(file_path);
 
         // Delete file
-        std::fs::remove_file(file_path)
-            .context("Failed to delete alias file")?;
+        std::fs::remove_file(file_path).context("Failed to delete alias file")?;
 
         Ok(())
     }
@@ -109,10 +107,9 @@ impl TypeOperations {
     /// Register an existing type alias file (for scanning)
     pub fn register_type_alias(&self, file_path: &PathBuf) -> Result<()> {
         // Read and parse the file to get the name
-        let content = std::fs::read_to_string(file_path)
-            .context("Failed to read alias file")?;
-        let asset: ui_types_common::AliasAsset = serde_json::from_str(&content)
-            .context("Invalid alias JSON")?;
+        let content = std::fs::read_to_string(file_path).context("Failed to read alias file")?;
+        let asset: ui_types_common::AliasAsset =
+            serde_json::from_str(&content).context("Invalid alias JSON")?;
 
         // Register in type database
         let file_type = FileTypeId::new("alias");
@@ -136,14 +133,12 @@ impl TypeOperations {
         self.type_database.unregister_by_path(old_path);
 
         // Move file
-        std::fs::rename(old_path, new_path)
-            .context("Failed to move alias file")?;
+        std::fs::rename(old_path, new_path).context("Failed to move alias file")?;
 
         // Read and register at new location
-        let content = std::fs::read_to_string(new_path)
-            .context("Failed to read alias file")?;
-        let asset: ui_types_common::AliasAsset = serde_json::from_str(&content)
-            .context("Invalid alias JSON")?;
+        let content = std::fs::read_to_string(new_path).context("Failed to read alias file")?;
+        let asset: ui_types_common::AliasAsset =
+            serde_json::from_str(&content).context("Invalid alias JSON")?;
 
         let file_type = FileTypeId::new("alias");
         if let Err(e) = self.type_database.register_with_path(
@@ -154,7 +149,11 @@ impl TypeOperations {
             Some(format!("Type alias: {}", asset.name)),
             None,
         ) {
-            tracing::warn!("Failed to register renamed type alias '{}': {:?}", asset.name, e);
+            tracing::warn!(
+                "Failed to register renamed type alias '{}': {:?}",
+                asset.name,
+                e
+            );
         }
 
         Ok(())

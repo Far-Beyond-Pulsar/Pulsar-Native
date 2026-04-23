@@ -1,6 +1,6 @@
+use super::utils::copy_dir_all;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
-use super::utils::copy_dir_all;
 
 // ============================================================================
 // FILE OPERATIONS - Leverages engine_fs and extends with UI-specific ops
@@ -72,8 +72,10 @@ impl FileOperations {
                     // Register the TypeDatabase with global EngineContext
                     if let Some(engine_context) = engine_state::EngineContext::global() {
                         engine_context.set_type_database(fs.type_database().clone());
-                        tracing::debug!("🗄️  TypeDatabase registered with {} types",
-                            fs.type_database().all().len());
+                        tracing::debug!(
+                            "🗄️  TypeDatabase registered with {} types",
+                            fs.type_database().all().len()
+                        );
                     }
                     Some(fs)
                 }
@@ -154,7 +156,8 @@ impl FileOperations {
             nodes: std::collections::HashMap::new(),
             connections: Vec::new(),
             metadata: ui::graph::GraphMetadata {
-                name: new_path.file_name()
+                name: new_path
+                    .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("NewClass")
                     .to_string(),
@@ -188,14 +191,14 @@ impl FileOperations {
 
     /// Duplicate an item
     pub fn duplicate_item(item_path: &Path) -> Result<PathBuf> {
-        let parent = item_path.parent()
+        let parent = item_path
+            .parent()
             .ok_or_else(|| anyhow::anyhow!("No parent directory"))?;
-        let stem = item_path.file_stem()
+        let stem = item_path
+            .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("copy");
-        let extension = item_path.extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
+        let extension = item_path.extension().and_then(|s| s.to_str()).unwrap_or("");
 
         let mut counter = 1;
         let mut new_path = if extension.is_empty() {
@@ -228,7 +231,8 @@ impl FileOperations {
 
     /// Rename an item (uses engine_fs for tracked assets)
     pub fn rename_item(&self, old_path: &Path, new_name: &str) -> Result<PathBuf> {
-        let parent = old_path.parent()
+        let parent = old_path
+            .parent()
             .ok_or_else(|| anyhow::anyhow!("No parent directory"))?;
         // Use forward-slash join for cloud paths to avoid Windows PathBuf::join
         // inserting '\' which breaks the cloud+pulsar:// URI scheme.
@@ -245,10 +249,10 @@ impl FileOperations {
 
         // Try engine_fs first for tracked assets
         if let Some(ref fs) = self.engine_fs {
-            if let Ok(_) = fs.operations().move_asset(
-                &old_path.to_path_buf(),
-                &new_path
-            ) {
+            if let Ok(_) = fs
+                .operations()
+                .move_asset(&old_path.to_path_buf(), &new_path)
+            {
                 return Ok(new_path);
             }
         }

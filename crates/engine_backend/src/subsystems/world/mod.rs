@@ -20,12 +20,12 @@
 //! - Error handling and logging for robust operation
 //! - Unit tests for core functionalities
 
+use super::classes::actor::Actor;
 use std::sync::Arc;
+use uuid::Uuid;
 use PebbleVault as pebble;
 use PebbleVault::spacial_store::sqlite_backend::SqliteDatabase;
 use PebbleVault::SpatialObject;
-use super::classes::actor::Actor;
-use uuid::Uuid;
 
 // NOTE: World cannot implement the Subsystem trait due to PebbleVault::VaultManager
 // not implementing Send + Sync (it contains Box<dyn PersistenceBackend> without bounds).
@@ -37,14 +37,11 @@ pub struct World {
 }
 impl World {
     pub fn new(level_name: &str) -> Self {
-        let db = SqliteDatabase::new(level_name).expect(
-            "Failed to create SqliteDatabase, probably FS permission issues"
-        );
+        let db = SqliteDatabase::new(level_name)
+            .expect("Failed to create SqliteDatabase, probably FS permission issues");
         let vault = pebble::VaultManager::new(Box::new(db)).expect("Failed to create VaultManager");
 
-        Self {
-            vault,
-        }
+        Self { vault }
     }
 
     /// Adds an object to a specific region.
@@ -99,9 +96,20 @@ impl World {
         size_x: f64,
         size_y: f64,
         size_z: f64,
-        custom_data: Arc<Actor>
+        custom_data: Arc<Actor>,
     ) -> Result<(), String> {
-        self.vault.add_object(region_id, uuid, object_type, x, y, z, size_x, size_y, size_z, custom_data)
+        self.vault.add_object(
+            region_id,
+            uuid,
+            object_type,
+            x,
+            y,
+            z,
+            size_x,
+            size_y,
+            size_z,
+            custom_data,
+        )
     }
 
     /// Gets a reference to an object by its ID.
@@ -152,12 +160,12 @@ impl World {
     ///
     /// * `Result<(), String>` - An empty result if successful, or an error message if not.
     fn remove_actor_private(&mut self, id: Uuid) -> Option<Actor> {
-            let actor = self.get_actor_private(id).map(|arc| (*arc).clone());
-            match self.vault.remove_object(id) {
-                Ok(_) => actor,
-                Err(_) => None,
-            }
+        let actor = self.get_actor_private(id).map(|arc| (*arc).clone());
+        match self.vault.remove_object(id) {
+            Ok(_) => actor,
+            Err(_) => None,
         }
+    }
 
     /// Creates a new region or loads an existing one from the persistent database.
     ///
@@ -187,7 +195,11 @@ impl World {
     ///
     /// - Regions are cubic, defined by a center point and a size (length of each side).
     /// - Overlapping regions are allowed, but may impact performance for objects in the overlapped areas.
-    fn create_or_load_region_private(&mut self, center: [f64; 3], size: f64) -> Result<Uuid, String> {
+    fn create_or_load_region_private(
+        &mut self,
+        center: [f64; 3],
+        size: f64,
+    ) -> Result<Uuid, String> {
         self.vault.create_or_load_region(center, size)
     }
 
@@ -229,9 +241,10 @@ impl World {
         &self,
         player_uuid: Uuid,
         from_region_id: Uuid,
-        to_region_id: Uuid
+        to_region_id: Uuid,
     ) -> Result<(), String> {
-        self.vault.transfer_player(player_uuid, from_region_id, to_region_id)
+        self.vault
+            .transfer_player(player_uuid, from_region_id, to_region_id)
     }
 
     /// Queries objects within a specific region.
@@ -276,9 +289,10 @@ impl World {
         min_z: f64,
         max_x: f64,
         max_y: f64,
-        max_z: f64
+        max_z: f64,
     ) -> Result<Vec<SpatialObject<Actor>>, String> {
-        self.vault.query_region(region_id, min_x, min_y, min_z, max_x, max_y, max_z)
+        self.vault
+            .query_region(region_id, min_x, min_y, min_z, max_x, max_y, max_z)
     }
 
     /// Persists all in-memory databases to disk.

@@ -1,17 +1,17 @@
 use std::rc::Rc;
 
 use gpui::{
-    AnyElement, App, AppContext as _, Entity, IntoElement, SharedString, StyleRefinement, Styled,
-    Window, prelude::FluentBuilder as _,
+    prelude::FluentBuilder as _, AnyElement, App, AppContext as _, Entity, IntoElement,
+    SharedString, StyleRefinement, Styled, Window,
 };
 
 use crate::{
-    AxisExt as _, Sizable, StyledExt,
     input::{Input, InputEvent, InputState},
     setting::{
+        fields::{get_value, set_value, SettingFieldRender},
         AnySettingField, RenderOptions,
-        fields::{SettingFieldRender, get_value, set_value},
     },
+    AxisExt as _, Sizable, StyledExt,
 };
 
 pub(crate) struct StringField<T> {

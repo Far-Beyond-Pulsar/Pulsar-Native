@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use super::super::types::FileItem;
+use std::path::{Path, PathBuf};
 
 // ============================================================================
 // FOLDER NODE - Hierarchical folder tree structure
@@ -32,9 +32,15 @@ impl FolderNode {
         let name = path.file_name()?.to_str()?.to_string();
 
         // Skip special engine type-definition folders.
-        let has_marker_file = ["graph_save.json", "struct.json", "enum.json", "trait.json", "alias.json"]
-            .iter()
-            .any(|marker| path.join(marker).exists());
+        let has_marker_file = [
+            "graph_save.json",
+            "struct.json",
+            "enum.json",
+            "trait.json",
+            "alias.json",
+        ]
+        .iter()
+        .any(|marker| path.join(marker).exists());
         if has_marker_file {
             return None;
         }
@@ -99,18 +105,13 @@ impl FolderNode {
                 cloud_root_s.trim_end_matches('/'),
                 entry.path.trim_start_matches('/')
             ));
-            let name = entry.path
+            let name = entry
+                .path
                 .split('/')
                 .last()
                 .unwrap_or(&entry.path)
                 .to_string();
-            Self::insert_at_depth(
-                &mut root,
-                &cloud_root_s,
-                &entry.path,
-                child_cloud,
-                name,
-            );
+            Self::insert_at_depth(&mut root, &cloud_root_s, &entry.path, child_cloud, name);
         }
 
         Some(root)
@@ -140,11 +141,8 @@ impl FolderNode {
             // Find the intermediate child.
             let first = parts[0];
             let rest = parts[1];
-            let parent_cloud = PathBuf::from(format!(
-                "{}/{}",
-                cloud_root_s.trim_end_matches('/'),
-                first
-            ));
+            let parent_cloud =
+                PathBuf::from(format!("{}/{}", cloud_root_s.trim_end_matches('/'), first));
             let parent_cloud_s = format!("{}/{}", cloud_root_s.trim_end_matches('/'), first);
             if let Some(child) = node.children.iter_mut().find(|c| c.path == parent_cloud) {
                 Self::insert_at_depth(child, &parent_cloud_s, rest, abs_cloud, name);
@@ -181,4 +179,3 @@ impl FolderNode {
         }
     }
 }
-

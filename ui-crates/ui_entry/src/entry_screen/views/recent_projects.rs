@@ -1,13 +1,22 @@
+use crate::entry_screen::{
+    recent_projects::RecentProjectsList, virtual_grid::render_card_grid, EntryScreen,
+    GitFetchStatus,
+};
 use gpui::{prelude::*, *};
+use ui::Sizable;
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, Icon, IconName, ActiveTheme as _, StyledExt, Colorize as _,
-    tag::Tag, spinner::Spinner,
+    h_flex,
+    spinner::Spinner,
+    tag::Tag,
+    v_flex, ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt,
 };
-use ui::Sizable;
-use crate::entry_screen::{EntryScreen, GitFetchStatus, recent_projects::RecentProjectsList, virtual_grid::render_card_grid};
 
-pub fn render_recent_projects(screen: &mut EntryScreen, available_width: f32, cx: &mut Context<EntryScreen>) -> impl IntoElement {
+pub fn render_recent_projects(
+    screen: &mut EntryScreen,
+    available_width: f32,
+    cx: &mut Context<EntryScreen>,
+) -> impl IntoElement {
     let theme = cx.theme();
 
     v_flex()
@@ -30,19 +39,16 @@ pub fn render_recent_projects(screen: &mut EntryScreen, available_width: f32, cx
                                         .text_3xl()
                                         .font_weight(gpui::FontWeight::BOLD)
                                         .text_color(theme.foreground)
-                                        .child("Recent Projects")
+                                        .child("Recent Projects"),
                                 )
                                 .when(screen.is_fetching_updates, |this| {
                                     this.child(Spinner::new().small())
                                 })
                                 .when(!screen.recent_projects.projects.is_empty(), |this| {
-                                    this.child(
-                                        Tag::secondary()
-                                            .xsmall()
-                                            .rounded_full()
-                                            .child(format!("{}", screen.recent_projects.projects.len()))
-                                    )
-                                })
+                                    this.child(Tag::secondary().xsmall().rounded_full().child(
+                                        format!("{}", screen.recent_projects.projects.len()),
+                                    ))
+                                }),
                         )
                         .child(
                             h_flex()
@@ -57,7 +63,7 @@ pub fn render_recent_projects(screen: &mut EntryScreen, available_width: f32, cx
                                             this.recent_projects = RecentProjectsList::load(&path);
                                             this.start_git_fetch_all(cx);
                                             cx.notify();
-                                        }))
+                                        })),
                                 )
                                 .child(
                                     Button::new("open-folder-btn")
@@ -66,16 +72,16 @@ pub fn render_recent_projects(screen: &mut EntryScreen, available_width: f32, cx
                                         .with_variant(ui::button::ButtonVariant::Primary)
                                         .on_click(cx.listener(|this, _, window, cx| {
                                             this.open_folder_dialog(window, cx);
-                                        }))
-                                )
-                        )
-                        )
+                                        })),
+                                ),
+                        ),
+                )
                 .child(
                     div()
                         .text_sm()
                         .text_color(theme.muted_foreground)
-                        .child("Browse and launch your Pulsar Engine projects")
-                )
+                        .child("Browse and launch your Pulsar Engine projects"),
+                ),
         )
         .child({
             if screen.recent_projects.projects.is_empty() {
@@ -99,8 +105,8 @@ pub fn render_recent_projects(screen: &mut EntryScreen, available_width: f32, cx
                             .child(
                                 Icon::new(IconName::FolderOpen)
                                     .size(px(56.))
-                                    .text_color(theme.muted_foreground)
-                            )
+                                    .text_color(theme.muted_foreground),
+                            ),
                     )
                     .child(
                         v_flex()
@@ -111,14 +117,11 @@ pub fn render_recent_projects(screen: &mut EntryScreen, available_width: f32, cx
                                     .text_2xl()
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(theme.foreground)
-                                    .child("No Projects Yet")
+                                    .child("No Projects Yet"),
                             )
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(theme.muted_foreground)
-                                    .child("Get started by creating a new project or opening an existing one")
-                            )
+                            .child(div().text_sm().text_color(theme.muted_foreground).child(
+                                "Get started by creating a new project or opening an existing one",
+                            )),
                     )
                     .child(
                         h_flex()
@@ -129,9 +132,10 @@ pub fn render_recent_projects(screen: &mut EntryScreen, available_width: f32, cx
                                     .icon(IconName::Plus)
                                     .with_variant(ui::button::ButtonVariant::Primary)
                                     .on_click(cx.listener(|this, _, _, cx| {
-                                        this.view = crate::entry_screen::types::EntryScreenView::NewProject;
+                                        this.view =
+                                            crate::entry_screen::types::EntryScreenView::NewProject;
                                         cx.notify();
-                                    }))
+                                    })),
                             )
                             .child(
                                 Button::new("empty-open-folder")
@@ -140,8 +144,8 @@ pub fn render_recent_projects(screen: &mut EntryScreen, available_width: f32, cx
                                     .with_variant(ui::button::ButtonVariant::Secondary)
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.open_folder_dialog(window, cx);
-                                    }))
-                            )
+                                    })),
+                            ),
                     )
                     .into_any_element()
             } else {
@@ -153,7 +157,7 @@ pub fn render_recent_projects(screen: &mut EntryScreen, available_width: f32, cx
 fn render_project_grid(
     screen: &mut EntryScreen,
     available_width: f32,
-    cx: &mut Context<EntryScreen>
+    cx: &mut Context<EntryScreen>,
 ) -> impl IntoElement {
     // Match the layout used by `EntryScreen::calculate_columns`
     const CARD_WIDTH: f32 = 320.0;
@@ -195,12 +199,17 @@ fn render_project_grid(
 
             // Load tool preferences for this project
             let (preferred_editor, preferred_git_tool) =
-                crate::entry_screen::views::load_project_tool_preferences(&std::path::PathBuf::from(&proj_path));
+                crate::entry_screen::views::load_project_tool_preferences(
+                    &std::path::PathBuf::from(&proj_path),
+                );
 
             let accent_color = match (&git_status, is_git) {
                 (GitFetchStatus::UpdatesAvailable(_), true) => cx.theme().info,
                 (GitFetchStatus::Error(_), true) => cx.theme().danger,
-                (_, true) => { let p = cx.theme().primary; hsla(p.h, p.s, p.l, 0.85) },
+                (_, true) => {
+                    let p = cx.theme().primary;
+                    hsla(p.h, p.s, p.l, 0.85)
+                }
                 _ => cx.theme().muted,
             };
 
@@ -477,7 +486,7 @@ fn render_project_grid(
                                 )
                         ),
                 )
-        }
+        },
     )
 }
 
@@ -545,23 +554,23 @@ fn format_timestamp(timestamp: &str) -> String {
 }
 
 /// Normalizes a project path by removing redundant folder name duplication.
-/// 
+///
 /// Some project creation workflows create paths like `parent/blank_project/blank_project`
 /// where the final folder name is duplicated. This function detects and fixes this pattern
 /// by checking if the final path segment matches its parent's name.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```ignore
 /// // Doubles are fixed
 /// assert_eq!(normalize_project_path("C:/projects/blank/blank"), PathBuf::from("C:/projects/blank"));
-/// 
+///
 /// // Normal paths are unchanged
 /// assert_eq!(normalize_project_path("C:/projects/blank"), PathBuf::from("C:/projects/blank"));
 /// ```
 fn normalize_project_path(path: &str) -> std::path::PathBuf {
     let mut path_buf = std::path::PathBuf::from(path);
-    
+
     if let (Some(file_name), Some(parent)) = (path_buf.file_name(), path_buf.parent()) {
         if let Some(parent_name) = parent.file_name() {
             if file_name == parent_name {
@@ -575,6 +584,6 @@ fn normalize_project_path(path: &str) -> std::path::PathBuf {
             }
         }
     }
-    
+
     path_buf
 }

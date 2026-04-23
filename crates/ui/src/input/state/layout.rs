@@ -10,14 +10,15 @@ use gpui::{
     MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, Render, ScrollHandle,
     ScrollWheelEvent, SharedString, Styled as _, Subscription, Task, UTF16Selection, Window,
 };
+use gpui_sum_tree::Bias;
 use ropey::{Rope, RopeSlice};
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::ops::Range;
 use std::rc::Rc;
-use gpui_sum_tree::Bias;
 use unicode_segmentation::*;
 
+use super::*;
 use crate::input::{
     blink_cursor::BlinkCursor,
     change::Change,
@@ -37,7 +38,6 @@ use crate::input::{
 use crate::input::{RopeExt as _, Selection};
 use crate::{highlighter::DiagnosticSet, input::text_wrapper::LineItem};
 use crate::{history::History, scroll::ScrollbarState, Root};
-use super::*;
 
 impl InputState {
     pub(in crate::input) fn on_mouse_down(
@@ -251,17 +251,18 @@ impl InputState {
         // position is in window coordinates
         // input_bounds.origin is the element's fixed position in window space (no scroll)
         // bounds.origin includes the scroll offset applied during rendering
-        
+
         // The mouse position relative to the element (not scrolled)
-        let element_relative_position = position - self.input_bounds.origin - point(line_number_width, px(0.));
-        
+        let element_relative_position =
+            position - self.input_bounds.origin - point(line_number_width, px(0.));
+
         // Now we need to find which line this corresponds to
         // The visible_top is already relative to the scroll, so we work in "content space"
         // where y=0 is the start of the content (before any scrolling)
-        
+
         // Get the scroll offset to convert element coords to content coords
         let scroll_y = self.scroll_handle.offset().y;
-        
+
         // Content-relative position (where y=0 is top of first line)
         // When scrolled down, scroll_y is negative, so subtracting it adds the scroll amount
         let content_y = element_relative_position.y - scroll_y;
@@ -269,7 +270,7 @@ impl InputState {
         let mut index = last_layout.visible_range_offset.start;
         // y_offset tracks position in content space (starts at 0 for first visible line in content)
         let mut y_offset = px(0.);
-        
+
         // Start from the first visible line and check each one
         for (ix, line) in self
             .text_wrapper
@@ -279,7 +280,7 @@ impl InputState {
             .enumerate()
         {
             let line_origin = self.line_origin_with_y_offset(&mut y_offset, line, line_height);
-            
+
             // Adjust for visible_top offset
             let line_y_in_content = last_layout.visible_top + line_origin.y;
             let relative_y = content_y - line_y_in_content;

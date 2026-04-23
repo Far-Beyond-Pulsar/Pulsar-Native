@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use ed25519_dalek::{Signer, SigningKey, Signature, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
@@ -9,13 +9,13 @@ use crate::config::Config;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
-    pub sub: String,            // Subject (user/peer ID)
-    pub session_id: String,     // Session ID
-    pub role: Role,             // User role
+    pub sub: String,               // Subject (user/peer ID)
+    pub session_id: String,        // Session ID
+    pub role: Role,                // User role
     pub capabilities: Vec<String>, // Capabilities/permissions
-    pub exp: u64,               // Expiration timestamp
-    pub iat: u64,               // Issued at timestamp
-    pub nbf: u64,               // Not before timestamp
+    pub exp: u64,                  // Expiration timestamp
+    pub iat: u64,                  // Issued at timestamp
+    pub nbf: u64,                  // Not before timestamp
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -37,13 +37,8 @@ impl Role {
                 "invite".to_string(),
                 "kick".to_string(),
             ],
-            Role::Editor => vec![
-                "edit".to_string(),
-                "read".to_string(),
-            ],
-            Role::Observer => vec![
-                "read".to_string(),
-            ],
+            Role::Editor => vec!["edit".to_string(), "read".to_string()],
+            Role::Observer => vec!["read".to_string()],
         }
     }
 }
@@ -64,11 +59,15 @@ impl AuthService {
         let server_signing_key = if let Some(key_b64) = &config.server_ed25519_key {
             let key_bytes = hex_decode(key_b64)
                 .map_err(|e| anyhow::anyhow!("Failed to decode server Ed25519 key: {}", e))?;
-            SigningKey::from_bytes(&key_bytes.try_into().map_err(|_| {
-                anyhow::anyhow!("Invalid Ed25519 key length")
-            })?)
+            SigningKey::from_bytes(
+                &key_bytes
+                    .try_into()
+                    .map_err(|_| anyhow::anyhow!("Invalid Ed25519 key length"))?,
+            )
         } else {
-            tracing::warn!("Generating ephemeral Ed25519 server key - this should be persisted in production");
+            tracing::warn!(
+                "Generating ephemeral Ed25519 server key - this should be persisted in production"
+            );
             SigningKey::generate(&mut OsRng)
         };
 
@@ -111,12 +110,8 @@ impl AuthService {
 
     /// Verify and decode a JWT token
     pub fn verify_token(&self, token: &str) -> Result<Claims> {
-        let token_data = decode::<Claims>(
-            token,
-            &self.jwt_decoding_key,
-            &Validation::default(),
-        )
-        .context("Failed to decode JWT")?;
+        let token_data = decode::<Claims>(token, &self.jwt_decoding_key, &Validation::default())
+            .context("Failed to decode JWT")?;
 
         Ok(token_data.claims)
     }
@@ -149,17 +144,19 @@ impl AuthService {
 
     /// Verify a session join token
     pub fn verify_join_token(&self, token: &str) -> Result<(String, Role)> {
-        let token_bytes = hex_decode(token)
-            .map_err(|e| anyhow::anyhow!("Failed to decode join token: {}", e))?;
+        let token_bytes =
+            hex_decode(token).map_err(|e| anyhow::anyhow!("Failed to decode join token: {}", e))?;
 
         if token_bytes.len() < 64 {
             anyhow::bail!("Invalid join token length");
         }
 
         let (payload, sig_bytes) = token_bytes.split_at(token_bytes.len() - 64);
-        let signature = Signature::from_bytes(sig_bytes.try_into().map_err(|_| {
-            anyhow::anyhow!("Invalid signature")
-        })?);
+        let signature = Signature::from_bytes(
+            sig_bytes
+                .try_into()
+                .map_err(|_| anyhow::anyhow!("Invalid signature"))?,
+        );
 
         self.server_verifying_key
             .verify(payload, &signature)
@@ -192,9 +189,11 @@ impl AuthService {
 
     /// Verify signature on arbitrary data
     pub fn verify_signature(&self, data: &[u8], signature: &[u8]) -> Result<()> {
-        let sig = Signature::from_bytes(signature.try_into().map_err(|_| {
-            anyhow::anyhow!("Invalid signature length")
-        })?);
+        let sig = Signature::from_bytes(
+            signature
+                .try_into()
+                .map_err(|_| anyhow::anyhow!("Invalid signature length"))?,
+        );
 
         self.server_verifying_key
             .verify(data, &sig)
@@ -226,10 +225,7 @@ fn hex_decode(s: &str) -> Result<Vec<u8>, String> {
 
     (0..s.len())
         .step_by(2)
-        .map(|i| {
-            u8::from_str_radix(&s[i..i + 2], 16)
-                .map_err(|e| format!("Invalid hex: {}", e))
-        })
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| format!("Invalid hex: {}", e)))
         .collect()
 }
 

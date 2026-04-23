@@ -1,8 +1,8 @@
 use gpui::{prelude::*, *};
 use ui::{
+    ActiveTheme, Icon, IconName, Sizable as _, StyledExt,
     button::{Button, ButtonVariants as _},
     h_flex, v_flex,
-    ActiveTheme, Icon, IconName, Sizable as _, StyledExt,
 };
 
 /// Displays the Sketchfab model license with an optional link to the viewer.
@@ -62,14 +62,10 @@ impl RenderOnce for LicenseSection {
                     .items_center()
                     .justify_between()
                     .child(
-                        div()
-                            .text_sm()
-                            .font_semibold()
-                            .text_color(fg)
-                            .child(
-                                self.license_label
-                                    .unwrap_or_else(|| SharedString::from("Unknown License")),
-                            ),
+                        div().text_sm().font_semibold().text_color(fg).child(
+                            self.license_label
+                                .unwrap_or_else(|| SharedString::from("Unknown License")),
+                        ),
                     )
                     .child(
                         h_flex()

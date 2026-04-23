@@ -1,6 +1,6 @@
 use crate::{
-    TypeRef, TypeAstNode, StructAsset, EnumAsset, TraitAsset, AliasAsset,
-    Visibility, Result, VariantPayload,
+    AliasAsset, EnumAsset, Result, StructAsset, TraitAsset, TypeAstNode, TypeRef, VariantPayload,
+    Visibility,
 };
 
 /// Renders a type reference to Rust code
@@ -21,7 +21,12 @@ pub fn render_ast_node(node: &TypeAstNode) -> String {
         TypeAstNode::Primitive { name } => name.clone(),
         TypeAstNode::Path { path } => path.clone(),
         TypeAstNode::AliasRef { alias } => to_pascal_case(alias),
-        TypeAstNode::Constructor { name, params, lifetimes, const_generics } => {
+        TypeAstNode::Constructor {
+            name,
+            params,
+            lifetimes,
+            const_generics,
+        } => {
             let mut result = name.clone();
 
             // Add lifetimes and const generics
@@ -55,7 +60,10 @@ pub fn render_ast_node(node: &TypeAstNode) -> String {
                 format!("({})", parts.join(", "))
             }
         }
-        TypeAstNode::FnPointer { params, return_type } => {
+        TypeAstNode::FnPointer {
+            params,
+            return_type,
+        } => {
             let param_str = if params.is_empty() {
                 "()".to_string()
             } else {
@@ -86,9 +94,7 @@ pub fn to_pascal_case(s: &str) -> String {
             let mut chars = word.chars();
             match chars.next() {
                 None => String::new(),
-                Some(first) => {
-                    first.to_uppercase().collect::<String>() + chars.as_str()
-                }
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
             }
         })
         .collect()

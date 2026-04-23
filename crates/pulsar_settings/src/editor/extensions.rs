@@ -1,4 +1,6 @@
-use pulsar_config::{ConfigManager, DropdownOption, FieldType, NamespaceSchema, SchemaEntry, Validator};
+use pulsar_config::{
+    ConfigManager, DropdownOption, FieldType, NamespaceSchema, SchemaEntry, Validator,
+};
 
 pub const NS: &str = "editor";
 pub const OWNER: &str = "extensions";

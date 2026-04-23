@@ -5,7 +5,6 @@
 ///
 /// IMPORTANT: File type detection here is ONLY for display purposes (icons, labels).
 /// The plugin system's registry determines what files can actually be opened.
-
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
@@ -14,8 +13,8 @@ use serde::{de::DeserializeOwned, Serialize};
 #[derive(Clone, Debug, PartialEq)]
 pub enum FileType {
     Folder,
-    Class,  // A folder containing graph_save.json  
-    File,   // Any other file - plugin system will determine if openable
+    Class, // A folder containing graph_save.json
+    File,  // Any other file - plugin system will determine if openable
 }
 
 impl FileType {
@@ -190,9 +189,7 @@ pub fn search_files(files: &[FileInfo], query: &str) -> Vec<FileInfo> {
         .collect();
 
     // Sort by score, then by name
-    matches.sort_by(|a, b| {
-        a.0.cmp(&b.0).then_with(|| a.1.name.cmp(&b.1.name))
-    });
+    matches.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.name.cmp(&b.1.name)));
 
     matches.into_iter().map(|(_, file)| file).collect()
 }

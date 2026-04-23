@@ -40,7 +40,11 @@ use crate::blueprint;
 /// # Transform New
 /// Creates a new transform from position, rotation, and scale.
 #[blueprint(type: NodeTypes::pure, category: "Transform", color: "#50E3C2")]
-pub fn transform_new(position: (f32, f32, f32), rotation: (f32, f32, f32), scale: (f32, f32, f32)) -> ((f32, f32, f32), (f32, f32, f32), (f32, f32, f32)) {
+pub fn transform_new(
+    position: (f32, f32, f32),
+    rotation: (f32, f32, f32),
+    scale: (f32, f32, f32),
+) -> ((f32, f32, f32), (f32, f32, f32), (f32, f32, f32)) {
     (position, rotation, scale)
 }
 
@@ -66,7 +70,11 @@ pub fn transform_new(position: (f32, f32, f32), rotation: (f32, f32, f32), scale
 /// # Make Transform
 /// Creates a transform from position, rotation, and scale components.
 #[blueprint(type: NodeTypes::pure, category: "Transform", color: "#50E3C2")]
-pub fn make_transform(position: (f32, f32, f32), rotation: (f32, f32, f32), scale: (f32, f32, f32)) -> ((f32, f32, f32), (f32, f32, f32), (f32, f32, f32)) {
+pub fn make_transform(
+    position: (f32, f32, f32),
+    rotation: (f32, f32, f32),
+    scale: (f32, f32, f32),
+) -> ((f32, f32, f32), (f32, f32, f32), (f32, f32, f32)) {
     (position, rotation, scale)
 }
 
@@ -96,7 +104,9 @@ pub fn make_transform(position: (f32, f32, f32), rotation: (f32, f32, f32), scal
 /// # Break Transform
 /// Breaks a transform into position, rotation, and scale components.
 #[blueprint(type: NodeTypes::pure, category: "Transform", color: "#50E3C2")]
-pub fn break_transform(transform: ((f32, f32, f32), (f32, f32, f32), (f32, f32, f32))) -> ((f32, f32, f32), (f32, f32, f32), (f32, f32, f32)) {
+pub fn break_transform(
+    transform: ((f32, f32, f32), (f32, f32, f32), (f32, f32, f32)),
+) -> ((f32, f32, f32), (f32, f32, f32), (f32, f32, f32)) {
     let (position, rotation, scale) = transform;
     (position, rotation, scale)
 }

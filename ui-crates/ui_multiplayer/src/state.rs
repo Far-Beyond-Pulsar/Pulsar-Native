@@ -1,15 +1,15 @@
 //! State management for the multiplayer window
 
 use gpui::*;
-use ui::input::InputState;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use ui::input::InputState;
 
+use super::diff_viewer::{DiffFileEntry, DiffViewer};
 use super::types::*;
-use super::diff_viewer::{DiffViewer, DiffFileEntry};
-use engine_backend::subsystems::networking::simple_sync::SyncDiff;
 use engine_backend::subsystems::networking::multiuser::MultiuserClient;
+use engine_backend::subsystems::networking::simple_sync::SyncDiff;
 
 /// Multiplayer collaboration window for connecting to multiuser servers
 pub struct MultiplayerWindow {
@@ -41,7 +41,11 @@ pub struct MultiplayerWindow {
 
 impl MultiplayerWindow {
     /// Create a new multiplayer window
-        pub fn new(project_path: Option<std::path::PathBuf>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        project_path: Option<std::path::PathBuf>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let server_address_input = cx.new(|cx| {
             let mut state = InputState::new(window, cx);
             state.set_placeholder("ws://localhost:8080", window, cx);
@@ -98,7 +102,12 @@ impl MultiplayerWindow {
     }
 
     /// Populate the file sync UI with entries from a diff
-    pub(super) fn populate_file_sync_ui(&mut self, diff: &SyncDiff, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn populate_file_sync_ui(
+        &mut self,
+        diff: &SyncDiff,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         use std::fs;
 
         let mut diff_files = Vec::new();
@@ -117,7 +126,7 @@ impl MultiplayerWindow {
             diff_files.push(DiffFileEntry {
                 path: file_path.clone(),
                 before_content: String::new(), // No local file
-                after_content: String::new(), // Will be populated when received
+                after_content: String::new(),  // Will be populated when received
             });
         }
 
@@ -151,12 +160,20 @@ impl MultiplayerWindow {
             viewer.enter_diff_mode(diff_files, project_root_for_editor, window, cx);
         });
 
-        tracing::debug!("Populated file sync UI with {} entries",
-            diff.files_to_add.len() + diff.files_to_update.len() + diff.files_to_delete.len());
+        tracing::debug!(
+            "Populated file sync UI with {} entries",
+            diff.files_to_add.len() + diff.files_to_update.len() + diff.files_to_delete.len()
+        );
     }
 
     /// Update a file entry with remote content when received
-    pub(super) fn update_file_remote_content(&mut self, file_path: &str, content: String, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn update_file_remote_content(
+        &mut self,
+        file_path: &str,
+        content: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.diff_viewer.update(cx, |viewer, cx| {
             viewer.update_diff_file_after_content(file_path, content.clone(), window, cx);
             tracing::debug!("Updated remote content for {}", file_path);
@@ -164,7 +181,12 @@ impl MultiplayerWindow {
     }
 
     /// Queue a file content update (for async contexts without window access)
-    pub(super) fn queue_file_content_update(&mut self, file_path: String, content: String, cx: &mut Context<Self>) {
+    pub(super) fn queue_file_content_update(
+        &mut self,
+        file_path: String,
+        content: String,
+        cx: &mut Context<Self>,
+    ) {
         self.pending_file_updates.push((file_path, content));
         cx.notify(); // Trigger re-render to process pending updates
     }
@@ -200,14 +222,17 @@ impl MultiplayerWindow {
             }
 
             // Remove presence entries for participants who left
-            self.user_presences.retain(|p| session.connected_users.contains(&p.peer_id));
+            self.user_presences
+                .retain(|p| session.connected_users.contains(&p.peer_id));
         }
         cx.notify();
     }
 
     /// Get presence for a specific peer
     pub(super) fn get_presence_mut(&mut self, peer_id: &str) -> Option<&mut UserPresence> {
-        self.user_presences.iter_mut().find(|p| p.peer_id == peer_id)
+        self.user_presences
+            .iter_mut()
+            .find(|p| p.peer_id == peer_id)
     }
 
     /// Simulate a file diff for development/testing purposes
@@ -272,7 +297,11 @@ impl MultiplayerWindow {
             return;
         }
 
-        tracing::debug!("Found {} files for diff simulation: {:?}", test_files.len(), test_files);
+        tracing::debug!(
+            "Found {} files for diff simulation: {:?}",
+            test_files.len(),
+            test_files
+        );
 
         let mut diff_entries = Vec::new();
         let mut files_to_update = Vec::new();
@@ -281,7 +310,10 @@ impl MultiplayerWindow {
             let full_path = project_root.join(file_path);
             if let Ok(content) = fs::read_to_string(&full_path) {
                 // Create a modified version by adding a comment at the top
-                let modified_content = format!("// SIMULATED CHANGE - This line was added for diff testing\n{}", content);
+                let modified_content = format!(
+                    "// SIMULATED CHANGE - This line was added for diff testing\n{}",
+                    content
+                );
 
                 diff_entries.push(DiffFileEntry {
                     path: file_path.to_string(),
@@ -318,7 +350,10 @@ impl MultiplayerWindow {
         self.pending_file_sync = Some((mock_diff, "dev-mock-peer".to_string()));
         self.current_tab = SessionTab::FileSync;
 
-        tracing::debug!("DEV: Simulated diff for testing file sync UI with {} files", file_count);
+        tracing::debug!(
+            "DEV: Simulated diff for testing file sync UI with {} files",
+            file_count
+        );
         cx.notify();
     }
 
@@ -339,5 +374,4 @@ impl MultiplayerWindow {
 
         hsla(hue, saturation, lightness, alpha)
     }
-
 }

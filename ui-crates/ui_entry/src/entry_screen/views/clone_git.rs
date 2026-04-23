@@ -1,20 +1,29 @@
+use crate::entry_screen::EntryScreen;
 use gpui::{prelude::*, *};
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, Icon, IconName, ActiveTheme as _,
-    divider::Divider, progress::Progress,
+    divider::Divider,
+    h_flex,
     input::TextInput,
+    progress::Progress,
+    v_flex, ActiveTheme as _, Icon, IconName,
 };
-use crate::entry_screen::EntryScreen;
 
-pub fn render_clone_git(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {
+pub fn render_clone_git(
+    screen: &mut EntryScreen,
+    cx: &mut Context<EntryScreen>,
+) -> impl IntoElement {
     let theme = cx.theme();
 
-    let progress_message = screen.clone_progress.as_ref()
-        .map(|p| {
-            let prog = p.lock();
-            (prog.message.clone(), prog.current, prog.total, prog.error.clone())
-        });
+    let progress_message = screen.clone_progress.as_ref().map(|p| {
+        let prog = p.lock();
+        (
+            prog.message.clone(),
+            prog.current,
+            prog.total,
+            prog.error.clone(),
+        )
+    });
 
     v_flex()
         .size_full()
@@ -30,22 +39,22 @@ pub fn render_clone_git(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>)
                         .child(
                             Icon::new(IconName::Github)
                                 .size(px(28.))
-                                .text_color(theme.primary)
+                                .text_color(theme.primary),
                         )
                         .child(
                             div()
                                 .text_3xl()
                                 .font_weight(gpui::FontWeight::BOLD)
                                 .text_color(theme.foreground)
-                                .child("Clone from Git")
-                        )
+                                .child("Clone from Git"),
+                        ),
                 )
                 .child(
                     div()
                         .text_sm()
                         .text_color(theme.muted_foreground)
-                        .child("Clone an existing Pulsar project from any Git repository")
-                )
+                        .child("Clone an existing Pulsar project from any Git repository"),
+                ),
         )
         .child(
             v_flex()
@@ -64,15 +73,15 @@ pub fn render_clone_git(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>)
                             div()
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                 .text_color(theme.foreground)
-                                .child("Repository URL")
+                                .child("Repository URL"),
                         )
                         .child(TextInput::new(&screen.git_repo_url_input))
                         .child(
                             div()
                                 .text_xs()
                                 .text_color(theme.muted_foreground)
-                                .child("Enter the Git repository URL (HTTPS or SSH)")
-                        )
+                                .child("Enter the Git repository URL (HTTPS or SSH)"),
+                        ),
                 )
                 .child(
                     div()
@@ -89,82 +98,82 @@ pub fn render_clone_git(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>)
                                         .text_xs()
                                         .font_weight(gpui::FontWeight::MEDIUM)
                                         .text_color(theme.accent)
-                                        .child("Supported URL Formats")
+                                        .child("Supported URL Formats"),
                                 )
                                 .child(
                                     div()
                                         .text_xs()
                                         .text_color(theme.muted_foreground)
-                                        .child("• HTTPS: https://github.com/user/repo.git")
+                                        .child("• HTTPS: https://github.com/user/repo.git"),
                                 )
                                 .child(
                                     div()
                                         .text_xs()
                                         .text_color(theme.muted_foreground)
-                                        .child("• SSH: git@github.com:user/repo.git")
+                                        .child("• SSH: git@github.com:user/repo.git"),
                                 )
                                 .child(
                                     div()
                                         .text_xs()
                                         .text_color(theme.muted_foreground)
-                                        .child("• GitLab, Bitbucket, and other Git hosts")
-                                )
-                        )
+                                        .child("• GitLab, Bitbucket, and other Git hosts"),
+                                ),
+                        ),
                 )
-                .children(if let Some((message, current, total, error)) = progress_message {
-                    Some(
-                        v_flex()
-                            .gap_3()
-                            .p_4()
-                            .border_1()
-                            .border_color(theme.primary)
-                            .rounded_md()
-                            .bg(theme.background)
-                            .child(
-                                div()
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(theme.foreground)
-                                    .child("Cloning Repository...")
-                            )
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(theme.muted_foreground)
-                                    .child(message)
-                            )
-                            .child(
-                                Progress::new()
-                                    .value(if total > 0 {
-                                        (current as f32 / total as f32) * 100.0
-                                    } else {
-                                        0.0
-                                    })
-                            )
-                            .children(error.map(|e| {
-                                div()
-                                    .text_sm()
-                                    .text_color(theme.muted_foreground)
-                                    .child(e)
-                            }))
-                    )
-                } else {
-                    None
-                })
-                .child(
-                    h_flex()
-                        .justify_end()
-                        .child(
-                            Button::new("clone-repo")
-                                .label("Clone Repository")
-                                .icon(IconName::Github)
-                                .with_variant(ui::button::ButtonVariant::Primary)
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    let url = this.git_repo_url.clone();
-                                    if !url.is_empty() {
-                                        this.clone_git_repo(url, "Cloned Project".to_string(), false, window, cx);
-                                    }
+                .children(
+                    if let Some((message, current, total, error)) = progress_message {
+                        Some(
+                            v_flex()
+                                .gap_3()
+                                .p_4()
+                                .border_1()
+                                .border_color(theme.primary)
+                                .rounded_md()
+                                .bg(theme.background)
+                                .child(
+                                    div()
+                                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                                        .text_color(theme.foreground)
+                                        .child("Cloning Repository..."),
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(theme.muted_foreground)
+                                        .child(message),
+                                )
+                                .child(Progress::new().value(if total > 0 {
+                                    (current as f32 / total as f32) * 100.0
+                                } else {
+                                    0.0
                                 }))
+                                .children(error.map(|e| {
+                                    div().text_sm().text_color(theme.muted_foreground).child(e)
+                                })),
                         )
+                    } else {
+                        None
+                    },
                 )
+                .child(
+                    h_flex().justify_end().child(
+                        Button::new("clone-repo")
+                            .label("Clone Repository")
+                            .icon(IconName::Github)
+                            .with_variant(ui::button::ButtonVariant::Primary)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                let url = this.git_repo_url.clone();
+                                if !url.is_empty() {
+                                    this.clone_git_repo(
+                                        url,
+                                        "Cloned Project".to_string(),
+                                        false,
+                                        window,
+                                        cx,
+                                    );
+                                }
+                            })),
+                    ),
+                ),
         )
 }

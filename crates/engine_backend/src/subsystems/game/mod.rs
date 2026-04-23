@@ -17,14 +17,16 @@
 //! - Integration with physics and world systems
 //! - Performance profiling and diagnostics
 
+use crate::subsystems::framework::{Subsystem, SubsystemContext, SubsystemError, SubsystemId};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
-use crate::subsystems::framework::{Subsystem, SubsystemContext, SubsystemError, SubsystemId};
 
 #[cfg(target_os = "windows")]
-use windows::Win32::System::Threading::{GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_ABOVE_NORMAL};
+use windows::Win32::System::Threading::{
+    GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_ABOVE_NORMAL,
+};
 
 /// Subsystem ID for the game thread
 pub const GAME_SUBSYSTEM_ID: SubsystemId = SubsystemId::new("game");
@@ -145,7 +147,9 @@ impl Subsystem for ManagedGameThread {
 
                 tracing::debug!("[GAME-THREAD] Loop exited cleanly");
             })
-            .map_err(|e| SubsystemError::InitFailed(format!("Failed to spawn game thread: {}", e)))?;
+            .map_err(|e| {
+                SubsystemError::InitFailed(format!("Failed to spawn game thread: {}", e))
+            })?;
 
         self.thread_handle = Some(handle);
         tracing::info!("✓ Managed game thread initialized at {} TPS", target_tps);
@@ -160,9 +164,9 @@ impl Subsystem for ManagedGameThread {
         self.running.store(false, Ordering::Relaxed);
 
         if let Some(handle) = self.thread_handle.take() {
-            handle.join().map_err(|_| {
-                SubsystemError::ShutdownFailed("Game thread panicked".to_string())
-            })?;
+            handle
+                .join()
+                .map_err(|_| SubsystemError::ShutdownFailed("Game thread panicked".to_string()))?;
         }
 
         tracing::info!("✓ Managed game thread stopped");
@@ -259,7 +263,7 @@ impl GameThread {
     pub fn new(target_tps: f32) -> Self {
         tracing::debug!("[GAME-THREAD] ===== Creating Game Thread =====");
         let mut initial_state = GameState::new();
-        
+
         // Create a beautiful default level similar to Unreal's starter content
         // Floor plane - large ground surface
         initial_state.add_object({
@@ -268,7 +272,7 @@ impl GameThread {
             obj.rotation = [0.0, 0.0, 0.0];
             obj
         });
-        
+
         // Center cube - focal point
         initial_state.add_object({
             let mut obj = GameObject::new(2, 0.0, 0.5, 0.0);
@@ -276,7 +280,7 @@ impl GameThread {
             obj.rotation = [0.0, 45.0, 0.0]; // Slight rotation for visual interest
             obj
         });
-        
+
         // Sphere on the left
         initial_state.add_object({
             let mut obj = GameObject::new(3, -3.0, 1.0, 0.0);
@@ -284,7 +288,7 @@ impl GameThread {
             obj.rotation = [0.0, 0.0, 0.0];
             obj
         });
-        
+
         // Cylinder on the right
         initial_state.add_object({
             let mut obj = GameObject::new(4, 3.0, 1.0, 0.0);
@@ -292,7 +296,7 @@ impl GameThread {
             obj.rotation = [0.0, 0.0, 0.0];
             obj
         });
-        
+
         // Back wall/cube
         initial_state.add_object({
             let mut obj = GameObject::new(5, 0.0, 2.0, -5.0);
@@ -300,7 +304,7 @@ impl GameThread {
             obj.rotation = [0.0, 0.0, 0.0];
             obj
         });
-        
+
         // Small decorative cubes - left side
         initial_state.add_object({
             let mut obj = GameObject::new(6, -5.0, 0.3, 2.0);
@@ -308,14 +312,14 @@ impl GameThread {
             obj.rotation = [0.0, 30.0, 0.0];
             obj
         });
-        
+
         initial_state.add_object({
             let mut obj = GameObject::new(7, -4.0, 0.3, 3.0);
             obj.scale = [0.6, 0.6, 0.6];
             obj.rotation = [0.0, -15.0, 0.0];
             obj
         });
-        
+
         // Small decorative cubes - right side
         initial_state.add_object({
             let mut obj = GameObject::new(8, 5.0, 0.3, 2.0);
@@ -323,14 +327,14 @@ impl GameThread {
             obj.rotation = [0.0, -30.0, 0.0];
             obj
         });
-        
+
         initial_state.add_object({
             let mut obj = GameObject::new(9, 4.0, 0.3, 3.0);
             obj.scale = [0.6, 0.6, 0.6];
             obj.rotation = [0.0, 15.0, 0.0];
             obj
         });
-        
+
         // Foreground elements
         initial_state.add_object({
             let mut obj = GameObject::new(10, -2.0, 0.5, 4.0);
@@ -338,15 +342,18 @@ impl GameThread {
             obj.rotation = [0.0, 0.0, 0.0];
             obj
         });
-        
+
         initial_state.add_object({
             let mut obj = GameObject::new(11, 2.0, 0.5, 4.0);
             obj.scale = [1.2, 0.5, 1.2];
             obj.rotation = [0.0, 0.0, 0.0];
             obj
         });
-        
-        tracing::debug!("[GAME-THREAD] Created default level with {} static objects", initial_state.objects.len());
+
+        tracing::debug!(
+            "[GAME-THREAD] Created default level with {} static objects",
+            initial_state.objects.len()
+        );
         tracing::debug!("[GAME-THREAD] Target TPS: {}", target_tps);
 
         Self {
@@ -382,7 +389,6 @@ impl GameThread {
         let current = self.enabled.load(Ordering::Relaxed);
         self.enabled.store(!current, Ordering::Relaxed);
     }
-
 }
 
 #[cfg(test)]

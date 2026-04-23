@@ -11,7 +11,7 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, ItemFn, Pat, ReturnType, FnArg, Stmt, Expr};
+use syn::{parse_macro_input, Expr, FnArg, ItemFn, Pat, ReturnType, Stmt};
 
 /// Convert an SVG filename to a PascalCase identifier.
 ///
@@ -48,8 +48,7 @@ pub fn generate_icon_enum(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as syn::LitStr);
     let relative_path = input.value();
 
-    let manifest_dir =
-        std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
     let icons_dir = std::path::Path::new(&manifest_dir).join(&relative_path);
 
     let mut entries: Vec<(String, String)> = Vec::new();
@@ -157,17 +156,20 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
     let fn_name_str = fn_name.to_string();
 
     // Parse node type
-    let node_type_str = if args_str.contains("NodeTypes :: pure") || args_str.contains("NodeTypes::pure") {
-        "pure"
-    } else if args_str.contains("NodeTypes :: fn_") || args_str.contains("NodeTypes::fn_") {
-        "fn_"
-    } else if args_str.contains("NodeTypes :: control_flow") || args_str.contains("NodeTypes::control_flow") {
-        "control_flow"
-    } else if args_str.contains("NodeTypes :: event") || args_str.contains("NodeTypes::event") {
-        "event"
-    } else {
-        "fn_" // Default
-    };
+    let node_type_str =
+        if args_str.contains("NodeTypes :: pure") || args_str.contains("NodeTypes::pure") {
+            "pure"
+        } else if args_str.contains("NodeTypes :: fn_") || args_str.contains("NodeTypes::fn_") {
+            "fn_"
+        } else if args_str.contains("NodeTypes :: control_flow")
+            || args_str.contains("NodeTypes::control_flow")
+        {
+            "control_flow"
+        } else if args_str.contains("NodeTypes :: event") || args_str.contains("NodeTypes::event") {
+            "event"
+        } else {
+            "fn_" // Default
+        };
 
     // Extract category
     let category = extract_string_value(&args_str, "category");
@@ -182,22 +184,27 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     // Extract parameters
-    let params: Vec<_> = input.sig.inputs.iter().filter_map(|arg| {
-        if let FnArg::Typed(pat_type) = arg {
-            if let Pat::Ident(ident) = &*pat_type.pat {
-                let param_name = ident.ident.to_string();
-                let ty = &*pat_type.ty;
-                let param_type = quote!(#ty).to_string();
-                return Some(quote! {
-                    crate::NodeParameter {
-                        name: #param_name,
-                        ty: #param_type,
-                    }
-                });
+    let params: Vec<_> = input
+        .sig
+        .inputs
+        .iter()
+        .filter_map(|arg| {
+            if let FnArg::Typed(pat_type) = arg {
+                if let Pat::Ident(ident) = &*pat_type.pat {
+                    let param_name = ident.ident.to_string();
+                    let ty = &*pat_type.ty;
+                    let param_type = quote!(#ty).to_string();
+                    return Some(quote! {
+                        crate::NodeParameter {
+                            name: #param_name,
+                            ty: #param_type,
+                        }
+                    });
+                }
             }
-        }
-        None
-    }).collect();
+            None
+        })
+        .collect();
 
     // Extract return type
     let return_type = match &input.sig.output {
@@ -223,7 +230,9 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     // Build documentation from doc comments (/// or #[doc = "..."])
-    let docs: Vec<String> = input.attrs.iter()
+    let docs: Vec<String> = input
+        .attrs
+        .iter()
         .filter_map(|attr| {
             // Doc comments become #[doc = "..."] attributes
             if attr.path().is_ident("doc") {
@@ -244,16 +253,18 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
     clean_input.attrs.retain(|attr| attr.path().is_ident("doc"));
     clean_input.attrs.clear(); // Remove all attributes including doc comments
     let fn_source = quote!(#clean_input).to_string();
-    
+
     // Find first heading in docs (line starting with #)
-    let first_heading_idx = docs.iter().position(|line| line.trim_start().starts_with('#'));
-    
+    let first_heading_idx = docs
+        .iter()
+        .position(|line| line.trim_start().starts_with('#'));
+
     let mut final_docs = Vec::new();
-    
+
     if let Some(heading_idx) = first_heading_idx {
         // Add docs before first heading
         final_docs.extend(docs[..heading_idx].iter().cloned());
-        
+
         // Add source code block
         if !final_docs.is_empty() {
             final_docs.push("".to_string()); // Empty line separator
@@ -261,7 +272,7 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
         final_docs.push("```rust".to_string());
         final_docs.push(fn_source.clone());
         final_docs.push("```".to_string());
-        
+
         // Add rest of docs (from heading onwards)
         final_docs.push("".to_string()); // Empty line separator
         final_docs.extend(docs[heading_idx..].iter().cloned());
@@ -289,7 +300,7 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
     // Generate the registration const
     let registry_ident = syn::Ident::new(
         &format!("__BLUEPRINT_NODE__{}", fn_name_str.to_uppercase()),
-        fn_name.span()
+        fn_name.span(),
     );
 
     let node_type_ident = syn::Ident::new(node_type_str, fn_name.span());
@@ -410,7 +421,10 @@ fn find_exec_output_labels(func: &ItemFn) -> Vec<String> {
 
     // Remove duplicates while preserving order
     let mut seen = std::collections::HashSet::new();
-    labels.into_iter().filter(|l| seen.insert(l.clone())).collect()
+    labels
+        .into_iter()
+        .filter(|l| seen.insert(l.clone()))
+        .collect()
 }
 
 fn find_exec_in_block(block: &syn::Block, labels: &mut Vec<String>) {
@@ -550,39 +564,40 @@ pub fn blueprint_type(args: TokenStream, input: TokenStream) -> TokenStream {
     let type_name_str = type_name.to_string();
 
     // Extract the unwrapped name (the actual Rust type like "Arc", "Box")
-    let constructor_name = extract_string_value(&args_str, "unwrapped_name")
-        .unwrap_or_else(|| {
-            // Default: strip 'P' prefix if present (PArc -> Arc)
-            type_name_str.strip_prefix('P').unwrap_or(&type_name_str).to_string()
-        });
+    let constructor_name = extract_string_value(&args_str, "unwrapped_name").unwrap_or_else(|| {
+        // Default: strip 'P' prefix if present (PArc -> Arc)
+        type_name_str
+            .strip_prefix('P')
+            .unwrap_or(&type_name_str)
+            .to_string()
+    });
 
     // Parse parameters count
     let params_count = extract_number_value(&args_str, "params").unwrap_or(1);
 
     // Extract category
-    let category = extract_string_value(&args_str, "category")
-        .unwrap_or_else(|| "Other".to_string());
+    let category =
+        extract_string_value(&args_str, "category").unwrap_or_else(|| "Other".to_string());
 
     // Extract description
     let description = extract_string_value(&args_str, "description")
         .unwrap_or_else(|| format!("{} type constructor", constructor_name));
 
     // Extract example
-    let example = extract_string_value(&args_str, "example")
-        .unwrap_or_else(|| {
-            if params_count == 1 {
-                format!("{}<T>", constructor_name)
-            } else if params_count == 2 {
-                format!("{}<T, E>", constructor_name)
-            } else {
-                format!("{}<...>", constructor_name)
-            }
-        });
+    let example = extract_string_value(&args_str, "example").unwrap_or_else(|| {
+        if params_count == 1 {
+            format!("{}<T>", constructor_name)
+        } else if params_count == 2 {
+            format!("{}<T, E>", constructor_name)
+        } else {
+            format!("{}<...>", constructor_name)
+        }
+    });
 
     // Generate the registration const
     let registry_ident = syn::Ident::new(
         &format!("__TYPE_CONSTRUCTOR__{}", constructor_name.to_uppercase()),
-        type_name.span()
+        type_name.span(),
     );
 
     let expanded = quote! {

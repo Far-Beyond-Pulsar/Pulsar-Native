@@ -1,8 +1,8 @@
 //! Root wrapper component that contains the titlebar and app
 
-use gpui::{prelude::*, div, Entity, IntoElement, Render, SharedString, Window, Context};
+use gpui::{div, prelude::*, Context, Entity, IntoElement, Render, SharedString, Window};
 use ui::{v_flex, Root};
-use ui_common::menu::{AboutApp, Settings, Preferences, ShowDocumentation, AppTitleBar};
+use ui_common::menu::{AboutApp, AppTitleBar, Preferences, Settings, ShowDocumentation};
 
 use crate::app::PulsarApp;
 
@@ -35,26 +35,37 @@ impl Render for PulsarRoot {
         // at the time the popup menu fires dispatch_action.
         div()
             .size_full()
-            .on_action(cx.listener(|this: &mut PulsarRoot, _: &Settings, window, cx| {
-                this.app.update(cx, |app, cx| app.open_settings(window, cx));
-            }))
-            .on_action(cx.listener(|this: &mut PulsarRoot, _: &ui::OpenSettings, window, cx| {
-                this.app.update(cx, |app, cx| app.open_settings(window, cx));
-            }))
-            .on_action(cx.listener(|this: &mut PulsarRoot, _: &Preferences, window, cx| {
-                this.app.update(cx, |app, cx| app.open_settings(window, cx));
-            }))
-            .on_action(cx.listener(|this: &mut PulsarRoot, _: &AboutApp, window, cx| {
-                this.app.update(cx, |app, cx| app.open_about(window, cx));
-            }))
-            .on_action(cx.listener(|this: &mut PulsarRoot, _: &ShowDocumentation, window, cx| {
-                this.app.update(cx, |app, cx| app.open_documentation(window, cx));
-            }))
+            .on_action(
+                cx.listener(|this: &mut PulsarRoot, _: &Settings, window, cx| {
+                    this.app.update(cx, |app, cx| app.open_settings(window, cx));
+                }),
+            )
+            .on_action(
+                cx.listener(|this: &mut PulsarRoot, _: &ui::OpenSettings, window, cx| {
+                    this.app.update(cx, |app, cx| app.open_settings(window, cx));
+                }),
+            )
+            .on_action(
+                cx.listener(|this: &mut PulsarRoot, _: &Preferences, window, cx| {
+                    this.app.update(cx, |app, cx| app.open_settings(window, cx));
+                }),
+            )
+            .on_action(
+                cx.listener(|this: &mut PulsarRoot, _: &AboutApp, window, cx| {
+                    this.app.update(cx, |app, cx| app.open_about(window, cx));
+                }),
+            )
+            .on_action(
+                cx.listener(|this: &mut PulsarRoot, _: &ShowDocumentation, window, cx| {
+                    this.app
+                        .update(cx, |app, cx| app.open_documentation(window, cx));
+                }),
+            )
             .child(
                 v_flex()
                     .size_full()
                     .child(self.title_bar.clone())
-                    .child(div().flex_1().overflow_hidden().child(self.app.clone()))
+                    .child(div().flex_1().overflow_hidden().child(self.app.clone())),
             )
             .children(drawer_layer)
             .children(modal_layer)

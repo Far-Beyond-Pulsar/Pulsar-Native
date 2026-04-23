@@ -38,8 +38,7 @@ impl ProjectScanner {
 
             // Skip hidden files and target directory
             if path.components().any(|c| {
-                c.as_os_str().to_string_lossy().starts_with('.')
-                    || c.as_os_str() == "target"
+                c.as_os_str().to_string_lossy().starts_with('.') || c.as_os_str() == "target"
             }) {
                 continue;
             }
@@ -59,9 +58,12 @@ impl ProjectScanner {
         if let Some(plugin_manager) = plugin_manager::global() {
             if let Ok(pm) = plugin_manager.read() {
                 if let Some(file_type_id) = pm.file_type_registry().get_file_type_for_path(&path) {
-                    if let Some(file_type_def) = pm.file_type_registry().get_file_type(&file_type_id) {
+                    if let Some(file_type_def) =
+                        pm.file_type_registry().get_file_type(&file_type_id)
+                    {
                         // Get the type name from the parent folder or file stem
-                        let type_name = path.parent()
+                        let type_name = path
+                            .parent()
                             .and_then(|p| p.file_name())
                             .and_then(|n| n.to_str())
                             .or_else(|| path.file_stem().and_then(|n| n.to_str()))

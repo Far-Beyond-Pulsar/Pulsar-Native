@@ -1,6 +1,9 @@
 use gpui::*;
-use ui::{button::{Button, ButtonVariants as _}, h_flex, Selectable};
 use std::sync::Arc;
+use ui::{
+    button::{Button, ButtonVariants as _},
+    h_flex, Selectable,
+};
 
 use crate::level_editor::ui::state::LevelEditorState;
 use engine_backend::subsystems::render::helio_renderer::RendererCommand;
@@ -65,8 +68,7 @@ impl FeatureToggles {
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         gpu_engine: Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
         feature_name: &'static str,
-    ) -> impl IntoElement
-    {
+    ) -> impl IntoElement {
         Button::new(id)
             .icon(icon)
             .tooltip(format!("Toggle {}", label))
@@ -75,18 +77,26 @@ impl FeatureToggles {
                 // Toggle state in UI
                 let mut state = state_arc.write();
                 match feature_name {
-                    "basic_materials" => state.feature_materials_enabled = !state.feature_materials_enabled,
-                    "basic_lighting" => state.feature_lighting_enabled = !state.feature_lighting_enabled,
-                    "procedural_shadows" => state.feature_shadows_enabled = !state.feature_shadows_enabled,
+                    "basic_materials" => {
+                        state.feature_materials_enabled = !state.feature_materials_enabled
+                    }
+                    "basic_lighting" => {
+                        state.feature_lighting_enabled = !state.feature_lighting_enabled
+                    }
+                    "procedural_shadows" => {
+                        state.feature_shadows_enabled = !state.feature_shadows_enabled
+                    }
                     "bloom" => state.feature_bloom_enabled = !state.feature_bloom_enabled,
                     _ => {}
                 }
                 drop(state);
-                
+
                 // Send command to renderer thread
                 if let Ok(engine) = gpu_engine.try_lock() {
                     if let Some(ref helio_renderer) = engine.helio_renderer {
-                        let _ = helio_renderer.command_sender.send(RendererCommand::ToggleFeature(feature_name.to_string()));
+                        let _ = helio_renderer
+                            .command_sender
+                            .send(RendererCommand::ToggleFeature(feature_name.to_string()));
                         tracing::info!("[UI] Sent toggle command for feature: {}", feature_name);
                     }
                 }

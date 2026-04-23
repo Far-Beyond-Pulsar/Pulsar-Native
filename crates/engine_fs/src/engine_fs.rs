@@ -23,14 +23,8 @@ impl EngineFs {
     /// Create a new EngineFs instance for a project
     pub fn new(project_root: PathBuf) -> Result<Self> {
         let type_database = Arc::new(TypeDatabase::new());
-        let operations = AssetOperations::new(
-            project_root.clone(),
-            type_database.clone(),
-        );
-        let scanner = ProjectScanner::new(
-            project_root.clone(),
-            type_database.clone(),
-        );
+        let operations = AssetOperations::new(project_root.clone(), type_database.clone());
+        let scanner = ProjectScanner::new(project_root.clone(), type_database.clone());
 
         let mut fs = Self {
             project_root,
@@ -68,12 +62,12 @@ impl EngineFs {
     /// Start file system watching for automatic updates
     /// Note: Currently only watches for file removals. Rescan project to detect new/modified files.
     pub fn start_watching(&self) -> Result<()> {
-        watchers::start_watcher(
-            self.project_root.clone(),
-            self.type_database.clone(),
-        )?;
+        watchers::start_watcher(self.project_root.clone(), self.type_database.clone())?;
 
-        tracing::trace!("Started filesystem watcher for project at {:?}", self.project_root);
+        tracing::trace!(
+            "Started filesystem watcher for project at {:?}",
+            self.project_root
+        );
 
         Ok(())
     }

@@ -18,14 +18,14 @@
 //!   - Reads CALLER_SNAPSHOT via a brief read lock per render frame
 //!   - Never touches the DashMap directly
 
-use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
-use std::sync::atomic::{AtomicU64, AtomicI64, Ordering};
-use std::cell::Cell;
-use once_cell::sync::Lazy;
 use dashmap::DashMap;
+use once_cell::sync::Lazy;
 use parking_lot::{Mutex, RwLock};
+use std::cell::Cell;
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::Arc;
 
 // ─── Re-entrancy guard ────────────────────────────────────────────────────────
@@ -53,23 +53,23 @@ impl StackKey {
 // ─── Per-callsite stats (all atomic — zero locking on hot path) ───────────────
 
 pub struct CallerStats {
-    pub total_allocs:   AtomicU64,
+    pub total_allocs: AtomicU64,
     pub total_deallocs: AtomicU64,
-    pub total_bytes:    AtomicU64,
+    pub total_bytes: AtomicU64,
     /// Signed: live_bytes can transiently be negative due to dealloc-before-alloc races.
-    pub live_bytes:     AtomicI64,
+    pub live_bytes: AtomicI64,
     /// Representative first frame address (for symbol resolution).
-    pub first_frame:    AtomicU64,
+    pub first_frame: AtomicU64,
 }
 
 impl Default for CallerStats {
     fn default() -> Self {
         Self {
-            total_allocs:   AtomicU64::new(0),
+            total_allocs: AtomicU64::new(0),
             total_deallocs: AtomicU64::new(0),
-            total_bytes:    AtomicU64::new(0),
-            live_bytes:     AtomicI64::new(0),
-            first_frame:    AtomicU64::new(0),
+            total_bytes: AtomicU64::new(0),
+            live_bytes: AtomicI64::new(0),
+            first_frame: AtomicU64::new(0),
         }
     }
 }
@@ -94,15 +94,15 @@ pub static GLOBAL_LIVE_BYTES: std::sync::atomic::AtomicI64 = std::sync::atomic::
 /// A resolved row for display in the UI.
 #[derive(Clone, Debug)]
 pub struct CallerRow {
-    pub key:              StackKey,
-    pub symbol:           String,
-    pub total_allocs:     u64,
-    pub total_deallocs:   u64,
-    pub total_bytes:      u64,
-    pub live_bytes:       i64,
-    pub avg_size:         u64,
+    pub key: StackKey,
+    pub symbol: String,
+    pub total_allocs: u64,
+    pub total_deallocs: u64,
+    pub total_bytes: u64,
+    pub live_bytes: i64,
+    pub avg_size: u64,
     /// Estimated live bytes: live_bytes.max(0) — exact when dealloc pairing succeeds.
-    pub leaked_estimate:  u64,
+    pub leaked_estimate: u64,
 }
 
 /// Shared snapshot: background thread writes, UI reads.
@@ -112,8 +112,7 @@ pub static CALLER_SNAPSHOT: Lazy<Arc<RwLock<Vec<CallerRow>>>> =
 
 /// Symbol cache: first_frame address → resolved string.
 /// Locked only during symbol resolution (background thread, infrequent).
-static SYMBOL_CACHE: Lazy<Mutex<HashMap<u64, String>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+static SYMBOL_CACHE: Lazy<Mutex<HashMap<u64, String>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
 // ─── Hot-path recording ───────────────────────────────────────────────────────
 
@@ -121,12 +120,16 @@ static SYMBOL_CACHE: Lazy<Mutex<HashMap<u64, String>>> =
 /// so recursion from DashMap's own allocations is suppressed.
 #[inline]
 pub fn record_alloc(ptr: usize, frames: &[usize], size: usize) {
-    if frames.is_empty() { return; }
+    if frames.is_empty() {
+        return;
+    }
 
     // Global counter updated unconditionally — even if CALLER_BUSY blocks per-site recording.
     GLOBAL_LIVE_BYTES.fetch_add(size as i64, Ordering::Relaxed);
 
-    if CALLER_BUSY.with(|b| b.replace(true)) { return; }
+    if CALLER_BUSY.with(|b| b.replace(true)) {
+        return;
+    }
 
     // Skip allocator-internal frames:
     //   0: backtrace::trace_unsynchronized
@@ -137,7 +140,7 @@ pub fn record_alloc(ptr: usize, frames: &[usize], size: usize) {
     let meaningful = &frames[skip..];
 
     if !meaningful.is_empty() {
-        let key   = StackKey::from_frames(meaningful);
+        let key = StackKey::from_frames(meaningful);
         let first = meaningful[0] as u64;
 
         // Allow up to 8192 unique call sites; existing keys always update.
@@ -147,7 +150,12 @@ pub fn record_alloc(ptr: usize, frames: &[usize], size: usize) {
             entry.total_bytes.fetch_add(size as u64, Ordering::Relaxed);
             entry.live_bytes.fetch_add(size as i64, Ordering::Relaxed);
             if entry.first_frame.load(Ordering::Relaxed) == 0 {
-                let _ = entry.first_frame.compare_exchange(0, first, Ordering::Relaxed, Ordering::Relaxed);
+                let _ = entry.first_frame.compare_exchange(
+                    0,
+                    first,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                );
             }
             // Store ptr → key for dealloc pairing.
             if ptr != 0 {
@@ -162,12 +170,16 @@ pub fn record_alloc(ptr: usize, frames: &[usize], size: usize) {
 /// Record a deallocation by matching the pointer to its original alloc site.
 #[inline]
 pub fn record_dealloc(ptr: usize, size: usize) {
-    if ptr == 0 { return; }
+    if ptr == 0 {
+        return;
+    }
 
     // Always subtract from global counter.
     GLOBAL_LIVE_BYTES.fetch_sub(size as i64, Ordering::Relaxed);
 
-    if CALLER_BUSY.with(|b| b.replace(true)) { return; }
+    if CALLER_BUSY.with(|b| b.replace(true)) {
+        return;
+    }
 
     if let Some((_, key)) = ALLOC_KEYS.remove(&ptr) {
         if let Some(entry) = CALLER_MAP.get(&key) {
@@ -185,14 +197,23 @@ pub fn refresh_snapshot(filter: &str) {
     CALLER_BUSY.with(|b| b.set(true));
 
     // 1. Snapshot raw stats — no symbol work yet.
-    struct RawRow { first_frame: u64, total_allocs: u64, total_deallocs: u64, total_bytes: u64, live_bytes: i64 }
-    let mut raw: Vec<RawRow> = CALLER_MAP.iter().map(|e| RawRow {
-        first_frame:    e.value().first_frame.load(Ordering::Relaxed),
-        total_allocs:   e.value().total_allocs.load(Ordering::Relaxed),
-        total_deallocs: e.value().total_deallocs.load(Ordering::Relaxed),
-        total_bytes:    e.value().total_bytes.load(Ordering::Relaxed),
-        live_bytes:     e.value().live_bytes.load(Ordering::Relaxed),
-    }).collect();
+    struct RawRow {
+        first_frame: u64,
+        total_allocs: u64,
+        total_deallocs: u64,
+        total_bytes: u64,
+        live_bytes: i64,
+    }
+    let mut raw: Vec<RawRow> = CALLER_MAP
+        .iter()
+        .map(|e| RawRow {
+            first_frame: e.value().first_frame.load(Ordering::Relaxed),
+            total_allocs: e.value().total_allocs.load(Ordering::Relaxed),
+            total_deallocs: e.value().total_deallocs.load(Ordering::Relaxed),
+            total_bytes: e.value().total_bytes.load(Ordering::Relaxed),
+            live_bytes: e.value().live_bytes.load(Ordering::Relaxed),
+        })
+        .collect();
 
     CALLER_BUSY.with(|b| b.set(false));
 
@@ -202,27 +223,49 @@ pub fn refresh_snapshot(filter: &str) {
     raw.truncate(100);
 
     // 3. Resolve symbols + build rows for the top 100 only.
-    let f_lower = if filter.is_empty() { None } else { Some(filter.to_lowercase()) };
+    let f_lower = if filter.is_empty() {
+        None
+    } else {
+        Some(filter.to_lowercase())
+    };
 
-    let mut rows: Vec<CallerRow> = raw.into_iter().filter_map(|r| {
-        let symbol = resolve_symbol(r.first_frame);
-        if let Some(ref f) = f_lower {
-            if !symbol.to_lowercase().contains(f.as_str()) { return None; }
-        }
-        let avg_size        = if r.total_allocs > 0 { r.total_bytes / r.total_allocs } else { 0 };
-        // Use live_bytes directly — it's maintained atomically (add on alloc, sub on dealloc).
-        // Much more accurate than (allocs - deallocs) * avg_size which breaks if sizes vary.
-        let leaked_estimate = r.live_bytes.max(0) as u64;
-        let key = StackKey::from_frames(&[r.first_frame as usize]);
-        Some(CallerRow { key, symbol,
-            total_allocs: r.total_allocs, total_deallocs: r.total_deallocs,
-            total_bytes: r.total_bytes, live_bytes: r.live_bytes,
-            avg_size, leaked_estimate })
-    }).collect();
+    let mut rows: Vec<CallerRow> = raw
+        .into_iter()
+        .filter_map(|r| {
+            let symbol = resolve_symbol(r.first_frame);
+            if let Some(ref f) = f_lower {
+                if !symbol.to_lowercase().contains(f.as_str()) {
+                    return None;
+                }
+            }
+            let avg_size = if r.total_allocs > 0 {
+                r.total_bytes / r.total_allocs
+            } else {
+                0
+            };
+            // Use live_bytes directly — it's maintained atomically (add on alloc, sub on dealloc).
+            // Much more accurate than (allocs - deallocs) * avg_size which breaks if sizes vary.
+            let leaked_estimate = r.live_bytes.max(0) as u64;
+            let key = StackKey::from_frames(&[r.first_frame as usize]);
+            Some(CallerRow {
+                key,
+                symbol,
+                total_allocs: r.total_allocs,
+                total_deallocs: r.total_deallocs,
+                total_bytes: r.total_bytes,
+                live_bytes: r.live_bytes,
+                avg_size,
+                leaked_estimate,
+            })
+        })
+        .collect();
 
     // Default sort: highest leak estimate first, break ties by alloc count.
-    rows.sort_unstable_by(|a, b| b.leaked_estimate.cmp(&a.leaked_estimate)
-        .then(b.total_allocs.cmp(&a.total_allocs)));
+    rows.sort_unstable_by(|a, b| {
+        b.leaked_estimate
+            .cmp(&a.leaked_estimate)
+            .then(b.total_allocs.cmp(&a.total_allocs))
+    });
 
     *CALLER_SNAPSHOT.write() = rows;
     CALLER_BUSY.with(|b| b.set(false));
@@ -231,7 +274,9 @@ pub fn refresh_snapshot(filter: &str) {
 // ─── Symbol resolution ────────────────────────────────────────────────────────
 
 fn resolve_symbol(addr: u64) -> String {
-    if addr == 0 { return "<unknown>".to_string(); }
+    if addr == 0 {
+        return "<unknown>".to_string();
+    }
 
     // Fast path: already cached
     {
@@ -253,12 +298,14 @@ fn do_resolve(addr: usize) -> String {
         if let Some(n) = sym.name() {
             let full = format!("{:#}", n);
             // Strip long generic noise — keep first 120 chars
-            name = if full.len() > 120 { format!("{}…", &full[..120]) } else { full };
+            name = if full.len() > 120 {
+                format!("{}…", &full[..120])
+            } else {
+                full
+            };
         }
         if let (Some(file), Some(line)) = (sym.filename(), sym.lineno()) {
-            let filename = file.file_name()
-                .and_then(|f| f.to_str())
-                .unwrap_or("?");
+            let filename = file.file_name().and_then(|f| f.to_str()).unwrap_or("?");
             name = format!("{} ({}:{})", name, filename, line);
         }
     });

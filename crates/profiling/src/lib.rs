@@ -1,24 +1,24 @@
 //! Ultra-fast instrumentation-based profiling inspired by Unreal Insights
-//! 
+//!
 //! Unlike sampling profilers that interrupt threads, this uses explicit instrumentation
 //! macros that are compiled in and record exact timing with minimal overhead.
 //!
 //! # Usage
-//! 
+//!
 //! ```rust
 //! use profiling::profile_scope;
-//! 
+//!
 //! fn expensive_function() {
 //!     profile_scope!("expensive_function");
 //!     // Your code here - timing is automatically captured
 //! }
 //! ```
 
+use crossbeam_channel::{unbounded, Receiver, Sender};
+use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
-use parking_lot::RwLock;
-use crossbeam_channel::{Sender, Receiver, unbounded};
-use serde::{Serialize, Deserialize};
 
 pub mod database;
 
@@ -113,7 +113,7 @@ impl Profiler {
         while let Ok(event) = self.receiver.try_recv() {
             collected.push(event);
         }
-        
+
         let mut events = self.events.write();
         events.extend(collected.iter().cloned());
         collected
@@ -189,7 +189,7 @@ pub fn record_frame_time(frame_time_ms: f32) {
         location: None,
         metadata: Some(format!("frame_time_ms:{}", frame_time_ms)),
     };
-    
+
     PROFILER.submit_event(event);
 }
 
@@ -239,11 +239,11 @@ impl ProfileScope {
             }
             let depth = state.depth;
             state.depth += 1;
-            
+
             // Get parent scope name
             let parent = state.scope_stack.last().cloned();
             state.scope_stack.push(name.clone());
-            
+
             (depth, parent)
         });
 
@@ -304,7 +304,7 @@ fn get_thread_id() -> u64 {
     // Use a hash of the thread ID instead of unstable API
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
-    
+
     let thread_id = std::thread::current().id();
     let mut hasher = DefaultHasher::new();
     thread_id.hash(&mut hasher);
@@ -325,7 +325,7 @@ macro_rules! profile_scope_loc {
     ($name:expr) => {
         let _profile_guard = $crate::ProfileScope::new_with_location(
             $name,
-            Some(format!("{}:{}", file!(), line!()))
+            Some(format!("{}:{}", file!(), line!())),
         );
     };
 }

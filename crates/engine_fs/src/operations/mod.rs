@@ -3,8 +3,8 @@
 //! Handles all file operations (create, update, delete) and maintains index consistency.
 //! Split into type-specific and general operations for better organization.
 
-mod type_ops;
 mod general_ops;
+mod type_ops;
 
 use anyhow::Result;
 use std::path::PathBuf;
@@ -14,8 +14,8 @@ use type_db::TypeDatabase;
 use crate::templates::AssetKind;
 
 // Re-export operation handlers
-pub use type_ops::TypeOperations;
 pub use general_ops::GeneralOperations;
+pub use type_ops::TypeOperations;
 
 /// Main asset operations coordinator
 pub struct AssetOperations {
@@ -61,7 +61,12 @@ impl AssetOperations {
     // ── General Asset Operations ──────────────────────────────────────────────
 
     /// Create a new asset of any kind
-    pub fn create_asset(&self, kind: AssetKind, name: &str, custom_dir: Option<&str>) -> Result<PathBuf> {
+    pub fn create_asset(
+        &self,
+        kind: AssetKind,
+        name: &str,
+        custom_dir: Option<&str>,
+    ) -> Result<PathBuf> {
         self.general_ops.create_asset(kind, name, custom_dir)
     }
 

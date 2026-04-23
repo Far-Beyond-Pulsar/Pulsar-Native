@@ -13,7 +13,7 @@ pub mod type_constructors;
 pub use registry::*;
 
 // Re-export macros
-pub use pulsar_macros::{blueprint, bp_import, exec_output, blueprint_type};
+pub use pulsar_macros::{blueprint, blueprint_type, bp_import, exec_output};
 
 // =============================================================================
 // Node Type Enum (for blueprint attribute)
@@ -41,14 +41,14 @@ pub enum NodeTypes {
 // Modular Node Organization
 // =============================================================================
 
-    pub mod engine;
-    pub use engine::*;
-    pub mod experimental;
-    pub use experimental::*;
-    
-    // This is how engine detects Your nodes, enter your node folder name (it must have an mod.rs) 
-    // pub mod foldername;
-    // pub use foldername::*;
-    // ^this tells pulsar to use it in its nodes
+pub mod engine;
+pub use engine::*;
+pub mod experimental;
+pub use experimental::*;
+
+// This is how engine detects Your nodes, enter your node folder name (it must have an mod.rs)
+// pub mod foldername;
+// pub use foldername::*;
+// ^this tells pulsar to use it in its nodes
 
 //

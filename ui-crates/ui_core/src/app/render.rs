@@ -1,38 +1,45 @@
 //! Rendering implementation for PulsarApp
 
-use std::time::Duration;
-use gpui::{prelude::*, div, px, relative, rgb, Animation, AnimationExt as _, AnyElement, App, Context, Focusable, FocusHandle, Hsla, IntoElement, MouseButton, MouseMoveEvent, Render, Window};
-use ui::{
-    h_flex, v_flex, ActiveTheme as _, ContextModal as _, StyledExt as _, button::{Button, ButtonVariants as _}, Icon, IconName,
-};
-use ui::notification::Notification;
-use rust_i18n::t;
 use engine_backend::services::rust_analyzer_manager::AnalyzerStatus;
-use plugin_editor_api::{StatusbarPosition, StatusbarAction};
+use gpui::{
+    div, prelude::*, px, relative, rgb, Animation, AnimationExt as _, AnyElement, App, Context,
+    FocusHandle, Focusable, Hsla, IntoElement, MouseButton, MouseMoveEvent, Render, Window,
+};
+use plugin_editor_api::{StatusbarAction, StatusbarPosition};
+use rust_i18n::t;
 use std::path::PathBuf;
+use std::time::Duration;
+use ui::notification::Notification;
+use ui::{
+    button::{Button, ButtonVariants as _},
+    h_flex, v_flex, ActiveTheme as _, ContextModal as _, Icon, IconName, StyledExt as _,
+};
 
 use super::PulsarApp;
 use crate::actions::*;
 
 impl PulsarApp {
-    pub(super) fn render_footer(&self, drawer_open: bool, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_footer(
+        &self,
+        drawer_open: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let analyzer = self.state.rust_analyzer.read(cx);
         let status = analyzer.status();
         let is_running = analyzer.is_running();
 
         let error_count = self
-            .state.problems_drawer
+            .state
+            .problems_drawer
             .read(cx)
             .count_by_severity(ui_problems::DiagnosticSeverity::Error);
         let warning_count = self
-            .state.problems_drawer
+            .state
+            .problems_drawer
             .read(cx)
             .count_by_severity(ui_problems::DiagnosticSeverity::Warning);
 
-        let type_count = self
-            .state.type_debugger_drawer
-            .read(cx)
-            .total_count();
+        let type_count = self.state.type_debugger_drawer.read(cx).total_count();
 
         let (status_color, status_icon) = match status {
             AnalyzerStatus::Ready => (cx.theme().success, IconName::CheckCircle),
@@ -47,18 +54,21 @@ impl PulsarApp {
         div()
             .w_full()
             .relative()
-            .when(self.state.analyzer_progress > 0.0 && self.state.analyzer_progress < 1.0, |this| {
-                this.child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .h(px(2.))
-                        .w(relative(self.state.analyzer_progress))
-                        .bg(cx.theme().primary)
-                        .shadow_md(),
-                )
-            })
+            .when(
+                self.state.analyzer_progress > 0.0 && self.state.analyzer_progress < 1.0,
+                |this| {
+                    this.child(
+                        div()
+                            .absolute()
+                            .top_0()
+                            .left_0()
+                            .h(px(2.))
+                            .w(relative(self.state.analyzer_progress))
+                            .bg(cx.theme().primary)
+                            .shadow_md(),
+                    )
+                },
+            )
             .child(
                 h_flex()
                     .w_full()
@@ -76,21 +86,17 @@ impl PulsarApp {
                             .child(
                                 Button::new("toggle-files")
                                     .ghost()
-                                    .icon(
-                                        Icon::new(IconName::Folder)
-                                            .size(px(16.))
-                                            .text_color(if drawer_open {
-                                                cx.theme().primary
-                                            } else {
-                                                cx.theme().muted_foreground
-                                            })
-                                    )
+                                    .icon(Icon::new(IconName::Folder).size(px(16.)).text_color(
+                                        if drawer_open {
+                                            cx.theme().primary
+                                        } else {
+                                            cx.theme().muted_foreground
+                                        },
+                                    ))
                                     .px_2()
                                     .py_1()
                                     .rounded(px(4.))
-                                    .when(drawer_open, |s| {
-                                        s.bg(cx.theme().primary.opacity(0.15))
-                                    })
+                                    .when(drawer_open, |s| s.bg(cx.theme().primary.opacity(0.15)))
                                     .tooltip("Toggle Files (Ctrl+B)")
                                     .on_click(cx.listener(|app, _, window, cx| {
                                         app.toggle_drawer(window, cx);
@@ -108,13 +114,15 @@ impl PulsarApp {
                                             IconName::CheckCircle
                                         })
                                         .size(px(16.))
-                                        .text_color(if error_count > 0 {
-                                            cx.theme().danger
-                                        } else if warning_count > 0 {
-                                            cx.theme().warning
-                                        } else {
-                                            cx.theme().success
-                                        })
+                                        .text_color(
+                                            if error_count > 0 {
+                                                cx.theme().danger
+                                            } else if warning_count > 0 {
+                                                cx.theme().warning
+                                            } else {
+                                                cx.theme().success
+                                            },
+                                        ),
                                     )
                                     .relative()
                                     .px_2()
@@ -143,7 +151,10 @@ impl PulsarApp {
                                                         .text_xs()
                                                         .font_bold()
                                                         .text_color(rgb(0xFFFFFF))
-                                                        .child(format!("{}", error_count + warning_count)),
+                                                        .child(format!(
+                                                            "{}",
+                                                            error_count + warning_count
+                                                        )),
                                                 ),
                                         )
                                     })
@@ -161,7 +172,7 @@ impl PulsarApp {
                                     .icon(
                                         Icon::new(IconName::Database)
                                             .size(px(16.))
-                                            .text_color(cx.theme().accent)
+                                            .text_color(cx.theme().accent),
                                     )
                                     .relative()
                                     .px_2()
@@ -201,7 +212,7 @@ impl PulsarApp {
                                     .icon(
                                         Icon::new(IconName::User)
                                             .size(px(16.))
-                                            .text_color(cx.theme().muted_foreground)
+                                            .text_color(cx.theme().muted_foreground),
                                     )
                                     .px_2()
                                     .py_1()
@@ -217,7 +228,7 @@ impl PulsarApp {
                                     .icon(
                                         Icon::new(IconName::Puzzle)
                                             .size(px(16.))
-                                            .text_color(cx.theme().muted_foreground)
+                                            .text_color(cx.theme().muted_foreground),
                                     )
                                     .px_2()
                                     .py_1()
@@ -233,7 +244,7 @@ impl PulsarApp {
                                     .icon(
                                         Icon::new(IconName::Activity)
                                             .size(px(16.))
-                                            .text_color(cx.theme().muted_foreground)
+                                            .text_color(cx.theme().muted_foreground),
                                     )
                                     .px_2()
                                     .py_1()
@@ -246,15 +257,13 @@ impl PulsarApp {
                             .child(
                                 Button::new("toggle-log-viewer")
                                     .ghost()
-                                    .icon(
-                                        Icon::new(IconName::Page)
-                                            .size(px(16.))
-                                            .text_color(if self.state.mission_control_open {
-                                                cx.theme().primary
-                                            } else {
-                                                cx.theme().muted_foreground
-                                            })
-                                    )
+                                    .icon(Icon::new(IconName::Page).size(px(16.)).text_color(
+                                        if self.state.mission_control_open {
+                                            cx.theme().primary
+                                        } else {
+                                            cx.theme().muted_foreground
+                                        },
+                                    ))
                                     .px_2()
                                     .py_1()
                                     .rounded(px(4.))
@@ -269,15 +278,13 @@ impl PulsarApp {
                             .child(
                                 Button::new("open-git-manager")
                                     .ghost()
-                                    .icon(
-                                        Icon::new(IconName::GitBranch)
-                                            .size(px(16.))
-                                            .text_color(if self.state.git_manager_open {
-                                                cx.theme().primary
-                                            } else {
-                                                cx.theme().muted_foreground
-                                            })
-                                    )
+                                    .icon(Icon::new(IconName::GitBranch).size(px(16.)).text_color(
+                                        if self.state.git_manager_open {
+                                            cx.theme().primary
+                                        } else {
+                                            cx.theme().muted_foreground
+                                        },
+                                    ))
                                     .px_2()
                                     .py_1()
                                     .rounded(px(4.))
@@ -290,13 +297,10 @@ impl PulsarApp {
                                     })),
                             )
                             // Render plugin statusbar buttons for left position
-                            .children(self.render_plugin_statusbar_buttons(StatusbarPosition::Left, cx))
-                            .child(
-                                div()
-                                    .w(px(1.))
-                                    .h(px(18.))
-                                    .bg(cx.theme().border),
-                            ),
+                            .children(
+                                self.render_plugin_statusbar_buttons(StatusbarPosition::Left, cx),
+                            )
+                            .child(div().w(px(1.)).h(px(18.)).bg(cx.theme().border)),
                     )
                     .child(
                         h_flex()
@@ -346,16 +350,19 @@ impl PulsarApp {
                                                 .icon(
                                                     Icon::new(IconName::Close)
                                                         .size(px(12.))
-                                                        .text_color(cx.theme().muted_foreground)
+                                                        .text_color(cx.theme().muted_foreground),
                                                 )
                                                 .p_1()
                                                 .rounded(px(3.))
                                                 .hover(|s| s.bg(cx.theme().danger.opacity(0.2)))
                                                 .tooltip(t!("StatusBar.Stop").to_string())
                                                 .on_click(cx.listener(|app, _, window, cx| {
-                                                    app.state.rust_analyzer.update(cx, |analyzer, cx| {
-                                                        analyzer.stop(window, cx);
-                                                    });
+                                                    app.state.rust_analyzer.update(
+                                                        cx,
+                                                        |analyzer, cx| {
+                                                            analyzer.stop(window, cx);
+                                                        },
+                                                    );
                                                 })),
                                         )
                                     })
@@ -365,36 +372,40 @@ impl PulsarApp {
                                             .icon(
                                                 Icon::new(IconName::Undo)
                                                     .size(px(12.))
-                                                    .text_color(cx.theme().muted_foreground)
+                                                    .text_color(cx.theme().muted_foreground),
                                             )
                                             .p_1()
                                             .rounded(px(3.))
-                                            .tooltip(if is_running { t!("StatusBar.Restart").to_string() } else { t!("StatusBar.Start").to_string() })
+                                            .tooltip(if is_running {
+                                                t!("StatusBar.Restart").to_string()
+                                            } else {
+                                                t!("StatusBar.Start").to_string()
+                                            })
                                             .on_click(cx.listener(move |app, _, window, cx| {
-                                                if let Some(project) = app.state.project_path.clone() {
-                                                    app.state.rust_analyzer.update(cx, |analyzer, cx| {
-                                                        if is_running {
-                                                            analyzer.restart(window, cx);
-                                                        } else {
-                                                            analyzer.start(project, window, cx);
-                                                        }
-                                                    });
+                                                if let Some(project) =
+                                                    app.state.project_path.clone()
+                                                {
+                                                    app.state.rust_analyzer.update(
+                                                        cx,
+                                                        |analyzer, cx| {
+                                                            if is_running {
+                                                                analyzer.restart(window, cx);
+                                                            } else {
+                                                                analyzer.start(project, window, cx);
+                                                            }
+                                                        },
+                                                    );
                                                 }
                                             })),
                                     ),
                             ),
                     )
-                    .child(
-                        div()
-                            .w(px(1.))
-                            .h(px(18.))
-                            .bg(cx.theme().border),
-                    )
+                    .child(div().w(px(1.)).h(px(18.)).bg(cx.theme().border))
                     // Render plugin statusbar buttons for right position
                     .children(
                         self.render_plugin_statusbar_buttons(StatusbarPosition::Right, cx)
                             .into_iter()
-                            .map(|btn| btn.into_any_element())
+                            .map(|btn| btn.into_any_element()),
                     )
                     .child(
                         h_flex()
@@ -411,7 +422,8 @@ impl PulsarApp {
                                     .font_medium()
                                     .text_color(cx.theme().foreground)
                                     .children(
-                                        self.state.project_path
+                                        self.state
+                                            .project_path
                                             .as_ref()
                                             .and_then(|path| path.file_name())
                                             .map(|name| name.to_string_lossy().to_string())
@@ -421,19 +433,26 @@ impl PulsarApp {
                     ),
             )
     }
-    
+
     /// Render statusbar buttons registered by plugins
-    fn render_plugin_statusbar_buttons(&self, position: StatusbarPosition, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    fn render_plugin_statusbar_buttons(
+        &self,
+        position: StatusbarPosition,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
         let buttons = if let Some(pm_lock) = plugin_manager::global() {
             if let Ok(pm) = pm_lock.read() {
-                pm.get_statusbar_buttons_for_position(position).into_iter().cloned().collect()
+                pm.get_statusbar_buttons_for_position(position)
+                    .into_iter()
+                    .cloned()
+                    .collect()
             } else {
                 Vec::new()
             }
         } else {
             Vec::new()
         };
-        
+
         buttons
             .into_iter()
             .enumerate()
@@ -441,20 +460,22 @@ impl PulsarApp {
                 let mut button = Button::new(("plugin-statusbar", idx))
                     .ghost()
                     .icon(
-                        Icon::new(btn_def.icon.clone())
-                            .size(px(16.))
-                            .text_color(btn_def.icon_color.unwrap_or_else(|| cx.theme().muted_foreground))
+                        Icon::new(btn_def.icon.clone()).size(px(16.)).text_color(
+                            btn_def
+                                .icon_color
+                                .unwrap_or_else(|| cx.theme().muted_foreground),
+                        ),
                     )
                     .relative()
                     .px_2()
                     .py_1()
                     .rounded(px(4.));
-                
+
                 // Add active styling if specified
                 if btn_def.active {
                     button = button.bg(cx.theme().primary.opacity(0.15));
                 }
-                
+
                 // Add badge if specified
                 if let Some(count) = btn_def.badge_count {
                     if count > 0 {
@@ -481,47 +502,56 @@ impl PulsarApp {
                         );
                     }
                 }
-                
+
                 // Add tooltip
                 button = button.tooltip(btn_def.tooltip.clone());
-                
+
                 // Clone what we need for the closure
                 let action = btn_def.action.clone();
                 let callback = btn_def.custom_callback;
-                
+
                 // Add click handler based on action type
                 button = match action {
-                    StatusbarAction::OpenEditor { editor_id, file_path } => {
+                    StatusbarAction::OpenEditor {
+                        editor_id,
+                        file_path,
+                    } => {
                         button.on_click(cx.listener(move |app, _, window, cx| {
                             tracing::info!("Opening editor {:?}", editor_id);
-                            
+
                             let path = file_path.clone().unwrap_or_else(|| PathBuf::new());
-                            
+
                             // Find which plugin owns this editor
                             if let Some(pm_lock) = plugin_manager::global() {
-                                let plugin_id: Option<plugin_editor_api::PluginId> = if let Ok(pm) = pm_lock.read() {
-                                    pm.editor_registry().get_plugin_for_editor(&editor_id).cloned()
-                                } else {
-                                    None
-                                };
+                                let plugin_id: Option<plugin_editor_api::PluginId> =
+                                    if let Ok(pm) = pm_lock.read() {
+                                        pm.editor_registry()
+                                            .get_plugin_for_editor(&editor_id)
+                                            .cloned()
+                                    } else {
+                                        None
+                                    };
 
                                 if let Some(plugin_id) = plugin_id {
                                     if let Ok(mut pm) = pm_lock.write() {
-                                        match pm.create_editor(
-                                            &plugin_id,
-                                            &editor_id,
-                                            path,
-                                            window,
-                                            cx
-                                        ) {
+                                        match pm
+                                            .create_editor(&plugin_id, &editor_id, path, window, cx)
+                                        {
                                             Ok(panel) => {
                                                 app.state.center_tabs.update(cx, |tabs, cx| {
                                                     tabs.add_panel(panel, window, cx);
                                                 });
-                                                tracing::info!("Successfully opened editor {:?}", editor_id);
+                                                tracing::info!(
+                                                    "Successfully opened editor {:?}",
+                                                    editor_id
+                                                );
                                             }
                                             Err(e) => {
-                                                tracing::error!("Failed to open editor {:?}: {:?}", editor_id, e);
+                                                tracing::error!(
+                                                    "Failed to open editor {:?}: {:?}",
+                                                    editor_id,
+                                                    e
+                                                );
                                             }
                                         }
                                     }
@@ -533,7 +563,10 @@ impl PulsarApp {
                     }
                     StatusbarAction::ToggleDrawer { drawer_id } => {
                         button.on_click(cx.listener(move |_app, _, _window, _cx| {
-                            tracing::info!("Plugin statusbar button clicked: toggle drawer {}", drawer_id);
+                            tracing::info!(
+                                "Plugin statusbar button clicked: toggle drawer {}",
+                                drawer_id
+                            );
                         }))
                     }
                     StatusbarAction::Custom => {
@@ -546,7 +579,7 @@ impl PulsarApp {
                         }
                     }
                 };
-                
+
                 button.into_any_element()
             })
             .collect()
@@ -572,7 +605,7 @@ impl Render for PulsarApp {
                 window.push_notification(
                     Notification::info("Project Loaded")
                         .message(format!("Welcome to {}", project_name)),
-                    cx
+                    cx,
                 );
             }
         }
@@ -644,47 +677,59 @@ impl Render for PulsarApp {
                                     v_flex()
                                         .size_full()
                                         .child(
-                                            // Resize handle at top  
+                                            // Resize handle at top
                                             div()
                                                 .id("drawer-resize-handle")
                                                 .w_full()
                                                 .h(px(6.))
                                                 .cursor_ns_resize()
                                                 .bg(cx.theme().border.opacity(0.5))
-                                                .hover(|style| style.bg(cx.theme().accent).h(px(8.)))
-                                                .on_mouse_down(MouseButton::Left, cx.listener(|this, _event, _window, cx| {
-                                                    this.state.drawer_resizing = true;
-                                                    cx.notify();
-                                                }))
+                                                .hover(|style| {
+                                                    style.bg(cx.theme().accent).h(px(8.))
+                                                })
+                                                .on_mouse_down(
+                                                    MouseButton::Left,
+                                                    cx.listener(|this, _event, _window, cx| {
+                                                        this.state.drawer_resizing = true;
+                                                        cx.notify();
+                                                    }),
+                                                ),
                                         )
                                         .child(
                                             div()
                                                 .flex_1()
                                                 .min_h_0()
-                                                .child(self.state.file_manager_drawer.clone())
-                                        )
+                                                .child(self.state.file_manager_drawer.clone()),
+                                        ),
                                 )
                                 .with_animation(
                                     "slide-up",
                                     Animation::new(Duration::from_secs_f64(0.2)),
                                     {
                                         let height = self.state.drawer_height;
-                                        move |this, delta| this.bottom(px(-height) + delta * px(height))
+                                        move |this, delta| {
+                                            this.bottom(px(-height) + delta * px(height))
+                                        }
                                     },
                                 ),
                         )
                         .when(self.state.drawer_resizing, |this| {
-                            this.on_mouse_move(cx.listener(|app, event: &MouseMoveEvent, window, cx| {
-                                let window_height: f32 = window.viewport_size().height.into();
-                                let mouse_y: f32 = event.position.y.into();
-                                let new_height = window_height - mouse_y;
-                                app.state.drawer_height = new_height.clamp(200.0, 700.0);
-                                cx.notify();
-                            }))
-                            .on_mouse_up(MouseButton::Left, cx.listener(|app, _event, _window, cx| {
-                                app.state.drawer_resizing = false;
-                                cx.notify();
-                            }))
+                            this.on_mouse_move(cx.listener(
+                                |app, event: &MouseMoveEvent, window, cx| {
+                                    let window_height: f32 = window.viewport_size().height.into();
+                                    let mouse_y: f32 = event.position.y.into();
+                                    let new_height = window_height - mouse_y;
+                                    app.state.drawer_height = new_height.clamp(200.0, 700.0);
+                                    cx.notify();
+                                },
+                            ))
+                            .on_mouse_up(
+                                MouseButton::Left,
+                                cx.listener(|app, _event, _window, cx| {
+                                    app.state.drawer_resizing = false;
+                                    cx.notify();
+                                }),
+                            )
                         })
                     }),
             )

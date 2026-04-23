@@ -9,7 +9,7 @@
 //! - Smooth scrolling synchronization
 
 use gpui::*;
-use ropey::{Rope, LineType};
+use ropey::{LineType, Rope};
 use std::ops::Range;
 
 use crate::{ActiveTheme, PixelsExt};
@@ -19,19 +19,19 @@ use crate::{ActiveTheme, PixelsExt};
 pub struct MinimapConfig {
     /// Width of the minimap in pixels.
     pub width: Pixels,
-    
+
     /// Height of each line in the minimap (much smaller than editor).
     pub line_height: Pixels,
-    
+
     /// Maximum number of characters to render per line.
     pub max_chars_per_line: usize,
-    
+
     /// Font size for minimap text.
     pub font_size: Pixels,
-    
+
     /// Whether to show syntax highlighting in minimap.
     pub show_highlighting: bool,
-    
+
     /// Opacity of the minimap (0.0 - 1.0).
     pub opacity: f32,
 }
@@ -53,7 +53,7 @@ impl Default for MinimapConfig {
 pub struct MinimapState {
     /// Whether the user is currently dragging the minimap.
     pub is_dragging: bool,
-    
+
     /// Last drag position for calculating delta.
     pub last_drag_pos: Option<Point<Pixels>>,
 }
@@ -79,20 +79,20 @@ pub fn calculate_viewport_indicator(
     if total_lines == 0 {
         return Bounds::new(minimap_bounds.origin, Size::default());
     }
-    
+
     // Calculate the total content height in minimap coordinates
     let total_minimap_height = config.line_height * total_lines as f32;
-    
+
     // Calculate the scale factor (how much of the minimap represents visible content)
     let scale = minimap_bounds.size.height / total_minimap_height;
-    
+
     // Calculate indicator position and size
     let indicator_top = (visible_range.start as f32 * config.line_height) * scale;
     let indicator_height = (visible_range.len() as f32 * config.line_height) * scale;
-    
+
     // Ensure indicator is at least visible (minimum 20px height)
     let indicator_height = indicator_height.max(px(20.0));
-    
+
     Bounds::new(
         point(
             minimap_bounds.origin.x,
@@ -112,13 +112,13 @@ pub fn minimap_click_to_line(
     // Calculate where in the minimap the click occurred (0.0 - 1.0)
     let relative_y = (click_pos.y - minimap_bounds.origin.y) / minimap_bounds.size.height;
     let relative_y = relative_y.max(0.0).min(1.0);
-    
+
     // Calculate the total content height in minimap coordinates
     let total_minimap_height = config.line_height * total_lines as f32;
-    
+
     // Calculate the scale factor
     let scale = minimap_bounds.size.height / total_minimap_height;
-    
+
     // Convert back to line number
     let line = (relative_y * total_lines as f32) as usize;
     line.min(total_lines.saturating_sub(1))
@@ -136,7 +136,7 @@ pub fn render_minimap_content(
     minimap_bounds: Bounds<Pixels>,
 ) -> Vec<AnyElement> {
     let mut elements = vec![];
-    
+
     // Calculate how many lines to sample for rendering
     // We don't render every line - we sample intelligently
     let sample_rate = if total_lines > 10000 {
@@ -146,32 +146,32 @@ pub fn render_minimap_content(
     } else {
         1 // Render every line for small files
     };
-    
+
     // Render sampled lines
     for line_idx in (0..total_lines).step_by(sample_rate) {
         // Get line content (if we can) - line() returns a Rope slice
         if line_idx >= text.len_lines(LineType::LF) {
             break;
         }
-        
+
         let line_text = text.line(line_idx, LineType::LF).to_string();
-        
+
         // Calculate visual density (how full is this line)
-        let density = (line_text.trim().len() as f32 / config.max_chars_per_line as f32)
-            .min(1.0);
-        
+        let density = (line_text.trim().len() as f32 / config.max_chars_per_line as f32).min(1.0);
+
         // Calculate Y position in minimap
         let y_pos = minimap_bounds.origin.y + (line_idx as f32 * config.line_height);
-        
+
         // Skip if outside minimap bounds
         if y_pos >= minimap_bounds.origin.y + minimap_bounds.size.height {
             break;
         }
-        
+
         // Create a density bar for this line
-        if density > 0.05 { // Only render non-empty lines
+        if density > 0.05 {
+            // Only render non-empty lines
             let bar_width = config.width * density;
-            
+
             elements.push(
                 div()
                     .absolute()
@@ -180,11 +180,11 @@ pub fn render_minimap_content(
                     .w(bar_width)
                     .h(config.line_height)
                     .bg(rgb(0x808080)) // Gray color for code
-                    .into_any_element()
+                    .into_any_element(),
             );
         }
     }
-    
+
     elements
 }
 

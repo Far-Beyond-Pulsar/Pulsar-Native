@@ -29,11 +29,11 @@ pub struct MemorySnapshot {
 
 /// Collect an extended memory snapshot.
 pub fn collect(system: &sysinfo::System) -> MemorySnapshot {
-    let total_mb   = system.total_memory()     / (1024 * 1024);
-    let avail_mb   = system.available_memory()  / (1024 * 1024);
-    let in_use_mb  = total_mb.saturating_sub(avail_mb);
-    let swap_total = system.total_swap()        / (1024 * 1024);
-    let swap_used  = system.used_swap()         / (1024 * 1024);
+    let total_mb = system.total_memory() / (1024 * 1024);
+    let avail_mb = system.available_memory() / (1024 * 1024);
+    let in_use_mb = total_mb.saturating_sub(avail_mb);
+    let swap_total = system.total_swap() / (1024 * 1024);
+    let swap_used = system.used_swap() / (1024 * 1024);
 
     let mut snap = MemorySnapshot {
         total_mb: total_mb,
@@ -59,10 +59,10 @@ fn windows_collect(snap: &mut MemorySnapshot) {
         let cb = std::mem::size_of::<PERFORMANCE_INFORMATION>() as u32;
         if GetPerformanceInfo(&mut pi, cb).is_ok() {
             let ps = pi.PageSize as u64;
-            snap.cached_mb        = Some(pi.SystemCache    as u64 * ps / (1024 * 1024));
-            snap.committed_mb     = Some(pi.CommitTotal    as u64 * ps / (1024 * 1024));
-            snap.committed_limit_mb = Some(pi.CommitLimit  as u64 * ps / (1024 * 1024));
-            snap.paged_pool_mb    = Some(pi.KernelPaged    as u64 * ps / (1024 * 1024));
+            snap.cached_mb = Some(pi.SystemCache as u64 * ps / (1024 * 1024));
+            snap.committed_mb = Some(pi.CommitTotal as u64 * ps / (1024 * 1024));
+            snap.committed_limit_mb = Some(pi.CommitLimit as u64 * ps / (1024 * 1024));
+            snap.paged_pool_mb = Some(pi.KernelPaged as u64 * ps / (1024 * 1024));
             snap.non_paged_pool_mb = Some(pi.KernelNonpaged as u64 * ps / (1024 * 1024));
         }
     }

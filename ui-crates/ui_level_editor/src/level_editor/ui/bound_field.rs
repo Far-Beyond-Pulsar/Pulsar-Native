@@ -5,17 +5,17 @@
 //! syncs changes bidirectionally between UI and scene data.
 
 use gpui::{prelude::*, *};
+use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
     checkbox::Checkbox,
-    h_flex, v_flex,
-    input::{InputEvent, InputState, NumberInput, TextInput, NumberInputEvent, StepAction},
-    ActiveTheme, IconName, Sizable, StyledExt,
+    h_flex,
+    input::{InputEvent, InputState, NumberInput, NumberInputEvent, StepAction, TextInput},
+    v_flex, ActiveTheme, IconName, Sizable, StyledExt,
 };
-use std::sync::Arc;
 
-use crate::level_editor::scene_database::{SceneDatabase, ObjectId};
-use super::field_bindings::{FieldBinding, F32FieldBinding, StringFieldBinding, BoolFieldBinding};
+use super::field_bindings::{BoolFieldBinding, F32FieldBinding, FieldBinding, StringFieldBinding};
+use crate::level_editor::scene_database::{ObjectId, SceneDatabase};
 
 // ============================================================================
 // F32 Bound Field - For numeric fields
@@ -109,7 +109,7 @@ impl F32BoundField {
                                     StepAction::Increment => value += 0.1,
                                     StepAction::Decrement => value -= 0.1,
                                 }
-                                
+
                                 if this.binding.validate(&value).is_ok() {
                                     // Update scene database
                                     this.binding.set(&this.object_id, value, &this.scene_db);
@@ -157,7 +157,7 @@ impl Render for F32BoundField {
                     .w(px(60.0))
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
-                    .child(self.label.clone())
+                    .child(self.label.clone()),
             )
             .child(NumberInput::new(&self.input).xsmall())
     }
@@ -270,7 +270,7 @@ impl Render for StringBoundField {
                     .w_1_3()
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
-                    .child(self.label.clone())
+                    .child(self.label.clone()),
             )
             .child(TextInput::new(&self.input).flex_1())
     }
@@ -319,7 +319,8 @@ impl BoolBoundField {
 
     fn toggle(&mut self, cx: &mut Context<Self>) {
         self.checked = !self.checked;
-        self.binding.set(&self.object_id, self.checked, &self.scene_db);
+        self.binding
+            .set(&self.object_id, self.checked, &self.scene_db);
         cx.notify();
     }
 }
@@ -331,18 +332,14 @@ impl Render for BoolBoundField {
             self.checked = value;
         }
 
-        h_flex()
-            .w_full()
-            .gap_2()
-            .items_center()
-            .child(
-                Checkbox::new("checkbox")
-                    .label(self.label.clone())
-                    .checked(self.checked)
-                    .on_click(cx.listener(|this, _event, _window, cx| {
-                        this.toggle(cx);
-                    }))
-            )
+        h_flex().w_full().gap_2().items_center().child(
+            Checkbox::new("checkbox")
+                .label(self.label.clone())
+                .checked(self.checked)
+                .on_click(cx.listener(|this, _event, _window, cx| {
+                    this.toggle(cx);
+                })),
+        )
     }
 }
 
@@ -363,8 +360,14 @@ impl Vec3BoundField {
         label: impl Into<String>,
         object_id: String,
         scene_db: SceneDatabase,
-        get_vec: impl Fn(&crate::level_editor::scene_database::SceneObjectData) -> [f32; 3] + Send + Sync + 'static,
-        set_vec: impl Fn(&mut crate::level_editor::scene_database::SceneObjectData, [f32; 3]) + Send + Sync + 'static,
+        get_vec: impl Fn(&crate::level_editor::scene_database::SceneObjectData) -> [f32; 3]
+            + Send
+            + Sync
+            + 'static,
+        set_vec: impl Fn(&mut crate::level_editor::scene_database::SceneObjectData, [f32; 3])
+            + Send
+            + Sync
+            + 'static,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -416,16 +419,29 @@ impl Vec3BoundField {
 
         // Create field entities
         let x_field = cx.new(|cx| {
-            F32BoundField::new(x_binding, "X", object_id.clone(), scene_db.clone(), window, cx)
+            F32BoundField::new(
+                x_binding,
+                "X",
+                object_id.clone(),
+                scene_db.clone(),
+                window,
+                cx,
+            )
         });
 
         let y_field = cx.new(|cx| {
-            F32BoundField::new(y_binding, "Y", object_id.clone(), scene_db.clone(), window, cx)
+            F32BoundField::new(
+                y_binding,
+                "Y",
+                object_id.clone(),
+                scene_db.clone(),
+                window,
+                cx,
+            )
         });
 
-        let z_field = cx.new(|cx| {
-            F32BoundField::new(z_binding, "Z", object_id, scene_db, window, cx)
-        });
+        let z_field =
+            cx.new(|cx| F32BoundField::new(z_binding, "Z", object_id, scene_db, window, cx));
 
         Self {
             x_field,
@@ -437,9 +453,12 @@ impl Vec3BoundField {
 
     /// Update all three fields when scene data changes externally
     pub fn refresh(&self, window: &mut Window, cx: &mut App) {
-        self.x_field.update(cx, |field, cx| field.refresh(window, cx));
-        self.y_field.update(cx, |field, cx| field.refresh(window, cx));
-        self.z_field.update(cx, |field, cx| field.refresh(window, cx));
+        self.x_field
+            .update(cx, |field, cx| field.refresh(window, cx));
+        self.y_field
+            .update(cx, |field, cx| field.refresh(window, cx));
+        self.z_field
+            .update(cx, |field, cx| field.refresh(window, cx));
     }
 }
 
@@ -453,7 +472,7 @@ impl Render for Vec3BoundField {
                     .text_xs()
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(cx.theme().muted_foreground)
-                    .child(self.label.clone())
+                    .child(self.label.clone()),
             )
             .child(
                 h_flex()
@@ -461,7 +480,7 @@ impl Render for Vec3BoundField {
                     .gap_2()
                     .child(self.x_field.clone())
                     .child(self.y_field.clone())
-                    .child(self.z_field.clone())
+                    .child(self.z_field.clone()),
             )
     }
 }

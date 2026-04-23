@@ -53,9 +53,10 @@ pub trait PaletteDelegate: 'static {
                     .filter(|item| {
                         item.name().to_lowercase().contains(&query_lower)
                             || item.description().to_lowercase().contains(&query_lower)
-                            || item.keywords().iter().any(|kw| {
-                                kw.to_lowercase().contains(&query_lower)
-                            })
+                            || item
+                                .keywords()
+                                .iter()
+                                .any(|kw| kw.to_lowercase().contains(&query_lower))
                     })
                     .collect();
                 (category, filtered)
@@ -76,8 +77,8 @@ pub trait PaletteDelegate: 'static {
     /// Whether this palette supports documentation panel (default: based on items)
     fn supports_docs(&self) -> bool {
         // Check if any category has items with documentation
-        self.categories().iter().any(|(_, items)| {
-            items.iter().any(|item| item.documentation().is_some())
-        })
+        self.categories()
+            .iter()
+            .any(|(_, items)| items.iter().any(|item| item.documentation().is_some()))
     }
 }

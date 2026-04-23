@@ -49,5 +49,8 @@ pub fn set_interval(ms: u64, count: u64) {
 /// Returns the current system time in milliseconds.
 #[blueprint(type: crate::NodeTypes::pure, category: "Timer")]
 pub fn now() -> u128 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis()
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis()
 }

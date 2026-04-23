@@ -68,9 +68,7 @@ pub fn validate_ipv4(ip: String) -> bool {
         return false;
     }
 
-    parts.iter().all(|part| {
-        part.parse::<u8>().is_ok()
-    })
+    parts.iter().all(|part| part.parse::<u8>().is_ok())
 }
 
 /// Parse IPv4 address to octets.
@@ -107,7 +105,8 @@ pub fn parse_ipv4(ip: String) -> String {
 /// Creates an IPv4 address from four octets.
 #[blueprint(type: crate::NodeTypes::pure, category: "Network", color: "#16A085")]
 pub fn create_ipv4(octet1: i64, octet2: i64, octet3: i64, octet4: i64) -> String {
-    format!("{}.{}.{}.{}",
+    format!(
+        "{}.{}.{}.{}",
         octet1.clamp(OCTET_MIN, OCTET_MAX),
         octet2.clamp(OCTET_MIN, OCTET_MAX),
         octet3.clamp(OCTET_MIN, OCTET_MAX),
@@ -145,17 +144,25 @@ pub fn is_private_ip(ip: String) -> bool {
     if !validate_ipv4(ip.clone()) {
         return false;
     }
-    
-    ip.starts_with("10.") || 
-    ip.starts_with("192.168.") ||
-    ip.starts_with("172.16.") || ip.starts_with("172.17.") ||
-    ip.starts_with("172.18.") || ip.starts_with("172.19.") ||
-    ip.starts_with("172.20.") || ip.starts_with("172.21.") ||
-    ip.starts_with("172.22.") || ip.starts_with("172.23.") ||
-    ip.starts_with("172.24.") || ip.starts_with("172.25.") ||
-    ip.starts_with("172.26.") || ip.starts_with("172.27.") ||
-    ip.starts_with("172.28.") || ip.starts_with("172.29.") ||
-    ip.starts_with("172.30.") || ip.starts_with("172.31.")
+
+    ip.starts_with("10.")
+        || ip.starts_with("192.168.")
+        || ip.starts_with("172.16.")
+        || ip.starts_with("172.17.")
+        || ip.starts_with("172.18.")
+        || ip.starts_with("172.19.")
+        || ip.starts_with("172.20.")
+        || ip.starts_with("172.21.")
+        || ip.starts_with("172.22.")
+        || ip.starts_with("172.23.")
+        || ip.starts_with("172.24.")
+        || ip.starts_with("172.25.")
+        || ip.starts_with("172.26.")
+        || ip.starts_with("172.27.")
+        || ip.starts_with("172.28.")
+        || ip.starts_with("172.29.")
+        || ip.starts_with("172.30.")
+        || ip.starts_with("172.31.")
 }
 
 // =============================================================================
@@ -269,7 +276,8 @@ pub fn parse_address_ip(address: String) -> String {
 /// Extracts the port from "IP:Port" string.
 #[blueprint(type: crate::NodeTypes::pure, category: "Network", color: "#16A085")]
 pub fn parse_address_port(address: String) -> i64 {
-    address.split(':')
+    address
+        .split(':')
         .nth(1)
         .and_then(|p| p.parse().ok())
         .unwrap_or(0)

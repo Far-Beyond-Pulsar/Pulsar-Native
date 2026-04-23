@@ -1,15 +1,20 @@
-use gpui::*;
-use gpui::prelude::FluentBuilder as _;
-use ui::{
-    h_flex, v_flex, Icon, IconName, ActiveTheme as _,
-    button::{Button, ButtonVariants as _},
-    switch::Switch,
-};
-use crate::settings::SettingsScreen;
 use super::components::*;
+use crate::settings::SettingsScreen;
+use gpui::prelude::FluentBuilder as _;
+use gpui::*;
+use ui::{
+    button::{Button, ButtonVariants as _},
+    h_flex,
+    switch::Switch,
+    v_flex, ActiveTheme as _, Icon, IconName,
+};
 
 impl SettingsScreen {
-    pub fn render_editor_view(&self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    pub fn render_editor_view(
+        &self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         v_flex()
             .w_full()
             .gap_4()
@@ -51,17 +56,11 @@ impl SettingsScreen {
                                             .on_click(cx.listener(|screen, _, _window, cx| {
                                                 screen.settings.save(&screen.config_path);
                                                 cx.notify();
-                                            }))
-                                    )
-                            )
-                            
+                                            })),
+                                    ),
+                            ),
                     )
-                    .child(
-                        div()
-                            .w_full()
-                            .h(px(1.0))
-                            .bg(border_color)
-                    )
+                    .child(div().w_full().h(px(1.0)).bg(border_color))
                     .child(
                         SettingRow::new("Show Line Numbers")
                             .description("Display line numbers in the gutter")
@@ -73,9 +72,10 @@ impl SettingsScreen {
                                         Switch::new("line-numbers-switch")
                                             .checked(show_line_numbers)
                                             .on_click(cx.listener(|screen, _, _window, cx| {
-                                                screen.settings.editor.show_line_numbers = !screen.settings.editor.show_line_numbers;
+                                                screen.settings.editor.show_line_numbers =
+                                                    !screen.settings.editor.show_line_numbers;
                                                 cx.notify();
-                                            }))
+                                            })),
                                     )
                                     .child(
                                         div()
@@ -86,7 +86,11 @@ impl SettingsScreen {
                                             } else {
                                                 muted_foreground
                                             })
-                                            .child(if show_line_numbers { "Enabled" } else { "Disabled" })
+                                            .child(if show_line_numbers {
+                                                "Enabled"
+                                            } else {
+                                                "Disabled"
+                                            }),
                                     )
                                     .child(
                                         Button::new("save-line-numbers")
@@ -95,11 +99,10 @@ impl SettingsScreen {
                                             .on_click(cx.listener(|screen, _, _window, cx| {
                                                 screen.settings.save(&screen.config_path);
                                                 cx.notify();
-                                            }))
-                                    )
-                            )
-                            
-                    )
+                                            })),
+                                    ),
+                            ),
+                    ),
             )
     }
 
@@ -130,9 +133,10 @@ impl SettingsScreen {
                                         Switch::new("word-wrap-switch")
                                             .checked(word_wrap)
                                             .on_click(cx.listener(|screen, _, _window, cx| {
-                                                screen.settings.editor.word_wrap = !screen.settings.editor.word_wrap;
+                                                screen.settings.editor.word_wrap =
+                                                    !screen.settings.editor.word_wrap;
                                                 cx.notify();
-                                            }))
+                                            })),
                                     )
                                     .child(
                                         div()
@@ -143,7 +147,7 @@ impl SettingsScreen {
                                             } else {
                                                 muted_foreground
                                             })
-                                            .child(if word_wrap { "Enabled" } else { "Disabled" })
+                                            .child(if word_wrap { "Enabled" } else { "Disabled" }),
                                     )
                                     .child(
                                         Button::new("save-word-wrap")
@@ -152,25 +156,16 @@ impl SettingsScreen {
                                             .on_click(cx.listener(|screen, _, _window, cx| {
                                                 screen.settings.save(&screen.config_path);
                                                 cx.notify();
-                                            }))
-                                    )
-                            )
-                            
+                                            })),
+                                    ),
+                            ),
                     )
-                    .child(
-                        div()
-                            .w_full()
-                            .h(px(1.0))
-                            .bg(border_color)
-                    )
+                    .child(div().w_full().h(px(1.0)).bg(border_color))
                     .child(
                         SettingRow::new("Tab Size")
                             .description("Number of spaces per tab")
-                            .control(
-                                render_value_display("4 spaces", cx)
-                            )
-                            
-                    )
+                            .control(render_value_display("4 spaces", cx)),
+                    ),
             )
     }
 

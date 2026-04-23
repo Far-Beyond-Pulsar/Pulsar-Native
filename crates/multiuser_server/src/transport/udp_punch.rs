@@ -124,23 +124,35 @@ impl UdpHolePuncher {
     /// Create a UDP socket with proper socket options
     fn create_socket(bind_addr: SocketAddr) -> Result<UdpSocket> {
         let socket = Socket::new(
-            if bind_addr.is_ipv4() { Domain::IPV4 } else { Domain::IPV6 },
+            if bind_addr.is_ipv4() {
+                Domain::IPV4
+            } else {
+                Domain::IPV6
+            },
             Type::DGRAM,
             Some(Protocol::UDP),
         )
         .context("Failed to create socket")?;
 
         // Enable address reuse
-        socket.set_reuse_address(true).context("Failed to set SO_REUSEADDR")?;
+        socket
+            .set_reuse_address(true)
+            .context("Failed to set SO_REUSEADDR")?;
 
         #[cfg(unix)]
-        socket.set_reuse_port(true).context("Failed to set SO_REUSEPORT")?;
+        socket
+            .set_reuse_port(true)
+            .context("Failed to set SO_REUSEPORT")?;
 
         // Bind the socket
-        socket.bind(&bind_addr.into()).context("Failed to bind socket")?;
+        socket
+            .bind(&bind_addr.into())
+            .context("Failed to bind socket")?;
 
         // Convert to tokio UdpSocket
-        socket.set_nonblocking(true).context("Failed to set non-blocking")?;
+        socket
+            .set_nonblocking(true)
+            .context("Failed to set non-blocking")?;
         let std_socket: std::net::UdpSocket = socket.into();
         UdpSocket::from_std(std_socket).context("Failed to convert to tokio socket")
     }
@@ -191,7 +203,9 @@ impl UdpHolePuncher {
                     "Hole punch succeeded to {} in {:?} (session: {})",
                     peer_addr, duration, session_id
                 );
-                self.stats.successful_punches.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .successful_punches
+                    .fetch_add(1, Ordering::Relaxed);
                 METRICS
                     .hole_punch_success
                     .with_label_values(&[nat_type.as_str()])
@@ -363,7 +377,10 @@ impl UdpHolePuncher {
 
         match message {
             PunchMessage::PunchRequest { token, session_id } => {
-                debug!("Received punch request from {} for session {}", addr, session_id);
+                debug!(
+                    "Received punch request from {} for session {}",
+                    addr, session_id
+                );
 
                 // Validate token
                 if self.validate_token(&token).await? {
@@ -407,7 +424,10 @@ impl UdpHolePuncher {
             return Ok(NatType::Unknown);
         }
 
-        info!("Detecting NAT type using {} STUN servers", stun_servers.len());
+        info!(
+            "Detecting NAT type using {} STUN servers",
+            stun_servers.len()
+        );
 
         // Send probes to multiple STUN servers
         let mut external_addrs = Vec::new();

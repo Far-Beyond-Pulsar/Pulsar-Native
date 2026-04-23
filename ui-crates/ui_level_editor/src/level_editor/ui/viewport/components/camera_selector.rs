@@ -5,14 +5,17 @@
 
 use std::sync::Arc;
 
-use gpui::*;
 use gpui::prelude::FluentBuilder;
-use ui::{button::{Button, ButtonVariants as _}, h_flex, v_flex, ActiveTheme, IconName, Selectable, Sizable, StyledExt};
+use gpui::*;
 use rust_i18n::t;
+use ui::{
+    button::{Button, ButtonVariants as _},
+    h_flex, v_flex, ActiveTheme, IconName, Selectable, Sizable, StyledExt,
+};
 
-use crate::level_editor::ui::state::{CameraMode, LevelEditorState};
+use super::floating_toolbar::{create_drag_handle, toolbar_with_drag_handle};
 use super::toggle_button::create_state_toggle;
-use super::floating_toolbar::{toolbar_with_drag_handle, create_drag_handle};
+use crate::level_editor::ui::state::{CameraMode, LevelEditorState};
 
 /// Camera mode button configuration.
 struct CameraModeButton {
@@ -60,43 +63,42 @@ fn camera_mode_buttons(
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     current_mode: CameraMode,
 ) -> impl IntoElement {
-    h_flex().gap_1().children(CAMERA_MODES.iter().map(|mode_btn| {
-        let state_clone = state_arc.clone();
-        let target_mode = mode_btn.mode;
-        let icon = mode_btn.icon.clone();
-        let id = mode_btn.id;
-        
-        // Translate tooltip dynamically
-        let tooltip = match mode_btn.mode {
-            CameraMode::Perspective => t!("LevelEditor.Camera.PerspectiveView"),
-            CameraMode::Orthographic => t!("LevelEditor.Camera.OrthographicView"),
-            CameraMode::Top => t!("LevelEditor.Camera.TopView"),
-            CameraMode::Front => t!("LevelEditor.Camera.FrontView"),
-            CameraMode::Side => t!("LevelEditor.Camera.SideView"),
-        };
-        
-        Button::new(id)
-            .icon(icon)
-            .tooltip(tooltip)
-            .selected(matches!(current_mode, m if m == target_mode))
-            .on_click(move |_, _, _| {
-                state_clone.write().set_camera_mode(target_mode);
-            })
-    }))
+    h_flex()
+        .gap_1()
+        .children(CAMERA_MODES.iter().map(|mode_btn| {
+            let state_clone = state_arc.clone();
+            let target_mode = mode_btn.mode;
+            let icon = mode_btn.icon.clone();
+            let id = mode_btn.id;
+
+            // Translate tooltip dynamically
+            let tooltip = match mode_btn.mode {
+                CameraMode::Perspective => t!("LevelEditor.Camera.PerspectiveView"),
+                CameraMode::Orthographic => t!("LevelEditor.Camera.OrthographicView"),
+                CameraMode::Top => t!("LevelEditor.Camera.TopView"),
+                CameraMode::Front => t!("LevelEditor.Camera.FrontView"),
+                CameraMode::Side => t!("LevelEditor.Camera.SideView"),
+            };
+
+            Button::new(id)
+                .icon(icon)
+                .tooltip(tooltip)
+                .selected(matches!(current_mode, m if m == target_mode))
+                .on_click(move |_, _, _| {
+                    state_clone.write().set_camera_mode(target_mode);
+                })
+        }))
 }
 
 /// Render camera speed controls.
-fn camera_speed_controls<S, V: 'static>(
-    input_state: Arc<S>,
-    cx: &Context<V>,
-) -> impl IntoElement
+fn camera_speed_controls<S, V: 'static>(input_state: Arc<S>, cx: &Context<V>) -> impl IntoElement
 where
     S: 'static,
     S: CameraSpeedControl,
     V: Render,
 {
     let current_speed = input_state.get_move_speed();
-    
+
     h_flex()
         .gap_1()
         .items_center()
@@ -161,9 +163,7 @@ where
             .icon(IconName::Cube)
             .tooltip(t!("LevelEditor.Camera.CameraMode"))
             .on_click(move |_, _, _| {
-                state_arc
-                    .write()
-                    .set_camera_mode_selector_collapsed(false);
+                state_arc.write().set_camera_mode_selector_collapsed(false);
             })
             .into_any_element();
     }
@@ -186,9 +186,7 @@ where
                 .icon(IconName::Close)
                 .ghost()
                 .on_click(move |_, _, _| {
-                    state_arc
-                        .write()
-                        .set_camera_mode_selector_collapsed(true);
+                    state_arc.write().set_camera_mode_selector_collapsed(true);
                 }),
         );
 

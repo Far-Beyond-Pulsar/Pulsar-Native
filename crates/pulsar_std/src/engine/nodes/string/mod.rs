@@ -507,7 +507,10 @@ pub fn bool_to_string(value: bool) -> String {
 /// Gets the first character of a string.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn first_char(text: String) -> String {
-    text.chars().next().map(|c| c.to_string()).unwrap_or_default()
+    text.chars()
+        .next()
+        .map(|c| c.to_string())
+        .unwrap_or_default()
 }
 
 /// Get the last character of a string.
@@ -522,7 +525,10 @@ pub fn first_char(text: String) -> String {
 /// Gets the last character of a string.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn last_char(text: String) -> String {
-    text.chars().last().map(|c| c.to_string()).unwrap_or_default()
+    text.chars()
+        .last()
+        .map(|c| c.to_string())
+        .unwrap_or_default()
 }
 
 /// Check if string is alphabetic only.
@@ -665,7 +671,11 @@ pub fn left_justify(text: String, width: i64, fill: String) -> String {
     if text.len() >= width {
         text
     } else {
-        format!("{}{}", text, fill_char.to_string().repeat(width - text.len()))
+        format!(
+            "{}{}",
+            text,
+            fill_char.to_string().repeat(width - text.len())
+        )
     }
 }
 
@@ -688,7 +698,11 @@ pub fn right_justify(text: String, width: i64, fill: String) -> String {
     if text.len() >= width {
         text
     } else {
-        format!("{}{}", fill_char.to_string().repeat(width - text.len()), text)
+        format!(
+            "{}{}",
+            fill_char.to_string().repeat(width - text.len()),
+            text
+        )
     }
 }
 
@@ -714,11 +728,11 @@ pub fn center_justify(text: String, width: i64, fill: String) -> String {
         let total_padding = width - text.len();
         let left_padding = total_padding / 2;
         let right_padding = total_padding - left_padding;
-        format!("{}{}{}", 
+        format!(
+            "{}{}{}",
             fill_char.to_string().repeat(left_padding),
             text,
             fill_char.to_string().repeat(right_padding)
         )
     }
 }
-

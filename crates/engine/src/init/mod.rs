@@ -5,4 +5,4 @@
 
 pub mod graph;
 
-pub use graph::{InitGraph, InitTask, InitContext, InitError, TaskId, task_ids};
+pub use graph::{task_ids, InitContext, InitError, InitGraph, InitTask, TaskId};

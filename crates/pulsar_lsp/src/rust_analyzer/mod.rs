@@ -10,16 +10,16 @@ pub use path_utils::path_to_uri;
 
 use anyhow::{anyhow, Result};
 use gpui::{Context, EventEmitter, Window};
+use pulsar_diagnostics::{CodeAction, Diagnostic, DiagnosticSeverity, TextEdit};
 use serde_json::{json, Value};
+use std::fs;
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, Command, ExitStatus, Stdio};
-use std::sync::{Arc, Mutex};
-use std::io::{BufRead, BufReader, Write};
-use std::time::{Duration, Instant};
-use std::thread;
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::fs;
-use pulsar_diagnostics::{CodeAction, Diagnostic, DiagnosticSeverity, TextEdit};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, Instant};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AnalyzerStatus {
@@ -114,18 +114,19 @@ impl RustAnalyzerManager {
         }
 
         // Try to find in PATH first
-        let candidates = vec![
-            "rust-analyzer.exe",
-            "rust-analyzer",
-        ];
+        let candidates = vec!["rust-analyzer.exe", "rust-analyzer"];
 
         for candidate in &candidates {
             if let Ok(output) = Command::new(candidate).arg("--version").output() {
                 if output.status.success() {
                     let version_output = String::from_utf8_lossy(&output.stdout);
                     // Check if this is a rustup proxy by looking for the error message
-                    if version_output.contains("Unknown binary") || version_output.contains("official toolchain") {
-                        tracing::debug!("⚠️  Found rustup proxy, but rust-analyzer component not installed");
+                    if version_output.contains("Unknown binary")
+                        || version_output.contains("official toolchain")
+                    {
+                        tracing::debug!(
+                            "⚠️  Found rustup proxy, but rust-analyzer component not installed"
+                        );
                         continue;
                     }
                     tracing::debug!("✓ Found system rust-analyzer: {}", candidate);
@@ -145,7 +146,10 @@ impl RustAnalyzerManager {
         }
 
         if let Ok(home) = std::env::var("USERPROFILE") {
-            let cargo_bin = PathBuf::from(home).join(".cargo").join("bin").join("rust-analyzer.exe");
+            let cargo_bin = PathBuf::from(home)
+                .join(".cargo")
+                .join("bin")
+                .join("rust-analyzer.exe");
             if cargo_bin.exists() {
                 tracing::debug!("✓ Found rust-analyzer in user cargo bin: {:?}", cargo_bin);
                 return cargo_bin;
@@ -167,7 +171,11 @@ impl RustAnalyzerManager {
 
     /// Try to find rust-analyzer via rustup (handles rustup proxy wrappers)
     fn find_rust_analyzer_via_rustup() -> Option<PathBuf> {
-        let rustup_cmd = if cfg!(windows) { "rustup.exe" } else { "rustup" };
+        let rustup_cmd = if cfg!(windows) {
+            "rustup.exe"
+        } else {
+            "rustup"
+        };
 
         // First check if rust-analyzer component is installed
         if let Ok(output) = Command::new(rustup_cmd)
@@ -183,7 +191,8 @@ impl RustAnalyzerManager {
                         .output()
                     {
                         if output.status.success() {
-                            let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                            let path_str =
+                                String::from_utf8_lossy(&output.stdout).trim().to_string();
                             let path = PathBuf::from(path_str);
                             if path.exists() {
                                 tracing::debug!("✓ Found rust-analyzer via rustup: {:?}", path);
@@ -193,7 +202,9 @@ impl RustAnalyzerManager {
                     }
                 } else {
                     tracing::debug!("ℹ️  rust-analyzer component not installed via rustup");
-                    tracing::debug!("   You can install it with: rustup component add rust-analyzer");
+                    tracing::debug!(
+                        "   You can install it with: rustup component add rust-analyzer"
+                    );
                 }
             }
         }
@@ -232,7 +243,11 @@ impl RustAnalyzerManager {
 
     /// Try to install rust-analyzer via rustup component
     fn install_rust_analyzer_via_rustup() -> Result<PathBuf> {
-        let rustup_cmd = if cfg!(windows) { "rustup.exe" } else { "rustup" };
+        let rustup_cmd = if cfg!(windows) {
+            "rustup.exe"
+        } else {
+            "rustup"
+        };
 
         tracing::debug!("   Trying to install via rustup...");
 
@@ -281,7 +296,9 @@ impl RustAnalyzerManager {
         tracing::debug!("   Downloading rust-analyzer to engine deps directory...");
 
         let deps_path = Self::get_engine_deps_analyzer_path();
-        let deps_dir = deps_path.parent().ok_or_else(|| anyhow!("Invalid deps path"))?;
+        let deps_dir = deps_path
+            .parent()
+            .ok_or_else(|| anyhow!("Invalid deps path"))?;
 
         fs::create_dir_all(deps_dir)?;
         tracing::debug!("   Created deps directory: {:?}", deps_dir);
@@ -308,7 +325,11 @@ impl RustAnalyzerManager {
                 .args(&[
                     "-NoProfile",
                     "-Command",
-                    &format!("Invoke-WebRequest -Uri '{}' -OutFile '{}'", url, deps_path.display()),
+                    &format!(
+                        "Invoke-WebRequest -Uri '{}' -OutFile '{}'",
+                        url,
+                        deps_path.display()
+                    ),
                 ])
                 .output()
         } else {
@@ -387,7 +408,8 @@ impl RustAnalyzerManager {
                     progress_tx_for_spawn,
                     pending_requests_clone,
                 )
-            }).join();
+            })
+            .join();
 
             match spawn_result {
                 Ok(Ok(())) => {
@@ -405,7 +427,8 @@ impl RustAnalyzerManager {
                             request_id_arc_for_init,
                         ) {
                             tracing::error!("❌ Failed to send initialize request: {}", e);
-                            let _ = progress_tx_for_init.send(ProgressUpdate::Error(format!("Init failed: {}", e)));
+                            let _ = progress_tx_for_init
+                                .send(ProgressUpdate::Error(format!("Init failed: {}", e)));
                         }
                     });
 
@@ -440,7 +463,8 @@ impl RustAnalyzerManager {
                     });
                 }
             }
-        }).detach();
+        })
+        .detach();
     }
 
     fn spawn_process_blocking(
@@ -470,7 +494,9 @@ impl RustAnalyzerManager {
 
                 match Self::install_rust_analyzer_to_deps() {
                     Ok(installed_path) => {
-                        tracing::debug!("✓ Successfully installed rust-analyzer, retrying spawn...");
+                        tracing::debug!(
+                            "✓ Successfully installed rust-analyzer, retrying spawn..."
+                        );
 
                         Command::new(&installed_path)
                             .current_dir(workspace_root)
@@ -482,7 +508,11 @@ impl RustAnalyzerManager {
                     }
                     Err(install_err) => {
                         tracing::error!("❌ Failed to install rust-analyzer: {}", install_err);
-                        return Err(anyhow!("Failed to spawn and install: spawn error: {}, install error: {}", e, install_err));
+                        return Err(anyhow!(
+                            "Failed to spawn and install: spawn error: {}, install error: {}",
+                            e,
+                            install_err
+                        ));
                     }
                 }
             }
@@ -491,7 +521,10 @@ impl RustAnalyzerManager {
         let pid = child.id();
         tracing::debug!("✓ rust-analyzer process spawned (PID: {})", pid);
 
-        let stdin = child.stdin.take().ok_or_else(|| anyhow!("Failed to take stdin"))?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| anyhow!("Failed to take stdin"))?;
 
         if let Some(stderr) = child.stderr.take() {
             thread::spawn(move || {
@@ -521,14 +554,11 @@ impl RustAnalyzerManager {
                         continue;
                     }
 
-                    let content_len: usize = match buffer
-                        .trim_start_matches("Content-Length:")
-                        .trim()
-                        .parse()
-                    {
-                        Ok(len) => len,
-                        Err(_) => continue,
-                    };
+                    let content_len: usize =
+                        match buffer.trim_start_matches("Content-Length:").trim().parse() {
+                            Ok(len) => len,
+                            Err(_) => continue,
+                        };
 
                     buffer.clear();
                     if reader.read_line(&mut buffer).is_err() {
@@ -563,16 +593,14 @@ impl RustAnalyzerManager {
         }
 
         let progress_tx_exit = progress_tx.clone();
-        thread::spawn(move || {
-            match child.wait() {
-                Ok(status) => {
-                    tracing::debug!("❌ rust-analyzer exited with status: {:?}", status);
-                    let _ = progress_tx_exit.send(ProgressUpdate::ProcessExited(status));
-                }
-                Err(e) => {
-                    tracing::error!("❌ Failed to wait for rust-analyzer: {}", e);
-                    let _ = progress_tx_exit.send(ProgressUpdate::Error(format!("Wait failed: {}", e)));
-                }
+        thread::spawn(move || match child.wait() {
+            Ok(status) => {
+                tracing::debug!("❌ rust-analyzer exited with status: {:?}", status);
+                let _ = progress_tx_exit.send(ProgressUpdate::ProcessExited(status));
+            }
+            Err(e) => {
+                tracing::error!("❌ Failed to wait for rust-analyzer: {}", e);
+                let _ = progress_tx_exit.send(ProgressUpdate::Error(format!("Wait failed: {}", e)));
             }
         });
 
@@ -597,7 +625,9 @@ impl RustAnalyzerManager {
 
         tracing::debug!("  Using workspace URI: {}", uri);
 
-        let mut req_id = request_id_arc.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+        let mut req_id = request_id_arc
+            .lock()
+            .map_err(|e| anyhow!("Lock error: {}", e))?;
         *req_id += 1;
         let id = *req_id;
         drop(req_id);
@@ -687,8 +717,12 @@ impl RustAnalyzerManager {
             if let Some(method) = msg.get("method").and_then(|m| m.as_str()) {
                 match method {
                     "$/progress" => Self::handle_progress_notification(&msg, progress_tx),
-                    "textDocument/publishDiagnostics" => Self::handle_diagnostics_notification(&msg, progress_tx),
-                    "window/workDoneProgress/create" => tracing::debug!("📊 Work done progress created"),
+                    "textDocument/publishDiagnostics" => {
+                        Self::handle_diagnostics_notification(&msg, progress_tx)
+                    }
+                    "window/workDoneProgress/create" => {
+                        tracing::debug!("📊 Work done progress created")
+                    }
                     "rust-analyzer/serverStatus" => Self::handle_server_status(&msg, progress_tx),
                     _ => tracing::debug!("📨 Unhandled LSP notification: {}", method),
                 }
@@ -702,19 +736,30 @@ impl RustAnalyzerManager {
                 if let Some(kind) = value.get("kind").and_then(|k| k.as_str()) {
                     match kind {
                         "begin" => {
-                            let title = value.get("title").and_then(|t| t.as_str()).unwrap_or("Processing");
-                            let message = if title.contains("Fetching") || title.contains("Loading") {
+                            let title = value
+                                .get("title")
+                                .and_then(|t| t.as_str())
+                                .unwrap_or("Processing");
+                            let message = if title.contains("Fetching") || title.contains("Loading")
+                            {
                                 "Loading metadata...".to_string()
                             } else if title.contains("Indexing") || title.contains("Building") {
                                 "Indexing crates...".to_string()
                             } else {
                                 title.to_string()
                             };
-                            let _ = progress_tx.send(ProgressUpdate::Progress { progress: 0.0, message });
+                            let _ = progress_tx.send(ProgressUpdate::Progress {
+                                progress: 0.0,
+                                message,
+                            });
                         }
                         "report" => {
-                            let message = value.get("message").and_then(|m| m.as_str()).unwrap_or("");
-                            let percentage = value.get("percentage").and_then(|p| p.as_u64()).unwrap_or(0);
+                            let message =
+                                value.get("message").and_then(|m| m.as_str()).unwrap_or("");
+                            let percentage = value
+                                .get("percentage")
+                                .and_then(|p| p.as_u64())
+                                .unwrap_or(0);
                             let display_message = if !message.is_empty() {
                                 if message.contains('/') {
                                     format!("Analyzing ({})...", message)
@@ -765,8 +810,14 @@ impl RustAnalyzerManager {
         let column = start.get("character")?.as_u64()? as usize + 1;
 
         let (end_line, end_column) = range.get("end").map_or((None, None), |end| {
-            let el = end.get("line").and_then(|l| l.as_u64()).map(|l| l as usize + 1);
-            let ec = end.get("character").and_then(|c| c.as_u64()).map(|c| c as usize + 1);
+            let el = end
+                .get("line")
+                .and_then(|l| l.as_u64())
+                .map(|l| l as usize + 1);
+            let ec = end
+                .get("character")
+                .and_then(|c| c.as_u64())
+                .map(|c| c as usize + 1);
             (el, ec)
         });
 
@@ -848,7 +899,8 @@ impl RustAnalyzerManager {
         if let Some(doc_changes) = edit.get("documentChanges").and_then(|c| c.as_array()) {
             for doc_change in doc_changes {
                 if let Some(text_doc) = doc_change.get("textDocument") {
-                    let edit_file = text_doc.get("uri")
+                    let edit_file = text_doc
+                        .get("uri")
                         .and_then(|u| u.as_str())
                         .map(|u| u.trim_start_matches("file:///").replace("%20", " "))
                         .unwrap_or_default();
@@ -881,28 +933,54 @@ impl RustAnalyzerManager {
         })
     }
 
-    fn extract_code_actions_from_related_info(diag: &Value, file_path: &str, code_actions: &mut Vec<CodeAction>) {
+    fn extract_code_actions_from_related_info(
+        diag: &Value,
+        file_path: &str,
+        code_actions: &mut Vec<CodeAction>,
+    ) {
         if let Some(related_info) = diag.get("relatedInformation").and_then(|r| r.as_array()) {
             for info in related_info {
                 if let Some(info_message) = info.get("message").and_then(|m| m.as_str()) {
                     if info_message.to_lowercase().contains("remove") {
                         if let Some(location) = info.get("location") {
                             if let Some(info_range) = location.get("range") {
-                                if let (Some(info_start), Some(info_end)) = (
-                                    info_range.get("start"),
-                                    info_range.get("end")
-                                ) {
-                                    let info_uri = location.get("uri")
+                                if let (Some(info_start), Some(info_end)) =
+                                    (info_range.get("start"), info_range.get("end"))
+                                {
+                                    let info_uri = location
+                                        .get("uri")
                                         .and_then(|u| u.as_str())
-                                        .map(|u| u.trim_start_matches("file:///").replace("%20", " "))
+                                        .map(|u| {
+                                            u.trim_start_matches("file:///").replace("%20", " ")
+                                        })
                                         .unwrap_or_else(|| file_path.to_string());
 
                                     let edit = TextEdit {
                                         file_path: info_uri,
-                                        start_line: info_start.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as usize + 1,
-                                        start_column: info_start.get("character").and_then(|c| c.as_u64()).unwrap_or(0) as usize + 1,
-                                        end_line: info_end.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as usize + 1,
-                                        end_column: info_end.get("character").and_then(|c| c.as_u64()).unwrap_or(0) as usize + 1,
+                                        start_line: info_start
+                                            .get("line")
+                                            .and_then(|l| l.as_u64())
+                                            .unwrap_or(0)
+                                            as usize
+                                            + 1,
+                                        start_column: info_start
+                                            .get("character")
+                                            .and_then(|c| c.as_u64())
+                                            .unwrap_or(0)
+                                            as usize
+                                            + 1,
+                                        end_line: info_end
+                                            .get("line")
+                                            .and_then(|l| l.as_u64())
+                                            .unwrap_or(0)
+                                            as usize
+                                            + 1,
+                                        end_column: info_end
+                                            .get("character")
+                                            .and_then(|c| c.as_u64())
+                                            .unwrap_or(0)
+                                            as usize
+                                            + 1,
                                         new_text: String::new(),
                                     };
 
@@ -980,14 +1058,17 @@ impl RustAnalyzerManager {
     pub fn is_running(&self) -> bool {
         matches!(
             self.status,
-            AnalyzerStatus::Starting
-                | AnalyzerStatus::Indexing { .. }
-                | AnalyzerStatus::Ready
+            AnalyzerStatus::Starting | AnalyzerStatus::Indexing { .. } | AnalyzerStatus::Ready
         )
     }
 
     /// Send didOpen notification for a file
-    pub fn did_open_file(&self, file_path: &PathBuf, content: &str, language_id: &str) -> Result<()> {
+    pub fn did_open_file(
+        &self,
+        file_path: &PathBuf,
+        content: &str,
+        language_id: &str,
+    ) -> Result<()> {
         if !self.is_running() {
             return Ok(());
         }
@@ -1080,7 +1161,10 @@ impl RustAnalyzerManager {
     }
 
     fn send_notification(&self, notification: Value) -> Result<()> {
-        let mut stdin_lock = self.stdin.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+        let mut stdin_lock = self
+            .stdin
+            .lock()
+            .map_err(|e| anyhow!("Lock error: {}", e))?;
         if let Some(stdin) = stdin_lock.as_mut() {
             let content = serde_json::to_string(&notification)?;
             let message = format!("Content-Length: {}\r\n\r\n{}", content.len(), content);
@@ -1093,12 +1177,19 @@ impl RustAnalyzerManager {
     }
 
     /// Send a request to rust-analyzer and return a receiver for the async response.
-    pub fn send_request_async(&self, method: &str, params: Value) -> Result<flume::Receiver<Value>> {
+    pub fn send_request_async(
+        &self,
+        method: &str,
+        params: Value,
+    ) -> Result<flume::Receiver<Value>> {
         if !self.is_running() {
             return Err(anyhow!("rust-analyzer is not running"));
         }
 
-        let mut req_id = self.request_id.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+        let mut req_id = self
+            .request_id
+            .lock()
+            .map_err(|e| anyhow!("Lock error: {}", e))?;
         *req_id += 1;
         let id = *req_id;
         drop(req_id);
@@ -1106,7 +1197,10 @@ impl RustAnalyzerManager {
         let (response_tx, response_rx) = flume::unbounded();
 
         {
-            let mut pending = self.pending_requests.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+            let mut pending = self
+                .pending_requests
+                .lock()
+                .map_err(|e| anyhow!("Lock error: {}", e))?;
             pending.insert(id, response_tx);
         }
 
@@ -1117,14 +1211,20 @@ impl RustAnalyzerManager {
             "params": params
         });
 
-        let mut stdin_lock = self.stdin.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+        let mut stdin_lock = self
+            .stdin
+            .lock()
+            .map_err(|e| anyhow!("Lock error: {}", e))?;
         if let Some(stdin) = stdin_lock.as_mut() {
             let content = serde_json::to_string(&request)?;
             let message = format!("Content-Length: {}\r\n\r\n{}", content.len(), content);
             stdin.write_all(message.as_bytes())?;
             stdin.flush()?;
         } else {
-            let mut pending = self.pending_requests.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+            let mut pending = self
+                .pending_requests
+                .lock()
+                .map_err(|e| anyhow!("Lock error: {}", e))?;
             pending.remove(&id);
             return Err(anyhow!("stdin not available"));
         }
@@ -1224,7 +1324,9 @@ impl RustAnalyzerManager {
                     {
                         self.initial_analysis_complete = true;
                         self.status = AnalyzerStatus::Ready;
-                        tracing::debug!("✅ Initial analysis complete based on diagnostics (received for 2s)");
+                        tracing::debug!(
+                            "✅ Initial analysis complete based on diagnostics (received for 2s)"
+                        );
                         cx.emit(AnalyzerEvent::Ready);
                         cx.notify();
                     }
@@ -1292,7 +1394,12 @@ impl RustAnalyzerManager {
 
         tracing::debug!(
             "📤 request_code_actions_async: file={:?}, range={}:{}-{}:{}, msg={:?}",
-            file_path, start_line, start_column, end_line, end_column, diagnostic_message
+            file_path,
+            start_line,
+            start_column,
+            end_line,
+            end_column,
+            diagnostic_message
         );
 
         let uri = self.path_to_uri(file_path);
@@ -1345,16 +1452,20 @@ impl RustAnalyzerManager {
         raw_diagnostic: &Value,
     ) -> Result<flume::Receiver<Value>> {
         if !self.is_running() {
-            tracing::warn!("📛 request_code_actions_with_diagnostic: rust-analyzer is not running!");
+            tracing::warn!(
+                "📛 request_code_actions_with_diagnostic: rust-analyzer is not running!"
+            );
             return Err(anyhow!("rust-analyzer is not running"));
         }
 
         let uri = self.path_to_uri(file_path);
 
-        let range = raw_diagnostic.get("range").cloned().unwrap_or_else(|| json!({
-            "start": {"line": 0, "character": 0},
-            "end": {"line": 0, "character": 0}
-        }));
+        let range = raw_diagnostic.get("range").cloned().unwrap_or_else(|| {
+            json!({
+                "start": {"line": 0, "character": 0},
+                "end": {"line": 0, "character": 0}
+            })
+        });
 
         let params = json!({
             "textDocument": { "uri": uri },
@@ -1382,7 +1493,10 @@ impl RustAnalyzerManager {
             for action in arr {
                 tracing::debug!(
                     "📋 Parsing action: {}",
-                    action.get("title").and_then(|t| t.as_str()).unwrap_or("no title")
+                    action
+                        .get("title")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("no title")
                 );
                 if let Some(parsed) = Self::parse_single_code_action(action) {
                     actions.push(parsed);
@@ -1426,7 +1540,8 @@ impl RustAnalyzerManager {
                             .map(Self::uri_to_path)
                             .unwrap_or_default();
 
-                        if let Some(edit_list) = doc_change.get("edits").and_then(|e| e.as_array()) {
+                        if let Some(edit_list) = doc_change.get("edits").and_then(|e| e.as_array())
+                        {
                             for text_edit in edit_list {
                                 if let Some(te) = Self::parse_text_edit(text_edit, &file_path) {
                                     edits.push(te);

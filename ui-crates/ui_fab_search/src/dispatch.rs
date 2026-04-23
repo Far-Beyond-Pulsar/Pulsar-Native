@@ -7,12 +7,11 @@ use std::sync::Arc;
 use gpui::{prelude::*, *};
 use ui::input::InputState;
 
-use crate::search_index::{
-    fetch_sketchfab_model_detail, fetch_sketchfab_models, fetch_sketchfab_me,
-    fetch_sketchfab_download_info, sketchfab_like_model, sketchfab_unlike_model,
-    SearchPage,
-};
 use crate::FabSearchWindow;
+use crate::search_index::{
+    SearchPage, fetch_sketchfab_download_info, fetch_sketchfab_me, fetch_sketchfab_model_detail,
+    fetch_sketchfab_models, sketchfab_like_model, sketchfab_unlike_model,
+};
 
 // ── Download state ───────────────────────────────────────────────────────────
 
@@ -47,8 +46,15 @@ impl DownloadState {
 }
 
 pub(crate) enum DownloadMsg {
-    Progress { bytes_received: u64, total: Option<u64>, speed_bps: f64 },
-    Done { path: PathBuf, total: u64 },
+    Progress {
+        bytes_received: u64,
+        total: Option<u64>,
+        speed_bps: f64,
+    },
+    Done {
+        path: PathBuf,
+        total: u64,
+    },
     Error(String),
 }
 
@@ -66,24 +72,30 @@ pub(crate) enum SortBy {
 impl SortBy {
     pub(crate) fn api_value(&self) -> Option<&'static str> {
         match self {
-            SortBy::Relevance  => None,
+            SortBy::Relevance => None,
             SortBy::MostViewed => Some("-viewCount"),
-            SortBy::MostLiked  => Some("-likeCount"),
-            SortBy::Newest     => Some("-publishedAt"),
-            SortBy::Oldest     => Some("publishedAt"),
+            SortBy::MostLiked => Some("-likeCount"),
+            SortBy::Newest => Some("-publishedAt"),
+            SortBy::Oldest => Some("publishedAt"),
         }
     }
     pub(crate) fn label(&self) -> &'static str {
         match self {
-            SortBy::Relevance  => "Relevance",
+            SortBy::Relevance => "Relevance",
             SortBy::MostViewed => "Most Viewed",
-            SortBy::MostLiked  => "Most Liked",
-            SortBy::Newest     => "Newest",
-            SortBy::Oldest     => "Oldest",
+            SortBy::MostLiked => "Most Liked",
+            SortBy::Newest => "Newest",
+            SortBy::Oldest => "Oldest",
         }
     }
     pub(crate) fn all() -> [SortBy; 5] {
-        [SortBy::Relevance, SortBy::MostViewed, SortBy::MostLiked, SortBy::Newest, SortBy::Oldest]
+        [
+            SortBy::Relevance,
+            SortBy::MostViewed,
+            SortBy::MostLiked,
+            SortBy::Newest,
+            SortBy::Oldest,
+        ]
     }
 }
 
@@ -106,35 +118,37 @@ pub(crate) enum LicenseFilter {
 impl LicenseFilter {
     pub(crate) fn api_value(&self) -> Option<&'static str> {
         match self {
-            LicenseFilter::All      => None,
-            LicenseFilter::CC0      => Some("cc0"),
-            LicenseFilter::CcBy     => Some("by"),
-            LicenseFilter::CcBySa   => Some("by-sa"),
-            LicenseFilter::CcByNd   => Some("by-nd"),
-            LicenseFilter::CcByNc   => Some("by-nc"),
+            LicenseFilter::All => None,
+            LicenseFilter::CC0 => Some("cc0"),
+            LicenseFilter::CcBy => Some("by"),
+            LicenseFilter::CcBySa => Some("by-sa"),
+            LicenseFilter::CcByNd => Some("by-nd"),
+            LicenseFilter::CcByNc => Some("by-nc"),
             LicenseFilter::CcByNcSa => Some("by-nc-sa"),
             LicenseFilter::CcByNcNd => Some("by-nc-nd"),
             LicenseFilter::Standard => Some("st"),
-            LicenseFilter::Editorial=> Some("ed"),
+            LicenseFilter::Editorial => Some("ed"),
         }
     }
     pub(crate) fn label(&self) -> &'static str {
         match self {
-            LicenseFilter::All      => "All Licenses",
-            LicenseFilter::CC0      => "CC0",
-            LicenseFilter::CcBy     => "CC BY",
-            LicenseFilter::CcBySa   => "CC BY-SA",
-            LicenseFilter::CcByNd   => "CC BY-ND",
-            LicenseFilter::CcByNc   => "CC BY-NC",
+            LicenseFilter::All => "All Licenses",
+            LicenseFilter::CC0 => "CC0",
+            LicenseFilter::CcBy => "CC BY",
+            LicenseFilter::CcBySa => "CC BY-SA",
+            LicenseFilter::CcByNd => "CC BY-ND",
+            LicenseFilter::CcByNc => "CC BY-NC",
             LicenseFilter::CcByNcSa => "CC BY-NC-SA",
             LicenseFilter::CcByNcNd => "CC BY-NC-ND",
             LicenseFilter::Standard => "Standard",
-            LicenseFilter::Editorial=> "Editorial",
+            LicenseFilter::Editorial => "Editorial",
         }
     }
     pub(crate) fn all() -> Vec<LicenseFilter> {
         use LicenseFilter::*;
-        vec![All, CC0, CcBy, CcBySa, CcByNd, CcByNc, CcByNcSa, CcByNcNd, Standard, Editorial]
+        vec![
+            All, CC0, CcBy, CcBySa, CcByNd, CcByNc, CcByNcSa, CcByNcNd, Standard, Editorial,
+        ]
     }
 }
 
@@ -143,18 +157,20 @@ impl LicenseFilter {
 impl FabSearchWindow {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
-        let search_input = cx.new(|cx| {
-            InputState::new(_window, cx).placeholder("Search Sketchfab models…")
-        });
-        let token_input = cx.new(|cx| {
-            InputState::new(_window, cx).placeholder("Paste your Sketchfab API token…")
-        });
+        let search_input =
+            cx.new(|cx| InputState::new(_window, cx).placeholder("Search Sketchfab models…"));
+        let token_input = cx
+            .new(|cx| InputState::new(_window, cx).placeholder("Paste your Sketchfab API token…"));
 
-        cx.subscribe(&search_input, |this, _input, event: &ui::input::InputEvent, cx| {
-            if let ui::input::InputEvent::PressEnter { .. } = event {
-                this.begin_search(cx);
-            }
-        }).detach();
+        cx.subscribe(
+            &search_input,
+            |this, _input, event: &ui::input::InputEvent, cx| {
+                if let ui::input::InputEvent::PressEnter { .. } = event {
+                    this.begin_search(cx);
+                }
+            },
+        )
+        .detach();
 
         let saved_token = crate::auth::load_saved_token();
 
@@ -220,7 +236,9 @@ impl FabSearchWindow {
 
     pub(crate) fn set_token(&mut self, token: String, cx: &mut Context<Self>) {
         let token = token.trim().to_string();
-        if token.is_empty() { return; }
+        if token.is_empty() {
+            return;
+        }
         crate::auth::save_token(&token);
         self.api_token = Some(token);
         self.me = None;
@@ -269,10 +287,13 @@ impl FabSearchWindow {
                             }
                         }
                         cx.notify();
-                    }).ok();
-                }).ok();
+                    })
+                    .ok();
+                })
+                .ok();
             }
-        }).detach();
+        })
+        .detach();
     }
 
     // ── Download methods ─────────────────────────────────────────────────────
@@ -281,30 +302,43 @@ impl FabSearchWindow {
         let dir = dirs::download_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("Sketchfab");
-        let Ok(read_dir) = std::fs::read_dir(&dir) else { return; };
+        let Ok(read_dir) = std::fs::read_dir(&dir) else {
+            return;
+        };
         for entry in read_dir.flatten() {
             let path = entry.path();
-            if !path.is_file() { continue; }
+            if !path.is_file() {
+                continue;
+            }
             let filename = match path.file_name().and_then(|n| n.to_str()) {
                 Some(n) => n.to_string(),
                 None => continue,
             };
-            let uid = path.file_stem()
+            let uid = path
+                .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or(&filename)
                 .to_string();
-            if self.download_state.contains_key(&uid) { continue; }
+            if self.download_state.contains_key(&uid) {
+                continue;
+            }
             let total_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
-            self.download_state.insert(uid, DownloadState::Done {
-                filename,
-                path,
-                total_bytes,
-            });
+            self.download_state.insert(
+                uid,
+                DownloadState::Done {
+                    filename,
+                    path,
+                    total_bytes,
+                },
+            );
         }
     }
 
     pub(crate) fn start_download(&mut self, uid: String, cx: &mut Context<Self>) {
-        if matches!(self.download_state.get(&uid), Some(DownloadState::InProgress { .. })) {
+        if matches!(
+            self.download_state.get(&uid),
+            Some(DownloadState::InProgress { .. })
+        ) {
             return;
         }
         let token = match &self.api_token {
@@ -367,8 +401,11 @@ impl FabSearchWindow {
 
                 loop {
                     let n = reader.read(&mut buf).map_err(|e| format!("read: {e}"))?;
-                    if n == 0 { break; }
-                    file.write_all(&buf[..n]).map_err(|e| format!("write: {e}"))?;
+                    if n == 0 {
+                        break;
+                    }
+                    file.write_all(&buf[..n])
+                        .map_err(|e| format!("write: {e}"))?;
                     bytes_total += n as u64;
                     bytes_since_sample += n as u64;
 
@@ -379,14 +416,19 @@ impl FabSearchWindow {
                             bytes_received: bytes_total,
                             total,
                             speed_bps: speed,
-                        })).ok();
+                        }))
+                        .ok();
                         last_sample = std::time::Instant::now();
                         bytes_since_sample = 0;
                     }
                 }
 
                 file.flush().map_err(|e| format!("flush: {e}"))?;
-                smol::block_on(tx.send(DownloadMsg::Done { path: dest, total: bytes_total })).ok();
+                smol::block_on(tx.send(DownloadMsg::Done {
+                    path: dest,
+                    total: bytes_total,
+                }))
+                .ok();
                 Ok(())
             };
 
@@ -398,7 +440,11 @@ impl FabSearchWindow {
         cx.spawn(async move |this, cx| {
             while let Ok(msg) = rx.recv().await {
                 match msg {
-                    DownloadMsg::Progress { bytes_received, total, speed_bps } => {
+                    DownloadMsg::Progress {
+                        bytes_received,
+                        total,
+                        speed_bps,
+                    } => {
                         cx.update(|cx| {
                             this.update(cx, |view, cx| {
                                 if let Some(DownloadState::InProgress {
@@ -413,11 +459,15 @@ impl FabSearchWindow {
                                     *tb = total;
                                     *sb = speed_bps;
                                     sh.push(speed_bps);
-                                    if sh.len() > 60 { sh.remove(0); }
+                                    if sh.len() > 60 {
+                                        sh.remove(0);
+                                    }
                                 }
                                 cx.notify();
-                            }).ok();
-                        }).ok();
+                            })
+                            .ok();
+                        })
+                        .ok();
                     }
                     DownloadMsg::Done { path, total } => {
                         cx.update(|cx| {
@@ -429,11 +479,17 @@ impl FabSearchWindow {
                                     .unwrap_or_default();
                                 view.download_state.insert(
                                     uid.clone(),
-                                    DownloadState::Done { filename, path, total_bytes: total },
+                                    DownloadState::Done {
+                                        filename,
+                                        path,
+                                        total_bytes: total,
+                                    },
                                 );
                                 cx.notify();
-                            }).ok();
-                        }).ok();
+                            })
+                            .ok();
+                        })
+                        .ok();
                         break;
                     }
                     DownloadMsg::Error(msg) => {
@@ -446,31 +502,45 @@ impl FabSearchWindow {
                                     .unwrap_or_default();
                                 view.download_state.insert(
                                     uid.clone(),
-                                    DownloadState::Error { filename, message: msg },
+                                    DownloadState::Error {
+                                        filename,
+                                        message: msg,
+                                    },
                                 );
                                 cx.notify();
-                            }).ok();
-                        }).ok();
+                            })
+                            .ok();
+                        })
+                        .ok();
                         break;
                     }
                 }
             }
-        }).detach();
+        })
+        .detach();
     }
 
     // ── Like methods ─────────────────────────────────────────────────────────
 
     #[allow(dead_code)]
-    pub(crate) fn is_liked(&self, uid: &str) -> bool { self.liked_uids.contains(uid) }
+    pub(crate) fn is_liked(&self, uid: &str) -> bool {
+        self.liked_uids.contains(uid)
+    }
 
     pub(crate) fn toggle_like(&mut self, uid: String, cx: &mut Context<Self>) {
         let token = match &self.api_token {
             Some(t) => t.clone(),
             None => return,
         };
-        if self.like_inflight.contains(&uid) { return; }
+        if self.like_inflight.contains(&uid) {
+            return;
+        }
         let currently_liked = self.liked_uids.contains(&uid);
-        if currently_liked { self.liked_uids.remove(&uid); } else { self.liked_uids.insert(uid.clone()); }
+        if currently_liked {
+            self.liked_uids.remove(&uid);
+        } else {
+            self.liked_uids.insert(uid.clone());
+        }
         self.like_inflight.insert(uid.clone());
         cx.notify();
 
@@ -491,13 +561,20 @@ impl FabSearchWindow {
                     this.update(cx, |view, cx| {
                         view.like_inflight.remove(&uid);
                         if let Err(_) = result {
-                            if currently_liked { view.liked_uids.insert(uid); } else { view.liked_uids.remove(&uid); }
+                            if currently_liked {
+                                view.liked_uids.insert(uid);
+                            } else {
+                                view.liked_uids.remove(&uid);
+                            }
                         }
                         cx.notify();
-                    }).ok();
-                }).ok();
+                    })
+                    .ok();
+                })
+                .ok();
             }
-        }).detach();
+        })
+        .detach();
     }
 
     // ── Image loading ─────────────────────────────────────────────────────────
@@ -533,10 +610,13 @@ impl FabSearchWindow {
                             view.start_image_fetch(next_url, cx);
                         }
                         cx.notify();
-                    }).ok();
-                }).ok();
+                    })
+                    .ok();
+                })
+                .ok();
             }
-        }).detach();
+        })
+        .detach();
     }
 
     // ── Detail view ──────────────────────────────────────────────────────────
@@ -552,7 +632,10 @@ impl FabSearchWindow {
         self.selected_gallery_idx = 0;
         cx.notify();
 
-        let (tx, rx) = smol::channel::bounded::<(Vec<String>, Result<Box<crate::parser::SketchfabModelDetail>, String>)>(1);
+        let (tx, rx) = smol::channel::bounded::<(
+            Vec<String>,
+            Result<Box<crate::parser::SketchfabModelDetail>, String>,
+        )>(1);
         std::thread::spawn(move || {
             smol::block_on(tx.send(fetch_sketchfab_model_detail(&uid))).ok();
         });
@@ -564,8 +647,12 @@ impl FabSearchWindow {
                         view.detail_loading = false;
                         match result {
                             Ok(detail) => {
-                                let urls: Vec<String> = detail.all_thumbnail_urls()
-                                    .into_iter().take(12).map(|s| s.to_string()).collect();
+                                let urls: Vec<String> = detail
+                                    .all_thumbnail_urls()
+                                    .into_iter()
+                                    .take(12)
+                                    .map(|s| s.to_string())
+                                    .collect();
                                 for url in urls {
                                     view.ensure_image_loaded(url, cx);
                                 }
@@ -581,10 +668,13 @@ impl FabSearchWindow {
                             }
                         }
                         cx.notify();
-                    }).ok();
-                }).ok();
+                    })
+                    .ok();
+                })
+                .ok();
             }
-        }).detach();
+        })
+        .detach();
     }
 
     // ── Search ───────────────────────────────────────────────────────────────
@@ -595,16 +685,28 @@ impl FabSearchWindow {
             "https://api.sketchfab.com/v3/search?type=models&q={}&count=24",
             q
         );
-        if let Some(s) = self.sort_by.api_value()       { url.push_str(&format!("&sort_by={}", s)); }
-        if self.filter_downloadable                      { url.push_str("&downloadable=true"); }
-        if self.filter_animated                         { url.push_str("&animated=true"); }
-        if self.filter_staffpicked                      { url.push_str("&staffpicked=true"); }
-        if let Some(l) = self.filter_license.api_value() { url.push_str(&format!("&license={}", l)); }
+        if let Some(s) = self.sort_by.api_value() {
+            url.push_str(&format!("&sort_by={}", s));
+        }
+        if self.filter_downloadable {
+            url.push_str("&downloadable=true");
+        }
+        if self.filter_animated {
+            url.push_str("&animated=true");
+        }
+        if self.filter_staffpicked {
+            url.push_str("&staffpicked=true");
+        }
+        if let Some(l) = self.filter_license.api_value() {
+            url.push_str(&format!("&license={}", l));
+        }
         url
     }
 
     pub(crate) fn begin_search(&mut self, cx: &mut Context<Self>) {
-        if self.search_query.trim().is_empty() { return; }
+        if self.search_query.trim().is_empty() {
+            return;
+        }
 
         let url = self.build_search_url();
         self.is_loading = true;
@@ -629,20 +731,27 @@ impl FabSearchWindow {
                             Ok(page) => {
                                 view.next_url = page.next;
                                 view.results = page.models;
-                                let thumb_urls: Vec<String> = view.results.iter()
+                                let thumb_urls: Vec<String> = view
+                                    .results
+                                    .iter()
                                     .filter_map(|m| m.thumb_url(260).map(|s| s.to_string()))
                                     .collect();
                                 for url in thumb_urls {
                                     view.ensure_image_loaded(url, cx);
                                 }
                             }
-                            Err(e) => { view.error = Some(e); }
+                            Err(e) => {
+                                view.error = Some(e);
+                            }
                         }
                         cx.notify();
-                    }).ok();
-                }).ok();
+                    })
+                    .ok();
+                })
+                .ok();
             }
-        }).detach();
+        })
+        .detach();
     }
 
     pub(crate) fn load_more(&mut self, cx: &mut Context<Self>) {
@@ -666,7 +775,9 @@ impl FabSearchWindow {
                         match result {
                             Ok(page) => {
                                 view.next_url = page.next;
-                                let thumb_urls: Vec<String> = page.models.iter()
+                                let thumb_urls: Vec<String> = page
+                                    .models
+                                    .iter()
                                     .filter_map(|m| m.thumb_url(260).map(|s| s.to_string()))
                                     .collect();
                                 view.results.extend(page.models);
@@ -674,12 +785,17 @@ impl FabSearchWindow {
                                     view.ensure_image_loaded(url, cx);
                                 }
                             }
-                            Err(e) => { view.error = Some(e); }
+                            Err(e) => {
+                                view.error = Some(e);
+                            }
                         }
                         cx.notify();
-                    }).ok();
-                }).ok();
+                    })
+                    .ok();
+                })
+                .ok();
             }
-        }).detach();
+        })
+        .detach();
     }
 }

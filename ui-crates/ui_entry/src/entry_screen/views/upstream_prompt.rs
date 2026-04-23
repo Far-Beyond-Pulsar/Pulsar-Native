@@ -1,14 +1,18 @@
+use crate::entry_screen::EntryScreen;
 use gpui::{prelude::*, *};
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, Icon, IconName, ActiveTheme as _,
+    h_flex,
     input::TextInput,
+    v_flex, ActiveTheme as _, Icon, IconName,
 };
-use crate::entry_screen::EntryScreen;
 
-pub fn render_upstream_prompt(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) -> AnyElement {
+pub fn render_upstream_prompt(
+    screen: &mut EntryScreen,
+    cx: &mut Context<EntryScreen>,
+) -> AnyElement {
     let theme = cx.theme();
-    
+
     // Safely unwrap - caller should ensure this is Some before rendering
     let (_, template_url) = match &screen.show_git_upstream_prompt {
         Some((path, url)) => (path, url),
@@ -17,9 +21,9 @@ pub fn render_upstream_prompt(screen: &mut EntryScreen, cx: &mut Context<EntrySc
             return div().into_any_element();
         }
     };
-    
+
     let is_template = !template_url.is_empty();
-    
+
     div()
         .absolute()
         .size_full()

@@ -2,9 +2,9 @@
 //!
 //! Registers the pulsar:// URI scheme with the operating system
 
-use sysuri::{UriScheme, register, is_registered};
-use std::env;
 use anyhow::{Context, Result};
+use std::env;
+use sysuri::{is_registered, register, UriScheme};
 
 const SCHEME_NAME: &str = "pulsar";
 const SCHEME_DESCRIPTION: &str = "Pulsar Engine Project Protocol";
@@ -36,26 +36,23 @@ pub fn ensure_uri_scheme_registered() -> Result<()> {
             tracing::info!("ℹ️  URI scheme not registered, registering now...");
         }
         Err(e) => {
-            tracing::warn!("⚠️  Failed to check registration status: {}, attempting registration", e);
+            tracing::warn!(
+                "⚠️  Failed to check registration status: {}, attempting registration",
+                e
+            );
         }
     }
 
     // Get current executable path
-    let exe_path = env::current_exe()
-        .context("Failed to get executable path")?;
+    let exe_path = env::current_exe().context("Failed to get executable path")?;
 
     tracing::debug!("Executable path: {:?}", exe_path);
 
     // Create URI scheme
-    let scheme = UriScheme::new(
-        SCHEME_NAME,
-        SCHEME_DESCRIPTION,
-        exe_path,
-    );
+    let scheme = UriScheme::new(SCHEME_NAME, SCHEME_DESCRIPTION, exe_path);
 
     // Register with OS
-    register(&scheme)
-        .context("Failed to register URI scheme")?;
+    register(&scheme).context("Failed to register URI scheme")?;
 
     tracing::debug!("✓ Successfully registered pulsar:// URI scheme");
 

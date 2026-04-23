@@ -6,14 +6,14 @@
 //! - Professional design matching script editor
 
 use gpui::*;
+use std::path::PathBuf;
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex,
+    h_flex,
     input::{InputState, TextInput},
     resizable::{h_resizable, resizable_panel, ResizableState},
-    ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt,
+    v_flex, ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt,
 };
-use std::path::PathBuf;
 
 /// Status of a file in the sync
 #[derive(Clone, Debug, PartialEq)]
@@ -99,13 +99,9 @@ impl FileSyncUI {
         let file_list_split = ResizableState::new(cx);
         let diff_split = ResizableState::new(cx);
 
-        let before_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line()
-        });
+        let before_editor = cx.new(|cx| InputState::new(window, cx).multi_line());
 
-        let after_editor = cx.new(|cx| {
-            InputState::new(window, cx).multi_line()
-        });
+        let after_editor = cx.new(|cx| InputState::new(window, cx).multi_line());
 
         Self {
             focus_handle: cx.focus_handle(),
@@ -181,15 +177,14 @@ impl FileSyncUI {
         }
     }
 
-
     /// Render the toolbar
     fn render_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let (added, modified, deleted) = self.files.iter().fold((0, 0, 0), |(a, m, d), f| {
-            match f.status {
-                FileSyncStatus::Added => (a + 1, m, d),
-                FileSyncStatus::Modified => (a, m + 1, d),
-                FileSyncStatus::Deleted => (a, m, d + 1),
-            }
+        let (added, modified, deleted) = self.files.iter().fold((0, 0, 0), |(a, m, d), f| match f
+            .status
+        {
+            FileSyncStatus::Added => (a + 1, m, d),
+            FileSyncStatus::Modified => (a, m + 1, d),
+            FileSyncStatus::Deleted => (a, m, d + 1),
         });
 
         h_flex()
@@ -205,7 +200,7 @@ impl FileSyncUI {
                     .text_sm()
                     .font_semibold()
                     .text_color(cx.theme().foreground)
-                    .child("File Changes")
+                    .child("File Changes"),
             )
             .child(
                 h_flex()
@@ -219,7 +214,7 @@ impl FileSyncUI {
                             .text_color(cx.theme().success)
                             .text_xs()
                             .font_medium()
-                            .child(format!("+{}", added))
+                            .child(format!("+{}", added)),
                     )
                     .child(
                         div()
@@ -230,7 +225,7 @@ impl FileSyncUI {
                             .text_color(cx.theme().warning)
                             .text_xs()
                             .font_medium()
-                            .child(format!("~{}", modified))
+                            .child(format!("~{}", modified)),
                     )
                     .child(
                         div()
@@ -241,8 +236,8 @@ impl FileSyncUI {
                             .text_color(cx.theme().danger)
                             .text_xs()
                             .font_medium()
-                            .child(format!("-{}", deleted))
-                    )
+                            .child(format!("-{}", deleted)),
+                    ),
             )
     }
 
@@ -258,82 +253,80 @@ impl FileSyncUI {
                     .id("file-list")
                     .size_full()
                     .overflow_y_scroll()
-                    .children(
-                        self.files.iter().enumerate().map(|(idx, entry)| {
-                            let is_selected = self.selected_file_index == Some(idx);
-                            let (status_icon, status_color) = match entry.status {
-                                FileSyncStatus::Added => (IconName::Plus, cx.theme().success),
-                                FileSyncStatus::Modified => (IconName::Refresh, cx.theme().warning),
-                                FileSyncStatus::Deleted => (IconName::Trash, cx.theme().danger),
-                            };
+                    .children(self.files.iter().enumerate().map(|(idx, entry)| {
+                        let is_selected = self.selected_file_index == Some(idx);
+                        let (status_icon, status_color) = match entry.status {
+                            FileSyncStatus::Added => (IconName::Plus, cx.theme().success),
+                            FileSyncStatus::Modified => (IconName::Refresh, cx.theme().warning),
+                            FileSyncStatus::Deleted => (IconName::Trash, cx.theme().danger),
+                        };
 
-                            let mut base = div()
-                                .w_full()
-                                .px_3()
-                                .py_2p5()
-                                .cursor_pointer()
-                                .border_b_1()
-                                .border_color(cx.theme().border.opacity(0.3));
+                        let mut base = div()
+                            .w_full()
+                            .px_3()
+                            .py_2p5()
+                            .cursor_pointer()
+                            .border_b_1()
+                            .border_color(cx.theme().border.opacity(0.3));
 
-                            if is_selected {
-                                base = base
-                                    .bg(cx.theme().accent)
-                                    .border_l_2()
-                                    .border_color(cx.theme().accent);
-                            } else {
-                                base = base.hover(|s| s.bg(cx.theme().muted.opacity(0.08)));
-                            }
+                        if is_selected {
+                            base = base
+                                .bg(cx.theme().accent)
+                                .border_l_2()
+                                .border_color(cx.theme().accent);
+                        } else {
+                            base = base.hover(|s| s.bg(cx.theme().muted.opacity(0.08)));
+                        }
 
-                            Button::new(("file-item", idx))
-                                .w_full()
-                                .on_click(cx.listener(move |this: &mut FileSyncUI, _, window, cx| {
-                                    this.select_file(idx, window, cx);
-                                }))
-                                .child(
-                                    base.child(
-                                        h_flex()
-                                            .w_full()
-                                            .items_start()
-                                            .gap_2p5()
-                                            .child(
-                                                Icon::new(status_icon)
-                                                    .size(px(16.))
-                                                    .text_color(if is_selected {
-                                                        cx.theme().accent_foreground
-                                                    } else {
-                                                        status_color
-                                                    })
-                                            )
-                                            .child(
-                                                v_flex()
-                                                    .flex_1()
-                                                    .gap_0p5()
-                                                    .child(
-                                                        div()
-                                                            .text_sm()
-                                                            .font_medium()
-                                                            .text_color(if is_selected {
-                                                                cx.theme().accent_foreground
-                                                            } else {
-                                                                cx.theme().foreground
-                                                            })
-                                                            .child(entry.filename())
-                                                    )
-                                                    .child(
-                                                        div()
-                                                            .text_xs()
-                                                            .text_color(if is_selected {
-                                                                cx.theme().accent_foreground.opacity(0.7)
-                                                            } else {
-                                                                cx.theme().muted_foreground
-                                                            })
-                                                            .child(entry.path.clone())
-                                                    )
-                                            )
-                                    )
-                                )
-                        })
-                    )
+                        Button::new(("file-item", idx))
+                            .w_full()
+                            .on_click(cx.listener(move |this: &mut FileSyncUI, _, window, cx| {
+                                this.select_file(idx, window, cx);
+                            }))
+                            .child(
+                                base.child(
+                                    h_flex()
+                                        .w_full()
+                                        .items_start()
+                                        .gap_2p5()
+                                        .child(Icon::new(status_icon).size(px(16.)).text_color(
+                                            if is_selected {
+                                                cx.theme().accent_foreground
+                                            } else {
+                                                status_color
+                                            },
+                                        ))
+                                        .child(
+                                            v_flex()
+                                                .flex_1()
+                                                .gap_0p5()
+                                                .child(
+                                                    div()
+                                                        .text_sm()
+                                                        .font_medium()
+                                                        .text_color(if is_selected {
+                                                            cx.theme().accent_foreground
+                                                        } else {
+                                                            cx.theme().foreground
+                                                        })
+                                                        .child(entry.filename()),
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_xs()
+                                                        .text_color(if is_selected {
+                                                            cx.theme()
+                                                                .accent_foreground
+                                                                .opacity(0.7)
+                                                        } else {
+                                                            cx.theme().muted_foreground
+                                                        })
+                                                        .child(entry.path.clone()),
+                                                ),
+                                        ),
+                                ),
+                            )
+                    })),
             )
     }
 
@@ -361,51 +354,43 @@ impl FileSyncUI {
                                         .text_xs()
                                         .font_semibold()
                                         .text_color(cx.theme().danger)
-                                        .child("BEFORE (Local)")
-                                )
+                                        .child("BEFORE (Local)"),
+                                ),
                         )
                         .child(
-                            div()
-                                .flex_1()
-                                .px_3()
-                                .py_2()
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .font_semibold()
-                                        .text_color(cx.theme().success)
-                                        .child("AFTER (Remote)")
-                                )
-                        )
+                            div().flex_1().px_3().py_2().child(
+                                div()
+                                    .text_xs()
+                                    .font_semibold()
+                                    .text_color(cx.theme().success)
+                                    .child("AFTER (Remote)"),
+                            ),
+                        ),
                 )
                 .child(
                     // Side-by-side editors
-                    div()
-                        .flex_1()
-                        .child(
-                            h_resizable("diff-split")
-                                .state(self.diff_split.clone())
-                                .child(
-                                    resizable_panel()
-                                        .child(
-                                            div()
-                                                .size_full()
-                                                .bg(cx.theme().background)
-                                                .border_r_1()
-                                                .border_color(cx.theme().border)
-                                                .child(TextInput::new(&self.before_editor))
-                                        )
-                                )
-                                .child(
-                                    resizable_panel()
-                                        .child(
-                                            div()
-                                                .size_full()
-                                                .bg(cx.theme().background)
-                                                .child(TextInput::new(&self.after_editor))
-                                        )
-                                )
-                        )
+                    div().flex_1().child(
+                        h_resizable("diff-split")
+                            .state(self.diff_split.clone())
+                            .child(
+                                resizable_panel().child(
+                                    div()
+                                        .size_full()
+                                        .bg(cx.theme().background)
+                                        .border_r_1()
+                                        .border_color(cx.theme().border)
+                                        .child(TextInput::new(&self.before_editor)),
+                                ),
+                            )
+                            .child(
+                                resizable_panel().child(
+                                    div()
+                                        .size_full()
+                                        .bg(cx.theme().background)
+                                        .child(TextInput::new(&self.after_editor)),
+                                ),
+                            ),
+                    ),
                 )
         } else {
             // No file selected
@@ -421,15 +406,15 @@ impl FileSyncUI {
                         .child(
                             Icon::new(IconName::Code)
                                 .size(px(56.))
-                                .text_color(cx.theme().muted_foreground.opacity(0.3))
+                                .text_color(cx.theme().muted_foreground.opacity(0.3)),
                         )
                         .child(
                             div()
                                 .text_base()
                                 .font_semibold()
                                 .text_color(cx.theme().foreground.opacity(0.7))
-                                .child("Select a file to view changes")
-                        )
+                                .child("Select a file to view changes"),
+                        ),
                 )
         }
     }
@@ -438,11 +423,15 @@ impl FileSyncUI {
     fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let file_info = if let Some(idx) = self.selected_file_index {
             if let Some(file) = self.files.get(idx) {
-                format!("Viewing: {} ({})", file.filename(), match file.status {
-                    FileSyncStatus::Added => "Added",
-                    FileSyncStatus::Modified => "Modified",
-                    FileSyncStatus::Deleted => "Deleted",
-                })
+                format!(
+                    "Viewing: {} ({})",
+                    file.filename(),
+                    match file.status {
+                        FileSyncStatus::Added => "Added",
+                        FileSyncStatus::Modified => "Modified",
+                        FileSyncStatus::Deleted => "Deleted",
+                    }
+                )
             } else {
                 "No file selected".to_string()
             }
@@ -463,13 +452,13 @@ impl FileSyncUI {
                 div()
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
-                    .child(format!("{} files to sync", self.files.len()))
+                    .child(format!("{} files to sync", self.files.len())),
             )
             .child(
                 div()
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
-                    .child(file_info)
+                    .child(file_info),
             )
     }
 }
@@ -492,21 +481,16 @@ impl Render for FileSyncUI {
             .size_full()
             .child(self.render_toolbar(cx))
             .child(
-                div()
-                    .flex_1()
-                    .child(
-                        h_resizable("file-sync-split")
-                            .state(self.file_list_split.clone())
-                            .child(
-                        resizable_panel()
-                            .size(px(280.))
-                            .child(self.render_file_list(cx))
-                    )
-                    .child(
-                        resizable_panel()
-                            .child(self.render_diff_viewer(cx))
-                    )
-                    )
+                div().flex_1().child(
+                    h_resizable("file-sync-split")
+                        .state(self.file_list_split.clone())
+                        .child(
+                            resizable_panel()
+                                .size(px(280.))
+                                .child(self.render_file_list(cx)),
+                        )
+                        .child(resizable_panel().child(self.render_diff_viewer(cx))),
+                ),
             )
             .child(self.render_status_bar(cx))
     }

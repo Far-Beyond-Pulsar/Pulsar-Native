@@ -36,7 +36,7 @@ impl SpeedGraph {
     pub fn new(samples: &[f64]) -> Self {
         Self {
             samples: samples.to_vec(),
-            width: None,  // full width by default
+            width: None, // full width by default
             height: px(36.),
         }
     }
@@ -59,7 +59,8 @@ impl RenderOnce for SpeedGraph {
         let accent_dim = cx.theme().accent.opacity(0.25);
         let h = self.height;
 
-        let y_max = self.samples
+        let y_max = self
+            .samples
             .iter()
             .cloned()
             .fold(0.0_f64, f64::max)
@@ -68,7 +69,7 @@ impl RenderOnce for SpeedGraph {
         div()
             .map(|d| match self.width {
                 Some(w) => d.w(w),
-                None    => d.w_full(),
+                None => d.w_full(),
             })
             .h(h)
             .rounded_sm()

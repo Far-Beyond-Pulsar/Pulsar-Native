@@ -418,4 +418,3 @@ pub fn select_string(condition: bool, a: String, b: String) -> String {
 pub fn xor(a: bool, b: bool) -> bool {
     a ^ b
 }
-

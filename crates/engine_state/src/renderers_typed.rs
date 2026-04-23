@@ -3,9 +3,9 @@
 //! Replaces the Arc<dyn Any> renderer registry with a type-safe enum-based system.
 //! This eliminates runtime downcasting errors and provides compile-time type safety.
 
+use dashmap::DashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
-use dashmap::DashMap;
 
 use ui_types_common::window_types::WindowId;
 
@@ -48,9 +48,7 @@ impl RendererType {
     /// Get as custom renderer with dynamic casting (for plugins)
     pub fn as_custom<T: Send + Sync + 'static>(&self) -> Option<Arc<T>> {
         match self {
-            RendererType::Custom { renderer, .. } => {
-                renderer.clone().downcast::<T>().ok()
-            }
+            RendererType::Custom { renderer, .. } => renderer.clone().downcast::<T>().ok(),
             _ => None,
         }
     }
@@ -84,18 +82,12 @@ impl TypedRendererHandle {
     }
 
     /// Convenience method to create a Helio renderer handle
-    pub fn helio<T: Send + Sync + 'static>(
-        window_id: WindowId,
-        renderer: Arc<T>,
-    ) -> Self {
+    pub fn helio<T: Send + Sync + 'static>(window_id: WindowId, renderer: Arc<T>) -> Self {
         Self::new(window_id, RendererType::Helio(renderer))
     }
 
     /// Convenience method to create a WGPU renderer handle
-    pub fn wgpu<T: Send + Sync + 'static>(
-        window_id: WindowId,
-        renderer: Arc<T>,
-    ) -> Self {
+    pub fn wgpu<T: Send + Sync + 'static>(window_id: WindowId, renderer: Arc<T>) -> Self {
         Self::new(window_id, RendererType::Wgpu(renderer))
     }
 
@@ -144,18 +136,28 @@ impl TypedRendererRegistry {
     pub fn register(&self, window_id: u64, handle: TypedRendererHandle) {
         let renderer_name = handle.renderer_type.name().to_string();
         self.renderers.insert(window_id, handle);
-        tracing::debug!("Registered {} renderer for window {}", renderer_name, window_id);
+        tracing::debug!(
+            "Registered {} renderer for window {}",
+            renderer_name,
+            window_id
+        );
     }
 
     /// Get a renderer for a window
     pub fn get(&self, window_id: u64) -> Option<TypedRendererHandle> {
-        self.renderers.get(&window_id).map(|entry| entry.value().clone())
+        self.renderers
+            .get(&window_id)
+            .map(|entry| entry.value().clone())
     }
 
     /// Unregister a renderer
     pub fn unregister(&self, window_id: u64) -> Option<TypedRendererHandle> {
         self.renderers.remove(&window_id).map(|(_, handle)| {
-            tracing::debug!("Unregistered {} renderer for window {}", handle.renderer_type.name(), window_id);
+            tracing::debug!(
+                "Unregistered {} renderer for window {}",
+                handle.renderer_type.name(),
+                window_id
+            );
             handle
         })
     }

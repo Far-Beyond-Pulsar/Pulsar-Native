@@ -31,11 +31,13 @@ pub use minimap_scrollbar::*;
 pub use mode::TabSize;
 pub use number_input::{NumberInput, NumberInputEvent, StepAction};
 pub use otp_input::*;
-pub use state::{*, LineHighlight};
+pub use state::{LineHighlight, *};
 pub use tab_completion::*;
 pub use text_input::TextInput as Input;
 pub use text_input::*;
-pub use virtual_editor_utils::{VirtualEditorConfig, calculate_visible_range, calculate_content_size};
+pub use virtual_editor_utils::{
+    calculate_content_size, calculate_visible_range, VirtualEditorConfig,
+};
 
 pub use lsp_types::Position;
 pub use rope_ext::*;

@@ -1,5 +1,5 @@
-use std::{collections::HashMap, sync::Arc};
 use parking_lot::RwLock;
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::broadcast;
 use tracing::info;
 
@@ -40,10 +40,13 @@ impl SessionManager {
             return handle.tx.clone();
         }
         let (tx, _) = broadcast::channel(CHANNEL_CAPACITY);
-        guard.sessions.insert(project_id.to_string(), SessionHandle {
-            project_id: project_id.to_string(),
-            tx: tx.clone(),
-        });
+        guard.sessions.insert(
+            project_id.to_string(),
+            SessionHandle {
+                project_id: project_id.to_string(),
+                tx: tx.clone(),
+            },
+        );
         tx
     }
 
@@ -62,7 +65,11 @@ impl SessionManager {
 
     /// Register a user joining a project. Returns the broadcast sender and the
     /// current user list to send as a `UserList` message.
-    pub fn user_joined(&self, project_id: &str, username: &str) -> (broadcast::Sender<WsMessage>, Vec<String>) {
+    pub fn user_joined(
+        &self,
+        project_id: &str,
+        username: &str,
+    ) -> (broadcast::Sender<WsMessage>, Vec<String>) {
         let tx = self.get_or_create_session(project_id);
         let mut guard = self.inner.write();
         let users = guard.users.entry(project_id.to_string()).or_default();
@@ -72,7 +79,9 @@ impl SessionManager {
         let user_list = users.clone();
 
         // Broadcast the join event to existing members.
-        let _ = tx.send(WsMessage::UserJoined { user: username.to_string() });
+        let _ = tx.send(WsMessage::UserJoined {
+            user: username.to_string(),
+        });
         info!("User '{}' joined project '{}'", username, project_id);
 
         (tx, user_list)
@@ -87,7 +96,9 @@ impl SessionManager {
 
         // Broadcast the leave event.
         if let Some(handle) = guard.sessions.get(project_id) {
-            let _ = handle.tx.send(WsMessage::UserLeft { user: username.to_string() });
+            let _ = handle.tx.send(WsMessage::UserLeft {
+                user: username.to_string(),
+            });
         }
 
         info!("User '{}' left project '{}'", username, project_id);
@@ -96,7 +107,11 @@ impl SessionManager {
     // ── Queries ───────────────────────────────────────────────────────────────
 
     pub fn user_count(&self, project_id: &str) -> usize {
-        self.inner.read().users.get(project_id).map_or(0, |u| u.len())
+        self.inner
+            .read()
+            .users
+            .get(project_id)
+            .map_or(0, |u| u.len())
     }
 
     pub fn total_user_count(&self) -> usize {
@@ -108,7 +123,12 @@ impl SessionManager {
     }
 
     pub fn users_in_project(&self, project_id: &str) -> Vec<String> {
-        self.inner.read().users.get(project_id).cloned().unwrap_or_default()
+        self.inner
+            .read()
+            .users
+            .get(project_id)
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// Broadcast a [`WsMessage::FileChanged`] event to all subscribers of

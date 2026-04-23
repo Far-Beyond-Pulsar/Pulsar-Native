@@ -51,7 +51,11 @@ pub fn hashmap_new() -> HashMap<String, String> {
 /// # HashMap Insert
 /// Adds or updates a key-value pair in a HashMap.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
-pub fn hashmap_insert(map: HashMap<String, String>, key: String, value: String) -> HashMap<String, String> {
+pub fn hashmap_insert(
+    map: HashMap<String, String>,
+    key: String,
+    value: String,
+) -> HashMap<String, String> {
     let mut m = map;
     m.insert(key, value);
     m
@@ -97,7 +101,10 @@ pub fn hashmap_get(map: HashMap<String, String>, key: String) -> Option<String> 
 /// # HashMap Remove
 /// Removes a key-value pair from a HashMap.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
-pub fn hashmap_remove(map: HashMap<String, String>, key: String) -> (HashMap<String, String>, Option<String>) {
+pub fn hashmap_remove(
+    map: HashMap<String, String>,
+    key: String,
+) -> (HashMap<String, String>, Option<String>) {
     let mut m = map;
     let removed = m.remove(&key);
     (m, removed)
@@ -245,7 +252,10 @@ pub fn hashmap_clear(map: HashMap<String, String>) -> HashMap<String, String> {
 /// # HashMap Merge
 /// Combines two HashMaps, with the second map's values taking precedence on conflicts.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
-pub fn hashmap_merge(map1: HashMap<String, String>, map2: HashMap<String, String>) -> HashMap<String, String> {
+pub fn hashmap_merge(
+    map1: HashMap<String, String>,
+    map2: HashMap<String, String>,
+) -> HashMap<String, String> {
     let mut result = map1;
     for (key, value) in map2 {
         result.insert(key, value);
@@ -296,8 +306,15 @@ pub fn hashmap_filter(map: HashMap<String, String>, pattern: String) -> HashMap<
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashmap_to_json(map: HashMap<String, String>) -> String {
     let mut json = String::from("{");
-    let entries: Vec<String> = map.iter()
-        .map(|(k, v)| format!("\"{}\":\"{}\"", k.replace("\"", "\\\""), v.replace("\"", "\\\"")))
+    let entries: Vec<String> = map
+        .iter()
+        .map(|(k, v)| {
+            format!(
+                "\"{}\":\"{}\"",
+                k.replace("\"", "\\\""),
+                v.replace("\"", "\\\"")
+            )
+        })
         .collect();
     json.push_str(&entries.join(","));
     json.push('}');

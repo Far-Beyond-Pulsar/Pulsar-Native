@@ -19,7 +19,7 @@
 //!
 //! Uses libgit2 for all git operations
 
-use git2::{Repository, Signature, DiffOptions, ObjectType, Oid};
+use git2::{DiffOptions, ObjectType, Oid, Repository, Signature};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -68,11 +68,22 @@ impl GitDiff {
     }
 
     pub fn summary(&self) -> String {
-        let added = self.changed_files.iter().filter(|f| f.status == FileStatus::Added).count();
-        let modified = self.changed_files.iter().filter(|f| f.status == FileStatus::Modified).count();
+        let added = self
+            .changed_files
+            .iter()
+            .filter(|f| f.status == FileStatus::Added)
+            .count();
+        let modified = self
+            .changed_files
+            .iter()
+            .filter(|f| f.status == FileStatus::Modified)
+            .count();
         let deleted = self.deleted_files.len();
 
-        format!("{} added, {} modified, {} deleted", added, modified, deleted)
+        format!(
+            "{} added, {} modified, {} deleted",
+            added, modified, deleted
+        )
     }
 }
 
@@ -201,7 +212,8 @@ pub fn compute_diff(repo: &Repository, remote_commit_hash: &str) -> Result<GitDi
     let remote_tree = remote_commit.tree()?;
 
     let mut diff_opts = DiffOptions::new();
-    let diff = repo.diff_tree_to_tree(Some(&local_tree), Some(&remote_tree), Some(&mut diff_opts))?;
+    let diff =
+        repo.diff_tree_to_tree(Some(&local_tree), Some(&remote_tree), Some(&mut diff_opts))?;
 
     let mut changed_files = Vec::new();
     let mut deleted_files = Vec::new();
@@ -303,8 +315,14 @@ pub enum GitObjectType {
 }
 
 /// Serialize a commit and all its objects for network transfer
-pub fn serialize_commit(repo: &Repository, commit_hash: &str) -> Result<Vec<GitObject>, git2::Error> {
-    tracing::debug!("GIT_SYNC: Serializing commit {} for network transfer", commit_hash);
+pub fn serialize_commit(
+    repo: &Repository,
+    commit_hash: &str,
+) -> Result<Vec<GitObject>, git2::Error> {
+    tracing::debug!(
+        "GIT_SYNC: Serializing commit {} for network transfer",
+        commit_hash
+    );
 
     let oid = Oid::from_str(commit_hash)?;
     let commit = repo.find_commit(oid)?;
@@ -324,16 +342,30 @@ pub fn serialize_commit(repo: &Repository, commit_hash: &str) -> Result<Vec<GitO
     let tree = commit.tree()?;
     serialize_tree(repo, &tree, &mut objects)?;
 
-    let blob_count = objects.iter().filter(|o| o.object_type == GitObjectType::Blob).count();
-    let tree_count = objects.iter().filter(|o| o.object_type == GitObjectType::Tree).count();
-    tracing::debug!("GIT_SYNC: Serialized {} git objects total (1 commit, {} trees, {} blobs)",
-        objects.len(), tree_count, blob_count);
+    let blob_count = objects
+        .iter()
+        .filter(|o| o.object_type == GitObjectType::Blob)
+        .count();
+    let tree_count = objects
+        .iter()
+        .filter(|o| o.object_type == GitObjectType::Tree)
+        .count();
+    tracing::debug!(
+        "GIT_SYNC: Serialized {} git objects total (1 commit, {} trees, {} blobs)",
+        objects.len(),
+        tree_count,
+        blob_count
+    );
 
     Ok(objects)
 }
 
 /// Recursively serialize a tree and its contents
-fn serialize_tree(repo: &Repository, tree: &git2::Tree, objects: &mut Vec<GitObject>) -> Result<(), git2::Error> {
+fn serialize_tree(
+    repo: &Repository,
+    tree: &git2::Tree,
+    objects: &mut Vec<GitObject>,
+) -> Result<(), git2::Error> {
     // Serialize tree object itself using ODB
     let odb = repo.odb()?;
     let tree_obj = odb.read(tree.id())?;
@@ -369,8 +401,14 @@ fn serialize_tree(repo: &Repository, tree: &git2::Tree, objects: &mut Vec<GitObj
 }
 
 /// Reconstruct git objects in local repository from serialized data
-pub fn reconstruct_objects(repo: &Repository, objects: Vec<GitObject>) -> Result<String, git2::Error> {
-    tracing::debug!("GIT_SYNC: Reconstructing {} git objects in repository", objects.len());
+pub fn reconstruct_objects(
+    repo: &Repository,
+    objects: Vec<GitObject>,
+) -> Result<String, git2::Error> {
+    tracing::debug!(
+        "GIT_SYNC: Reconstructing {} git objects in repository",
+        objects.len()
+    );
     let mut commit_oid = None;
     let odb = repo.odb()?;
 
@@ -392,7 +430,11 @@ pub fn reconstruct_objects(repo: &Repository, objects: Vec<GitObject>) -> Result
         // Verify OID matches
         let expected_oid = Oid::from_str(&obj.oid)?;
         if written_oid != expected_oid {
-            tracing::warn!("GIT_SYNC: OID mismatch! Expected {}, got {}", obj.oid, written_oid);
+            tracing::warn!(
+                "GIT_SYNC: OID mismatch! Expected {}, got {}",
+                obj.oid,
+                written_oid
+            );
         }
     }
 

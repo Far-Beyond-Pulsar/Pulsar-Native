@@ -5,10 +5,10 @@
 //! - Active editor tab and file
 //! - Time spent in the project
 
-use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 use parking_lot::RwLock;
 use rust_discord_activity::*;
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Discord Rich Presence state
 pub struct DiscordPresence {
@@ -21,14 +21,14 @@ struct DiscordPresenceInner {
     project_name: Option<String>,
     active_tab: Option<String>,
     active_file: Option<String>,
-    discord_icon_key: Option<String>,  // Store the custom icon key
+    discord_icon_key: Option<String>, // Store the custom icon key
     start_time: u128,
     enabled: bool,
 }
 
 impl DiscordPresence {
     /// Create a new Discord presence instance
-    /// 
+    ///
     /// # Arguments
     /// * `application_id` - Your Discord application ID (get from https://discord.com/developers/applications)
     pub fn new(application_id: impl Into<String>) -> Self {
@@ -55,17 +55,19 @@ impl DiscordPresence {
     /// Connect to Discord
     pub fn connect(&self) -> anyhow::Result<()> {
         let mut inner = self.inner.write();
-        
+
         if inner.client.is_some() {
             return Ok(()); // Already connected
         }
 
         let mut client = DiscordClient::new(&inner.application_id);
-        client.connect().map_err(|e| anyhow::anyhow!("Failed to connect to Discord: {:?}", e))?;
-        
+        client
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to Discord: {:?}", e))?;
+
         inner.client = Some(client);
         inner.enabled = true;
-        
+
         Ok(())
     }
 
@@ -106,14 +108,30 @@ impl DiscordPresence {
     }
 
     /// Update all presence information at once
-    pub fn update_all(&self, project_name: Option<String>, tab_name: Option<String>, file_path: Option<String>) {
+    pub fn update_all(
+        &self,
+        project_name: Option<String>,
+        tab_name: Option<String>,
+        file_path: Option<String>,
+    ) {
         self.update_all_with_icon(project_name, tab_name, file_path, None);
     }
 
     /// Update all presence information at once with custom Discord icon key
-    pub fn update_all_with_icon(&self, project_name: Option<String>, tab_name: Option<String>, file_path: Option<String>, icon_key: Option<&'static str>) {
-        tracing::debug!("🎮 Discord::update_all_with_icon called: project={:?}, tab={:?}, file={:?}, icon={:?}", 
-            project_name, tab_name, file_path, icon_key);
+    pub fn update_all_with_icon(
+        &self,
+        project_name: Option<String>,
+        tab_name: Option<String>,
+        file_path: Option<String>,
+        icon_key: Option<&'static str>,
+    ) {
+        tracing::debug!(
+            "🎮 Discord::update_all_with_icon called: project={:?}, tab={:?}, file={:?}, icon={:?}",
+            project_name,
+            tab_name,
+            file_path,
+            icon_key
+        );
         let mut inner = self.inner.write();
         inner.project_name = project_name;
         inner.active_tab = tab_name;
@@ -126,10 +144,13 @@ impl DiscordPresence {
     /// Update the Discord presence with current state
     fn update_presence(&self) {
         let mut inner = self.inner.write();
-        
+
         if !inner.enabled || inner.client.is_none() {
-            tracing::debug!("⚠️  Discord presence update skipped: enabled={}, client={}", 
-                inner.enabled, inner.client.is_some());
+            tracing::debug!(
+                "⚠️  Discord presence update skipped: enabled={}, client={}",
+                inner.enabled,
+                inner.client.is_some()
+            );
             return;
         }
 
@@ -161,7 +182,11 @@ impl DiscordPresence {
             (None, None) => "Pulsar Game Engine".to_string(),
         };
 
-        tracing::debug!("📤 Sending Discord presence: state='{}', details='{}'", state, details);
+        tracing::debug!(
+            "📤 Sending Discord presence: state='{}', details='{}'",
+            state,
+            details
+        );
 
         // Create timestamp
         let timestamp = Timestamp::new(Some(inner.start_time), None);
@@ -169,21 +194,27 @@ impl DiscordPresence {
         // Create asset with large image (main Pulsar logo) and small image (editor icon)
         let asset = if let Some(ref icon_key) = inner.discord_icon_key {
             // Use the custom icon key provided by the panel
-            let small_image_text = inner.active_tab.as_ref()
+            let small_image_text = inner
+                .active_tab
+                .as_ref()
                 .map(|s| s.as_str())
                 .unwrap_or("Editor");
-            
-            tracing::debug!("🎨 Using panel's Discord icon: large='pulsar_logo', small='{}', text='{}'", icon_key, small_image_text);
-            
+
+            tracing::debug!(
+                "🎨 Using panel's Discord icon: large='pulsar_logo', small='{}', text='{}'",
+                icon_key,
+                small_image_text
+            );
+
             // NOTE: You need to upload these images to your Discord Application's Rich Presence Art Assets
             // Go to: https://discord.com/developers/applications/<app_id>/rich-presence/assets
             // Each panel can define its own icon key via the discord_icon_key() method
-            
+
             Some(Asset::new(
-                Some("pulsar_logo".into()),        // Large image key (main logo)
-                Some("Pulsar Engine".into()),      // Large image hover text
-                Some(icon_key.clone()),            // Small image key (from panel)
-                Some(small_image_text.into()),     // Small image hover text
+                Some("pulsar_logo".into()),    // Large image key (main logo)
+                Some("Pulsar Engine".into()),  // Large image hover text
+                Some(icon_key.clone()),        // Small image key (from panel)
+                Some(small_image_text.into()), // Small image hover text
             ))
         } else {
             // No custom icon - just show main logo
@@ -203,7 +234,7 @@ impl DiscordPresence {
             .set_details(Some(details.clone()))
             .set_timestamps(Some(timestamp))
             .set_activity_type(Some(ActivityType::GAME));
-        
+
         // Set the assets!
         if let Some(asset) = asset {
             activity.set_assets(Some(asset));

@@ -1,9 +1,7 @@
-use gpui::{prelude::*, *};
-use ui::{
-    h_flex, v_flex, Icon, IconName, ActiveTheme as _, Colorize as _,
-};
-use crate::entry_screen::{SettingsRequested, FabSearchRequested};
 use crate::entry_screen::{EntryScreen, EntryScreenView};
+use crate::entry_screen::{FabSearchRequested, SettingsRequested};
+use gpui::{prelude::*, *};
+use ui::{h_flex, v_flex, ActiveTheme as _, Colorize as _, Icon, IconName};
 
 pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();
@@ -53,8 +51,8 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                         .child(
                             Icon::new(IconName::Star)
                                 .size(px(18.))
-                                .text_color(primary_fg)
-                        )
+                                .text_color(primary_fg),
+                        ),
                 )
                 .child(
                     v_flex()
@@ -63,15 +61,15 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                                 .text_sm()
                                 .font_weight(gpui::FontWeight::BOLD)
                                 .text_color(foreground)
-                                .child("Pulsar Engine")
+                                .child("Pulsar Engine"),
                         )
                         .child(
                             div()
                                 .text_xs()
                                 .text_color(muted_fg)
-                                .child("Project Manager")
-                        )
-                )
+                                .child("Project Manager"),
+                        ),
+                ),
         )
         .child(div().w_full().h(px(1.0)).bg(border))
         // ── Projects section ─────────────────────────────────────
@@ -89,7 +87,7 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                         .text_color(muted_fg)
                         .px_2()
                         .pb_1p5()
-                        .child("PROJECTS")
+                        .child("PROJECTS"),
                 )
                 .child(
                     h_flex()
@@ -106,19 +104,23 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                         .child(
                             Icon::new(IconName::FolderClosed)
                                 .size(px(15.))
-                                .text_color(if is_recent { accent } else { muted_fg })
+                                .text_color(if is_recent { accent } else { muted_fg }),
                         )
                         .child(
                             div()
                                 .text_sm()
-                                .font_weight(if is_recent { gpui::FontWeight::SEMIBOLD } else { gpui::FontWeight::NORMAL })
+                                .font_weight(if is_recent {
+                                    gpui::FontWeight::SEMIBOLD
+                                } else {
+                                    gpui::FontWeight::NORMAL
+                                })
                                 .text_color(if is_recent { foreground } else { muted_fg })
-                                .child("Recent Projects")
+                                .child("Recent Projects"),
                         )
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.view = EntryScreenView::Recent;
                             cx.notify();
-                        }))
+                        })),
                 )
                 .child(
                     h_flex()
@@ -135,19 +137,23 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                         .child(
                             Icon::new(IconName::Star)
                                 .size(px(15.))
-                                .text_color(if is_templates { accent } else { muted_fg })
+                                .text_color(if is_templates { accent } else { muted_fg }),
                         )
                         .child(
                             div()
                                 .text_sm()
-                                .font_weight(if is_templates { gpui::FontWeight::SEMIBOLD } else { gpui::FontWeight::NORMAL })
+                                .font_weight(if is_templates {
+                                    gpui::FontWeight::SEMIBOLD
+                                } else {
+                                    gpui::FontWeight::NORMAL
+                                })
                                 .text_color(if is_templates { foreground } else { muted_fg })
-                                .child("Templates")
+                                .child("Templates"),
                         )
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.view = EntryScreenView::Templates;
                             cx.notify();
-                        }))
+                        })),
                 )
                 .child(
                     h_flex()
@@ -164,19 +170,23 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                         .child(
                             Icon::new(IconName::Plus)
                                 .size(px(15.))
-                                .text_color(if is_new { accent } else { muted_fg })
+                                .text_color(if is_new { accent } else { muted_fg }),
                         )
                         .child(
                             div()
                                 .text_sm()
-                                .font_weight(if is_new { gpui::FontWeight::SEMIBOLD } else { gpui::FontWeight::NORMAL })
+                                .font_weight(if is_new {
+                                    gpui::FontWeight::SEMIBOLD
+                                } else {
+                                    gpui::FontWeight::NORMAL
+                                })
                                 .text_color(if is_new { foreground } else { muted_fg })
-                                .child("New Project")
+                                .child("New Project"),
                         )
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.view = EntryScreenView::NewProject;
                             cx.notify();
-                        }))
+                        })),
                 )
                 .child(
                     h_flex()
@@ -193,20 +203,24 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                         .child(
                             Icon::new(IconName::Github)
                                 .size(px(15.))
-                                .text_color(if is_clone { accent } else { muted_fg })
+                                .text_color(if is_clone { accent } else { muted_fg }),
                         )
                         .child(
                             div()
                                 .text_sm()
-                                .font_weight(if is_clone { gpui::FontWeight::SEMIBOLD } else { gpui::FontWeight::NORMAL })
+                                .font_weight(if is_clone {
+                                    gpui::FontWeight::SEMIBOLD
+                                } else {
+                                    gpui::FontWeight::NORMAL
+                                })
                                 .text_color(if is_clone { foreground } else { muted_fg })
-                                .child("Clone from Git")
+                                .child("Clone from Git"),
                         )
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.view = EntryScreenView::CloneGit;
                             cx.notify();
-                        }))
-                )
+                        })),
+                ),
         )
         // ── Cloud section ────────────────────────────────────────
         .child(
@@ -224,7 +238,7 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                         .text_color(muted_fg)
                         .px_2()
                         .pb_1p5()
-                        .child("CLOUD")
+                        .child("CLOUD"),
                 )
                 .child(
                     h_flex()
@@ -241,20 +255,24 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                         .child(
                             Icon::new(IconName::Cloud)
                                 .size(px(15.))
-                                .text_color(if is_cloud { accent } else { muted_fg })
+                                .text_color(if is_cloud { accent } else { muted_fg }),
                         )
                         .child(
                             div()
                                 .text_sm()
-                                .font_weight(if is_cloud { gpui::FontWeight::SEMIBOLD } else { gpui::FontWeight::NORMAL })
+                                .font_weight(if is_cloud {
+                                    gpui::FontWeight::SEMIBOLD
+                                } else {
+                                    gpui::FontWeight::NORMAL
+                                })
                                 .text_color(if is_cloud { foreground } else { muted_fg })
-                                .child("Cloud Projects")
+                                .child("Cloud Projects"),
                         )
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.view = EntryScreenView::CloudProjects;
                             cx.notify();
-                        }))
-                )
+                        })),
+                ),
         )
         // ── Discover section ─────────────────────────────────────
         .child(
@@ -272,7 +290,7 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                         .text_color(muted_fg)
                         .px_2()
                         .pb_1p5()
-                        .child("DISCOVER")
+                        .child("DISCOVER"),
                 )
                 .child(
                     h_flex()
@@ -288,18 +306,18 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                         .child(
                             Icon::new(IconName::ShoppingBag)
                                 .size(px(15.))
-                                .text_color(muted_fg)
+                                .text_color(muted_fg),
                         )
                         .child(
                             div()
                                 .text_sm()
                                 .text_color(muted_fg)
-                                .child("FAB Marketplace")
+                                .child("FAB Marketplace"),
                         )
                         .on_click(cx.listener(|_, _, _, cx| {
                             cx.emit(FabSearchRequested);
-                        }))
-                )
+                        })),
+                ),
         )
         // ── Spacer ───────────────────────────────────────────────
         .child(div().flex_1())
@@ -325,17 +343,12 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                         .child(
                             Icon::new(IconName::FolderOpen)
                                 .size(px(15.))
-                                .text_color(muted_fg)
+                                .text_color(muted_fg),
                         )
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(muted_fg)
-                                .child("Open Folder")
-                        )
+                        .child(div().text_sm().text_color(muted_fg).child("Open Folder"))
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.open_folder_dialog(window, cx);
-                        }))
+                        })),
                 )
                 .child(
                     h_flex()
@@ -351,18 +364,13 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                         .child(
                             Icon::new(IconName::Package)
                                 .size(px(15.))
-                                .text_color(muted_fg)
+                                .text_color(muted_fg),
                         )
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(muted_fg)
-                                .child("Dependencies")
-                        )
+                        .child(div().text_sm().text_color(muted_fg).child("Dependencies"))
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.show_dependency_setup = true;
                             cx.notify();
-                        }))
+                        })),
                 )
                 .child(
                     h_flex()
@@ -378,17 +386,12 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                         .child(
                             Icon::new(IconName::Settings)
                                 .size(px(15.))
-                                .text_color(muted_fg)
+                                .text_color(muted_fg),
                         )
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(muted_fg)
-                                .child("Settings")
-                        )
+                        .child(div().text_sm().text_color(muted_fg).child("Settings"))
                         .on_click(cx.listener(|_, _, _, cx| {
                             cx.emit(SettingsRequested);
-                        }))
-                )
+                        })),
+                ),
         )
 }

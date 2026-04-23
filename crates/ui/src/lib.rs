@@ -15,30 +15,30 @@ mod event;
 mod global_state;
 mod icon;
 mod index_path;
-pub mod utils;
-pub mod states;
 #[cfg(any(feature = "inspector", debug_assertions))]
 mod inspector;
 mod kbd;
 pub mod menu;
 mod root;
+pub mod states;
 mod styled;
 mod time;
 mod title_bar;
+pub mod utils;
 
 // Compatibility types for legacy GPUI APIs that were removed upstream.
 pub mod gpu_compat;
 
 // Re-export compatibility types at crate root so other crates can import them
 // using `ui::GpuTextureHandle`/`ui::GpuCanvasSource` just like before.
-pub use gpu_compat::{GpuTextureHandle, GpuCanvasSource, gpu_canvas as gpu_canvas_element};
-mod virtual_list;
-mod window_border;
-mod window_wrapper;
+pub use gpu_compat::{gpu_canvas as gpu_canvas_element, GpuCanvasSource, GpuTextureHandle};
 pub mod component; // Component-based UI architecture
 pub mod registry;
 pub mod selection;
 pub mod setting;
+mod virtual_list;
+mod window_border;
+mod window_wrapper;
 
 pub(crate) mod actions;
 
@@ -51,16 +51,14 @@ pub mod breadcrumb;
 pub mod button;
 pub mod chart;
 pub mod checkbox;
-pub mod download_item;
-pub mod download_manager;
-pub mod speed_graph;
 pub mod clipboard;
 pub mod code_editor; // Studio-quality virtualized code editor
 pub mod color_picker;
-pub mod replication; // Multi-user editing and state replication
 pub mod description_list;
 pub mod divider;
 pub mod dock;
+pub mod download_item;
+pub mod download_manager;
 pub mod draggable_tabs;
 pub mod drawer;
 pub mod dropdown;
@@ -82,11 +80,13 @@ pub mod plot;
 pub mod popover;
 pub mod progress;
 pub mod radio;
+pub mod replication; // Multi-user editing and state replication
 pub mod resizable;
 pub mod scroll;
 pub mod sidebar;
 pub mod skeleton;
 pub mod slider;
+pub mod speed_graph;
 pub mod spinner;
 pub mod switch;
 pub mod tab;
@@ -99,7 +99,7 @@ pub mod tooltip;
 pub mod webview;
 pub mod workspace;
 
-use gpui::{ App, SharedString };
+use gpui::{App, SharedString};
 // re-export
 #[cfg(feature = "webview")]
 pub use wry;
@@ -107,45 +107,42 @@ pub use wry;
 pub use crate::Disableable;
 pub use event::InteractiveElementExt;
 pub use index_path::IndexPath;
-pub use selection::{IndexPathSelection, IndexSelection, Selection};
 #[cfg(any(feature = "inspector", debug_assertions))]
 pub use inspector::*;
-pub use menu::{ context_menu, popup_menu, AppMenusCache };
-pub use root::{ ContextModal, Root };
+pub use menu::{context_menu, popup_menu, AppMenusCache};
+pub use root::{ContextModal, Root};
+pub use selection::{IndexPathSelection, IndexSelection, Selection};
 pub use styled::*;
 pub use time::*;
 pub use title_bar::*;
-pub use virtual_list::{ h_virtual_list, v_virtual_list, VirtualList, VirtualListScrollHandle };
-pub use window_border::{ window_border, window_paddings, WindowBorder };
-pub use window_wrapper::{ drawer_window, drawer_window_entity, drawer_window_view };
+pub use virtual_list::{h_virtual_list, v_virtual_list, VirtualList, VirtualListScrollHandle};
+pub use window_border::{window_border, window_paddings, WindowBorder};
+pub use window_wrapper::{drawer_window, drawer_window_entity, drawer_window_view};
 
 // Re-export common form components
-pub use form::{ SettingCard, SettingRow };
+pub use form::{SettingCard, SettingRow};
 
+pub use accordion::{Accordion, AccordionItem, CollapsibleSection};
+pub use component::*;
+pub use hierarchical_tree::{
+    render_tree_category, render_tree_folder, render_tree_item, tree_colors,
+};
 pub use icon::*;
 pub use kbd::*;
 pub use theme::*;
-pub use component::*;
-pub use accordion::{Accordion, AccordionItem, CollapsibleSection};
-pub use hierarchical_tree::{
-    render_tree_folder,
-    render_tree_category,
-    render_tree_item,
-    tree_colors,
-};
 
 // Re-export engine types for UI crates
 pub use assets::Assets;
-pub use graph::*;
 pub use compiler::*;
-pub use settings::*;
+pub use graph::*;
 pub use setting::*;
+pub use settings::*;
 pub use themes::*;
 
 // Download manager components
-pub use download_item::{DownloadItem, DownloadItemStatus, reveal_in_file_manager};
+pub use download_item::{reveal_in_file_manager, DownloadItem, DownloadItemStatus};
 pub use download_manager::{DownloadEntry, DownloadManagerDrawer};
-pub use speed_graph::{SpeedGraph, fmt_speed, fmt_bytes};
+pub use speed_graph::{fmt_bytes, fmt_speed, SpeedGraph};
 pub use states::empty_state_placeholder;
 
 // Engine constants (will be set by engine binary)

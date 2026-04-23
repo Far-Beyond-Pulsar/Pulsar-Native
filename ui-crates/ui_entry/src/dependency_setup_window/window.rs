@@ -27,7 +27,10 @@ impl DependencySetupWindow {
         Self {
             setup_tasks: vec![
                 SetupTask::new("Checking Rust", "Looking for an existing toolchain"),
-                SetupTask::new("Installing Rust", "Running rustup — handles toolchains, build tools, and SDKs for this platform"),
+                SetupTask::new(
+                    "Installing Rust",
+                    "Running rustup — handles toolchains, build tools, and SDKs for this platform",
+                ),
             ],
             progress: 0.0,
             is_running: false,
@@ -62,11 +65,14 @@ impl DependencySetupWindow {
             cx.update(|cx| {
                 if let Some(v) = view.upgrade() {
                     let _ = v.update(cx, |this, cx| {
-                        this.update_task(0, if rust_ok {
-                            TaskStatus::Completed
-                        } else {
-                            TaskStatus::Failed("Not found".to_string())
-                        });
+                        this.update_task(
+                            0,
+                            if rust_ok {
+                                TaskStatus::Completed
+                            } else {
+                                TaskStatus::Failed("Not found".to_string())
+                            },
+                        );
                         this.progress = 0.5;
                         cx.notify();
                     });
@@ -107,11 +113,14 @@ impl DependencySetupWindow {
             cx.update(|cx| {
                 if let Some(v) = view.upgrade() {
                     let _ = v.update(cx, |this, cx| {
-                        this.update_task(1, if install_ok {
-                            TaskStatus::Completed
-                        } else {
-                            TaskStatus::Failed("rustup install failed".to_string())
-                        });
+                        this.update_task(
+                            1,
+                            if install_ok {
+                                TaskStatus::Completed
+                            } else {
+                                TaskStatus::Failed("rustup install failed".to_string())
+                            },
+                        );
                         this.progress = 1.0;
                         this.setup_complete = install_ok;
                         this.is_running = false;
@@ -122,7 +131,8 @@ impl DependencySetupWindow {
                     });
                 }
             });
-        }).detach();
+        })
+        .detach();
     }
 
     fn update_task(&mut self, index: usize, status: TaskStatus) {
@@ -133,10 +143,10 @@ impl DependencySetupWindow {
 
     fn render_task(&self, task: &SetupTask, theme: &ui::Theme) -> impl IntoElement {
         let (icon_name, icon_color) = match &task.status {
-            TaskStatus::Pending    => (IconName::Circle,          theme.muted_foreground),
-            TaskStatus::InProgress => (IconName::Loader,          theme.accent),
-            TaskStatus::Completed  => (IconName::Check,           theme.success_foreground),
-            TaskStatus::Failed(_)  => (IconName::WarningTriangle, gpui::red()),
+            TaskStatus::Pending => (IconName::Circle, theme.muted_foreground),
+            TaskStatus::InProgress => (IconName::Loader, theme.accent),
+            TaskStatus::Completed => (IconName::Check, theme.success_foreground),
+            TaskStatus::Failed(_) => (IconName::WarningTriangle, gpui::red()),
         };
 
         h_flex()
@@ -225,10 +235,9 @@ impl Render for DependencySetupWindow {
                                     ),
                             )
                             .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(theme.muted_foreground)
-                                    .child("Installs Rust and all platform requirements via rustup"),
+                                div().text_sm().text_color(theme.muted_foreground).child(
+                                    "Installs Rust and all platform requirements via rustup",
+                                ),
                             ),
                     )
                     .child(
@@ -284,16 +293,14 @@ impl Render for DependencySetupWindow {
                                     .ghost()
                                     .on_click(cx.listener(|_, _, _, _| {}))
                             }))
-                            .children(
-                                (!self.is_running && !self.setup_complete).then(|| {
-                                    Button::new("start")
-                                        .label("Start Setup")
-                                        .primary()
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.start_setup(cx);
-                                        }))
-                                }),
-                            )
+                            .children((!self.is_running && !self.setup_complete).then(|| {
+                                Button::new("start")
+                                    .label("Start Setup")
+                                    .primary()
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.start_setup(cx);
+                                    }))
+                            }))
                             .children(self.is_running.then(|| {
                                 div()
                                     .text_sm()

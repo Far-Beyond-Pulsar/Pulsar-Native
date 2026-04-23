@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use gpui::{prelude::*, *};
-use ui::{ActiveTheme, ContextModal, scroll::{Scrollbar, ScrollbarState}};
+use ui::{
+    ActiveTheme, ContextModal,
+    scroll::{Scrollbar, ScrollbarState},
+};
 
 /// A single gallery image entry.
 pub struct GalleryImage {
@@ -24,16 +27,19 @@ pub struct GalleryHero {
 
 impl GalleryHero {
     pub fn new(images: Vec<GalleryImage>, selected_idx: usize) -> Self {
-        Self { images, selected_idx }
+        Self {
+            images,
+            selected_idx,
+        }
     }
 }
 
 impl RenderOnce for GalleryHero {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let border = cx.theme().border;
-        let bg     = cx.theme().sidebar;
-        let muted  = cx.theme().muted_foreground;
-        let idx    = self.selected_idx.min(self.images.len().saturating_sub(1));
+        let bg = cx.theme().sidebar;
+        let muted = cx.theme().muted_foreground;
+        let idx = self.selected_idx.min(self.images.len().saturating_sub(1));
         let image_arc = self.images.get(idx).and_then(|i| i.image.clone());
 
         div()
@@ -65,20 +71,14 @@ impl RenderOnce for GalleryHero {
                                 let arc = arc_modal.clone();
                                 window.open_modal(cx, move |modal, _w, _cx| {
                                     let arc = arc.clone();
-                                    modal
-                                        .width(px(1080.0))
-                                        .show_close(true)
-                                        .child(
-                                            div()
-                                                .w(px(1040.0))
-                                                .h(px(585.0))
-                                                .child(
-                                                    img(gpui::ImageSource::Render(arc))
-                                                        .w_full()
-                                                        .h_full()
-                                                        .object_fit(gpui::ObjectFit::Contain),
-                                                ),
-                                        )
+                                    modal.width(px(1080.0)).show_close(true).child(
+                                        div().w(px(1040.0)).h(px(585.0)).child(
+                                            img(gpui::ImageSource::Render(arc))
+                                                .w_full()
+                                                .h_full()
+                                                .object_fit(gpui::ObjectFit::Contain),
+                                        ),
+                                    )
                                 });
                             }),
                     )
@@ -111,16 +111,22 @@ impl GalleryThumbnailRow {
         scroll_state: ScrollbarState,
         on_select: Vec<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
     ) -> Self {
-        Self { images, selected_idx, scroll_handle, scroll_state, on_select }
+        Self {
+            images,
+            selected_idx,
+            scroll_handle,
+            scroll_state,
+            on_select,
+        }
     }
 }
 
 impl RenderOnce for GalleryThumbnailRow {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let border   = cx.theme().border;
-        let accent   = cx.theme().accent;
-        let card_bg  = cx.theme().sidebar;
-        let muted    = cx.theme().muted_foreground;
+        let border = cx.theme().border;
+        let accent = cx.theme().accent;
+        let card_bg = cx.theme().sidebar;
+        let muted = cx.theme().muted_foreground;
         let selected = self.selected_idx;
 
         div()
@@ -153,7 +159,7 @@ impl RenderOnce for GalleryThumbnailRow {
                                     .rounded_md()
                                     .overflow_hidden()
                                     .bg(card_bg)
-                                    .when(is_sel,  |el| el.border_2())
+                                    .when(is_sel, |el| el.border_2())
                                     .when(!is_sel, |el| el.border_1())
                                     .border_color(if is_sel { accent } else { border })
                                     .cursor_pointer()
@@ -166,15 +172,12 @@ impl RenderOnce for GalleryThumbnailRow {
                                                     .object_fit(gpui::ObjectFit::Cover),
                                             )
                                         } else {
-                                            el.flex()
-                                                .items_center()
-                                                .justify_center()
-                                                .child(
-                                                    div()
-                                                        .text_xs()
-                                                        .text_color(muted)
-                                                        .child(format!("{}", i + 1)),
-                                                )
+                                            el.flex().items_center().justify_center().child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(muted)
+                                                    .child(format!("{}", i + 1)),
+                                            )
                                         }
                                     })
                                     .on_click(on_click)
@@ -182,11 +185,9 @@ impl RenderOnce for GalleryThumbnailRow {
                             }),
                     ),
             )
-            .child(
-                div()
-                    .absolute()
-                    .inset_0()
-                    .child(Scrollbar::horizontal(&self.scroll_state, &self.scroll_handle)),
-            )
+            .child(div().absolute().inset_0().child(Scrollbar::horizontal(
+                &self.scroll_state,
+                &self.scroll_handle,
+            )))
     }
 }
