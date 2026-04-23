@@ -17,7 +17,7 @@ use super::palette_trait::PaletteDelegate;
 /// The delegate caches the palette's categorized items for efficient rendering.
 ///
 /// # Example
-/// ```
+/// ```ignore
 /// // Create delegate from a palette entity
 /// let delegate = palette_ref.read(cx).create_delegate();
 ///

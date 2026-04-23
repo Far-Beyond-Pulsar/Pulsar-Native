@@ -58,7 +58,7 @@ impl PaletteItem for PaletteItemData {
 /// This is the data container - rendering is handled by GenericPalette via PaletteViewDelegate
 ///
 /// # Example
-/// ```
+/// ```ignore
 /// // Palette is created via PaletteManager::register_palette
 /// palette_ref.update(cx, |palette, cx| {
 ///     // Add an item

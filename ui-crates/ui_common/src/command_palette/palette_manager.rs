@@ -27,7 +27,7 @@ struct PaletteEntry {
 /// and the registry provides ID-based lookup for palette management.
 ///
 /// # Example
-/// ```
+/// ```ignore
 /// // Initialize the global registry
 /// PaletteManager::init(cx);
 ///
