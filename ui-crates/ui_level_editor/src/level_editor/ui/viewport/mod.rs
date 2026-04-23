@@ -15,7 +15,7 @@ pub mod performance;
 pub mod platform;
 
 use std::cell::RefCell;
-use std::collections::{HashSet, VecDeque};
+use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -25,11 +25,10 @@ use engine_backend::GameThread;
 use gpui::*;
 use helio_viewport::HelioViewport;
 use ui::Sizable;
-use ui::{h_flex, v_flex, ActiveTheme, StyledExt};
+use ui::{v_flex, ActiveTheme};
 use ui_common::ViewportControls;
 
-use super::actions::*;
-use super::state::{CameraMode, LevelEditorState};
+use super::state::LevelEditorState;
 use crate::level_editor::ui::viewport::components::camera_selector::CameraSpeedControl;
 use components::camera_selector::render_camera_selector;
 use components::gpu_pipeline_overlay::render_gpu_pipeline_overlay;
@@ -129,7 +128,7 @@ impl ViewportPanel {
     }
 
     /// Render the viewport panel.
-    pub fn render<V: 'static>(
+    pub fn render<V>(
         &mut self,
         state: &mut LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
@@ -139,7 +138,7 @@ impl ViewportPanel {
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
-        V: EventEmitter<ui::dock::PanelEvent> + Render,
+        V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
         // Spawn dedicated input thread (once)
         self.spawn_input_thread_once(gpu_engine);
@@ -421,7 +420,7 @@ impl ViewportPanel {
     }
 
     /// Build the complete viewport UI.
-    fn build_viewport_ui<V: 'static>(
+    fn build_viewport_ui<V>(
         &mut self,
         state: &mut LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
@@ -431,7 +430,7 @@ impl ViewportPanel {
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
-        V: EventEmitter<ui::dock::PanelEvent> + Render,
+        V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
         let viewport_hovered = self.viewport_hovered.clone();
         let element_bounds = self.element_bounds.clone();

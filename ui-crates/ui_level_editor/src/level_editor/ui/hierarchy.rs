@@ -3,7 +3,7 @@ use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex,
+    StyledExt,
     hierarchical_tree::tree_colors,
     scroll::ScrollbarAxis,
     v_flex, ActiveTheme, Icon, IconName, Sizable,

@@ -396,7 +396,7 @@ impl Render for ViewportPanelWrapper {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mut state = self.state.write();
         self.viewport_panel.render(
-            &mut *state,
+            &mut state,
             self.state.clone(),
             self.fps_graph_is_line.clone(),
             &self.gpu_engine,
