@@ -147,12 +147,12 @@ where
 /// # Arguments
 /// * `children` - The content elements to display in the toolbar
 /// * `cx` - The window context
-pub fn simple_floating_toolbar<V: 'static>(
+pub fn simple_floating_toolbar<V>(
     children: impl IntoElement,
     cx: &Context<V>,
 ) -> impl IntoElement
 where
-    V: Render,
+    V: 'static + Render,
 {
     h_flex()
         .gap_2()
