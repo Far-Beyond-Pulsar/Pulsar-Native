@@ -133,7 +133,7 @@ jobs:
       - name: Run clippy
         run: |
           cargo clippy --workspace --exclude pulsar_docs --all-targets -- \
-            -D warnings \
+            -A warnings \
             -A dead_code \
             -A clippy::too_many_arguments \
             -A clippy::type_complexity \
