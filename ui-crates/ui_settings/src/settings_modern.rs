@@ -181,7 +181,6 @@ impl ModernSettingsScreen {
                     min,
                     max,
                     step,
-                    ..Default::default()
                 };
                 SettingItem::new(
                     label,

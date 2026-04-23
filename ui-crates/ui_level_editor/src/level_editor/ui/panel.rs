@@ -20,7 +20,7 @@ use ui_common::StatusBar;
 use super::actions::*;
 use super::{toolbar, CameraMode, LevelEditorState, ToolbarPanel, TransformTool, ViewportPanel};
 use crate::level_editor::scene_database::{
-    LightType, MeshType, ObjectType, SceneDatabase, SceneObjectData, Transform,
+    LightType, MeshType, ObjectType, SceneObjectData, Transform,
 };
 use engine_backend::scene::SceneDb;
 
@@ -125,7 +125,6 @@ impl LevelEditorPanel {
                 let handle = engine_state::TypedRendererHandle::helio(0, gpu_engine.clone());
                 engine_context.renderers.register(0, handle);
             }
-        } else {
         }
 
         // Build the level editor state with the default scene populated into the shared SceneDb.

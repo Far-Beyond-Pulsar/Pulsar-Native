@@ -5,7 +5,7 @@
 // Initialize translations
 rust_i18n::i18n!("locales", fallback = "en");
 
-use gpui::{App, AppContext, Window};
+use gpui::AppContext;
 
 mod level_editor;
 

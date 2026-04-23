@@ -4,7 +4,7 @@
 //! color (RGBA), metallic, and roughness values.
 
 use gpui::{prelude::*, *};
-use ui::{h_flex, v_flex, ActiveTheme, IconName, Sizable, StyledExt};
+use ui::{h_flex, v_flex, ActiveTheme, IconName, Sizable};
 
 use super::bound_field::F32BoundField;
 use crate::level_editor::scene_database::{Component, SceneDatabase};

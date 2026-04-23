@@ -3,14 +3,12 @@ use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
-    context_menu::ContextMenuExt,
     h_flex,
-    hierarchical_tree::{render_tree_folder, tree_colors},
+    hierarchical_tree::tree_colors,
     scroll::ScrollbarAxis,
     v_flex, ActiveTheme, Icon, IconName, Sizable, StyledExt,
 };
 
-use super::actions::*;
 use super::state::{LevelEditorState, SceneObject};
 use crate::level_editor::scene_database::ObjectType;
 
@@ -22,14 +20,14 @@ impl HierarchyPanel {
         Self
     }
 
-    pub fn render<V: 'static>(
+    pub fn render<V>(
         &self,
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
-        V: EventEmitter<PanelEvent> + Render,
+        V: 'static + EventEmitter<PanelEvent> + Render,
     {
         use super::state::HierarchyDragState;
         let is_drag_in_progress = !matches!(&state.hierarchy_drag_state, HierarchyDragState::None);
@@ -223,7 +221,7 @@ impl HierarchyPanel {
             )
     }
 
-    fn render_object_tree_item<V: 'static>(
+    fn render_object_tree_item<V>(
         object: &SceneObject,
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
@@ -231,7 +229,7 @@ impl HierarchyPanel {
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
-        V: EventEmitter<PanelEvent> + Render,
+        V: 'static + EventEmitter<PanelEvent> + Render,
     {
         let is_selected = state.selected_object().as_ref() == Some(&object.id);
         let has_children = !object.children.is_empty();

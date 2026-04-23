@@ -4,7 +4,7 @@
 //! at the top of the properties panel.
 
 use gpui::{prelude::*, *};
-use ui::{checkbox::Checkbox, h_flex, v_flex, ActiveTheme, IconName, Sizable, StyledExt};
+use ui::{h_flex, v_flex, ActiveTheme};
 
 use super::bound_field::{BoolBoundField, StringBoundField};
 use crate::level_editor::scene_database::SceneDatabase;

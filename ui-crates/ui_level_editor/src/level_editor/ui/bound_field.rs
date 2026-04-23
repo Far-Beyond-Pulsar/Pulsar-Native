@@ -7,15 +7,15 @@
 use gpui::{prelude::*, *};
 use std::sync::Arc;
 use ui::{
-    button::{Button, ButtonVariants as _},
+    button::ButtonVariants as _,
     checkbox::Checkbox,
     h_flex,
     input::{InputEvent, InputState, NumberInput, NumberInputEvent, StepAction, TextInput},
-    v_flex, ActiveTheme, IconName, Sizable, StyledExt,
+    v_flex, ActiveTheme, Sizable,
 };
 
 use super::field_bindings::{BoolFieldBinding, F32FieldBinding, FieldBinding, StringFieldBinding};
-use crate::level_editor::scene_database::{ObjectId, SceneDatabase};
+use crate::level_editor::scene_database::SceneDatabase;
 
 // ============================================================================
 // F32 Bound Field - For numeric fields

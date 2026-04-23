@@ -3,7 +3,7 @@
 use gpui::{prelude::*, *};
 use std::collections::HashMap;
 use std::sync::Arc;
-use ui::{h_flex, v_flex, ActiveTheme, Sizable, StyledExt};
+use ui::{h_flex, v_flex, ActiveTheme};
 
 use crate::level_editor::scene_database::SceneDatabase;
 use engine_backend::scene::ComponentFieldMetadata;

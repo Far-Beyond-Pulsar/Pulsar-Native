@@ -3,7 +3,7 @@ use rust_i18n::t;
 use std::collections::HashSet;
 use std::sync::Arc;
 use ui::{
-    button::{Button, ButtonVariants as _},
+    button::Button,
     h_flex,
     input::{InputState, TextInput},
     scroll::ScrollbarAxis,
