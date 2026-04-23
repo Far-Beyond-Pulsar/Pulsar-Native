@@ -1,5 +1,4 @@
 use chrono::Datelike;
-use gpui::prelude::FluentBuilder;
 use gpui::*;
 use std::sync::Arc;
 use ui::{
