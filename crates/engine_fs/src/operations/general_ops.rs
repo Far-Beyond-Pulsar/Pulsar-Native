@@ -37,11 +37,7 @@ impl GeneralOperations {
         // Determine file path
         let dir = custom_dir.unwrap_or(kind.default_directory());
         let extension = kind.extension();
-        let file_name = if extension.contains('.') {
-            format!("{}.{}", name, extension)
-        } else {
-            format!("{}.{}", name, extension)
-        };
+        let file_name = format!("{}.{}", name, extension);
 
         let file_path = self.project_root.join(dir).join(&file_name);
 
@@ -71,7 +67,7 @@ impl GeneralOperations {
     }
 
     /// Register an asset in the type database
-    fn register_asset(&self, file_path: &PathBuf, kind: AssetKind) -> Result<()> {
+    fn register_asset(&self, file_path: &std::path::Path, kind: AssetKind) -> Result<()> {
         // Get the file name to use as the type name
         let name = file_path
             .file_stem()

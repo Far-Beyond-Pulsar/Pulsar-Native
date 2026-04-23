@@ -1,5 +1,5 @@
 use crate::doc_source::{DocSource, make_search_input};
-use gpui::{prelude::*, *};
+use gpui::*;
 use pulsar_docs::{CrateIndex, get_crate_index, get_doc_content, list_crates};
 use std::collections::HashSet;
 use ui::input::InputState;
@@ -142,9 +142,7 @@ impl EngineDocsState {
                         self.expanded_paths.insert(crate_name.clone());
                     }
 
-                    if (parent_expanded || (is_searching && matches))
-                        && (!is_searching || matches || parent_expanded)
-                    {
+                    if parent_expanded || (is_searching && matches) {
                         self.flat_visible_items.push(idx);
                     }
                 }
@@ -163,8 +161,7 @@ impl EngineDocsState {
                         self.expanded_paths.insert(section_path.clone());
                     }
 
-                    if (section_expanded || (is_searching && matches)) && (!is_searching || matches)
-                    {
+                    if section_expanded || (is_searching && matches) {
                         self.flat_visible_items.push(idx);
                     }
                 }

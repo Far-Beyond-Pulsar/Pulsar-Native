@@ -2,7 +2,6 @@
 
 use crate::caller_tracking::{refresh_snapshot, CallerRow, CALLER_SNAPSHOT};
 use crate::tracking_allocator::{disable_tracking, enable_tracking, is_tracking_active};
-use gpui::prelude::FluentBuilder;
 use gpui::*;
 use std::rc::Rc;
 use ui::{

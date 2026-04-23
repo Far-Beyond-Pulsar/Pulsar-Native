@@ -1,5 +1,5 @@
 use crate::doc_source::{DocSource, make_search_input};
-use gpui::{prelude::*, *};
+use gpui::*;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use ui::input::InputState;
@@ -235,8 +235,7 @@ impl ProjectDocsState {
                         self.expanded_paths.insert(category.clone());
                     }
 
-                    if (parent_expanded || (is_searching && matches)) && (!is_searching || matches)
-                    {
+                    if parent_expanded || (is_searching && matches) {
                         self.flat_visible_items.push(idx);
                     }
                 }

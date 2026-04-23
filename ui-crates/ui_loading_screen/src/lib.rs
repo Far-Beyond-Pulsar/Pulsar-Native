@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use ui::{ActiveTheme, Colorize};
+use ui::ActiveTheme;
 
 static SPLASH_PNG: &[u8] = include_bytes!("../../../assets/images/Splash.png");
 
