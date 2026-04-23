@@ -1,6 +1,5 @@
 use super::components::*;
 use crate::settings::{SelectThemeAction, SettingsScreen};
-use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use ui::{
     button::{Button, ButtonVariants as _},

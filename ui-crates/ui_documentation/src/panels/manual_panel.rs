@@ -20,7 +20,7 @@ impl ManualDocsPanel {
         Self
     }
 
-    pub fn render<V: 'static>(
+    pub fn render<V>(
         &self,
         state: &ManualDocsState,
         sidebar_resizable: Entity<ResizableState>,
@@ -31,7 +31,7 @@ impl ManualDocsPanel {
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
-        V: Render,
+        V: 'static + Render,
     {
         let visible_files: Vec<_> = state
             .visible_entries
@@ -72,14 +72,14 @@ impl ManualDocsPanel {
             )))
     }
 
-    fn render_sidebar<V: 'static>(
+    fn render_sidebar<V>(
         file_entries: Vec<AnyElement>,
         theme: &ui::ThemeColor,
         cx: &mut Context<V>,
         on_new_file: impl Fn(&mut V, &gpui::ClickEvent, &mut Window, &mut Context<V>) + 'static,
     ) -> impl IntoElement
     where
-        V: Render,
+        V: 'static + Render,
     {
         let file_count = file_entries.len();
 
@@ -146,7 +146,7 @@ impl ManualDocsPanel {
             )
     }
 
-    fn render_editor_area<V: 'static>(
+    fn render_editor_area<V>(
         state: &ManualDocsState,
         has_selection: bool,
         file_name: Option<String>,
@@ -157,7 +157,7 @@ impl ManualDocsPanel {
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
-        V: Render,
+        V: 'static + Render,
     {
         let on_editor_mode = on_mode_change.clone();
         let on_preview_mode = on_mode_change.clone();
@@ -298,14 +298,14 @@ impl ManualDocsPanel {
             .child(Self::render_view_mode_content(state, window, cx, theme))
     }
 
-    fn render_view_mode_content<V: 'static>(
+    fn render_view_mode_content<V>(
         state: &ManualDocsState,
         window: &mut Window,
         cx: &mut Context<V>,
         theme: &ui::ThemeColor,
     ) -> impl IntoElement
     where
-        V: Render,
+        V: 'static + Render,
     {
         let view_mode = state.view_mode;
         let markdown = state.markdown_preview.clone();
@@ -398,13 +398,13 @@ impl ManualDocsPanel {
         })
     }
 
-    fn render_file_entry<V: 'static>(
+    fn render_file_entry<V>(
         entry: &FileEntry,
         state: &ManualDocsState,
         cx: &mut Context<V>,
     ) -> AnyElement
     where
-        V: Render,
+        V: 'static + Render,
     {
         let is_selected = state.selected_file.as_ref() == Some(&entry.path);
         let is_expanded = state.expanded_folders.contains(&entry.path);

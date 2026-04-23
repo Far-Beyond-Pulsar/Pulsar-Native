@@ -2,8 +2,8 @@
 
 impl FileManagerDrawer {
     /// Handle dropping files onto a folder using GPUI's drag and drop API
-    pub fn handle_drop_on_folder_new(&mut self, target_folder: &PathBuf, source_paths: &[PathBuf], cx: &mut Context<Self>) {
-        let target_folder = target_folder.clone();
+    pub fn handle_drop_on_folder_new(&mut self, target_folder: &Path, source_paths: &[PathBuf], cx: &mut Context<Self>) {
+        let target_folder = target_folder.to_path_buf();
         let source_paths = source_paths.to_vec();
 
         // Don't allow dropping onto itself
@@ -51,8 +51,8 @@ impl FileManagerDrawer {
     }
 
     /// Start a timer to navigate to a breadcrumb path after 1 second of hovering
-    pub fn start_breadcrumb_hover_timer(&mut self, path: &PathBuf, cx: &mut Context<Self>) {
-        let path = path.clone();
+    pub fn start_breadcrumb_hover_timer(&mut self, path: &Path, cx: &mut Context<Self>) {
+        let path = path.to_path_buf();
 
         // If we're already hovering this path, don't restart the timer
         if self.breadcrumb_hover_path.as_ref() == Some(&path) {

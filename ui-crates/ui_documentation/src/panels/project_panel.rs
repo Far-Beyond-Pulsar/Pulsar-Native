@@ -17,7 +17,7 @@ impl ProjectDocsPanel {
         Self
     }
 
-    pub fn render<V: 'static>(
+    pub fn render<V>(
         &self,
         state: &ProjectDocsState,
         sidebar_resizable: Entity<ResizableState>,
@@ -27,7 +27,7 @@ impl ProjectDocsPanel {
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
-        V: Render,
+        V: 'static + Render,
     {
         let markdown = state.markdown_content.clone();
 
@@ -168,7 +168,7 @@ impl ProjectDocsPanel {
         )
     }
 
-    fn render_tree_node<V: 'static>(
+    fn render_tree_node<V>(
         node: &ProjectTreeNode,
         state: &ProjectDocsState,
         on_toggle_expansion: impl Fn(&mut V, String, &mut Window, &mut Context<V>) + 'static + Clone,
@@ -176,7 +176,7 @@ impl ProjectDocsPanel {
         cx: &mut Context<V>,
     ) -> AnyElement
     where
-        V: Render,
+        V: 'static + Render,
     {
         match node {
             ProjectTreeNode::Category { name, depth, .. } => {

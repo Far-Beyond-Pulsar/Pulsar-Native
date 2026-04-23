@@ -357,7 +357,6 @@ impl TraceData {
                 }
                 entity_time += entity_dur;
             }
-            main_time += update_dur;
 
             // === THREAD 2: RENDER THREAD ===
             let render_start = frame_start + rng.gen_range(500_000..2_000_000);

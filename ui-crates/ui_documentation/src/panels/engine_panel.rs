@@ -17,7 +17,7 @@ impl EngineDocsPanel {
         Self
     }
 
-    pub fn render<V: 'static>(
+    pub fn render<V>(
         &self,
         state: &EngineDocsState,
         sidebar_resizable: Entity<ResizableState>,
@@ -27,7 +27,7 @@ impl EngineDocsPanel {
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
-        V: Render,
+        V: 'static + Render,
     {
         let breadcrumb_parts = Self::render_breadcrumbs(state);
         let markdown = state.markdown_content.clone();
@@ -238,7 +238,7 @@ impl EngineDocsPanel {
         Some(parts)
     }
 
-    fn render_tree_node<V: 'static>(
+    fn render_tree_node<V>(
         node: &TreeNode,
         state: &EngineDocsState,
         on_toggle_expansion: impl Fn(&mut V, String, &mut Window, &mut Context<V>) + 'static + Clone,
@@ -246,7 +246,7 @@ impl EngineDocsPanel {
         cx: &mut Context<V>,
     ) -> AnyElement
     where
-        V: Render,
+        V: 'static + Render,
     {
         match node {
             TreeNode::Crate { name, depth, .. } => {

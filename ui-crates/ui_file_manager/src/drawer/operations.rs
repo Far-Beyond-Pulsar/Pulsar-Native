@@ -180,7 +180,7 @@ impl FileOperations {
     pub fn delete_item(&self, item_path: &Path) -> Result<()> {
         // Try engine_fs first for tracked assets
         if let Some(ref fs) = self.engine_fs {
-            if let Ok(_) = fs.operations().delete_asset(&item_path.to_path_buf()) {
+            if fs.operations().delete_asset(&item_path.to_path_buf()).is_ok() {
                 return Ok(());
             }
         }
@@ -249,9 +249,9 @@ impl FileOperations {
 
         // Try engine_fs first for tracked assets
         if let Some(ref fs) = self.engine_fs {
-            if let Ok(_) = fs
+            if fs
                 .operations()
-                .move_asset(&old_path.to_path_buf(), &new_path)
+                .move_asset(&old_path.to_path_buf(), &new_path).is_ok()
             {
                 return Ok(new_path);
             }
@@ -289,7 +289,7 @@ impl FileOperations {
 
                 // Try engine_fs first
                 if let Some(ref fs) = self.engine_fs {
-                    if let Ok(_) = fs.operations().move_asset(source_path, &target_path) {
+                    if fs.operations().move_asset(source_path, &target_path).is_ok() {
                         continue;
                     }
                 }
