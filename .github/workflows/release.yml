@@ -718,6 +718,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           TAG="v${VERSION}"
+          OWNER_LC=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
 
           # Fetch the current draft body
           CURRENT_BODY=$(gh release view "$TAG" --repo "$REPO" --json body -q .body)
@@ -729,14 +730,14 @@ jobs:
           Pull the sidecar images for this release from the GitHub Container Registry:
 
           \`\`\`bash
-          docker pull ghcr.io/${OWNER}/pulsar-multiedit:${TAG}
-          docker pull ghcr.io/${OWNER}/pulsar-host:${TAG}
+          docker pull ghcr.io/${OWNER_LC}/pulsar-multiedit:${TAG}
+          docker pull ghcr.io/${OWNER_LC}/pulsar-host:${TAG}
           \`\`\`
 
           | Image | Package page | Tags |
           |---|---|---|
-          | \`pulsar-multiedit\` | [ghcr.io/${OWNER}/pulsar-multiedit](https://github.com/${OWNER}/Pulsar-Native/pkgs/container/pulsar-multiedit) | \`${TAG}\`, \`latest\` |
-          | \`pulsar-host\` | [ghcr.io/${OWNER}/pulsar-host](https://github.com/${OWNER}/Pulsar-Native/pkgs/container/pulsar-host) | \`${TAG}\`, \`latest\` |
+          | \`pulsar-multiedit\` | [ghcr.io/${OWNER_LC}/pulsar-multiedit](https://github.com/${OWNER_LC}/Pulsar-Native/pkgs/container/pulsar-multiedit) | \`${TAG}\`, \`latest\` |
+          | \`pulsar-host\` | [ghcr.io/${OWNER_LC}/pulsar-host](https://github.com/${OWNER_LC}/Pulsar-Native/pkgs/container/pulsar-host) | \`${TAG}\`, \`latest\` |
 
           ---
 
