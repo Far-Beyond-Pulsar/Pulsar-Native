@@ -203,9 +203,14 @@ impl GameObject {
     }
 
     /// Update object position based on velocity and delta time
-    pub fn update(&mut self, _delta_time: f32) {
-        // Static objects - no movement or rotation
-        // Objects maintain their initial transform
+    pub fn update(&mut self, delta_time: f32) {
+        if !self.active {
+            return;
+        }
+
+        self.position[0] += self.velocity[0] * delta_time;
+        self.position[1] += self.velocity[1] * delta_time;
+        self.position[2] += self.velocity[2] * delta_time;
     }
 }
 
