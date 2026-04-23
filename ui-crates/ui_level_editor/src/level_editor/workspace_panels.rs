@@ -319,7 +319,7 @@ impl Render for PropertiesPanelWrapper {
             .size_full()
             .bg(cx.theme().sidebar)
             .child(self.properties.render(
-                &*self.state.read(),
+                &self.state.read(),
                 self.state.clone(),
                 &self.editing_property,
                 &self.property_input,
