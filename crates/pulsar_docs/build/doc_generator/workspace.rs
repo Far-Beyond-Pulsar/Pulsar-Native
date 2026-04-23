@@ -101,8 +101,8 @@ fn expand_glob(workspace_root: &Path, pattern: &str) -> Result<Vec<PathBuf>, Box
     let mut dirs = Vec::new();
 
     // Simple glob handling for patterns like "crates/*" or "ui-crates/*"
-    if pattern.ends_with("/*") {
-        let base_dir = workspace_root.join(&pattern[..pattern.len() - 2]);
+    if let Some(base) = pattern.strip_suffix("/*") {
+        let base_dir = workspace_root.join(base);
 
         if base_dir.exists() {
             for entry in std::fs::read_dir(base_dir)? {

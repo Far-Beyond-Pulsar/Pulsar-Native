@@ -538,7 +538,6 @@ fn extract_doc_comments(attrs: &[Attribute]) -> Option<String> {
 fn process_doc_comment_lines(lines: &[String]) -> String {
     let mut result = Vec::new();
     let mut in_code_block = false;
-    let mut code_block_indent = 0;
 
     for line in lines {
         // Check if this line starts or ends a code block
@@ -547,11 +546,6 @@ fn process_doc_comment_lines(lines: &[String]) -> String {
         if trimmed.starts_with("```") {
             in_code_block = !in_code_block;
             result.push(line.to_string());
-
-            // Track base indentation for code blocks
-            if in_code_block {
-                code_block_indent = line.len() - line.trim_start().len();
-            }
         } else if in_code_block {
             // Inside code block: preserve all whitespace exactly as-is
             result.push(line.to_string());

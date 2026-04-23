@@ -1,7 +1,7 @@
-/// Pulsar Documentation Generator
-///
-/// This build script automatically generates documentation at build time
-/// by parsing workspace crates and creating markdown/JSON files.
+// Pulsar Documentation Generator
+//
+// This build script automatically generates documentation at build time
+// by parsing workspace crates and creating markdown/JSON files.
 
 #[path = "build/doc_generator/mod.rs"]
 mod doc_generator;
