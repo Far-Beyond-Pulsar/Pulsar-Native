@@ -90,11 +90,10 @@ fn camera_mode_buttons(
 }
 
 /// Render camera speed controls.
-fn camera_speed_controls<S, V: 'static>(input_state: Arc<S>, cx: &Context<V>) -> impl IntoElement
+fn camera_speed_controls<S, V>(input_state: Arc<S>, cx: &Context<V>) -> impl IntoElement
 where
-    S: 'static,
-    S: CameraSpeedControl,
-    V: Render,
+    S: 'static + CameraSpeedControl,
+    V: 'static + Render,
 {
     let current_speed = input_state.get_move_speed();
 
