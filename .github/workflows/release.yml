@@ -139,7 +139,8 @@ jobs:
             -A clippy::type_complexity \
             -A clippy::match_like_matches_macro \
             -A clippy::only_used_in_recursion \
-            -A clippy::improper_ctypes_definitions \            -A clippy::field_reassign_with_default
+            -A improper_ctypes_definitions \
+            -A clippy::field_reassign_with_default
 
   unit-tests:
     needs: [check-version, lint-and-test]
