@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use gpui::{
-    div, prelude::FluentBuilder as _, App, AppContext, Context, FocusHandle, Focusable,
+    div, prelude::FluentBuilder as _, App, Context, FocusHandle, Focusable,
     IntoElement, ParentElement as _, Render, SharedString, Styled, Window,
 };
 
@@ -151,7 +151,6 @@ impl ModernSettingsScreen {
                     min: min.unwrap_or(f64::MIN),
                     max: max.unwrap_or(f64::MAX),
                     step: step.unwrap_or(1.0),
-                    ..Default::default()
                 };
                 SettingItem::new(
                     label,
