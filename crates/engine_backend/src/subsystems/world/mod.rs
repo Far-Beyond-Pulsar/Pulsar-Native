@@ -69,7 +69,7 @@ impl World {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// # use your_crate::{VaultManager, CustomData};
     /// # use uuid::Uuid;
     /// # use std::sync::Arc;
@@ -126,7 +126,7 @@ impl World {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// # use your_crate::{VaultManager, CustomData};
     /// # use uuid::Uuid;
     /// # let vault_manager: VaultManager<CustomData> = VaultManager::new("path/to/database.db").unwrap();
@@ -183,7 +183,7 @@ impl World {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// # use your_crate::{VaultManager, CustomData};
     /// # let mut vault_manager: VaultManager<CustomData> = VaultManager::new("path/to/database.db").unwrap();
     /// let center = [0.0, 0.0, 0.0];
