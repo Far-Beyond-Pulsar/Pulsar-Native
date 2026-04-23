@@ -171,7 +171,7 @@ impl WorldSettingsReplicated {
 
     /// Helper to create a replicated f32 input field
     fn create_f32_input(
-        element_id: &str,
+        _element_id: &str,
         settings: Arc<RwLock<WorldSettingsData>>,
         getter: fn(&WorldSettingsData) -> f32,
         setter: fn(&mut WorldSettingsData, f32),
