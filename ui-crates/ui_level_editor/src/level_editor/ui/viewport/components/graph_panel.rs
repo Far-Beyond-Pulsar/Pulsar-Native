@@ -100,11 +100,11 @@ impl<T: Clone + 'static> GraphPanel<T> {
     }
 
     /// Build an area chart.
-    pub fn build_area<X, Y, V: 'static>(self, x_fn: X, y_fn: Y, cx: &Context<V>) -> impl IntoElement
+    pub fn build_area<X, Y, V>(self, x_fn: X, y_fn: Y, cx: &Context<V>) -> impl IntoElement
     where
         X: Fn(&T) -> SharedString + 'static,
         Y: Fn(&T) -> f64 + 'static,
-        V: Render,
+        V: 'static + Render,
     {
         // Extract fields before consuming self
         let title = self.title.clone();
