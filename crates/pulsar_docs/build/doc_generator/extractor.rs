@@ -17,7 +17,9 @@ fn extract_source_from_span<T: ToTokens>(node: &T, _source_code: &str) -> String
 
     // Try to parse as a complete item and format it
     // If it fails, fall back to the compact token representation
-    if let Ok(file) = syn::parse_file(&tokens.to_string()) {
+    if let Ok(mut file) = syn::parse_file(&tokens.to_string()) {
+        // Remove Item::Verbatim entries — prettyplease cannot handle them
+        file.items.retain(|item| !matches!(item, syn::Item::Verbatim(_)));
         prettyplease::unparse(&file)
     } else {
         // Not a complete file, just return formatted tokens
