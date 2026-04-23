@@ -122,19 +122,14 @@ pub enum TypeAstNode {
 }
 
 /// Visibility modifier for types
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Visibility {
+    #[default]
     Public,
     Private,
     Crate,
     Super,
-}
-
-impl Default for Visibility {
-    fn default() -> Self {
-        Visibility::Public
-    }
 }
 
 /// Field in a struct
@@ -169,10 +164,11 @@ pub struct StructAsset {
 }
 
 /// Enum variant payload
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(untagged)]
 pub enum VariantPayload {
     /// No payload (unit variant)
+    #[default]
     Unit,
 
     /// Single type payload (tuple variant with one field)
@@ -180,12 +176,6 @@ pub enum VariantPayload {
 
     /// Multiple fields (struct variant)
     Struct(Vec<StructField>),
-}
-
-impl Default for VariantPayload {
-    fn default() -> Self {
-        VariantPayload::Unit
-    }
 }
 
 /// Enum variant
