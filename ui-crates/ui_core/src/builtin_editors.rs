@@ -3,35 +3,106 @@
 //! This module provides a single function to register all built-in editors
 //! with the plugin manager's registries.
 
-use plugin_manager::BuiltinEditorRegistry;
+use plugin_manager::{BuiltinEditorRegistry, BuiltinEditorProvider, EditorContext};
+use plugin_editor_api::*;
 use std::sync::Arc;
+use std::path::PathBuf;
+use ui::dock::PanelView;
+use gpui::{Window, App};
+use gpui::AppContext;
+
+// ---------------------------------------------------------------------------
+// Blueprint Editor — built-in provider (no DLL boundary)
+// ---------------------------------------------------------------------------
+
+/// Wraps the blueprint_editor_plugin crate as a built-in editor provider.
+/// All types, vtables, and drop glue live in the same binary — no FFI needed.
+pub struct BlueprintEditorBuiltinProvider;
+
+impl BuiltinEditorProvider for BlueprintEditorBuiltinProvider {
+    fn provider_id(&self) -> &str {
+        "com.pulsar.blueprint-editor"
+    }
+
+    fn file_types(&self) -> Vec<FileTypeDefinition> {
+        use serde_json::json;
+
+        vec![FileTypeDefinition {
+            id: FileTypeId::new("class"),
+            extension: "class".to_string(),
+            display_name: "Blueprint Class".to_string(),
+            icon: ui::IconName::Component,
+            color: gpui::rgb(0x9C27B0).into(),
+            structure: FileStructure::FolderBased {
+                marker_file: "graph_save.json".to_string(),
+                template_structure: vec![PathTemplate::Folder {
+                    path: "events".into(),
+                }],
+            },
+            default_content: json!({
+                "graph": {
+                    "nodes": [],
+                    "connections": [],
+                    "comments": [],
+                    "metadata": {
+                        "version": "0.1.0"
+                    }
+                }
+            }),
+            categories: vec!["Blueprints".to_string()],
+        }]
+    }
+
+    fn editors(&self) -> Vec<EditorMetadata> {
+        vec![EditorMetadata {
+            id: EditorId::new("blueprint-editor"),
+            display_name: "Blueprint Editor".into(),
+            supported_file_types: vec![FileTypeId::new("class")],
+        }]
+    }
+
+    fn can_handle(&self, editor_id: &EditorId) -> bool {
+        editor_id.as_str() == "blueprint-editor"
+    }
+
+    fn create_editor(
+        &self,
+        file_path: PathBuf,
+        _editor_context: &EditorContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
+        let panel = cx.new(|cx| {
+            match blueprint_editor_plugin::BlueprintEditorPanel::new_with_path(
+                file_path.clone(),
+                window,
+                cx,
+            ) {
+                Ok(p) => p,
+                Err(e) => {
+                    tracing::error!("Failed to create blueprint panel: {}", e);
+                    blueprint_editor_plugin::BlueprintEditorPanel::new(window, cx)
+                }
+            }
+        });
+
+        Ok(Arc::new(panel))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Registration
+// ---------------------------------------------------------------------------
 
 /// Register all built-in editors with the registry.
 ///
 /// This should be called during application initialization,
 /// before any files are opened.
-pub fn register_all_builtin_editors(_registry: &mut BuiltinEditorRegistry) {
+pub fn register_all_builtin_editors(registry: &mut BuiltinEditorRegistry) {
     tracing::info!("Registering all built-in editors...");
-    
-    // Note: Actual editor providers have been migrated to plugins in their own repos!
-    // Type system editors
-    {
-    // registry.register_provider(Arc::new(ui_struct_editor::StructEditorProvider));
-    // registry.register_provider(Arc::new(ui_enum_editor::EnumEditorProvider));
-    // registry.register_provider(Arc::new(ui_trait_editor::TraitEditorProvider));
-    // registry.register_provider(Arc::new(ui_alias_editor::AliasEditorProvider));
-    }
-    
-    // Code editors
-    {
-    // registry.register_provider(Arc::new(ui_script_editor::ScriptEditorProvider));
-    }
-    
-    // Specialized editors
-    {
-    // registry.register_provider(Arc::new(ui_daw_editor::DawEditorProvider));
-    // registry.register_provider(Arc::new(ui_editor_table::TableEditorProvider));
-    }
+
+    // Blueprint editor (compiled-in, no DLL boundary)
+    registry.register_provider(Arc::new(BlueprintEditorBuiltinProvider));
 
     tracing::info!("Built-in editor registration complete");
 }
