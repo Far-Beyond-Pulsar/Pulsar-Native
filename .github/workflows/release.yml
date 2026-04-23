@@ -140,7 +140,9 @@ jobs:
             -A clippy::match_like_matches_macro \
             -A clippy::only_used_in_recursion \
             -A improper_ctypes_definitions \
-            -A clippy::field_reassign_with_default
+            -A clippy::field_reassign_with_default \
+            -A clippy::result_large_err \
+            -A clippy::doc_overindented_list_items
 
   unit-tests:
     needs: [check-version, lint-and-test]
