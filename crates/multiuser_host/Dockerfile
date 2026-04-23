@@ -15,13 +15,19 @@ RUN apt-get update && apt-get install -y \
 # Copy workspace manifests for dependency caching
 COPY Cargo.toml Cargo.lock ./
 
-# Copy every workspace member's Cargo.toml so Cargo can resolve the glob members
-# without needing any actual source files yet
+# Copy every workspace member's Cargo.toml and a matching stub src file
+# so Cargo can resolve the full workspace without needing real source
 RUN --mount=type=bind,target=/src \
     find /src/crates /src/ui-crates -maxdepth 2 -name 'Cargo.toml' | while read f; do \
       rel="${f#/src/}"; \
-      mkdir -p "/app/$(dirname $rel)"; \
+      dir="/app/$(dirname $rel)"; \
+      mkdir -p "$dir/src"; \
       cp "$f" "/app/$rel"; \
+      if grep -q '^\[\[bin\]\]' "$f"; then \
+        echo 'fn main() {}' > "$dir/src/main.rs"; \
+      else \
+        touch "$dir/src/lib.rs"; \
+      fi; \
     done
 
 # Create dummy main to cache dependencies
