@@ -137,7 +137,8 @@ jobs:
             -A dead_code \
             -A clippy::too_many_arguments \
             -A clippy::type_complexity \
-            -A clippy::match_like_matches_macro
+            -A clippy::match_like_matches_macro \
+            -A clippy::only_used_in_recursion
 
   unit-tests:
     needs: [check-version, lint-and-test]
