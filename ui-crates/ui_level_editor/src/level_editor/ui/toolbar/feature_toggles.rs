@@ -1,7 +1,7 @@
 use gpui::*;
 use std::sync::Arc;
 use ui::{
-    button::{Button, ButtonVariants as _},
+    button::Button,
     h_flex, Selectable,
 };
 
