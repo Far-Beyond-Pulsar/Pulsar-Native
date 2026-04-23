@@ -182,7 +182,7 @@ impl ViewportPanel {
             profiling::set_thread_name("Input Thread");
             tracing::debug!("[INPUT-THREAD] 🚀 Dedicated RAW INPUT processing thread started");
             let device_state = DeviceState::new();
-            let mut last_mouse_pos: Option<(i32, i32)> = None;
+            let mut _last_mouse_pos: Option<(i32, i32)> = None;
 
             loop {
                 profiling::profile_scope!("input_poll");
@@ -194,7 +194,7 @@ impl ViewportPanel {
 
                 if !is_rotating && !is_panning {
                     // Not active - clear state
-                    last_mouse_pos = None;
+                    _last_mouse_pos = None;
                     input_state.set_forward(0);
                     input_state.set_right(0);
                     input_state.set_up(0);
@@ -397,7 +397,7 @@ impl ViewportPanel {
     fn send_input_to_gpu(
         &self,
         gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
-        state: &LevelEditorState,
+        _state: &LevelEditorState,
     ) {
         if let Ok(engine) = gpu_engine.try_lock() {
             if let Some(ref helio_renderer) = engine.helio_renderer {
@@ -833,13 +833,13 @@ impl ViewportPanel {
     }
 
     /// Render all viewport overlays.
-    fn render_overlays<V: 'static>(
+    fn render_overlays<V>(
         &self,
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         fps_graph_state: Rc<RefCell<bool>>,
         ui_fps: f64,
-        helio_fps: f64,
+        _helio_fps: f64,
         render_fps: f64,
         renderer_ready: bool,
         fps_data: Vec<FpsDataPoint>,
@@ -854,7 +854,7 @@ impl ViewportPanel {
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
-        V: EventEmitter<ui::dock::PanelEvent> + Render,
+        V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
         let mut overlays = div()
             .absolute()
