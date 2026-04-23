@@ -14,7 +14,15 @@ RUN apt-get update && apt-get install -y \
 
 # Copy workspace manifests for dependency caching
 COPY Cargo.toml Cargo.lock ./
-COPY crates/multiuser_host/Cargo.toml crates/multiuser_host/
+
+# Copy every workspace member's Cargo.toml so Cargo can resolve the glob members
+# without needing any actual source files yet
+RUN --mount=type=bind,target=/src \
+    find /src/crates /src/ui-crates -maxdepth 2 -name 'Cargo.toml' | while read f; do \
+      rel="${f#/src/}"; \
+      mkdir -p "/app/$(dirname $rel)"; \
+      cp "$f" "/app/$rel"; \
+    done
 
 # Create dummy main to cache dependencies
 RUN mkdir -p crates/multiuser_host/src && \
