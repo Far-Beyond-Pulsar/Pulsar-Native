@@ -149,10 +149,9 @@ fn paint_hue_wheel(window: &mut Window, geometry: PickerGeometry) {
     }
 }
 
-fn triangle_vertices(geometry: PickerGeometry) -> [(f32, f32); 3] {
+fn triangle_vertices(geometry: PickerGeometry, hue: f32) -> [(f32, f32); 3] {
     let tri_r = geometry.inner_r * 0.92;
-    // Fixed orientation: hue vertex always points straight up.
-    let base = -std::f32::consts::FRAC_PI_2;
+    let base = hue * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
 
     let hue_v = (
         geometry.cx + base.cos() * tri_r,
@@ -237,7 +236,7 @@ fn clamp_point_to_triangle(
 }
 
 fn paint_sv_triangle(window: &mut Window, geometry: PickerGeometry, hue: f32) {
-    let [a, b, c] = triangle_vertices(geometry);
+    let [a, b, c] = triangle_vertices(geometry, hue);
     let subdivisions = (geometry.inner_r / 2.0).round().clamp(42.0, 72.0) as usize;
 
     let point_from_uv = |u: f32, v: f32| {
@@ -583,7 +582,7 @@ impl ColorPickerState {
 
                 if distance < geometry.inner_r {
                     let point = (position.x.as_f32(), position.y.as_f32());
-                    let [a, b, c] = triangle_vertices(geometry);
+                    let [a, b, c] = triangle_vertices(geometry, self.hue);
                     if point_in_triangle(barycentric(point, a, b, c)) {
                         return Some(PickerDragTarget::Triangle);
                     }
@@ -640,7 +639,7 @@ impl ColorPickerState {
             PickerDragTarget::Triangle => {
                 // No distance guard — clamp_point_to_triangle handles out-of-bounds.
                 let drag_hue = self.triangle_drag_hue_lock.unwrap_or(self.hue);
-                let [a, b, c] = triangle_vertices(geometry);
+                let [a, b, c] = triangle_vertices(geometry, drag_hue);
                 let p = clamp_point_to_triangle((x, y), a, b, c);
                 let (w_h, w_w, _w_b) = barycentric(p, a, b, c);
 
@@ -1253,7 +1252,7 @@ impl ColorPicker {
                                         };
                                         window.paint_quad(fill(ring_marker, gpui::white()));
 
-                                        let [a, b, c] = triangle_vertices(geometry);
+                                        let [a, b, c] = triangle_vertices(geometry, hue);
                                         let w_h = sat * val;
                                         let w_w = (1.0 - sat) * val;
                                         let w_b = 1.0 - val;
