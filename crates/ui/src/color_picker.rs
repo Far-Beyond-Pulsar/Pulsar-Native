@@ -149,9 +149,10 @@ fn paint_hue_wheel(window: &mut Window, geometry: PickerGeometry) {
     }
 }
 
-fn triangle_vertices(geometry: PickerGeometry, hue: f32) -> [(f32, f32); 3] {
+fn triangle_vertices(geometry: PickerGeometry) -> [(f32, f32); 3] {
     let tri_r = geometry.inner_r * 0.92;
-    let base = hue * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
+    // Fixed orientation: hue vertex always points straight up.
+    let base = -std::f32::consts::FRAC_PI_2;
 
     let hue_v = (
         geometry.cx + base.cos() * tri_r,
@@ -236,7 +237,7 @@ fn clamp_point_to_triangle(
 }
 
 fn paint_sv_triangle(window: &mut Window, geometry: PickerGeometry, hue: f32) {
-    let [a, b, c] = triangle_vertices(geometry, hue);
+    let [a, b, c] = triangle_vertices(geometry);
     let subdivisions = (geometry.inner_r / 2.0).round().clamp(42.0, 72.0) as usize;
 
     let point_from_uv = |u: f32, v: f32| {
@@ -462,18 +463,14 @@ impl ColorPickerState {
                     }
                     let value = state.read(cx).value();
                     if let Ok(color) = Hsla::parse_hex(value.as_str()) {
-                        this.value = Some(color);
-                        this.hovered_color = Some(color);
-                        this.sync_hsva_from_color(color);
-                        cx.emit(ColorPickerEvent::Change(Some(color)));
-                        cx.notify();
+                        this.apply_external_color(color, true, window, cx);
                     }
                 }
                 InputEvent::PressEnter { .. } => {
                     let val = this.state.read(cx).value();
                     if let Ok(color) = Hsla::parse_hex(&val) {
                         this.open = false;
-                        this.update_value(Some(color), true, window, cx);
+                        this.apply_external_color(color, true, window, cx);
                     }
                 }
                 _ => {}
@@ -531,7 +528,7 @@ impl ColorPickerState {
 
     /// Set current color value.
     pub fn set_value(&mut self, value: Hsla, window: &mut Window, cx: &mut Context<Self>) {
-        self.update_value(Some(value), false, window, cx)
+        self.apply_external_color(value, false, window, cx);
     }
 
     /// Get current color value.
@@ -586,7 +583,7 @@ impl ColorPickerState {
 
                 if distance < geometry.inner_r {
                     let point = (position.x.as_f32(), position.y.as_f32());
-                    let [a, b, c] = triangle_vertices(geometry, self.hue);
+                    let [a, b, c] = triangle_vertices(geometry);
                     if point_in_triangle(barycentric(point, a, b, c)) {
                         return Some(PickerDragTarget::Triangle);
                     }
@@ -643,19 +640,19 @@ impl ColorPickerState {
             PickerDragTarget::Triangle => {
                 // No distance guard — clamp_point_to_triangle handles out-of-bounds.
                 let drag_hue = self.triangle_drag_hue_lock.unwrap_or(self.hue);
-                let [a, b, c] = triangle_vertices(geometry, drag_hue);
+                let [a, b, c] = triangle_vertices(geometry);
                 let p = clamp_point_to_triangle((x, y), a, b, c);
                 let (w_h, w_w, _w_b) = barycentric(p, a, b, c);
 
                 let v = clamp01(w_h + w_w);
                 let s = if v <= 0.0001 { 0.0 } else { clamp01(w_h / v) };
 
+                // Set HSV directly — update_value will not touch these.
+                self.hue = drag_hue;
                 self.saturation = s;
                 self.value_channel = v;
-                self.hue = drag_hue;
-                let color = hsva_to_hsla(drag_hue, self.saturation, self.value_channel, self.alpha);
-                // Keep hue independent from SV dragging.
-                self.update_value_with_sync(Some(color), emit, false, window, cx);
+                let color = hsva_to_hsla(drag_hue, s, v, self.alpha);
+                self.update_value(Some(color), emit, window, cx);
             }
             _ => {}
         }
@@ -822,6 +819,22 @@ impl ColorPickerState {
         }
     }
 
+    /// Apply a color that came from outside the picker's own HSV state
+    /// (palette swatch, hex field, public set_value). Syncs HSV first, then
+    /// records the value. Internal drag/slider code must NOT use this.
+    fn apply_external_color(
+        &mut self,
+        color: Hsla,
+        emit: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.sync_hsva_from_color(color);
+        self.update_value(Some(color), emit, window, cx);
+    }
+
+    /// Record the final color, sync text inputs, and emit. Never touches
+    /// hue/saturation/value_channel/alpha — callers own those fields.
     fn update_value(
         &mut self,
         value: Option<Hsla>,
@@ -829,23 +842,9 @@ impl ColorPickerState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.update_value_with_sync(value, emit, true, window, cx);
-    }
-
-    fn update_value_with_sync(
-        &mut self,
-        value: Option<Hsla>,
-        emit: bool,
-        sync_hsva: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
         self.value = value;
         self.hovered_color = value;
         if let Some(color) = value {
-            if sync_hsva {
-                self.sync_hsva_from_color(color);
-            }
             self.push_recent_color(color);
         }
         self.syncing_inputs = true;
@@ -972,7 +971,7 @@ impl ColorPicker {
                 .on_click(window.listener_for(
                     &state,
                     move |state, _, window, cx| {
-                        state.update_value(Some(color), true, window, cx);
+                        state.apply_external_color(color, true, window, cx);
                     },
                 ))
             })
@@ -1254,7 +1253,7 @@ impl ColorPicker {
                                         };
                                         window.paint_quad(fill(ring_marker, gpui::white()));
 
-                                        let [a, b, c] = triangle_vertices(geometry, hue);
+                                        let [a, b, c] = triangle_vertices(geometry);
                                         let w_h = sat * val;
                                         let w_w = (1.0 - sat) * val;
                                         let w_b = 1.0 - val;
