@@ -631,10 +631,7 @@ impl ColorPickerState {
 
         match target {
             PickerDragTarget::HueRing => {
-                if distance < geometry.inner_r || distance > geometry.outer_r {
-                    return;
-                }
-
+                // No distance guard here — during drag we only need the angle.
                 let angle = dy.atan2(dx);
                 self.hue = ((angle + std::f32::consts::FRAC_PI_2) / std::f32::consts::TAU)
                     .rem_euclid(1.0);
@@ -642,21 +639,22 @@ impl ColorPickerState {
                 self.update_value(Some(color), emit, window, cx);
             }
             PickerDragTarget::Triangle => {
-                if distance > geometry.inner_r {
-                    return;
-                }
-
+                // No distance guard — clamp_point_to_triangle handles out-of-bounds.
                 let [a, b, c] = triangle_vertices(geometry, self.hue);
                 let p = clamp_point_to_triangle((x, y), a, b, c);
-                let (w_h, w_w, w_b) = barycentric(p, a, b, c);
+                let (w_h, w_w, _w_b) = barycentric(p, a, b, c);
 
                 let v = clamp01(w_h + w_w);
                 let s = if v <= 0.0001 { 0.0 } else { clamp01(w_h / v) };
 
                 self.saturation = s;
                 self.value_channel = v;
+                // Save hue before update_value, which re-derives it from RGB.
+                // RGB round-trip is unstable at low saturation, causing ring drift.
+                let saved_hue = self.hue;
                 let color = hsva_to_hsla(self.hue, self.saturation, self.value_channel, self.alpha);
                 self.update_value(Some(color), emit, window, cx);
+                self.hue = saved_hue;
             }
             _ => {}
         }
@@ -952,16 +950,10 @@ impl ColorPicker {
                         .shadow_xs()
                 })
                 .active(|this| this.border_color(color.darken(0.5)).bg(color.darken(0.2)))
-                .on_mouse_move(window.listener_for(&state, move |state, _, window, cx| {
-                    state.hovered_color = Some(color);
-                    cx.notify();
-                }))
                 .on_click(window.listener_for(
                     &state,
                     move |state, _, window, cx| {
                         state.update_value(Some(color), true, window, cx);
-                        state.open = false;
-                        cx.notify();
                     },
                 ))
             })
@@ -983,12 +975,11 @@ impl ColorPicker {
             cx.theme().magenta_light,
         ]);
 
-        let state = self.state.clone();
         v_flex()
             .w_full()
             .gap_3()
             .child(
-                h_flex().w_full().justify_between().gap_1().children(
+                h_flex().flex_wrap().gap_1().children(
                     featured_colors
                         .iter()
                         .map(|color| self.render_item(*color, true, window, cx)),
@@ -1000,7 +991,7 @@ impl ColorPicker {
                     .w_full()
                     .gap_1()
                     .children(color_palettes().iter().map(|sub_colors| {
-                        h_flex().w_full().justify_between().gap_1().children(
+                        h_flex().flex_wrap().gap_1().children(
                             sub_colors
                                 .iter()
                                 .rev()
@@ -1008,29 +999,6 @@ impl ColorPicker {
                         )
                     })),
             )
-            .when_some(state.read(cx).hovered_color, |this, hovered_color| {
-                this.child(Divider::horizontal()).child(
-                    h_flex()
-                        .gap_2()
-                        .items_center()
-                        .font_family("JetBrainsMono-Regular")
-                        .child(
-                            div()
-                                .bg(hovered_color)
-                                .flex_shrink_0()
-                                .border_1()
-                                .border_color(hovered_color.darken(0.2))
-                                .size_5()
-                                .rounded(cx.theme().radius),
-                        )
-                            .child(
-                                div()
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(hovered_color.to_hex()),
-                            ),
-                )
-            })
     }
 
     fn render_rgba_slider(
@@ -1232,6 +1200,7 @@ impl ColorPicker {
                     .child(
                         div()
                             .relative()
+                            .flex_shrink_0()
                             .size(px(PICKER_SIZE))
                             .rounded_lg()
                             .overflow_hidden()
@@ -1305,46 +1274,38 @@ impl ColorPicker {
                     .child(
                         v_flex()
                             .flex_1()
+                            .min_w_0()
                             .gap_2()
                             .child(
-                                h_flex()
-                                    .gap_2()
-                                    .items_start()
+                                div()
+                                    .relative()
+                                    .w_full()
+                                    .h(px(52.0))
+                                    .rounded_md()
+                                    .overflow_hidden()
+                                    .border_1()
+                                    .border_color(current.darken(0.35))
                                     .child(
-                                        div()
-                                            .relative()
-                                            .w(px(132.0))
-                                            .h(px(86.0))
-                                            .rounded_md()
-                                            .overflow_hidden()
-                                            .border_1()
-                                            .border_color(current.darken(0.35))
-                                            .child(
-                                                canvas(
-                                                    |bounds, _, _| bounds,
-                                                    |bounds, _, window, _| {
-                                                        paint_alpha_checkerboard(window, bounds);
-                                                    },
-                                                )
-                                                .size_full()
-                                                .absolute()
-                                                .inset_0(),
-                                            )
-                                            .child(div().absolute().inset_0().bg(current)),
+                                        canvas(
+                                            |bounds, _, _| bounds,
+                                            |bounds, _, window, _| {
+                                                paint_alpha_checkerboard(window, bounds);
+                                            },
+                                        )
+                                        .size_full()
+                                        .absolute()
+                                        .inset_0(),
                                     )
-                                    .child(
-                                        v_flex()
-                                            .gap_1()
-                                            .text_xs()
-                                            .font_family("JetBrainsMono-Regular")
-                                            .text_color(cx.theme().muted_foreground)
-                                            .child(format!("HEX  {}", current.to_hex()))
-                                            .child(format!("RGBA {}, {}, {}, {}", r_u8, g_u8, b_u8, a_u8))
-                                            .child(format!(
-                                                "HSVA {:.3}, {:.3}, {:.3}, {:.3}",
-                                                hue_value, sat_value, val_value, alpha_value
-                                            )),
-                                    ),
+                                    .child(div().absolute().inset_0().bg(current)),
+                            )
+                            .child(
+                                v_flex()
+                                    .gap_px()
+                                    .text_xs()
+                                    .font_family("JetBrainsMono-Regular")
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(format!("HEX  {}", current.to_hex()))
+                                    .child(format!("RGBA {}, {}, {}, {}", r_u8, g_u8, b_u8, a_u8)),
                             )
                             .child(self.render_rgba_slider(0, "R", r_u8, alpha_value, rgba, window, cx))
                             .child(self.render_rgba_slider(1, "G", g_u8, alpha_value, rgba, window, cx))
@@ -1512,7 +1473,7 @@ impl RenderOnce for ColorPicker {
                                         Corner::TopLeft | Corner::TopRight => this.mt_1p5(),
                                         Corner::BottomLeft | Corner::BottomRight => this.mb_1p5(),
                                     })
-                                    .w(px(420.0))
+                                    .w(px(480.0))
                                     .overflow_hidden()
                                     .rounded(cx.theme().radius)
                                     .p_3()
@@ -1521,14 +1482,35 @@ impl RenderOnce for ColorPicker {
                                     .shadow_lg()
                                     .rounded(cx.theme().radius)
                                     .bg(cx.theme().background)
-                                    .child(self.render_advanced_picker(window, cx))
-                                    .child(Divider::horizontal())
-                                    .mt_3()
-                                    .child(self.render_colors(window, cx))
+                                    .child(
+                                        v_flex()
+                                            .w_full()
+                                            .gap_3()
+                                            .child(self.render_advanced_picker(window, cx))
+                                            .child(Divider::horizontal())
+                                            .child(self.render_colors(window, cx))
+                                    )
+                                    // Route mouse-move/up on the whole popup so drags
+                                    // continue even when cursor leaves a specific canvas.
+                                    .on_mouse_move(window.listener_for(&self.state, move |picker, event: &MouseMoveEvent, window, cx| {
+                                        if picker.active_drag.is_some() {
+                                            picker.drag_move(event.position, window, cx);
+                                        }
+                                    }))
+                                    .on_mouse_up(
+                                        MouseButton::Left,
+                                        window.listener_for(&self.state, ColorPickerState::stop_drag_mouse),
+                                    )
                                     .on_mouse_up_out(
                                         MouseButton::Left,
                                         window.listener_for(&self.state, |state, _, window, cx| {
-                                            state.on_escape(&Cancel, window, cx)
+                                            if state.active_drag.is_some() {
+                                                // Releasing outside popup while dragging: stop drag, keep picker open.
+                                                state.active_drag = None;
+                                                cx.notify();
+                                            } else {
+                                                state.on_escape(&Cancel, window, cx);
+                                            }
                                         }),
                                     ),
                             ),
