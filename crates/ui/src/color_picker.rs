@@ -1,8 +1,8 @@
 use gpui::{
     anchored, canvas, deferred, div, fill, point, prelude::FluentBuilder as _, px, relative,
-    size, App, AppContext, Bounds, ClickEvent, Context, Corner, ElementId, Entity, EventEmitter,
-    FocusHandle, Focusable, Hsla, InteractiveElement as _, IntoElement, KeyBinding, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render,
+    size, App, AppContext, Axis, Bounds, ClickEvent, Context, Corner, ElementId, Entity,
+    EventEmitter, FocusHandle, Focusable, Hsla, InteractiveElement as _, IntoElement, KeyBinding,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render,
     RenderOnce, SharedString,
     StatefulInteractiveElement as _, StyleRefinement, Styled, Subscription, Window,
 };
@@ -15,7 +15,7 @@ use crate::{
     input::{InputEvent, InputState, TextInput},
     tooltip::Tooltip,
     styled::PixelsExt, v_flex, ActiveTheme as _, Colorize as _, FocusableExt as _, Icon,
-    Selectable as _, Sizable, Size, StyleSized, StyledExt,
+    IconName, Selectable as _, Sizable, Size, StyleSized, StyledExt,
 };
 
 const CONTEXT: &'static str = "ColorPicker";
@@ -23,6 +23,10 @@ const PICKER_SIZE: f32 = 224.0;
 const HUE_RING_THICKNESS: f32 = 20.0;
 const SLIDER_HEIGHT: f32 = 18.0;
 const CHECKER_CELL_SIZE: f32 = 8.0;
+/// Columns in every row of the All Colors grid.
+const ALL_COLORS_COLS: usize = 8;
+/// Number of distinct hue slices (= rows) in the All Colors grid.
+const ALL_COLORS_HUE_ROWS: usize = 12;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PickerDragTarget {
@@ -425,6 +429,26 @@ fn color_palettes() -> Vec<Vec<Hsla>> {
     ]
 }
 
+fn named_color_palettes() -> Vec<(&'static str, Vec<Hsla>)> {
+    let palettes = color_palettes();
+    let names = [
+        "Stone",
+        "Red",
+        "Orange",
+        "Yellow",
+        "Green",
+        "Cyan",
+        "Blue",
+        "Purple",
+        "Pink",
+    ];
+
+    names
+        .into_iter()
+        .zip(palettes)
+        .collect::<Vec<(&'static str, Vec<Hsla>)>>()
+}
+
 /// State of the [`ColorPicker`].
 pub struct ColorPickerState {
     focus_handle: FocusHandle,
@@ -438,6 +462,9 @@ pub struct ColorPickerState {
     slider_bounds: [Bounds<Pixels>; 4],
     active_drag: Option<PickerDragTarget>,
     triangle_drag_hue_lock: Option<f32>,
+    selected_palette_index: usize,
+    palette_switcher_open: bool,
+    palette_header_bounds: Bounds<Pixels>,
     rgba_input_states: [Entity<InputState>; 4],
     hue: f32,
     saturation: f32,
@@ -508,6 +535,9 @@ impl ColorPickerState {
             ],
             active_drag: None,
             triangle_drag_hue_lock: None,
+            selected_palette_index: 0,
+            palette_switcher_open: false,
+            palette_header_bounds: Bounds::default(),
             rgba_input_states,
             hue: 0.0,
             saturation: 0.0,
@@ -541,16 +571,40 @@ impl ColorPickerState {
         }
 
         self.open = false;
+        self.palette_switcher_open = false;
         cx.notify();
     }
 
     fn on_confirm(&mut self, _: &Confirm, _: &mut Window, cx: &mut Context<Self>) {
         self.open = !self.open;
+        if !self.open {
+            self.palette_switcher_open = false;
+        }
         cx.notify();
     }
 
     fn toggle_picker(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
         self.open = !self.open;
+        if !self.open {
+            self.palette_switcher_open = false;
+        }
+        cx.notify();
+    }
+
+    fn toggle_palette_switcher(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+        self.palette_switcher_open = !self.palette_switcher_open;
+        cx.notify();
+    }
+
+    fn select_palette(
+        &mut self,
+        palette_index: usize,
+        _: &ClickEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.selected_palette_index = palette_index;
+        self.palette_switcher_open = false;
         cx.notify();
     }
 
@@ -580,12 +634,10 @@ impl ColorPickerState {
                     return Some(PickerDragTarget::HueRing);
                 }
 
+                // The entire inner disc is the SV/triangle zone — no gap between
+                // the triangle vertex hull and the ring's inner edge.
                 if distance < geometry.inner_r {
-                    let point = (position.x.as_f32(), position.y.as_f32());
-                    let [a, b, c] = triangle_vertices(geometry, self.hue);
-                    if point_in_triangle(barycentric(point, a, b, c)) {
-                        return Some(PickerDragTarget::Triangle);
-                    }
+                    return Some(PickerDragTarget::Triangle);
                 }
             }
         }
@@ -976,46 +1028,142 @@ impl ColorPicker {
             })
     }
 
-    fn render_colors(&self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let featured_colors = self.featured_colors.clone().unwrap_or(vec![
-            cx.theme().red,
-            cx.theme().red_light,
-            cx.theme().blue,
-            cx.theme().blue_light,
-            cx.theme().green,
-            cx.theme().green_light,
-            cx.theme().yellow,
-            cx.theme().yellow_light,
-            cx.theme().cyan,
-            cx.theme().cyan_light,
-            cx.theme().magenta,
-            cx.theme().magenta_light,
-        ]);
+    fn render_palette_switcher_popout(&self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let (selected_palette_index, palette_switcher_open, palette_header_bounds) = {
+            let state = self.state.read(cx);
+            (state.selected_palette_index, state.palette_switcher_open, state.palette_header_bounds)
+        };
+        let named_palettes = named_color_palettes();
+        let safe_palette_index = selected_palette_index.min(named_palettes.len().saturating_sub(1));
+
+        div()
+            .when(palette_switcher_open, |this| {
+                this.child(
+                    deferred(
+                        anchored()
+                            .position(palette_header_bounds.corner(Corner::BottomLeft))
+                            .snap_to_window_with_margin(px(8.))
+                            .child(
+                                div()
+                                    .occlude()
+                                    .mt_1p5()
+                                    .rounded_md()
+                                    .border_1()
+                                    .border_color(cx.theme().border)
+                                    .shadow_lg()
+                                    .bg(cx.theme().background)
+                                    .w(px(300.0))
+                                    .child(
+                                        v_flex()
+                                            .max_h(px(300.0))
+                                            .scrollable(Axis::Vertical)
+                                            .child(
+                                                v_flex().gap_px().children(
+                                                    named_palettes
+                                                        .iter()
+                                                        .enumerate()
+                                                        .map(|(ix, (name, colors))| {
+                                                            let swatches = colors.iter().copied().take(9).collect::<Vec<_>>();
+                                                            h_flex()
+                                                                .w_full()
+                                                                .items_center()
+                                                                .justify_between()
+                                                                .gap_2()
+                                                                .px_3()
+                                                                .py_2()
+                                                                .when(ix == safe_palette_index, |this| {
+                                                                    this.bg(cx.theme().accent.opacity(0.16))
+                                                                })
+                                                                .hover(|this| this.bg(cx.theme().muted.opacity(0.45)))
+                                                                .child(
+                                                                    div()
+                                                                        .text_sm()
+                                                                        .font_semibold()
+                                                                        .text_color(cx.theme().foreground)
+                                                                        .child((*name).to_string()),
+                                                                )
+                                                                .child(
+                                                                    h_flex().gap_1().children(swatches.into_iter().map(|color| {
+                                                                        div()
+                                                                            .h_4()
+                                                                            .w_4()
+                                                                            .bg(color)
+                                                                            .border_1()
+                                                                            .border_color(color.darken(0.2))
+                                                                    })),
+                                                                )
+                                                                .on_mouse_down(
+                                                                    MouseButton::Left,
+                                                                    window.listener_for(
+                                                                        &self.state,
+                                                                        move |state, _, window, cx| {
+                                                                            state.selected_palette_index = ix;
+                                                                            state.palette_switcher_open = false;
+                                                                            cx.notify();
+                                                                        },
+                                                                    ),
+                                                                )
+                                                        }),
+                                                ),
+                                            ),
+                                    )
+                                    .on_mouse_down_out(
+                                        window.listener_for(&self.state, |state, _, _window, cx| {
+                                            state.palette_switcher_open = false;
+                                            cx.notify();
+                                        }),
+                                    ),
+                            ),
+                    )
+                    .with_priority(2),
+                )
+            })
+    }
+
+    fn render_all_colors_grid(&self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        // Each named palette is one row, sorted dark → light (value ascending).
+        let color_rows = named_color_palettes()
+            .into_iter()
+            .map(|(_, mut palette_colors)| {
+                palette_colors.sort_by(|a, b| {
+                    let (_, _, v_a, _) = hsla_to_hsva(*a);
+                    let (_, _, v_b, _) = hsla_to_hsva(*b);
+                    v_a.partial_cmp(&v_b).unwrap_or(std::cmp::Ordering::Equal)
+                });
+                let row_colors: Vec<Hsla> = palette_colors.into_iter().take(ALL_COLORS_COLS).collect();
+                h_flex().gap_1().children(row_colors.into_iter().map(|color| {
+                    let state = self.state.clone();
+                    div()
+                        .id(SharedString::from(format!("all-color-{}", color.to_hex())))
+                        .h_5()
+                        .w_5()
+                        .bg(color)
+                        .border_1()
+                        .border_color(color.darken(0.1))
+                        .hover(|this| {
+                            this.border_color(color.darken(0.3))
+                                .bg(color.lighten(0.1))
+                                .shadow_xs()
+                        })
+                        .active(|this| this.border_color(color.darken(0.5)).bg(color.darken(0.2)))
+                        .on_click(window.listener_for(&state, move |state, _, window, cx| {
+                            state.apply_external_color(color, true, window, cx);
+                        }))
+                }))
+            })
+            .collect::<Vec<_>>();
 
         v_flex()
-            .w_full()
-            .gap_3()
+            .gap_px()
             .child(
-                h_flex().flex_wrap().gap_1().children(
-                    featured_colors
-                        .iter()
-                        .map(|color| self.render_item(*color, true, window, cx)),
-                ),
+                div()
+                    .text_xs()
+                    .font_semibold()
+                    .pb_1()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("All Colors"),
             )
-            .child(Divider::horizontal())
-            .child(
-                v_flex()
-                    .w_full()
-                    .gap_1()
-                    .children(color_palettes().iter().map(|sub_colors| {
-                        h_flex().flex_wrap().gap_1().children(
-                            sub_colors
-                                .iter()
-                                .rev()
-                                .map(|color| self.render_item(*color, true, window, cx)),
-                        )
-                    })),
-            )
+            .children(color_rows)
     }
 
     fn render_rgba_slider(
@@ -1138,7 +1286,7 @@ impl ColorPicker {
     }
 
     fn render_advanced_picker(&self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let (current, hue_value, sat_value, val_value, alpha_value, recent_colors) = {
+        let (current, hue_value, sat_value, val_value, alpha_value, recent_colors, selected_palette_index, palette_switcher_open) = {
             let state = self.state.read(cx);
             (
                 state
@@ -1149,8 +1297,16 @@ impl ColorPicker {
                 state.value_channel,
                 state.alpha,
                 state.recent_colors.clone(),
+                state.selected_palette_index,
+                state.palette_switcher_open,
             )
         };
+        let named_palettes = named_color_palettes();
+        let safe_palette_index = selected_palette_index.min(named_palettes.len().saturating_sub(1));
+        let (selected_palette_name, selected_palette_colors) = named_palettes
+            .get(safe_palette_index)
+            .cloned()
+            .unwrap_or(("Palette", Vec::new()));
 
         let rgba: gpui::Rgba = current.into();
         let r_u8 = (rgba.r * 255.0).round() as u8;
@@ -1380,6 +1536,68 @@ impl ColorPicker {
                         ),
                 )
             })
+            .child(
+                v_flex()
+                    .gap_1()
+                    .child(Divider::horizontal())
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .items_center()
+                            .justify_between()
+                            .relative()
+                            .child(
+                                canvas(
+                                    {
+                                        let state = self.state.clone();
+                                        move |bounds, _, cx| state.update(cx, |r, _| r.palette_header_bounds = bounds)
+                                    },
+                                    |_, _, _, _| {},
+                                )
+                                .absolute()
+                                .size_full(),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_semibold()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(format!("Palette: {}", selected_palette_name)),
+                            )
+                            .child(
+                                Button::new("palette-switcher")
+                                    .ghost()
+                                    .xsmall()
+                                    .icon(if palette_switcher_open {
+                                        Icon::new(IconName::ChevronUp)
+                                    } else {
+                                        Icon::new(IconName::ChevronDown)
+                                    })
+                                    .on_click(window.listener_for(
+                                        &self.state,
+                                        ColorPickerState::toggle_palette_switcher,
+                                    )),
+                            ),
+                    )
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .flex_wrap()
+                            .gap_1()
+                            .children(
+                                selected_palette_colors
+                                    .iter()
+                                    .copied()
+                                    .map(|color| self.render_item(color, true, window, cx)),
+                            ),
+                    )
+            )
+            .child(
+                v_flex()
+                    .gap_1()
+                    .child(Divider::horizontal())
+                    .child(self.render_all_colors_grid(window, cx)),
+            )
     }
 
     fn resolved_corner(&self, bounds: Bounds<Pixels>) -> Point<Pixels> {
@@ -1413,7 +1631,7 @@ impl Styled for ColorPicker {
 
 impl RenderOnce for ColorPicker {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let (bounds, current_value, is_open, is_dragging, is_focused, focus_handle) = {
+        let (bounds, current_value, is_open, is_dragging, is_focused, focus_handle, palette_switcher_open) = {
             let state = self.state.read(cx);
             (
                 state.bounds,
@@ -1422,6 +1640,7 @@ impl RenderOnce for ColorPicker {
                 state.active_drag.is_some(),
                 state.focus_handle.is_focused(window),
                 state.focus_handle.clone().tab_stop(true),
+                state.palette_switcher_open,
             )
         };
         let display_title: SharedString = if let Some(value) = current_value {
@@ -1510,7 +1729,6 @@ impl RenderOnce for ColorPicker {
                                         Corner::BottomLeft | Corner::BottomRight => this.mb_1p5(),
                                     })
                                     .w(px(480.0))
-                                    .overflow_hidden()
                                     .rounded(cx.theme().radius)
                                     .p_3()
                                     .border_1()
@@ -1518,13 +1736,12 @@ impl RenderOnce for ColorPicker {
                                     .shadow_lg()
                                     .rounded(cx.theme().radius)
                                     .bg(cx.theme().background)
+                                    .relative()
                                     .child(
                                         v_flex()
                                             .w_full()
                                             .gap_3()
                                             .child(self.render_advanced_picker(window, cx))
-                                            .child(Divider::horizontal())
-                                            .child(self.render_colors(window, cx))
                                     )
                                     .on_mouse_up_out(
                                         MouseButton::Left,
@@ -1541,6 +1758,9 @@ impl RenderOnce for ColorPicker {
                     )
                     .with_priority(1),
                 )
+                .when(palette_switcher_open, |this| {
+                    this.child(self.render_palette_switcher_popout(window, cx))
+                })
                 .when(is_dragging, |this| {
                     this.child(
                         deferred(
@@ -1571,7 +1791,7 @@ impl RenderOnce for ColorPicker {
                                     ),
                             ),
                         )
-                        .with_priority(2),
+                        .with_priority(3),
                     )
                 })
             })
