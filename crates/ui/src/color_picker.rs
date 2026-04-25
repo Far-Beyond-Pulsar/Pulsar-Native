@@ -437,6 +437,7 @@ pub struct ColorPickerState {
     picker_bounds: Bounds<Pixels>,
     slider_bounds: [Bounds<Pixels>; 4],
     active_drag: Option<PickerDragTarget>,
+    triangle_drag_hue_lock: Option<f32>,
     rgba_input_states: [Entity<InputState>; 4],
     hue: f32,
     saturation: f32,
@@ -510,6 +511,7 @@ impl ColorPickerState {
                 Bounds::default(),
             ],
             active_drag: None,
+            triangle_drag_hue_lock: None,
             rgba_input_states,
             hue: 0.0,
             saturation: 0.0,
@@ -640,7 +642,8 @@ impl ColorPickerState {
             }
             PickerDragTarget::Triangle => {
                 // No distance guard — clamp_point_to_triangle handles out-of-bounds.
-                let [a, b, c] = triangle_vertices(geometry, self.hue);
+                let drag_hue = self.triangle_drag_hue_lock.unwrap_or(self.hue);
+                let [a, b, c] = triangle_vertices(geometry, drag_hue);
                 let p = clamp_point_to_triangle((x, y), a, b, c);
                 let (w_h, w_w, _w_b) = barycentric(p, a, b, c);
 
@@ -649,12 +652,10 @@ impl ColorPickerState {
 
                 self.saturation = s;
                 self.value_channel = v;
-                // Save hue before update_value, which re-derives it from RGB.
-                // RGB round-trip is unstable at low saturation, causing ring drift.
-                let saved_hue = self.hue;
-                let color = hsva_to_hsla(self.hue, self.saturation, self.value_channel, self.alpha);
-                self.update_value(Some(color), emit, window, cx);
-                self.hue = saved_hue;
+                self.hue = drag_hue;
+                let color = hsva_to_hsla(drag_hue, self.saturation, self.value_channel, self.alpha);
+                // Keep hue independent from SV dragging.
+                self.update_value_with_sync(Some(color), emit, false, window, cx);
             }
             _ => {}
         }
@@ -710,6 +711,10 @@ impl ColorPickerState {
     fn start_drag(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let position = event.position;
         self.active_drag = self.drag_target_for_point(position);
+        self.triangle_drag_hue_lock = match self.active_drag {
+            Some(PickerDragTarget::Triangle) => Some(self.hue),
+            _ => None,
+        };
         if let Some(target) = self.active_drag {
             match target {
                 PickerDragTarget::HueRing | PickerDragTarget::Triangle => {
@@ -733,6 +738,7 @@ impl ColorPickerState {
 
     fn stop_drag_mouse(&mut self, _: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
         self.active_drag = None;
+        self.triangle_drag_hue_lock = None;
         cx.notify();
     }
 
@@ -823,10 +829,23 @@ impl ColorPickerState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.update_value_with_sync(value, emit, true, window, cx);
+    }
+
+    fn update_value_with_sync(
+        &mut self,
+        value: Option<Hsla>,
+        emit: bool,
+        sync_hsva: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.value = value;
         self.hovered_color = value;
         if let Some(color) = value {
-            self.sync_hsva_from_color(color);
+            if sync_hsva {
+                self.sync_hsva_from_color(color);
+            }
             self.push_recent_color(color);
         }
         self.syncing_inputs = true;
@@ -1311,6 +1330,19 @@ impl ColorPicker {
                             .child(self.render_rgba_slider(1, "G", g_u8, alpha_value, rgba, window, cx))
                             .child(self.render_rgba_slider(2, "B", b_u8, alpha_value, rgba, window, cx))
                             .child(self.render_rgba_slider(3, "A", a_u8, alpha_value, rgba, window, cx)),
+                    )
+                    .on_mouse_move(window.listener_for(&state_entity, move |picker, event: &MouseMoveEvent, window, cx| {
+                        if picker.active_drag.is_some() {
+                            picker.drag_move(event.position, window, cx);
+                        }
+                    }))
+                    .on_mouse_up(
+                        MouseButton::Left,
+                        window.listener_for(&state_entity, ColorPickerState::stop_drag_mouse),
+                    )
+                    .on_mouse_up_out(
+                        MouseButton::Left,
+                        window.listener_for(&state_entity, ColorPickerState::stop_drag_mouse),
                     ),
             )
             .child(
@@ -1383,17 +1415,23 @@ impl Styled for ColorPicker {
 
 impl RenderOnce for ColorPicker {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let state = self.state.read(cx);
-        let bounds = state.bounds;
-        let display_title: SharedString = if let Some(value) = state.value {
+        let (bounds, current_value, is_open, is_dragging, is_focused, focus_handle) = {
+            let state = self.state.read(cx);
+            (
+                state.bounds,
+                state.value,
+                state.open,
+                state.active_drag.is_some(),
+                state.focus_handle.is_focused(window),
+                state.focus_handle.clone().tab_stop(true),
+            )
+        };
+        let display_title: SharedString = if let Some(value) = current_value {
             value.to_hex()
         } else {
             "".to_string()
         }
         .into();
-
-        let is_focused = state.focus_handle.is_focused(window);
-        let focus_handle = state.focus_handle.clone().tab_stop(true);
 
         div()
             .id(self.id.clone())
@@ -1414,7 +1452,7 @@ impl RenderOnce for ColorPicker {
                             Button::new("btn")
                                 .track_focus(&focus_handle)
                                 .ghost()
-                                .selected(state.open)
+                                .selected(is_open)
                                 .with_size(self.size)
                                 .icon(icon.clone()),
                         )
@@ -1432,10 +1470,10 @@ impl RenderOnce for ColorPicker {
                                 .rounded(cx.theme().radius)
                                 .overflow_hidden()
                                 .size_with(self.size)
-                                .when_some(state.value, |this, value| {
+                                .when_some(current_value, |this, value| {
                                     this.bg(value)
                                         .border_color(value.darken(0.3))
-                                        .when(state.open, |this| this.border_2())
+                                        .when(is_open, |this| this.border_2())
                                 })
                                 .when(!display_title.is_empty(), |this| {
                                     this.tooltip(move |_, cx| {
@@ -1459,7 +1497,7 @@ impl RenderOnce for ColorPicker {
                         .size_full(),
                     ),
             )
-            .when(state.open, |this| {
+            .when(is_open, |this| {
                 this.child(
                     deferred(
                         anchored()
@@ -1490,22 +1528,10 @@ impl RenderOnce for ColorPicker {
                                             .child(Divider::horizontal())
                                             .child(self.render_colors(window, cx))
                                     )
-                                    // Route mouse-move/up on the whole popup so drags
-                                    // continue even when cursor leaves a specific canvas.
-                                    .on_mouse_move(window.listener_for(&self.state, move |picker, event: &MouseMoveEvent, window, cx| {
-                                        if picker.active_drag.is_some() {
-                                            picker.drag_move(event.position, window, cx);
-                                        }
-                                    }))
-                                    .on_mouse_up(
-                                        MouseButton::Left,
-                                        window.listener_for(&self.state, ColorPickerState::stop_drag_mouse),
-                                    )
                                     .on_mouse_up_out(
                                         MouseButton::Left,
                                         window.listener_for(&self.state, |state, _, window, cx| {
                                             if state.active_drag.is_some() {
-                                                // Releasing outside popup while dragging: stop drag, keep picker open.
                                                 state.active_drag = None;
                                                 cx.notify();
                                             } else {
@@ -1517,6 +1543,39 @@ impl RenderOnce for ColorPicker {
                     )
                     .with_priority(1),
                 )
+                .when(is_dragging, |this| {
+                    this.child(
+                        deferred(
+                            anchored().snap_to_window_with_margin(px(0.)).child(
+                                div()
+                                    .size_full()
+                                    .on_mouse_move(window.listener_for(
+                                        &self.state,
+                                        |picker, event: &MouseMoveEvent, window, cx| {
+                                            if picker.active_drag.is_some() {
+                                                picker.drag_move(event.position, window, cx);
+                                            }
+                                        },
+                                    ))
+                                    .on_mouse_up(
+                                        MouseButton::Left,
+                                        window.listener_for(
+                                            &self.state,
+                                            ColorPickerState::stop_drag_mouse,
+                                        ),
+                                    )
+                                    .on_mouse_up_out(
+                                        MouseButton::Left,
+                                        window.listener_for(
+                                            &self.state,
+                                            ColorPickerState::stop_drag_mouse,
+                                        ),
+                                    ),
+                            ),
+                        )
+                        .with_priority(2),
+                    )
+                })
             })
     }
 }
