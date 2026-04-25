@@ -1,9 +1,10 @@
 use gpui::{
-    anchored, canvas, deferred, div, prelude::FluentBuilder as _, px, relative, App, AppContext,
-    Bounds, ClickEvent, Context, Corner, ElementId, Entity, EventEmitter, FocusHandle, Focusable,
-    Hsla, InteractiveElement as _, IntoElement, KeyBinding, MouseButton, ParentElement, Pixels,
-    Point, Render, RenderOnce, SharedString, StatefulInteractiveElement as _, StyleRefinement,
-    Styled, Subscription, Window,
+    anchored, canvas, deferred, div, fill, point, prelude::FluentBuilder as _, px, relative,
+    size, App, AppContext, Bounds, ClickEvent, Context, Corner, ElementId, Entity, EventEmitter,
+    FocusHandle, Focusable, Hsla, InteractiveElement as _, IntoElement, KeyBinding, MouseButton,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render,
+    RenderOnce, SharedString,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, Subscription, Window,
 };
 
 use crate::{
@@ -13,11 +14,371 @@ use crate::{
     h_flex,
     input::{InputEvent, InputState, TextInput},
     tooltip::Tooltip,
-    v_flex, ActiveTheme as _, Colorize as _, FocusableExt as _, Icon, Selectable as _, Sizable,
-    Size, StyleSized, StyledExt,
+    styled::PixelsExt, v_flex, ActiveTheme as _, Colorize as _, FocusableExt as _, Icon,
+    Selectable as _, Sizable, Size, StyleSized, StyledExt,
 };
 
 const CONTEXT: &'static str = "ColorPicker";
+const PICKER_SIZE: f32 = 224.0;
+const HUE_RING_THICKNESS: f32 = 20.0;
+const SLIDER_HEIGHT: f32 = 18.0;
+const CHECKER_CELL_SIZE: f32 = 8.0;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PickerDragTarget {
+    HueRing,
+    Triangle,
+    R,
+    G,
+    B,
+    A,
+}
+
+#[derive(Clone, Copy)]
+struct PickerGeometry {
+    cx: f32,
+    cy: f32,
+    outer_r: f32,
+    inner_r: f32,
+}
+
+fn clamp01(value: f32) -> f32 {
+    value.clamp(0.0, 1.0)
+}
+
+fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (f32, f32, f32) {
+    let h = h.rem_euclid(1.0);
+    let s = clamp01(s);
+    let v = clamp01(v);
+
+    let i = (h * 6.0).floor();
+    let f = h * 6.0 - i;
+    let p = v * (1.0 - s);
+    let q = v * (1.0 - f * s);
+    let t = v * (1.0 - (1.0 - f) * s);
+
+    match (i as i32).rem_euclid(6) {
+        0 => (v, t, p),
+        1 => (q, v, p),
+        2 => (p, v, t),
+        3 => (p, q, v),
+        4 => (t, p, v),
+        _ => (v, p, q),
+    }
+}
+
+fn rgb_to_hsv(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let delta = max - min;
+
+    let hue = if delta <= f32::EPSILON {
+        0.0
+    } else if (max - r).abs() <= f32::EPSILON {
+        ((g - b) / delta).rem_euclid(6.0) / 6.0
+    } else if (max - g).abs() <= f32::EPSILON {
+        (((b - r) / delta) + 2.0) / 6.0
+    } else {
+        (((r - g) / delta) + 4.0) / 6.0
+    };
+
+    let saturation = if max <= f32::EPSILON { 0.0 } else { delta / max };
+    (hue, saturation, max)
+}
+
+fn hsva_to_hsla(h: f32, s: f32, v: f32, a: f32) -> Hsla {
+    let (r, g, b) = hsv_to_rgb(h, s, v);
+    gpui::Rgba {
+        r,
+        g,
+        b,
+        a: clamp01(a),
+    }
+    .into()
+}
+
+fn hsla_to_hsva(color: Hsla) -> (f32, f32, f32, f32) {
+    let rgba: gpui::Rgba = color.into();
+    let (h, s, v) = rgb_to_hsv(rgba.r, rgba.g, rgba.b);
+    (h, s, v, rgba.a)
+}
+
+fn picker_geometry(bounds: Bounds<Pixels>) -> Option<PickerGeometry> {
+    let width = bounds.size.width.as_f32();
+    let height = bounds.size.height.as_f32();
+    if width <= 0.0 || height <= 0.0 {
+        return None;
+    }
+
+    let radius = width.min(height) * 0.5 - 2.0;
+    let inner_r = (radius - HUE_RING_THICKNESS).max(12.0);
+
+    Some(PickerGeometry {
+        cx: bounds.origin.x.as_f32() + width * 0.5,
+        cy: bounds.origin.y.as_f32() + height * 0.5,
+        outer_r: radius,
+        inner_r,
+    })
+}
+
+fn paint_hue_wheel(window: &mut Window, geometry: PickerGeometry) {
+    let steps = ((geometry.outer_r * std::f32::consts::TAU) / 1.35)
+        .round()
+        .clamp(220.0, 640.0) as usize;
+    for i in 0..steps {
+        let t0 = i as f32 / steps as f32;
+        let t1 = (i + 1) as f32 / steps as f32;
+        let a0 = std::f32::consts::TAU * t0 - std::f32::consts::FRAC_PI_2;
+        let a1 = std::f32::consts::TAU * t1 - std::f32::consts::FRAC_PI_2;
+
+        let outer0 = (geometry.cx + a0.cos() * geometry.outer_r, geometry.cy + a0.sin() * geometry.outer_r);
+        let outer1 = (geometry.cx + a1.cos() * geometry.outer_r, geometry.cy + a1.sin() * geometry.outer_r);
+        let inner1 = (geometry.cx + a1.cos() * geometry.inner_r, geometry.cy + a1.sin() * geometry.inner_r);
+        let inner0 = (geometry.cx + a0.cos() * geometry.inner_r, geometry.cy + a0.sin() * geometry.inner_r);
+
+        let mut builder = gpui::PathBuilder::fill();
+        builder.move_to(point(px(outer0.0), px(outer0.1)));
+        builder.line_to(point(px(outer1.0), px(outer1.1)));
+        builder.line_to(point(px(inner1.0), px(inner1.1)));
+        builder.line_to(point(px(inner0.0), px(inner0.1)));
+        builder.close();
+
+        if let Ok(path) = builder.build() {
+            window.paint_path(path, hsva_to_hsla(t0, 1.0, 1.0, 1.0));
+        }
+    }
+}
+
+fn triangle_vertices(geometry: PickerGeometry, hue: f32) -> [(f32, f32); 3] {
+    let tri_r = geometry.inner_r * 0.92;
+    let base = hue * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
+
+    let hue_v = (
+        geometry.cx + base.cos() * tri_r,
+        geometry.cy + base.sin() * tri_r,
+    );
+    let white_v = (
+        geometry.cx + (base + (2.0 * std::f32::consts::PI / 3.0)).cos() * tri_r,
+        geometry.cy + (base + (2.0 * std::f32::consts::PI / 3.0)).sin() * tri_r,
+    );
+    let black_v = (
+        geometry.cx + (base - (2.0 * std::f32::consts::PI / 3.0)).cos() * tri_r,
+        geometry.cy + (base - (2.0 * std::f32::consts::PI / 3.0)).sin() * tri_r,
+    );
+
+    [hue_v, white_v, black_v]
+}
+
+fn barycentric(p: (f32, f32), a: (f32, f32), b: (f32, f32), c: (f32, f32)) -> (f32, f32, f32) {
+    let v0 = (b.0 - a.0, b.1 - a.1);
+    let v1 = (c.0 - a.0, c.1 - a.1);
+    let v2 = (p.0 - a.0, p.1 - a.1);
+
+    let d00 = v0.0 * v0.0 + v0.1 * v0.1;
+    let d01 = v0.0 * v1.0 + v0.1 * v1.1;
+    let d11 = v1.0 * v1.0 + v1.1 * v1.1;
+    let d20 = v2.0 * v0.0 + v2.1 * v0.1;
+    let d21 = v2.0 * v1.0 + v2.1 * v1.1;
+
+    let denom = d00 * d11 - d01 * d01;
+    if denom.abs() <= f32::EPSILON {
+        return (0.0, 0.0, 0.0);
+    }
+
+    let v = (d11 * d20 - d01 * d21) / denom;
+    let w = (d00 * d21 - d01 * d20) / denom;
+    let u = 1.0 - v - w;
+    (u, v, w)
+}
+
+fn point_in_triangle(weights: (f32, f32, f32)) -> bool {
+    weights.0 >= 0.0 && weights.1 >= 0.0 && weights.2 >= 0.0
+}
+
+fn closest_point_on_segment(p: (f32, f32), a: (f32, f32), b: (f32, f32)) -> (f32, f32) {
+    let ab = (b.0 - a.0, b.1 - a.1);
+    let ap = (p.0 - a.0, p.1 - a.1);
+    let ab_len_sq = ab.0 * ab.0 + ab.1 * ab.1;
+    if ab_len_sq <= f32::EPSILON {
+        return a;
+    }
+
+    let t = clamp01((ap.0 * ab.0 + ap.1 * ab.1) / ab_len_sq);
+    (a.0 + ab.0 * t, a.1 + ab.1 * t)
+}
+
+fn clamp_point_to_triangle(
+    p: (f32, f32),
+    a: (f32, f32),
+    b: (f32, f32),
+    c: (f32, f32),
+) -> (f32, f32) {
+    let weights = barycentric(p, a, b, c);
+    if point_in_triangle(weights) {
+        return p;
+    }
+
+    let ab = closest_point_on_segment(p, a, b);
+    let bc = closest_point_on_segment(p, b, c);
+    let ca = closest_point_on_segment(p, c, a);
+
+    let d_ab = (p.0 - ab.0).powi(2) + (p.1 - ab.1).powi(2);
+    let d_bc = (p.0 - bc.0).powi(2) + (p.1 - bc.1).powi(2);
+    let d_ca = (p.0 - ca.0).powi(2) + (p.1 - ca.1).powi(2);
+
+    if d_ab <= d_bc && d_ab <= d_ca {
+        ab
+    } else if d_bc <= d_ca {
+        bc
+    } else {
+        ca
+    }
+}
+
+fn paint_sv_triangle(window: &mut Window, geometry: PickerGeometry, hue: f32) {
+    let [a, b, c] = triangle_vertices(geometry, hue);
+    let subdivisions = (geometry.inner_r / 2.0).round().clamp(42.0, 72.0) as usize;
+
+    let point_from_uv = |u: f32, v: f32| {
+        let wa = 1.0 - u - v;
+        let wb = u;
+        let wc = v;
+        (
+            wa * a.0 + wb * b.0 + wc * c.0,
+            wa * a.1 + wb * b.1 + wc * c.1,
+        )
+    };
+
+    for i in 0..subdivisions {
+        for j in 0..(subdivisions - i) {
+            let u0 = i as f32 / subdivisions as f32;
+            let v0 = j as f32 / subdivisions as f32;
+            let u1 = (i + 1) as f32 / subdivisions as f32;
+            let v1 = (j + 1) as f32 / subdivisions as f32;
+
+            let p0 = point_from_uv(u0, v0);
+            let p1 = point_from_uv(u1, v0);
+            let p2 = point_from_uv(u0, v1);
+
+            let mut tri0 = gpui::PathBuilder::fill();
+            tri0.move_to(point(px(p0.0), px(p0.1)));
+            tri0.line_to(point(px(p1.0), px(p1.1)));
+            tri0.line_to(point(px(p2.0), px(p2.1)));
+            tri0.close();
+
+            if let Ok(path) = tri0.build() {
+                let center = ((p0.0 + p1.0 + p2.0) / 3.0, (p0.1 + p1.1 + p2.1) / 3.0);
+                let (w_h, w_w, w_b) = barycentric(center, a, b, c);
+                let v = clamp01(w_h + w_w);
+                let s = if v <= 0.0001 { 0.0 } else { clamp01(w_h / v) };
+                window.paint_path(path, hsva_to_hsla(hue, s, v, 1.0));
+            }
+
+            if i + j + 1 < subdivisions {
+                let p3 = point_from_uv(u1, v1);
+                let mut tri1 = gpui::PathBuilder::fill();
+                tri1.move_to(point(px(p1.0), px(p1.1)));
+                tri1.line_to(point(px(p3.0), px(p3.1)));
+                tri1.line_to(point(px(p2.0), px(p2.1)));
+                tri1.close();
+
+                if let Ok(path) = tri1.build() {
+                    let center = ((p1.0 + p3.0 + p2.0) / 3.0, (p1.1 + p3.1 + p2.1) / 3.0);
+                    let (w_h, w_w, w_b) = barycentric(center, a, b, c);
+                    let v = clamp01(w_h + w_w);
+                    let s = if v <= 0.0001 { 0.0 } else { clamp01(w_h / v) };
+                    window.paint_path(path, hsva_to_hsla(hue, s, v, 1.0));
+                }
+            }
+        }
+    }
+}
+
+fn paint_slider_gradient(
+    window: &mut Window,
+    bounds: Bounds<Pixels>,
+    channel: usize,
+    rgba: gpui::Rgba,
+    value_01: f32,
+) {
+    let width = bounds.size.width.as_f32();
+    let height = bounds.size.height.as_f32();
+    let x0 = bounds.origin.x.as_f32();
+    let y0 = bounds.origin.y.as_f32();
+
+    let steps = (width / 2.0).max(48.0) as usize;
+
+    for i in 0..steps {
+        let t = i as f32 / (steps.saturating_sub(1).max(1)) as f32;
+
+        let color = match channel {
+            0 => gpui::Rgba { r: t, g: rgba.g, b: rgba.b, a: 1.0 },
+            1 => gpui::Rgba { r: rgba.r, g: t, b: rgba.b, a: 1.0 },
+            2 => gpui::Rgba { r: rgba.r, g: rgba.g, b: t, a: 1.0 },
+            _ => gpui::Rgba {
+                r: rgba.r * t + 0.18 * (1.0 - t),
+                g: rgba.g * t + 0.18 * (1.0 - t),
+                b: rgba.b * t + 0.18 * (1.0 - t),
+                a: 1.0,
+            },
+        };
+
+        let cell_w = width / steps as f32;
+        let rect = Bounds {
+            origin: point(px(x0 + i as f32 * cell_w), px(y0)),
+            size: size(px(cell_w + 0.6), px(height)),
+        };
+        window.paint_quad(fill(rect, color));
+    }
+
+    let thumb_x = x0 + clamp01(value_01) * width;
+    let thumb = Bounds {
+        origin: point(px(thumb_x - 1.0), px(y0 - 2.0)),
+        size: size(px(2.0), px(height + 4.0)),
+    };
+    window.paint_quad(fill(thumb, gpui::white()));
+}
+
+fn paint_alpha_checkerboard(window: &mut Window, bounds: Bounds<Pixels>) {
+    let width = bounds.size.width.as_f32();
+    let height = bounds.size.height.as_f32();
+    let x0 = bounds.origin.x.as_f32();
+    let y0 = bounds.origin.y.as_f32();
+
+    let light = gpui::Rgba {
+        r: 0.30,
+        g: 0.30,
+        b: 0.30,
+        a: 1.0,
+    };
+    let dark = gpui::Rgba {
+        r: 0.18,
+        g: 0.18,
+        b: 0.18,
+        a: 1.0,
+    };
+
+    let cols = (width / CHECKER_CELL_SIZE).ceil() as i32;
+    let rows = (height / CHECKER_CELL_SIZE).ceil() as i32;
+
+    for row in 0..rows {
+        for col in 0..cols {
+            let color = if (row + col) % 2 == 0 { light } else { dark };
+            let rect = Bounds {
+                origin: point(
+                    px(x0 + col as f32 * CHECKER_CELL_SIZE),
+                    px(y0 + row as f32 * CHECKER_CELL_SIZE),
+                ),
+                size: size(px(CHECKER_CELL_SIZE + 0.6), px(CHECKER_CELL_SIZE + 0.6)),
+            };
+            window.paint_quad(fill(rect, color));
+        }
+    }
+}
+
+fn alpha_to_text(alpha: f32) -> String {
+    format!("{alpha:.3}").trim_end_matches('0').trim_end_matches('.').to_string()
+}
 
 pub fn init(cx: &mut App) {
     cx.bind_keys([KeyBinding::new("escape", Cancel, Some(CONTEXT))])
@@ -70,24 +431,41 @@ pub struct ColorPickerState {
     value: Option<Hsla>,
     hovered_color: Option<Hsla>,
     state: Entity<InputState>,
+    syncing_inputs: bool,
     open: bool,
     bounds: Bounds<Pixels>,
+    picker_bounds: Bounds<Pixels>,
+    slider_bounds: [Bounds<Pixels>; 4],
+    active_drag: Option<PickerDragTarget>,
+    rgba_input_states: [Entity<InputState>; 4],
+    hue: f32,
+    saturation: f32,
+    value_channel: f32,
+    alpha: f32,
+    recent_colors: Vec<Hsla>,
     _subscriptions: Vec<Subscription>,
 }
 
 impl ColorPickerState {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let state = cx.new(|cx| InputState::new(window, cx));
+        let rgba_input_states = std::array::from_fn(|_| cx.new(|cx| InputState::new(window, cx)));
 
-        let _subscriptions = vec![cx.subscribe_in(
+        let mut _subscriptions = vec![cx.subscribe_in(
             &state,
             window,
             |this, state, ev: &InputEvent, window, cx| match ev {
                 InputEvent::Change => {
+                    if this.syncing_inputs {
+                        return;
+                    }
                     let value = state.read(cx).value();
                     if let Ok(color) = Hsla::parse_hex(value.as_str()) {
                         this.value = Some(color);
                         this.hovered_color = Some(color);
+                        this.sync_hsva_from_color(color);
+                        cx.emit(ColorPickerEvent::Change(Some(color)));
+                        cx.notify();
                     }
                 }
                 InputEvent::PressEnter { .. } => {
@@ -101,13 +479,43 @@ impl ColorPickerState {
             },
         )];
 
+        for channel in 0..4 {
+            let input_state = rgba_input_states[channel].clone();
+            _subscriptions.push(cx.subscribe_in(
+                &input_state,
+                window,
+                move |this, _state, ev: &InputEvent, window, cx| match ev {
+                    InputEvent::Change => this.apply_numeric_input(channel, false, window, cx),
+                    InputEvent::PressEnter { .. } => {
+                        this.apply_numeric_input(channel, true, window, cx)
+                    }
+                    _ => {}
+                },
+            ));
+        }
+
         Self {
             focus_handle: cx.focus_handle(),
             value: None,
             hovered_color: None,
             state,
+            syncing_inputs: false,
             open: false,
             bounds: Bounds::default(),
+            picker_bounds: Bounds::default(),
+            slider_bounds: [
+                Bounds::default(),
+                Bounds::default(),
+                Bounds::default(),
+                Bounds::default(),
+            ],
+            active_drag: None,
+            rgba_input_states,
+            hue: 0.0,
+            saturation: 0.0,
+            value_channel: 1.0,
+            alpha: 1.0,
+            recent_colors: Vec::new(),
             _subscriptions,
         }
     }
@@ -115,6 +523,7 @@ impl ColorPickerState {
     /// Set default color value.
     pub fn default_value(mut self, value: Hsla) -> Self {
         self.value = Some(value);
+        self.sync_hsva_from_color(value);
         self
     }
 
@@ -147,6 +556,268 @@ impl ColorPickerState {
         cx.notify();
     }
 
+    fn sync_hsva_from_color(&mut self, color: Hsla) {
+        let (h, s, v, a) = hsla_to_hsva(color);
+        self.hue = h;
+        self.saturation = s;
+        self.value_channel = v;
+        self.alpha = a;
+    }
+
+    fn push_recent_color(&mut self, color: Hsla) {
+        let hex = color.to_hex();
+        self.recent_colors.retain(|c| c.to_hex() != hex);
+        self.recent_colors.insert(0, color);
+        self.recent_colors.truncate(12);
+    }
+
+    fn drag_target_for_point(&self, position: Point<Pixels>) -> Option<PickerDragTarget> {
+        if let Some(geometry) = picker_geometry(self.picker_bounds) {
+            if self.picker_bounds.contains(&position) {
+                let dx = position.x.as_f32() - geometry.cx;
+                let dy = position.y.as_f32() - geometry.cy;
+                let distance = (dx * dx + dy * dy).sqrt();
+
+                if distance >= geometry.inner_r && distance <= geometry.outer_r {
+                    return Some(PickerDragTarget::HueRing);
+                }
+
+                if distance < geometry.inner_r {
+                    let point = (position.x.as_f32(), position.y.as_f32());
+                    let [a, b, c] = triangle_vertices(geometry, self.hue);
+                    if point_in_triangle(barycentric(point, a, b, c)) {
+                        return Some(PickerDragTarget::Triangle);
+                    }
+                }
+            }
+        }
+
+        for (index, bounds) in self.slider_bounds.iter().enumerate() {
+            if bounds.contains(&position) {
+                return Some(match index {
+                    0 => PickerDragTarget::R,
+                    1 => PickerDragTarget::G,
+                    2 => PickerDragTarget::B,
+                    _ => PickerDragTarget::A,
+                });
+            }
+        }
+
+        None
+    }
+
+    fn apply_picker_point(
+        &mut self,
+        target: PickerDragTarget,
+        position: Point<Pixels>,
+        emit: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !matches!(target, PickerDragTarget::HueRing | PickerDragTarget::Triangle) {
+            return;
+        }
+
+        let Some(geometry) = picker_geometry(self.picker_bounds) else {
+            return;
+        };
+
+        let x = position.x.as_f32();
+        let y = position.y.as_f32();
+
+        let dx = x - geometry.cx;
+        let dy = y - geometry.cy;
+        let distance = (dx * dx + dy * dy).sqrt();
+
+        match target {
+            PickerDragTarget::HueRing => {
+                if distance < geometry.inner_r || distance > geometry.outer_r {
+                    return;
+                }
+
+                let angle = dy.atan2(dx);
+                self.hue = ((angle + std::f32::consts::FRAC_PI_2) / std::f32::consts::TAU)
+                    .rem_euclid(1.0);
+                let color = hsva_to_hsla(self.hue, self.saturation, self.value_channel, self.alpha);
+                self.update_value(Some(color), emit, window, cx);
+            }
+            PickerDragTarget::Triangle => {
+                if distance > geometry.inner_r {
+                    return;
+                }
+
+                let [a, b, c] = triangle_vertices(geometry, self.hue);
+                let p = clamp_point_to_triangle((x, y), a, b, c);
+                let (w_h, w_w, w_b) = barycentric(p, a, b, c);
+
+                let v = clamp01(w_h + w_w);
+                let s = if v <= 0.0001 { 0.0 } else { clamp01(w_h / v) };
+
+                self.saturation = s;
+                self.value_channel = v;
+                let color = hsva_to_hsla(self.hue, self.saturation, self.value_channel, self.alpha);
+                self.update_value(Some(color), emit, window, cx);
+            }
+            _ => {}
+        }
+    }
+
+    fn apply_slider_point(
+        &mut self,
+        channel: PickerDragTarget,
+        position: Point<Pixels>,
+        emit: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let slider_index = match channel {
+            PickerDragTarget::R => 0,
+            PickerDragTarget::G => 1,
+            PickerDragTarget::B => 2,
+            PickerDragTarget::A => 3,
+            PickerDragTarget::HueRing | PickerDragTarget::Triangle => return,
+        };
+
+        let bounds = self.slider_bounds[slider_index];
+        if bounds.size.width <= px(0.0) {
+            return;
+        }
+
+        let t = clamp01(
+            (position.x.as_f32() - bounds.origin.x.as_f32()) / bounds.size.width.as_f32(),
+        );
+
+        let color = self.value.unwrap_or_else(|| hsva_to_hsla(self.hue, self.saturation, self.value_channel, self.alpha));
+        let mut rgba: gpui::Rgba = color.into();
+
+        match channel {
+            PickerDragTarget::R => rgba.r = t,
+            PickerDragTarget::G => rgba.g = t,
+            PickerDragTarget::B => rgba.b = t,
+            PickerDragTarget::A => rgba.a = t,
+            PickerDragTarget::HueRing | PickerDragTarget::Triangle => {}
+        }
+
+        let (h, s, v) = rgb_to_hsv(rgba.r, rgba.g, rgba.b);
+        if s > 0.0001 {
+            self.hue = h;
+        }
+        self.saturation = s;
+        self.value_channel = v;
+        self.alpha = rgba.a;
+
+        self.update_value(Some(rgba.into()), emit, window, cx);
+    }
+
+    fn start_drag(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let position = event.position;
+        self.active_drag = self.drag_target_for_point(position);
+        if let Some(target) = self.active_drag {
+            match target {
+                PickerDragTarget::HueRing | PickerDragTarget::Triangle => {
+                    self.apply_picker_point(target, position, true, window, cx)
+                }
+                _ => self.apply_slider_point(target, position, true, window, cx),
+            }
+        }
+    }
+
+    fn drag_move(&mut self, position: Point<Pixels>, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(target) = self.active_drag {
+            match target {
+                PickerDragTarget::HueRing | PickerDragTarget::Triangle => {
+                    self.apply_picker_point(target, position, true, window, cx)
+                }
+                _ => self.apply_slider_point(target, position, true, window, cx),
+            }
+        }
+    }
+
+    fn stop_drag_mouse(&mut self, _: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
+        self.active_drag = None;
+        cx.notify();
+    }
+
+    fn sync_numeric_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let color = self
+            .value
+            .unwrap_or_else(|| hsva_to_hsla(self.hue, self.saturation, self.value_channel, self.alpha));
+        let rgba: gpui::Rgba = color.into();
+
+        let texts = [
+            (rgba.r * 255.0).round().clamp(0.0, 255.0).to_string(),
+            (rgba.g * 255.0).round().clamp(0.0, 255.0).to_string(),
+            (rgba.b * 255.0).round().clamp(0.0, 255.0).to_string(),
+            alpha_to_text(rgba.a),
+        ];
+
+        for (index, text) in texts.iter().enumerate() {
+            self.rgba_input_states[index].update(cx, |input, cx| {
+                if input.value() != *text {
+                    input.set_value(text, window, cx);
+                }
+            });
+        }
+    }
+
+    fn apply_numeric_input(
+        &mut self,
+        channel: usize,
+        emit: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.syncing_inputs {
+            return;
+        }
+
+        let raw = self.rgba_input_states[channel].read(cx).value();
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+
+        let color = self
+            .value
+            .unwrap_or_else(|| hsva_to_hsla(self.hue, self.saturation, self.value_channel, self.alpha));
+        let mut rgba: gpui::Rgba = color.into();
+
+        let parsed_ok = if channel <= 2 {
+            match trimmed.parse::<i32>() {
+                Ok(v) => {
+                    let clamped = v.clamp(0, 255) as f32 / 255.0;
+                    match channel {
+                        0 => rgba.r = clamped,
+                        1 => rgba.g = clamped,
+                        _ => rgba.b = clamped,
+                    }
+                    true
+                }
+                Err(_) => false,
+            }
+        } else {
+            match trimmed.parse::<f32>() {
+                Ok(v) => {
+                    rgba.a = clamp01(v);
+                    true
+                }
+                Err(_) => false,
+            }
+        };
+
+        if parsed_ok {
+            let (h, s, v) = rgb_to_hsv(rgba.r, rgba.g, rgba.b);
+            if s > 0.0001 {
+                self.hue = h;
+            }
+            self.saturation = s;
+            self.value_channel = v;
+            self.alpha = rgba.a;
+
+            self.update_value(Some(rgba.into()), emit, window, cx);
+        }
+    }
+
     fn update_value(
         &mut self,
         value: Option<Hsla>,
@@ -156,13 +827,25 @@ impl ColorPickerState {
     ) {
         self.value = value;
         self.hovered_color = value;
+        if let Some(color) = value {
+            self.sync_hsva_from_color(color);
+            self.push_recent_color(color);
+        }
+        self.syncing_inputs = true;
         self.state.update(cx, |view, cx| {
             if let Some(value) = value {
-                view.set_value(value.to_hex(), window, cx);
+                let hex = value.to_hex();
+                if view.value() != hex {
+                    view.set_value(hex, window, cx);
+                }
             } else {
-                view.set_value("", window, cx);
+                if !view.value().is_empty() {
+                    view.set_value("", window, cx);
+                }
             }
         });
+        self.sync_numeric_inputs(window, cx);
+        self.syncing_inputs = false;
         if emit {
             cx.emit(ColorPickerEvent::Change(value));
         }
@@ -305,9 +988,10 @@ impl ColorPicker {
 
         let state = self.state.clone();
         v_flex()
+            .w_full()
             .gap_3()
             .child(
-                h_flex().gap_1().children(
+                h_flex().w_full().justify_between().gap_1().children(
                     featured_colors
                         .iter()
                         .map(|color| self.render_item(*color, true, window, cx)),
@@ -316,9 +1000,10 @@ impl ColorPicker {
             .child(Divider::horizontal())
             .child(
                 v_flex()
+                    .w_full()
                     .gap_1()
                     .children(color_palettes().iter().map(|sub_colors| {
-                        h_flex().gap_1().children(
+                        h_flex().w_full().justify_between().gap_1().children(
                             sub_colors
                                 .iter()
                                 .rev()
@@ -342,6 +1027,364 @@ impl ColorPicker {
                                 .rounded(cx.theme().radius),
                         )
                         .child(TextInput::new(&state.read(cx).state).small()),
+                )
+            })
+    }
+
+    fn render_rgba_slider(
+        &self,
+        channel: usize,
+        label: &'static str,
+        value_255: u8,
+        alpha_value: f32,
+        rgba: gpui::Rgba,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> impl IntoElement {
+        let state = self.state.clone();
+        let numeric_input_state = {
+            let picker = state.read(cx);
+            picker.rgba_input_states[channel].clone()
+        };
+        let value_01 = value_255 as f32 / 255.0;
+
+        h_flex()
+            .items_center()
+            .gap_2()
+            .child(
+                div()
+                    .w(px(18.0))
+                    .text_xs()
+                    .font_semibold()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(label),
+            )
+            .child(
+                div()
+                    .relative()
+                    .h(px(SLIDER_HEIGHT))
+                    .flex_1()
+                    .rounded_md()
+                    .overflow_hidden()
+                    .border_1()
+                    .border_color(cx.theme().border.opacity(0.6))
+                    .child(
+                        canvas(
+                            {
+                                let state = state.clone();
+                                move |bounds, _, cx| {
+                                    state.update(cx, |picker, _| picker.slider_bounds[channel] = bounds);
+                                    bounds
+                                }
+                            },
+                            move |bounds, _, window, _| {
+                                paint_slider_gradient(window, bounds, channel, rgba, value_01);
+                            },
+                        )
+                        .size_full(),
+                    )
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        window.listener_for(&state, move |picker, event, window, cx| {
+                            picker.active_drag = Some(match channel {
+                                0 => PickerDragTarget::R,
+                                1 => PickerDragTarget::G,
+                                2 => PickerDragTarget::B,
+                                _ => PickerDragTarget::A,
+                            });
+                            picker.start_drag(event, window, cx);
+                        }),
+                    )
+                    .on_mouse_move(window.listener_for(&state, move |picker, event: &MouseMoveEvent, window, cx| {
+                        if picker.active_drag.is_some() {
+                            picker.drag_move(event.position, window, cx);
+                        }
+                    }))
+                    .on_mouse_up(MouseButton::Left, window.listener_for(&state, ColorPickerState::stop_drag_mouse))
+                    .on_mouse_up_out(MouseButton::Left, window.listener_for(&state, ColorPickerState::stop_drag_mouse)),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(
+                        TextInput::new(&numeric_input_state)
+                            .xsmall()
+                            .w(px(52.0))
+                            .font_family("JetBrainsMono-Regular")
+                            .text_xs(),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground.opacity(0.6))
+                            .child(if channel == 3 { "0-1" } else { "0-255" }),
+                    ),
+            )
+    }
+
+    fn render_relation_row(
+        &self,
+        title: &'static str,
+        colors: Vec<Hsla>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> impl IntoElement {
+        h_flex()
+            .w_full()
+            .items_center()
+            .justify_between()
+            .child(
+                div()
+                    .w(px(108.0))
+                    .text_xs()
+                    .font_semibold()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(title),
+            )
+            .child(
+                h_flex()
+                    .gap_1()
+                    .children(colors.into_iter().map(|color| self.render_item(color, true, window, cx))),
+            )
+    }
+
+    fn render_advanced_picker(&self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let (current, hue_value, sat_value, val_value, alpha_value, recent_colors) = {
+            let state = self.state.read(cx);
+            (
+                state
+                    .value
+                    .unwrap_or_else(|| hsva_to_hsla(state.hue, state.saturation, state.value_channel, state.alpha)),
+                state.hue,
+                state.saturation,
+                state.value_channel,
+                state.alpha,
+                state.recent_colors.clone(),
+            )
+        };
+
+        let rgba: gpui::Rgba = current.into();
+        let r_u8 = (rgba.r * 255.0).round() as u8;
+        let g_u8 = (rgba.g * 255.0).round() as u8;
+        let b_u8 = (rgba.b * 255.0).round() as u8;
+        let a_u8 = (rgba.a * 255.0).round() as u8;
+
+        let complementary = hsva_to_hsla(
+            (hue_value + 0.5).rem_euclid(1.0),
+            sat_value,
+            val_value,
+            alpha_value,
+        );
+        let triad_a = hsva_to_hsla(
+            (hue_value + (1.0 / 3.0)).rem_euclid(1.0),
+            sat_value,
+            val_value,
+            alpha_value,
+        );
+        let triad_b = hsva_to_hsla(
+            (hue_value + (2.0 / 3.0)).rem_euclid(1.0),
+            sat_value,
+            val_value,
+            alpha_value,
+        );
+
+        let state_entity = self.state.clone();
+        let hue = hue_value;
+        let sat = sat_value;
+        let val = val_value;
+
+        let analogous_l = hsva_to_hsla(
+            (hue_value - (1.0 / 12.0)).rem_euclid(1.0),
+            sat_value,
+            val_value,
+            alpha_value,
+        );
+        let analogous_r = hsva_to_hsla(
+            (hue_value + (1.0 / 12.0)).rem_euclid(1.0),
+            sat_value,
+            val_value,
+            alpha_value,
+        );
+        let split_l = hsva_to_hsla(
+            (hue_value + 0.5 - (1.0 / 12.0)).rem_euclid(1.0),
+            sat_value,
+            val_value,
+            alpha_value,
+        );
+        let split_r = hsva_to_hsla(
+            (hue_value + 0.5 + (1.0 / 12.0)).rem_euclid(1.0),
+            sat_value,
+            val_value,
+            alpha_value,
+        );
+
+        v_flex()
+            .gap_3()
+            .child(
+                h_flex()
+                    .w_full()
+                    .items_start()
+                    .gap_3()
+                    .child(
+                        div()
+                            .relative()
+                            .size(px(PICKER_SIZE))
+                            .rounded_lg()
+                            .overflow_hidden()
+                            .border_1()
+                            .border_color(cx.theme().border.opacity(0.65))
+                            .child(
+                                canvas(
+                                    {
+                                        let state = state_entity.clone();
+                                        move |bounds, _, cx| {
+                                            state.update(cx, |picker, _| picker.picker_bounds = bounds);
+                                            bounds
+                                        }
+                                    },
+                                    move |bounds, _, window, _| {
+                                        let Some(geometry) = picker_geometry(bounds) else {
+                                            return;
+                                        };
+
+                                        paint_hue_wheel(window, geometry);
+                                        paint_sv_triangle(window, geometry, hue);
+
+                                        let ring_angle =
+                                            hue * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
+                                        let ring_radius = (geometry.outer_r + geometry.inner_r) * 0.5;
+                                        let ring_x = geometry.cx + ring_angle.cos() * ring_radius;
+                                        let ring_y = geometry.cy + ring_angle.sin() * ring_radius;
+
+                                        let ring_marker = Bounds {
+                                            origin: point(px(ring_x - 4.0), px(ring_y - 4.0)),
+                                            size: size(px(8.0), px(8.0)),
+                                        };
+                                        window.paint_quad(fill(ring_marker, gpui::white()));
+
+                                        let [a, b, c] = triangle_vertices(geometry, hue);
+                                        let w_h = sat * val;
+                                        let w_w = (1.0 - sat) * val;
+                                        let w_b = 1.0 - val;
+
+                                        let tri_x = w_h * a.0 + w_w * b.0 + w_b * c.0;
+                                        let tri_y = w_h * a.1 + w_w * b.1 + w_b * c.1;
+
+                                        let tri_marker = Bounds {
+                                            origin: point(px(tri_x - 5.0), px(tri_y - 5.0)),
+                                            size: size(px(10.0), px(10.0)),
+                                        };
+                                        window.paint_quad(fill(tri_marker, gpui::black().opacity(0.65)));
+                                        let inner = Bounds {
+                                            origin: point(px(tri_x - 3.0), px(tri_y - 3.0)),
+                                            size: size(px(6.0), px(6.0)),
+                                        };
+                                        window.paint_quad(fill(inner, gpui::white()));
+                                    },
+                                )
+                                .size_full(),
+                            )
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                window.listener_for(&state_entity, |picker, event, window, cx| {
+                                    picker.start_drag(event, window, cx);
+                                }),
+                            )
+                            .on_mouse_move(window.listener_for(&state_entity, move |picker, event: &MouseMoveEvent, window, cx| {
+                                if picker.active_drag.is_some() {
+                                    picker.drag_move(event.position, window, cx);
+                                }
+                            }))
+                            .on_mouse_up(MouseButton::Left, window.listener_for(&state_entity, ColorPickerState::stop_drag_mouse))
+                            .on_mouse_up_out(MouseButton::Left, window.listener_for(&state_entity, ColorPickerState::stop_drag_mouse)),
+                    )
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .gap_2()
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_start()
+                                    .child(
+                                        div()
+                                            .relative()
+                                            .w(px(132.0))
+                                            .h(px(86.0))
+                                            .rounded_md()
+                                            .overflow_hidden()
+                                            .border_1()
+                                            .border_color(current.darken(0.35))
+                                            .child(
+                                                canvas(
+                                                    |bounds, _, _| bounds,
+                                                    |bounds, _, window, _| {
+                                                        paint_alpha_checkerboard(window, bounds);
+                                                    },
+                                                )
+                                                .size_full()
+                                                .absolute()
+                                                .inset_0(),
+                                            )
+                                            .child(div().absolute().inset_0().bg(current)),
+                                    )
+                                    .child(
+                                        v_flex()
+                                            .gap_1()
+                                            .text_xs()
+                                            .font_family("JetBrainsMono-Regular")
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child(format!("HEX  {}", current.to_hex()))
+                                            .child(format!("RGBA {}, {}, {}, {}", r_u8, g_u8, b_u8, a_u8))
+                                            .child(format!(
+                                                "HSVA {:.3}, {:.3}, {:.3}, {:.3}",
+                                                hue_value, sat_value, val_value, alpha_value
+                                            )),
+                                    ),
+                            )
+                            .child(self.render_rgba_slider(0, "R", r_u8, alpha_value, rgba, window, cx))
+                            .child(self.render_rgba_slider(1, "G", g_u8, alpha_value, rgba, window, cx))
+                            .child(self.render_rgba_slider(2, "B", b_u8, alpha_value, rgba, window, cx))
+                            .child(self.render_rgba_slider(3, "A", a_u8, alpha_value, rgba, window, cx)),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .gap_2()
+                    .child(Divider::horizontal())
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_semibold()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Color Relations"),
+                    )
+                    .child(self.render_relation_row("Complementary", vec![current, complementary], window, cx))
+                    .child(self.render_relation_row("Analogous", vec![analogous_l, current, analogous_r], window, cx))
+                    .child(self.render_relation_row("Split-Comp", vec![current, split_l, split_r], window, cx))
+                    .child(self.render_relation_row("Triadic", vec![current, triad_a, triad_b], window, cx)),
+            )
+            .when(!recent_colors.is_empty(), |this| {
+                this.child(
+                    v_flex()
+                        .gap_1()
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_semibold()
+                                .text_color(cx.theme().muted_foreground)
+                                .child("Recent"),
+                        )
+                        .child(
+                            h_flex().gap_1().children(
+                                recent_colors
+                                    .iter()
+                                    .copied()
+                                    .map(|color| self.render_item(color, true, window, cx)),
+                            ),
+                        ),
                 )
             })
     }
@@ -467,7 +1510,7 @@ impl RenderOnce for ColorPicker {
                                         Corner::TopLeft | Corner::TopRight => this.mt_1p5(),
                                         Corner::BottomLeft | Corner::BottomRight => this.mb_1p5(),
                                     })
-                                    .w_72()
+                                    .w(px(420.0))
                                     .overflow_hidden()
                                     .rounded(cx.theme().radius)
                                     .p_3()
@@ -476,6 +1519,9 @@ impl RenderOnce for ColorPicker {
                                     .shadow_lg()
                                     .rounded(cx.theme().radius)
                                     .bg(cx.theme().background)
+                                    .child(self.render_advanced_picker(window, cx))
+                                    .child(Divider::horizontal())
+                                    .mt_3()
                                     .child(self.render_colors(window, cx))
                                     .on_mouse_up_out(
                                         MouseButton::Left,
