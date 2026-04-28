@@ -25,8 +25,6 @@ const SLIDER_HEIGHT: f32 = 18.0;
 const CHECKER_CELL_SIZE: f32 = 8.0;
 /// Columns in every row of the All Colors grid.
 const ALL_COLORS_COLS: usize = 8;
-/// Number of distinct hue slices (= rows) in the All Colors grid.
-const ALL_COLORS_HUE_ROWS: usize = 12;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PickerDragTarget {
@@ -69,6 +67,176 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (f32, f32, f32) {
         4 => (t, p, v),
         _ => (v, p, q),
     }
+}
+
+fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (f32, f32, f32) {
+    let h = h.rem_euclid(1.0);
+    let s = clamp01(s);
+    let l = clamp01(l);
+
+    if s <= f32::EPSILON {
+        return (l, l, l);
+    }
+
+    let q = if l < 0.5 {
+        l * (1.0 + s)
+    } else {
+        l + s - l * s
+    };
+    let p = 2.0 * l - q;
+
+    fn hue_to_channel(p: f32, q: f32, mut t: f32) -> f32 {
+        t = t.rem_euclid(1.0);
+        if t < 1.0 / 6.0 {
+            p + (q - p) * 6.0 * t
+        } else if t < 1.0 / 2.0 {
+            q
+        } else if t < 2.0 / 3.0 {
+            p + (q - p) * (2.0 / 3.0 - t) * 6.0
+        } else {
+            p
+        }
+    }
+
+    (
+        hue_to_channel(p, q, h + 1.0 / 3.0),
+        hue_to_channel(p, q, h),
+        hue_to_channel(p, q, h - 1.0 / 3.0),
+    )
+}
+
+fn parse_percent_or_unit(value: &str) -> Option<f32> {
+    let trimmed = value.trim();
+    if let Some(v) = trimmed.strip_suffix('%') {
+        v.trim().parse::<f32>().ok().map(|n| clamp01(n / 100.0))
+    } else {
+        trimmed.parse::<f32>().ok().map(clamp01)
+    }
+}
+
+fn parse_rgb_channel(value: &str) -> Option<f32> {
+    let trimmed = value.trim();
+    if let Some(v) = trimmed.strip_suffix('%') {
+        v.trim().parse::<f32>().ok().map(|n| clamp01(n / 100.0))
+    } else {
+        trimmed
+            .parse::<f32>()
+            .ok()
+            .map(|n| clamp01((n / 255.0).clamp(0.0, 1.0)))
+    }
+}
+
+fn parse_hue(value: &str) -> Option<f32> {
+    let trimmed = value.trim().trim_end_matches("deg").trim();
+    trimmed
+        .parse::<f32>()
+        .ok()
+        .map(|degrees| (degrees / 360.0).rem_euclid(1.0))
+}
+
+fn parse_color_function_args(input: &str, name: &str) -> Option<Vec<String>> {
+    let trimmed = input.trim();
+    if !trimmed.to_ascii_lowercase().starts_with(name) {
+        return None;
+    }
+    let open = trimmed.find('(')?;
+    let close = trimmed.rfind(')')?;
+    if close <= open {
+        return None;
+    }
+
+    let raw_args = trimmed[(open + 1)..close].trim();
+    let mut args = raw_args
+        .split(',')
+        .map(|part| part.trim().to_string())
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+
+    if args.is_empty() {
+        return None;
+    }
+
+    // Accept CSS forms without commas, including slash-alpha variants:
+    // rgb(255 0 0), rgba(255 0 0 / 50%), hsl(210 80% 40%), hsla(... / 0.6)
+    if args.len() == 1 {
+        let single = args.remove(0);
+        if single.contains('/') {
+            let slash_parts = single
+            .split('/')
+            .map(|part| part.trim().to_string())
+            .collect::<Vec<_>>();
+            if slash_parts.len() == 2 {
+                let mut space_parts = slash_parts[0]
+                    .split_whitespace()
+                    .map(|part| part.trim().to_string())
+                    .filter(|part| !part.is_empty())
+                    .collect::<Vec<_>>();
+                space_parts.push(slash_parts[1].clone());
+                args = space_parts;
+            }
+        } else {
+            args = single
+                .split_whitespace()
+                .map(|part| part.trim().to_string())
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>();
+        }
+    }
+
+    Some(args)
+}
+
+fn parse_color_code(input: &str) -> Option<Hsla> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if let Ok(color) = Hsla::parse_hex(trimmed) {
+        return Some(color);
+    }
+
+    if let Some(args) = parse_color_function_args(trimmed, "rgb") {
+        if args.len() == 3 {
+            let r = parse_rgb_channel(&args[0])?;
+            let g = parse_rgb_channel(&args[1])?;
+            let b = parse_rgb_channel(&args[2])?;
+            return Some(gpui::Rgba { r, g, b, a: 1.0 }.into());
+        }
+    }
+
+    if let Some(args) = parse_color_function_args(trimmed, "rgba") {
+        if args.len() == 4 {
+            let r = parse_rgb_channel(&args[0])?;
+            let g = parse_rgb_channel(&args[1])?;
+            let b = parse_rgb_channel(&args[2])?;
+            let a = parse_percent_or_unit(&args[3])?;
+            return Some(gpui::Rgba { r, g, b, a }.into());
+        }
+    }
+
+    if let Some(args) = parse_color_function_args(trimmed, "hsl") {
+        if args.len() == 3 {
+            let h = parse_hue(&args[0])?;
+            let s = parse_percent_or_unit(&args[1])?;
+            let l = parse_percent_or_unit(&args[2])?;
+            let (r, g, b) = hsl_to_rgb(h, s, l);
+            return Some(gpui::Rgba { r, g, b, a: 1.0 }.into());
+        }
+    }
+
+    if let Some(args) = parse_color_function_args(trimmed, "hsla") {
+        if args.len() == 4 {
+            let h = parse_hue(&args[0])?;
+            let s = parse_percent_or_unit(&args[1])?;
+            let l = parse_percent_or_unit(&args[2])?;
+            let a = parse_percent_or_unit(&args[3])?;
+            let (r, g, b) = hsl_to_rgb(h, s, l);
+            return Some(gpui::Rgba { r, g, b, a }.into());
+        }
+    }
+
+    None
 }
 
 fn rgb_to_hsv(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
@@ -128,7 +296,7 @@ fn picker_geometry(bounds: Bounds<Pixels>) -> Option<PickerGeometry> {
 fn paint_hue_wheel(window: &mut Window, geometry: PickerGeometry) {
     let steps = ((geometry.outer_r * std::f32::consts::TAU) / 1.35)
         .round()
-        .clamp(220.0, 640.0) as usize;
+        .clamp(360.0, 960.0) as usize;
     for i in 0..steps {
         let t0 = i as f32 / steps as f32;
         let t1 = (i + 1) as f32 / steps as f32;
@@ -149,6 +317,34 @@ fn paint_hue_wheel(window: &mut Window, geometry: PickerGeometry) {
 
         if let Ok(path) = builder.build() {
             window.paint_path(path, hsva_to_hsla(t0, 1.0, 1.0, 1.0));
+        }
+    }
+
+    // Soft anti-alias edge passes to reduce visible stair-stepping on
+    // the inner/outer ring boundaries.
+    for (radius, alpha, width) in [
+        (geometry.outer_r + 0.6, 0.18, 1.2),
+        (geometry.outer_r - 0.4, 0.12, 0.9),
+        (geometry.inner_r + 0.4, 0.16, 1.0),
+        (geometry.inner_r - 0.4, 0.10, 0.8),
+    ] {
+        let mut edge = gpui::PathBuilder::stroke(px(width));
+        let edge_steps = (steps * 2).clamp(720, 1920);
+        for i in 0..=edge_steps {
+            let t = i as f32 / edge_steps as f32;
+            let a = std::f32::consts::TAU * t - std::f32::consts::FRAC_PI_2;
+            let p = point(
+                px(geometry.cx + a.cos() * radius),
+                px(geometry.cy + a.sin() * radius),
+            );
+            if i == 0 {
+                edge.move_to(p);
+            } else {
+                edge.line_to(p);
+            }
+        }
+        if let Ok(path) = edge.build() {
+            window.paint_path(path, gpui::black().opacity(alpha));
         }
     }
 }
@@ -295,6 +491,25 @@ fn paint_sv_triangle(window: &mut Window, geometry: PickerGeometry, hue: f32) {
                 }
             }
         }
+    }
+
+    // Light edge feathering to smooth triangle silhouette over the ring.
+    let mut tri_edge_outer = gpui::PathBuilder::stroke(px(1.2));
+    tri_edge_outer.move_to(point(px(a.0), px(a.1)));
+    tri_edge_outer.line_to(point(px(b.0), px(b.1)));
+    tri_edge_outer.line_to(point(px(c.0), px(c.1)));
+    tri_edge_outer.close();
+    if let Ok(path) = tri_edge_outer.build() {
+        window.paint_path(path, gpui::black().opacity(0.25));
+    }
+
+    let mut tri_edge_inner = gpui::PathBuilder::stroke(px(0.8));
+    tri_edge_inner.move_to(point(px(a.0), px(a.1)));
+    tri_edge_inner.line_to(point(px(b.0), px(b.1)));
+    tri_edge_inner.line_to(point(px(c.0), px(c.1)));
+    tri_edge_inner.close();
+    if let Ok(path) = tri_edge_inner.build() {
+        window.paint_path(path, gpui::white().opacity(0.16));
     }
 }
 
@@ -476,7 +691,9 @@ pub struct ColorPickerState {
 
 impl ColorPickerState {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let state = cx.new(|cx| InputState::new(window, cx));
+        let state = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("#RRGGBB, rgba(...), hsl(...)")
+        });
         let rgba_input_states = std::array::from_fn(|_| cx.new(|cx| InputState::new(window, cx)));
 
         let mut _subscriptions = vec![cx.subscribe_in(
@@ -488,13 +705,13 @@ impl ColorPickerState {
                         return;
                     }
                     let value = state.read(cx).value();
-                    if let Ok(color) = Hsla::parse_hex(value.as_str()) {
+                    if let Some(color) = parse_color_code(value.as_str()) {
                         this.apply_external_color(color, true, window, cx);
                     }
                 }
                 InputEvent::PressEnter { .. } => {
                     let val = this.state.read(cx).value();
-                    if let Ok(color) = Hsla::parse_hex(&val) {
+                    if let Some(color) = parse_color_code(&val) {
                         this.open = false;
                         this.apply_external_color(color, true, window, cx);
                     }
@@ -1286,7 +1503,7 @@ impl ColorPicker {
     }
 
     fn render_advanced_picker(&self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let (current, hue_value, sat_value, val_value, alpha_value, recent_colors, selected_palette_index, palette_switcher_open) = {
+        let (current, hue_value, sat_value, val_value, alpha_value, recent_colors, selected_palette_index, palette_switcher_open, code_input_state) = {
             let state = self.state.read(cx);
             (
                 state
@@ -1299,6 +1516,7 @@ impl ColorPicker {
                 state.recent_colors.clone(),
                 state.selected_palette_index,
                 state.palette_switcher_open,
+                state.state.clone(),
             )
         };
         let named_palettes = named_color_palettes();
@@ -1473,12 +1691,48 @@ impl ColorPicker {
                             )
                             .child(
                                 v_flex()
-                                    .gap_px()
-                                    .text_xs()
-                                    .font_family("JetBrainsMono-Regular")
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(format!("HEX  {}", current.to_hex()))
-                                    .child(format!("RGBA {}, {}, {}, {}", r_u8, g_u8, b_u8, a_u8)),
+                                    .gap_1()
+                                    .p_2()
+                                    .rounded_md()
+                                    .border_1()
+                                    .border_color(cx.theme().border.opacity(0.55))
+                                    .bg(cx.theme().muted.opacity(0.25))
+                                    .child(
+                                        v_flex()
+                                            .gap_px()
+                                            .text_xs()
+                                            .font_family("JetBrainsMono-Regular")
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child(format!("HEX  {}", current.to_hex()))
+                                            .child(format!("RGBA {}, {}, {}, {}", r_u8, g_u8, b_u8, a_u8)),
+                                    )
+                                    .child(
+                                        h_flex()
+                                            .items_center()
+                                            .gap_2()
+                                            .child(
+                                                div()
+                                                    .w(px(34.0))
+                                                    .text_xs()
+                                                    .font_semibold()
+                                                    .text_color(cx.theme().muted_foreground)
+                                                    .child("Code"),
+                                            )
+                                            .child(
+                                                TextInput::new(&code_input_state)
+                                                    .xsmall()
+                                                    .w_full()
+                                                    .cleanable()
+                                                    .font_family("JetBrainsMono-Regular"),
+                                            ),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_family("JetBrainsMono-Regular")
+                                            .text_color(cx.theme().muted_foreground.opacity(0.7))
+                                            .child("HEX, RGB(A), HSL(A)"),
+                                    ),
                             )
                             .child(self.render_rgba_slider(0, "R", r_u8, alpha_value, rgba, window, cx))
                             .child(self.render_rgba_slider(1, "G", g_u8, alpha_value, rgba, window, cx))
