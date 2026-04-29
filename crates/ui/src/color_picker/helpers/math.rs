@@ -76,7 +76,11 @@ pub(crate) fn rgb_to_hsv(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
         (((r - g) / delta) + 4.0) / 6.0
     };
 
-    let saturation = if max <= f32::EPSILON { 0.0 } else { delta / max };
+    let saturation = if max <= f32::EPSILON {
+        0.0
+    } else {
+        delta / max
+    };
     (hue, saturation, max)
 }
 
@@ -117,7 +121,12 @@ pub(crate) fn triangle_vertices(geometry: PickerGeometry, hue: f32) -> [(f32, f3
     [hue_v, white_v, black_v]
 }
 
-pub(crate) fn barycentric(p: (f32, f32), a: (f32, f32), b: (f32, f32), c: (f32, f32)) -> (f32, f32, f32) {
+pub(crate) fn barycentric(
+    p: (f32, f32),
+    a: (f32, f32),
+    b: (f32, f32),
+    c: (f32, f32),
+) -> (f32, f32, f32) {
     let v0 = (b.0 - a.0, b.1 - a.1);
     let v1 = (c.0 - a.0, c.1 - a.1);
     let v2 = (p.0 - a.0, p.1 - a.1);
@@ -184,5 +193,8 @@ pub(crate) fn clamp_point_to_triangle(
 }
 
 pub(crate) fn alpha_to_text(alpha: f32) -> String {
-    format!("{alpha:.3}").trim_end_matches('0').trim_end_matches('.').to_string()
+    format!("{alpha:.3}")
+        .trim_end_matches('0')
+        .trim_end_matches('.')
+        .to_string()
 }

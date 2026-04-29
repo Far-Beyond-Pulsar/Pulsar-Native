@@ -29,10 +29,22 @@ pub(crate) fn paint_hue_wheel(window: &mut Window, geometry: PickerGeometry) {
         let a0 = std::f32::consts::TAU * t0 - std::f32::consts::FRAC_PI_2;
         let a1 = std::f32::consts::TAU * t1 - std::f32::consts::FRAC_PI_2;
 
-        let outer0 = (geometry.cx + a0.cos() * geometry.outer_r, geometry.cy + a0.sin() * geometry.outer_r);
-        let outer1 = (geometry.cx + a1.cos() * geometry.outer_r, geometry.cy + a1.sin() * geometry.outer_r);
-        let inner1 = (geometry.cx + a1.cos() * geometry.inner_r, geometry.cy + a1.sin() * geometry.inner_r);
-        let inner0 = (geometry.cx + a0.cos() * geometry.inner_r, geometry.cy + a0.sin() * geometry.inner_r);
+        let outer0 = (
+            geometry.cx + a0.cos() * geometry.outer_r,
+            geometry.cy + a0.sin() * geometry.outer_r,
+        );
+        let outer1 = (
+            geometry.cx + a1.cos() * geometry.outer_r,
+            geometry.cy + a1.sin() * geometry.outer_r,
+        );
+        let inner1 = (
+            geometry.cx + a1.cos() * geometry.inner_r,
+            geometry.cy + a1.sin() * geometry.inner_r,
+        );
+        let inner0 = (
+            geometry.cx + a0.cos() * geometry.inner_r,
+            geometry.cy + a0.sin() * geometry.inner_r,
+        );
 
         let mut builder = gpui::PathBuilder::fill();
         builder.move_to(point(px(outer0.0), px(outer0.1)));
@@ -168,9 +180,24 @@ pub(crate) fn paint_slider_gradient(
         let t = i as f32 / (steps.saturating_sub(1).max(1)) as f32;
 
         let color = match channel {
-            0 => gpui::Rgba { r: t, g: rgba.g, b: rgba.b, a: 1.0 },
-            1 => gpui::Rgba { r: rgba.r, g: t, b: rgba.b, a: 1.0 },
-            2 => gpui::Rgba { r: rgba.r, g: rgba.g, b: t, a: 1.0 },
+            0 => gpui::Rgba {
+                r: t,
+                g: rgba.g,
+                b: rgba.b,
+                a: 1.0,
+            },
+            1 => gpui::Rgba {
+                r: rgba.r,
+                g: t,
+                b: rgba.b,
+                a: 1.0,
+            },
+            2 => gpui::Rgba {
+                r: rgba.r,
+                g: rgba.g,
+                b: t,
+                a: 1.0,
+            },
             _ => gpui::Rgba {
                 r: rgba.r * t + 0.18 * (1.0 - t),
                 g: rgba.g * t + 0.18 * (1.0 - t),

@@ -27,9 +27,8 @@ pub struct ColorPickerState {
 
 impl ColorPickerState {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let state = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("#RRGGBB, rgba(...), hsl(...)")
-        });
+        let state =
+            cx.new(|cx| InputState::new(window, cx).placeholder("#RRGGBB, rgba(...), hsl(...)"));
         let rgba_input_states = std::array::from_fn(|_| cx.new(|cx| InputState::new(window, cx)));
 
         let mut _subscriptions = vec![cx.subscribe_in(
@@ -144,7 +143,12 @@ impl ColorPickerState {
         cx.notify();
     }
 
-    pub(crate) fn toggle_palette_switcher(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn toggle_palette_switcher(
+        &mut self,
+        _: &ClickEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.palette_switcher_open = !self.palette_switcher_open;
         cx.notify();
     }
@@ -217,7 +221,10 @@ impl ColorPickerState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !matches!(target, PickerDragTarget::HueRing | PickerDragTarget::Triangle) {
+        if !matches!(
+            target,
+            PickerDragTarget::HueRing | PickerDragTarget::Triangle
+        ) {
             return;
         }
 
@@ -236,8 +243,8 @@ impl ColorPickerState {
             PickerDragTarget::HueRing => {
                 // No distance guard here — during drag we only need the angle.
                 let angle = dy.atan2(dx);
-                self.hue = ((angle + std::f32::consts::FRAC_PI_2) / std::f32::consts::TAU)
-                    .rem_euclid(1.0);
+                self.hue =
+                    ((angle + std::f32::consts::FRAC_PI_2) / std::f32::consts::TAU).rem_euclid(1.0);
                 let color = hsva_to_hsla(self.hue, self.saturation, self.value_channel, self.alpha);
                 self.update_value(Some(color), emit, window, cx);
             }
@@ -283,11 +290,12 @@ impl ColorPickerState {
             return;
         }
 
-        let t = clamp01(
-            (position.x.as_f32() - bounds.origin.x.as_f32()) / bounds.size.width.as_f32(),
-        );
+        let t =
+            clamp01((position.x.as_f32() - bounds.origin.x.as_f32()) / bounds.size.width.as_f32());
 
-        let color = self.value.unwrap_or_else(|| hsva_to_hsla(self.hue, self.saturation, self.value_channel, self.alpha));
+        let color = self.value.unwrap_or_else(|| {
+            hsva_to_hsla(self.hue, self.saturation, self.value_channel, self.alpha)
+        });
         let mut rgba: gpui::Rgba = color.into();
 
         match channel {
@@ -309,7 +317,12 @@ impl ColorPickerState {
         self.update_value(Some(rgba.into()), emit, window, cx);
     }
 
-    pub(crate) fn start_drag(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn start_drag(
+        &mut self,
+        event: &MouseDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let position = event.position;
         self.active_drag = self.drag_target_for_point(position);
         self.triangle_drag_hue_lock = match self.active_drag {
@@ -326,7 +339,12 @@ impl ColorPickerState {
         }
     }
 
-    pub(crate) fn drag_move(&mut self, position: Point<Pixels>, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn drag_move(
+        &mut self,
+        position: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(target) = self.active_drag {
             match target {
                 PickerDragTarget::HueRing | PickerDragTarget::Triangle => {
@@ -337,16 +355,21 @@ impl ColorPickerState {
         }
     }
 
-    pub(crate) fn stop_drag_mouse(&mut self, _: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn stop_drag_mouse(
+        &mut self,
+        _: &MouseUpEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.active_drag = None;
         self.triangle_drag_hue_lock = None;
         cx.notify();
     }
 
     fn sync_numeric_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let color = self
-            .value
-            .unwrap_or_else(|| hsva_to_hsla(self.hue, self.saturation, self.value_channel, self.alpha));
+        let color = self.value.unwrap_or_else(|| {
+            hsva_to_hsla(self.hue, self.saturation, self.value_channel, self.alpha)
+        });
         let rgba: gpui::Rgba = color.into();
 
         let texts = [
@@ -382,9 +405,9 @@ impl ColorPickerState {
             return;
         }
 
-        let color = self
-            .value
-            .unwrap_or_else(|| hsva_to_hsla(self.hue, self.saturation, self.value_channel, self.alpha));
+        let color = self.value.unwrap_or_else(|| {
+            hsva_to_hsla(self.hue, self.saturation, self.value_channel, self.alpha)
+        });
         let mut rgba: gpui::Rgba = color.into();
 
         let parsed_ok = if channel <= 2 {

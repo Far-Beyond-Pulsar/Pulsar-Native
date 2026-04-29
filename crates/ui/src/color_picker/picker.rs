@@ -76,96 +76,104 @@ impl ColorPicker {
         render_color_swatch("color", color, clickable, self.state.clone(), window)
     }
 
-    fn render_palette_switcher_popout(&self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render_palette_switcher_popout(
+        &self,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> impl IntoElement {
         let (selected_palette_index, palette_switcher_open, palette_header_bounds) = {
             let state = self.state.read(cx);
-            (state.selected_palette_index, state.palette_switcher_open, state.palette_header_bounds)
+            (
+                state.selected_palette_index,
+                state.palette_switcher_open,
+                state.palette_header_bounds,
+            )
         };
         let named_palettes = named_color_palettes();
         let safe_palette_index = selected_palette_index.min(named_palettes.len().saturating_sub(1));
 
-        div()
-            .when(palette_switcher_open, |this| {
-                this.child(
-                    deferred(
-                        anchored()
-                            .position(palette_header_bounds.corner(Corner::BottomLeft))
-                            .snap_to_window_with_margin(px(8.))
-                            .child(
-                                div()
-                                    .occlude()
-                                    .mt_1p5()
-                                    .rounded_md()
-                                    .border_1()
-                                    .border_color(cx.theme().border)
-                                    .shadow_lg()
-                                    .bg(cx.theme().background)
-                                    .w(px(300.0))
-                                    .child(
-                                        v_flex()
-                                            .max_h(px(300.0))
-                                            .scrollable(Axis::Vertical)
-                                            .child(
-                                                v_flex().gap_px().children(
-                                                    named_palettes
-                                                        .iter()
-                                                        .enumerate()
-                                                        .map(|(ix, (name, colors))| {
-                                                            let swatches = colors.iter().copied().take(9).collect::<Vec<_>>();
-                                                            h_flex()
-                                                                .w_full()
-                                                                .items_center()
-                                                                .justify_between()
-                                                                .gap_2()
-                                                                .px_3()
-                                                                .py_2()
-                                                                .when(ix == safe_palette_index, |this| {
-                                                                    this.bg(cx.theme().accent.opacity(0.16))
-                                                                })
-                                                                .hover(|this| this.bg(cx.theme().muted.opacity(0.45)))
-                                                                .child(
-                                                                    div()
-                                                                        .text_sm()
-                                                                        .font_semibold()
-                                                                        .text_color(cx.theme().foreground)
-                                                                        .child((*name).to_string()),
-                                                                )
-                                                                .child(
-                                                                    h_flex().gap_1().children(swatches.into_iter().map(|color| {
-                                                                        div()
-                                                                            .h_4()
-                                                                            .w_4()
-                                                                            .bg(color)
-                                                                            .border_1()
-                                                                            .border_color(color.darken(0.2))
-                                                                    })),
-                                                                )
-                                                                .on_mouse_down(
-                                                                    MouseButton::Left,
-                                                                    window.listener_for(
-                                                                        &self.state,
-                                                                        move |state, _, window, cx| {
-                                                                            state.selected_palette_index = ix;
-                                                                            state.palette_switcher_open = false;
-                                                                            cx.notify();
-                                                                        },
-                                                                    ),
-                                                                )
+        div().when(palette_switcher_open, |this| {
+            this.child(
+                deferred(
+                    anchored()
+                        .position(palette_header_bounds.corner(Corner::BottomLeft))
+                        .snap_to_window_with_margin(px(8.))
+                        .child(
+                            div()
+                                .occlude()
+                                .mt_1p5()
+                                .rounded_md()
+                                .border_1()
+                                .border_color(cx.theme().border)
+                                .shadow_lg()
+                                .bg(cx.theme().background)
+                                .w(px(300.0))
+                                .child(v_flex().max_h(px(300.0)).scrollable(Axis::Vertical).child(
+                                    v_flex().gap_px().children(
+                                        named_palettes.iter().enumerate().map(
+                                            |(ix, (name, colors))| {
+                                                let swatches = colors
+                                                    .iter()
+                                                    .copied()
+                                                    .take(9)
+                                                    .collect::<Vec<_>>();
+                                                h_flex()
+                                                    .w_full()
+                                                    .items_center()
+                                                    .justify_between()
+                                                    .gap_2()
+                                                    .px_3()
+                                                    .py_2()
+                                                    .when(ix == safe_palette_index, |this| {
+                                                        this.bg(cx.theme().accent.opacity(0.16))
+                                                    })
+                                                    .hover(|this| {
+                                                        this.bg(cx.theme().muted.opacity(0.45))
+                                                    })
+                                                    .child(
+                                                        div()
+                                                            .text_sm()
+                                                            .font_semibold()
+                                                            .text_color(cx.theme().foreground)
+                                                            .child((*name).to_string()),
+                                                    )
+                                                    .child(h_flex().gap_1().children(
+                                                        swatches.into_iter().map(|color| {
+                                                            div()
+                                                                .h_4()
+                                                                .w_4()
+                                                                .bg(color)
+                                                                .border_1()
+                                                                .border_color(color.darken(0.2))
                                                         }),
-                                                ),
-                                            ),
-                                    )
-                                    .on_mouse_down_out(
-                                        window.listener_for(&self.state, |state, _, _window, cx| {
-                                            state.palette_switcher_open = false;
-                                            cx.notify();
-                                        }),
+                                                    ))
+                                                    .on_mouse_down(
+                                                        MouseButton::Left,
+                                                        window.listener_for(
+                                                            &self.state,
+                                                            move |state, _, window, cx| {
+                                                                state.selected_palette_index = ix;
+                                                                state.palette_switcher_open = false;
+                                                                cx.notify();
+                                                            },
+                                                        ),
+                                                    )
+                                            },
+                                        ),
                                     ),
-                            ),
-                    )
-                    .with_priority(2),
+                                ))
+                                .on_mouse_down_out(window.listener_for(
+                                    &self.state,
+                                    |state, _, _window, cx| {
+                                        state.palette_switcher_open = false;
+                                        cx.notify();
+                                    },
+                                )),
+                        ),
                 )
-            })
+                .with_priority(2),
+            )
+        })
     }
 
     fn render_all_colors_grid(&self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -178,10 +186,13 @@ impl ColorPicker {
                     let (_, _, v_b, _) = hsla_to_hsva(*b);
                     v_a.partial_cmp(&v_b).unwrap_or(std::cmp::Ordering::Equal)
                 });
-                let row_colors: Vec<Hsla> = palette_colors.into_iter().take(ALL_COLORS_COLS).collect();
-                h_flex().gap_1().children(row_colors.into_iter().map(|color| {
-                    render_color_swatch("all-color", color, true, self.state.clone(), window)
-                }))
+                let row_colors: Vec<Hsla> =
+                    palette_colors.into_iter().take(ALL_COLORS_COLS).collect();
+                h_flex()
+                    .gap_1()
+                    .children(row_colors.into_iter().map(|color| {
+                        render_color_swatch("all-color", color, true, self.state.clone(), window)
+                    }))
             })
             .collect::<Vec<_>>();
 
@@ -240,7 +251,9 @@ impl ColorPicker {
                             {
                                 let state = state.clone();
                                 move |bounds, _, cx| {
-                                    state.update(cx, |picker, _| picker.slider_bounds[channel] = bounds);
+                                    state.update(cx, |picker, _| {
+                                        picker.slider_bounds[channel] = bounds
+                                    });
                                     bounds
                                 }
                             },
@@ -262,13 +275,22 @@ impl ColorPicker {
                             picker.start_drag(event, window, cx);
                         }),
                     )
-                    .on_mouse_move(window.listener_for(&state, move |picker, event: &MouseMoveEvent, window, cx| {
-                        if picker.active_drag.is_some() {
-                            picker.drag_move(event.position, window, cx);
-                        }
-                    }))
-                    .on_mouse_up(MouseButton::Left, window.listener_for(&state, ColorPickerState::stop_drag_mouse))
-                    .on_mouse_up_out(MouseButton::Left, window.listener_for(&state, ColorPickerState::stop_drag_mouse)),
+                    .on_mouse_move(window.listener_for(
+                        &state,
+                        move |picker, event: &MouseMoveEvent, window, cx| {
+                            if picker.active_drag.is_some() {
+                                picker.drag_move(event.position, window, cx);
+                            }
+                        },
+                    ))
+                    .on_mouse_up(
+                        MouseButton::Left,
+                        window.listener_for(&state, ColorPickerState::stop_drag_mouse),
+                    )
+                    .on_mouse_up_out(
+                        MouseButton::Left,
+                        window.listener_for(&state, ColorPickerState::stop_drag_mouse),
+                    ),
             )
             .child(
                 div()
@@ -302,12 +324,27 @@ impl ColorPicker {
     }
 
     fn render_advanced_picker(&self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let (current, hue_value, sat_value, val_value, alpha_value, recent_colors, selected_palette_index, palette_switcher_open, code_input_state) = {
+        let (
+            current,
+            hue_value,
+            sat_value,
+            val_value,
+            alpha_value,
+            recent_colors,
+            selected_palette_index,
+            palette_switcher_open,
+            code_input_state,
+        ) = {
             let state = self.state.read(cx);
             (
-                state
-                    .value
-                    .unwrap_or_else(|| hsva_to_hsla(state.hue, state.saturation, state.value_channel, state.alpha)),
+                state.value.unwrap_or_else(|| {
+                    hsva_to_hsla(
+                        state.hue,
+                        state.saturation,
+                        state.value_channel,
+                        state.alpha,
+                    )
+                }),
                 state.hue,
                 state.saturation,
                 state.value_channel,
@@ -401,7 +438,9 @@ impl ColorPicker {
                                     {
                                         let state = state_entity.clone();
                                         move |bounds, _, cx| {
-                                            state.update(cx, |picker, _| picker.picker_bounds = bounds);
+                                            state.update(cx, |picker, _| {
+                                                picker.picker_bounds = bounds
+                                            });
                                             bounds
                                         }
                                     },
@@ -413,9 +452,10 @@ impl ColorPicker {
                                         paint_hue_wheel(window, geometry);
                                         paint_sv_triangle(window, geometry, hue);
 
-                                        let ring_angle =
-                                            hue * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
-                                        let ring_radius = (geometry.outer_r + geometry.inner_r) * 0.5;
+                                        let ring_angle = hue * std::f32::consts::TAU
+                                            - std::f32::consts::FRAC_PI_2;
+                                        let ring_radius =
+                                            (geometry.outer_r + geometry.inner_r) * 0.5;
                                         let ring_x = geometry.cx + ring_angle.cos() * ring_radius;
                                         let ring_y = geometry.cy + ring_angle.sin() * ring_radius;
 
@@ -437,7 +477,10 @@ impl ColorPicker {
                                             origin: point(px(tri_x - 5.0), px(tri_y - 5.0)),
                                             size: size(px(10.0), px(10.0)),
                                         };
-                                        window.paint_quad(fill(tri_marker, gpui::black().opacity(0.65)));
+                                        window.paint_quad(fill(
+                                            tri_marker,
+                                            gpui::black().opacity(0.65),
+                                        ));
                                         let inner = Bounds {
                                             origin: point(px(tri_x - 3.0), px(tri_y - 3.0)),
                                             size: size(px(6.0), px(6.0)),
@@ -453,13 +496,24 @@ impl ColorPicker {
                                     picker.start_drag(event, window, cx);
                                 }),
                             )
-                            .on_mouse_move(window.listener_for(&state_entity, move |picker, event: &MouseMoveEvent, window, cx| {
-                                if picker.active_drag.is_some() {
-                                    picker.drag_move(event.position, window, cx);
-                                }
-                            }))
-                            .on_mouse_up(MouseButton::Left, window.listener_for(&state_entity, ColorPickerState::stop_drag_mouse))
-                            .on_mouse_up_out(MouseButton::Left, window.listener_for(&state_entity, ColorPickerState::stop_drag_mouse)),
+                            .on_mouse_move(window.listener_for(
+                                &state_entity,
+                                move |picker, event: &MouseMoveEvent, window, cx| {
+                                    if picker.active_drag.is_some() {
+                                        picker.drag_move(event.position, window, cx);
+                                    }
+                                },
+                            ))
+                            .on_mouse_up(
+                                MouseButton::Left,
+                                window
+                                    .listener_for(&state_entity, ColorPickerState::stop_drag_mouse),
+                            )
+                            .on_mouse_up_out(
+                                MouseButton::Left,
+                                window
+                                    .listener_for(&state_entity, ColorPickerState::stop_drag_mouse),
+                            ),
                     )
                     .child(
                         v_flex()
@@ -503,7 +557,10 @@ impl ColorPicker {
                                             .font_family("JetBrainsMono-Regular")
                                             .text_color(cx.theme().muted_foreground)
                                             .child(format!("HEX  {}", current.to_hex()))
-                                            .child(format!("RGBA {}, {}, {}, {}", r_u8, g_u8, b_u8, a_u8)),
+                                            .child(format!(
+                                                "RGBA {}, {}, {}, {}",
+                                                r_u8, g_u8, b_u8, a_u8
+                                            )),
                                     )
                                     .child(
                                         h_flex()
@@ -533,16 +590,51 @@ impl ColorPicker {
                                             .child("HEX, RGB(A), HSL(A)"),
                                     ),
                             )
-                            .child(self.render_rgba_slider(0, "R", r_u8, alpha_value, rgba, window, cx))
-                            .child(self.render_rgba_slider(1, "G", g_u8, alpha_value, rgba, window, cx))
-                            .child(self.render_rgba_slider(2, "B", b_u8, alpha_value, rgba, window, cx))
-                            .child(self.render_rgba_slider(3, "A", a_u8, alpha_value, rgba, window, cx)),
+                            .child(self.render_rgba_slider(
+                                0,
+                                "R",
+                                r_u8,
+                                alpha_value,
+                                rgba,
+                                window,
+                                cx,
+                            ))
+                            .child(self.render_rgba_slider(
+                                1,
+                                "G",
+                                g_u8,
+                                alpha_value,
+                                rgba,
+                                window,
+                                cx,
+                            ))
+                            .child(self.render_rgba_slider(
+                                2,
+                                "B",
+                                b_u8,
+                                alpha_value,
+                                rgba,
+                                window,
+                                cx,
+                            ))
+                            .child(self.render_rgba_slider(
+                                3,
+                                "A",
+                                a_u8,
+                                alpha_value,
+                                rgba,
+                                window,
+                                cx,
+                            )),
                     )
-                    .on_mouse_move(window.listener_for(&state_entity, move |picker, event: &MouseMoveEvent, window, cx| {
-                        if picker.active_drag.is_some() {
-                            picker.drag_move(event.position, window, cx);
-                        }
-                    }))
+                    .on_mouse_move(window.listener_for(
+                        &state_entity,
+                        move |picker, event: &MouseMoveEvent, window, cx| {
+                            if picker.active_drag.is_some() {
+                                picker.drag_move(event.position, window, cx);
+                            }
+                        },
+                    ))
                     .on_mouse_up(
                         MouseButton::Left,
                         window.listener_for(&state_entity, ColorPickerState::stop_drag_mouse),
@@ -563,10 +655,30 @@ impl ColorPicker {
                             .text_color(cx.theme().muted_foreground)
                             .child("Color Relations"),
                     )
-                    .child(self.render_relation_row("Complementary", vec![current, complementary], window, cx))
-                    .child(self.render_relation_row("Analogous", vec![analogous_l, current, analogous_r], window, cx))
-                    .child(self.render_relation_row("Split-Comp", vec![current, split_l, split_r], window, cx))
-                    .child(self.render_relation_row("Triadic", vec![current, triad_a, triad_b], window, cx)),
+                    .child(self.render_relation_row(
+                        "Complementary",
+                        vec![current, complementary],
+                        window,
+                        cx,
+                    ))
+                    .child(self.render_relation_row(
+                        "Analogous",
+                        vec![analogous_l, current, analogous_r],
+                        window,
+                        cx,
+                    ))
+                    .child(self.render_relation_row(
+                        "Split-Comp",
+                        vec![current, split_l, split_r],
+                        window,
+                        cx,
+                    ))
+                    .child(self.render_relation_row(
+                        "Triadic",
+                        vec![current, triad_a, triad_b],
+                        window,
+                        cx,
+                    )),
             )
             .when(!recent_colors.is_empty(), |this| {
                 this.child(
@@ -603,7 +715,10 @@ impl ColorPicker {
                                 canvas(
                                     {
                                         let state = self.state.clone();
-                                        move |bounds, _, cx| state.update(cx, |r, _| r.palette_header_bounds = bounds)
+                                        move |bounds, _, cx| {
+                                            state
+                                                .update(cx, |r, _| r.palette_header_bounds = bounds)
+                                        }
                                     },
                                     |_, _, _, _| {},
                                 )
@@ -633,17 +748,13 @@ impl ColorPicker {
                             ),
                     )
                     .child(
-                        h_flex()
-                            .w_full()
-                            .flex_wrap()
-                            .gap_1()
-                            .children(
-                                selected_palette_colors
-                                    .iter()
-                                    .copied()
-                                    .map(|color| self.render_item(color, true, window, cx)),
-                            ),
-                    )
+                        h_flex().w_full().flex_wrap().gap_1().children(
+                            selected_palette_colors
+                                .iter()
+                                .copied()
+                                .map(|color| self.render_item(color, true, window, cx)),
+                        ),
+                    ),
             )
             .child(
                 v_flex()
@@ -684,7 +795,15 @@ impl Styled for ColorPicker {
 
 impl RenderOnce for ColorPicker {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let (bounds, current_value, is_open, is_dragging, is_focused, focus_handle, palette_switcher_open) = {
+        let (
+            bounds,
+            current_value,
+            is_open,
+            is_dragging,
+            is_focused,
+            focus_handle,
+            palette_switcher_open,
+        ) = {
             let state = self.state.read(cx);
             (
                 state.bounds,
@@ -794,7 +913,7 @@ impl RenderOnce for ColorPicker {
                                         v_flex()
                                             .w_full()
                                             .gap_3()
-                                            .child(self.render_advanced_picker(window, cx))
+                                            .child(self.render_advanced_picker(window, cx)),
                                     )
                                     .on_mouse_up_out(
                                         MouseButton::Left,

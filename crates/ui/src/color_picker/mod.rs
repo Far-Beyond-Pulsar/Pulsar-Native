@@ -1,10 +1,9 @@
 use gpui::{
-    anchored, canvas, deferred, div, fill, point, prelude::FluentBuilder as _, px, relative,
-    size, App, AppContext, Axis, Bounds, ClickEvent, Context, Corner, ElementId, Entity,
-    EventEmitter, FocusHandle, Focusable, Hsla, InteractiveElement as _, IntoElement, KeyBinding,
-    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render,
-    RenderOnce, SharedString,
-    StatefulInteractiveElement as _, StyleRefinement, Styled, Subscription, Window,
+    anchored, canvas, deferred, div, fill, point, prelude::FluentBuilder as _, px, relative, size,
+    App, AppContext, Axis, Bounds, ClickEvent, Context, Corner, ElementId, Entity, EventEmitter,
+    FocusHandle, Focusable, Hsla, InteractiveElement as _, IntoElement, KeyBinding, MouseButton,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render, RenderOnce,
+    SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled, Subscription, Window,
 };
 
 use crate::{
@@ -13,9 +12,10 @@ use crate::{
     divider::Divider,
     h_flex,
     input::{InputEvent, InputState, TextInput},
+    styled::PixelsExt,
     tooltip::Tooltip,
-    styled::PixelsExt, v_flex, ActiveTheme as _, Colorize as _, FocusableExt as _, Icon,
-    IconName, Selectable as _, Sizable, Size, StyleSized, StyledExt,
+    v_flex, ActiveTheme as _, Colorize as _, FocusableExt as _, Icon, IconName, Selectable as _,
+    Sizable, Size, StyleSized, StyledExt,
 };
 
 const CONTEXT: &'static str = "ColorPicker";
@@ -44,14 +44,14 @@ struct PickerGeometry {
     inner_r: f32,
 }
 
-mod helpers;
 mod components;
+mod helpers;
 use components::*;
-use helpers::*;
 pub use helpers::ColorPickerEvent;
+use helpers::*;
 
-mod state;
 mod picker;
+mod state;
 
-pub use state::ColorPickerState;
 pub use picker::ColorPicker;
+pub use state::ColorPickerState;

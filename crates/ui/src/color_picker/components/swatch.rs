@@ -8,7 +8,10 @@ pub(crate) fn render_color_swatch(
     window: &mut Window,
 ) -> impl IntoElement {
     div()
-        .id(SharedString::from(format!("{id_prefix}-{}", color.to_hex())))
+        .id(SharedString::from(format!(
+            "{id_prefix}-{}",
+            color.to_hex()
+        )))
         .h_5()
         .w_5()
         .bg(color)
@@ -21,11 +24,8 @@ pub(crate) fn render_color_swatch(
                     .shadow_xs()
             })
             .active(|this| this.border_color(color.darken(0.5)).bg(color.darken(0.2)))
-            .on_click(window.listener_for(
-                &state,
-                move |state, _, window, cx| {
-                    state.apply_external_color(color, true, window, cx);
-                },
-            ))
+            .on_click(window.listener_for(&state, move |state, _, window, cx| {
+                state.apply_external_color(color, true, window, cx);
+            }))
         })
 }

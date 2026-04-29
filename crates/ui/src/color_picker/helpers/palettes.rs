@@ -31,15 +31,7 @@ pub(crate) fn color_palettes() -> Vec<Vec<Hsla>> {
 pub(crate) fn named_color_palettes() -> Vec<(&'static str, Vec<Hsla>)> {
     let palettes = color_palettes();
     let names = [
-        "Stone",
-        "Red",
-        "Orange",
-        "Yellow",
-        "Green",
-        "Cyan",
-        "Blue",
-        "Purple",
-        "Pink",
+        "Stone", "Red", "Orange", "Yellow", "Green", "Cyan", "Blue", "Purple", "Pink",
     ];
 
     names
