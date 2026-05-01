@@ -198,7 +198,7 @@ impl CompletionMenu {
                 selected_ix: 0,
             };
 
-            let list = cx.new(|cx| List::new(menu, window, cx));
+            let list = cx.new(|cx| List::new(menu, window, cx).max_h(MAX_MENU_HEIGHT));
 
             let _subscriptions =
                 vec![
@@ -428,7 +428,7 @@ impl Render for CompletionMenu {
                     editor_popover("completion-menu", cx)
                         .max_w(max_width)
                         .min_w(px(120.))
-                        .child(self.list.clone().max_h(MAX_MENU_HEIGHT)),
+                        .child(self.list.clone()),
                 )
                 .when_some(selected_documentation, |this, documentation| {
                     let mut doc = match documentation {

@@ -167,7 +167,7 @@ impl CodeActionMenu {
                 selected_ix: 0,
             };
 
-            let list = cx.new(|cx| List::new(menu, window, cx));
+            let list = cx.new(|cx| List::new(menu, window, cx).max_h(MAX_MENU_HEIGHT));
 
             let _subscriptions =
                 vec![
@@ -327,7 +327,7 @@ impl Render for CodeActionMenu {
                 .top(pos.y)
                 .max_w(max_width)
                 .min_w(px(120.))
-                .child(self.list.clone().max_h(MAX_MENU_HEIGHT))
+                .child(self.list.clone())
                 .on_mouse_down_out(cx.listener(|this, _, _, cx| {
                     this.hide(cx);
                 })),
