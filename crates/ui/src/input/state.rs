@@ -94,7 +94,7 @@ actions!(
     ]
 );
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum InputEvent {
     Change,
     PressEnter { secondary: bool },
@@ -546,6 +546,14 @@ impl InputState {
         if let InputMode::CodeEditor { folding: f, .. } = &mut self.mode {
             *f = folding;
         }
+        self
+    }
+
+    /// Set enable/disable minimap (stub - not implemented).
+    ///
+    /// NOTE: This is a stub implementation for backwards compatibility.
+    pub fn minimap(self, _minimap: bool) -> Self {
+        // Minimap feature not yet implemented
         self
     }
 

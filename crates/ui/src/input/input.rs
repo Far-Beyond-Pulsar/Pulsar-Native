@@ -138,7 +138,16 @@ impl Input {
     }
 
     /// Set whether to show the clear button when the input field is not empty, default is false.
-    pub fn cleanable(mut self, cleanable: bool) -> Self {
+    ///
+    /// For the no-argument version that defaults to true, this method name is used for backwards compatibility.
+    #[deprecated(note = "Use with_cleanable(bool) instead for clarity, or call .cleanable(true) explicitly")]
+    pub fn cleanable(mut self) -> Self {
+        self.cleanable = true;
+        self
+    }
+
+    /// Set whether to show the clear button when the input field is not empty.
+    pub fn with_cleanable(mut self, cleanable: bool) -> Self {
         self.cleanable = cleanable;
         self
     }

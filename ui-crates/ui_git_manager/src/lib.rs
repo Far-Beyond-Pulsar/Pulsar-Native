@@ -134,7 +134,7 @@ impl GitManager {
 
         // Create commit description input
         let commit_description_input = cx.new(|cx| {
-            let mut input = InputState::new(window, cx).multi_line().auto_grow(2, 5);
+            let mut input = InputState::new(window, cx).multi_line(true).auto_grow(2, 5);
             input.set_placeholder("Description (optional)", window, cx);
             input
         });

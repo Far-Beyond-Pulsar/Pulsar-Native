@@ -637,7 +637,7 @@ where
                                     Icon::new(IconName::Search)
                                         .text_color(cx.theme().muted_foreground),
                                 )
-                                .cleanable(true)
+                                .cleanable()
                                 .p_0()
                                 .appearance(false),
                         ),
