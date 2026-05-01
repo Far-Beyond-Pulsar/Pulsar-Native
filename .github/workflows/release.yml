@@ -124,6 +124,20 @@ jobs:
           override: true
           components: clippy
 
+      - name: Setup Cargo cache
+        uses: actions/cache@v4
+        continue-on-error: true
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: clippy-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            clippy-cargo-
+
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
@@ -161,6 +175,20 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
+
+      - name: Setup Cargo cache
+        uses: actions/cache@v4
+        continue-on-error: true
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: test-cargo-${{ matrix.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            test-cargo-${{ matrix.os }}-
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -450,6 +478,20 @@ jobs:
           target: ${{ matrix.target }}
           override: true
 
+      - name: Setup Cargo cache
+        uses: actions/cache@v4
+        continue-on-error: true
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: release-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            release-cargo-${{ matrix.target }}-
+
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         run: |
@@ -643,6 +685,20 @@ jobs:
           toolchain: stable
           target: ${{ matrix.target }}
           override: true
+
+      - name: Setup Cargo cache
+        uses: actions/cache@v4
+        continue-on-error: true
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: cross-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cross-cargo-${{ matrix.target }}-
 
       - name: Install cross
         run: |

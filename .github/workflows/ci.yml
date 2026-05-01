@@ -35,6 +35,7 @@ jobs:
         uses: bnjbvr/cargo-machete@v0.9.1
       - name: Setup | Cache Cargo
         uses: actions/cache@v4
+        continue-on-error: true
         with:
           path: |
             ~/.cargo/bin/
