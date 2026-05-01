@@ -19,7 +19,7 @@ use crate::{
         popovers::{editor_popover, render_markdown},
     },
     label::Label,
-    list::{List, ListDelegate, ListEvent, ListState},
+    list::{List, ListDelegate, ListEvent},
 };
 
 struct ContextMenuDelegate {
@@ -140,7 +140,7 @@ impl ListDelegate for ContextMenuDelegate {
         &mut self,
         ix: crate::IndexPath,
         _: &mut Window,
-        _: &mut Context<ListState<Self>>,
+        _: &mut Context<List<Self>>,
     ) -> Option<Self::Item> {
         let item = self.items.get(ix.row)?;
         Some(CompletionMenuItem::new(ix.row, item.clone()).highlight_prefix(self.query.clone()))
@@ -150,13 +150,13 @@ impl ListDelegate for ContextMenuDelegate {
         &mut self,
         ix: Option<crate::IndexPath>,
         _: &mut Window,
-        cx: &mut Context<ListState<Self>>,
+        cx: &mut Context<List<Self>>,
     ) {
         self.selected_ix = ix.map(|i| i.row).unwrap_or(0);
         cx.notify();
     }
 
-    fn confirm(&mut self, _: bool, window: &mut Window, cx: &mut Context<ListState<Self>>) {
+    fn confirm(&mut self, _: bool, window: &mut Window, cx: &mut Context<List<Self>>) {
         let Some(item) = self.selected_item() else {
             return;
         };
@@ -171,7 +171,7 @@ impl ListDelegate for ContextMenuDelegate {
 pub struct CompletionMenu {
     offset: usize,
     editor: Entity<InputState>,
-    list: Entity<ListState<ContextMenuDelegate>>,
+    list: Entity<List<ContextMenuDelegate>>,
     open: bool,
 
     /// The offset of the first character that triggered the completion.
@@ -198,7 +198,7 @@ impl CompletionMenu {
                 selected_ix: 0,
             };
 
-            let list = cx.new(|cx| ListState::new(menu, window, cx));
+            let list = cx.new(|cx| List::new(menu, window, cx));
 
             let _subscriptions =
                 vec![

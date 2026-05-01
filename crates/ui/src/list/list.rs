@@ -6,7 +6,7 @@ use crate::input::InputState;
 use crate::list::cache::{MeasuredEntrySize, RowEntry, RowsCache};
 use crate::list::ListDelegate;
 use crate::{
-    input::{InputEvent, TextInput},
+    input::{InputEvent, Input},
     scroll::{Scrollbar, ScrollbarState},
     v_flex, ActiveTheme, IconName, Size,
 };
@@ -631,7 +631,7 @@ where
                         .border_b_1()
                         .border_color(cx.theme().border)
                         .child(
-                            TextInput::new(&input)
+                            Input::new(&input)
                                 .with_size(self.size)
                                 .prefix(
                                     Icon::new(IconName::Search)

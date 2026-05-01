@@ -269,7 +269,9 @@ impl Styled for Input {
 impl RenderOnce for Input {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         const LINE_HEIGHT: Rems = Rems(1.25);
-        let text_align = self.style.text.text_align.unwrap_or(TextAlign::Left);
+        let text_align = self.style.text.as_ref()
+            .and_then(|t| t.text_align)
+            .unwrap_or(TextAlign::Left);
 
         self.state.update(cx, |state, _| {
             state.context_menu_builder = self.context_menu_builder.clone();
@@ -292,7 +294,7 @@ impl RenderOnce for Input {
 
         let (bg, _) = input_style(state.disabled, cx);
         let bg = if state.mode.is_code_editor() {
-            cx.theme().editor_background()
+            cx.theme().highlight_theme.style.editor_background.unwrap_or(cx.theme().background)
         } else {
             bg
         };

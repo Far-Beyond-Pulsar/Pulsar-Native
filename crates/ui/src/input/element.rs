@@ -15,6 +15,7 @@ use crate::{
     ActiveTheme as _, Colorize, IconName, Root, Selectable, Sizable as _,
     button::{Button, ButtonVariants as _},
     input::{RopeExt as _, blink_cursor::CURSOR_WIDTH, display_map::LineLayout},
+    styled::PixelsExt
 };
 
 use super::{InputState, LastLayout, WhitespaceIndicators, mode::InputMode};
@@ -1801,7 +1802,7 @@ impl Element for TextElement {
                             line_height,
                         ),
                     );
-                    window.paint_quad(fill(ghost_bounds, cx.theme().editor_background()));
+                    window.paint_quad(fill(ghost_bounds, cx.theme().highlight_theme.style.editor_background.unwrap_or(cx.theme().background)));
 
                     // Paint ghost line text
                     _ = ghost_line.paint(
@@ -1837,7 +1838,7 @@ impl Element for TextElement {
                         input_bounds.size.height + prepaint.ghost_lines_height,
                     ),
                 },
-                cx.theme().editor_background(),
+                cx.theme().highlight_theme.style.editor_background.unwrap_or(cx.theme().background),
             ));
 
             // Each item is the normal lines.
@@ -1867,7 +1868,7 @@ impl Element for TextElement {
                 }
 
                 for line in lines {
-                    _ = line.paint(p, line_height, TextAlign::Left, None, window, cx);
+                    _ = line.paint(p, line_height, window, cx);
                     offset_y += line_height;
                 }
 
@@ -1914,10 +1915,10 @@ impl Element for TextElement {
 
                     // Paint background to cover any existing text
                     let bg_bounds = Bounds::new(p, size(first_line.width + px(4.), line_height));
-                    window.paint_quad(fill(bg_bounds, cx.theme().editor_background()));
+                    window.paint_quad(fill(bg_bounds, cx.theme().highlight_theme.style.editor_background.unwrap_or(cx.theme().background)));
 
                     // Paint first line completion text
-                    _ = first_line.paint(p, line_height, text_align, None, window, cx);
+                    _ = first_line.paint(p, line_height, window, cx);
                 }
             }
         }

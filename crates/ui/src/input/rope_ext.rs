@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use ropey::{LineType, Rope, RopeSlice};
-use sum_tree::Bias;
+use gpui_sum_tree::Bias;
 
 #[cfg(not(target_family = "wasm"))]
 pub use tree_sitter::{InputEdit, Point};

@@ -4,12 +4,10 @@ use gpui::{
 };
 use ropey::RopeSlice;
 
-use crate::{
-    RopeExt,
-    input::{
-        Indent, IndentInline, InputState, LastLayout, Outdent, OutdentInline, element::TextElement,
-        mode::InputMode,
-    },
+use super::RopeExt;
+use crate::input::{
+    Indent, IndentInline, InputState, LastLayout, Outdent, OutdentInline, element::TextElement,
+    mode::InputMode,
 };
 
 #[derive(Debug, Copy, Clone)]

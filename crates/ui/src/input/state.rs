@@ -16,7 +16,7 @@ use ropey::{Rope, RopeSlice};
 use serde::Deserialize;
 use std::ops::Range;
 use std::rc::Rc;
-use sum_tree::Bias;
+use gpui_sum_tree::Bias;
 use unicode_segmentation::*;
 
 use super::{
@@ -1081,12 +1081,12 @@ impl InputState {
 
         if self.soft_wrap && self.mode.is_code_editor() {
             let wrap_point = self.display_map.offset_to_wrap_display_point(self.cursor());
-            if let Some(line) = self.display_map.lines().get(row)
-                && let Some(range) = line.wrapped_lines.get(wrap_point.local_row)
-            {
+            if let Some(line) = self.display_map.lines().get(row) {
+                if let Some(range) = line.wrapped_lines.get(wrap_point.local_row) {
                 let visual_start = logical_start + range.start;
                 if self.cursor() != visual_start {
                     return visual_start;
+                }
                 }
             }
         }
@@ -1109,12 +1109,12 @@ impl InputState {
 
         if self.soft_wrap && self.mode.is_code_editor() {
             let wrap_point = self.display_map.offset_to_wrap_display_point(self.cursor());
-            if let Some(line) = self.display_map.lines().get(row)
-                && let Some(range) = line.wrapped_lines.get(wrap_point.local_row)
-            {
+            if let Some(line) = self.display_map.lines().get(row) {
+                if let Some(range) = line.wrapped_lines.get(wrap_point.local_row) {
                 let visual_end = logical_start + range.end;
                 if self.cursor() != visual_end {
                     return visual_end;
+                }
                 }
             }
         }

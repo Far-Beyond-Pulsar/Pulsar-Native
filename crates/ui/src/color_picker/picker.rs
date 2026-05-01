@@ -298,7 +298,7 @@ impl ColorPicker {
                     .items_center()
                     .gap_1()
                     .child(
-                        TextInput::new(&numeric_input_state)
+                        Input::new(&numeric_input_state)
                             .xsmall()
                             .w(px(52.0))
                             .font_family("JetBrainsMono-Regular")
@@ -575,7 +575,7 @@ impl ColorPicker {
                                                     .child("Code"),
                                             )
                                             .child(
-                                                TextInput::new(&code_input_state)
+                                                Input::new(&code_input_state)
                                                     .xsmall()
                                                     .w_full()
                                                     .cleanable()

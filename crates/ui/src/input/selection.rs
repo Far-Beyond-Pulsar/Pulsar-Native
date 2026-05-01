@@ -2,9 +2,10 @@ use std::{char, ops::Range};
 
 use gpui::{Context, Window};
 use ropey::Rope;
-use sum_tree::Bias;
+use gpui_sum_tree::Bias;
 
-use crate::{RopeExt as _, input::InputState};
+use super::RopeExt as _;
+use crate::input::InputState;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CharType {

@@ -103,7 +103,7 @@ winit = "0.30.12"
 smol = "1.3.0"
 tracing = "0.1.44"
 notify = "8.2.0"
-lsp-types = "0.97.0"
+lsp-types = { version = "0.97.0", features = ["proposed"] }
 directories = "6.0.0"
 itertools = "0.14.0"
 rapier3d = { version = "0.32.0", features = ["simd-stable"] }
