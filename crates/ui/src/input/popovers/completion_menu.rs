@@ -1,10 +1,10 @@
 use std::rc::Rc;
 
 use gpui::{
-    canvas, deferred, div, prelude::FluentBuilder, px, relative, Action, AnyElement, App,
-    AppContext, Bounds, Context, DismissEvent, Empty, Entity, EventEmitter, HighlightStyle,
-    InteractiveElement as _, IntoElement, ParentElement, Pixels, Point, Render, RenderOnce,
-    SharedString, Styled, StyledText, Subscription, Window,
+    Action, AnyElement, App, AppContext, Context, DismissEvent, Empty, Entity, EventEmitter,
+    Half as _, HighlightStyle, InteractiveElement as _, IntoElement, ParentElement, Pixels, Point,
+    Render, RenderOnce, SharedString, Styled, StyledText, Subscription, Window, deferred, div,
+    prelude::FluentBuilder, px, relative,
 };
 use lsp_types::{CompletionItem, CompletionTextEdit};
 
@@ -13,58 +13,30 @@ const MAX_MENU_HEIGHT: Pixels = px(240.);
 const POPOVER_GAP: Pixels = px(4.);
 
 use crate::{
-    actions, h_flex,
+    ActiveTheme, IndexPath, Selectable, actions, h_flex,
     input::{
-        self,
+        self, InputState, RopeExt,
         popovers::{editor_popover, render_markdown},
-        InputState, RopeExt,
     },
     label::Label,
-    list::{List, ListDelegate, ListEvent},
-    ActiveTheme, IndexPath, Selectable,
+    list::{List, ListDelegate, ListEvent, ListState},
 };
 
 struct ContextMenuDelegate {
     query: SharedString,
     menu: Entity<CompletionMenu>,
     items: Vec<Rc<CompletionItem>>,
-    filtered_indices: Vec<usize>, // Indices of items that match the filter
     selected_ix: usize,
 }
 
 impl ContextMenuDelegate {
     fn set_items(&mut self, items: Vec<CompletionItem>) {
-        // Sort items by sortText (or label if sortText is absent)
-        // This is how VSCode and other LSP clients handle completions
-        let mut items: Vec<Rc<CompletionItem>> = items.into_iter().map(Rc::new).collect();
-
-        items.sort_by(|a, b| {
-            // Use sortText if present, otherwise fall back to label
-            let sort_a = a.sort_text.as_ref().unwrap_or(&a.label);
-            let sort_b = b.sort_text.as_ref().unwrap_or(&b.label);
-            sort_a.cmp(sort_b)
-        });
-
-        self.items = items;
-        self.filtered_indices = (0..self.items.len()).collect();
+        self.items = items.into_iter().map(Rc::new).collect();
         self.selected_ix = 0;
-
-        tracing::info!(
-            "📋 Showing {} completions (sorted by relevance)",
-            self.items.len()
-        );
     }
 
     fn selected_item(&self) -> Option<&Rc<CompletionItem>> {
-        let filtered_ix = *self.filtered_indices.get(self.selected_ix)?;
-        self.items.get(filtered_ix)
-    }
-
-    fn set_query(&mut self, query: SharedString) {
-        // NO client-side filtering - server does ALL the work
-        // We only store query for display purposes
-        self.query = query;
-        // DO NOT filter items here!
+        self.items.get(self.selected_ix)
     }
 }
 
@@ -114,32 +86,20 @@ impl RenderOnce for CompletionMenuItem {
         let item = self.item;
 
         let deprecated = item.deprecated.unwrap_or(false);
+        let matched_len = item
+            .filter_text
+            .as_ref()
+            .map(|s| s.len())
+            .unwrap_or(self.highlight_prefix.len())
+            .min(item.label.len());
 
-        // Don't highlight based on filter text - server already ranked items
-        // Just show the label as-is
-        let highlights = vec![];
-
-        // Get icon based on completion kind
-        let icon = match item.kind {
-            Some(lsp_types::CompletionItemKind::FUNCTION)
-            | Some(lsp_types::CompletionItemKind::METHOD) => "🔧", // Function/Method
-            Some(lsp_types::CompletionItemKind::STRUCT) => "📦", // Struct
-            Some(lsp_types::CompletionItemKind::ENUM) => "📋",   // Enum
-            Some(lsp_types::CompletionItemKind::INTERFACE)
-            | Some(lsp_types::CompletionItemKind::CLASS) => "🎯", // Interface/Class
-            Some(lsp_types::CompletionItemKind::MODULE) => "📂", // Module
-            Some(lsp_types::CompletionItemKind::FIELD)
-            | Some(lsp_types::CompletionItemKind::PROPERTY) => "🏷️", // Field/Property
-            Some(lsp_types::CompletionItemKind::VARIABLE)
-            | Some(lsp_types::CompletionItemKind::CONSTANT) => "💎", // Variable/Constant
-            Some(lsp_types::CompletionItemKind::KEYWORD) => "🔑", // Keyword
-            Some(lsp_types::CompletionItemKind::SNIPPET) => "✂️", // Snippet
-            Some(lsp_types::CompletionItemKind::TYPE_PARAMETER) => "🔤", // Type param
-            _ => "📄",                                           // Default
-        };
-
-        // Determine source label (always [LSP] for rust-analyzer completions)
-        let source = "LSP";
+        let highlights = vec![(
+            0..matched_len,
+            HighlightStyle {
+                color: Some(cx.theme().blue),
+                ..Default::default()
+            },
+        )];
 
         h_flex()
             .id(self.ix)
@@ -147,18 +107,14 @@ impl RenderOnce for CompletionMenuItem {
             .p_1()
             .text_xs()
             .line_height(relative(1.))
-            .rounded_sm()
+            .rounded(cx.theme().radius.half())
             .when(item.deprecated.unwrap_or(false), |this| this.line_through())
             .hover(|this| this.bg(cx.theme().accent.opacity(0.8)))
             .when(self.selected, |this| {
                 this.bg(cx.theme().accent)
                     .text_color(cx.theme().accent_foreground)
             })
-            // Icon
-            .child(div().child(icon))
-            // Label
             .child(div().child(StyledText::new(item.label.clone()).with_highlights(highlights)))
-            // Detail (type info, etc.)
             .when(item.detail.is_some(), |this| {
                 this.child(
                     Label::new(item.detail.as_deref().unwrap_or("").to_string())
@@ -167,15 +123,6 @@ impl RenderOnce for CompletionMenuItem {
                         .italic(),
                 )
             })
-            // Source label (right-aligned)
-            .child(
-                div().flex_1(), // Push source to the right
-            )
-            .child(
-                Label::new(format!("[{}]", source))
-                    .text_color(cx.theme().muted_foreground.opacity(0.6))
-                    .italic(),
-            )
             .children(self.children)
     }
 }
@@ -186,17 +133,16 @@ impl ListDelegate for ContextMenuDelegate {
     type Item = CompletionMenuItem;
 
     fn items_count(&self, _: usize, _: &gpui::App) -> usize {
-        self.filtered_indices.len()
+        self.items.len()
     }
 
     fn render_item(
-        &self,
+        &mut self,
         ix: crate::IndexPath,
         _: &mut Window,
-        _: &mut Context<List<Self>>,
+        _: &mut Context<ListState<Self>>,
     ) -> Option<Self::Item> {
-        let filtered_ix = *self.filtered_indices.get(ix.row)?;
-        let item = self.items.get(filtered_ix)?;
+        let item = self.items.get(ix.row)?;
         Some(CompletionMenuItem::new(ix.row, item.clone()).highlight_prefix(self.query.clone()))
     }
 
@@ -204,13 +150,13 @@ impl ListDelegate for ContextMenuDelegate {
         &mut self,
         ix: Option<crate::IndexPath>,
         _: &mut Window,
-        cx: &mut Context<List<Self>>,
+        cx: &mut Context<ListState<Self>>,
     ) {
         self.selected_ix = ix.map(|i| i.row).unwrap_or(0);
         cx.notify();
     }
 
-    fn confirm(&mut self, _: bool, window: &mut Window, cx: &mut Context<List<Self>>) {
+    fn confirm(&mut self, _: bool, window: &mut Window, cx: &mut Context<ListState<Self>>) {
         let Some(item) = self.selected_item() else {
             return;
         };
@@ -225,10 +171,8 @@ impl ListDelegate for ContextMenuDelegate {
 pub struct CompletionMenu {
     offset: usize,
     editor: Entity<InputState>,
-    list: Entity<List<ContextMenuDelegate>>,
+    list: Entity<ListState<ContextMenuDelegate>>,
     open: bool,
-    bounds: Bounds<Pixels>,
-    loading: bool, // Track if we're loading completions
 
     /// The offset of the first character that triggered the completion.
     pub(crate) trigger_start_offset: Option<usize>,
@@ -251,15 +195,10 @@ impl CompletionMenu {
                 query: SharedString::default(),
                 menu: view,
                 items: vec![],
-                filtered_indices: vec![],
                 selected_ix: 0,
             };
 
-            let list = cx.new(|cx| {
-                List::new(menu, window, cx)
-                    .no_query() // Hide the search input - we filter client-side based on typing
-                    .max_h(MAX_MENU_HEIGHT)
-            });
+            let list = cx.new(|cx| ListState::new(menu, window, cx));
 
             let _subscriptions =
                 vec![
@@ -279,10 +218,8 @@ impl CompletionMenu {
                 editor,
                 list,
                 open: false,
-                loading: false,
                 trigger_start_offset: None,
                 query: SharedString::default(),
-                bounds: Bounds::default(),
                 _subscriptions,
             }
         })
@@ -318,9 +255,6 @@ impl CompletionMenu {
                     range = offset..offset;
                 }
 
-                // Strip LSP snippet syntax (like $0, $1, ${1:default}, etc.)
-                new_text = Self::strip_snippet_syntax(&new_text);
-
                 editor.replace_text_in_range_silent(
                     Some(editor.range_to_utf16(&range)),
                     &new_text,
@@ -337,58 +271,6 @@ impl CompletionMenu {
         self.hide(cx);
     }
 
-    /// Strip LSP snippet syntax from completion text
-    /// Removes $0, $1, ${1:default}, etc.
-    fn strip_snippet_syntax(text: &str) -> String {
-        let mut result = String::with_capacity(text.len());
-        let mut chars = text.chars().peekable();
-
-        while let Some(ch) = chars.next() {
-            if ch == '$' {
-                // Check if next char is a digit or {
-                match chars.peek() {
-                    Some('0'..='9') => {
-                        // Skip $N syntax
-                        chars.next();
-                        continue;
-                    }
-                    Some('{') => {
-                        // Skip ${N} or ${N:default} syntax
-                        chars.next(); // consume '{'
-                        let mut depth = 1;
-                        let mut in_default = false;
-                        let mut default_text = String::new();
-
-                        while depth > 0 {
-                            match chars.next() {
-                                Some('}') => {
-                                    depth -= 1;
-                                    if depth == 0 && in_default {
-                                        result.push_str(&default_text);
-                                    }
-                                }
-                                Some('{') => depth += 1,
-                                Some(':') if depth == 1 && !in_default => {
-                                    in_default = true;
-                                }
-                                Some(c) if in_default => {
-                                    default_text.push(c);
-                                }
-                                Some(_) => {} // Skip other characters in placeholder
-                                None => break,
-                            }
-                        }
-                        continue;
-                    }
-                    _ => {} // Not a snippet marker, treat as regular $
-                }
-            }
-            result.push(ch);
-        }
-
-        result
-    }
-
     pub(crate) fn handle_action(
         &mut self,
         action: Box<dyn Action>,
@@ -399,13 +281,9 @@ impl CompletionMenu {
             return false;
         }
 
-        // Use Tab to accept completions (like most editors)
-        // Both TabComplete and IndentInline should accept the completion
-        if action.partial_eq(&super::super::tab_completion::TabComplete)
-            || action.partial_eq(&input::IndentInline)
-        {
-            self.on_action_tab(window, cx);
-            return true; // Return immediately to prevent any further action handling
+        cx.propagate();
+        if action.partial_eq(&input::Enter { secondary: false }) {
+            self.on_action_enter(window, cx);
         } else if action.partial_eq(&input::Escape) {
             self.on_action_escape(window, cx);
         } else if action.partial_eq(&input::MoveUp) {
@@ -419,7 +297,7 @@ impl CompletionMenu {
         true
     }
 
-    fn on_action_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn on_action_enter(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(item) = self.list.read(cx).delegate().selected_item().cloned() else {
             return;
         };
@@ -461,19 +339,6 @@ impl CompletionMenu {
         self.query = query.into();
     }
 
-    /// Update just the query without changing trigger offset (for server tracking only)
-    pub(crate) fn update_query_only(
-        &mut self,
-        query: impl Into<SharedString>,
-        cx: &mut Context<Self>,
-    ) {
-        self.query = query.into();
-        // Just update query reference, no filtering needed
-        self.list.update(cx, |list, _cx| {
-            list.delegate_mut().set_query(self.query.clone());
-        });
-    }
-
     pub(crate) fn show(
         &mut self,
         offset: usize,
@@ -484,7 +349,6 @@ impl CompletionMenu {
         let items = items.into();
         self.offset = offset;
         self.open = true;
-        self.loading = false; // Done loading since we have items
         self.list.update(cx, |this, cx| {
             let longest_ix = items
                 .iter()
@@ -501,14 +365,6 @@ impl CompletionMenu {
             this.set_item_to_measure_index(IndexPath::new(longest_ix), window, cx);
         });
 
-        cx.notify();
-    }
-
-    /// Show the menu in loading state while waiting for completions
-    pub(crate) fn show_loading(&mut self, offset: usize, cx: &mut Context<Self>) {
-        self.offset = offset;
-        self.open = true;
-        self.loading = true;
         cx.notify();
     }
 
@@ -536,34 +392,10 @@ impl Render for CompletionMenu {
             return Empty.into_any_element();
         }
 
-        // Show loading state if we're loading
-        if self.loading {
-            let view = cx.entity();
-            let Some(pos) = self.origin(cx) else {
-                return Empty.into_any_element();
-            };
-
-            return deferred(
-                div().absolute().left(pos.x).top(pos.y).child(
-                    editor_popover("completion-loading", cx)
-                        .max_w(MAX_MENU_WIDTH)
-                        .child(
-                            div()
-                                .p_2()
-                                .text_color(cx.theme().muted_foreground)
-                                .child("Loading completions..."),
-                        ),
-                ),
-            )
-            .into_any_element();
-        }
-
         if self.list.read(cx).delegate().items.is_empty() {
             self.open = false;
             return Empty.into_any_element();
         }
-
-        let view = cx.entity();
 
         let Some(pos) = self.origin(cx) else {
             return Empty.into_any_element();
@@ -596,15 +428,7 @@ impl Render for CompletionMenu {
                     editor_popover("completion-menu", cx)
                         .max_w(max_width)
                         .min_w(px(120.))
-                        .child(self.list.clone())
-                        .child(
-                            canvas(
-                                move |bounds, _, cx| view.update(cx, |r, _| r.bounds = bounds),
-                                |_, _, _, _| {},
-                            )
-                            .absolute()
-                            .size_full(),
-                        ),
+                        .child(List::new(&self.list).max_h(MAX_MENU_HEIGHT)),
                 )
                 .when_some(selected_documentation, |this, documentation| {
                     let mut doc = match documentation {

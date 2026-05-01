@@ -1,9 +1,13 @@
-use std::time::Duration;
-
-use gpui::{px, Context, Pixels, Timer};
+use instant::Duration;
+use gpui::{Context, Pixels, Task, px};
 
 static INTERVAL: Duration = Duration::from_millis(500);
 static PAUSE_DELAY: Duration = Duration::from_millis(300);
+
+// On Windows, Linux, we should use integer to avoid blurry cursor.
+#[cfg(not(target_os = "macos"))]
+pub(super) const CURSOR_WIDTH: Pixels = px(2.);
+#[cfg(target_os = "macos")]
 pub(super) const CURSOR_WIDTH: Pixels = px(1.5);
 
 /// To manage the Input cursor blinking.
@@ -16,6 +20,8 @@ pub(crate) struct BlinkCursor {
     visible: bool,
     paused: bool,
     epoch: usize,
+
+    _task: Task<()>,
 }
 
 impl BlinkCursor {
@@ -24,6 +30,7 @@ impl BlinkCursor {
             visible: false,
             paused: false,
             epoch: 0,
+            _task: Task::ready(()),
         }
     }
 
@@ -53,13 +60,12 @@ impl BlinkCursor {
 
         // Schedule the next blink
         let epoch = self.next_epoch();
-        cx.spawn(async move |this, cx| {
-            Timer::after(INTERVAL).await;
+        self._task = cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(INTERVAL).await;
             if let Some(this) = this.upgrade() {
-                this.update(cx, |this, cx| this.blink(epoch, cx)).ok();
+                this.update(cx, |this, cx| this.blink(epoch, cx));
             }
-        })
-        .detach();
+        });
     }
 
     pub fn visible(&self) -> bool {
@@ -75,17 +81,15 @@ impl BlinkCursor {
 
         // delay 500ms to start the blinking
         let epoch = self.next_epoch();
-        cx.spawn(async move |this, cx| {
-            Timer::after(PAUSE_DELAY).await;
+        self._task = cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(PAUSE_DELAY).await;
 
             if let Some(this) = this.upgrade() {
                 this.update(cx, |this, cx| {
                     this.paused = false;
                     this.blink(epoch, cx);
-                })
-                .ok();
+                });
             }
-        })
-        .detach();
+        });
     }
 }

@@ -1,25 +1,40 @@
+use std::rc::Rc;
+
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    div, px, relative, AnyElement, App, DefiniteLength, Edges, EdgesRefinement, Entity,
-    InteractiveElement as _, IntoElement, IsZero, MouseButton, ParentElement as _, Pixels, Rems,
-    RenderOnce, StyleRefinement, Styled, Window,
+    AnyElement, App, Context, DefiniteLength, Edges, EdgesRefinement, Entity, Hsla,
+    InteractiveElement as _, IntoElement, IsZero, MouseButton, ParentElement as _, Rems,
+    RenderOnce, StyleRefinement, Styled, TextAlign, Window, div, px, relative,
 };
 
 use crate::button::{Button, ButtonVariants as _};
-use crate::indicator::Indicator;
 use crate::input::clear_button;
 use crate::input::element::{LINE_NUMBER_RIGHT_MARGIN, RIGHT_MARGIN};
+use crate::menu::PopupMenu;
 use crate::scroll::Scrollbar;
-use crate::{h_flex, StyledExt};
-use crate::{v_flex, ActiveTheme};
+use crate::spinner::Spinner;
+use crate::{ActiveTheme, Colorize, v_flex};
 use crate::{IconName, Size};
+use crate::{Selectable, StyledExt, h_flex};
 use crate::{Sizable, StyleSized};
-use std::cmp::{max, min};
 
 use super::InputState;
 
+/// Returns `(background, foreground)` colors for input-like components.
+pub(crate) fn input_style(disabled: bool, cx: &App) -> (Hsla, Hsla) {
+    if disabled {
+        (
+            cx.theme().input.mix_oklab(cx.theme().transparent, 0.8),
+            cx.theme().muted_foreground,
+        )
+    } else {
+        (cx.theme().input_background(), cx.theme().foreground)
+    }
+}
+
+/// A text input element bind to an [`InputState`].
 #[derive(IntoElement)]
-pub struct TextInput {
+pub struct Input {
     state: Entity<InputState>,
     style: StyleRefinement,
     size: Size,
@@ -33,17 +48,35 @@ pub struct TextInput {
     bordered: bool,
     focus_bordered: bool,
     tab_index: isize,
+    selected: bool,
+
+    /// An optional context menu builder to allow a custom context menu on the input.
+    ///
+    /// If set, this will override the built-in context menu.
+    context_menu_builder:
+        Option<Rc<dyn Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu>>,
 }
 
-impl Sizable for TextInput {
+impl Sizable for Input {
     fn with_size(mut self, size: impl Into<Size>) -> Self {
         self.size = size.into();
         self
     }
 }
 
-impl TextInput {
-    /// Create a new [`TextInput`] element bind to the [`InputState`].
+impl Selectable for Input {
+    fn selected(mut self, selected: bool) -> Self {
+        self.selected = selected;
+        self
+    }
+
+    fn is_selected(&self) -> bool {
+        self.selected
+    }
+}
+
+impl Input {
+    /// Create a new [`Input`] element bind to the [`InputState`].
     pub fn new(state: &Entity<InputState>) -> Self {
         Self {
             state: state.clone(),
@@ -59,6 +92,8 @@ impl TextInput {
             bordered: true,
             focus_bordered: true,
             tab_index: 0,
+            selected: false,
+            context_menu_builder: None,
         }
     }
 
@@ -102,9 +137,9 @@ impl TextInput {
         self
     }
 
-    /// Set true to show the clear button when the input field is not empty.
-    pub fn cleanable(mut self) -> Self {
-        self.cleanable = true;
+    /// Set whether to show the clear button when the input field is not empty, default is false.
+    pub fn cleanable(mut self, cleanable: bool) -> Self {
+        self.cleanable = cleanable;
         self
     }
 
@@ -126,38 +161,43 @@ impl TextInput {
         self
     }
 
-    fn render_toggle_mask_button(state: Entity<InputState>) -> impl IntoElement {
+    /// Sets the context menu for the input.
+    pub fn context_menu(
+        mut self,
+        f: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static,
+    ) -> Self {
+        self.context_menu_builder = Some(Rc::new(f));
+        self
+    }
+
+    fn render_toggle_mask_button(state: &Entity<InputState>, cx: &App) -> impl IntoElement {
+        let masked = state.read(cx).masked;
         Button::new("toggle-mask")
-            .icon(IconName::Eye)
+            .icon(if masked {
+                IconName::Eye
+            } else {
+                IconName::EyeOff
+            })
             .xsmall()
             .ghost()
             .tab_stop(false)
-            .on_mouse_down(MouseButton::Left, {
+            .on_click({
                 let state = state.clone();
                 move |_, window, cx| {
                     state.update(cx, |state, cx| {
-                        state.set_masked(false, window, cx);
-                    })
-                }
-            })
-            .on_mouse_up(MouseButton::Left, {
-                let state = state.clone();
-                move |_, window, cx| {
-                    state.update(cx, |state, cx| {
-                        state.set_masked(true, window, cx);
+                        state.set_masked(!state.masked, window, cx);
                     })
                 }
             })
     }
 
     /// This method must after the refine_style.
-    /// Enhanced with virtual scrolling optimizations for better performance with large text content.
     fn render_editor(
         paddings: EdgesRefinement<DefiniteLength>,
         input_state: &Entity<InputState>,
         state: &InputState,
         window: &Window,
-        cx: &App,
+        _cx: &App,
     ) -> impl IntoElement {
         let base_size = window.text_style().font_size;
         let rem_size = window.rem_size();
@@ -181,11 +221,6 @@ impl TextInput {
                 .unwrap_or(px(0.)),
         };
 
-        const MIN_SCROLL_PADDING: Pixels = px(2.0);
-
-        // Determine if we should show minimap
-        let show_minimap = state.show_minimap && state.mode.is_code_editor();
-
         v_flex()
             .size_full()
             .children(state.search_panel.clone())
@@ -198,199 +233,77 @@ impl TextInput {
                         paddings.left + last_layout.line_number_width - LINE_NUMBER_RIGHT_MARGIN
                     };
 
-                    // Virtual scrolling optimization: Calculate scroll size more efficiently
-                    let scroll_size = Self::calculate_virtual_scroll_size(
-                        &state.scroll_size,
-                        left,
-                        paddings.right,
-                        &last_layout,
-                    );
-
-                    // Always use standard scrollbar for interaction
-                    let scrollbar = if !state.soft_wrap {
-                        Scrollbar::both(&state.scroll_state, &state.scroll_handle)
-                    } else {
-                        Scrollbar::vertical(&state.scroll_state, &state.scroll_handle)
+                    let scroll_size = gpui::Size {
+                        width: state.scroll_size.width - left + paddings.right + RIGHT_MARGIN,
+                        height: state.scroll_size.height,
                     };
 
-                    let mut container = this.relative().child(
+                    let scrollbar = if !state.soft_wrap {
+                        Scrollbar::new(&state.scroll_handle)
+                    } else {
+                        Scrollbar::vertical(&state.scroll_handle)
+                    };
+
+                    this.relative().child(
                         div()
                             .absolute()
-                            .top(-paddings.top + MIN_SCROLL_PADDING)
+                            .top(-paddings.top)
                             .left(left)
-                            .right(-paddings.right + MIN_SCROLL_PADDING)
-                            .bottom(-paddings.bottom + MIN_SCROLL_PADDING)
+                            .right(-paddings.right)
+                            .bottom(-paddings.bottom)
                             .child(scrollbar.scroll_size(scroll_size)),
-                    );
-
-                    // Add minimap overlay if enabled
-                    if show_minimap {
-                        use super::minimap::{
-                            calculate_viewport_indicator, render_minimap_content,
-                            render_viewport_indicator, MinimapConfig,
-                        };
-                        use gpui::{point, size, Bounds};
-                        use ropey::LineType;
-
-                        let total_lines = state.text.len_lines(ropey::LineType::LF);
-                        let visible_range = last_layout.visible_range.clone();
-                        let config = MinimapConfig::default();
-
-                        // Calculate minimap bounds
-                        let minimap_bounds =
-                            Bounds::new(point(px(0.0), px(0.0)), size(config.width, px(100.0)));
-
-                        // Render minimap content lines
-                        let minimap_content_elements = render_minimap_content(
-                            &state.text,
-                            visible_range.clone(),
-                            total_lines,
-                            &config,
-                            minimap_bounds,
-                        );
-
-                        container = container.child(
-                            div()
-                                .absolute()
-                                .right_0()
-                                .top_0()
-                                .w(config.width)
-                                .h_full()
-                                .bg(cx.theme().secondary.opacity(0.3))
-                                .rounded_md()
-                                .overflow_hidden()
-                                .children(minimap_content_elements)
-                                .child(
-                                    // Viewport indicator showing current scroll position
-                                    div()
-                                        .id("minimap-indicator")
-                                        .absolute()
-                                        .w_full()
-                                        .border_2()
-                                        .border_color(cx.theme().accent)
-                                        .bg(cx.theme().accent.opacity(0.15))
-                                        .rounded_sm()
-                                        // Position calculated based on scroll position
-                                        .when(total_lines > 0, |div| {
-                                            let start_ratio =
-                                                visible_range.start as f32 / total_lines as f32;
-                                            let height_ratio = (visible_range.len() as f32
-                                                / total_lines as f32)
-                                                .min(1.0);
-                                            let min_height_px = 20.0;
-                                            let calculated_height =
-                                                height_ratio.max(min_height_px / 100.0); // Convert to relative
-
-                                            div.top(relative(start_ratio))
-                                                .h(relative(calculated_height))
-                                        }),
-                                ),
-                        );
-                    }
-
-                    container
+                    )
                 } else {
                     this
                 }
             }))
     }
-
-    /// Calculate virtual scroll size with optimizations for large text content.
-    /// This method reduces the computational overhead for scroll calculations.
-    fn calculate_virtual_scroll_size(
-        base_scroll_size: &gpui::Size<Pixels>,
-        left_offset: Pixels,
-        right_padding: Pixels,
-        last_layout: &super::LastLayout,
-    ) -> gpui::Size<Pixels> {
-        // Use last layout information to avoid recalculating the entire scroll size
-        // when only a small portion is visible
-        let visible_height_ratio = if last_layout.visible_range.len() > 0 {
-            let total_lines = last_layout.visible_range.end;
-            let visible_lines = last_layout.visible_range.len();
-            (visible_lines as f32 / max(total_lines, 1) as f32).min(1.0)
-        } else {
-            1.0
-        };
-
-        gpui::Size {
-            width: base_scroll_size.width - left_offset + right_padding + RIGHT_MARGIN,
-            height: if visible_height_ratio < 0.1 {
-                // For very large documents, estimate height more efficiently
-                base_scroll_size.height * 0.1
-                    + (base_scroll_size.height * 0.9 * visible_height_ratio)
-            } else {
-                base_scroll_size.height
-            },
-        }
-    }
-
-    /// Virtual scrolling buffer zone calculation.
-    /// Returns the optimal number of lines to render outside the visible area
-    /// for smoother scrolling experience.
-    fn calculate_buffer_zone(visible_lines: usize, total_lines: usize) -> usize {
-        match visible_lines {
-            0..=10 => 2,                    // Small viewports: minimal buffer
-            11..=50 => 5,                   // Medium viewports: moderate buffer
-            51..=100 => 10,                 // Large viewports: larger buffer
-            _ => min(20, total_lines / 10), // Very large viewports: adaptive buffer
-        }
-    }
 }
 
-impl Styled for TextInput {
+impl Styled for Input {
     fn style(&mut self) -> &mut StyleRefinement {
         &mut self.style
     }
 }
 
-impl RenderOnce for TextInput {
+impl RenderOnce for Input {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         const LINE_HEIGHT: Rems = Rems(1.25);
+        let text_align = self.style.text.text_align.unwrap_or(TextAlign::Left);
 
-        // Use monospace font for text editor (when multi-line with code)
-        // This provides better readability for code and consistent character width
-        let font = gpui::Font {
-            family: "JetBrainsMono-Regular".into(),
-            weight: gpui::FontWeight::default(),
-            style: gpui::FontStyle::Normal,
-            features: gpui::FontFeatures::default(),
-            fallbacks: None,
-        };
-
-        let font_size = window.text_style().font_size.to_pixels(window.rem_size());
-
-        self.state.update(cx, |state, cx| {
-            state.text_wrapper.set_font(font, font_size, cx);
+        self.state.update(cx, |state, _| {
+            state.context_menu_builder = self.context_menu_builder.clone();
             state.disabled = self.disabled;
+            state.size = self.size;
+
+            // Only for single line mode
+            if state.mode.is_single_line() {
+                state.text_align = text_align;
+            }
         });
 
         let state = self.state.read(cx);
-        let focused = state.focus_handle.is_focused(window);
+        let focused = state.focus_handle.is_focused(window) && !state.disabled;
         let gap_x = match self.size {
             Size::Small => px(4.),
             Size::Large => px(8.),
-            _ => px(4.),
+            _ => px(6.),
         };
 
-        let bg = if state.disabled {
-            cx.theme().muted
+        let (bg, _) = input_style(state.disabled, cx);
+        let bg = if state.mode.is_code_editor() {
+            cx.theme().editor_background()
         } else {
-            if state.mode.is_code_editor() {
-                cx.theme()
-                    .highlight_theme
-                    .style
-                    .editor_background
-                    .unwrap_or(cx.theme().background)
-            } else {
-                cx.theme().background
-            }
+            bg
         };
 
         let prefix = self.prefix;
         let suffix = self.suffix;
-        let show_clear_button =
-            self.cleanable && !state.loading && state.text.len() > 0 && state.mode.is_single_line();
+        let show_clear_button = self.cleanable
+            && !state.disabled
+            && !state.loading
+            && state.text.len() > 0
+            && state.mode.is_single_line();
         let has_suffix = suffix.is_some() || state.loading || self.mask_toggle || show_clear_button;
 
         div()
@@ -429,15 +342,19 @@ impl RenderOnce for TextInput {
             .on_action(window.listener_for(&self.state, InputState::select_left))
             .on_action(window.listener_for(&self.state, InputState::select_right))
             .when(state.mode.is_multi_line(), |this| {
-                this.on_action(window.listener_for(&self.state, InputState::up))
+                let result = this
+                    .on_action(window.listener_for(&self.state, InputState::up))
                     .on_action(window.listener_for(&self.state, InputState::down))
                     .on_action(window.listener_for(&self.state, InputState::select_up))
                     .on_action(window.listener_for(&self.state, InputState::select_down))
                     .on_action(window.listener_for(&self.state, InputState::page_up))
-                    .on_action(window.listener_for(&self.state, InputState::page_down))
-                    .on_action(
-                        window.listener_for(&self.state, InputState::on_action_go_to_definition),
-                    )
+                    .on_action(window.listener_for(&self.state, InputState::page_down));
+
+                let result = result.on_action(
+                    window.listener_for(&self.state, InputState::on_action_go_to_definition),
+                );
+
+                result
             })
             .on_action(window.listener_for(&self.state, InputState::select_all))
             .on_action(window.listener_for(&self.state, InputState::select_to_start_of_line))
@@ -479,8 +396,8 @@ impl RenderOnce for TextInput {
             .input_px(self.size)
             .input_py(self.size)
             .input_h(self.size)
-            .cursor_text()
-            .text_size(font_size)
+            .input_text_size(self.size)
+            .when(!self.disabled, |this| this.cursor_text())
             .items_center()
             .when(state.mode.is_multi_line(), |this| {
                 this.h_auto()
@@ -488,6 +405,7 @@ impl RenderOnce for TextInput {
             })
             .when(self.appearance, |this| {
                 this.bg(bg)
+                    .when(self.disabled, |this| this.opacity(0.5))
                     .rounded(cx.theme().radius)
                     .when(self.bordered, |this| {
                         this.border_color(cx.theme().input)
@@ -516,17 +434,16 @@ impl RenderOnce for TextInput {
                 this.child(self.state.clone())
             })
             .when(has_suffix, |this| {
-                this.pr(self.size.input_px() / 2.).child(
+                this.pr(self.size.input_px()).child(
                     h_flex()
                         .id("suffix")
                         .gap(gap_x)
-                        .when(self.appearance, |this| this.bg(bg))
                         .items_center()
                         .when(state.loading, |this| {
-                            this.child(Indicator::new().color(cx.theme().muted_foreground))
+                            this.child(Spinner::new().color(cx.theme().muted_foreground))
                         })
                         .when(self.mask_toggle, |this| {
-                            this.child(Self::render_toggle_mask_button(self.state.clone()))
+                            this.child(Self::render_toggle_mask_button(&self.state, cx))
                         })
                         .when(show_clear_button, |this| {
                             this.child(clear_button(cx).on_click({

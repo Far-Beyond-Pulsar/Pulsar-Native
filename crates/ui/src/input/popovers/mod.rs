@@ -11,19 +11,19 @@ pub(crate) use diagnostic_popover::*;
 pub(crate) use hover_popover::*;
 
 use gpui::{
-    div, px, rems, App, Div, ElementId, Entity, InteractiveElement as _, IntoElement, SharedString,
-    Stateful, StyleRefinement, Styled as _, Window,
+    App, Div, ElementId, Entity, InteractiveElement as _, IntoElement, SharedString, Stateful,
+    StyleRefinement, Styled as _, Window, div, px, rems,
 };
 
 use crate::{
-    text::{TextView, TextViewStyle},
     ActiveTheme, StyledExt as _,
+    text::{TextView, TextViewStyle},
 };
 
 pub(crate) enum ContextMenu {
     Completion(Entity<CompletionMenu>),
     CodeAction(Entity<CodeActionMenu>),
-    MouseContext(Entity<MouseContextMenu>),
+    RightClick(Entity<InputContextMenu>),
 }
 
 impl ContextMenu {
@@ -31,7 +31,7 @@ impl ContextMenu {
         match self {
             ContextMenu::Completion(menu) => menu.read(cx).is_open(),
             ContextMenu::CodeAction(menu) => menu.read(cx).is_open(),
-            ContextMenu::MouseContext(menu) => menu.read(cx).is_open(),
+            ContextMenu::RightClick(menu) => menu.read(cx).is_open(),
         }
     }
 
@@ -39,7 +39,7 @@ impl ContextMenu {
         match self {
             ContextMenu::Completion(menu) => menu.clone().into_any_element(),
             ContextMenu::CodeAction(menu) => menu.clone().into_any_element(),
-            ContextMenu::MouseContext(menu) => menu.clone().into_any_element(),
+            ContextMenu::RightClick(menu) => menu.clone().into_any_element(),
         }
     }
 }
@@ -47,10 +47,10 @@ impl ContextMenu {
 pub(super) fn render_markdown(
     id: impl Into<ElementId>,
     markdown: impl Into<SharedString>,
-    window: &mut Window,
+    _: &mut Window,
     cx: &mut App,
-) -> impl IntoElement {
-    TextView::markdown(id, markdown, window, cx)
+) -> TextView {
+    TextView::markdown(id, markdown)
         .style(
             TextViewStyle::default()
                 .paragraph_gap(rems(0.5))
@@ -66,7 +66,7 @@ pub(super) fn render_markdown(
                         .text_size(px(11.)),
                 ),
         )
-        .selectable()
+        .selectable(true)
 }
 
 pub(super) fn editor_popover(id: impl Into<ElementId>, cx: &App) -> Stateful<Div> {
