@@ -24,7 +24,7 @@ use super::InputState;
 pub(crate) fn input_style(disabled: bool, cx: &App) -> (Hsla, Hsla) {
     if disabled {
         (
-            cx.theme().input.blend(cx.theme().transparent.opacity(0.8)),
+            cx.theme().input.mix_oklab(cx.theme().transparent, 0.8),
             cx.theme().muted_foreground,
         )
     } else {
@@ -138,16 +138,7 @@ impl Input {
     }
 
     /// Set whether to show the clear button when the input field is not empty, default is false.
-    ///
-    /// For the no-argument version that defaults to true, this method name is used for backwards compatibility.
-    #[deprecated(note = "Use with_cleanable(bool) instead for clarity, or call .cleanable(true) explicitly")]
-    pub fn cleanable(mut self) -> Self {
-        self.cleanable = true;
-        self
-    }
-
-    /// Set whether to show the clear button when the input field is not empty.
-    pub fn with_cleanable(mut self, cleanable: bool) -> Self {
+    pub fn cleanable(mut self, cleanable: bool) -> Self {
         self.cleanable = cleanable;
         self
     }
@@ -248,9 +239,9 @@ impl Input {
                     };
 
                     let scrollbar = if !state.soft_wrap {
-                        Scrollbar::both(&state.scrollbar_state, &state.scroll_handle)
+                        Scrollbar::new(&state.scroll_handle)
                     } else {
-                        Scrollbar::vertical(&state.scrollbar_state, &state.scroll_handle)
+                        Scrollbar::vertical(&state.scroll_handle)
                     };
 
                     this.relative().child(
@@ -278,9 +269,7 @@ impl Styled for Input {
 impl RenderOnce for Input {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         const LINE_HEIGHT: Rems = Rems(1.25);
-        let text_align = self.style.text.as_ref()
-            .and_then(|t| t.text_align)
-            .unwrap_or(TextAlign::Left);
+        let text_align = self.style.text.text_align.unwrap_or(TextAlign::Left);
 
         self.state.update(cx, |state, _| {
             state.context_menu_builder = self.context_menu_builder.clone();
@@ -303,7 +292,7 @@ impl RenderOnce for Input {
 
         let (bg, _) = input_style(state.disabled, cx);
         let bg = if state.mode.is_code_editor() {
-            cx.theme().highlight_theme.style.editor_background.unwrap_or(cx.theme().background)
+            cx.theme().editor_background()
         } else {
             bg
         };

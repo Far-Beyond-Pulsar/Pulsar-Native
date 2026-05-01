@@ -1802,7 +1802,7 @@ impl Element for TextElement {
                             line_height,
                         ),
                     );
-                    window.paint_quad(fill(ghost_bounds, cx.theme().highlight_theme.style.editor_background.unwrap_or(cx.theme().background)));
+                    window.paint_quad(fill(ghost_bounds, cx.theme().editor_background()));
 
                     // Paint ghost line text
                     _ = ghost_line.paint(
@@ -1836,7 +1836,7 @@ impl Element for TextElement {
                         input_bounds.size.height + prepaint.ghost_lines_height,
                     ),
                 },
-                cx.theme().highlight_theme.style.editor_background.unwrap_or(cx.theme().background),
+                cx.theme().editor_background(),
             ));
 
             // Each item is the normal lines.
@@ -1913,7 +1913,7 @@ impl Element for TextElement {
 
                     // Paint background to cover any existing text
                     let bg_bounds = Bounds::new(p, size(first_line.width + px(4.), line_height));
-                    window.paint_quad(fill(bg_bounds, cx.theme().highlight_theme.style.editor_background.unwrap_or(cx.theme().background)));
+                    window.paint_quad(fill(bg_bounds, cx.theme().editor_background()));
 
                     // Paint first line completion text
                     _ = first_line.paint(p, line_height, window, cx);

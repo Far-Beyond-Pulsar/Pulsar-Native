@@ -163,6 +163,18 @@ impl Theme {
         }
     }
 
+    /// Returns the editor background color.
+    ///
+    /// Uses the highlight theme's editor_background if available,
+    /// otherwise falls back to input_background.
+    #[inline]
+    pub(crate) fn editor_background(&self) -> Hsla {
+        self.highlight_theme
+            .style
+            .editor_background
+            .unwrap_or_else(|| self.input_background())
+    }
+
     // /// Sets the theme to default light.
     // pub fn set_default_light(&mut self) {
     //     self.light_theme = ThemeColor::light();
