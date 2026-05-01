@@ -24,11 +24,11 @@ use super::InputState;
 pub(crate) fn input_style(disabled: bool, cx: &App) -> (Hsla, Hsla) {
     if disabled {
         (
-            cx.theme().input.opacity(0.2),
+            cx.theme().input.blend(cx.theme().transparent.opacity(0.8)),
             cx.theme().muted_foreground,
         )
     } else {
-        (cx.theme().input, cx.theme().foreground)
+        (cx.theme().input_background(), cx.theme().foreground)
     }
 }
 

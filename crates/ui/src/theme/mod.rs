@@ -149,6 +149,20 @@ impl Theme {
         }
     }
 
+    /// Returns the input background color.
+    ///
+    /// For dark themes, blends the input color with transparency.
+    /// For light themes, uses the background color.
+    #[inline]
+    pub fn input_background(&self) -> Hsla {
+        if self.is_dark() {
+            // Blend input with transparent (0.3 alpha) for dark theme
+            self.input.blend(self.transparent.opacity(0.3))
+        } else {
+            self.background
+        }
+    }
+
     // /// Sets the theme to default light.
     // pub fn set_default_light(&mut self) {
     //     self.light_theme = ThemeColor::light();

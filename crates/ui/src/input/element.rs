@@ -669,7 +669,10 @@ impl TextElement {
 
         let invisible_color = cx
             .theme()
-            .muted_foreground;
+            .highlight_theme
+            .style
+            .editor_invisible
+            .unwrap_or(cx.theme().muted_foreground);
 
         let space_font_size = text_size.half();
         let tab_font_size = text_size;
