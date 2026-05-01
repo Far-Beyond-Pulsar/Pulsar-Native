@@ -578,7 +578,7 @@ impl ColorPicker {
                                                 Input::new(&code_input_state)
                                                     .xsmall()
                                                     .w_full()
-                                                    .cleanable()
+                                                    .cleanable(true)
                                                     .font_family("JetBrainsMono-Regular"),
                                             ),
                                     )

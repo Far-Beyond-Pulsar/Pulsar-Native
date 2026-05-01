@@ -331,6 +331,7 @@ pub struct InputState {
     pub(super) pattern: Option<regex::Regex>,
     pub(super) validate: Option<Box<dyn Fn(&str, &mut Context<Self>) -> bool + 'static>>,
     pub(crate) scroll_handle: ScrollHandle,
+    pub(crate) scrollbar_state: crate::scroll::ScrollbarState,
     /// The deferred scroll offset to apply on next layout.
     pub(crate) deferred_scroll_offset: Option<Point<Pixels>>,
     /// The size of the scrollable content.
@@ -446,6 +447,7 @@ impl InputState {
             last_selected_range: None,
             last_cursor: None,
             scroll_handle: ScrollHandle::new(),
+            scrollbar_state: crate::scroll::ScrollbarState::default(),
             scroll_size: gpui::size(px(0.), px(0.)),
             deferred_scroll_offset: None,
             preferred_column: None,
@@ -948,7 +950,7 @@ impl InputState {
 
     /// Focus the input field.
     pub fn focus(&self, window: &mut Window, cx: &mut Context<Self>) {
-        self.focus_handle.focus(window, cx);
+        self.focus_handle.focus(window);
         self.blink_cursor.update(cx, |cursor, cx| {
             cursor.start(cx);
         });

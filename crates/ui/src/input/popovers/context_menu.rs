@@ -32,9 +32,11 @@ impl InputState {
     ) {
         // Check if we are already in a deferred context (e.g., inside a Popover)
         // If so, don't show the context menu to prevent double-deferred panic
-        if GlobalState::global(cx).is_in_deferred_context() {
-            return;
-        }
+        // NOTE: is_in_deferred_context() is not available in this GPUI version
+        // This check is disabled for now
+        // if GlobalState::global(cx).is_in_deferred_context() {
+        //     return;
+        // }
 
         // Show Mouse context menu
         if !self.selected_range.contains(offset) {

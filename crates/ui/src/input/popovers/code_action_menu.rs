@@ -110,7 +110,7 @@ impl ListDelegate for MenuDelegate {
     }
 
     fn render_item(
-        &mut self,
+        &self,
         ix: crate::IndexPath,
         _: &mut Window,
         _: &mut Context<List<Self>>,

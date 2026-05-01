@@ -47,10 +47,10 @@ impl ContextMenu {
 pub(super) fn render_markdown(
     id: impl Into<ElementId>,
     markdown: impl Into<SharedString>,
-    _: &mut Window,
+    window: &mut Window,
     cx: &mut App,
 ) -> TextView {
-    TextView::markdown(id, markdown)
+    TextView::markdown(id, markdown, window, cx)
         .style(
             TextViewStyle::default()
                 .paragraph_gap(rems(0.5))
@@ -66,7 +66,7 @@ pub(super) fn render_markdown(
                         .text_size(px(11.)),
                 ),
         )
-        .selectable(true)
+        .selectable()
 }
 
 pub(super) fn editor_popover(id: impl Into<ElementId>, cx: &App) -> Stateful<Div> {

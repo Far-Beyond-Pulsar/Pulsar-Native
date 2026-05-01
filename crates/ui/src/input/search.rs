@@ -460,13 +460,9 @@ impl Render for SearchPanel {
                                     .small()
                                     .w_full()
                                     .shadow_none(),
-                            )
-                            .on_prepaint({
-                                let view = cx.entity();
-                                move |bounds, _, cx| {
-                                    view.update(cx, |r, _| r.input_width = bounds.size.width)
-                                }
-                            }),
+                            ),
+                            // NOTE: on_prepaint hook is not available in WGPUI
+                            // The input_width tracking has been disabled
                     )
                     .child(
                         Button::new("replace-mode")

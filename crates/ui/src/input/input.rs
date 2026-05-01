@@ -24,11 +24,11 @@ use super::InputState;
 pub(crate) fn input_style(disabled: bool, cx: &App) -> (Hsla, Hsla) {
     if disabled {
         (
-            cx.theme().input.mix_oklab(cx.theme().transparent, 0.8),
+            cx.theme().input.opacity(0.2),
             cx.theme().muted_foreground,
         )
     } else {
-        (cx.theme().input_background(), cx.theme().foreground)
+        (cx.theme().input, cx.theme().foreground)
     }
 }
 
@@ -239,9 +239,9 @@ impl Input {
                     };
 
                     let scrollbar = if !state.soft_wrap {
-                        Scrollbar::new(&state.scroll_handle)
+                        Scrollbar::both(&state.scrollbar_state, &state.scroll_handle)
                     } else {
-                        Scrollbar::vertical(&state.scroll_handle)
+                        Scrollbar::vertical(&state.scrollbar_state, &state.scroll_handle)
                     };
 
                     this.relative().child(

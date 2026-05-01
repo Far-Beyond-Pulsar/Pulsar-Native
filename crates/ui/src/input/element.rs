@@ -669,10 +669,7 @@ impl TextElement {
 
         let invisible_color = cx
             .theme()
-            .highlight_theme
-            .style
-            .editor_invisible
-            .unwrap_or(cx.theme().muted_foreground);
+            .muted_foreground;
 
         let space_font_size = text_size.half();
         let tab_font_size = text_size;
@@ -1808,8 +1805,6 @@ impl Element for TextElement {
                     _ = ghost_line.paint(
                         ghost_p,
                         line_height,
-                        text_align,
-                        Some(prepaint.last_layout.content_width),
                         window,
                         cx,
                     );

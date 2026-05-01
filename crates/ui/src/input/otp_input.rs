@@ -111,7 +111,7 @@ impl OtpState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        window.focus(&self.focus_handle, cx);
+        window.focus(&self.focus_handle);
     }
 
     /// Try to extract an ASCII digit char from a string.
