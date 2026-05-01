@@ -428,7 +428,7 @@ impl Render for CompletionMenu {
                     editor_popover("completion-menu", cx)
                         .max_w(max_width)
                         .min_w(px(120.))
-                        .child(List::new(&self.list).max_h(MAX_MENU_HEIGHT)),
+                        .child(self.list.clone().max_h(MAX_MENU_HEIGHT)),
                 )
                 .when_some(selected_documentation, |this, documentation| {
                     let mut doc = match documentation {
