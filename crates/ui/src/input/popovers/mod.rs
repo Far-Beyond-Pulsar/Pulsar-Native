@@ -11,19 +11,19 @@ pub(crate) use diagnostic_popover::*;
 pub(crate) use hover_popover::*;
 
 use gpui::{
-    div, px, rems, App, Div, ElementId, Entity, InteractiveElement as _, IntoElement, SharedString,
-    Stateful, StyleRefinement, Styled as _, Window,
+    App, Div, ElementId, Entity, InteractiveElement as _, IntoElement, SharedString, Stateful,
+    StyleRefinement, Styled as _, Window, div, px, rems,
 };
 
 use crate::{
-    text::{TextView, TextViewStyle},
     ActiveTheme, StyledExt as _,
+    text::{TextView, TextViewStyle},
 };
 
 pub(crate) enum ContextMenu {
     Completion(Entity<CompletionMenu>),
     CodeAction(Entity<CodeActionMenu>),
-    MouseContext(Entity<MouseContextMenu>),
+    RightClick(Entity<InputContextMenu>),
 }
 
 impl ContextMenu {
@@ -31,7 +31,7 @@ impl ContextMenu {
         match self {
             ContextMenu::Completion(menu) => menu.read(cx).is_open(),
             ContextMenu::CodeAction(menu) => menu.read(cx).is_open(),
-            ContextMenu::MouseContext(menu) => menu.read(cx).is_open(),
+            ContextMenu::RightClick(menu) => menu.read(cx).is_open(),
         }
     }
 
@@ -39,7 +39,7 @@ impl ContextMenu {
         match self {
             ContextMenu::Completion(menu) => menu.clone().into_any_element(),
             ContextMenu::CodeAction(menu) => menu.clone().into_any_element(),
-            ContextMenu::MouseContext(menu) => menu.clone().into_any_element(),
+            ContextMenu::RightClick(menu) => menu.clone().into_any_element(),
         }
     }
 }
@@ -49,7 +49,7 @@ pub(super) fn render_markdown(
     markdown: impl Into<SharedString>,
     window: &mut Window,
     cx: &mut App,
-) -> impl IntoElement {
+) -> TextView {
     TextView::markdown(id, markdown, window, cx)
         .style(
             TextViewStyle::default()

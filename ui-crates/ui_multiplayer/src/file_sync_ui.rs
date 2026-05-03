@@ -99,9 +99,9 @@ impl FileSyncUI {
         let file_list_split = ResizableState::new(cx);
         let diff_split = ResizableState::new(cx);
 
-        let before_editor = cx.new(|cx| InputState::new(window, cx).multi_line());
+        let before_editor = cx.new(|cx| InputState::new(window, cx).multi_line(true));
 
-        let after_editor = cx.new(|cx| InputState::new(window, cx).multi_line());
+        let after_editor = cx.new(|cx| InputState::new(window, cx).multi_line(true));
 
         Self {
             focus_handle: cx.focus_handle(),

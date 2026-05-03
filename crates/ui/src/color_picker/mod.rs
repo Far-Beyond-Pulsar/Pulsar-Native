@@ -11,7 +11,7 @@ use crate::{
     button::{Button, ButtonVariants},
     divider::Divider,
     h_flex,
-    input::{InputEvent, InputState, TextInput},
+    input::{InputEvent, InputState, Input},
     styled::PixelsExt,
     tooltip::Tooltip,
     v_flex, ActiveTheme as _, Colorize as _, FocusableExt as _, Icon, IconName, Selectable as _,

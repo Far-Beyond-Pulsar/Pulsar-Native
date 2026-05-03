@@ -1,12 +1,13 @@
 use gpui::{
-    div, prelude::FluentBuilder, px, AnyElement, App, AppContext as _, Context, Empty, Entity,
-    EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyDownEvent,
-    MouseButton, MouseDownEvent, ParentElement as _, Render, RenderOnce, SharedString, Styled as _,
-    Subscription, Window,
+    AnyElement, App, AppContext as _, Context, Empty, Entity, EventEmitter, FocusHandle, Focusable,
+    InteractiveElement, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, ParentElement as _,
+    Render, RenderOnce, SharedString, Styled as _, Subscription, Window, div,
+    prelude::FluentBuilder, px,
 };
 
-use super::{blink_cursor::BlinkCursor, InputEvent};
-use crate::{h_flex, v_flex, ActiveTheme, Disableable, Icon, IconName, Sizable, Size};
+use super::{InputEvent, blink_cursor::BlinkCursor, input::input_style, state::InputState};
+use crate::Root;
+use crate::{ActiveTheme, Disableable, Icon, IconName, Sizable, Size, h_flex, v_flex};
 
 pub struct OtpState {
     focus_handle: FocusHandle,
@@ -14,13 +15,19 @@ pub struct OtpState {
     blink_cursor: Entity<BlinkCursor>,
     masked: bool,
     length: usize,
+    // Shadow InputState written into Root::focused_input while this OTP has focus.
+    // Never rendered, so its FocusHandle stays out of the focus tree and tab order.
+    // Its value mirrors self.value.
+    input_state: Entity<InputState>,
     _subscriptions: Vec<Subscription>,
 }
 
 impl OtpState {
+    /// Create a new [`OtpState`] with the specified length.
     pub fn new(length: usize, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
         let blink_cursor = cx.new(|_| BlinkCursor::new());
+        let input_state = cx.new(|cx| InputState::new(window, cx));
 
         let _subscriptions = vec![
             // Observe the blink cursor to repaint the view when it changes.
@@ -46,6 +53,7 @@ impl OtpState {
             value: SharedString::default(),
             blink_cursor: blink_cursor.clone(),
             masked: false,
+            input_state,
             _subscriptions,
         }
     }
@@ -60,11 +68,19 @@ impl OtpState {
     pub fn set_value(
         &mut self,
         value: impl Into<SharedString>,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.value = value.into();
+        self.sync_to_input_state(window, cx);
         cx.notify();
+    }
+
+    fn sync_to_input_state(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let value = self.value.clone();
+        self.input_state.update(cx, |state, cx| {
+            state.set_value(value, window, cx);
+        });
     }
 
     /// Return the value of the OTP Input.
@@ -84,7 +100,8 @@ impl OtpState {
         cx.notify();
     }
 
-    pub fn focus(&self, window: &mut Window, _: &mut Context<Self>) {
+    /// Focus the OTP Input.
+    pub fn focus(&self, window: &mut Window, cx: &mut Context<Self>) {
         self.focus_handle.focus(window);
     }
 
@@ -92,9 +109,20 @@ impl OtpState {
         &mut self,
         _: &MouseDownEvent,
         window: &mut Window,
-        _: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) {
         window.focus(&self.focus_handle);
+    }
+
+    /// Try to extract an ASCII digit char from a string.
+    /// Supports both half-width ('0'-'9') and full-width ('0'-'9') digits.
+    fn to_digit_char(s: &str) -> Option<char> {
+        let c = s.chars().next()?;
+        c.to_digit(10).map(|_| c).or_else(|| {
+            // Full-width digits: '0' (U+FF10)..='9' (U+FF19)
+            let digit = (c as u32).checked_sub('０' as u32)?;
+            char::from_digit(digit, 10)
+        })
     }
 
     fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
@@ -114,10 +142,17 @@ impl OtpState {
                 cx.stop_propagation();
             }
             _ => {
-                let c = key.chars().next().unwrap();
-                if !matches!(c, '0'..='9') {
+                let c = Self::to_digit_char(key).or_else(|| {
+                    event
+                        .keystroke
+                        .key_char
+                        .as_deref()
+                        .and_then(Self::to_digit_char)
+                });
+
+                let Some(c) = c else {
                     return;
-                }
+                };
                 if ix >= self.length {
                     return;
                 }
@@ -131,6 +166,7 @@ impl OtpState {
 
         self.pause_blink_cursor(cx);
         self.value = SharedString::from(chars.iter().collect::<String>());
+        self.sync_to_input_state(window, cx);
 
         if self.value.chars().count() == self.length {
             cx.emit(InputEvent::Change);
@@ -138,17 +174,37 @@ impl OtpState {
         cx.notify()
     }
 
-    fn on_focus(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.sync_to_input_state(window, cx);
+
         self.blink_cursor.update(cx, |cursor, cx| {
             cursor.start(cx);
         });
+
+        let input_state = self.input_state.clone();
+        Root::update(window, cx, |root, _, cx| {
+            if root.focused_input.as_ref() != Some(&input_state) {
+                root.focused_input = Some(input_state);
+                cx.notify();
+            }
+        });
+
         cx.emit(InputEvent::Focus);
     }
 
-    fn on_blur(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_blur(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.blink_cursor.update(cx, |cursor, cx| {
             cursor.stop(cx);
         });
+
+        let input_state = self.input_state.clone();
+        Root::update(window, cx, |root, _, cx| {
+            if root.focused_input.as_ref() == Some(&input_state) {
+                root.focused_input = None;
+                cx.notify();
+            }
+        });
+
         cx.emit(InputEvent::Blur);
     }
 
@@ -241,6 +297,8 @@ impl RenderOnce for OtpInput {
             groups.push(vec![]);
         }
 
+        let (bg, fg) = input_style(self.disabled, cx);
+
         for ix in 0..state.length {
             let c = state.value.chars().nth(ix);
             if ix % group_items_count == 0 && ix != 0 {
@@ -254,11 +312,9 @@ impl RenderOnce for OtpInput {
                     .id(ix)
                     .border_1()
                     .border_color(cx.theme().input)
-                    .bg(cx.theme().background)
-                    .when(self.disabled, |this| {
-                        this.bg(cx.theme().muted)
-                            .text_color(cx.theme().muted_foreground)
-                    })
+                    .bg(bg)
+                    .text_color(fg)
+                    .when(self.disabled, |this| this.opacity(0.5))
                     .when(is_input_focused, |this| this.border_color(cx.theme().ring))
                     .when(cx.theme().shadow, |this| this.shadow_xs())
                     .items_center()
@@ -297,7 +353,7 @@ impl RenderOnce for OtpInput {
                                     .h_4()
                                     .w_0()
                                     .border_l_3()
-                                    .border_color(crate::blue_500()),
+                                    .border_color(cx.theme().caret),
                             )
                         }),
                     })

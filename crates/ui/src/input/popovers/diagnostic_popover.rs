@@ -1,14 +1,16 @@
 use std::rc::Rc;
 
 use gpui::{
-    deferred, div, px, App, AppContext as _, Bounds, Context, Empty, Entity, InteractiveElement,
-    IntoElement, ParentElement, Pixels, Point, Render, StatefulInteractiveElement, Styled, Window,
+    prelude::FluentBuilder as _, px, App, AppContext as _, Bounds, Context, Empty, Entity,
+    IntoElement, Pixels, Point, Render, Styled, Window,
 };
 
 use crate::{
     highlighter::DiagnosticEntry,
-    input::{popovers::render_markdown, InputState},
-    v_flex, ActiveTheme, StyledExt,
+    input::{
+        popovers::{render_markdown, Popover},
+        InputState,
+    },
 };
 
 pub struct DiagnosticPopover {
@@ -62,7 +64,7 @@ impl DiagnosticPopover {
 }
 
 impl Render for DiagnosticPopover {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if !self.open {
             return Empty.into_any_element();
         }
@@ -75,64 +77,19 @@ impl Render for DiagnosticPopover {
             self.diagnostic.severity.fg(cx),
         );
 
-        // Get position for the popover
-        let state = self.state.read(cx);
-        let Some(last_layout) = state.last_layout.as_ref() else {
-            return Empty.into_any_element();
-        };
-
-        let Some(_last_bounds) = state.last_bounds else {
-            return Empty.into_any_element();
-        };
-
-        let (_, _, start_pos) = state.line_and_position_for_offset(self.diagnostic.range.start);
-        let Some(start_pos) = start_pos else {
-            return Empty.into_any_element();
-        };
-
-        let scroll_origin = state.scroll_handle.offset();
-        let pos = scroll_origin + start_pos - state.input_bounds.origin
-            + Point::new(px(0.), last_layout.line_height + px(4.));
-
-        let max_width = px(400.).min(window.bounds().size.width - pos.x - px(20.));
-
-        deferred(
-            div()
-                .id("diagnostic-popover")
-                .absolute()
-                .left(pos.x)
-                .top(pos.y)
-                .on_scroll_wheel(|_, _, cx| {
-                    cx.stop_propagation();
-                })
-                .child(
-                    v_flex()
-                        .w(max_width)
-                        .max_h(px(300.))
-                        .min_w(px(200.))
-                        .px_1()
-                        .py_0p5()
-                        .bg(bg)
-                        .text_color(fg)
-                        .border_1()
-                        .border_color(border)
-                        .rounded(cx.theme().radius)
-                        .shadow_lg()
-                        .overflow_hidden()
-                        .child(
-                            div()
-                                .id("diagnostic-popover-content")
-                                .w_full()
-                                .h_full()
-                                .overflow_y_scroll()
-                                .overflow_x_hidden()
-                                .child(render_markdown("diagnostic-message", message, window, cx)),
-                        ),
-                )
-                .on_mouse_down_out(cx.listener(|this, _, _, cx| {
-                    this.hide(cx);
-                })),
+        Popover::new(
+            "diagnostic-popover",
+            self.state.clone(),
+            self.diagnostic.range.clone(),
+            move |window, cx| render_markdown("message", message.clone(), window, cx),
         )
+        .when(!self.open, |this| this.invisible())
+        .px_1()
+        .py_0p5()
+        .bg(bg)
+        .text_color(fg)
+        .border_1()
+        .border_color(border)
         .into_any_element()
     }
 }

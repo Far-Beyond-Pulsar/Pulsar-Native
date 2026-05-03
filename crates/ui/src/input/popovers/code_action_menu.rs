@@ -1,10 +1,10 @@
 use std::rc::Rc;
 
 use gpui::{
-    canvas, deferred, div, prelude::FluentBuilder, px, relative, Action, AnyElement, App,
-    AppContext, Bounds, Context, DismissEvent, Empty, Entity, EventEmitter,
-    InteractiveElement as _, IntoElement, ParentElement, Pixels, Point, Render, RenderOnce,
-    SharedString, Styled, StyledText, Subscription, Window,
+    Action, AnyElement, App, AppContext, Context, DismissEvent, Empty, Entity, EventEmitter,
+    Half as _, InteractiveElement as _, IntoElement, ParentElement, Pixels, Point, Render,
+    RenderOnce, SharedString, Styled, StyledText, Subscription, Window, deferred, div,
+    prelude::FluentBuilder, px, relative,
 };
 use lsp_types::CodeAction;
 
@@ -12,10 +12,9 @@ const MAX_MENU_WIDTH: Pixels = px(320.);
 const MAX_MENU_HEIGHT: Pixels = px(480.);
 
 use crate::{
-    actions, h_flex,
-    input::{self, popovers::editor_popover, InputState},
+    ActiveTheme, IndexPath, Selectable, actions, h_flex,
+    input::{self, InputState, popovers::editor_popover},
     list::{List, ListDelegate, ListEvent},
-    ActiveTheme, IndexPath, Selectable,
 };
 
 #[derive(Debug, Clone)]
@@ -88,7 +87,7 @@ impl RenderOnce for MenuItem {
             .p_1()
             .text_xs()
             .line_height(relative(1.))
-            .rounded_sm()
+            .rounded(cx.theme().radius.half())
             .hover(|this| this.bg(cx.theme().accent.opacity(0.8)))
             .when(self.selected, |this| {
                 this.bg(cx.theme().accent)
@@ -147,7 +146,6 @@ pub struct CodeActionMenu {
     state: Entity<InputState>,
     list: Entity<List<MenuDelegate>>,
     open: bool,
-    bounds: Bounds<Pixels>,
 
     _subscriptions: Vec<Subscription>,
 }
@@ -169,11 +167,7 @@ impl CodeActionMenu {
                 selected_ix: 0,
             };
 
-            let list = cx.new(|cx| {
-                List::new(menu, window, cx)
-                    .no_query()
-                    .max_h(MAX_MENU_HEIGHT)
-            });
+            let list = cx.new(|cx| List::new(menu, window, cx).max_h(MAX_MENU_HEIGHT));
 
             let _subscriptions =
                 vec![
@@ -193,7 +187,6 @@ impl CodeActionMenu {
                 state,
                 list,
                 open: false,
-                bounds: Bounds::default(),
                 _subscriptions,
             }
         })
@@ -321,8 +314,6 @@ impl Render for CodeActionMenu {
             return Empty.into_any_element();
         }
 
-        let view = cx.entity();
-
         let Some(pos) = self.origin(cx) else {
             return Empty.into_any_element();
         };
@@ -337,14 +328,6 @@ impl Render for CodeActionMenu {
                 .max_w(max_width)
                 .min_w(px(120.))
                 .child(self.list.clone())
-                .child(
-                    canvas(
-                        move |bounds, _, cx| view.update(cx, |r, _| r.bounds = bounds),
-                        |_, _, _, _| {},
-                    )
-                    .absolute()
-                    .size_full(),
-                )
                 .on_mouse_down_out(cx.listener(|this, _, _, cx| {
                     this.hide(cx);
                 })),

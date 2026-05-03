@@ -1,13 +1,16 @@
+/// The character used to mask password input fields.
+pub(super) const MASK_CHAR: char = '•';
+
 mod blink_cursor;
 mod change;
 mod clear_button;
 mod cursor;
+mod display_map;
 mod element;
-mod line_cache;
+mod indent;
+mod input;
 mod lsp;
 mod mask_pattern;
-mod minimap;
-mod minimap_scrollbar;
 mod mode;
 mod movement;
 mod number_input;
@@ -15,30 +18,23 @@ mod otp_input;
 pub(crate) mod popovers;
 mod rope_ext;
 mod search;
+mod selection;
 mod state;
-mod tab_completion;
-mod text_input;
-mod text_wrapper;
-mod virtual_editor_utils;
 
 pub(crate) use clear_button::*;
 pub use cursor::*;
-pub use line_cache::{CachedLineLayout, OptimizedLineCache};
+/// Type alias for backwards compatibility
+pub use input::Input as TextInput;
+#[cfg(target_family = "wasm")]
+pub use display_map::folding::Tree;
+pub use display_map::{BufferPoint, DisplayMap, DisplayPoint, FoldRange};
+pub use indent::TabSize;
+pub use input::*;
 pub use lsp::*;
+pub use lsp_types::Position;
 pub use mask_pattern::MaskPattern;
-pub use minimap::*;
-pub use minimap_scrollbar::*;
-pub use mode::TabSize;
 pub use number_input::{NumberInput, NumberInputEvent, StepAction};
 pub use otp_input::*;
-pub use state::{LineHighlight, *};
-pub use tab_completion::*;
-pub use text_input::TextInput as Input;
-pub use text_input::*;
-pub use virtual_editor_utils::{
-    calculate_content_size, calculate_visible_range, VirtualEditorConfig,
-};
-
-pub use lsp_types::Position;
-pub use rope_ext::*;
+pub use rope_ext::{InputEdit, Point, RopeExt, RopeLines};
 pub use ropey::Rope;
+pub use state::*;

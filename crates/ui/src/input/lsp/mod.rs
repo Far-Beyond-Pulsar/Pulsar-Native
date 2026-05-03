@@ -1,22 +1,21 @@
 use anyhow::Result;
-use gpui::{App, Context, MouseMoveEvent, Task, Window};
+use gpui::{App, Context, Hsla, MouseMoveEvent, Task, Window};
+use ropey::Rope;
 use std::rc::Rc;
 
-use crate::input::{popovers::ContextMenu, GoToDefinition, InputState, RopeExt, ToggleCodeActions};
+use crate::input::{InputState, RopeExt, popovers::ContextMenu};
 
-mod autocomplete;
 mod code_actions;
 mod completions;
 mod definitions;
+mod document_colors;
 mod hover;
-mod rust_analyzer;
 
-pub use autocomplete::*;
 pub use code_actions::*;
 pub use completions::*;
 pub use definitions::*;
+pub use document_colors::*;
 pub use hover::*;
-pub use rust_analyzer::*;
 
 /// LSP ServerCapabilities
 ///
@@ -30,7 +29,12 @@ pub struct Lsp {
     pub hover_provider: Option<Rc<dyn HoverProvider>>,
     /// The definition provider.
     pub definition_provider: Option<Rc<dyn DefinitionProvider>>,
+    /// The document color provider.
+    pub document_color_provider: Option<Rc<dyn DocumentColorProvider>>,
+
+    document_colors: Vec<(lsp_types::Range, Hsla)>,
     _hover_task: Task<Result<()>>,
+    _document_color_task: Task<()>,
 }
 
 impl Default for Lsp {
@@ -40,20 +44,42 @@ impl Default for Lsp {
             code_action_providers: vec![],
             hover_provider: None,
             definition_provider: None,
+            document_color_provider: None,
+            document_colors: vec![],
             _hover_task: Task::ready(Ok(())),
+            _document_color_task: Task::ready(()),
         }
+    }
+}
+
+impl Lsp {
+    /// Update the LSP when the text changes.
+    pub(crate) fn update(
+        &mut self,
+        text: &Rope,
+        window: &mut Window,
+        cx: &mut Context<InputState>,
+    ) {
+        self.update_document_colors(text, window, cx);
+    }
+
+    /// Reset all LSP states.
+    pub(crate) fn reset(&mut self) {
+        self.document_colors.clear();
+        self._hover_task = Task::ready(Ok(()));
+        self._document_color_task = Task::ready(());
     }
 }
 
 impl InputState {
     pub(crate) fn hide_context_menu(&mut self, cx: &mut Context<Self>) {
-        self.context_menu = None;
+        self.context_menu_content = None;
         self._context_menu_task = Task::ready(Ok(()));
         cx.notify();
     }
 
     pub(crate) fn is_context_menu_open(&self, cx: &App) -> bool {
-        let Some(menu) = self.context_menu.as_ref() else {
+        let Some(menu) = self.context_menu_content.as_ref() else {
             return false;
         };
 
@@ -69,7 +95,7 @@ impl InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(menu) = self.context_menu.as_ref() else {
+        let Some(menu) = self.context_menu_content.as_ref() else {
             return false;
         };
 
@@ -86,20 +112,7 @@ impl InputState {
                     handled = menu.handle_action(action, window, cx)
                 });
             }
-            ContextMenu::MouseContext(..) => {
-                // Handle mouse context menu actions
-                if action.as_any().downcast_ref::<GoToDefinition>().is_some() {
-                    self.on_action_go_to_definition(&GoToDefinition, window, cx);
-                    handled = true;
-                } else if action
-                    .as_any()
-                    .downcast_ref::<ToggleCodeActions>()
-                    .is_some()
-                {
-                    self.on_action_toggle_code_actions(&ToggleCodeActions, window, cx);
-                    handled = true;
-                }
-            }
+            ContextMenu::RightClick(..) => {}
         };
 
         handled
@@ -132,8 +145,15 @@ impl InputState {
             self.handle_hover_definition(offset, window, cx);
         } else {
             self.hover_definition.clear();
-            self.handle_hover_popover(offset, event.position, window, cx);
+            self.handle_hover_popover(offset, window, cx);
         }
+        cx.notify();
+    }
+
+    pub(crate) fn clear_hover_state(&mut self, cx: &mut Context<InputState>) {
+        self.hover_definition.clear();
+        self.hover_popover = None;
+        self.lsp._hover_task = Task::ready(Ok(()));
         cx.notify();
     }
 }

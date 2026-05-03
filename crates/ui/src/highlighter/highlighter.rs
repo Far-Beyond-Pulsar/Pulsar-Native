@@ -9,6 +9,7 @@ use ropey::{ChunkCursor, Rope};
 use std::{
     collections::{BTreeSet, HashMap},
     ops::Range,
+    sync::Arc,
     usize,
 };
 use tree_sitter::{
@@ -39,6 +40,22 @@ pub struct SyntaxHighlighter {
     parser: Parser,
     /// The last parsed tree.
     tree: Option<Tree>,
+}
+
+/// A parsed injection layer.
+/// Stores the parsed tree and the ranges it covers.
+#[allow(unused)]
+pub(crate) struct InjectionLayer {
+    pub(crate) tree: Tree,
+}
+
+/// Data needed to compute injection layers on a background thread.
+#[allow(unused)]
+pub(crate) struct InjectionParseData {
+    pub(crate) query: Arc<Query>,
+    pub(crate) content_capture_index: Option<u32>,
+    /// Old injection trees for incremental re-parsing.
+    pub(crate) old_layers: HashMap<SharedString, Tree>,
 }
 
 struct TextProvider<'a>(&'a Rope);
@@ -307,6 +324,53 @@ impl SyntaxHighlighter {
 
     pub fn is_empty(&self) -> bool {
         self.text.len() == 0
+    }
+
+    /// Get the parsed tree (if available)
+    pub fn tree(&self) -> Option<&Tree> {
+        self.tree.as_ref()
+    }
+
+    /// Returns the language name for this highlighter.
+    pub fn language(&self) -> &SharedString {
+        &self.language
+    }
+
+    /// Returns the data needed to compute injection layers on a background thread.
+    /// Returns `None` if this language has no combined injections.
+    ///
+    /// NOTE: This is a stub implementation - injection layers are not yet supported.
+    pub(crate) fn injection_parse_data(&self) -> Option<InjectionParseData> {
+        None
+    }
+
+    /// Compute injection layers from a freshly-parsed main tree.
+    /// This is pure computation with no side effects and is safe to run on a
+    /// background thread.
+    ///
+    /// NOTE: This is a stub implementation - injection layers are not yet supported.
+    pub(crate) fn compute_injection_layers(
+        _data: InjectionParseData,
+        _tree: &Tree,
+        _text: &Rope,
+    ) -> HashMap<SharedString, InjectionLayer> {
+        HashMap::new()
+    }
+
+    /// Apply a tree that was parsed on a background thread.
+    ///
+    /// `injection_layers` must also be pre-computed in the background via
+    /// [`compute_injection_layers`] to avoid blocking the main thread.
+    ///
+    /// NOTE: This is a stub implementation - injection layers are not yet supported.
+    pub(crate) fn apply_background_tree(
+        &mut self,
+        tree: Tree,
+        text: &Rope,
+        _injection_layers: HashMap<SharedString, InjectionLayer>,
+    ) {
+        self.tree = Some(tree);
+        self.text = text.clone();
     }
 
     /// Highlight the given text, returning a map from byte ranges to highlight captures.
