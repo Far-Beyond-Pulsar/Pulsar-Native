@@ -1,4 +1,4 @@
-use plugin_editor_api::AssetPayload;
+use crate::AssetPayload;
 
 /// Global drag-and-drop lifecycle events.
 ///

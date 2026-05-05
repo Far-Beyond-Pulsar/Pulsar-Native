@@ -114,6 +114,36 @@ impl GpuRenderer {
     pub fn get_frame_count(&self) -> u64 {
         self.frame_count
     }
+
+    /// Insert a loaded scene object into the Helio renderer.
+    ///
+    /// This method takes a `ConvertedScene` from helio-asset-compat and inserts
+    /// the meshes, materials, and textures into the active scene.
+    pub fn insert_scene_object(
+        &mut self,
+        scene: helio_asset_compat::ConvertedScene,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        tracing::info!(
+            "Inserting scene object: {} ({} meshes, {} materials, {} textures)",
+            scene.name,
+            scene.meshes.len(),
+            scene.materials.len(),
+            scene.textures.len()
+        );
+
+        // TODO: Implement actual scene insertion into Helio
+        // This will involve:
+        // 1. Creating GPU buffers for mesh geometry
+        // 2. Uploading textures to GPU
+        // 3. Creating material instances
+        // 4. Adding objects to the scene graph
+        // 5. Registering with the scene picker for selection
+
+        // For now, just log that we received the scene
+        tracing::info!("Scene object insertion placeholder - needs Helio scene graph integration");
+
+        Ok(())
+    }
 }
 
 unsafe impl Send for GpuRenderer {}

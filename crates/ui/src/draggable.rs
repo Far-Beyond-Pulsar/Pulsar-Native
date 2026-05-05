@@ -1,4 +1,8 @@
-use gpui::{prelude::*, *};
+use gpui::{
+    div, prelude::FluentBuilder as _, AnyElement, App, AppContext as _, Div, ElementId,
+    InteractiveElement, IntoElement, ParentElement, Render, RenderOnce,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, Window,
+};
 use std::rc::Rc;
 
 use crate::Icon;
@@ -135,6 +139,7 @@ impl<T: Clone + Render + 'static> RenderOnce for Draggable<T> {
 
                 Some(
                     div()
+                        .id("draggable-handle")
                         .flex_shrink_0()
                         .cursor_grab()
                         .p_1()
@@ -161,25 +166,28 @@ impl<T: Clone + Render + 'static> RenderOnce for Draggable<T> {
 
         // Add hover state if enabled
         if self.show_hover_state {
-            container = container.hover(|style| style.bg(gpui::rgb(0x00_00_00).opacity(0.05)));
+            container = container.hover(|style| style.bg(gpui::rgb(0x00_00_00))); // TODO .opacity(0.05)
         }
 
-        // Add drag handle on the left
-        if self.drag_handle_position == DragHandlePosition::Left {
-            if let Some(handle) = drag_handle.clone() {
-                container = container.child(handle);
+        container = match self.drag_handle_position {
+            DragHandlePosition::Left => {
+                let container = if let Some(handle) = drag_handle {
+                    container.child(handle)
+                } else {
+                    container
+                };
+                container.child(self.base)
             }
-        }
-
-        // Add the user's content
-        container = container.child(self.base);
-
-        // Add drag handle on the right
-        if self.drag_handle_position == DragHandlePosition::Right {
-            if let Some(handle) = drag_handle {
-                container = container.child(handle);
+            DragHandlePosition::Right => {
+                let container = container.child(self.base);
+                if let Some(handle) = drag_handle {
+                    container.child(handle)
+                } else {
+                    container
+                }
             }
-        }
+            DragHandlePosition::Custom => container.child(self.base),
+        };
 
         container
     }

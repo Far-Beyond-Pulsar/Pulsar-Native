@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use gpui::*;
+use plugin_editor_api::{AssetDropArea, AssetDropAreaExt, AssetKind, AssetPayload};
 
 /// A GPUI component that drives the Helio renderer into a `WgpuSurfaceHandle`.
 pub struct HelioViewport {
@@ -30,6 +31,107 @@ impl HelioViewport {
             focus_handle: cx.focus_handle(),
             debug_replace_with_yellow,
         }
+    }
+
+    /// Handle an asset being dropped on the viewport
+    fn handle_asset_drop(
+        &mut self,
+        payload: &AssetPayload,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use std::path::PathBuf;
+        use ui::notification::Notification;
+
+        let path = PathBuf::from(&payload.engine_path);
+        let name = payload.name.clone();
+        let kind = payload.kind.clone();
+
+        tracing::info!("Asset dropped on viewport: {} ({:?})", name, kind);
+
+        // Show importing notification
+        window.push_notification(
+            Notification::info("Importing Asset").message(format!("Loading {}...", name)),
+            cx,
+        );
+
+        // Spawn async import task
+        let gpu_engine = self.gpu_engine.clone();
+        cx.spawn(|_viewport, mut cx| async move {
+            let result = Self::import_asset_async(path, kind, gpu_engine).await;
+
+            // Update UI on main thread
+            cx.update(|cx| {
+                match result {
+                    Ok(()) => {
+                        cx.push_notification(
+                            Notification::success("Import Successful")
+                                .message(format!("Imported {}", name)),
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to import {}: {}", name, e);
+                        cx.push_notification(
+                            Notification::error("Import Failed")
+                                .message(format!("Failed to import {}: {}", name, e)),
+                        );
+                    }
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Async asset import - loads and inserts the asset into the scene
+    async fn import_asset_async(
+        path: PathBuf,
+        kind: AssetKind,
+        gpu_engine: Arc<Mutex<GpuRenderer>>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Validate file exists
+        if !path.exists() {
+            return Err(format!("File not found: {}", path.display()).into());
+        }
+
+        // Based on AssetKind, load different asset types
+        match kind {
+            AssetKind::Mesh | AssetKind::Scene => {
+                tracing::info!("Loading FBX/scene from {:?}", path);
+
+                // Load the scene file using helio-asset-compat
+                let load_config = helio_asset_compat::LoadConfig {
+                    flip_uv_y: true,            // Convert DirectX → OpenGL UVs
+                    merge_meshes: false,        // Keep separate meshes
+                    import_scale: glam::Vec3::ONE, // 1:1 scale
+                };
+
+                let converted_scene = tokio::task::spawn_blocking(move || {
+                    helio_asset_compat::load_scene_file_with_config(&path, load_config)
+                })
+                .await??;
+
+                tracing::info!(
+                    "Loaded scene: {} meshes, {} materials, {} textures",
+                    converted_scene.meshes.len(),
+                    converted_scene.materials.len(),
+                    converted_scene.textures.len()
+                );
+
+                // Insert the scene into Helio
+                if let Ok(mut engine) = gpu_engine.try_lock() {
+                    engine.insert_scene_object(converted_scene)?;
+                    tracing::info!("Scene successfully inserted into Helio renderer");
+                } else {
+                    return Err("Failed to lock GPU renderer".into());
+                }
+            }
+            _ => {
+                return Err(format!("Unsupported asset type: {:?}", kind).into());
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -93,9 +195,8 @@ impl Render for HelioViewport {
             }
         }
 
-        // Element tree fills the parent panel. The WGPU surface is composited
-        // as an absolute layer inside this full-size container.
-        if let Some(ref surface) = self.surface {
+        // Build the viewport element
+        let viewport_element = if let Some(ref surface) = self.surface {
             wgpu_surface(surface.clone())
                 .defer_resize_until_mouse_up(true)
                 .absolute()
@@ -110,6 +211,16 @@ impl Render for HelioViewport {
                 .bg(rgb(0xff0000))
                 .child("Waiting for WgpuSurface...")
                 .into_any_element()
-        }
+        };
+
+        // Wrap in AssetDropArea to accept mesh and scene drops
+        AssetDropArea::new("helio-viewport-drop")
+            .accepts(vec![AssetKind::Mesh, AssetKind::Scene])
+            .on_asset_drop(cx.listener(|this, payload, window, cx| {
+                this.handle_asset_drop(payload, window, cx);
+            }))
+            .size_full()
+            .child(viewport_element)
+            .into_any_element()
     }
 }

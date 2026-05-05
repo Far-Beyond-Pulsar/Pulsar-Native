@@ -1,4 +1,5 @@
 pub mod asset_kind;
+pub mod asset_payload;
 pub mod codegen;
 pub mod drag_events;
 pub mod errors;
@@ -8,6 +9,7 @@ pub mod validation;
 pub mod window_types;
 
 pub use asset_kind::*;
+pub use asset_payload::*;
 pub use codegen::*;
 pub use drag_events::*;
 pub use errors::*;

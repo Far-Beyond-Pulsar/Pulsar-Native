@@ -39,6 +39,7 @@ flume = "0.11"
 
 # Helio rendering (wgpu-based)
 helio.workspace = true
+helio-asset-compat = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "6320b6cec9419097c4500c86574499492a0a94d0" }
 glam.workspace = true
 bytemuck = "1.14"
 
