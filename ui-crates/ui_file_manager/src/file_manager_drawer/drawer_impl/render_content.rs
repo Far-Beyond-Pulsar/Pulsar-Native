@@ -87,11 +87,11 @@ impl FileManagerDrawer {
                         .rounded_lg()
                 })
                 .on_drop(cx.listener(move |drawer, drag: &DraggedFile, _window, cx| {
-                        eprintln!("[FILE_DROP] 🟡 on_drop::<DraggedFile> fired on grid folder item");
+                    cx.stop_propagation();
                     drawer.handle_drop_on_folder_new(&folder_path_for_internal_drop, &drag.paths, cx);
                 }))
                 .on_drop(cx.listener(move |drawer, external: &ExternalPaths, _window, cx| {
-                        eprintln!("[FILE_DROP] 🔵 on_drop::<ExternalPaths> fired on grid folder item, paths={:?}", external.paths());
+                    cx.stop_propagation();
                     drawer.handle_external_drop_on_folder(&folder_path_for_external_drop, external.paths(), cx);
                 }));
         }
@@ -301,11 +301,11 @@ impl FileManagerDrawer {
                         .border_color(cx.theme().accent)
                 })
                 .on_drop(cx.listener(move |drawer, drag: &DraggedFile, _window, cx| {
-                    eprintln!("[FILE_DROP] 🟡 on_drop::<DraggedFile> fired on list folder item");
+                    cx.stop_propagation();
                     drawer.handle_drop_on_folder_new(&folder_path_for_internal_drop, &drag.paths, cx);
                 }))
                 .on_drop(cx.listener(move |drawer, external: &ExternalPaths, _window, cx| {
-                    eprintln!("[FILE_DROP] 🔵 on_drop::<ExternalPaths> fired on list folder item");
+                    cx.stop_propagation();
                     drawer.handle_external_drop_on_folder(&folder_path_for_external_drop, external.paths(), cx);
                 }));
         }
