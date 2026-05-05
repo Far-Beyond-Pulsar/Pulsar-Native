@@ -101,6 +101,134 @@ struct LogEntryDetails {
     filtered_active: bool,
 }
 
+fn open_log_entry_modal(details: LogEntryDetails, window: &mut Window, cx: &mut App) {
+    window.open_modal(cx, move |modal, _w, cx| {
+        let theme = cx.theme();
+        let level_color = details.level.color(theme);
+
+        let metadata_row = |label: String, value: String| {
+            h_flex()
+                .w_full()
+                .px_2()
+                .py_1()
+                .justify_between()
+                .border_b_1()
+                .border_color(theme.border.opacity(0.2))
+                .child(
+                    div()
+                        .w(px(180.0))
+                        .text_color(theme.muted_foreground)
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(label),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .text_color(theme.foreground)
+                        .child(value),
+                )
+        };
+
+        modal
+            .width(px(980.0))
+            .max_w(px(1200.0))
+            .show_close(true)
+            .title("Log Entry Details")
+            .child(
+                v_flex()
+                    .w_full()
+                    .gap_3()
+                    .child(
+                        div()
+                            .w_full()
+                            .px_3()
+                            .py_2()
+                            .rounded(px(8.0))
+                            .bg(level_color.opacity(0.12))
+                            .border_1()
+                            .border_color(level_color.opacity(0.35))
+                            .child(
+                                h_flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .px_2()
+                                            .py(px(2.0))
+                                            .rounded(px(999.0))
+                                            .bg(level_color.opacity(0.2))
+                                            .text_color(level_color)
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .child(details.level.label()),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_color(theme.foreground)
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .child(format!("Line {}", details.abs_line)),
+                                    ),
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .w_full()
+                            .rounded(px(8.0))
+                            .border_1()
+                            .border_color(theme.border)
+                            .bg(theme.background)
+                            .child(metadata_row("Line".to_string(), details.abs_line.to_string()))
+                            .child(metadata_row(
+                                "Level".to_string(),
+                                details.level.label().to_string(),
+                            ))
+                            .child(metadata_row(
+                                "Characters".to_string(),
+                                details.chars.to_string(),
+                            ))
+                            .child(metadata_row(
+                                "UTF-8 bytes".to_string(),
+                                details.bytes.to_string(),
+                            ))
+                            .child(metadata_row(
+                                "Buffered rows".to_string(),
+                                details.buffered_rows.to_string(),
+                            ))
+                            .child(metadata_row(
+                                "Filter active".to_string(),
+                                if details.filtered_active {
+                                    "yes".to_string()
+                                } else {
+                                    "no".to_string()
+                                },
+                            )),
+                    )
+                    .child(
+                        v_flex()
+                            .w_full()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_color(theme.muted_foreground)
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child("Full Log Message"),
+                            )
+                            .child(
+                                div()
+                                    .w_full()
+                                    .px_3()
+                                    .py_2()
+                                    .rounded(px(8.0))
+                                    .bg(theme.muted.opacity(0.08))
+                                    .border_1()
+                                    .border_color(theme.border.opacity(0.35))
+                                    .text_color(theme.foreground)
+                                    .child(details.text.clone()),
+                            ),
+                    ),
+            )
+    });
+}
+
 impl LogStore {
     fn new() -> Self {
         Self {
@@ -309,7 +437,6 @@ impl TableDelegate for LogTableDelegate {
         _window: &mut Window,
         cx: &mut Context<Table<Self>>,
     ) -> Stateful<Div> {
-        let store = self.store.clone();
         let theme = cx.theme();
         let base_bg = if row_ix % 2 == 0 {
             theme.background
@@ -321,131 +448,6 @@ impl TableDelegate for LogTableDelegate {
             .id(("row", row_ix))
             .cursor_pointer()
             .hover(|s| s.bg(theme.accent.opacity(0.08)))
-            .on_click(move |_, window, cx| {
-                let details = {
-                    let borrowed = store.borrow();
-                    borrowed.entry_details_for_visible(row_ix)
-                };
-
-                if let Some(details) = details {
-                    window.open_modal(cx, move |modal, _w, cx| {
-                        let theme = cx.theme();
-                        let level_color = details.level.color(theme);
-
-                        let metadata_row = |label: String, value: String| {
-                            h_flex()
-                                .w_full()
-                                .px_2()
-                                .py_1()
-                                .justify_between()
-                                .border_b_1()
-                                .border_color(theme.border.opacity(0.2))
-                                .child(
-                                    div()
-                                        .w(px(180.0))
-                                        .text_color(theme.muted_foreground)
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .child(label),
-                                )
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .text_color(theme.foreground)
-                                        .child(value),
-                                )
-                        };
-
-                        modal
-                            .width(px(980.0))
-                            .max_w(px(1200.0))
-                            .show_close(true)
-                            .title("Log Entry Details")
-                            .child(
-                                v_flex()
-                                    .w_full()
-                                    .gap_3()
-                                    .child(
-                                        div()
-                                            .w_full()
-                                            .px_3()
-                                            .py_2()
-                                            .rounded(px(8.0))
-                                            .bg(level_color.opacity(0.12))
-                                            .border_1()
-                                            .border_color(level_color.opacity(0.35))
-                                            .child(
-                                                h_flex()
-                                                    .items_center()
-                                                    .gap_2()
-                                                    .child(
-                                                        div()
-                                                            .px_2()
-                                                            .py(px(2.0))
-                                                            .rounded(px(999.0))
-                                                            .bg(level_color.opacity(0.2))
-                                                            .text_color(level_color)
-                                                            .font_weight(FontWeight::SEMIBOLD)
-                                                            .child(details.level.label()),
-                                                    )
-                                                    .child(
-                                                        div()
-                                                            .text_color(theme.foreground)
-                                                            .font_weight(FontWeight::SEMIBOLD)
-                                                            .child(format!("Line {}", details.abs_line)),
-                                                    ),
-                                            ),
-                                    )
-                                    .child(
-                                        v_flex()
-                                            .w_full()
-                                            .rounded(px(8.0))
-                                            .border_1()
-                                            .border_color(theme.border)
-                                            .bg(theme.background)
-                                            .child(metadata_row("Line".to_string(), details.abs_line.to_string()))
-                                            .child(metadata_row("Level".to_string(), details.level.label().to_string()))
-                                            .child(metadata_row("Characters".to_string(), details.chars.to_string()))
-                                            .child(metadata_row("UTF-8 bytes".to_string(), details.bytes.to_string()))
-                                            .child(metadata_row(
-                                                "Buffered rows".to_string(),
-                                                details.buffered_rows.to_string(),
-                                            ))
-                                            .child(metadata_row(
-                                                "Filter active".to_string(),
-                                                if details.filtered_active {
-                                                    "yes".to_string()
-                                                } else {
-                                                    "no".to_string()
-                                                },
-                                            )),
-                                    )
-                                    .child(
-                                        v_flex()
-                                            .w_full()
-                                            .gap_1()
-                                            .child(
-                                                div()
-                                                    .text_color(theme.muted_foreground)
-                                                    .font_weight(FontWeight::SEMIBOLD)
-                                                    .child("Full Log Message"),
-                                            )
-                                            .child(
-                                                div()
-                                                    .w_full()
-                                                    .px_3()
-                                                    .py_2()
-                                                    .rounded(px(8.0))
-                                                    .bg(theme.muted.opacity(0.08))
-                                                    .border_1()
-                                                    .border_color(theme.border.opacity(0.35))
-                                                    .text_color(theme.foreground)
-                                                    .child(details.text.clone()),
-                                            ),
-                                    ),
-                            )
-                    });
-                }
-            })
             .bg(base_bg)
             .border_b_1()
             .border_color(theme.border.opacity(0.25))
@@ -459,6 +461,7 @@ impl TableDelegate for LogTableDelegate {
         cx: &mut Context<Table<Self>>,
     ) -> impl IntoElement {
         let theme = cx.theme().clone();
+        let store = self.store.clone();
         let borrowed = self.store.borrow();
         let Some(row) = borrowed.row_for_visible(row_ix) else {
             return div().into_any_element();
@@ -468,14 +471,35 @@ impl TableDelegate for LogTableDelegate {
             0 => div()
                 .w_full()
                 .px_2()
+                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                    let details = {
+                        let borrowed = store.borrow();
+                        borrowed.entry_details_for_visible(row_ix)
+                    };
+
+                    if let Some(details) = details {
+                        open_log_entry_modal(details, window, cx);
+                    }
+                })
                 .text_color(theme.muted_foreground)
                 .child(format!("{}", row.abs_line))
                 .into_any_element(),
             1 => {
                 let level_color = row.level.color(&theme);
+                let store = self.store.clone();
                 div()
                 .w_full()
                 .px_2()
+                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                    let details = {
+                        let borrowed = store.borrow();
+                        borrowed.entry_details_for_visible(row_ix)
+                    };
+
+                    if let Some(details) = details {
+                        open_log_entry_modal(details, window, cx);
+                    }
+                })
                 .child(
                     h_flex()
                         .h(px(22.0))
@@ -494,10 +518,21 @@ impl TableDelegate for LogTableDelegate {
             }
             _ => {
                 let level_color = row.level.color(&theme);
+                let store = self.store.clone();
                 div()
                 .w_full()
                 .px_2()
                 .py_1()
+                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                    let details = {
+                        let borrowed = store.borrow();
+                        borrowed.entry_details_for_visible(row_ix)
+                    };
+
+                    if let Some(details) = details {
+                        open_log_entry_modal(details, window, cx);
+                    }
+                })
                 .rounded(px(4.0))
                 .bg(row.level.tint(&theme).opacity(0.45))
                 .text_color(level_color)
