@@ -369,7 +369,7 @@ jobs:
             --repo-owner "${{ github.repository_owner }}" \
             --repo-name "${{ github.event.repository.name }}" \
             --version "${{ needs.check-version.outputs.version }}" \
-            --commits '${{ needs.get-changelog.outputs.commits }}')
+            --prev-tag "${{ needs.get-changelog.outputs.prev_tag }}")
           echo "notes<<EOF" >> $GITHUB_OUTPUT
           echo "$NOTES" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT

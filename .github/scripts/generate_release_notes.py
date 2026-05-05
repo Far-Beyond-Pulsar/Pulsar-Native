@@ -16,14 +16,41 @@ def get_args():
     parser.add_argument("--repo-owner", required=True, help="Repository owner.")
     parser.add_argument("--repo-name", required=True, help="Repository name.")
     parser.add_argument("--version", required=True, help="Current version being released.")
-    parser.add_argument("--commits", required=True, help="JSON array of commits with sha, message, and author.")
+    parser.add_argument("--prev-tag", default="", help="Previous release tag to compare against. If empty, fetches all commits.")
     parser.add_argument("--model", default="gpt-4o", help="Model to use (default: gpt-4o).")
     return parser.parse_args()
 
-def build_prompt(repo_owner, repo_name, version, commits_json):
+def fetch_commits(github_token, repo_owner, repo_name, prev_tag, current_tag="HEAD"):
+    """Fetch commits between two refs using the GitHub REST API."""
+    headers = {
+        "Authorization": f"Bearer {github_token}",
+        "Accept": "application/vnd.github+json",
+    }
+    if prev_tag:
+        url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/compare/{prev_tag}...{current_tag}"
+        response = requests.get(url, headers=headers, timeout=30)
+        if response.status_code != 200:
+            raise Exception(f"GitHub compare API failed. Status: {response.status_code}, Response: {response.text}")
+        data = response.json()
+        raw_commits = data.get("commits", [])
+    else:
+        # No previous tag — fetch the most recent 100 commits
+        url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/commits?per_page=100"
+        response = requests.get(url, headers=headers, timeout=30)
+        if response.status_code != 200:
+            raise Exception(f"GitHub commits API failed. Status: {response.status_code}, Response: {response.text}")
+        raw_commits = response.json()
+
+    commits = []
+    for c in raw_commits:
+        message = c["commit"]["message"].split("\n")[0]  # subject line only
+        author = c["author"]["login"] if c.get("author") else c["commit"]["author"]["name"]
+        commits.append({"sha": c["sha"], "message": message, "author": author})
+    return commits
+
+
+def build_prompt(repo_owner, repo_name, version, commits):
     """Build the prompt for generating release notes."""
-    commits = json.loads(commits_json)
-    
     if not commits:
         return None
     
@@ -108,11 +135,18 @@ def main():
     args = get_args()
     
     try:
+        commits = fetch_commits(
+            github_token=args.github_token,
+            repo_owner=args.repo_owner,
+            repo_name=args.repo_name,
+            prev_tag=args.prev_tag,
+        )
+
         prompt = build_prompt(
             repo_owner=args.repo_owner,
             repo_name=args.repo_name,
             version=args.version,
-            commits_json=args.commits
+            commits=commits,
         )
         
         if not prompt:
