@@ -2632,7 +2632,7 @@ dependencies = [
  "glam 0.29.3",
  "gpui-ce",
  "helio 0.17.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=4e1d8ea4471855452f6e8ff7921cf0790eb03a4f)",
- "helio-asset-compat 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=6320b6cec9419097c4500c86574499492a0a94d0)",
+ "helio-asset-compat",
  "lsp-types",
  "parking_lot",
  "profiling 0.1.0",
@@ -4319,26 +4319,6 @@ dependencies = [
  "web-time",
  "wgpu",
  "windows 0.62.2",
-]
-
-[[package]]
-name = "helio-asset-compat"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=4e1d8ea4471855452f6e8ff7921cf0790eb03a4f#4e1d8ea4471855452f6e8ff7921cf0790eb03a4f"
-dependencies = [
- "bytemuck",
- "glam 0.29.3",
- "helio 0.17.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=4e1d8ea4471855452f6e8ff7921cf0790eb03a4f)",
- "image",
- "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=4e1d8ea4471855452f6e8ff7921cf0790eb03a4f)",
- "log",
- "solid-fbx",
- "solid-gltf",
- "solid-obj",
- "solid-rs",
- "solid-usd",
- "thiserror 1.0.69",
- "wgpu",
 ]
 
 [[package]]
@@ -12758,8 +12738,9 @@ dependencies = [
  "device_query 4.0.1",
  "engine_backend",
  "engine_state",
+ "glam 0.29.3",
  "gpui-ce",
- "helio-asset-compat 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=4e1d8ea4471855452f6e8ff7921cf0790eb03a4f)",
+ "helio-asset-compat",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
@@ -12771,7 +12752,6 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
- "tokio",
  "tracing",
  "ui",
  "ui_common",
