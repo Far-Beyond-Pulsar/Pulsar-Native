@@ -12589,6 +12589,7 @@ dependencies = [
  "ui_problems",
  "ui_settings",
  "ui_type_debugger",
+ "ui_types_common",
  "window_manager",
 ]
 
