@@ -339,28 +339,56 @@ impl LevelEditorPanel {
         }
     }
 
+    // Queue a specific gizmo mode directly for the requested tool.
+    // This avoids depending on any intermediate UI state reads.
+    fn queue_gizmo_mode_for_tool(&mut self, tool: TransformTool) {
+        if let Ok(engine) = self.gpu_engine.lock() {
+            if let Some(ref helio_renderer) = engine.helio_renderer {
+                use engine_backend::scene::GizmoType as SceneGizmoType;
+                let gizmo_type = match tool {
+                    TransformTool::Select => SceneGizmoType::None,
+                    TransformTool::Move => SceneGizmoType::Translate,
+                    TransformTool::Rotate => SceneGizmoType::Rotate,
+                    TransformTool::Scale => SceneGizmoType::Scale,
+                };
+                helio_renderer.scene_db.set_gizmo_type(gizmo_type);
+
+                use engine_backend::GizmoMode;
+                let helio_mode = match tool {
+                    TransformTool::Select => GizmoMode::Translate,
+                    TransformTool::Move => GizmoMode::Translate,
+                    TransformTool::Rotate => GizmoMode::Rotate,
+                    TransformTool::Scale => GizmoMode::Scale,
+                };
+                if let Ok(mut pending) = helio_renderer.pending_gizmo_mode.lock() {
+                    *pending = Some(helio_mode);
+                }
+            }
+        }
+    }
+
     // Action handlers
     fn on_select_tool(&mut self, _: &SelectTool, _: &mut Window, cx: &mut Context<Self>) {
         self.shared_state.write().set_tool(TransformTool::Select);
-        self.sync_gizmo_to_helio();
+        self.queue_gizmo_mode_for_tool(TransformTool::Select);
         cx.notify();
     }
 
     fn on_move_tool(&mut self, _: &MoveTool, _: &mut Window, cx: &mut Context<Self>) {
         self.shared_state.write().set_tool(TransformTool::Move);
-        self.sync_gizmo_to_helio();
+        self.queue_gizmo_mode_for_tool(TransformTool::Move);
         cx.notify();
     }
 
     fn on_rotate_tool(&mut self, _: &RotateTool, _: &mut Window, cx: &mut Context<Self>) {
         self.shared_state.write().set_tool(TransformTool::Rotate);
-        self.sync_gizmo_to_helio();
+        self.queue_gizmo_mode_for_tool(TransformTool::Rotate);
         cx.notify();
     }
 
     fn on_scale_tool(&mut self, _: &ScaleTool, _: &mut Window, cx: &mut Context<Self>) {
         self.shared_state.write().set_tool(TransformTool::Scale);
-        self.sync_gizmo_to_helio();
+        self.queue_gizmo_mode_for_tool(TransformTool::Scale);
         cx.notify();
     }
 
@@ -881,14 +909,6 @@ impl Render for LevelEditorPanel {
                     TransformTool::Rotate => SceneGizmoType::Rotate,
                     TransformTool::Scale => SceneGizmoType::Scale,
                 };
-
-                use engine_backend::GizmoMode;
-                let helio_mode = match state.current_tool {
-                    TransformTool::Select => GizmoMode::Translate,
-                    TransformTool::Move => GizmoMode::Translate,
-                    TransformTool::Rotate => GizmoMode::Rotate,
-                    TransformTool::Scale => GizmoMode::Scale,
-                };
                 drop(state);
 
                 if gpui_selected != helio_renderer.scene_db.get_selected_id() {
@@ -896,10 +916,6 @@ impl Render for LevelEditorPanel {
                 }
                 if gizmo_type != helio_renderer.scene_db.get_gizmo_state().gizmo_type {
                     helio_renderer.scene_db.set_gizmo_type(gizmo_type);
-                }
-                // Keep Helio EditorState gizmo mode in lockstep with UI tool state every frame.
-                if let Ok(mut pending) = helio_renderer.pending_gizmo_mode.lock() {
-                    *pending = Some(helio_mode);
                 }
             }
         }
