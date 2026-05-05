@@ -107,15 +107,15 @@ impl HelioViewport {
                     converted_scene.textures.len()
                 );
 
-                // Insert the scene into Helio
-                if let Ok(mut engine) = gpu_engine.try_lock() {
-                    engine
-                        .insert_scene_object(converted_scene)
-                        .map_err(|e| format!("Failed to insert scene object: {}", e))?;
-                    tracing::info!("Scene successfully inserted into Helio renderer");
-                } else {
-                    return Err("Failed to lock GPU renderer".into());
-                }
+                // Insert the scene into Helio. We use a blocking lock here so
+                // drops don't fail transiently during a render tick.
+                let mut engine = gpu_engine
+                    .lock()
+                    .map_err(|_| "Failed to lock GPU renderer")?;
+                engine
+                    .insert_scene_object(converted_scene)
+                    .map_err(|e| format!("Failed to insert scene object: {}", e))?;
+                tracing::info!("Scene successfully inserted into Helio renderer");
             }
             _ => {
                 return Err(format!("Unsupported asset type: {:?}", kind).into());

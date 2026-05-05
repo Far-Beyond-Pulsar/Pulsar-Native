@@ -10,6 +10,7 @@ use helio::{
     MeshId, MeshUpload, Movability, ObjectDescriptor, ObjectId, PackedVertex, Renderer,
     RendererConfig, SceneActor, ScenePicker, SkyActor,
 };
+use helio_asset_compat::ConvertedScene;
 
 use crate::scene::{GizmoState, MeshType, ObjectType, SceneObjectSnapshot};
 
@@ -405,6 +406,170 @@ impl HelioRenderer {
             .lock()
             .map(|m| m.clone())
             .unwrap_or_default()
+    }
+
+    /// Insert a converted scene into the active Helio scene and place it in front of the camera.
+    pub fn insert_converted_scene(&mut self, scene: ConvertedScene) -> Result<(), String> {
+        let Some(inner) = &mut self.inner else {
+            return Err("Renderer not initialized yet".to_string());
+        };
+
+        // Compute local-space bounds over whichever geometry representation is present.
+        let mut bb_min = Vec3::splat(f32::INFINITY);
+        let mut bb_max = Vec3::splat(f32::NEG_INFINITY);
+        let mut saw_vertex = false;
+
+        if let Some(sectioned_mesh) = scene.sectioned_mesh.as_ref() {
+            for v in &sectioned_mesh.vertices {
+                let p = Vec3::from(v.position);
+                bb_min = bb_min.min(p);
+                bb_max = bb_max.max(p);
+                saw_vertex = true;
+            }
+        } else {
+            for mesh in &scene.meshes {
+                for v in &mesh.vertices {
+                    let p = mesh.node_transform.transform_point3(Vec3::from(v.position));
+                    bb_min = bb_min.min(p);
+                    bb_max = bb_max.max(p);
+                    saw_vertex = true;
+                }
+            }
+        }
+
+        if !saw_vertex {
+            return Err("Converted scene contained no vertices".to_string());
+        }
+
+        let local_center = (bb_min + bb_max) * 0.5;
+        let local_size = bb_max - bb_min;
+        let scene_radius = (local_size * 0.5).length().max(0.5);
+
+        let (sy, cy) = self.cam_yaw.sin_cos();
+        let (sp, cp) = self.cam_pitch.sin_cos();
+        let camera_forward = Vec3::new(sy * cp, sp, -cy * cp).normalize_or_zero();
+        let spawn_pos = self.cam_pos + camera_forward * 8.0;
+
+        let placement_base = Mat4::from_translation(spawn_pos) * Mat4::from_translation(-local_center);
+
+        let default_mat = inner
+            .renderer
+            .scene_mut()
+            .insert_material(make_material([0.82, 0.84, 0.9, 1.0], 0.5, 0.0));
+
+        let mut inserted_any = false;
+
+        if let Some(sectioned_mesh) = scene.sectioned_mesh.as_ref() {
+            let converted_vertices: Vec<PackedVertex> = sectioned_mesh
+                .vertices
+                .iter()
+                .map(|v| PackedVertex {
+                    position: v.position,
+                    bitangent_sign: v.bitangent_sign,
+                    tex_coords0: v.tex_coords0,
+                    tex_coords1: v.tex_coords1,
+                    normal: v.normal,
+                    tangent: v.tangent,
+                })
+                .collect();
+
+            for section in &sectioned_mesh.sections {
+                if section.indices.is_empty() {
+                    continue;
+                }
+
+                let upload = MeshUpload {
+                    vertices: converted_vertices.clone(),
+                    indices: section.indices.clone(),
+                };
+
+                let Some(mesh_id) = inner
+                    .renderer
+                    .scene_mut()
+                    .insert_actor(SceneActor::mesh(upload.clone()))
+                    .as_mesh()
+                else {
+                    continue;
+                };
+
+                inner.scene_picker.register_mesh(mesh_id, &upload);
+
+                let _ = inner
+                    .renderer
+                    .scene_mut()
+                    .insert_actor(SceneActor::object(ObjectDescriptor {
+                        mesh: mesh_id,
+                        material: default_mat,
+                        transform: placement_base,
+                        bounds: [spawn_pos.x, spawn_pos.y, spawn_pos.z, scene_radius],
+                        flags: 0,
+                        groups: GroupMask::NONE,
+                        movability: Some(Movability::Movable),
+                    }));
+
+                inserted_any = true;
+            }
+        } else {
+            for mesh in &scene.meshes {
+                if mesh.indices.is_empty() || mesh.vertices.is_empty() {
+                    continue;
+                }
+
+                let converted_vertices: Vec<PackedVertex> = mesh
+                    .vertices
+                    .iter()
+                    .map(|v| PackedVertex {
+                        position: v.position,
+                        bitangent_sign: v.bitangent_sign,
+                        tex_coords0: v.tex_coords0,
+                        tex_coords1: v.tex_coords1,
+                        normal: v.normal,
+                        tangent: v.tangent,
+                    })
+                    .collect();
+
+                let upload = MeshUpload {
+                    vertices: converted_vertices,
+                    indices: mesh.indices.clone(),
+                };
+
+                let Some(mesh_id) = inner
+                    .renderer
+                    .scene_mut()
+                    .insert_actor(SceneActor::mesh(upload.clone()))
+                    .as_mesh()
+                else {
+                    continue;
+                };
+
+                inner.scene_picker.register_mesh(mesh_id, &upload);
+
+                let transform = placement_base * mesh.node_transform;
+                let pos = transform.w_axis.truncate();
+
+                let _ = inner
+                    .renderer
+                    .scene_mut()
+                    .insert_actor(SceneActor::object(ObjectDescriptor {
+                        mesh: mesh_id,
+                        material: default_mat,
+                        transform,
+                        bounds: [pos.x, pos.y, pos.z, scene_radius],
+                        flags: 0,
+                        groups: GroupMask::NONE,
+                        movability: Some(Movability::Movable),
+                    }));
+
+                inserted_any = true;
+            }
+        }
+
+        if !inserted_any {
+            return Err("Scene sections contained no renderable indices".to_string());
+        }
+
+        inner.scene_picker.rebuild_instances(inner.renderer.scene());
+        Ok(())
     }
 
     // ── Editor Integration ───────────────────────────────────────────────────

@@ -44,6 +44,7 @@ impl GpuRendererBuilder {
         let scene_db = self.scene_db.unwrap_or_else(|| Arc::new(SceneDb::new()));
         GpuRenderer {
             helio_renderer: Some(HelioRenderer::new(scene_db)),
+            pending_scene_inserts: Vec::new(),
             frame_count: 0,
             start_time: Instant::now(),
         }
@@ -53,6 +54,7 @@ impl GpuRendererBuilder {
 /// GPU renderer — drives Helio through a GPUI `WgpuSurfaceHandle`.
 pub struct GpuRenderer {
     pub helio_renderer: Option<HelioRenderer>,
+    pending_scene_inserts: Vec<helio_asset_compat::ConvertedScene>,
     frame_count: u64,
     start_time: Instant,
 }
@@ -70,6 +72,17 @@ impl GpuRenderer {
     ) {
         if let Some(ref mut r) = self.helio_renderer {
             r.render_frame(device, queue, view, width, height, format);
+
+            // Imports can be requested before the first render pass initializes
+            // Helio internals. Defer and replay once ready.
+            if r.is_initialized() && !self.pending_scene_inserts.is_empty() {
+                let pending = std::mem::take(&mut self.pending_scene_inserts);
+                for scene in pending {
+                    if let Err(err) = r.insert_converted_scene(scene) {
+                        tracing::error!("Failed to insert deferred scene: {err}");
+                    }
+                }
+            }
         }
         self.frame_count += 1;
     }
@@ -131,18 +144,22 @@ impl GpuRenderer {
             scene.textures.len()
         );
 
-        // TODO: Implement actual scene insertion into Helio
-        // This will involve:
-        // 1. Creating GPU buffers for mesh geometry
-        // 2. Uploading textures to GPU
-        // 3. Creating material instances
-        // 4. Adding objects to the scene graph
-        // 5. Registering with the scene picker for selection
+        let Some(renderer) = self.helio_renderer.as_mut() else {
+            return Err(std::io::Error::other("Helio renderer is not available").into());
+        };
 
-        // For now, just log that we received the scene
-        tracing::info!("Scene object insertion placeholder - needs Helio scene graph integration");
+        if !renderer.is_initialized() {
+            tracing::info!(
+                "Helio renderer not initialized yet; deferring scene insertion for '{}'",
+                scene.name
+            );
+            self.pending_scene_inserts.push(scene);
+            return Ok(());
+        }
 
-        Ok(())
+        renderer
+            .insert_converted_scene(scene)
+            .map_err(|e| std::io::Error::other(e).into())
     }
 }
 
