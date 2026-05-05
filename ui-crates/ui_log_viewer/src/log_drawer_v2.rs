@@ -413,11 +413,13 @@ impl LogDrawer {
                 };
                 pending.push(first_line);
 
-                let deadline = smol::Timer::after(Duration::from_millis(INGEST_FLUSH_INTERVAL_MS));
-                let _ = futures::pin_mut!(deadline);
+                let flush_deadline = std::time::Instant::now()
+                    + Duration::from_millis(INGEST_FLUSH_INTERVAL_MS);
 
                 loop {
-                    if pending.len() >= LIVE_BATCH_MAX_LINES {
+                    if pending.len() >= LIVE_BATCH_MAX_LINES
+                        || std::time::Instant::now() >= flush_deadline
+                    {
                         break;
                     }
 
@@ -427,10 +429,6 @@ impl LogDrawer {
                             continue;
                         }
                         Err(_) => {}
-                    }
-
-                    if futures::future::poll_once(&mut deadline).await.is_some() {
-                        break;
                     }
 
                     smol::Timer::after(Duration::from_millis(1)).await;
