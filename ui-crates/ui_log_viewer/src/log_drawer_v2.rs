@@ -312,9 +312,11 @@ impl LogDrawer {
                 last_position = pos;
             }
 
-            // Send updates (non-blocking)
-            if !new_lines.is_empty() && tx.try_send(LogUpdate::NewLines(new_lines)).is_err() {
-                break;
+            // Send updates; only stop when receiver is gone.
+            if !new_lines.is_empty() {
+                if tx.send(LogUpdate::NewLines(new_lines)).await.is_err() {
+                    break;
+                }
             }
         }
     }

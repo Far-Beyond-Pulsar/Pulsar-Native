@@ -69,26 +69,28 @@ impl MissionControlPanel {
 
     /// Start monitoring the log file and metrics
     pub fn start_monitoring(&mut self, cx: &mut Context<Self>) {
+        if self._metrics_task.is_some() {
+            return;
+        }
+
         self.log_drawer.update(cx, |drawer, cx| {
             drawer.start_monitoring(cx);
         });
 
-        // Start metrics collection task
-        let metrics = self.metrics.clone();
-        let task = cx.background_executor().spawn(async move {
+        // Standard UI reactivity pattern used elsewhere: an entity-owned task
+        // updates state through `cx.update` and then notifies that entity.
+        let task = cx.spawn(async move |this, cx| {
             loop {
-                // Update system metrics every second
                 smol::Timer::after(std::time::Duration::from_secs(1)).await;
 
-                let mut m = metrics.write();
-                m.update_system_metrics();
-
-                // Try to get render metrics from engine
-                if let Some(_engine_context) = engine_state::EngineContext::global() {
-                    // Try to get renderer metrics
-                    // For now we'll use placeholder values, but this can be connected to actual renderer
-                    // when we have access to the GPU renderer stats
-                }
+                let _ = cx.update(|cx| {
+                    if let Some(this) = this.upgrade() {
+                        this.update(cx, |panel, cx| {
+                            panel.metrics.write().update_system_metrics();
+                            cx.notify();
+                        });
+                    }
+                });
             }
         });
 

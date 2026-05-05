@@ -4,17 +4,24 @@ use crate::models::*;
 use git2::{BranchType, Repository, StatusOptions};
 use std::path::Path;
 
+fn open_repo(path: &Path) -> Result<Repository, git2::Error> {
+    Repository::discover(path).or_else(|_| Repository::open(path))
+}
+
 /// Load the complete repository state (blocking — run on background executor)
 pub fn load_repository_state(path: &Path) -> Result<RepositoryState, git2::Error> {
-    let repo = Repository::open(path)?;
+    let repo = open_repo(path)?;
 
-    let head = repo.head()?;
-    let current_branch = head.shorthand().unwrap_or("HEAD").to_string();
+    let current_branch = repo
+        .head()
+        .ok()
+        .and_then(|h| h.shorthand().map(|s| s.to_string()))
+        .unwrap_or_else(|| "HEAD".to_string());
 
-    let branches = load_branches(&repo)?;
-    let commits = load_commits(&repo, 100)?;
+    let branches = load_branches(&repo).unwrap_or_default();
+    let commits = load_commits(&repo, 100).unwrap_or_default();
     let (staged_files, unstaged_files, untracked_files) = load_file_changes(&repo)?;
-    let (ahead, behind) = get_ahead_behind(&repo)?;
+    let (ahead, behind) = get_ahead_behind(&repo).unwrap_or((0, 0));
 
     Ok(RepositoryState {
         current_branch,
@@ -182,7 +189,10 @@ fn get_ahead_behind(repo: &Repository) -> Result<(usize, usize), git2::Error> {
         .target()
         .ok_or_else(|| git2::Error::from_str("No target"))?;
     let branch = repo.find_branch(head.shorthand().unwrap_or(""), BranchType::Local)?;
-    let upstream = branch.upstream()?;
+    let upstream = match branch.upstream() {
+        Ok(upstream) => upstream,
+        Err(_) => return Ok((0, 0)),
+    };
     let upstream_oid = upstream
         .get()
         .target()
@@ -194,7 +204,7 @@ fn get_ahead_behind(repo: &Repository) -> Result<(usize, usize), git2::Error> {
 
 /// Stage a file (blocking — run on background executor)
 pub fn stage_file(repo_path: &Path, file_path: &str) -> Result<(), git2::Error> {
-    let repo = Repository::open(repo_path)?;
+    let repo = open_repo(repo_path)?;
     let mut index = repo.index()?;
     let git_path = file_path.replace('\\', "/");
     index.add_path(Path::new(&git_path))?;
@@ -204,7 +214,7 @@ pub fn stage_file(repo_path: &Path, file_path: &str) -> Result<(), git2::Error> 
 
 /// Stage all modified/untracked files (blocking — run on background executor)
 pub fn stage_all_files(repo_path: &Path) -> Result<(), git2::Error> {
-    let repo = Repository::open(repo_path)?;
+    let repo = open_repo(repo_path)?;
     let mut index = repo.index()?;
     index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)?;
     index.write()?;
@@ -214,7 +224,7 @@ pub fn stage_all_files(repo_path: &Path) -> Result<(), git2::Error> {
 /// Discard working-tree changes for a file (blocking — run on background executor).
 /// For untracked files, deletes the file. For modified/deleted, checks out HEAD version.
 pub fn discard_file_changes(repo_path: &Path, file_path: &str) -> Result<(), git2::Error> {
-    let repo = Repository::open(repo_path)?;
+    let repo = open_repo(repo_path)?;
     let git_path = file_path.replace('\\', "/");
 
     // Check status to determine how to discard
@@ -313,7 +323,7 @@ pub fn append_to_gitignore(repo_path: &Path, line: &str) -> Result<(), git2::Err
 
 /// Unstage a file (blocking — run on background executor)
 pub fn unstage_file(repo_path: &Path, file_path: &str) -> Result<(), git2::Error> {
-    let repo = Repository::open(repo_path)?;
+    let repo = open_repo(repo_path)?;
     let git_path = file_path.replace('\\', "/");
     match repo.head() {
         Ok(head) => {
@@ -336,7 +346,7 @@ pub fn unstage_file(repo_path: &Path, file_path: &str) -> Result<(), git2::Error
 
 /// Unstage all staged files (blocking — run on background executor)
 pub fn unstage_all_files(repo_path: &Path) -> Result<(), git2::Error> {
-    let repo = Repository::open(repo_path)?;
+    let repo = open_repo(repo_path)?;
     match repo.head() {
         Ok(head) => {
             let head_commit = head.peel_to_commit()?;

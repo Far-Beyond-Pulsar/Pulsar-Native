@@ -166,19 +166,29 @@ impl GitManager {
         // Load initial git state + stored credentials from OS keychain
         let path = project_path.clone();
         cx.spawn(async move |this, cx| {
-            let _path2 = path.clone();
-            let (state, stored_creds) = cx
+            let load_path = path.clone();
+            let (state_result, stored_creds) = cx
                 .background_executor()
                 .spawn(async move {
-                    let state = load_repository_state(&path).ok();
-                    let creds = load_git_credentials(&path);
+                    let state = load_repository_state(&load_path);
+                    let creds = load_git_credentials(&load_path);
                     (state, creds)
                 })
                 .await;
             cx.update(|cx| {
                 this.update(cx, |git_manager, cx| {
-                    if let Some(s) = state {
-                        *git_manager.repo_state.write() = s;
+                    match state_result {
+                        Ok(s) => {
+                            *git_manager.repo_state.write() = s;
+                            git_manager.op_error = None;
+                        }
+                        Err(e) => {
+                            git_manager.op_error = Some(format!(
+                                "Failed to load repository state for {}: {}",
+                                path.display(),
+                                e
+                            ));
+                        }
                     }
                     git_manager.stored_creds = stored_creds;
                     cx.notify();
@@ -222,20 +232,31 @@ impl GitManager {
     fn refresh_state(&mut self, cx: &mut Context<Self>) {
         let path = self.project_path.clone();
         cx.spawn(async move |this, cx| {
-            if let Ok(state) = cx
+            let load_path = path.clone();
+            let result = cx
                 .background_executor()
-                .spawn(async move { load_repository_state(&path) })
-                .await
-            {
-                cx.update(|cx| {
-                    this.update(cx, |git_manager, cx| {
-                        *git_manager.repo_state.write() = state;
-                        cx.notify();
-                    })
-                    .ok();
+                .spawn(async move { load_repository_state(&load_path) })
+                .await;
+            cx.update(|cx| {
+                this.update(cx, |git_manager, cx| {
+                    match result {
+                        Ok(state) => {
+                            *git_manager.repo_state.write() = state;
+                            git_manager.op_error = None;
+                        }
+                        Err(e) => {
+                            git_manager.op_error = Some(format!(
+                                "Refresh failed for {}: {}",
+                                path.display(),
+                                e
+                            ));
+                        }
+                    }
+                    cx.notify();
                 })
                 .ok();
-            }
+            })
+            .ok();
         })
         .detach();
     }
