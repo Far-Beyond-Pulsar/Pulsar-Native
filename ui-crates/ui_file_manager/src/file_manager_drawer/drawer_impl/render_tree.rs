@@ -157,6 +157,9 @@ impl FileManagerDrawer {
         let is_selected = self.selected_folder.as_ref() == Some(&node.path);
         let path = node.path.clone();
         let path_for_expand = path.clone();
+        let path_for_internal_drop = path.clone();
+        let path_for_external_drop = path.clone();
+        let path_for_external_drag_move = path.clone();
         let expanded = node.expanded;
         let has_children = !node.children.is_empty();
         let folder_id = format!("folder-{}", path.display());
@@ -199,6 +202,29 @@ impl FileManagerDrawer {
             .w_full()
             .child(
                 item_div
+                    .on_drag_move(cx.listener(move |drawer, _event: &DragMoveEvent<ExternalPaths>, _window, cx| {
+                        drawer.hovered_drop_folder = Some(path_for_external_drag_move.clone());
+                        drawer.show_drop_hint = true;
+                        cx.notify();
+                    }))
+                    .drag_over::<DraggedFile>(|style, _, _, cx| {
+                        style
+                            .bg(cx.theme().accent.opacity(0.2))
+                            .border_1()
+                            .border_color(cx.theme().accent)
+                    })
+                    .drag_over::<ExternalPaths>(|style, _, _, cx| {
+                        style
+                            .bg(cx.theme().accent.opacity(0.2))
+                            .border_1()
+                            .border_color(cx.theme().accent)
+                    })
+                    .on_drop(cx.listener(move |drawer, drag: &DraggedFile, _window, cx| {
+                        drawer.handle_drop_on_folder_new(&path_for_internal_drop, &drag.paths, cx);
+                    }))
+                    .on_drop(cx.listener(move |drawer, external: &ExternalPaths, _window, cx| {
+                        drawer.handle_external_drop_on_folder(&path_for_external_drop, external.paths(), cx);
+                    }))
                     .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, _event: &MouseDownEvent, _window, cx| {
                         drawer.handle_folder_select(path.clone(), cx);
                     }))

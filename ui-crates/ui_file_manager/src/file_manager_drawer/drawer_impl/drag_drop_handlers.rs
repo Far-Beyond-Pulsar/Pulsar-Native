@@ -36,9 +36,68 @@ impl FileManagerDrawer {
 
                 // Select the target folder to show where items were moved
                 self.selected_folder = Some(target_folder);
+                self.hovered_drop_folder = None;
+                self.show_drop_hint = false;
             }
             Err(e) => {
                 tracing::error!("[FILE_MANAGER] ❌ Failed to move items: {}", e);
+                self.hovered_drop_folder = None;
+                self.show_drop_hint = false;
+            }
+        }
+
+        cx.notify();
+    }
+
+    /// Handle dropping external OS files onto a folder.
+    ///
+    /// We try to move first (matching current internal drop semantics). If that
+    /// fails (common across devices/permissions), we fallback to copy as import.
+    pub fn handle_external_drop_on_folder(
+        &mut self,
+        target_folder: &Path,
+        external_paths: &[PathBuf],
+        cx: &mut Context<Self>,
+    ) {
+        let target_folder = target_folder.to_path_buf();
+        let source_paths = external_paths.to_vec();
+
+        if source_paths.is_empty() {
+            return;
+        }
+
+        let move_result = self.operations.move_items(&source_paths, &target_folder);
+        let final_result = match move_result {
+            Ok(_) => Ok(()),
+            Err(move_err) => {
+                tracing::warn!(
+                    "[FILE_MANAGER] ⚠️ External move failed ({}), falling back to copy/import",
+                    move_err
+                );
+                FileOperations::copy_items(&source_paths, &target_folder)
+            }
+        };
+
+        match final_result {
+            Ok(_) => {
+                tracing::info!(
+                    "[FILE_MANAGER] ✅ Imported {} external item(s) into {:?}",
+                    source_paths.len(),
+                    target_folder.file_name()
+                );
+
+                self.selected_items.clear();
+                if let Some(ref path) = self.project_path {
+                    self.folder_tree = FolderNode::from_path(path);
+                }
+                self.selected_folder = Some(target_folder);
+                self.hovered_drop_folder = None;
+                self.show_drop_hint = false;
+            }
+            Err(e) => {
+                tracing::error!("[FILE_MANAGER] ❌ Failed to import external items: {}", e);
+                self.hovered_drop_folder = None;
+                self.show_drop_hint = false;
             }
         }
 

@@ -36,6 +36,8 @@ pub struct FileManagerDrawer {
 
     // Drag and drop
     drag_state: DragState,
+    hovered_drop_folder: Option<PathBuf>,
+    show_drop_hint: bool,
     breadcrumb_hover_timer: Option<gpui::Task<()>>,
     breadcrumb_hover_path: Option<PathBuf>,
 

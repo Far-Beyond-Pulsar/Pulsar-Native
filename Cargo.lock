@@ -1080,7 +1080,7 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.4.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=c86df5611aa0977bd3a745ba5d39416775d3e9ee#c86df5611aa0977bd3a745ba5d39416775d3e9ee"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=d603bc8f2d570a0bc148c060fa3802c58acf6fa8#d603bc8f2d570a0bc148c060fa3802c58acf6fa8"
 dependencies = [
  "arboard",
  "chrono",
@@ -3826,7 +3826,7 @@ dependencies = [
 [[package]]
 name = "gpui-ce"
 version = "0.3.3"
-source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI?rev=eaf5e33467dbe756165e355f85723bc5d83b54cd#eaf5e33467dbe756165e355f85723bc5d83b54cd"
+source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI?rev=54fd56a569fa6ed7f016662d50f36a34796e4884#54fd56a569fa6ed7f016662d50f36a34796e4884"
 dependencies = [
  "anyhow",
  "async-task",
@@ -4038,12 +4038,14 @@ dependencies = [
 [[package]]
 name = "graphy"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=0cd1d0c0e8420757f98c480ab9c4ab28e2f63ae0#0cd1d0c0e8420757f98c480ab9c4ab28e2f63ae0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=74a993fe51efc00ac5e208af74a3df79f2c0ba47#74a993fe51efc00ac5e208af74a3df79f2c0ba47"
 dependencies = [
  "quote",
  "rayon",
+ "rustc-hash 2.1.2",
  "serde",
  "serde_json",
+ "smallvec",
  "syn 2.0.117",
  "thiserror 1.0.69",
  "tracing",
@@ -7325,7 +7327,7 @@ dependencies = [
 [[package]]
 name = "pbgc"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=6ba336a1a90f19766ee0493cd6c3d415d8bd6438#6ba336a1a90f19766ee0493cd6c3d415d8bd6438"
+source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=20f71a4c0d3bcac3eee221ea8255c008e4d891fb#20f71a4c0d3bcac3eee221ea8255c008e4d891fb"
 dependencies = [
  "graphy",
  "pulsar_std",

@@ -22,6 +22,7 @@ impl FileManagerDrawer {
         let item_clone2 = item.clone();
         let item_clone3 = item.clone(); // For double-click
         let item_path = item.path.clone();
+        let item_hover_path = item.path.clone();
         let has_clipboard = self.clipboard.is_some();
         let is_class = item.is_class();
         let is_folder = item.is_folder;
@@ -54,13 +55,23 @@ impl FileManagerDrawer {
         content = content.on_drag(drag_data, move |drag, position, _, cx| {
             let mut drag_with_pos = drag.clone();
             drag_with_pos.drag_start_position = Some(position);
+               eprintln!("[FILE_DROP] 🟢 on_drag fired for {:?}", drag.paths);
             cx.stop_propagation();
             cx.new(|_| drag_with_pos)
         });
 
         // Add drop functionality if this is a folder
         if is_folder {
+            let folder_path_for_external_drag_move = item_for_drop.path.clone();
+            let folder_path_for_internal_drop = item_for_drop.path.clone();
+            let folder_path_for_external_drop = item_for_drop.path.clone();
+
             content = content
+                .on_drag_move(cx.listener(move |drawer, _event: &DragMoveEvent<ExternalPaths>, _window, cx| {
+                    drawer.hovered_drop_folder = Some(folder_path_for_external_drag_move.clone());
+                    drawer.show_drop_hint = true;
+                    cx.notify();
+                }))
                 .drag_over::<DraggedFile>(|style, _, _, cx| {
                     style
                         .bg(cx.theme().accent.opacity(0.2))
@@ -68,8 +79,20 @@ impl FileManagerDrawer {
                         .border_color(cx.theme().accent)
                         .rounded_lg()
                 })
+                .drag_over::<ExternalPaths>(|style, _, _, cx| {
+                    style
+                        .bg(cx.theme().accent.opacity(0.2))
+                        .border_2()
+                        .border_color(cx.theme().accent)
+                        .rounded_lg()
+                })
                 .on_drop(cx.listener(move |drawer, drag: &DraggedFile, _window, cx| {
-                    drawer.handle_drop_on_folder_new(&item_for_drop.path, &drag.paths, cx);
+                        eprintln!("[FILE_DROP] 🟡 on_drop::<DraggedFile> fired on grid folder item");
+                    drawer.handle_drop_on_folder_new(&folder_path_for_internal_drop, &drag.paths, cx);
+                }))
+                .on_drop(cx.listener(move |drawer, external: &ExternalPaths, _window, cx| {
+                        eprintln!("[FILE_DROP] 🔵 on_drop::<ExternalPaths> fired on grid folder item, paths={:?}", external.paths());
+                    drawer.handle_external_drop_on_folder(&folder_path_for_external_drop, external.paths(), cx);
                 }));
         }
 
@@ -165,6 +188,15 @@ impl FileManagerDrawer {
                         // Stop propagation so parent container's context menu doesn't show
                         cx.stop_propagation();
                     }))
+                    .on_drag_move(cx.listener(move |drawer, _event: &DragMoveEvent<DraggedFile>, _window, cx| {
+                        drawer.hovered_drop_folder = if is_folder {
+                            Some(item_hover_path.clone())
+                        } else {
+                            None
+                        };
+                        drawer.show_drop_hint = is_folder;
+                        cx.notify();
+                    }))
                     .context_menu(move |menu, _window, _cx| {
                         // All items (files and folders) use item_context_menu
                         // Only blank area uses folder_context_menu with "New" options
@@ -191,6 +223,7 @@ impl FileManagerDrawer {
         let item_clone2 = item.clone();
         let item_clone3 = item.clone(); // For double-click
         let item_path = item.path.clone();
+        let item_hover_path = item.path.clone();
         let has_clipboard = self.clipboard.is_some();
         let is_class = item.is_class();
         let is_folder = item.is_folder;
@@ -245,15 +278,35 @@ impl FileManagerDrawer {
 
         // Add drop functionality if this is a folder
         if is_folder {
+            let folder_path_for_external_drag_move = item_for_drop.path.clone();
+            let folder_path_for_internal_drop = item_for_drop.path.clone();
+            let folder_path_for_external_drop = item_for_drop.path.clone();
+
             list_item = list_item
+                .on_drag_move(cx.listener(move |drawer, _event: &DragMoveEvent<ExternalPaths>, _window, cx| {
+                    drawer.hovered_drop_folder = Some(folder_path_for_external_drag_move.clone());
+                    drawer.show_drop_hint = true;
+                    cx.notify();
+                }))
                 .drag_over::<DraggedFile>(|style, _, _, cx| {
                     style
                         .bg(cx.theme().accent.opacity(0.2))
                         .border_2()
                         .border_color(cx.theme().accent)
                 })
+                .drag_over::<ExternalPaths>(|style, _, _, cx| {
+                    style
+                        .bg(cx.theme().accent.opacity(0.2))
+                        .border_2()
+                        .border_color(cx.theme().accent)
+                })
                 .on_drop(cx.listener(move |drawer, drag: &DraggedFile, _window, cx| {
-                    drawer.handle_drop_on_folder_new(&item_for_drop.path, &drag.paths, cx);
+                    eprintln!("[FILE_DROP] 🟡 on_drop::<DraggedFile> fired on list folder item");
+                    drawer.handle_drop_on_folder_new(&folder_path_for_internal_drop, &drag.paths, cx);
+                }))
+                .on_drop(cx.listener(move |drawer, external: &ExternalPaths, _window, cx| {
+                    eprintln!("[FILE_DROP] 🔵 on_drop::<ExternalPaths> fired on list folder item");
+                    drawer.handle_external_drop_on_folder(&folder_path_for_external_drop, external.paths(), cx);
                 }));
         }
 
@@ -338,6 +391,15 @@ impl FileManagerDrawer {
                 }
                 // Stop propagation so parent container's context menu doesn't show
                 cx.stop_propagation();
+            }))
+            .on_drag_move(cx.listener(move |drawer, _event: &DragMoveEvent<DraggedFile>, _window, cx| {
+                drawer.hovered_drop_folder = if is_folder {
+                    Some(item_hover_path.clone())
+                } else {
+                    None
+                };
+                drawer.show_drop_hint = is_folder;
+                cx.notify();
             }))
             .context_menu(move |menu, _window, _cx| {
                 // All items (files and folders) use item_context_menu
