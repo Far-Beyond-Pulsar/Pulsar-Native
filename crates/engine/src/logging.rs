@@ -12,11 +12,11 @@ use directories::ProjectDirs;
 use serde_json;
 use std::fs;
 use tracing::Subscriber;
-use tracing_subscriber::layer::Context as LayerContext;
 use tracing_subscriber::fmt::{
     format::{FormatEvent, FormatFields, Writer},
     FmtContext,
 };
+use tracing_subscriber::layer::Context as LayerContext;
 use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::Layer;
 use ui_log_viewer::publish_live_log;
@@ -63,9 +63,7 @@ pub fn init(verbose: bool) -> LogGuard {
     let rust_log = std::env::var("RUST_LOG").ok();
     let env_filter = match rust_log {
         Some(val) => tracing_subscriber::EnvFilter::new(val),
-        None => tracing_subscriber::EnvFilter::new(
-            "debug,wgpu_hal=warn,wgpu_core=warn,naga=warn",
-        ),
+        None => tracing_subscriber::EnvFilter::new("debug,wgpu_hal=warn,wgpu_core=warn,naga=warn"),
     };
     // File log: plain formatting, no ANSI/color codes
     let file_layer = tracing_subscriber::fmt::layer()
@@ -106,7 +104,11 @@ where
         struct MsgVisitor(String);
 
         impl tracing_subscriber::field::Visit for MsgVisitor {
-            fn record_debug(&mut self, _field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            fn record_debug(
+                &mut self,
+                _field: &tracing::field::Field,
+                value: &dyn std::fmt::Debug,
+            ) {
                 if !self.0.is_empty() {
                     self.0.push(' ');
                 }

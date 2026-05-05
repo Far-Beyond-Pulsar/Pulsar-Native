@@ -399,7 +399,8 @@ impl HelioRenderer {
         };
 
         // Target local velocity from input (units/sec).
-        let target_velocity = Vec3::new(input.right * speed, input.up * speed, input.forward * speed);
+        let target_velocity =
+            Vec3::new(input.right * speed, input.up * speed, input.forward * speed);
 
         // Smooth each local axis independently for responsive but cinematic acceleration.
         let smooth_axis = |current: f32, target: f32| {
@@ -478,12 +479,14 @@ impl HelioRenderer {
         let camera_forward = Vec3::new(sy * cp, sp, -cy * cp).normalize_or_zero();
         let spawn_pos = self.cam_pos + camera_forward * 8.0;
 
-        let placement_base = Mat4::from_translation(spawn_pos) * Mat4::from_translation(-local_center);
+        let placement_base =
+            Mat4::from_translation(spawn_pos) * Mat4::from_translation(-local_center);
 
-        let default_mat = inner
-            .renderer
-            .scene_mut()
-            .insert_material(make_material([0.82, 0.84, 0.9, 1.0], 0.5, 0.0));
+        let default_mat = inner.renderer.scene_mut().insert_material(make_material(
+            [0.82, 0.84, 0.9, 1.0],
+            0.5,
+            0.0,
+        ));
 
         let mut inserted_any = false;
 
@@ -522,18 +525,19 @@ impl HelioRenderer {
 
                 inner.scene_picker.register_mesh(mesh_id, &upload);
 
-                let _ = inner
-                    .renderer
-                    .scene_mut()
-                    .insert_actor(SceneActor::object(ObjectDescriptor {
-                        mesh: mesh_id,
-                        material: default_mat,
-                        transform: placement_base,
-                        bounds: [spawn_pos.x, spawn_pos.y, spawn_pos.z, scene_radius],
-                        flags: 0,
-                        groups: GroupMask::NONE,
-                        movability: Some(Movability::Movable),
-                    }));
+                let _ =
+                    inner
+                        .renderer
+                        .scene_mut()
+                        .insert_actor(SceneActor::object(ObjectDescriptor {
+                            mesh: mesh_id,
+                            material: default_mat,
+                            transform: placement_base,
+                            bounds: [spawn_pos.x, spawn_pos.y, spawn_pos.z, scene_radius],
+                            flags: 0,
+                            groups: GroupMask::NONE,
+                            movability: Some(Movability::Movable),
+                        }));
 
                 inserted_any = true;
             }
@@ -575,18 +579,19 @@ impl HelioRenderer {
                 let transform = placement_base * mesh.node_transform;
                 let pos = transform.w_axis.truncate();
 
-                let _ = inner
-                    .renderer
-                    .scene_mut()
-                    .insert_actor(SceneActor::object(ObjectDescriptor {
-                        mesh: mesh_id,
-                        material: default_mat,
-                        transform,
-                        bounds: [pos.x, pos.y, pos.z, scene_radius],
-                        flags: 0,
-                        groups: GroupMask::NONE,
-                        movability: Some(Movability::Movable),
-                    }));
+                let _ =
+                    inner
+                        .renderer
+                        .scene_mut()
+                        .insert_actor(SceneActor::object(ObjectDescriptor {
+                            mesh: mesh_id,
+                            material: default_mat,
+                            transform,
+                            bounds: [pos.x, pos.y, pos.z, scene_radius],
+                            flags: 0,
+                            groups: GroupMask::NONE,
+                            movability: Some(Movability::Movable),
+                        }));
 
                 inserted_any = true;
             }
@@ -668,7 +673,9 @@ impl HelioRenderer {
 
         // Mirror demo exactly: update_hover is always called (updates gizmo axis highlighting);
         // update_drag is called additionally when a drag is active.
-        inner.editor_state.update_hover(ray_o, ray_d, inner.renderer.scene());
+        inner
+            .editor_state
+            .update_hover(ray_o, ray_d, inner.renderer.scene());
         if inner.editor_state.is_dragging() {
             inner
                 .editor_state

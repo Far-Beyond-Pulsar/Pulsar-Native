@@ -39,7 +39,12 @@ impl AssetPayload {
         let kind = AssetKind::from_extension(&extension);
         // Normalise to forward slashes for engine-FS compatibility.
         let engine_path = path.to_string_lossy().replace('\\', "/");
-        Self { engine_path, name, kind, extension }
+        Self {
+            engine_path,
+            name,
+            kind,
+            extension,
+        }
     }
 }
 
@@ -119,10 +124,7 @@ pub trait AssetDropAreaExt: Sized {
 
     /// Register a drop handler. Equivalent to [`DropArea::on_drop`] but named
     /// to avoid ambiguity when both are in scope.
-    fn on_asset_drop(
-        self,
-        f: impl Fn(&AssetPayload, &mut Window, &mut App) + 'static,
-    ) -> Self;
+    fn on_asset_drop(self, f: impl Fn(&AssetPayload, &mut Window, &mut App) + 'static) -> Self;
 }
 
 impl AssetDropAreaExt for AssetDropArea {
@@ -131,10 +133,7 @@ impl AssetDropAreaExt for AssetDropArea {
         self.can_accept(move |payload: &AssetPayload| kinds.contains(&payload.kind))
     }
 
-    fn on_asset_drop(
-        self,
-        f: impl Fn(&AssetPayload, &mut Window, &mut App) + 'static,
-    ) -> Self {
+    fn on_asset_drop(self, f: impl Fn(&AssetPayload, &mut Window, &mut App) + 'static) -> Self {
         self.on_drop(f)
     }
 }
