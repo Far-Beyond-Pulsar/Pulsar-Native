@@ -32,7 +32,7 @@ ttf-parser = { opt-level = 3 }
 [workspace.dependencies]
 
 # ---------- GPUI (WGPUI) ----------
-gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "54fd56a569fa6ed7f016662d50f36a34796e4884" }
+gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "acfce3a69cbd6b2422331c543da04e1b16adf2ec" }
 
 # ---------- Core Engine ----------
 ui                    = { path = "crates/ui" }
@@ -76,7 +76,7 @@ plugin_editor_api = { path = "crates/plugin_editor_api"}
 plugin_manager    = { path = "crates/plugin_manager" }
 
 # ---------- Helio Renderer (wgpu-based) ----------
-helio = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "4e1d8ea4471855452f6e8ff7921cf0790eb03a4f" }
+helio = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "4b006824e44a086651884ace001d76caaa977e7a" }
 glam           = { version = "0.29", features = ["bytemuck"] }
 
 # ---------- PulsarConfig ----------
