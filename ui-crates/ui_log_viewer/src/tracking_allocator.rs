@@ -69,6 +69,7 @@ impl TrackingAllocator {
             // We can't do per-site recording (CALLER_BUSY is set, doing DashMap ops would deadlock),
             // but we DO count it in the global live total so "process live" stays honest.
             caller_tracking::GLOBAL_LIVE_BYTES.fetch_add(layout.size() as i64, Ordering::Relaxed);
+            TRACKING_ENABLED.with(|e| e.set(true));
             return;
         }
 
@@ -112,6 +113,7 @@ impl TrackingAllocator {
         if !was_enabled {
             // Re-entry: tracker's own dealloc — keep global total accurate.
             caller_tracking::GLOBAL_LIVE_BYTES.fetch_sub(layout.size() as i64, Ordering::Relaxed);
+            TRACKING_ENABLED.with(|e| e.set(true));
             return;
         }
 

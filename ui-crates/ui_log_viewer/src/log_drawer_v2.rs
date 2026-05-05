@@ -9,10 +9,10 @@ use std::{
 use ui::{
     button::{Button, ButtonVariants as _},
     h_flex,
+    input::{InputState, TextInput},
     table::{Column, Table, TableDelegate},
     v_flex, ActiveTheme as _, IconName,
 };
-use smol::future::poll_once;
 
 const MAX_BUFFERED_LINES: usize = 250_000;
 const TRIM_CHUNK_LINES: usize = 10_000;
@@ -226,6 +226,15 @@ impl LogStore {
         self.refilter_all();
     }
 
+    fn set_search_query(&mut self, query: String) {
+        let next = query.trim().to_ascii_lowercase();
+        if self.search_query == next {
+            return;
+        }
+        self.search_query = next;
+        self.refilter_all();
+    }
+
     fn row_for_visible(&self, visible_row: usize) -> Option<&LogRow> {
         if self.has_active_filter() {
             let base_ix = *self.filtered_indices.get(visible_row)?;
@@ -318,13 +327,15 @@ impl TableDelegate for LogTableDelegate {
                 .child(
                     h_flex()
                         .h(px(22.0))
+                        .px_2()
                         .items_center()
                         .justify_center()
                         .rounded(px(999.0))
-                        .bg(row.level.tint(&theme))
+                        .bg(row.level.tint(&theme).opacity(0.95))
                         .border_1()
-                        .border_color(level_color.opacity(0.35))
+                        .border_color(level_color.opacity(0.55))
                         .text_color(level_color)
+                        .font_weight(FontWeight::SEMIBOLD)
                         .child(row.level.label()),
                 )
                 .into_any_element()
@@ -362,16 +373,18 @@ impl TableDelegate for LogTableDelegate {
 pub struct LogDrawer {
     store: Rc<RefCell<LogStore>>,
     table: Option<Entity<Table<LogTableDelegate>>>,
+    search_input: Option<Entity<InputState>>,
     locked_to_bottom: bool,
     error_message: Option<String>,
     _background_task: Option<Task<()>>,
 }
 
 impl LogDrawer {
-    pub fn new(_cx: &mut Context<Self>) -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
         Self {
             store: Rc::new(RefCell::new(LogStore::new())),
             table: None,
+            search_input: None,
             locked_to_bottom: true,
             error_message: None,
             _background_task: None,
@@ -379,6 +392,12 @@ impl LogDrawer {
     }
 
     fn ensure_table(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.search_input.is_none() {
+            let input =
+                cx.new(|cx| InputState::new(window, cx).placeholder("Search logs..."));
+            self.search_input = Some(input);
+        }
+
         if self.table.is_some() {
             return;
         }
@@ -511,6 +530,17 @@ impl LogDrawer {
         cx.notify();
     }
 
+    fn set_search_query(&mut self, query: String, cx: &mut Context<Self>) {
+        self.store.borrow_mut().set_search_query(query);
+        self.refresh_table(cx);
+
+        if self.locked_to_bottom {
+            self.scroll_to_bottom(cx);
+        }
+
+        cx.notify();
+    }
+
     fn jump_to_latest(
         &mut self,
         _event: &gpui::ClickEvent,
@@ -545,11 +575,19 @@ impl Render for LogDrawer {
         self.ensure_table(window, cx);
         let theme = cx.theme().clone();
 
+        if let Some(search_input) = self.search_input.as_ref() {
+            let search_query = search_input.read(cx).value().to_string();
+            if self.store.borrow().search_query != search_query.trim().to_ascii_lowercase() {
+                self.set_search_query(search_query, cx);
+            }
+        }
+
         let store = self.store.borrow();
         let visible_count = store.visible_count();
         let buffered_count = store.rows.len();
         let total_seen = store.total_seen;
         let dropped_total = store.dropped_total;
+        let active_search = store.search_query.clone();
         drop(store);
 
         v_flex()
@@ -605,6 +643,28 @@ impl Render for LogDrawer {
                     .bg(theme.background.opacity(0.94))
                     .border_b_1()
                     .border_color(theme.border.opacity(0.35))
+                    .child(match self.search_input.as_ref() {
+                        Some(search_input) => div()
+                            .flex_1()
+                            .max_w(px(380.0))
+                            .child(TextInput::new(search_input))
+                            .into_any_element(),
+                        None => div().flex_1().into_any_element(),
+                    })
+                    .when(!active_search.is_empty(), |this| {
+                        this.child(
+                            Button::new("clear-search")
+                                .label("Clear Search")
+                                .on_click(cx.listener(|this, _event, window, cx| {
+                                    if let Some(search_input) = this.search_input.as_ref() {
+                                        search_input.update(cx, |input, cx| {
+                                            input.set_value("", window, cx);
+                                        });
+                                    }
+                                    this.set_search_query(String::new(), cx);
+                                })),
+                        )
+                    })
                     .child(
                         Button::new("filter-all")
                             .label("All")
