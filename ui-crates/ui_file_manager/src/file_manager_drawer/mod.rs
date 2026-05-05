@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use ui::{
     button::{Button, ButtonGroup, ButtonVariants as _},
+    draggable::Draggable,
     h_flex,
     input::{InputState, TextInput},
     menu::context_menu::ContextMenuExt,
@@ -17,6 +18,7 @@ use crate::drawer::{
     actions::*, context_menus, operations::FileOperations, tree::FolderNode, types::*, utils::*,
     FsMetadataManager,
 };
+use plugin_editor_api::AssetPayload;
 
 // ============================================================================
 // FILE MANAGER DRAWER
@@ -110,6 +112,7 @@ enum FolderTreeAction {
 impl EventEmitter<FileSelected> for FileManagerDrawer {}
 impl EventEmitter<PopoutFileManagerEvent> for FileManagerDrawer {}
 impl EventEmitter<FolderTreeAction> for FileManagerDrawer {}
+impl EventEmitter<ui_types_common::DragEvent> for FileManagerDrawer {}
 
 impl Render for FileManagerDrawer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

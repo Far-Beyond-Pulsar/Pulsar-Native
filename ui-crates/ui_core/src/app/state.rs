@@ -29,6 +29,7 @@ pub struct AppState {
     pub drawer_open: bool,
     pub drawer_height: f32,
     pub drawer_resizing: bool,
+    pub suppress_drawer_for_drag: bool, // Auto-close drawer during asset drag
     pub problems_drawer: Entity<ProblemsDrawer>,
     pub type_debugger_drawer: Entity<TypeDebuggerDrawer>,
     pub mission_control: Entity<MissionControlPanel>,

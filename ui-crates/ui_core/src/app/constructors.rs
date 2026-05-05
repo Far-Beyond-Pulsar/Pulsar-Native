@@ -165,6 +165,12 @@ impl PulsarApp {
         )
         .detach();
         cx.subscribe_in(
+            &file_manager_drawer,
+            window,
+            event_handlers::on_drag_event,
+        )
+        .detach();
+        cx.subscribe_in(
             &problems_drawer,
             window,
             event_handlers::on_navigate_to_diagnostic,
@@ -255,6 +261,7 @@ impl PulsarApp {
                 drawer_open: false,
                 drawer_height: 400.0,
                 drawer_resizing: false,
+                suppress_drawer_for_drag: false,
                 problems_drawer,
                 type_debugger_drawer,
                 mission_control,

@@ -125,6 +125,11 @@ use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+pub mod asset_payload;
+pub use asset_payload::{AssetDropArea, AssetDropAreaExt, AssetPayload};
+// Re-export AssetKind at crate root for convenience.
+pub use ui_types_common::AssetKind;
+
 pub use gpui::{App, Window};
 pub use ui::dock::{Panel, PanelView};
 
@@ -736,6 +741,16 @@ pub trait EditorPlugin: Send + Sync {
     /// plugins are never unloaded. The function pointers will remain valid for the
     /// process lifetime.
     fn statusbar_buttons(&self) -> Vec<StatusbarButtonDefinition> {
+        Vec::new()
+    }
+
+    /// Declare which [`AssetKind`]s this plugin's editors are willing to accept
+    /// when an asset is dropped onto one of their panels.
+    ///
+    /// The engine uses this at runtime to show/hide drop-accept indicators before
+    /// the user releases the drag. Returning an empty vec means the plugin does
+    /// not participate in asset drops.
+    fn accepted_drop_kinds(&self) -> Vec<AssetKind> {
         Vec::new()
     }
 }

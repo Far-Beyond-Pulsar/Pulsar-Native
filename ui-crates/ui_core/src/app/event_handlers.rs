@@ -843,3 +843,31 @@ pub fn on_navigate_to_diagnostic(
 //     app.state.command_palette_open = true;
 //     cx.notify();
 // }
+
+pub fn on_drag_event(
+    app: &mut PulsarApp,
+    _drawer: &Entity<FileManagerDrawer>,
+    event: &ui_types_common::DragEvent,
+    window: &mut Window,
+    cx: &mut Context<PulsarApp>,
+) {
+    match event {
+        ui_types_common::DragEvent::AssetDragStarted(_payload) => {
+            tracing::debug!("Asset drag started, closing drawer");
+            // Close the drawer and set flag to suppress reopening
+            app.state.suppress_drawer_for_drag = true;
+            app.close_drawer(window, cx);
+        }
+        ui_types_common::DragEvent::AssetDropped(_payload) => {
+            tracing::debug!("Asset dropped, clearing suppress flag");
+            // Clear the suppress flag but keep drawer closed
+            app.state.suppress_drawer_for_drag = false;
+        }
+        ui_types_common::DragEvent::AssetDragCancelled => {
+            tracing::debug!("Asset drag cancelled, reopening drawer");
+            // Clear the suppress flag and reopen drawer
+            app.state.suppress_drawer_for_drag = false;
+            app.open_drawer(window, cx);
+        }
+    }
+}

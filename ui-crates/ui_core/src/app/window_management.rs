@@ -93,6 +93,20 @@ impl PulsarApp {
         cx.notify();
     }
 
+    /// Close the file manager drawer
+    pub(super) fn close_drawer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        self.state.drawer_open = false;
+        cx.notify();
+    }
+
+    /// Open the file manager drawer (respects suppress_drawer_for_drag flag)
+    pub(super) fn open_drawer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if !self.state.suppress_drawer_for_drag {
+            self.state.drawer_open = true;
+            cx.notify();
+        }
+    }
+
     pub(super) fn toggle_problems(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         open_pulsar_window::<ProblemsWindow>(self.state.problems_drawer.clone(), cx);
     }

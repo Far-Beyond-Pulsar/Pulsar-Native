@@ -51,20 +51,33 @@ impl FileManagerDrawer {
             .items_center()
             .justify_center();
 
-        // Add drag functionality
-        content = content.on_drag(drag_data, move |drag, position, _, cx| {
-            let mut drag_with_pos = drag.clone();
-            drag_with_pos.drag_start_position = Some(position);
-               eprintln!("[FILE_DROP] 🟢 on_drag fired for {:?}", drag.paths);
-            cx.stop_propagation();
-            cx.new(|_| drag_with_pos)
-        });
+        // Add drag functionality.
+        // Folders emit DraggedFile (intra-drawer moves); non-folders emit AssetPayload
+        // so external panels can receive them via on_drop::<AssetPayload>.
+        if is_folder {
+            content = content.on_drag(drag_data, move |drag, position, _, cx| {
+                let mut drag_with_pos = drag.clone();
+                drag_with_pos.drag_start_position = Some(position);
+                cx.stop_propagation();
+                cx.new(|_| drag_with_pos)
+            });
+        } else {
+            let asset_payload = AssetPayload::from_path(&item_clone.path);
+            let payload_for_event = asset_payload.clone();
+            content = content.on_drag(asset_payload, move |drag, _, _, cx| {
+                // Emit drag start event to close the drawer
+                cx.emit(ui_types_common::DragEvent::AssetDragStarted(payload_for_event.clone()));
+                cx.stop_propagation();
+                cx.new(|_| drag.clone())
+            });
+        }
 
         // Add drop functionality if this is a folder
         if is_folder {
             let folder_path_for_external_drag_move = item_for_drop.path.clone();
             let folder_path_for_internal_drop = item_for_drop.path.clone();
             let folder_path_for_external_drop = item_for_drop.path.clone();
+            let folder_path_for_asset_drop = item_for_drop.path.clone();
 
             content = content
                 .on_drag_move(cx.listener(move |drawer, _event: &DragMoveEvent<ExternalPaths>, _window, cx| {
@@ -73,6 +86,13 @@ impl FileManagerDrawer {
                     cx.notify();
                 }))
                 .drag_over::<DraggedFile>(|style, _, _, cx| {
+                    style
+                        .bg(cx.theme().accent.opacity(0.2))
+                        .border_2()
+                        .border_color(cx.theme().accent)
+                        .rounded_lg()
+                })
+                .drag_over::<AssetPayload>(|style, _, _, cx| {
                     style
                         .bg(cx.theme().accent.opacity(0.2))
                         .border_2()
@@ -89,6 +109,11 @@ impl FileManagerDrawer {
                 .on_drop(cx.listener(move |drawer, drag: &DraggedFile, window, cx| {
                     cx.stop_propagation();
                     drawer.handle_drop_on_folder_new(&folder_path_for_internal_drop, &drag.paths, window, cx);
+                }))
+                .on_drop(cx.listener(move |drawer, payload: &AssetPayload, window, cx| {
+                    cx.stop_propagation();
+                    let path = std::path::PathBuf::from(&payload.engine_path);
+                    drawer.handle_drop_on_folder_new(&folder_path_for_asset_drop, &[path], window, cx);
                 }))
                 .on_drop(cx.listener(move |drawer, external: &ExternalPaths, window, cx| {
                     cx.stop_propagation();
@@ -276,11 +301,25 @@ impl FileManagerDrawer {
             cx.new(|_| drag_with_pos)
         });
 
+        // Non-folder list items emit AssetPayload so external panels can receive them.
+        // Folders emit DraggedFile for intra-drawer folder moves.
+        if !is_folder {
+            let asset_payload = AssetPayload::from_path(&item_clone2.path);
+            let payload_for_event = asset_payload.clone();
+            list_item = list_item.on_drag(asset_payload, move |drag, _, _, cx| {
+                // Emit drag start event to close the drawer
+                cx.emit(ui_types_common::DragEvent::AssetDragStarted(payload_for_event.clone()));
+                cx.stop_propagation();
+                cx.new(|_| drag.clone())
+            });
+        }
+
         // Add drop functionality if this is a folder
         if is_folder {
             let folder_path_for_external_drag_move = item_for_drop.path.clone();
             let folder_path_for_internal_drop = item_for_drop.path.clone();
             let folder_path_for_external_drop = item_for_drop.path.clone();
+            let folder_path_for_asset_drop = item_for_drop.path.clone();
 
             list_item = list_item
                 .on_drag_move(cx.listener(move |drawer, _event: &DragMoveEvent<ExternalPaths>, _window, cx| {
@@ -289,6 +328,12 @@ impl FileManagerDrawer {
                     cx.notify();
                 }))
                 .drag_over::<DraggedFile>(|style, _, _, cx| {
+                    style
+                        .bg(cx.theme().accent.opacity(0.2))
+                        .border_2()
+                        .border_color(cx.theme().accent)
+                })
+                .drag_over::<AssetPayload>(|style, _, _, cx| {
                     style
                         .bg(cx.theme().accent.opacity(0.2))
                         .border_2()
@@ -303,6 +348,11 @@ impl FileManagerDrawer {
                 .on_drop(cx.listener(move |drawer, drag: &DraggedFile, window, cx| {
                     cx.stop_propagation();
                     drawer.handle_drop_on_folder_new(&folder_path_for_internal_drop, &drag.paths, window, cx);
+                }))
+                .on_drop(cx.listener(move |drawer, payload: &AssetPayload, window, cx| {
+                    cx.stop_propagation();
+                    let path = std::path::PathBuf::from(&payload.engine_path);
+                    drawer.handle_drop_on_folder_new(&folder_path_for_asset_drop, &[path], window, cx);
                 }))
                 .on_drop(cx.listener(move |drawer, external: &ExternalPaths, window, cx| {
                     cx.stop_propagation();
