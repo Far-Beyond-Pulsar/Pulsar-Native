@@ -12,10 +12,12 @@ use ui::{
     table::{Column, Table, TableDelegate},
     v_flex, ActiveTheme as _, IconName,
 };
+use smol::future::poll_once;
 
 const MAX_BUFFERED_LINES: usize = 250_000;
 const TRIM_CHUNK_LINES: usize = 10_000;
 const LIVE_BATCH_MAX_LINES: usize = 2_048;
+const INGEST_FLUSH_INTERVAL_MS: u64 = 100;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LogLevel {
@@ -65,6 +67,10 @@ impl LogLevel {
             LogLevel::Trace => "TRACE",
             LogLevel::Unknown => "OTHER",
         }
+    }
+
+    fn tint(&self, theme: &ui::Theme) -> Hsla {
+        self.color(theme).opacity(0.16)
     }
 }
 
@@ -264,6 +270,26 @@ impl TableDelegate for LogTableDelegate {
         &self.columns[col_ix]
     }
 
+    fn render_tr(
+        &self,
+        row_ix: usize,
+        _window: &mut Window,
+        cx: &mut Context<Table<Self>>,
+    ) -> Stateful<Div> {
+        let theme = cx.theme();
+        let base_bg = if row_ix % 2 == 0 {
+            theme.background
+        } else {
+            theme.background.opacity(0.96)
+        };
+
+        h_flex()
+            .id(("row", row_ix))
+            .bg(base_bg)
+            .border_b_1()
+            .border_color(theme.border.opacity(0.25))
+    }
+
     fn render_td(
         &self,
         row_ix: usize,
@@ -284,18 +310,37 @@ impl TableDelegate for LogTableDelegate {
                 .text_color(theme.muted_foreground)
                 .child(format!("{}", row.abs_line))
                 .into_any_element(),
-            1 => div()
+            1 => {
+                let level_color = row.level.color(&theme);
+                div()
                 .w_full()
                 .px_2()
-                .text_color(row.level.color(&theme))
-                .child(row.level.label())
-                .into_any_element(),
-            _ => div()
+                .child(
+                    h_flex()
+                        .h(px(22.0))
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(999.0))
+                        .bg(row.level.tint(&theme))
+                        .border_1()
+                        .border_color(level_color.opacity(0.35))
+                        .text_color(level_color)
+                        .child(row.level.label()),
+                )
+                .into_any_element()
+            }
+            _ => {
+                let level_color = row.level.color(&theme);
+                div()
                 .w_full()
                 .px_2()
-                .text_color(row.level.color(&theme))
+                .py_1()
+                .rounded(px(4.0))
+                .bg(row.level.tint(&theme).opacity(0.45))
+                .text_color(level_color)
                 .child(row.text.clone())
-                .into_any_element(),
+                .into_any_element()
+            }
         }
     }
 
@@ -361,17 +406,41 @@ impl LogDrawer {
         let rx = crate::subscribe_live_logs();
 
         let task = cx.spawn(async move |this, cx| {
-            while let Ok(first_line) = rx.recv().await {
-                let mut batch = Vec::with_capacity(LIVE_BATCH_MAX_LINES);
-                batch.push(first_line);
+            let mut pending: Vec<String> = Vec::with_capacity(LIVE_BATCH_MAX_LINES * 4);
+            loop {
+                let Ok(first_line) = rx.recv().await else {
+                    break;
+                };
+                pending.push(first_line);
 
-                while batch.len() < LIVE_BATCH_MAX_LINES {
-                    match rx.try_recv() {
-                        Ok(line) => batch.push(line),
-                        Err(_) => break,
+                let deadline = smol::Timer::after(Duration::from_millis(INGEST_FLUSH_INTERVAL_MS));
+                let _ = futures::pin_mut!(deadline);
+
+                loop {
+                    if pending.len() >= LIVE_BATCH_MAX_LINES {
+                        break;
                     }
+
+                    match rx.try_recv() {
+                        Ok(line) => {
+                            pending.push(line);
+                            continue;
+                        }
+                        Err(_) => {}
+                    }
+
+                    if futures::future::poll_once(&mut deadline).await.is_some() {
+                        break;
+                    }
+
+                    smol::Timer::after(Duration::from_millis(1)).await;
                 }
 
+                if pending.is_empty() {
+                    continue;
+                }
+
+                let batch = std::mem::take(&mut pending);
                 let _ = cx.update(|cx| {
                     if let Some(this) = this.upgrade() {
                         this.update(cx, |drawer, cx| {
@@ -495,9 +564,9 @@ impl Render for LogDrawer {
                     .px_4()
                     .items_center()
                     .justify_between()
-                    .bg(theme.background)
+                    .bg(theme.background.opacity(0.98))
                     .border_b_1()
-                    .border_color(theme.border)
+                    .border_color(theme.border.opacity(0.4))
                     .child(
                         div()
                             .text_color(theme.muted_foreground)
@@ -535,9 +604,9 @@ impl Render for LogDrawer {
                     .px_4()
                     .items_center()
                     .gap_2()
-                    .bg(theme.background)
+                    .bg(theme.background.opacity(0.94))
                     .border_b_1()
-                    .border_color(theme.border)
+                    .border_color(theme.border.opacity(0.35))
                     .child(
                         Button::new("filter-all")
                             .label("All")
