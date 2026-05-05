@@ -183,6 +183,8 @@ fn mesh_for_key(key: MeshKey) -> MeshUpload {
     }
 }
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 // ── HelioRenderer ─────────────────────────────────────────────────────────────
 
 /// Main renderer coordinating Helio 3D rendering with GPUI.
@@ -194,6 +196,12 @@ pub struct HelioRenderer {
     // ── Legacy (unused) ──
     pub command_sender: mpsc::Sender<RendererCommand>,
     pub command_receiver: mpsc::Receiver<RendererCommand>,
+
+    // ── Pending editor commands (written by UI thread, read by render thread) ──
+    /// Next gizmo mode to apply; consumed at start of render_frame.
+    pub pending_gizmo_mode: Arc<Mutex<Option<GizmoMode>>>,
+    /// When true, the render thread should call editor_state.deselect() next frame.
+    pub pending_deselect: Arc<AtomicBool>,
 
     // ── Renderer State ──
     inner: Option<HelioInner>,
@@ -233,6 +241,8 @@ impl HelioRenderer {
             scene_db,
             command_sender,
             command_receiver,
+            pending_gizmo_mode: Arc::new(Mutex::new(None)),
+            pending_deselect: Arc::new(AtomicBool::new(false)),
             inner: None,
             cam_pos: Vec3::new(8.0, 6.0, 12.0), // Better view angle
             cam_yaw: -0.5,                      // Look left a bit
@@ -308,6 +318,16 @@ impl HelioRenderer {
         if self.viewport_size != (width, height) {
             inner.renderer.set_render_size(width, height);
             self.viewport_size = (width, height);
+        }
+
+        // Drain pending editor commands written by the UI thread.
+        if self.pending_deselect.swap(false, Ordering::AcqRel) {
+            inner.editor_state.deselect();
+        }
+        if let Ok(mut pending) = self.pending_gizmo_mode.lock() {
+            if let Some(mode) = pending.take() {
+                inner.editor_state.set_gizmo_mode(mode);
+            }
         }
 
         Self::sync_scene(&self.scene_db, inner);

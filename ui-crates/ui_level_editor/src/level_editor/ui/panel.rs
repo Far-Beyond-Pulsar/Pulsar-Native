@@ -304,14 +304,14 @@ impl LevelEditorPanel {
             .render(cx)
     }
 
-    // Helper method to sync GPUI gizmo state to SceneDB and Helio's shared resource
+    // Helper method to sync GPUI gizmo state to Helio's pending command queue.
+    // Use a blocking lock so key-driven tool swaps are never dropped mid-frame.
     fn sync_gizmo_to_helio(&mut self) {
-        // First, sync to SceneDB through HelioRenderer
-        if let Ok(mut engine) = self.gpu_engine.try_lock() {
-            if let Some(ref mut helio_renderer) = engine.helio_renderer {
+        if let Ok(engine) = self.gpu_engine.lock() {
+            if let Some(ref helio_renderer) = engine.helio_renderer {
                 let state = self.shared_state.read();
 
-                // Map TransformTool to GizmoType
+                // Map TransformTool to GizmoType for SceneDB
                 use engine_backend::scene::GizmoType as SceneGizmoType;
                 let gizmo_type = match state.current_tool {
                     TransformTool::Select => SceneGizmoType::None,
@@ -319,25 +319,22 @@ impl LevelEditorPanel {
                     TransformTool::Rotate => SceneGizmoType::Rotate,
                     TransformTool::Scale => SceneGizmoType::Scale,
                 };
-
                 helio_renderer.scene_db.set_gizmo_type(gizmo_type);
 
-                // CRITICAL: Sync selected object to backend SceneDB
-                let selected_id = state.scene_database.get_selected_object_id();
-                helio_renderer.scene_db.select_object(selected_id.clone());
-
-                // NEW: Sync to Helio's EditorState for native gizmo rendering
+                // Write the new gizmo mode into the pending slot.
+                // The render thread drains this at the start of the next frame — no lock contention.
                 use engine_backend::GizmoMode;
                 let helio_mode = match state.current_tool {
-                    TransformTool::Select => GizmoMode::Translate, // Default to Translate for Select
+                    TransformTool::Select => GizmoMode::Translate,
                     TransformTool::Move => GizmoMode::Translate,
                     TransformTool::Rotate => GizmoMode::Rotate,
                     TransformTool::Scale => GizmoMode::Scale,
                 };
-                helio_renderer.set_gizmo_mode(helio_mode);
+                if let Ok(mut pending) = helio_renderer.pending_gizmo_mode.lock() {
+                    *pending = Some(helio_mode);
+                }
 
-                tracing::info!("[GIZMO SYNC] Synced to backend SceneDB and Helio EditorState - tool: {:?}, selected: {:?}",
-                    state.current_tool, selected_id);
+                tracing::info!("[GIZMO SYNC] Queued gizmo mode: {:?}", helio_mode);
             }
         }
     }
@@ -884,6 +881,14 @@ impl Render for LevelEditorPanel {
                     TransformTool::Rotate => SceneGizmoType::Rotate,
                     TransformTool::Scale => SceneGizmoType::Scale,
                 };
+
+                use engine_backend::GizmoMode;
+                let helio_mode = match state.current_tool {
+                    TransformTool::Select => GizmoMode::Translate,
+                    TransformTool::Move => GizmoMode::Translate,
+                    TransformTool::Rotate => GizmoMode::Rotate,
+                    TransformTool::Scale => GizmoMode::Scale,
+                };
                 drop(state);
 
                 if gpui_selected != helio_renderer.scene_db.get_selected_id() {
@@ -891,6 +896,10 @@ impl Render for LevelEditorPanel {
                 }
                 if gizmo_type != helio_renderer.scene_db.get_gizmo_state().gizmo_type {
                     helio_renderer.scene_db.set_gizmo_type(gizmo_type);
+                }
+                // Keep Helio EditorState gizmo mode in lockstep with UI tool state every frame.
+                if let Ok(mut pending) = helio_renderer.pending_gizmo_mode.lock() {
+                    *pending = Some(helio_mode);
                 }
             }
         }
@@ -970,19 +979,25 @@ impl Render for LevelEditorPanel {
 
                 match event.keystroke.key.as_ref() {
                     "escape" => {
-                        if this.shared_state.read().selected_object().is_some() {
-                            this.shared_state.write().select_object(None);
-                            this.sync_gizmo_to_helio();
-                            cx.notify();
+                        // Update UI state unconditionally — always clear GPUI selection.
+                        this.shared_state.write().select_object(None);
+                        // Signal the render thread to call editor_state.deselect() next frame.
+                        // This is written directly to the Arc<AtomicBool> — no engine lock needed.
+                        if let Ok(engine) = this.gpu_engine.lock() {
+                            if let Some(ref helio_renderer) = engine.helio_renderer {
+                                use std::sync::atomic::Ordering;
+                                helio_renderer.pending_deselect.store(true, Ordering::Release);
+                            }
                         }
+                        cx.notify();
                     }
-                    // Tool selection — Blender-style (G/R/S) and Maya-style (W/E/R) both supported
-                    "q" => cx.dispatch_action(&SelectTool),
-                    "w" => cx.dispatch_action(&MoveTool),
-                    "g" => cx.dispatch_action(&MoveTool),   // Blender: G = Grab/Move
-                    "e" => cx.dispatch_action(&RotateTool),
-                    "r" => cx.dispatch_action(&RotateTool), // Blender: R = Rotate
-                    "s" => cx.dispatch_action(&ScaleTool),  // Blender: S = Scale
+                    // Tool selection — call handlers directly to avoid action-dispatch drift.
+                    "q" => this.on_select_tool(&SelectTool, window, cx),
+                    "w" => this.on_move_tool(&MoveTool, window, cx),
+                    "g" => this.on_move_tool(&MoveTool, window, cx),   // Blender: G = Grab/Move
+                    "e" => this.on_rotate_tool(&RotateTool, window, cx),
+                    "r" => this.on_rotate_tool(&RotateTool, window, cx), // Blender: R = Rotate
+                    "s" => this.on_scale_tool(&ScaleTool, window, cx),  // Blender: S = Scale
                     "l" => cx.dispatch_action(&ToggleLocalSpace),
                     "f" => cx.dispatch_action(&FocusSelected),
                     "[" => cx.dispatch_action(&DecreaseSnapIncrement),
