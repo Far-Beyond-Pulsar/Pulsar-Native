@@ -12,6 +12,7 @@ window_manager.workspace = true
 
 # UI crates
 ui_common.workspace = true
+ui_types_common.workspace = true
 
 # Engine
 engine_fs.workspace = true

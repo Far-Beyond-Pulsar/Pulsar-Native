@@ -23,6 +23,7 @@ impl FileManagerDrawer {
         let item_clone3 = item.clone(); // For double-click
         let item_path = item.path.clone();
         let item_hover_path = item.path.clone();
+        let drawer_entity = cx.entity().clone();
         let has_clipboard = self.clipboard.is_some();
         let is_class = item.is_class();
         let is_folder = item.is_folder;
@@ -64,9 +65,12 @@ impl FileManagerDrawer {
         } else {
             let asset_payload = AssetPayload::from_path(&item_clone.path);
             let payload_for_event = asset_payload.clone();
+            let drawer_entity_for_drag = drawer_entity.clone();
             content = content.on_drag(asset_payload, move |drag, _, _, cx| {
                 // Emit drag start event to close the drawer
-                cx.emit(ui_types_common::DragEvent::AssetDragStarted(payload_for_event.clone()));
+                drawer_entity_for_drag.update(cx, |_, cx| {
+                    cx.emit(ui_types_common::DragEvent::AssetDragStarted(payload_for_event.clone().into()));
+                });
                 cx.stop_propagation();
                 cx.new(|_| drag.clone())
             });
@@ -249,6 +253,7 @@ impl FileManagerDrawer {
         let item_clone3 = item.clone(); // For double-click
         let item_path = item.path.clone();
         let item_hover_path = item.path.clone();
+        let drawer_entity = cx.entity().clone();
         let has_clipboard = self.clipboard.is_some();
         let is_class = item.is_class();
         let is_folder = item.is_folder;
@@ -306,9 +311,12 @@ impl FileManagerDrawer {
         if !is_folder {
             let asset_payload = AssetPayload::from_path(&item_clone2.path);
             let payload_for_event = asset_payload.clone();
+            let drawer_entity_for_drag = drawer_entity.clone();
             list_item = list_item.on_drag(asset_payload, move |drag, _, _, cx| {
                 // Emit drag start event to close the drawer
-                cx.emit(ui_types_common::DragEvent::AssetDragStarted(payload_for_event.clone()));
+                drawer_entity_for_drag.update(cx, |_, cx| {
+                    cx.emit(ui_types_common::DragEvent::AssetDragStarted(payload_for_event.clone().into()));
+                });
                 cx.stop_propagation();
                 cx.new(|_| drag.clone())
             });

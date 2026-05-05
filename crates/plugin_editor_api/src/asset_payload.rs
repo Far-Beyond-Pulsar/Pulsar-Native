@@ -1,7 +1,69 @@
 use gpui::{prelude::*, *};
+use std::path::Path;
 
 // Re-export so consumers only need one import.
-pub use ui_types_common::{AssetKind, AssetPayload};
+pub use ui_types_common::AssetKind;
+
+/// The canonical drag payload for any asset dragged out of the file manager
+/// drawer or any other engine panel.
+#[derive(Clone, Debug)]
+pub struct AssetPayload {
+    /// Engine-FS relative path using forward-slash separators.
+    /// May be an absolute OS path when the file has not yet been imported.
+    pub engine_path: String,
+
+    /// File name (without parent directory), used in the drag ghost and toasts.
+    pub name: String,
+
+    /// Semantic kind, derived from the file extension.
+    pub kind: AssetKind,
+
+    /// Lowercase extension without the leading dot (e.g. `"fbx"`).
+    pub extension: String,
+}
+
+impl AssetPayload {
+    /// Build a payload from any filesystem path. Kind is inferred from the
+    /// extension. For best results, pass the engine-FS relative path.
+    pub fn from_path(path: &Path) -> Self {
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+        let extension = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let kind = AssetKind::from_extension(&extension);
+        // Normalise to forward slashes for engine-FS compatibility.
+        let engine_path = path.to_string_lossy().replace('\\', "/");
+        Self { engine_path, name, kind, extension }
+    }
+}
+
+impl From<AssetPayload> for ui_types_common::AssetPayload {
+    fn from(value: AssetPayload) -> Self {
+        Self {
+            engine_path: value.engine_path,
+            name: value.name,
+            kind: value.kind,
+            extension: value.extension,
+        }
+    }
+}
+
+impl From<ui_types_common::AssetPayload> for AssetPayload {
+    fn from(value: ui_types_common::AssetPayload) -> Self {
+        Self {
+            engine_path: value.engine_path,
+            name: value.name,
+            kind: value.kind,
+            extension: value.extension,
+        }
+    }
+}
 
 /// GPUI requires the drag type to implement `Render` so GPUI can render the
 /// drag ghost while the payload is in flight.

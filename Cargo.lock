@@ -12699,6 +12699,7 @@ dependencies = [
  "tracing",
  "ui",
  "ui_common",
+ "ui_types_common",
  "window_manager",
 ]
 
