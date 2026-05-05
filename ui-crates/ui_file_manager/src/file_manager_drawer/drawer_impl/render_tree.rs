@@ -219,11 +219,11 @@ impl FileManagerDrawer {
                             .border_1()
                             .border_color(cx.theme().accent)
                     })
-                    .on_drop(cx.listener(move |drawer, drag: &DraggedFile, _window, cx| {
-                        drawer.handle_drop_on_folder_new(&path_for_internal_drop, &drag.paths, cx);
+                    .on_drop(cx.listener(move |drawer, drag: &DraggedFile, window, cx| {
+                        drawer.handle_drop_on_folder_new(&path_for_internal_drop, &drag.paths, window, cx);
                     }))
-                    .on_drop(cx.listener(move |drawer, external: &ExternalPaths, _window, cx| {
-                        drawer.handle_external_drop_on_folder(&path_for_external_drop, external.paths(), cx);
+                    .on_drop(cx.listener(move |drawer, external: &ExternalPaths, window, cx| {
+                        drawer.handle_external_drop_on_folder(&path_for_external_drop, external.paths(), window, cx);
                     }))
                     .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, _event: &MouseDownEvent, _window, cx| {
                         drawer.handle_folder_select(path.clone(), cx);

@@ -89,23 +89,21 @@ impl FileManagerDrawer {
                                     .border_1()
                                     .border_color(cx.theme().accent.opacity(0.8))
                             })
-                            .on_drop(cx.listener(move |drawer, drag: &DraggedFile, _window, cx| {
-                                    eprintln!("[FILE_DROP] 🟡 on_drop::<DraggedFile> fired on content area");
+                            .on_drop(cx.listener(move |drawer, drag: &DraggedFile, window, cx| {
                                 // Right-pane background drop: always use current folder.
                                 // Folder-specific drops are handled by folder item drop targets.
                                 let target = folder_for_internal_drop.clone();
                                 drawer.show_drop_hint = false;
                                 drawer.hovered_drop_folder = None;
-                                drawer.handle_drop_on_folder_new(&target, &drag.paths, cx);
+                                drawer.handle_drop_on_folder_new(&target, &drag.paths, window, cx);
                             }))
-                            .on_drop(cx.listener(move |drawer, external: &ExternalPaths, _window, cx| {
-                                    eprintln!("[FILE_DROP] 🔵 on_drop::<ExternalPaths> fired on content area, paths={:?}", external.paths());
+                            .on_drop(cx.listener(move |drawer, external: &ExternalPaths, window, cx| {
                                 // Right-pane background drop: always use current folder.
                                 // Folder-specific drops are handled by folder item drop targets.
                                 let target = folder_for_external_drop.clone();
                                 drawer.show_drop_hint = false;
                                 drawer.hovered_drop_folder = None;
-                                drawer.handle_external_drop_on_folder(&target, external.paths(), cx);
+                                drawer.handle_external_drop_on_folder(&target, external.paths(), window, cx);
                             }));
                     }
 

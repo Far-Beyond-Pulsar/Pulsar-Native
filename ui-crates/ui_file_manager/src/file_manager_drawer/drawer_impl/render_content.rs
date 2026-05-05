@@ -86,13 +86,13 @@ impl FileManagerDrawer {
                         .border_color(cx.theme().accent)
                         .rounded_lg()
                 })
-                .on_drop(cx.listener(move |drawer, drag: &DraggedFile, _window, cx| {
+                .on_drop(cx.listener(move |drawer, drag: &DraggedFile, window, cx| {
                     cx.stop_propagation();
-                    drawer.handle_drop_on_folder_new(&folder_path_for_internal_drop, &drag.paths, cx);
+                    drawer.handle_drop_on_folder_new(&folder_path_for_internal_drop, &drag.paths, window, cx);
                 }))
-                .on_drop(cx.listener(move |drawer, external: &ExternalPaths, _window, cx| {
+                .on_drop(cx.listener(move |drawer, external: &ExternalPaths, window, cx| {
                     cx.stop_propagation();
-                    drawer.handle_external_drop_on_folder(&folder_path_for_external_drop, external.paths(), cx);
+                    drawer.handle_external_drop_on_folder(&folder_path_for_external_drop, external.paths(), window, cx);
                 }));
         }
 
@@ -300,13 +300,13 @@ impl FileManagerDrawer {
                         .border_2()
                         .border_color(cx.theme().accent)
                 })
-                .on_drop(cx.listener(move |drawer, drag: &DraggedFile, _window, cx| {
+                .on_drop(cx.listener(move |drawer, drag: &DraggedFile, window, cx| {
                     cx.stop_propagation();
-                    drawer.handle_drop_on_folder_new(&folder_path_for_internal_drop, &drag.paths, cx);
+                    drawer.handle_drop_on_folder_new(&folder_path_for_internal_drop, &drag.paths, window, cx);
                 }))
-                .on_drop(cx.listener(move |drawer, external: &ExternalPaths, _window, cx| {
+                .on_drop(cx.listener(move |drawer, external: &ExternalPaths, window, cx| {
                     cx.stop_propagation();
-                    drawer.handle_external_drop_on_folder(&folder_path_for_external_drop, external.paths(), cx);
+                    drawer.handle_external_drop_on_folder(&folder_path_for_external_drop, external.paths(), window, cx);
                 }));
         }
 

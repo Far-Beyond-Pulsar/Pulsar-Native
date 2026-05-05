@@ -1,8 +1,10 @@
 // Drag and drop handlers for file manager drawer
 
+use ui::{notification::Notification, ContextModal};
+
 impl FileManagerDrawer {
     /// Handle dropping files onto a folder using GPUI's drag and drop API
-    pub fn handle_drop_on_folder_new(&mut self, target_folder: &Path, source_paths: &[PathBuf], cx: &mut Context<Self>) {
+    pub fn handle_drop_on_folder_new(&mut self, target_folder: &Path, source_paths: &[PathBuf], window: &mut Window, cx: &mut Context<Self>) {
         let target_folder = target_folder.to_path_buf();
         let source_paths = source_paths.to_vec();
 
@@ -38,6 +40,18 @@ impl FileManagerDrawer {
                 self.selected_folder = Some(target_folder);
                 self.hovered_drop_folder = None;
                 self.show_drop_hint = false;
+
+                // Fire one success notification per moved file
+                for path in &source_paths {
+                    let name = path.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("file")
+                        .to_string();
+                    window.push_notification(
+                        Notification::success(format!("Moved \"{}\"", name)),
+                        cx,
+                    );
+                }
             }
             Err(e) => {
                 tracing::error!("[FILE_MANAGER] ❌ Failed to move items: {}", e);
@@ -57,6 +71,7 @@ impl FileManagerDrawer {
         &mut self,
         target_folder: &Path,
         external_paths: &[PathBuf],
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let target_folder = target_folder.to_path_buf();
@@ -93,6 +108,18 @@ impl FileManagerDrawer {
                 self.selected_folder = Some(target_folder);
                 self.hovered_drop_folder = None;
                 self.show_drop_hint = false;
+
+                // Fire one success notification per imported file
+                for path in &source_paths {
+                    let name = path.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("file")
+                        .to_string();
+                    window.push_notification(
+                        Notification::success(format!("Imported \"{}\"", name)),
+                        cx,
+                    );
+                }
             }
             Err(e) => {
                 tracing::error!("[FILE_MANAGER] ❌ Failed to import external items: {}", e);
