@@ -4,6 +4,7 @@ mod atomic_memory_tracking;
 mod caller_tracking;
 mod gpu_engines;
 mod gpu_info;
+mod live_logs;
 mod log_drawer_v2;
 mod log_reader;
 mod mem_details;
@@ -16,6 +17,7 @@ pub mod tracking_allocator;
 mod type_tracking;
 
 pub use atomic_memory_tracking::{AllocationEntry, SizeBucket, ATOMIC_MEMORY_COUNTERS};
+pub use live_logs::{publish_live_log, subscribe_live_logs};
 pub use log_drawer_v2::LogDrawer;
 pub use memory_tracking::{
     create_memory_tracker, MemoryCategory, MemoryStatsSnapshot, MemoryTracker, SharedMemoryTracker,

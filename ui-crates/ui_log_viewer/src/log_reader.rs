@@ -141,6 +141,13 @@ impl LogReader {
 
     /// Get the latest log file path from the logs directory
     pub fn get_latest_log_path() -> Result<PathBuf> {
+        if let Ok(path) = std::env::var("PULSAR_ENGINE_LOG_FILE") {
+            let candidate = PathBuf::from(path);
+            if candidate.exists() {
+                return Ok(candidate);
+            }
+        }
+
         use directories::ProjectDirs;
 
         let proj_dirs = ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")

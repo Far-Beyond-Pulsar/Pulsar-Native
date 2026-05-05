@@ -170,29 +170,28 @@ impl LogDrawer {
 
     /// Start monitoring the log file (called when drawer opens)
     pub fn start_monitoring(&mut self, cx: &mut Context<Self>) {
-        let (tx, rx) = smol::channel::bounded(100);
-        self.update_receiver = Some(rx.clone());
+        if self._background_task.is_some() {
+            return;
+        }
 
-        // Spawn UI update task
-        cx.spawn(async move |this, cx| {
-            while let Ok(update) = rx.recv().await {
+        let rx = crate::subscribe_live_logs();
+
+        // Spawn UI update task from live in-process stream.
+        let task = cx.spawn(async move |this, cx| {
+            while let Ok(line) = rx.recv().await {
                 let _ = cx.update(|cx| {
                     if let Some(this) = this.upgrade() {
                         this.update(cx, |drawer, cx| {
-                            drawer.handle_update(update, cx);
+                            drawer.handle_update(LogUpdate::NewLines(vec![line]), cx);
                         });
                     }
                 });
             }
-        })
-        .detach();
-
-        // Spawn background file monitoring task
-        let task = cx.background_executor().spawn(async move {
-            Self::background_file_monitor(tx).await;
         });
 
         self._background_task = Some(task);
+        self.error_message = None;
+        cx.notify();
     }
 
     /// Stop monitoring (called when drawer closes)

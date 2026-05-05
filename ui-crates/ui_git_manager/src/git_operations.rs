@@ -5,7 +5,14 @@ use git2::{BranchType, Repository, StatusOptions};
 use std::path::Path;
 
 fn open_repo(path: &Path) -> Result<Repository, git2::Error> {
-    Repository::discover(path).or_else(|_| Repository::open(path))
+    Repository::discover(path)
+        .or_else(|_| Repository::open(path))
+        .or_else(|_| {
+            std::env::current_dir()
+                .ok()
+                .and_then(|cwd| Repository::discover(cwd).ok())
+                .ok_or_else(|| git2::Error::from_str("No git repository found"))
+        })
 }
 
 /// Load the complete repository state (blocking — run on background executor)

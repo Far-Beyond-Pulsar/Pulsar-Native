@@ -12,11 +12,14 @@ use directories::ProjectDirs;
 use serde_json;
 use std::fs;
 use tracing::Subscriber;
+use tracing_subscriber::layer::Context as LayerContext;
 use tracing_subscriber::fmt::{
     format::{FormatEvent, FormatFields, Writer},
     FmtContext,
 };
 use tracing_subscriber::registry::LookupSpan;
+use tracing_subscriber::Layer;
+use ui_log_viewer::publish_live_log;
 
 #[allow(dead_code)]
 pub struct LogGuard(tracing_appender::non_blocking::WorkerGuard);
@@ -40,6 +43,12 @@ pub fn init(verbose: bool) -> LogGuard {
         tracing::error!("[Engine] Failed to create log timestamp folder: {e}");
     }
     let engine_log_path = log_folder.join("engine.log");
+
+    // Expose the active log file path for in-process tools like Mission Control.
+    std::env::set_var(
+        "PULSAR_ENGINE_LOG_FILE",
+        engine_log_path.to_string_lossy().to_string(),
+    );
 
     // File appender for engine.log
     let engine_log_file = std::fs::OpenOptions::new()
@@ -65,9 +74,12 @@ pub fn init(verbose: bool) -> LogGuard {
         .with_target(true)
         .with_thread_ids(true);
 
+    let live_layer = LiveLogLayer;
+
     let registry = tracing_subscriber::registry()
         .with(env_filter)
-        .with(file_layer);
+        .with(file_layer)
+        .with(live_layer);
 
     if verbose {
         // Console log: keep GorgeousFormatter (with color)
@@ -82,6 +94,44 @@ pub fn init(verbose: bool) -> LogGuard {
     }
 
     LogGuard(guard)
+}
+
+struct LiveLogLayer;
+
+impl<S> Layer<S> for LiveLogLayer
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
+    fn on_event(&self, event: &tracing::Event<'_>, _ctx: LayerContext<'_, S>) {
+        struct MsgVisitor(String);
+
+        impl tracing_subscriber::field::Visit for MsgVisitor {
+            fn record_debug(&mut self, _field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+                if !self.0.is_empty() {
+                    self.0.push(' ');
+                }
+                use std::fmt::Write;
+                let _ = write!(self.0, "{:?}", value);
+            }
+
+            fn record_str(&mut self, _field: &tracing::field::Field, value: &str) {
+                if !self.0.is_empty() {
+                    self.0.push(' ');
+                }
+                self.0.push_str(value);
+            }
+        }
+
+        let mut visitor = MsgVisitor(String::new());
+        event.record(&mut visitor);
+
+        let meta = event.metadata();
+        let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+        let msg = visitor.0.trim();
+
+        let line = format!("{} {} {}: {}", ts, meta.level(), meta.target(), msg);
+        publish_live_log(line);
+    }
 }
 
 /// Custom event formatter for colored, pretty console output.
