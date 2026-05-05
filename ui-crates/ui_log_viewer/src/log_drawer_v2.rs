@@ -1,29 +1,23 @@
-use crate::log_reader::LogReader;
 use gpui::{prelude::*, *};
-use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
-use std::time::Duration;
+use std::{
+    cell::RefCell,
+    collections::VecDeque,
+    ops::Range,
+    rc::Rc,
+    time::Duration,
+};
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, v_virtual_list, ActiveTheme as _, IconName, VirtualListScrollHandle,
+    h_flex,
+    table::{Column, Table, TableDelegate},
+    v_flex, ActiveTheme as _, IconName,
 };
 
-const MAX_LINES_IN_MEMORY: usize = 10000;
-const UNLOAD_THRESHOLD: usize = 1000; // Drop 1k lines when we exceed max
-const POLL_INTERVAL_MS: u64 = 100;
-const LINE_HEIGHT: Pixels = px(20.0);
-const MIN_FILTERED_LINES: usize = 500; // Trigger load if filtered view has fewer than this
-const LOAD_CHUNK_SIZE: usize = 2000; // Load this many lines at a time
+const MAX_BUFFERED_LINES: usize = 250_000;
+const TRIM_CHUNK_LINES: usize = 10_000;
+const LIVE_BATCH_MAX_LINES: usize = 2_048;
 
-/// Message sent from background task to UI
-enum LogUpdate {
-    InitialLoad(Vec<String>, PathBuf),
-    NewLines(Vec<String>),
-    OlderLines(Vec<String>, usize), // Lines and the starting index
-    Error(String),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LogLevel {
     Error,
     Warn,
@@ -35,8 +29,8 @@ enum LogLevel {
 
 impl LogLevel {
     fn from_line(line: &str) -> Self {
-        let upper = line.to_uppercase();
-        if upper.contains("ERROR") || upper.contains("ERR") {
+        let upper = line.to_ascii_uppercase();
+        if upper.contains("ERROR") || upper.contains(" ERR ") || upper.starts_with("ERR") {
             LogLevel::Error
         } else if upper.contains("WARN") {
             LogLevel::Warn
@@ -61,114 +55,304 @@ impl LogLevel {
             LogLevel::Unknown => theme.foreground,
         }
     }
+
+    fn label(&self) -> &'static str {
+        match self {
+            LogLevel::Error => "ERROR",
+            LogLevel::Warn => "WARN",
+            LogLevel::Info => "INFO",
+            LogLevel::Debug => "DEBUG",
+            LogLevel::Trace => "TRACE",
+            LogLevel::Unknown => "OTHER",
+        }
+    }
 }
 
-pub struct LogDrawer {
-    /// All log lines currently in memory (sliding window)
-    lines: Vec<String>,
-    /// Starting line number of the first line in memory (1-indexed)
-    start_line_num: usize,
-    /// Total lines in the file
-    total_lines: usize,
-    /// Filtered view of lines (indices into lines array)
+#[derive(Clone)]
+struct LogRow {
+    abs_line: usize,
+    level: LogLevel,
+    text: String,
+}
+
+struct LogStore {
+    rows: VecDeque<LogRow>,
     filtered_indices: Vec<usize>,
-    /// Whether we're locked to the bottom (auto-scroll)
-    locked_to_bottom: bool,
-    /// Error message if any
-    error_message: Option<String>,
-    /// Channel to receive updates from background task
-    update_receiver: Option<smol::channel::Receiver<LogUpdate>>,
-    /// Background task handle
-    _background_task: Option<Task<()>>,
-    /// Entity reference for virtual list
-    entity: Option<Entity<Self>>,
-    /// Scroll handle
-    scroll_handle: VirtualListScrollHandle,
-    /// Search query
-    search_query: String,
-    /// Active log level filter
+    total_seen: usize,
+    dropped_total: usize,
     level_filter: Option<LogLevel>,
-    /// Path to the log file
-    log_path: Option<PathBuf>,
-    /// Whether we're currently loading older lines
-    loading_older: bool,
-    /// Minimum filtered lines to keep in memory
-    min_filtered_lines: usize,
+    search_query: String,
 }
 
-impl LogDrawer {
-    pub fn new(cx: &mut Context<Self>) -> Self {
-        let scroll_handle = VirtualListScrollHandle::new();
-        let mut drawer = Self {
-            lines: Vec::new(),
-            start_line_num: 1,
-            total_lines: 0,
+impl LogStore {
+    fn new() -> Self {
+        Self {
+            rows: VecDeque::new(),
             filtered_indices: Vec::new(),
-            locked_to_bottom: true,
-            error_message: None,
-            update_receiver: None,
-            _background_task: None,
-            entity: None,
-            scroll_handle,
-            search_query: String::new(),
+            total_seen: 0,
+            dropped_total: 0,
             level_filter: None,
-            log_path: None,
-            loading_older: false,
-            min_filtered_lines: MIN_FILTERED_LINES,
-        };
-
-        // Store entity reference
-        drawer.entity = Some(cx.entity().clone());
-
-        drawer
+            search_query: String::new(),
+        }
     }
 
-    /// Update filtered indices based on search and level filter
-    fn update_filter(&mut self) {
+    fn clear(&mut self) {
+        self.rows.clear();
         self.filtered_indices.clear();
+        self.total_seen = 0;
+        self.dropped_total = 0;
+    }
 
-        let search_lower = self.search_query.to_lowercase();
-        let has_search = !search_lower.is_empty();
+    fn has_active_filter(&self) -> bool {
+        self.level_filter.is_some() || !self.search_query.is_empty()
+    }
 
-        for (idx, line) in self.lines.iter().enumerate() {
-            // Check level filter
-            if let Some(filter_level) = self.level_filter {
-                if LogLevel::from_line(line) != filter_level {
+    fn visible_count(&self) -> usize {
+        if self.has_active_filter() {
+            self.filtered_indices.len()
+        } else {
+            self.rows.len()
+        }
+    }
+
+    fn matches_filters(&self, row: &LogRow) -> bool {
+        if let Some(level) = self.level_filter {
+            if row.level != level {
+                return false;
+            }
+        }
+
+        if self.search_query.is_empty() {
+            return true;
+        }
+
+        row.text
+            .to_ascii_lowercase()
+            .contains(&self.search_query.to_ascii_lowercase())
+    }
+
+    fn refilter_all(&mut self) {
+        self.filtered_indices.clear();
+        if !self.has_active_filter() {
+            return;
+        }
+
+        let query = self.search_query.to_ascii_lowercase();
+        let has_query = !query.is_empty();
+        for (ix, row) in self.rows.iter().enumerate() {
+            if let Some(level) = self.level_filter {
+                if row.level != level {
                     continue;
                 }
             }
 
-            // Check search query
-            if has_search && !line.to_lowercase().contains(&search_lower) {
+            if has_query && !row.text.to_ascii_lowercase().contains(&query) {
                 continue;
             }
 
-            self.filtered_indices.push(idx);
+            self.filtered_indices.push(ix);
         }
     }
 
-    fn set_level_filter(&mut self, level: Option<LogLevel>, cx: &mut Context<Self>) {
+    fn append_batch(&mut self, lines: Vec<String>) {
+        if lines.is_empty() {
+            return;
+        }
+
+        let query = self.search_query.to_ascii_lowercase();
+        let has_query = !query.is_empty();
+        let level_filter = self.level_filter;
+
+        for line in lines {
+            self.total_seen += 1;
+            let row = LogRow {
+                abs_line: self.total_seen,
+                level: LogLevel::from_line(&line),
+                text: line,
+            };
+
+            let row_ix = self.rows.len();
+            let matches = if let Some(level) = level_filter {
+                if row.level != level {
+                    false
+                } else if has_query {
+                    row.text.to_ascii_lowercase().contains(&query)
+                } else {
+                    true
+                }
+            } else if has_query {
+                row.text.to_ascii_lowercase().contains(&query)
+            } else {
+                false
+            };
+
+            self.rows.push_back(row);
+
+            if self.has_active_filter() && matches {
+                self.filtered_indices.push(row_ix);
+            }
+        }
+
+        self.trim_if_needed();
+    }
+
+    fn trim_if_needed(&mut self) {
+        if self.rows.len() <= MAX_BUFFERED_LINES {
+            return;
+        }
+
+        let drop_count = TRIM_CHUNK_LINES.min(self.rows.len());
+        for _ in 0..drop_count {
+            let _ = self.rows.pop_front();
+        }
+        self.dropped_total += drop_count;
+
+        if self.has_active_filter() {
+            self.filtered_indices.retain(|ix| *ix >= drop_count);
+            for ix in &mut self.filtered_indices {
+                *ix -= drop_count;
+            }
+        }
+    }
+
+    fn set_level_filter(&mut self, level: Option<LogLevel>) {
         self.level_filter = level;
-        self.update_filter();
-        self.check_and_load_more(cx);
-        cx.notify();
+        self.refilter_all();
     }
 
-    fn set_search(&mut self, query: String, cx: &mut Context<Self>) {
-        self.search_query = query;
-        self.update_filter();
-        cx.notify();
+    fn row_for_visible(&self, visible_row: usize) -> Option<&LogRow> {
+        if self.has_active_filter() {
+            let base_ix = *self.filtered_indices.get(visible_row)?;
+            self.rows.get(base_ix)
+        } else {
+            self.rows.get(visible_row)
+        }
+    }
+}
+
+#[derive(Clone)]
+struct LogTableDelegate {
+    store: Rc<RefCell<LogStore>>,
+    columns: Vec<Column>,
+}
+
+impl LogTableDelegate {
+    fn new(store: Rc<RefCell<LogStore>>) -> Self {
+        Self {
+            store,
+            columns: vec![
+                Column::new("line", "Line").width(px(90.0)).resizable(false),
+                Column::new("level", "Level").width(px(88.0)).resizable(false),
+                Column::new("message", "Message")
+                    .width(px(1600.0))
+                    .resizable(false),
+            ],
+        }
+    }
+}
+
+impl TableDelegate for LogTableDelegate {
+    fn columns_count(&self, _cx: &App) -> usize {
+        self.columns.len()
     }
 
-    fn clear_logs(&mut self, cx: &mut Context<Self>) {
-        self.lines.clear();
-        self.filtered_indices.clear();
-        self.start_line_num = 1;
-        self.total_lines = 0;
-        cx.notify();
+    fn rows_count(&self, _cx: &App) -> usize {
+        self.store.borrow().visible_count()
     }
 
-    /// Start monitoring the log file (called when drawer opens)
+    fn column(&self, col_ix: usize, _cx: &App) -> &Column {
+        &self.columns[col_ix]
+    }
+
+    fn render_td(
+        &self,
+        row_ix: usize,
+        col_ix: usize,
+        _window: &mut Window,
+        cx: &mut Context<Table<Self>>,
+    ) -> impl IntoElement {
+        let theme = cx.theme().clone();
+        let borrowed = self.store.borrow();
+        let Some(row) = borrowed.row_for_visible(row_ix) else {
+            return div().into_any_element();
+        };
+
+        match col_ix {
+            0 => div()
+                .w_full()
+                .px_2()
+                .text_color(theme.muted_foreground)
+                .child(format!("{}", row.abs_line))
+                .into_any_element(),
+            1 => div()
+                .w_full()
+                .px_2()
+                .text_color(row.level.color(&theme))
+                .child(row.level.label())
+                .into_any_element(),
+            _ => div()
+                .w_full()
+                .px_2()
+                .text_color(row.level.color(&theme))
+                .child(row.text.clone())
+                .into_any_element(),
+        }
+    }
+
+    fn load_more(&mut self, _window: &mut Window, _cx: &mut Context<Table<Self>>) {}
+
+    fn is_eof(&self, _cx: &App) -> bool {
+        true
+    }
+
+    fn visible_rows_changed(
+        &mut self,
+        _visible_range: Range<usize>,
+        _window: &mut Window,
+        _cx: &mut Context<Table<Self>>,
+    ) {
+    }
+}
+
+pub struct LogDrawer {
+    store: Rc<RefCell<LogStore>>,
+    table: Option<Entity<Table<LogTableDelegate>>>,
+    locked_to_bottom: bool,
+    error_message: Option<String>,
+    _background_task: Option<Task<()>>,
+}
+
+impl LogDrawer {
+    pub fn new(_cx: &mut Context<Self>) -> Self {
+        Self {
+            store: Rc::new(RefCell::new(LogStore::new())),
+            table: None,
+            locked_to_bottom: true,
+            error_message: None,
+            _background_task: None,
+        }
+    }
+
+    fn ensure_table(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.table.is_some() {
+            return;
+        }
+
+        let delegate = LogTableDelegate::new(self.store.clone());
+        let table = cx.new(|cx| {
+            Table::new(delegate, window, cx)
+                .sortable(false)
+                .col_movable(false)
+                .col_resizable(false)
+                .row_selectable(false)
+                .col_selectable(false)
+                .loop_selection(false)
+                .stripe(true)
+        });
+
+        self.table = Some(table);
+    }
+
     pub fn start_monitoring(&mut self, cx: &mut Context<Self>) {
         if self._background_task.is_some() {
             return;
@@ -176,13 +360,22 @@ impl LogDrawer {
 
         let rx = crate::subscribe_live_logs();
 
-        // Spawn UI update task from live in-process stream.
         let task = cx.spawn(async move |this, cx| {
-            while let Ok(line) = rx.recv().await {
+            while let Ok(first_line) = rx.recv().await {
+                let mut batch = Vec::with_capacity(LIVE_BATCH_MAX_LINES);
+                batch.push(first_line);
+
+                while batch.len() < LIVE_BATCH_MAX_LINES {
+                    match rx.try_recv() {
+                        Ok(line) => batch.push(line),
+                        Err(_) => break,
+                    }
+                }
+
                 let _ = cx.update(|cx| {
                     if let Some(this) = this.upgrade() {
                         this.update(cx, |drawer, cx| {
-                            drawer.handle_update(LogUpdate::NewLines(vec![line]), cx);
+                            drawer.ingest_lines(batch, cx);
                         });
                     }
                 });
@@ -194,316 +387,61 @@ impl LogDrawer {
         cx.notify();
     }
 
-    /// Stop monitoring (called when drawer closes)
     pub fn stop_monitoring(&mut self) {
-        self.update_receiver = None;
         self._background_task = None;
     }
 
-    /// Background task that monitors the log file and sends updates
-    async fn background_file_monitor(tx: smol::channel::Sender<LogUpdate>) {
-        use std::fs::File;
-        use std::io::{BufRead, BufReader, Seek, SeekFrom};
-
-        // Get log file path
-        let log_path = match LogReader::get_latest_log_path() {
-            Ok(path) => path,
-            Err(e) => {
-                let _ = tx
-                    .send(LogUpdate::Error(format!("Failed to find log file: {}", e)))
-                    .await;
-                return;
-            }
-        };
-
-        // Open file
-        let mut file = match File::open(&log_path) {
-            Ok(f) => f,
-            Err(e) => {
-                let _ = tx
-                    .send(LogUpdate::Error(format!("Failed to open log file: {}", e)))
-                    .await;
-                return;
-            }
-        };
-
-        // Read initial content
-        let mut reader = BufReader::new(&file);
-        let mut initial_lines = Vec::new();
-        let mut line = String::new();
-
-        loop {
-            line.clear();
-            match reader.read_line(&mut line) {
-                Ok(0) => break, // EOF
-                Ok(_) => {
-                    initial_lines.push(line.trim_end().to_string());
-                }
-                Err(e) => {
-                    let _ = tx
-                        .send(LogUpdate::Error(format!("Failed to read log: {}", e)))
-                        .await;
-                    return;
-                }
-            }
-        }
-
-        // Send initial load with path
-        if tx
-            .send(LogUpdate::InitialLoad(initial_lines, log_path.clone()))
-            .await
-            .is_err()
-        {
+    fn ingest_lines(&mut self, lines: Vec<String>, cx: &mut Context<Self>) {
+        if lines.is_empty() {
             return;
         }
 
-        let mut last_position = match file.stream_position() {
-            Ok(pos) => pos,
-            Err(_) => return,
-        };
+        self.store.borrow_mut().append_batch(lines);
 
-        // Poll for new lines
-        loop {
-            smol::Timer::after(Duration::from_millis(POLL_INTERVAL_MS)).await;
-
-            // Check file size
-            let current_size = match file.metadata() {
-                Ok(meta) => meta.len(),
-                Err(_) => continue,
-            };
-
-            // If file was truncated, restart
-            if current_size < last_position {
-                if file.seek(SeekFrom::Start(0)).is_err() {
-                    continue;
-                }
-                last_position = 0;
-            }
-
-            // If no new data, continue
-            if current_size == last_position {
-                continue;
-            }
-
-            // Seek to last position
-            if file.seek(SeekFrom::Start(last_position)).is_err() {
-                continue;
-            }
-
-            // Read new lines
-            let mut reader = BufReader::new(&file);
-            let mut new_lines = Vec::new();
-            line.clear();
-
-            loop {
-                line.clear();
-                match reader.read_line(&mut line) {
-                    Ok(0) => break,
-                    Ok(_) => {
-                        new_lines.push(line.trim_end().to_string());
-                    }
-                    Err(_) => break,
-                }
-            }
-
-            // Update position
-            if let Ok(pos) = file.stream_position() {
-                last_position = pos;
-            }
-
-            // Send updates; only stop when receiver is gone.
-            if !new_lines.is_empty() {
-                if tx.send(LogUpdate::NewLines(new_lines)).await.is_err() {
-                    break;
-                }
-            }
+        self.refresh_table(cx);
+        if self.locked_to_bottom {
+            self.scroll_to_bottom(cx);
         }
+
+        cx.notify();
     }
 
-    /// Handle updates from background task
-    fn handle_update(&mut self, update: LogUpdate, cx: &mut Context<Self>) {
-        match update {
-            LogUpdate::InitialLoad(lines, path) => {
-                self.log_path = Some(path);
-                self.total_lines = lines.len();
-                self.start_line_num = if lines.len() > MAX_LINES_IN_MEMORY {
-                    lines.len() - MAX_LINES_IN_MEMORY + 1
-                } else {
-                    1
-                };
-
-                // Only keep the last MAX_LINES_IN_MEMORY lines
-                if lines.len() > MAX_LINES_IN_MEMORY {
-                    self.lines = lines[lines.len() - MAX_LINES_IN_MEMORY..].to_vec();
-                } else {
-                    self.lines = lines;
-                }
-
-                self.error_message = None;
-                self.update_filter();
-
-                // Check if we need to load more due to filtering
-                self.check_and_load_more(cx);
-
+    fn refresh_table(&mut self, cx: &mut Context<Self>) {
+        if let Some(table) = self.table.clone() {
+            table.update(cx, |_, cx| {
                 cx.notify();
-
-                // Scroll to bottom after a brief delay
-                if self.locked_to_bottom {
-                    cx.spawn(async move |this, cx| {
-                        smol::Timer::after(Duration::from_millis(50)).await;
-                        let _ = cx.update(|cx| {
-                            if let Some(this) = this.upgrade() {
-                                this.update(cx, |drawer, cx| {
-                                    drawer.scroll_to_bottom();
-                                    cx.notify();
-                                });
-                            }
-                        });
-                    })
-                    .detach();
-                }
-            }
-            LogUpdate::NewLines(new_lines) => {
-                if new_lines.is_empty() {
-                    return;
-                }
-
-                self.total_lines += new_lines.len();
-                self.lines.extend(new_lines);
-
-                // Sliding window: drop old lines if we exceed max + threshold
-                if self.lines.len() > MAX_LINES_IN_MEMORY + UNLOAD_THRESHOLD {
-                    let drop_count = UNLOAD_THRESHOLD;
-                    self.lines.drain(0..drop_count);
-                    self.start_line_num += drop_count;
-                }
-
-                self.update_filter();
-
-                // Check if we need to load more due to filtering
-                self.check_and_load_more(cx);
-
-                cx.notify();
-
-                // Auto-scroll if locked
-                if self.locked_to_bottom {
-                    self.scroll_to_bottom();
-                }
-            }
-            LogUpdate::OlderLines(older_lines, start_idx) => {
-                // Prepend older lines
-                self.start_line_num = start_idx + 1;
-                let mut new_lines = older_lines;
-                new_lines.append(&mut self.lines);
-                self.lines = new_lines;
-
-                // Trim from the end if too large
-                if self.lines.len() > MAX_LINES_IN_MEMORY + UNLOAD_THRESHOLD {
-                    let new_len = MAX_LINES_IN_MEMORY;
-                    self.lines.truncate(new_len);
-                }
-
-                self.loading_older = false;
-                self.update_filter();
-                cx.notify();
-
-                // Check if we need even more lines after loading
-                self.check_and_load_more(cx);
-            }
-            LogUpdate::Error(msg) => {
-                self.error_message = Some(msg);
-                cx.notify();
-            }
-        }
-    }
-
-    /// Check if we need to load more lines (either from top or to fill filtered view)
-    fn check_and_load_more(&mut self, cx: &mut Context<Self>) {
-        // Don't load if already loading
-        if self.loading_older {
-            return;
-        }
-
-        // If filtered view is too small and we can load from the beginning
-        if self.filtered_indices.len() < self.min_filtered_lines && self.start_line_num > 1 {
-            self.load_older_lines(cx);
-        }
-    }
-
-    /// Trigger loading older lines from disk
-    fn load_older_lines(&mut self, cx: &mut Context<Self>) {
-        if self.loading_older || self.start_line_num <= 1 {
-            return;
-        }
-
-        let Some(log_path) = self.log_path.clone() else {
-            return;
-        };
-
-        self.loading_older = true;
-
-        let start_line = self.start_line_num;
-        let _update_tx = self.update_receiver.as_ref().and_then(|_rx| {
-            // Get the sender from the receiver (we need to store it separately or reconstruct)
-            // For now, we'll create a new channel for this operation
-            None as Option<smol::channel::Sender<LogUpdate>>
-        });
-
-        // We need to send this back somehow - let's use a separate spawn that updates directly
-        cx.spawn(async move |this, cx| {
-            // Load older lines from disk
-            let result = smol::unblock(move || {
-                let file = std::fs::File::open(&log_path).ok()?;
-                let reader = BufReader::new(file);
-
-                // Calculate which lines to read
-                let end_line = start_line - 1;
-                let chunk_start = end_line.saturating_sub(LOAD_CHUNK_SIZE);
-
-                // Read the chunk
-                let mut lines: Vec<String> = Vec::new();
-                for (idx, line_result) in reader.lines().enumerate() {
-                    if idx >= chunk_start && idx < end_line {
-                        if let Ok(line_str) = line_result {
-                            lines.push(line_str.trim_end().to_string());
-                        }
-                    }
-                    if idx >= end_line {
-                        break;
-                    }
-                }
-
-                Some((lines, chunk_start))
-            })
-            .await;
-
-            // Update the drawer directly
-            let _ = cx.update(|cx| {
-                if let Some(this) = this.upgrade() {
-                    this.update(cx, |drawer, cx| {
-                        if let Some((lines, start_idx)) = result {
-                            drawer.handle_update(LogUpdate::OlderLines(lines, start_idx), cx);
-                        } else {
-                            drawer.loading_older = false;
-                        }
-                    });
-                }
             });
-        })
-        .detach();
+        }
     }
 
-    fn scroll_to_bottom(&mut self) {
-        let count = if self.search_query.is_empty() && self.level_filter.is_none() {
-            self.lines.len()
-        } else {
-            self.filtered_indices.len()
-        };
-
-        if count > 0 {
-            self.scroll_handle
-                .scroll_to_item(count - 1, ScrollStrategy::Bottom);
+    fn scroll_to_bottom(&mut self, cx: &mut Context<Self>) {
+        let visible_count = self.store.borrow().visible_count();
+        if visible_count == 0 {
+            return;
         }
+
+        if let Some(table) = self.table.clone() {
+            table.update(cx, |table, cx| {
+                table.scroll_to_row(visible_count - 1, cx);
+            });
+        }
+    }
+
+    fn clear_logs(&mut self, cx: &mut Context<Self>) {
+        self.store.borrow_mut().clear();
+        self.refresh_table(cx);
+        cx.notify();
+    }
+
+    fn set_level_filter(&mut self, level: Option<LogLevel>, cx: &mut Context<Self>) {
+        self.store.borrow_mut().set_level_filter(level);
+        self.refresh_table(cx);
+
+        if self.locked_to_bottom {
+            self.scroll_to_bottom(cx);
+        }
+
+        cx.notify();
     }
 
     fn jump_to_latest(
@@ -513,7 +451,7 @@ impl LogDrawer {
         cx: &mut Context<Self>,
     ) {
         self.locked_to_bottom = true;
-        self.scroll_to_bottom();
+        self.scroll_to_bottom(cx);
         cx.notify();
     }
 
@@ -523,7 +461,6 @@ impl LogDrawer {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // Only detach if scrolling up (pixel delta on Windows, or check both)
         let scrolling_up = match event.delta {
             ScrollDelta::Pixels(delta) => delta.y > px(0.0),
             ScrollDelta::Lines(delta) => delta.y > 0.0,
@@ -533,30 +470,25 @@ impl LogDrawer {
             self.locked_to_bottom = false;
             cx.notify();
         }
-
-        // Check if scrolled near top and need to load older lines
-        if scrolling_up {
-            let (current_scroll_item, _pixels) = self.scroll_handle.logical_scroll_top();
-            // If scrolled to within 100 items of the top, load more
-            if current_scroll_item < 100 && self.start_line_num > 1 {
-                self.load_older_lines(cx);
-            }
-        }
-
-        // TODO: Check if scrolled to actual bottom and re-lock
     }
 }
 
 impl Render for LogDrawer {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let entity = self.entity.clone().unwrap();
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.ensure_table(window, cx);
         let theme = cx.theme().clone();
+
+        let store = self.store.borrow();
+        let visible_count = store.visible_count();
+        let buffered_count = store.rows.len();
+        let total_seen = store.total_seen;
+        let dropped_total = store.dropped_total;
+        drop(store);
 
         v_flex()
             .size_full()
             .bg(theme.background)
             .child(
-                // Toolbar with controls
                 h_flex()
                     .w_full()
                     .h(px(44.0))
@@ -566,15 +498,14 @@ impl Render for LogDrawer {
                     .bg(theme.background)
                     .border_b_1()
                     .border_color(theme.border)
-                    .child(div().text_color(theme.muted_foreground).child(format!(
-                        "{} / {} lines",
-                        if self.search_query.is_empty() && self.level_filter.is_none() {
-                            self.lines.len()
-                        } else {
-                            self.filtered_indices.len()
-                        },
-                        self.total_lines
-                    )))
+                    .child(
+                        div()
+                            .text_color(theme.muted_foreground)
+                            .child(format!(
+                                "{} shown | {} buffered | {} seen | {} dropped",
+                                visible_count, buffered_count, total_seen, dropped_total
+                            )),
+                    )
                     .child(
                         h_flex()
                             .gap_2()
@@ -598,83 +529,80 @@ impl Render for LogDrawer {
                     ),
             )
             .child(
-                // Filter bar
-                v_flex()
+                h_flex()
                     .w_full()
+                    .h(px(44.0))
+                    .px_4()
+                    .items_center()
+                    .gap_2()
                     .bg(theme.background)
                     .border_b_1()
                     .border_color(theme.border)
                     .child(
-                        // Search and filter bar
-                        h_flex()
-                            .h(px(44.0))
-                            .px_4()
-                            .gap_2()
-                            .items_center()
-                            .child(
-                                // Search input placeholder
-                                div()
-                                    .flex_1()
-                                    .h(px(32.0))
-                                    .px_3()
-                                    .border_1()
-                                    .border_color(theme.border)
-                                    .rounded(px(4.0))
-                                    .bg(theme.background)
-                                    .text_color(theme.muted_foreground)
-                                    .items_center()
-                                    .child("🔍 Search logs... (coming soon)"),
+                        Button::new("filter-all")
+                            .label("All")
+                            .when(self.store.borrow().level_filter.is_none(), |btn| btn.primary())
+                            .on_click(cx.listener(|this, _event, _window, cx| {
+                                this.set_level_filter(None, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("filter-error")
+                            .label("Errors")
+                            .when(
+                                self.store.borrow().level_filter == Some(LogLevel::Error),
+                                |btn| btn.primary(),
                             )
-                            .child(
-                                // Filter buttons
-                                h_flex()
-                                    .gap_1()
-                                    .child(
-                                        Button::new("filter-all")
-                                            .label("All")
-                                            .when(self.level_filter.is_none(), |btn| btn.primary())
-                                            .on_click(cx.listener(|this, _event, _window, cx| {
-                                                this.set_level_filter(None, cx);
-                                            })),
-                                    )
-                                    .child(
-                                        Button::new("filter-error")
-                                            .label("Errors")
-                                            .when(
-                                                self.level_filter == Some(LogLevel::Error),
-                                                |btn| btn.primary(),
-                                            )
-                                            .on_click(cx.listener(|this, _event, _window, cx| {
-                                                this.set_level_filter(Some(LogLevel::Error), cx);
-                                            })),
-                                    )
-                                    .child(
-                                        Button::new("filter-warn")
-                                            .label("Warnings")
-                                            .when(
-                                                self.level_filter == Some(LogLevel::Warn),
-                                                |btn| btn.primary(),
-                                            )
-                                            .on_click(cx.listener(|this, _event, _window, cx| {
-                                                this.set_level_filter(Some(LogLevel::Warn), cx);
-                                            })),
-                                    )
-                                    .child(
-                                        Button::new("filter-info")
-                                            .label("Info")
-                                            .when(
-                                                self.level_filter == Some(LogLevel::Info),
-                                                |btn| btn.primary(),
-                                            )
-                                            .on_click(cx.listener(|this, _event, _window, cx| {
-                                                this.set_level_filter(Some(LogLevel::Info), cx);
-                                            })),
-                                    ),
-                            ),
+                            .on_click(cx.listener(|this, _event, _window, cx| {
+                                this.set_level_filter(Some(LogLevel::Error), cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("filter-warn")
+                            .label("Warnings")
+                            .when(
+                                self.store.borrow().level_filter == Some(LogLevel::Warn),
+                                |btn| btn.primary(),
+                            )
+                            .on_click(cx.listener(|this, _event, _window, cx| {
+                                this.set_level_filter(Some(LogLevel::Warn), cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("filter-info")
+                            .label("Info")
+                            .when(
+                                self.store.borrow().level_filter == Some(LogLevel::Info),
+                                |btn| btn.primary(),
+                            )
+                            .on_click(cx.listener(|this, _event, _window, cx| {
+                                this.set_level_filter(Some(LogLevel::Info), cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("filter-debug")
+                            .label("Debug")
+                            .when(
+                                self.store.borrow().level_filter == Some(LogLevel::Debug),
+                                |btn| btn.primary(),
+                            )
+                            .on_click(cx.listener(|this, _event, _window, cx| {
+                                this.set_level_filter(Some(LogLevel::Debug), cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("filter-trace")
+                            .label("Trace")
+                            .when(
+                                self.store.borrow().level_filter == Some(LogLevel::Trace),
+                                |btn| btn.primary(),
+                            )
+                            .on_click(cx.listener(|this, _event, _window, cx| {
+                                this.set_level_filter(Some(LogLevel::Trace), cx);
+                            })),
                     ),
             )
             .child(
-                // Log content with scroll detection
                 div()
                     .flex_1()
                     .w_full()
@@ -683,170 +611,18 @@ impl Render for LogDrawer {
                         if let Some(ref error) = self.error_message {
                             this.child(
                                 v_flex().size_full().items_center().justify_center().child(
-                                    div()
-                                        .text_color(theme.muted_foreground)
-                                        .child(error.clone()),
+                                    div().text_color(theme.muted_foreground).child(error.clone()),
                                 ),
                             )
-                        } else if self.lines.is_empty() {
+                        } else if let Some(table) = self.table.clone() {
+                            this.child(table)
+                        } else {
                             this.child(
                                 v_flex().size_full().items_center().justify_center().child(
-                                    div()
-                                        .text_color(theme.muted_foreground)
-                                        .child("No logs yet..."),
+                                    div().text_color(theme.muted_foreground).child("Loading table..."),
                                 ),
                             )
-                        } else {
-                            // Determine what to show: filtered or all lines
-                            let show_filtered =
-                                !self.search_query.is_empty() || self.level_filter.is_some();
-                            let line_count = if show_filtered {
-                                self.filtered_indices.len()
-                            } else {
-                                self.lines.len()
-                            };
-
-                            if line_count == 0 {
-                                return this.child(
-                                    v_flex().size_full().items_center().justify_center().child(
-                                        div()
-                                            .text_color(theme.muted_foreground)
-                                            .child("No matching logs"),
-                                    ),
-                                );
-                            }
-
-                            let item_sizes = (0..line_count)
-                                .map(|_| Size {
-                                    width: px(1000.0),
-                                    height: LINE_HEIGHT,
-                                })
-                                .collect::<Vec<_>>();
-                            let item_sizes = std::rc::Rc::new(item_sizes);
-
-                            let search_query = self.search_query.clone();
-                            let filtered_indices = self.filtered_indices.clone();
-
-                            this.child(
-                                v_virtual_list(
-                                    entity,
-                                    "log-lines",
-                                    item_sizes,
-                                    move |_view, visible_range, _window, cx| {
-                                        let theme = cx.theme().clone();
-                                        let lines_to_show: Vec<(usize, &String)> = if show_filtered
-                                        {
-                                            visible_range
-                                                .clone()
-                                                .filter_map(|idx| {
-                                                    filtered_indices.get(idx).and_then(
-                                                        |&line_idx| {
-                                                            _view
-                                                                .lines
-                                                                .get(line_idx)
-                                                                .map(|line| (idx, line))
-                                                        },
-                                                    )
-                                                })
-                                                .collect()
-                                        } else {
-                                            visible_range
-                                                .clone()
-                                                .filter_map(|idx| {
-                                                    _view.lines.get(idx).map(|line| (idx, line))
-                                                })
-                                                .collect()
-                                        };
-
-                                        lines_to_show
-                                            .into_iter()
-                                            .map(|(idx, line)| {
-                                                // Map memory index to absolute line number
-                                                let abs_line_num = if show_filtered {
-                                                    // For filtered, idx is into filtered_indices
-                                                    if let Some(&mem_idx) =
-                                                        filtered_indices.get(idx)
-                                                    {
-                                                        _view.start_line_num + mem_idx
-                                                    } else {
-                                                        idx + 1
-                                                    }
-                                                } else {
-                                                    _view.start_line_num + idx
-                                                };
-                                                Self::render_log_line(
-                                                    abs_line_num,
-                                                    line,
-                                                    &search_query,
-                                                    &theme,
-                                                )
-                                            })
-                                            .collect()
-                                    },
-                                )
-                                .track_scroll(&self.scroll_handle),
-                            )
                         }
-                    }),
-            )
-    }
-}
-
-impl LogDrawer {
-    fn render_log_line(
-        line_num: usize,
-        content: &str,
-        search_query: &str,
-        theme: &ui::Theme,
-    ) -> impl IntoElement {
-        let level = LogLevel::from_line(content);
-        let level_color = level.color(theme);
-
-        h_flex()
-            .w_full()
-            .h(LINE_HEIGHT)
-            .items_center()
-            .px_2()
-            .gap_2()
-            .child(
-                // Level indicator dot
-                div().w(px(8.0)).h(px(8.0)).rounded(px(4.0)).bg(level_color),
-            )
-            .child(
-                // Line number
-                div()
-                    .w(px(50.0))
-                    .text_color(theme.muted_foreground)
-                    .child(format!("{}", line_num)),
-            )
-            .child(
-                // Content with optional search highlighting
-                div()
-                    .flex_1()
-                    .text_color(level_color)
-                    .when(!search_query.is_empty(), |this| {
-                        // Highlight search terms
-                        let lower_content = content.to_lowercase();
-                        let lower_search = search_query.to_lowercase();
-
-                        if let Some(pos) = lower_content.find(&lower_search) {
-                            this.child(
-                                h_flex()
-                                    .gap_0()
-                                    .child(content[..pos].to_string())
-                                    .child(
-                                        div().bg(theme.warning.opacity(0.3)).px_1().child(
-                                            content[pos..pos + search_query.len()].to_string(),
-                                        ),
-                                    )
-                                    .child(content[pos + search_query.len()..].to_string()),
-                            )
-                        } else {
-                            this.child(content.to_string())
-                        }
-                    })
-                    .when(search_query.is_empty(), |this| {
-                        this.child(content.to_string())
                     }),
             )
     }
