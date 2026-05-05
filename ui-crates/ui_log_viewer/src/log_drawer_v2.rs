@@ -11,7 +11,7 @@ use ui::{
     h_flex,
     input::{InputState, TextInput},
     table::{Column, Table, TableDelegate},
-    v_flex, ActiveTheme as _, IconName,
+    v_flex, ActiveTheme as _, ContextModal, IconName,
 };
 
 const MAX_BUFFERED_LINES: usize = 250_000;
@@ -88,6 +88,17 @@ struct LogStore {
     dropped_total: usize,
     level_filter: Option<LogLevel>,
     search_query: String,
+}
+
+#[derive(Clone)]
+struct LogEntryDetails {
+    abs_line: usize,
+    level: LogLevel,
+    text: String,
+    chars: usize,
+    bytes: usize,
+    buffered_rows: usize,
+    filtered_active: bool,
 }
 
 impl LogStore {
@@ -243,6 +254,19 @@ impl LogStore {
             self.rows.get(visible_row)
         }
     }
+
+    fn entry_details_for_visible(&self, visible_row: usize) -> Option<LogEntryDetails> {
+        let row = self.row_for_visible(visible_row)?;
+        Some(LogEntryDetails {
+            abs_line: row.abs_line,
+            level: row.level,
+            text: row.text.clone(),
+            chars: row.text.chars().count(),
+            bytes: row.text.len(),
+            buffered_rows: self.rows.len(),
+            filtered_active: self.has_active_filter(),
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -285,6 +309,7 @@ impl TableDelegate for LogTableDelegate {
         _window: &mut Window,
         cx: &mut Context<Table<Self>>,
     ) -> Stateful<Div> {
+        let store = self.store.clone();
         let theme = cx.theme();
         let base_bg = if row_ix % 2 == 0 {
             theme.background
@@ -294,6 +319,133 @@ impl TableDelegate for LogTableDelegate {
 
         h_flex()
             .id(("row", row_ix))
+            .cursor_pointer()
+            .hover(|s| s.bg(theme.accent.opacity(0.08)))
+            .on_click(move |_, window, cx| {
+                let details = {
+                    let borrowed = store.borrow();
+                    borrowed.entry_details_for_visible(row_ix)
+                };
+
+                if let Some(details) = details {
+                    window.open_modal(cx, move |modal, _w, cx| {
+                        let theme = cx.theme();
+                        let level_color = details.level.color(theme);
+
+                        let metadata_row = |label: String, value: String| {
+                            h_flex()
+                                .w_full()
+                                .px_2()
+                                .py_1()
+                                .justify_between()
+                                .border_b_1()
+                                .border_color(theme.border.opacity(0.2))
+                                .child(
+                                    div()
+                                        .w(px(180.0))
+                                        .text_color(theme.muted_foreground)
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .child(label),
+                                )
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .text_color(theme.foreground)
+                                        .child(value),
+                                )
+                        };
+
+                        modal
+                            .width(px(980.0))
+                            .max_w(px(1200.0))
+                            .show_close(true)
+                            .title("Log Entry Details")
+                            .child(
+                                v_flex()
+                                    .w_full()
+                                    .gap_3()
+                                    .child(
+                                        div()
+                                            .w_full()
+                                            .px_3()
+                                            .py_2()
+                                            .rounded(px(8.0))
+                                            .bg(level_color.opacity(0.12))
+                                            .border_1()
+                                            .border_color(level_color.opacity(0.35))
+                                            .child(
+                                                h_flex()
+                                                    .items_center()
+                                                    .gap_2()
+                                                    .child(
+                                                        div()
+                                                            .px_2()
+                                                            .py(px(2.0))
+                                                            .rounded(px(999.0))
+                                                            .bg(level_color.opacity(0.2))
+                                                            .text_color(level_color)
+                                                            .font_weight(FontWeight::SEMIBOLD)
+                                                            .child(details.level.label()),
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .text_color(theme.foreground)
+                                                            .font_weight(FontWeight::SEMIBOLD)
+                                                            .child(format!("Line {}", details.abs_line)),
+                                                    ),
+                                            ),
+                                    )
+                                    .child(
+                                        v_flex()
+                                            .w_full()
+                                            .rounded(px(8.0))
+                                            .border_1()
+                                            .border_color(theme.border)
+                                            .bg(theme.background)
+                                            .child(metadata_row("Line".to_string(), details.abs_line.to_string()))
+                                            .child(metadata_row("Level".to_string(), details.level.label().to_string()))
+                                            .child(metadata_row("Characters".to_string(), details.chars.to_string()))
+                                            .child(metadata_row("UTF-8 bytes".to_string(), details.bytes.to_string()))
+                                            .child(metadata_row(
+                                                "Buffered rows".to_string(),
+                                                details.buffered_rows.to_string(),
+                                            ))
+                                            .child(metadata_row(
+                                                "Filter active".to_string(),
+                                                if details.filtered_active {
+                                                    "yes".to_string()
+                                                } else {
+                                                    "no".to_string()
+                                                },
+                                            )),
+                                    )
+                                    .child(
+                                        v_flex()
+                                            .w_full()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .text_color(theme.muted_foreground)
+                                                    .font_weight(FontWeight::SEMIBOLD)
+                                                    .child("Full Log Message"),
+                                            )
+                                            .child(
+                                                div()
+                                                    .w_full()
+                                                    .px_3()
+                                                    .py_2()
+                                                    .rounded(px(8.0))
+                                                    .bg(theme.muted.opacity(0.08))
+                                                    .border_1()
+                                                    .border_color(theme.border.opacity(0.35))
+                                                    .text_color(theme.foreground)
+                                                    .child(details.text.clone()),
+                                            ),
+                                    ),
+                            )
+                    });
+                }
+            })
             .bg(base_bg)
             .border_b_1()
             .border_color(theme.border.opacity(0.25))
@@ -380,7 +532,7 @@ pub struct LogDrawer {
 }
 
 impl LogDrawer {
-    pub fn new(cx: &mut Context<Self>) -> Self {
+    pub fn new(_cx: &mut Context<Self>) -> Self {
         Self {
             store: Rc::new(RefCell::new(LogStore::new())),
             table: None,
