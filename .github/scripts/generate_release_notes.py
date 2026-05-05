@@ -12,7 +12,8 @@ import sys
 def get_args():
     """Parse and return command-line arguments."""
     parser = argparse.ArgumentParser(description="Generate structured release notes with GitHub Models API.")
-    parser.add_argument("--github-token", required=True, help="GitHub PAT with models:read permission.")
+    parser.add_argument("--github-token", required=True, help="GitHub PAT with models:read permission (GitHub Models API).")
+    parser.add_argument("--repo-token", required=True, help="GitHub token for REST API access (GITHUB_TOKEN).")
     parser.add_argument("--repo-owner", required=True, help="Repository owner.")
     parser.add_argument("--repo-name", required=True, help="Repository name.")
     parser.add_argument("--version", required=True, help="Current version being released.")
@@ -136,7 +137,7 @@ def main():
     
     try:
         commits = fetch_commits(
-            github_token=args.github_token,
+            github_token=args.repo_token,
             repo_owner=args.repo_owner,
             repo_name=args.repo_name,
             prev_tag=args.prev_tag,

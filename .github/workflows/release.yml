@@ -366,6 +366,7 @@ jobs:
         run: |
           NOTES=$(python .github/scripts/generate_release_notes.py \
             --github-token "${{ secrets.CI_COPILOT_TOKEN }}" \
+            --repo-token "${{ secrets.GITHUB_TOKEN }}" \
             --repo-owner "${{ github.repository_owner }}" \
             --repo-name "${{ github.event.repository.name }}" \
             --version "${{ needs.check-version.outputs.version }}" \
