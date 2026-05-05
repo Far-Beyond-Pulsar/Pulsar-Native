@@ -31,11 +31,12 @@ pub fn publish_live_log(line: impl Into<String>) {
     }
     bus.recent.push_back(line.clone());
 
-    bus.subscribers.retain(|tx| match tx.try_send(line.clone()) {
-        Ok(_) => true,
-        Err(TrySendError::Full(_)) => true,
-        Err(TrySendError::Closed(_)) => false,
-    });
+    bus.subscribers
+        .retain(|tx| match tx.try_send(line.clone()) {
+            Ok(_) => true,
+            Err(TrySendError::Full(_)) => true,
+            Err(TrySendError::Closed(_)) => false,
+        });
 }
 
 pub fn subscribe_live_logs() -> Receiver<String> {

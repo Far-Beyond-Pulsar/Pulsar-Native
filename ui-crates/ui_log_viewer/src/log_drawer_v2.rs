@@ -1,11 +1,5 @@
 use gpui::{prelude::*, *};
-use std::{
-    cell::RefCell,
-    collections::VecDeque,
-    ops::Range,
-    rc::Rc,
-    time::Duration,
-};
+use std::{cell::RefCell, collections::VecDeque, ops::Range, rc::Rc, time::Duration};
 use ui::{
     button::{Button, ButtonVariants as _},
     h_flex,
@@ -121,12 +115,7 @@ fn open_log_entry_modal(details: LogEntryDetails, window: &mut Window, cx: &mut 
                         .font_weight(FontWeight::SEMIBOLD)
                         .child(label),
                 )
-                .child(
-                    div()
-                        .flex_1()
-                        .text_color(theme.foreground)
-                        .child(value),
-                )
+                .child(div().flex_1().text_color(theme.foreground).child(value))
         };
 
         modal
@@ -176,7 +165,10 @@ fn open_log_entry_modal(details: LogEntryDetails, window: &mut Window, cx: &mut 
                             .border_1()
                             .border_color(theme.border)
                             .bg(theme.background)
-                            .child(metadata_row("Line".to_string(), details.abs_line.to_string()))
+                            .child(metadata_row(
+                                "Line".to_string(),
+                                details.abs_line.to_string(),
+                            ))
                             .child(metadata_row(
                                 "Level".to_string(),
                                 details.level.label().to_string(),
@@ -409,7 +401,9 @@ impl LogTableDelegate {
             store,
             columns: vec![
                 Column::new("line", "Line").width(px(90.0)).resizable(false),
-                Column::new("level", "Level").width(px(88.0)).resizable(false),
+                Column::new("level", "Level")
+                    .width(px(88.0))
+                    .resizable(false),
                 Column::new("message", "Message")
                     .width(px(1600.0))
                     .resizable(false),
@@ -488,56 +482,56 @@ impl TableDelegate for LogTableDelegate {
                 let level_color = row.level.color(&theme);
                 let store = self.store.clone();
                 div()
-                .w_full()
-                .px_2()
-                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                    let details = {
-                        let borrowed = store.borrow();
-                        borrowed.entry_details_for_visible(row_ix)
-                    };
+                    .w_full()
+                    .px_2()
+                    .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                        let details = {
+                            let borrowed = store.borrow();
+                            borrowed.entry_details_for_visible(row_ix)
+                        };
 
-                    if let Some(details) = details {
-                        open_log_entry_modal(details, window, cx);
-                    }
-                })
-                .child(
-                    h_flex()
-                        .h(px(22.0))
-                        .px_2()
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(999.0))
-                        .bg(row.level.tint(&theme).opacity(0.95))
-                        .border_1()
-                        .border_color(level_color.opacity(0.55))
-                        .text_color(level_color)
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .child(row.level.label()),
-                )
-                .into_any_element()
+                        if let Some(details) = details {
+                            open_log_entry_modal(details, window, cx);
+                        }
+                    })
+                    .child(
+                        h_flex()
+                            .h(px(22.0))
+                            .px_2()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(999.0))
+                            .bg(row.level.tint(&theme).opacity(0.95))
+                            .border_1()
+                            .border_color(level_color.opacity(0.55))
+                            .text_color(level_color)
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(row.level.label()),
+                    )
+                    .into_any_element()
             }
             _ => {
                 let level_color = row.level.color(&theme);
                 let store = self.store.clone();
                 div()
-                .w_full()
-                .px_2()
-                .py_1()
-                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                    let details = {
-                        let borrowed = store.borrow();
-                        borrowed.entry_details_for_visible(row_ix)
-                    };
+                    .w_full()
+                    .px_2()
+                    .py_1()
+                    .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                        let details = {
+                            let borrowed = store.borrow();
+                            borrowed.entry_details_for_visible(row_ix)
+                        };
 
-                    if let Some(details) = details {
-                        open_log_entry_modal(details, window, cx);
-                    }
-                })
-                .rounded(px(4.0))
-                .bg(row.level.tint(&theme).opacity(0.45))
-                .text_color(level_color)
-                .child(row.text.clone())
-                .into_any_element()
+                        if let Some(details) = details {
+                            open_log_entry_modal(details, window, cx);
+                        }
+                    })
+                    .rounded(px(4.0))
+                    .bg(row.level.tint(&theme).opacity(0.45))
+                    .text_color(level_color)
+                    .child(row.text.clone())
+                    .into_any_element()
             }
         }
     }
@@ -580,8 +574,7 @@ impl LogDrawer {
 
     fn ensure_table(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.search_input.is_none() {
-            let input =
-                cx.new(|cx| InputState::new(window, cx).placeholder("Search logs..."));
+            let input = cx.new(|cx| InputState::new(window, cx).placeholder("Search logs..."));
             self.search_input = Some(input);
         }
 
@@ -619,8 +612,8 @@ impl LogDrawer {
                 };
                 pending.push(first_line);
 
-                let flush_deadline = std::time::Instant::now()
-                    + Duration::from_millis(INGEST_FLUSH_INTERVAL_MS);
+                let flush_deadline =
+                    std::time::Instant::now() + Duration::from_millis(INGEST_FLUSH_INTERVAL_MS);
 
                 loop {
                     if pending.len() >= LIVE_BATCH_MAX_LINES
@@ -790,14 +783,10 @@ impl Render for LogDrawer {
                     .bg(theme.background.opacity(0.98))
                     .border_b_1()
                     .border_color(theme.border.opacity(0.4))
-                    .child(
-                        div()
-                            .text_color(theme.muted_foreground)
-                            .child(format!(
-                                "{} shown | {} buffered | {} seen | {} dropped",
-                                visible_count, buffered_count, total_seen, dropped_total
-                            )),
-                    )
+                    .child(div().text_color(theme.muted_foreground).child(format!(
+                        "{} shown | {} buffered | {} seen | {} dropped",
+                        visible_count, buffered_count, total_seen, dropped_total
+                    )))
                     .child(
                         h_flex()
                             .gap_2()
@@ -839,23 +828,23 @@ impl Render for LogDrawer {
                         None => div().flex_1().into_any_element(),
                     })
                     .when(!active_search.is_empty(), |this| {
-                        this.child(
-                            Button::new("clear-search")
-                                .label("Clear Search")
-                                .on_click(cx.listener(|this, _event, window, cx| {
-                                    if let Some(search_input) = this.search_input.as_ref() {
-                                        search_input.update(cx, |input, cx| {
-                                            input.set_value("", window, cx);
-                                        });
-                                    }
-                                    this.set_search_query(String::new(), cx);
-                                })),
-                        )
+                        this.child(Button::new("clear-search").label("Clear Search").on_click(
+                            cx.listener(|this, _event, window, cx| {
+                                if let Some(search_input) = this.search_input.as_ref() {
+                                    search_input.update(cx, |input, cx| {
+                                        input.set_value("", window, cx);
+                                    });
+                                }
+                                this.set_search_query(String::new(), cx);
+                            }),
+                        ))
                     })
                     .child(
                         Button::new("filter-all")
                             .label("All")
-                            .when(self.store.borrow().level_filter.is_none(), |btn| btn.primary())
+                            .when(self.store.borrow().level_filter.is_none(), |btn| {
+                                btn.primary()
+                            })
                             .on_click(cx.listener(|this, _event, _window, cx| {
                                 this.set_level_filter(None, cx);
                             })),
@@ -925,7 +914,9 @@ impl Render for LogDrawer {
                         if let Some(ref error) = self.error_message {
                             this.child(
                                 v_flex().size_full().items_center().justify_center().child(
-                                    div().text_color(theme.muted_foreground).child(error.clone()),
+                                    div()
+                                        .text_color(theme.muted_foreground)
+                                        .child(error.clone()),
                                 ),
                             )
                         } else if let Some(table) = self.table.clone() {
@@ -933,7 +924,9 @@ impl Render for LogDrawer {
                         } else {
                             this.child(
                                 v_flex().size_full().items_center().justify_center().child(
-                                    div().text_color(theme.muted_foreground).child("Loading table..."),
+                                    div()
+                                        .text_color(theme.muted_foreground)
+                                        .child("Loading table..."),
                                 ),
                             )
                         }

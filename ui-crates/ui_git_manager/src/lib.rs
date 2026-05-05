@@ -245,11 +245,8 @@ impl GitManager {
                             git_manager.op_error = None;
                         }
                         Err(e) => {
-                            git_manager.op_error = Some(format!(
-                                "Refresh failed for {}: {}",
-                                path.display(),
-                                e
-                            ));
+                            git_manager.op_error =
+                                Some(format!("Refresh failed for {}: {}", path.display(), e));
                         }
                     }
                     cx.notify();

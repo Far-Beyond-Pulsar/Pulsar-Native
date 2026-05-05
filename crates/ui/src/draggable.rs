@@ -158,15 +158,12 @@ impl<T: Clone + Render + 'static> RenderOnce for Draggable<T> {
             DragHandlePosition::Custom => None,
         };
 
-        let mut container = div()
-            .id(self.id)
-            .flex()
-            .items_center()
-            .gap_2();
+        let mut container = div().id(self.id).flex().items_center().gap_2();
 
         // Add hover state if enabled
         if self.show_hover_state {
-            container = container.hover(|style| style.bg(gpui::rgb(0x00_00_00))); // TODO .opacity(0.05)
+            container = container.hover(|style| style.bg(gpui::rgb(0x00_00_00)));
+            // TODO .opacity(0.05)
         }
 
         container = match self.drag_handle_position {

@@ -1002,7 +1002,9 @@ impl Render for LevelEditorPanel {
                         if let Ok(engine) = this.gpu_engine.lock() {
                             if let Some(ref helio_renderer) = engine.helio_renderer {
                                 use std::sync::atomic::Ordering;
-                                helio_renderer.pending_deselect.store(true, Ordering::Release);
+                                helio_renderer
+                                    .pending_deselect
+                                    .store(true, Ordering::Release);
                             }
                         }
                         cx.notify();
@@ -1010,10 +1012,10 @@ impl Render for LevelEditorPanel {
                     // Tool selection — call handlers directly to avoid action-dispatch drift.
                     "q" => this.on_select_tool(&SelectTool, window, cx),
                     "w" => this.on_move_tool(&MoveTool, window, cx),
-                    "g" => this.on_move_tool(&MoveTool, window, cx),   // Blender: G = Grab/Move
+                    "g" => this.on_move_tool(&MoveTool, window, cx), // Blender: G = Grab/Move
                     "e" => this.on_rotate_tool(&RotateTool, window, cx),
                     "r" => this.on_rotate_tool(&RotateTool, window, cx), // Blender: R = Rotate
-                    "s" => this.on_scale_tool(&ScaleTool, window, cx),  // Blender: S = Scale
+                    "s" => this.on_scale_tool(&ScaleTool, window, cx),   // Blender: S = Scale
                     "l" => cx.dispatch_action(&ToggleLocalSpace),
                     "f" => cx.dispatch_action(&FocusSelected),
                     "[" => cx.dispatch_action(&DecreaseSnapIncrement),
@@ -1024,7 +1026,8 @@ impl Render for LevelEditorPanel {
             // Additional keyboard shortcuts for Alt+Up/Down (object reordering)
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
                 // Only respond if Alt key is pressed and this panel or any child has focus
-                if !this.focus_handle.contains_focused(window, cx) || !event.keystroke.modifiers.alt {
+                if !this.focus_handle.contains_focused(window, cx) || !event.keystroke.modifiers.alt
+                {
                     return;
                 }
 

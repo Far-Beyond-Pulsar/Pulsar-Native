@@ -81,19 +81,17 @@ impl MissionControlPanel {
 
         // Standard UI reactivity pattern used elsewhere: an entity-owned task
         // updates state through `cx.update` and then notifies that entity.
-        let task = cx.spawn(async move |this, cx| {
-            loop {
-                smol::Timer::after(std::time::Duration::from_secs(1)).await;
+        let task = cx.spawn(async move |this, cx| loop {
+            smol::Timer::after(std::time::Duration::from_secs(1)).await;
 
-                let _ = cx.update(|cx| {
-                    if let Some(this) = this.upgrade() {
-                        this.update(cx, |panel, cx| {
-                            panel.metrics.write().update_system_metrics();
-                            cx.notify();
-                        });
-                    }
-                });
-            }
+            let _ = cx.update(|cx| {
+                if let Some(this) = this.upgrade() {
+                    this.update(cx, |panel, cx| {
+                        panel.metrics.write().update_system_metrics();
+                        cx.notify();
+                    });
+                }
+            });
         });
 
         self._metrics_task = Some(task);

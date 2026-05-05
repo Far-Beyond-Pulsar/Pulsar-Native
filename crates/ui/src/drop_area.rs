@@ -1,6 +1,6 @@
+use crate::theme::ActiveTheme;
 use gpui::{prelude::*, *};
 use std::rc::Rc;
-use crate::theme::ActiveTheme;
 
 /// A reusable drop-target wrapper that shows accept/reject visual feedback
 /// while a drag of type `T` is in flight over it.

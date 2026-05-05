@@ -92,13 +92,15 @@ impl HelioViewport {
 
                 // Load the scene file using helio-asset-compat
                 let load_config = helio_asset_compat::LoadConfig {
-                    flip_uv_y: true,            // Convert DirectX → OpenGL UVs
-                    merge_meshes: false,        // Keep separate meshes
+                    flip_uv_y: true,               // Convert DirectX → OpenGL UVs
+                    merge_meshes: false,           // Keep separate meshes
                     import_scale: glam::Vec3::ONE, // 1:1 scale
                 };
 
-                let converted_scene = helio_asset_compat::load_scene_file_with_config(&path, load_config)
-                    .map_err(|e| format!("Failed to load scene file {}: {}", path.display(), e))?;
+                let converted_scene =
+                    helio_asset_compat::load_scene_file_with_config(&path, load_config).map_err(
+                        |e| format!("Failed to load scene file {}: {}", path.display(), e),
+                    )?;
 
                 tracing::info!(
                     "Loaded scene: {} meshes, {} materials, {} textures",

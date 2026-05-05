@@ -578,8 +578,10 @@ impl ViewportPanel {
 
                             // Camera overlay positioned from right edge with .right(px(value))
                             // When dragging right, delta_x is positive, but right value should decrease
-                            state.camera_overlay_pos.0 = (state.camera_overlay_pos.0 - delta_x).max(0.0);
-                            state.camera_overlay_pos.1 = (state.camera_overlay_pos.1 + delta_y).max(0.0);
+                            state.camera_overlay_pos.0 =
+                                (state.camera_overlay_pos.0 - delta_x).max(0.0);
+                            state.camera_overlay_pos.1 =
+                                (state.camera_overlay_pos.1 + delta_y).max(0.0);
                             state.camera_overlay_drag_start = Some((current_x, current_y));
                         }
                         return;
@@ -593,8 +595,10 @@ impl ViewportPanel {
                             let delta_y = current_y - start_y;
 
                             // Viewport overlay is positioned from left edge, normal drag
-                            state.viewport_overlay_pos.0 = (state.viewport_overlay_pos.0 + delta_x).max(0.0);
-                            state.viewport_overlay_pos.1 = (state.viewport_overlay_pos.1 + delta_y).max(0.0);
+                            state.viewport_overlay_pos.0 =
+                                (state.viewport_overlay_pos.0 + delta_x).max(0.0);
+                            state.viewport_overlay_pos.1 =
+                                (state.viewport_overlay_pos.1 + delta_y).max(0.0);
                             state.viewport_overlay_drag_start = Some((current_x, current_y));
                         }
                         return;
@@ -630,7 +634,6 @@ impl ViewportPanel {
                             if !is_rotating && !is_panning {
                                 helio_renderer.handle_mouse_move(norm_x, norm_y);
                             }
-
                         }
                     }
                 }
@@ -650,7 +653,11 @@ impl ViewportPanel {
                     let window_x: f32 = event.position.x.into();
                     let window_y: f32 = event.position.y.into();
 
-                    if let Some((screen_x, screen_y)) = crate::level_editor::ui::viewport::platform::window_to_screen_position(window, window_x, window_y) {
+                    if let Some((screen_x, screen_y)) =
+                        crate::level_editor::ui::viewport::platform::window_to_screen_position(
+                            window, window_x, window_y,
+                        )
+                    {
                         locked_cursor_x.store(screen_x, Ordering::Relaxed);
                         locked_cursor_y.store(screen_y, Ordering::Relaxed);
                         locked_cursor_screen_x.store(screen_x, Ordering::Relaxed);
@@ -719,7 +726,9 @@ impl ViewportPanel {
                 let mouse_right_captured = mouse_right_captured.clone();
                 let mouse_middle_captured = mouse_middle_captured.clone();
 
-                move |event: &gpui::MouseDownEvent, window: &mut gpui::Window, _cx: &mut gpui::App| {
+                move |event: &gpui::MouseDownEvent,
+                      window: &mut gpui::Window,
+                      _cx: &mut gpui::App| {
                     if mouse_right_captured.load(Ordering::Acquire)
                         || mouse_middle_captured.load(Ordering::Acquire)
                     {
@@ -758,7 +767,10 @@ impl ViewportPanel {
                         if let Some(ref mut helio_renderer) = engine.helio_renderer {
                             tracing::info!(
                                 "[VIEWPORT] Left click: screen=({:.1},{:.1}) norm=({:.4},{:.4})",
-                                event.position.x, event.position.y, norm_x, norm_y
+                                event.position.x,
+                                event.position.y,
+                                norm_x,
+                                norm_y
                             );
                             helio_renderer.handle_left_click(norm_x, norm_y);
                         }
@@ -770,7 +782,9 @@ impl ViewportPanel {
                 let gpu_engine_up = gpu_engine_for_click.clone();
                 let state_arc_up = state_arc.clone();
 
-                move |_event: &gpui::MouseUpEvent, _window: &mut gpui::Window, _cx: &mut gpui::App| {
+                move |_event: &gpui::MouseUpEvent,
+                      _window: &mut gpui::Window,
+                      _cx: &mut gpui::App| {
                     let mut state = state_arc_up.write();
                     state.is_dragging_camera_overlay = false;
                     state.is_dragging_viewport_overlay = false;
@@ -788,7 +802,25 @@ impl ViewportPanel {
             })
             .child(viewport_entity)
             // Overlays
-            .child(self.render_overlays(state, state_arc, fps_graph_state, ui_fps, helio_fps, render_fps, renderer_ready, fps_data, tps_data, frame_time_data, memory_data, draw_calls_data, vertices_data, input_latency_data, ui_consistency_data, gpu_engine, cx))
+            .child(self.render_overlays(
+                state,
+                state_arc,
+                fps_graph_state,
+                ui_fps,
+                helio_fps,
+                render_fps,
+                renderer_ready,
+                fps_data,
+                tps_data,
+                frame_time_data,
+                memory_data,
+                draw_calls_data,
+                vertices_data,
+                input_latency_data,
+                ui_consistency_data,
+                gpu_engine,
+                cx,
+            ))
     }
 
     /// Render all viewport overlays.

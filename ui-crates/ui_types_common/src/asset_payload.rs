@@ -1,5 +1,5 @@
-use std::path::Path;
 use crate::AssetKind;
+use std::path::Path;
 
 /// The canonical drag payload for any asset dragged out of the file manager
 /// drawer or any other engine panel.
@@ -55,6 +55,11 @@ impl AssetPayload {
         let kind = AssetKind::from_extension(&extension);
         // Normalise to forward slashes for engine-FS compatibility.
         let engine_path = path.to_string_lossy().replace('\\', "/");
-        Self { engine_path, name, kind, extension }
+        Self {
+            engine_path,
+            name,
+            kind,
+            extension,
+        }
     }
 }
