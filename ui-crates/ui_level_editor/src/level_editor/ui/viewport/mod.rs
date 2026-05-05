@@ -603,37 +603,32 @@ impl ViewportPanel {
 
                     // Update Helio mouse input
                     let bounds_opt = element_bounds_move.borrow();
-                    let (element_x, element_y, viewport_width, viewport_height) = if let Some(ref bounds) = *bounds_opt {
+                    let (norm_x, norm_y) = if let Some(ref bounds) = *bounds_opt {
                         let origin_x: f32 = bounds.origin.x.into();
                         let origin_y: f32 = bounds.origin.y.into();
                         let width: f32 = bounds.size.width.into();
                         let height: f32 = bounds.size.height.into();
                         let pos_x: f32 = event.position.x.into();
                         let pos_y: f32 = event.position.y.into();
-                        let maybe_local = pos_x >= 0.0
-                            && pos_x <= width
-                            && pos_y >= 0.0
-                            && pos_y <= height;
-                        let local_x = if maybe_local { pos_x } else { pos_x - origin_x };
-                        let local_y = if maybe_local { pos_y } else { pos_y - origin_y };
-                        (local_x, local_y, width, height)
+                        // Subtract viewport origin; event.position is window-relative.
+                        let local_x = pos_x - origin_x;
+                        let local_y = pos_y - origin_y;
+                        (
+                            (local_x / width).clamp(0.0, 1.0),
+                            (local_y / height).clamp(0.0, 1.0),
+                        )
                     } else {
                         return;
                     };
 
                     let mut last_pos = last_mouse_pos.borrow_mut();
-                    *last_pos = Some((
-                        (element_x / viewport_width).clamp(0.0, 1.0),
-                        (element_y / viewport_height).clamp(0.0, 1.0),
-                    ));
+                    *last_pos = Some((norm_x, norm_y));
                     drop(last_pos);
 
                     if let Ok(mut engine) = gpu_engine_move.try_lock() {
                         if let Some(ref mut helio_renderer) = engine.helio_renderer {
                             if !is_rotating && !is_panning {
-                                let cursor_x = element_x.clamp(0.0, viewport_width);
-                                let cursor_y = element_y.clamp(0.0, viewport_height);
-                                helio_renderer.handle_mouse_move(cursor_x, cursor_y);
+                                helio_renderer.handle_mouse_move(norm_x, norm_y);
                             }
 
                         }
@@ -732,55 +727,40 @@ impl ViewportPanel {
                     }
 
                     let bounds_opt = element_bounds.borrow();
-                    let (element_x, element_y, gpui_width, gpui_height) = if let Some(ref bounds) = *bounds_opt {
+                    // Normalize cursor to [0,1] relative to the viewport element.
+                    // event.position is window-relative; subtract the viewport origin.
+                    let (norm_x, norm_y) = if let Some(ref bounds) = *bounds_opt {
                         let origin_x: f32 = bounds.origin.x.into();
                         let origin_y: f32 = bounds.origin.y.into();
                         let width: f32 = bounds.size.width.into();
                         let height: f32 = bounds.size.height.into();
                         let pos_x: f32 = event.position.x.into();
                         let pos_y: f32 = event.position.y.into();
-                        let maybe_local = pos_x >= 0.0
-                            && pos_x <= width
-                            && pos_y >= 0.0
-                            && pos_y <= height;
-                        let local_x = if maybe_local { pos_x } else { pos_x - origin_x };
-                        let local_y = if maybe_local { pos_y } else { pos_y - origin_y };
-                        (local_x, local_y, width, height)
+                        let local_x = pos_x - origin_x;
+                        let local_y = pos_y - origin_y;
+                        (
+                            (local_x / width).clamp(0.0, 1.0),
+                            (local_y / height).clamp(0.0, 1.0),
+                        )
                     } else {
                         let window_size = window.viewport_size();
                         let pos_x: f32 = event.position.x.into();
                         let pos_y: f32 = event.position.y.into();
                         let width: f32 = window_size.width.into();
                         let height: f32 = window_size.height.into();
-                        (pos_x, pos_y, width, height)
+                        (
+                            (pos_x / width).clamp(0.0, 1.0),
+                            (pos_y / height).clamp(0.0, 1.0),
+                        )
                     };
 
                     if let Ok(mut engine) = gpu_engine_click.try_lock() {
                         if let Some(ref mut helio_renderer) = engine.helio_renderer {
-            // The Helio renderer draws to the full window (e.g. 1920x1080)
-                            // while the GPUI viewport is just a "hole" in the UI that shows it
-                            // We need to map from the click position within the GPUI viewport bounds
-                            // to normalized coordinates (0-1) within the GPUI viewport area
-                            let normalized_x = (element_x / gpui_width).clamp(0.0, 1.0);
-                            let normalized_y = (element_y / gpui_height).clamp(0.0, 1.0);
-                            let cursor_x = element_x.clamp(0.0, gpui_width);
-                            let cursor_y = element_y.clamp(0.0, gpui_height);
-
                             tracing::info!(
-                                "[VIEWPORT] 🖱️ Left click:\n  Screen: ({}, {})\n  GPUI element: ({:.2}, {:.2}) in viewport {}x{}\n  Normalized: ({:.4}, {:.4})",
-                                event.position.x, event.position.y,
-                                element_x, element_y, gpui_width, gpui_height,
-                                normalized_x, normalized_y
+                                "[VIEWPORT] Left click: screen=({:.1},{:.1}) norm=({:.4},{:.4})",
+                                event.position.x, event.position.y, norm_x, norm_y
                             );
-
-                            // TODO: Check for gizmo interaction first
-                            // If a gizmo axis is clicked, start drag operation
-                            // Otherwise, do object selection raycast
-
-                            // Forward click into Helio editor integration (gizmo drag + object picking).
-                            helio_renderer.handle_left_click(cursor_x, cursor_y);
-
-                            tracing::info!("[VIEWPORT] 🎯 Sent mouse input to Helio: pos=({:.4}, {:.4}), clicked=true", normalized_x, normalized_y);
+                            helio_renderer.handle_left_click(norm_x, norm_y);
                         }
                     }
                 }

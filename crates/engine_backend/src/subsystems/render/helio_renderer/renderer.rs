@@ -326,7 +326,10 @@ impl HelioRenderer {
             10_000.0,
         );
 
-        // Mirror Helio editor demo behavior: draw editor gizmos every frame.
+        // Mirror Helio editor demo exactly: clear debug geometry first, then draw gizmos.
+        // Without debug_clear(), each frame's gizmo lines accumulate, making it look like
+        // multiple objects are selected and leaving drag trails behind moved objects.
+        inner.renderer.debug_clear();
         inner.editor_state.draw_gizmos(&mut inner.renderer);
 
         if let Err(e) = inner.renderer.render(&camera, &view) {
@@ -568,9 +571,14 @@ impl HelioRenderer {
         self.inner.as_ref()?.editor_state.selected()
     }
 
-    /// Build a ray from cursor position for object picking.
-    fn build_pick_ray(&self, cursor_x: f32, cursor_y: f32) -> (Vec3, Vec3) {
+    /// Build a ray from normalized cursor position for object picking.
+    /// `norm_x` and `norm_y` are in [0.0, 1.0] relative to the viewport.
+    /// This is DPI-agnostic: both GPUI logical coords and physical pixels normalize the same way.
+    fn build_pick_ray(&self, norm_x: f32, norm_y: f32) -> (Vec3, Vec3) {
         let (width, height) = self.viewport_size;
+        // Convert normalized [0,1] to physical pixel coordinates that ray_from_screen expects.
+        let cursor_x = norm_x * width as f32;
+        let cursor_y = norm_y * height as f32;
         let (sy, cy) = self.cam_yaw.sin_cos();
         let (sp, cp) = self.cam_pitch.sin_cos();
         let fwd = Vec3::new(sy * cp, sp, -cy * cp);
@@ -582,17 +590,19 @@ impl HelioRenderer {
     }
 
     /// Handle left-click for object selection or gizmo dragging.
-    pub fn handle_left_click(&mut self, cursor_x: f32, cursor_y: f32) {
-        let (ray_o, ray_d) = self.build_pick_ray(cursor_x, cursor_y);
+    /// `norm_x`/`norm_y` must be in [0.0, 1.0] relative to the viewport area.
+    pub fn handle_left_click(&mut self, norm_x: f32, norm_y: f32) {
+        let (ray_o, ray_d) = self.build_pick_ray(norm_x, norm_y);
         let Some(inner) = &mut self.inner else { return };
 
-        // Try to start gizmo drag first
+        // Try to start gizmo drag first.
         if !inner
             .editor_state
             .try_start_drag(ray_o, ray_d, inner.renderer.scene())
         {
-            // No gizmo hit, try object picking
-            inner.scene_picker.rebuild_instances(inner.renderer.scene());
+            // No gizmo hit — do object picking.
+            // The picker is kept warm (rebuild_instances is called after scene mutations);
+            // no need to rebuild on every click.
             if let Some(hit) = inner
                 .scene_picker
                 .cast_ray(inner.renderer.scene(), ray_o, ray_d)
@@ -606,19 +616,19 @@ impl HelioRenderer {
         }
     }
 
-    /// Handle mouse movement for gizmo dragging.
-    pub fn handle_mouse_move(&mut self, cursor_x: f32, cursor_y: f32) {
-        let (ray_o, ray_d) = self.build_pick_ray(cursor_x, cursor_y);
+    /// Handle mouse movement for gizmo hover highlighting and dragging.
+    /// `norm_x`/`norm_y` must be in [0.0, 1.0] relative to the viewport area.
+    pub fn handle_mouse_move(&mut self, norm_x: f32, norm_y: f32) {
+        let (ray_o, ray_d) = self.build_pick_ray(norm_x, norm_y);
         let Some(inner) = &mut self.inner else { return };
 
+        // Mirror demo exactly: update_hover is always called (updates gizmo axis highlighting);
+        // update_drag is called additionally when a drag is active.
+        inner.editor_state.update_hover(ray_o, ray_d, inner.renderer.scene());
         if inner.editor_state.is_dragging() {
             inner
                 .editor_state
                 .update_drag(ray_o, ray_d, inner.renderer.scene_mut());
-        } else {
-            inner
-                .editor_state
-                .update_hover(ray_o, ray_d, inner.renderer.scene());
         }
     }
 
@@ -626,6 +636,8 @@ impl HelioRenderer {
     pub fn handle_left_release(&mut self) {
         if let Some(inner) = &mut self.inner {
             inner.editor_state.end_drag();
+            // Rebuild picker BVH after an object may have been moved by a drag.
+            inner.scene_picker.rebuild_instances(inner.renderer.scene());
         }
     }
 

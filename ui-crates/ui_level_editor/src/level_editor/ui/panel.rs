@@ -956,8 +956,9 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_side_view))
             // Keyboard shortcuts - LETTER KEYS for fast workflow
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
-                // Only respond if this panel has focus and keys are unmodified
-                if !this.focus_handle.is_focused(window)
+                // Respond if this panel or any child (e.g. viewport) has focus,
+                // and no modifier keys are held.
+                if !this.focus_handle.contains_focused(window, cx)
                     || event.keystroke.modifiers.control
                     || event.keystroke.modifiers.alt
                     || event.keystroke.modifiers.shift
@@ -975,11 +976,13 @@ impl Render for LevelEditorPanel {
                             cx.notify();
                         }
                     }
+                    // Tool selection — Blender-style (G/R/S) and Maya-style (W/E/R) both supported
                     "q" => cx.dispatch_action(&SelectTool),
                     "w" => cx.dispatch_action(&MoveTool),
+                    "g" => cx.dispatch_action(&MoveTool),   // Blender: G = Grab/Move
                     "e" => cx.dispatch_action(&RotateTool),
-                    "r" => cx.dispatch_action(&ScaleTool),
-                    "g" => cx.dispatch_action(&ToggleSnapping),
+                    "r" => cx.dispatch_action(&RotateTool), // Blender: R = Rotate
+                    "s" => cx.dispatch_action(&ScaleTool),  // Blender: S = Scale
                     "l" => cx.dispatch_action(&ToggleLocalSpace),
                     "f" => cx.dispatch_action(&FocusSelected),
                     "[" => cx.dispatch_action(&DecreaseSnapIncrement),
@@ -989,8 +992,8 @@ impl Render for LevelEditorPanel {
             }))
             // Additional keyboard shortcuts for Alt+Up/Down (object reordering)
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
-                // Only respond if Alt key is pressed and this panel has focus
-                if !this.focus_handle.is_focused(window) || !event.keystroke.modifiers.alt {
+                // Only respond if Alt key is pressed and this panel or any child has focus
+                if !this.focus_handle.contains_focused(window, cx) || !event.keystroke.modifiers.alt {
                     return;
                 }
 
