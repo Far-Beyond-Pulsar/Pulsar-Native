@@ -210,6 +210,8 @@ pub struct HelioRenderer {
     cam_pos: Vec3,
     cam_yaw: f32,
     cam_pitch: f32,
+    // Smoothed local-space velocity: x=right, y=up, z=forward (units/sec).
+    cam_local_velocity: Vec3,
     viewport_size: (u32, u32),
 
     // ── Metrics ──
@@ -247,6 +249,7 @@ impl HelioRenderer {
             cam_pos: Vec3::new(8.0, 6.0, 12.0), // Better view angle
             cam_yaw: -0.5,                      // Look left a bit
             cam_pitch: -0.3,                    // Look down to see objects
+            cam_local_velocity: Vec3::ZERO,
             viewport_size: (0, 0),
             metrics: Arc::new(Mutex::new(RenderMetrics::default())),
             gpu_profiler: Arc::new(Mutex::new(GpuProfilerData::default())),
@@ -365,6 +368,9 @@ impl HelioRenderer {
 
     fn apply_camera_input(&mut self, dt: f32) {
         const LOOK: f32 = 0.0025;
+        // Unreal-style movement feel: ease in/out instead of instant velocity changes.
+        const ACCEL_RATE: f32 = 10.0;
+        const DECEL_RATE: f32 = 14.0;
 
         let input = match self.camera_input.lock() {
             Ok(mut lock) => {
@@ -392,9 +398,27 @@ impl HelioRenderer {
             input.move_speed
         };
 
-        self.cam_pos += fwd * input.forward * speed * dt;
-        self.cam_pos += right * input.right * speed * dt;
-        self.cam_pos += Vec3::Y * input.up * speed * dt;
+        // Target local velocity from input (units/sec).
+        let target_velocity = Vec3::new(input.right * speed, input.up * speed, input.forward * speed);
+
+        // Smooth each local axis independently for responsive but cinematic acceleration.
+        let smooth_axis = |current: f32, target: f32| {
+            let rate = if target.abs() > current.abs() {
+                ACCEL_RATE
+            } else {
+                DECEL_RATE
+            };
+            let alpha = 1.0 - (-rate * dt).exp();
+            current + (target - current) * alpha
+        };
+
+        self.cam_local_velocity.x = smooth_axis(self.cam_local_velocity.x, target_velocity.x);
+        self.cam_local_velocity.y = smooth_axis(self.cam_local_velocity.y, target_velocity.y);
+        self.cam_local_velocity.z = smooth_axis(self.cam_local_velocity.z, target_velocity.z);
+
+        self.cam_pos += right * self.cam_local_velocity.x * dt;
+        self.cam_pos += Vec3::Y * self.cam_local_velocity.y * dt;
+        self.cam_pos += fwd * self.cam_local_velocity.z * dt;
     }
 
     pub fn is_initialized(&self) -> bool {
