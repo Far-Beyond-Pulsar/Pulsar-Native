@@ -12,7 +12,7 @@ use helio::{
 };
 use helio_asset_compat::ConvertedScene;
 
-use crate::scene::{GizmoState, MeshType, ObjectType, SceneObjectSnapshot};
+use crate::scene::{MeshType, ObjectType, SceneObjectSnapshot};
 
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics};
 
@@ -21,25 +21,6 @@ use super::core::{CameraInput, GpuProfilerData, RenderMetrics};
 #[derive(Debug, Clone)]
 pub enum RendererCommand {
     ToggleFeature(String),
-}
-
-pub mod gizmo_types {
-    #[derive(Debug, Clone)]
-    pub struct ViewportBounds {
-        pub x: f32,
-        pub y: f32,
-        pub width: f32,
-        pub height: f32,
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct ViewportMouseInput {
-    pub left_clicked: bool,
-    pub left_down: bool,
-    pub mouse_pos: glam::Vec2,
-    pub mouse_delta: glam::Vec2,
-    pub viewport_bounds: Option<gizmo_types::ViewportBounds>,
 }
 
 // ── Mesh Generation ──────────────────────────────────────────────────────────
@@ -209,8 +190,6 @@ pub struct HelioRenderer {
     // ── Scene & Input ──
     pub camera_input: Arc<Mutex<CameraInput>>,
     pub scene_db: Arc<crate::scene::SceneDb>,
-    pub viewport_mouse_input: Arc<Mutex<ViewportMouseInput>>,
-    pub gizmo_state: Arc<Mutex<GizmoState>>,
 
     // ── Legacy (unused) ──
     pub command_sender: mpsc::Sender<RendererCommand>,
@@ -254,8 +233,6 @@ impl HelioRenderer {
             scene_db,
             command_sender,
             command_receiver,
-            viewport_mouse_input: Arc::new(Mutex::new(ViewportMouseInput::default())),
-            gizmo_state: Arc::new(Mutex::new(GizmoState::default())),
             inner: None,
             cam_pos: Vec3::new(8.0, 6.0, 12.0), // Better view angle
             cam_yaw: -0.5,                      // Look left a bit
@@ -297,7 +274,8 @@ impl HelioRenderer {
             );
             r.set_editor_mode(true);
             r.set_clear_color([0.15, 0.18, 0.25, 1.0]);
-            r.set_ambient([0.4, 0.45, 0.55], 0.6);
+            // Keep ambient disabled so scene illumination comes only from explicit light actors.
+            r.set_ambient([0.0, 0.0, 0.0], 0.0);
 
             let mut inner = HelioInner {
                 renderer: r,
@@ -347,6 +325,9 @@ impl HelioRenderer {
             0.1,
             10_000.0,
         );
+
+        // Mirror Helio editor demo behavior: draw editor gizmos every frame.
+        inner.editor_state.draw_gizmos(&mut inner.renderer);
 
         if let Err(e) = inner.renderer.render(&camera, &view) {
             tracing::error!("Helio render error: {:?}", e);

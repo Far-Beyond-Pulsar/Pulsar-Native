@@ -610,47 +610,32 @@ impl ViewportPanel {
                         let height: f32 = bounds.size.height.into();
                         let pos_x: f32 = event.position.x.into();
                         let pos_y: f32 = event.position.y.into();
-                        (pos_x - origin_x, pos_y - origin_y, width, height)
+                        let maybe_local = pos_x >= 0.0
+                            && pos_x <= width
+                            && pos_y >= 0.0
+                            && pos_y <= height;
+                        let local_x = if maybe_local { pos_x } else { pos_x - origin_x };
+                        let local_y = if maybe_local { pos_y } else { pos_y - origin_y };
+                        (local_x, local_y, width, height)
                     } else {
                         return;
                     };
 
-                    let normalized_x = (element_x / viewport_width).clamp(0.0, 1.0);
-                    let normalized_y = (element_y / viewport_height).clamp(0.0, 1.0);
-
                     let mut last_pos = last_mouse_pos.borrow_mut();
-                    let (delta_x, delta_y) = if let Some((last_x, last_y)) = *last_pos {
-                        (normalized_x - last_x, normalized_y - last_y)
-                    } else {
-                        (0.0, 0.0)
-                    };
-
-                    *last_pos = Some((normalized_x, normalized_y));
+                    *last_pos = Some((
+                        (element_x / viewport_width).clamp(0.0, 1.0),
+                        (element_y / viewport_height).clamp(0.0, 1.0),
+                    ));
                     drop(last_pos);
 
-                    if let Ok(engine) = gpu_engine_move.try_lock() {
-                        if let Some(ref helio_renderer) = engine.helio_renderer {
-                            // Get viewport bounds from element_bounds if available
-                            let viewport_bounds = if let Some(ref bounds) = *bounds_opt {
-                                Some(engine_backend::subsystems::render::helio_renderer::gizmo_types::ViewportBounds {
-                                    x: bounds.origin.x.into(),
-                                    y: bounds.origin.y.into(),
-                                    width: bounds.size.width.into(),
-                                    height: bounds.size.height.into(),
-                                })
-                            } else {
-                                None
-                            };
+                    if let Ok(mut engine) = gpu_engine_move.try_lock() {
+                        if let Some(ref mut helio_renderer) = engine.helio_renderer {
+                            if !is_rotating && !is_panning {
+                                let cursor_x = element_x.clamp(0.0, viewport_width);
+                                let cursor_y = element_y.clamp(0.0, viewport_height);
+                                helio_renderer.handle_mouse_move(cursor_x, cursor_y);
+                            }
 
-                            let mut mouse_input = match helio_renderer.viewport_mouse_input.lock() {
-                                Ok(guard) => guard,
-                                Err(poisoned) => poisoned.into_inner(),
-                            };
-                            mouse_input.mouse_pos.x = normalized_x;
-                            mouse_input.mouse_pos.y = normalized_y;
-                            mouse_input.mouse_delta.x = delta_x;
-                            mouse_input.mouse_delta.y = delta_y;
-                            mouse_input.viewport_bounds = viewport_bounds;
                         }
                     }
                 }
@@ -736,8 +721,16 @@ impl ViewportPanel {
             .on_mouse_down(gpui::MouseButton::Left, {
                 let gpu_engine_click = gpu_engine_for_click.clone();
                 let element_bounds = element_bounds_for_click.clone();
+                let mouse_right_captured = mouse_right_captured.clone();
+                let mouse_middle_captured = mouse_middle_captured.clone();
 
                 move |event: &gpui::MouseDownEvent, window: &mut gpui::Window, _cx: &mut gpui::App| {
+                    if mouse_right_captured.load(Ordering::Acquire)
+                        || mouse_middle_captured.load(Ordering::Acquire)
+                    {
+                        return;
+                    }
+
                     let bounds_opt = element_bounds.borrow();
                     let (element_x, element_y, gpui_width, gpui_height) = if let Some(ref bounds) = *bounds_opt {
                         let origin_x: f32 = bounds.origin.x.into();
@@ -746,7 +739,13 @@ impl ViewportPanel {
                         let height: f32 = bounds.size.height.into();
                         let pos_x: f32 = event.position.x.into();
                         let pos_y: f32 = event.position.y.into();
-                        (pos_x - origin_x, pos_y - origin_y, width, height)
+                        let maybe_local = pos_x >= 0.0
+                            && pos_x <= width
+                            && pos_y >= 0.0
+                            && pos_y <= height;
+                        let local_x = if maybe_local { pos_x } else { pos_x - origin_x };
+                        let local_y = if maybe_local { pos_y } else { pos_y - origin_y };
+                        (local_x, local_y, width, height)
                     } else {
                         let window_size = window.viewport_size();
                         let pos_x: f32 = event.position.x.into();
@@ -756,26 +755,16 @@ impl ViewportPanel {
                         (pos_x, pos_y, width, height)
                     };
 
-                    if let Ok(engine) = gpu_engine_click.try_lock() {
-                        if let Some(ref helio_renderer) = engine.helio_renderer {
+                    if let Ok(mut engine) = gpu_engine_click.try_lock() {
+                        if let Some(ref mut helio_renderer) = engine.helio_renderer {
             // The Helio renderer draws to the full window (e.g. 1920x1080)
                             // while the GPUI viewport is just a "hole" in the UI that shows it
                             // We need to map from the click position within the GPUI viewport bounds
                             // to normalized coordinates (0-1) within the GPUI viewport area
                             let normalized_x = (element_x / gpui_width).clamp(0.0, 1.0);
                             let normalized_y = (element_y / gpui_height).clamp(0.0, 1.0);
-
-                            // Get viewport bounds from element_bounds if available
-                            let viewport_bounds = if let Some(ref bounds) = *bounds_opt {
-                                Some(engine_backend::subsystems::render::helio_renderer::gizmo_types::ViewportBounds {
-                                    x: bounds.origin.x.into(),
-                                    y: bounds.origin.y.into(),
-                                    width: bounds.size.width.into(),
-                                    height: bounds.size.height.into(),
-                                })
-                            } else {
-                                None
-                            };
+                            let cursor_x = element_x.clamp(0.0, gpui_width);
+                            let cursor_y = element_y.clamp(0.0, gpui_height);
 
                             tracing::info!(
                                 "[VIEWPORT] 🖱️ Left click:\n  Screen: ({}, {})\n  GPUI element: ({:.2}, {:.2}) in viewport {}x{}\n  Normalized: ({:.4}, {:.4})",
@@ -788,15 +777,9 @@ impl ViewportPanel {
                             // If a gizmo axis is clicked, start drag operation
                             // Otherwise, do object selection raycast
 
-                            let mut mouse_input = match helio_renderer.viewport_mouse_input.lock() {
-                                Ok(guard) => guard,
-                                Err(poisoned) => poisoned.into_inner(),
-                            };
-                            mouse_input.left_clicked = true;
-                            mouse_input.left_down = true;
-                            mouse_input.mouse_pos.x = normalized_x;
-                            mouse_input.mouse_pos.y = normalized_y;
-                            mouse_input.viewport_bounds = viewport_bounds;
+                            // Forward click into Helio editor integration (gizmo drag + object picking).
+                            helio_renderer.handle_left_click(cursor_x, cursor_y);
+
                             tracing::info!("[VIEWPORT] 🎯 Sent mouse input to Helio: pos=({:.4}, {:.4}), clicked=true", normalized_x, normalized_y);
                         }
                     }
@@ -815,14 +798,10 @@ impl ViewportPanel {
                     state.viewport_overlay_drag_start = None;
                     drop(state);
 
-                    if let Ok(engine) = gpu_engine_up.try_lock() {
-                        if let Some(ref helio_renderer) = engine.helio_renderer {
-                            let mut mouse_input = match helio_renderer.viewport_mouse_input.lock() {
-                                Ok(guard) => guard,
-                                Err(poisoned) => poisoned.into_inner(),
-                            };
-                            mouse_input.left_clicked = false;
-                            mouse_input.left_down = false;
+                    if let Ok(mut engine) = gpu_engine_up.try_lock() {
+                        if let Some(ref mut helio_renderer) = engine.helio_renderer {
+                            // End any active gizmo drag in Helio.
+                            helio_renderer.handle_left_release();
                         }
                     }
                 }

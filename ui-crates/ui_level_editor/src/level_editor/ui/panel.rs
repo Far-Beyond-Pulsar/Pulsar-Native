@@ -968,6 +968,13 @@ impl Render for LevelEditorPanel {
                 }
 
                 match event.keystroke.key.as_ref() {
+                    "escape" => {
+                        if this.shared_state.read().selected_object().is_some() {
+                            this.shared_state.write().select_object(None);
+                            this.sync_gizmo_to_helio();
+                            cx.notify();
+                        }
+                    }
                     "q" => cx.dispatch_action(&SelectTool),
                     "w" => cx.dispatch_action(&MoveTool),
                     "e" => cx.dispatch_action(&RotateTool),
