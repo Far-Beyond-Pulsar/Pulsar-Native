@@ -734,99 +734,10 @@ impl HelioRenderer {
             }));
         tracing::info!("[HELIO SCENE] Added fill light");
 
-        // Ground plane
-        let ground_upload = plane_mesh(50.0);
-        let ground_mesh = match inner
-            .renderer
-            .scene_mut()
-            .insert_actor(SceneActor::mesh(ground_upload.clone()))
-            .as_mesh()
-        {
-            Some(id) => id,
-            None => {
-                tracing::error!("[HELIO SCENE] Failed to insert ground mesh");
-                return;
-            }
-        };
-        inner
-            .scene_picker
-            .register_mesh(ground_mesh, &ground_upload);
-        tracing::info!("[HELIO SCENE] Ground mesh registered: {:?}", ground_mesh);
-
-        let ground_mat = inner.renderer.scene_mut().insert_material(make_material(
-            [0.35, 0.35, 0.35, 1.0],
-            0.9,
-            0.0,
-        ));
-        let ground_obj =
-            inner
-                .renderer
-                .scene_mut()
-                .insert_actor(SceneActor::object(ObjectDescriptor {
-                    mesh: ground_mesh,
-                    material: ground_mat,
-                    transform: Mat4::IDENTITY,
-                    bounds: [0.0, 0.0, 0.0, 50.0],
-                    flags: 0,
-                    groups: GroupMask::NONE,
-                    movability: None, // Ground stays static
-                }));
-        tracing::info!("[HELIO SCENE] Ground object created: {:?}", ground_obj);
-
-        // Test cubes
-        let cube_upload = box_mesh([0.5, 0.5, 0.5]);
-        tracing::info!(
-            "[HELIO SCENE] Created cube mesh with {} vertices, {} indices",
-            cube_upload.vertices.len(),
-            cube_upload.indices.len()
-        );
-        let cube_mesh = match inner
-            .renderer
-            .scene_mut()
-            .insert_actor(SceneActor::mesh(cube_upload.clone()))
-            .as_mesh()
-        {
-            Some(id) => id,
-            None => {
-                tracing::error!("[HELIO SCENE] Failed to insert cube mesh");
-                return;
-            }
-        };
-        // Register cube mesh with picker
-        inner.scene_picker.register_mesh(cube_mesh, &cube_upload);
-        tracing::info!("[HELIO SCENE] Cube mesh registered: {:?}", cube_mesh);
-
-        let positions_and_colors: &[([f32; 3], [f32; 4])] = &[
-            ([0.0, 1.0, 0.0], [0.8, 0.2, 0.2, 1.0]),  // red center
-            ([3.0, 1.0, 0.0], [0.2, 0.7, 0.2, 1.0]),  // green right
-            ([-3.0, 1.0, 0.0], [0.2, 0.3, 0.9, 1.0]), // blue left
-            ([0.0, 1.0, 5.0], [0.9, 0.9, 0.2, 1.0]),  // yellow front
-            ([0.0, 1.0, -5.0], [0.8, 0.3, 0.8, 1.0]), // magenta back
-        ];
-
-        for (idx, &(pos, color)) in positions_and_colors.iter().enumerate() {
-            let mat = inner
-                .renderer
-                .scene_mut()
-                .insert_material(make_material(color, 0.5, 0.1));
-            let transform = Mat4::from_translation(Vec3::from_array(pos));
-            let obj =
-                inner
-                    .renderer
-                    .scene_mut()
-                    .insert_actor(SceneActor::object(ObjectDescriptor {
-                        mesh: cube_mesh,
-                        material: mat,
-                        transform,
-                        bounds: [pos[0], pos[1], pos[2], 1.0],
-                        flags: 0,
-                        groups: GroupMask::NONE,
-                        movability: Some(Movability::Movable), // Make cubes movable!
-                    }));
-            tracing::info!("[HELIO SCENE] Cube #{} at {:?}: {:?}", idx, pos, obj);
-        }
-
-        tracing::info!("[HELIO SCENE] Scene population complete!");
+        // Mesh objects (ground, cubes, etc.) are driven exclusively through SceneDb
+        // via sync_scene() so that the hierarchy panel and the renderer always show
+        // the same state.  Nothing is hardcoded here.
+        tracing::info!("[HELIO SCENE] Scene population complete (sky + lights; meshes driven by SceneDb)");
     }
 
     fn sync_scene(scene_db: &crate::scene::SceneDb, inner: &mut HelioInner) {

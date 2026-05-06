@@ -160,71 +160,121 @@ impl SceneDatabase {
         }
     }
 
+    fn mk_at(
+        name: &str,
+        object_type: ObjectType,
+        position: [f32; 3],
+        rotation: [f32; 3],
+        scale: [f32; 3],
+    ) -> SceneObjectData {
+        let mut obj = Self::mk(name, object_type, None);
+        obj.transform.position = position;
+        obj.transform.rotation = rotation;
+        obj.transform.scale = scale;
+        obj
+    }
+
     fn populate_default_scene(&self) {
         self.populate_default_scene_pub();
     }
 
     /// Public entry-point for in-place scene reset (called by `on_new_scene`).
+    ///
+    /// Populates an interesting starter scene whose objects are picked up by
+    /// `sync_scene` (the renderer only draws `ObjectType::Mesh` objects, so
+    /// Camera and Light are metadata-only until full Helio light/camera support
+    /// is wired up).  The shared `Arc<SceneDb>` means every change here is
+    /// immediately visible to the renderer.
     pub fn populate_default_scene_pub(&self) {
-        // ── Folders ──────────────────────────────────────────────────────
-        let geometry = self.add_object(Self::mk("Geometry", ObjectType::Folder, None), None);
-        let spheres = self.add_object(
-            Self::mk("Spheres", ObjectType::Folder, Some(geometry.clone())),
-            Some(geometry.clone()),
-        );
-        let lights_folder = self.add_object(Self::mk("Lights", ObjectType::Folder, None), None);
-        let effects = self.add_object(Self::mk("Effects", ObjectType::Folder, None), None);
+        // ── Lighting & camera (metadata / future renderer support) ────────
+        let mut cam = Self::mk("Main Camera", ObjectType::Camera, None);
+        cam.transform.position = [0.0, 4.0, 10.0];
+        cam.transform.rotation = [-20.0, 0.0, 0.0];
+        self.add_object(cam, None);
 
-        // ── Camera ───────────────────────────────────────────────────────
-        self.add_object(Self::mk("Main Camera", ObjectType::Camera, None), None);
-
-        // ── Lights ───────────────────────────────────────────────────────
         self.add_object(
-            Self::mk("Directional Light", ObjectType::Light(LightType::Directional), None),
+            Self::mk_at(
+                "Directional Light",
+                ObjectType::Light(LightType::Directional),
+                [5.0, 8.0, 5.0],
+                [-45.0, 45.0, 0.0],
+                [1.0, 1.0, 1.0],
+            ),
             None,
         );
+
+        // ── Ground plane ─────────────────────────────────────────────────
         self.add_object(
-            Self::mk(
-                "Point Light",
-                ObjectType::Light(LightType::Point),
-                Some(lights_folder.clone()),
+            Self::mk_at(
+                "Ground",
+                ObjectType::Mesh(MeshType::Plane),
+                [0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [2.0, 1.0, 2.0], // plane_mesh(5.0) → 10 units; ×2 = 20 unit floor
             ),
-            Some(lights_folder.clone()),
+            None,
         );
+
+        // ── Hero cube (centre stage) ──────────────────────────────────────
         self.add_object(
-            Self::mk(
-                "Spot Light",
-                ObjectType::Light(LightType::Spot),
-                Some(lights_folder.clone()),
+            Self::mk_at(
+                "Cube",
+                ObjectType::Mesh(MeshType::Cube),
+                [0.0, 0.5, 0.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 1.0, 1.0],
             ),
-            Some(lights_folder),
+            None,
         );
 
-        // ── Meshes ───────────────────────────────────────────────────────
+        // ── Sphere ───────────────────────────────────────────────────────
         self.add_object(
-            Self::mk("Red Cube", ObjectType::Mesh(MeshType::Cube), Some(geometry.clone())),
-            Some(geometry.clone()),
-        );
-        self.add_object(
-            Self::mk("Blue Sphere", ObjectType::Mesh(MeshType::Sphere), Some(spheres.clone())),
-            Some(spheres.clone()),
-        );
-        self.add_object(
-            Self::mk("Gold Sphere", ObjectType::Mesh(MeshType::Sphere), Some(spheres.clone())),
-            Some(spheres.clone()),
-        );
-        self.add_object(
-            Self::mk("Green Sphere", ObjectType::Mesh(MeshType::Sphere), Some(spheres.clone())),
-            Some(spheres),
+            Self::mk_at(
+                "Sphere",
+                ObjectType::Mesh(MeshType::Sphere),
+                [3.0, 0.5, 0.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 1.0, 1.0],
+            ),
+            None,
         );
 
-        // ── Particles ────────────────────────────────────────────────────
+        // ── Two small accent cubes ────────────────────────────────────────
         self.add_object(
-            Self::mk("Fire Particles", ObjectType::ParticleSystem, Some(effects.clone())),
-            Some(effects),
+            Self::mk_at(
+                "Cube.001",
+                ObjectType::Mesh(MeshType::Cube),
+                [-2.5, 0.375, 1.0],
+                [0.0, 30.0, 0.0],
+                [0.75, 0.75, 0.75],
+            ),
+            None,
         );
 
-        tracing::info!("Default scene populated");
+        self.add_object(
+            Self::mk_at(
+                "Cube.002",
+                ObjectType::Mesh(MeshType::Cube),
+                [-1.5, 1.0, -2.0],
+                [0.0, -15.0, 0.0],
+                [0.5, 2.0, 0.5],
+            ),
+            None,
+        );
+
+        // ── Cylinder ─────────────────────────────────────────────────────
+        self.add_object(
+            Self::mk_at(
+                "Cylinder",
+                ObjectType::Mesh(MeshType::Cylinder),
+                [1.5, 0.75, -2.5],
+                [0.0, 0.0, 0.0],
+                [0.6, 1.5, 0.6],
+            ),
+            None,
+        );
+
+        tracing::info!("Default scene populated (ground + 3 meshes + cylinder + sphere + camera + light)");
     }
 
     // ── Object CRUD ───────────────────────────────────────────────────────
