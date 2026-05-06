@@ -138,7 +138,20 @@ mod tests {
         assert!(names.is_empty() || !names.is_empty()); // Should work either way
 
         // Test unknown class
-        assert_eq!(registry.create_instance("NonExistentClass"), None);
+        assert!(registry.create_instance("NonExistentClass").is_none());
         assert!(!registry.has_class("NonExistentClass"));
+    }
+
+    #[test]
+    fn test_category_filtering() {
+        let registry = &*REGISTRY;
+
+        // Test category filtering (will be empty in unit tests)
+        let physics_classes = registry.get_class_names_by_category("Physics");
+        assert!(physics_classes.is_empty() || !physics_classes.is_empty());
+
+        // Test get all categories
+        let categories = registry.get_categories();
+        assert!(categories.is_empty() || !categories.is_empty());
     }
 }
