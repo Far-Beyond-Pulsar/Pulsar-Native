@@ -194,7 +194,6 @@ impl ComponentRenderer {
     }
 
     /// Render the appropriate input widget for a property type
-    #[allow(dead_code)]
     fn render_property_input(
         &self,
         property_type: &PropertyType,
