@@ -1,9 +1,9 @@
 use gpui::{prelude::*, *};
 use pulsar_reflection::{PropertyType, PropertyValue, REGISTRY};
 use serde_json::Value;
-use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
 use ui::button::ButtonVariants as _;
 use ui::popover::Popover;
+use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
 
 use super::add_component_dialog::AddComponentDialog;
 use super::ComponentHierarchyPanel;
@@ -28,16 +28,19 @@ impl ObjectTypeFieldsSection {
         // Create the add component dialog entity
         let dialog_object_id = object_id.clone();
         let dialog_scene_db = scene_db.clone();
-        let add_component_dialog = cx.new(|cx| {
-            AddComponentDialog::new(dialog_object_id, dialog_scene_db, window, cx)
-        });
+        let add_component_dialog =
+            cx.new(|cx| AddComponentDialog::new(dialog_object_id, dialog_scene_db, window, cx));
 
         // Subscribe to ComponentAddedEvent to refresh the UI
-        cx.subscribe(&add_component_dialog, |this, _dialog, event: &super::add_component_dialog::ComponentAddedEvent, cx| {
-            // Refresh the UI when a component is added
-            let _ = event; // Event contains class_name but we don't need it
-            cx.notify();
-        }).detach();
+        cx.subscribe(
+            &add_component_dialog,
+            |this, _dialog, event: &super::add_component_dialog::ComponentAddedEvent, cx| {
+                // Refresh the UI when a component is added
+                let _ = event; // Event contains class_name but we don't need it
+                cx.notify();
+            },
+        )
+        .detach();
 
         Self {
             object_id,
@@ -56,8 +59,12 @@ impl ObjectTypeFieldsSection {
             PropertyValue::Vec3(v) => serde_json::json!([v[0], v[1], v[2]]),
             PropertyValue::Color(v) => serde_json::json!([v[0], v[1], v[2], v[3]]),
             PropertyValue::EnumVariant(v) => Value::from(*v as u64),
-            PropertyValue::Vec(v) => Value::Array(v.iter().map(Self::property_value_to_json).collect()),
-            PropertyValue::Component { class_name, .. } => serde_json::json!({"class_name": class_name}),
+            PropertyValue::Vec(v) => {
+                Value::Array(v.iter().map(Self::property_value_to_json).collect())
+            }
+            PropertyValue::Component { class_name, .. } => {
+                serde_json::json!({"class_name": class_name})
+            }
         }
     }
 
@@ -66,7 +73,9 @@ impl ObjectTypeFieldsSection {
             PropertyType::F32 { .. } => json.as_f64().map(|v| PropertyValue::F32(v as f32)),
             PropertyType::I32 { .. } => json.as_i64().map(|v| PropertyValue::I32(v as i32)),
             PropertyType::Bool => json.as_bool().map(PropertyValue::Bool),
-            PropertyType::String { .. } => json.as_str().map(|s| PropertyValue::String(s.to_string())),
+            PropertyType::String { .. } => {
+                json.as_str().map(|s| PropertyValue::String(s.to_string()))
+            }
             PropertyType::Vec3 => {
                 let arr = json.as_array()?;
                 if arr.len() != 3 {
@@ -88,7 +97,9 @@ impl ObjectTypeFieldsSection {
                 let a = arr.get(3)?.as_f64()? as f32;
                 Some(PropertyValue::Color([r, g, b, a]))
             }
-            PropertyType::Enum { .. } => json.as_u64().map(|v| PropertyValue::EnumVariant(v as usize)),
+            PropertyType::Enum { .. } => json
+                .as_u64()
+                .map(|v| PropertyValue::EnumVariant(v as usize)),
             PropertyType::Vec { .. } => None,
             PropertyType::Component { class_name } => Some(PropertyValue::Component {
                 class_name: class_name.to_string(),
@@ -132,17 +143,24 @@ impl ObjectTypeFieldsSection {
             .as_object()
             .cloned()
             .unwrap_or_else(serde_json::Map::new);
-        map.insert(property_name.to_string(), Self::property_value_to_json(&value));
+        map.insert(
+            property_name.to_string(),
+            Self::property_value_to_json(&value),
+        );
 
-        let _ = self
-            .scene_db
-            .metadata_db
-            .components()
-            .update_component(&self.object_id, idx, Value::Object(map));
+        let _ = self.scene_db.metadata_db.components().update_component(
+            &self.object_id,
+            idx,
+            Value::Object(map),
+        );
     }
 
     fn nudge_numeric(&self, class_name: &str, prop_name: &str, current: f32, step: f32, sign: f32) {
-        self.write_property(class_name, prop_name, PropertyValue::F32(current + step * sign));
+        self.write_property(
+            class_name,
+            prop_name,
+            PropertyValue::F32(current + step * sign),
+        );
     }
 
     fn nudge_i32(&self, class_name: &str, prop_name: &str, current: i32, sign: i32) {
@@ -172,43 +190,55 @@ impl ObjectTypeFieldsSection {
                     .justify_between()
                     .items_center()
                     .gap_2()
-                    .child(div().text_sm().text_color(cx.theme().muted_foreground).child(display_name.to_string()))
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(display_name.to_string()),
+                    )
                     .child(
                         h_flex()
                             .items_center()
                             .gap_2()
                             .child(
-                                ui::button::Button::new(format!("dec-{}-{}", class_name, prop_name))
-                                    .icon(IconName::Minus)
-                                    .xsmall()
-                                    .ghost()
-                                    .on_click(cx.listener(move |this, _event, _window, cx| {
+                                ui::button::Button::new(format!(
+                                    "dec-{}-{}",
+                                    class_name, prop_name
+                                ))
+                                .icon(IconName::Minus)
+                                .xsmall()
+                                .ghost()
+                                .on_click(cx.listener(
+                                    move |this, _event, _window, cx| {
                                         this.nudge_numeric(
-                                            &class_dec,
-                                            &prop_dec,
-                                            current,
-                                            step,
-                                            -1.0,
+                                            &class_dec, &prop_dec, current, step, -1.0,
                                         );
                                         cx.notify();
-                                    })),
+                                    },
+                                )),
                             )
-                            .child(div().text_sm().text_color(cx.theme().foreground).child(format!("{:.3}", v)))
                             .child(
-                                ui::button::Button::new(format!("inc-{}-{}", class_name, prop_name))
-                                    .icon(IconName::Plus)
-                                    .xsmall()
-                                    .ghost()
-                                    .on_click(cx.listener(move |this, _event, _window, cx| {
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().foreground)
+                                    .child(format!("{:.3}", v)),
+                            )
+                            .child(
+                                ui::button::Button::new(format!(
+                                    "inc-{}-{}",
+                                    class_name, prop_name
+                                ))
+                                .icon(IconName::Plus)
+                                .xsmall()
+                                .ghost()
+                                .on_click(cx.listener(
+                                    move |this, _event, _window, cx| {
                                         this.nudge_numeric(
-                                            &class_inc,
-                                            &prop_inc,
-                                            current,
-                                            step,
-                                            1.0,
+                                            &class_inc, &prop_inc, current, step, 1.0,
                                         );
                                         cx.notify();
-                                    })),
+                                    },
+                                )),
                             ),
                     )
                     .into_any_element()
@@ -225,31 +255,51 @@ impl ObjectTypeFieldsSection {
                     .justify_between()
                     .items_center()
                     .gap_2()
-                    .child(div().text_sm().text_color(cx.theme().muted_foreground).child(display_name.to_string()))
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(display_name.to_string()),
+                    )
                     .child(
                         h_flex()
                             .items_center()
                             .gap_2()
                             .child(
-                                ui::button::Button::new(format!("dec-{}-{}", class_name, prop_name))
-                                    .icon(IconName::Minus)
-                                    .xsmall()
-                                    .ghost()
-                                    .on_click(cx.listener(move |this, _event, _window, cx| {
+                                ui::button::Button::new(format!(
+                                    "dec-{}-{}",
+                                    class_name, prop_name
+                                ))
+                                .icon(IconName::Minus)
+                                .xsmall()
+                                .ghost()
+                                .on_click(cx.listener(
+                                    move |this, _event, _window, cx| {
                                         this.nudge_i32(&class_dec, &prop_dec, current, -1);
                                         cx.notify();
-                                    })),
+                                    },
+                                )),
                             )
-                            .child(div().text_sm().text_color(cx.theme().foreground).child(v.to_string()))
                             .child(
-                                ui::button::Button::new(format!("inc-{}-{}", class_name, prop_name))
-                                    .icon(IconName::Plus)
-                                    .xsmall()
-                                    .ghost()
-                                    .on_click(cx.listener(move |this, _event, _window, cx| {
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().foreground)
+                                    .child(v.to_string()),
+                            )
+                            .child(
+                                ui::button::Button::new(format!(
+                                    "inc-{}-{}",
+                                    class_name, prop_name
+                                ))
+                                .icon(IconName::Plus)
+                                .xsmall()
+                                .ghost()
+                                .on_click(cx.listener(
+                                    move |this, _event, _window, cx| {
                                         this.nudge_i32(&class_inc, &prop_inc, current, 1);
                                         cx.notify();
-                                    })),
+                                    },
+                                )),
                             ),
                     )
                     .into_any_element()
@@ -264,14 +314,23 @@ impl ObjectTypeFieldsSection {
                     .justify_between()
                     .items_center()
                     .gap_2()
-                    .child(div().text_sm().text_color(cx.theme().muted_foreground).child(display_name.to_string()))
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(display_name.to_string()),
+                    )
                     .child(
                         ui::button::Button::new(format!("toggle-{}-{}", class_name, prop_name))
                             .label(if *v { "On" } else { "Off" })
                             .xsmall()
                             .ghost()
                             .on_click(cx.listener(move |this, _event, _window, cx| {
-                                this.write_property(&class_toggle, &prop_toggle, PropertyValue::Bool(next));
+                                this.write_property(
+                                    &class_toggle,
+                                    &prop_toggle,
+                                    PropertyValue::Bool(next),
+                                );
                                 cx.notify();
                             })),
                     )
@@ -282,16 +341,36 @@ impl ObjectTypeFieldsSection {
                 .justify_between()
                 .items_center()
                 .gap_2()
-                .child(div().text_sm().text_color(cx.theme().muted_foreground).child(display_name.to_string()))
-                .child(div().text_sm().text_color(cx.theme().foreground).child(v.clone()))
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(display_name.to_string()),
+                )
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().foreground)
+                        .child(v.clone()),
+                )
                 .into_any_element(),
             _ => h_flex()
                 .w_full()
                 .justify_between()
                 .items_center()
                 .gap_2()
-                .child(div().text_sm().text_color(cx.theme().muted_foreground).child(display_name.to_string()))
-                .child(div().text_sm().text_color(cx.theme().muted_foreground).child(format!("{:?}", value)))
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(display_name.to_string()),
+                )
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(format!("{:?}", value)),
+                )
                 .into_any_element(),
         }
     }
@@ -349,14 +428,17 @@ impl Render for ObjectTypeFieldsSection {
         let registry_classes = REGISTRY.get_class_names();
         tracing::debug!(
             "[ObjectTypeFieldsSection] object_id={} attached={} registry={}",
-            self.object_id, attached.len(), registry_classes.len(),
+            self.object_id,
+            attached.len(),
+            registry_classes.len(),
         );
         for c in &attached {
             tracing::debug!(
                 "  component='{}' in_registry={} props={}",
                 c.class_name,
                 REGISTRY.has_class(c.class_name.as_str()),
-                REGISTRY.create_instance(c.class_name.as_str())
+                REGISTRY
+                    .create_instance(c.class_name.as_str())
                     .map(|mut i| i.get_properties().len())
                     .unwrap_or(0),
             );
@@ -365,34 +447,71 @@ impl Render for ObjectTypeFieldsSection {
         let diag_card: Option<AnyElement> = if attached.is_empty() {
             Some(
                 v_flex()
-                    .w_full().gap_1().p_3()
-                    .bg(cx.theme().sidebar).rounded(px(8.0))
-                    .border_1().border_color(cx.theme().border)
-                    .child(div().text_xs().font_weight(FontWeight::SEMIBOLD)
-                        .text_color(cx.theme().muted_foreground)
-                        .child("⚠ No components attached"))
-                    .child(div().text_xs().text_color(cx.theme().muted_foreground)
-                        .child(format!("object_id = {}", self.object_id)))
-                    .child(div().text_xs().text_color(cx.theme().muted_foreground)
-                        .child(format!("registry ({} classes): {}", registry_classes.len(), registry_classes.join(", "))))
+                    .w_full()
+                    .gap_1()
+                    .p_3()
+                    .bg(cx.theme().sidebar)
+                    .rounded(px(8.0))
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(cx.theme().muted_foreground)
+                            .child("⚠ No components attached"),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("object_id = {}", self.object_id)),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!(
+                                "registry ({} classes): {}",
+                                registry_classes.len(),
+                                registry_classes.join(", ")
+                            )),
+                    )
                     .into_any_element(),
             )
-        } else if attached.iter().all(|c| !REGISTRY.has_class(c.class_name.as_str())) {
+        } else if attached
+            .iter()
+            .all(|c| !REGISTRY.has_class(c.class_name.as_str()))
+        {
             Some(
                 v_flex()
-                    .w_full().gap_1().p_3()
-                    .bg(cx.theme().sidebar).rounded(px(8.0))
-                    .border_1().border_color(cx.theme().border)
-                    .child(div().text_xs().font_weight(FontWeight::SEMIBOLD)
-                        .text_color(cx.theme().muted_foreground)
-                        .child("⚠ Components not found in registry"))
-                    .children(attached.iter().map(|c|
-                        div().text_xs().text_color(cx.theme().muted_foreground)
+                    .w_full()
+                    .gap_1()
+                    .p_3()
+                    .bg(cx.theme().sidebar)
+                    .rounded(px(8.0))
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(cx.theme().muted_foreground)
+                            .child("⚠ Components not found in registry"),
+                    )
+                    .children(attached.iter().map(|c| {
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
                             .child(format!("  '{}' → missing", c.class_name))
                             .into_any_element()
-                    ))
-                    .child(div().text_xs().text_color(cx.theme().muted_foreground)
-                        .child(format!("registry: {}", registry_classes.join(", "))))
+                    }))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("registry: {}", registry_classes.join(", "))),
+                    )
                     .into_any_element(),
             )
         } else {
@@ -410,16 +529,14 @@ impl Render for ObjectTypeFieldsSection {
                     .xsmall()
                     .ghost(),
             )
-            .content(move |_window, _cx| {
-                dialog.clone()
-            })
+            .content(move |_window, _cx| dialog.clone())
             .into_any_element();
 
-        let component_hierarchy = ComponentHierarchyPanel::new(
-            self.object_id.clone(),
-            self.scene_db.clone(),
-        );
-        let component_panel = component_hierarchy.render(add_popover, cx).into_any_element();
+        let component_hierarchy =
+            ComponentHierarchyPanel::new(self.object_id.clone(), self.scene_db.clone());
+        let component_panel = component_hierarchy
+            .render(add_popover, cx)
+            .into_any_element();
 
         // ── Property sections for every attached component ─────────────────
         let component_sections = attached
@@ -437,25 +554,41 @@ impl Render for ObjectTypeFieldsSection {
                     .map(|prop| {
                         let default = (prop.getter)(instance.as_ref());
                         let value = self.read_property(
-                            class_name, prop.name, &prop.property_type, &default,
+                            class_name,
+                            prop.name,
+                            &prop.property_type,
+                            &default,
                         );
                         self.render_property_row(
-                            class_name, &prop.display_name, prop.name,
-                            &prop.property_type, &value, cx,
+                            class_name,
+                            &prop.display_name,
+                            prop.name,
+                            &prop.property_type,
+                            &value,
+                            cx,
                         )
                     })
                     .collect::<Vec<_>>();
 
                 Some(
                     v_flex()
-                        .w_full().gap_2().p_3()
-                        .bg(cx.theme().sidebar).rounded(px(8.0))
-                        .border_1().border_color(cx.theme().border)
+                        .w_full()
+                        .gap_2()
+                        .p_3()
+                        .bg(cx.theme().sidebar)
+                        .rounded(px(8.0))
+                        .border_1()
+                        .border_color(cx.theme().border)
                         .child(
-                            h_flex().w_full().items_center().gap_2()
+                            h_flex()
+                                .w_full()
+                                .items_center()
+                                .gap_2()
                                 .child(ui::Icon::new(IconName::Component).small())
                                 .child(
-                                    div().text_sm().font_weight(FontWeight::SEMIBOLD)
+                                    div()
+                                        .text_sm()
+                                        .font_weight(FontWeight::SEMIBOLD)
                                         .text_color(cx.theme().foreground)
                                         .child(class_name.to_string()),
                                 ),
@@ -475,4 +608,3 @@ impl Render for ObjectTypeFieldsSection {
             .into_any_element()
     }
 }
-

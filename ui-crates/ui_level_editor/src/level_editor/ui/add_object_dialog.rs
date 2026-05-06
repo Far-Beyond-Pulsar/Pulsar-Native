@@ -212,108 +212,103 @@ impl Render for AddObjectDialog {
             )
             // ── Scrollable content ──────────────────────────────────────────
             .child(
-                div()
-                    .flex_1()
-                    .w_full()
-                    .overflow_hidden()
-                    .child(
-                        div()
-                            .size_full()
-                            .scrollable(ScrollbarAxis::Vertical)
-                            .child(
-                                v_flex()
-                                    .w_full()
-            // ── Built-in section ────────────────────────────────────────────
-            .when(!builtins.is_empty(), |el| {
-                el.child(
-                    div()
-                        .px_2()
-                        .pt_1()
-                        .text_xs()
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(cx.theme().muted_foreground)
-                        .child("Built-in"),
-                )
-                .children(builtins.into_iter().map(|i| {
-                    let entry = &BUILTIN_TYPES[i];
-                    let label = entry.label;
-                    let icon = entry.icon.clone();
-                    let make_type = entry.object_type;
-                    let theme = cx.theme().clone();
-                    row_style(div())
-                        .id(ElementId::Name(label.into()))
-                        .hover(move |s| s.bg(theme.accent.opacity(0.12)))
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(move |this, _, _, cx| {
-                                this.spawn_object(label, make_type(), cx);
-                            }),
-                        )
-                        .child(
-                            Icon::new(icon)
-                                .size(px(13.0))
-                                .text_color(cx.theme().muted_foreground),
-                        )
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().foreground)
-                                .child(label),
-                        )
-                }))
-            })
-            // ── Engine classes section ───────────────────────────────────────
-            .when(!classes.is_empty(), |el| {
-                el.child(
-                    div()
-                        .px_2()
-                        .pt_1()
-                        .text_xs()
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(cx.theme().muted_foreground)
-                        .child("Engine Classes"),
-                )
-                .children(classes.into_iter().map(|name| {
-                    let theme = cx.theme().clone();
-                    row_style(div())
-                        .id(ElementId::Name(name.into()))
-                        .hover(move |s| s.bg(theme.accent.opacity(0.12)))
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(move |this, _, _, cx| {
-                                this.spawn_object(name, ObjectType::Empty, cx);
-                            }),
-                        )
-                        .child(
-                            Icon::new(IconName::Code)
-                                .size(px(13.0))
-                                .text_color(cx.theme().muted_foreground),
-                        )
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().foreground)
-                                .child(name),
-                        )
-                }))
-            })
-            // ── Empty state ──────────────────────────────────────────────────
-            .when(
-                builtins_empty_and_classes_empty(&query, &self.engine_classes),
-                |el| {
-                    el.child(
-                        div()
-                            .flex()
-                            .justify_center()
-                            .py_4()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("No results"),
-                    )
-                },
-            ),
+                div().flex_1().w_full().overflow_hidden().child(
+                    div().size_full().scrollable(ScrollbarAxis::Vertical).child(
+                        v_flex()
+                            .w_full()
+                            // ── Built-in section ────────────────────────────────────────────
+                            .when(!builtins.is_empty(), |el| {
+                                el.child(
+                                    div()
+                                        .px_2()
+                                        .pt_1()
+                                        .text_xs()
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Built-in"),
+                                )
+                                .children(
+                                    builtins.into_iter().map(|i| {
+                                        let entry = &BUILTIN_TYPES[i];
+                                        let label = entry.label;
+                                        let icon = entry.icon.clone();
+                                        let make_type = entry.object_type;
+                                        let theme = cx.theme().clone();
+                                        row_style(div())
+                                            .id(ElementId::Name(label.into()))
+                                            .hover(move |s| s.bg(theme.accent.opacity(0.12)))
+                                            .on_mouse_down(
+                                                MouseButton::Left,
+                                                cx.listener(move |this, _, _, cx| {
+                                                    this.spawn_object(label, make_type(), cx);
+                                                }),
+                                            )
+                                            .child(
+                                                Icon::new(icon)
+                                                    .size(px(13.0))
+                                                    .text_color(cx.theme().muted_foreground),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_sm()
+                                                    .text_color(cx.theme().foreground)
+                                                    .child(label),
+                                            )
+                                    }),
+                                )
+                            })
+                            // ── Engine classes section ───────────────────────────────────────
+                            .when(!classes.is_empty(), |el| {
+                                el.child(
+                                    div()
+                                        .px_2()
+                                        .pt_1()
+                                        .text_xs()
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Engine Classes"),
+                                )
+                                .children(classes.into_iter().map(|name| {
+                                    let theme = cx.theme().clone();
+                                    row_style(div())
+                                        .id(ElementId::Name(name.into()))
+                                        .hover(move |s| s.bg(theme.accent.opacity(0.12)))
+                                        .on_mouse_down(
+                                            MouseButton::Left,
+                                            cx.listener(move |this, _, _, cx| {
+                                                this.spawn_object(name, ObjectType::Empty, cx);
+                                            }),
+                                        )
+                                        .child(
+                                            Icon::new(IconName::Code)
+                                                .size(px(13.0))
+                                                .text_color(cx.theme().muted_foreground),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .text_color(cx.theme().foreground)
+                                                .child(name),
+                                        )
+                                }))
+                            })
+                            // ── Empty state ──────────────────────────────────────────────────
+                            .when(
+                                builtins_empty_and_classes_empty(&query, &self.engine_classes),
+                                |el| {
+                                    el.child(
+                                        div()
+                                            .flex()
+                                            .justify_center()
+                                            .py_4()
+                                            .text_sm()
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child("No results"),
+                                    )
+                                },
                             ),
                     ),
+                ),
             )
     }
 }

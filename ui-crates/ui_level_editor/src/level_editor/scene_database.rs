@@ -619,7 +619,8 @@ impl SceneDatabase {
     ) {
         // Get all components
         let mut components = self.get_components(object_id);
-        if from_index >= components.len() || to_index >= components.len() || from_index == to_index {
+        if from_index >= components.len() || to_index >= components.len() || from_index == to_index
+        {
             return;
         }
 

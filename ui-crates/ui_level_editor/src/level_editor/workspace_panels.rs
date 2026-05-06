@@ -2,8 +2,8 @@
 
 use super::ui::{
     add_object_dialog::AddObjectDialog, ComponentFieldsSection, HierarchyPanel, LevelEditorState,
-    ObjectHeaderSection, ObjectTypeFieldsSection, PropertiesPanel, TransformSection,
-    ViewportPanel, WorldSettingsReplicated,
+    ObjectHeaderSection, ObjectTypeFieldsSection, PropertiesPanel, TransformSection, ViewportPanel,
+    WorldSettingsReplicated,
 };
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use engine_backend::GameThread;

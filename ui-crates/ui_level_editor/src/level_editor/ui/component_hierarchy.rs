@@ -60,11 +60,7 @@ impl ComponentHierarchyPanel {
         }
     }
 
-    pub fn render<V>(
-        &self,
-        add_button: AnyElement,
-        cx: &mut Context<V>,
-    ) -> impl IntoElement
+    pub fn render<V>(&self, add_button: AnyElement, cx: &mut Context<V>) -> impl IntoElement
     where
         V: 'static + Render,
     {
@@ -212,67 +208,67 @@ impl ComponentHierarchyPanel {
                     .drag_handle(DragHandlePosition::Left)
                     .w_full()
                     .child(
-                    // Row content
-                    h_flex()
-                        .id(SharedString::from(format!("component-{}", idx)))
-                        .w_full()
-                        .items_center()
-                        .gap_1()
-                        .h_7()
-                        .pl(indent)
-                        .pr_2()
-                        .rounded(px(4.0))
-                        .cursor_pointer()
-                        .when(is_selected, |s| s.bg(cx.theme().accent).shadow_sm())
-                        .when(!is_selected, |s| {
-                            s.hover(|style| style.bg(cx.theme().muted.opacity(0.3)))
-                        })
-                        .child(expand_arrow)
-                        // Component icon
-                        .child(
-                            div()
-                                .w_5()
-                                .h_5()
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .rounded(px(3.0))
-                                .bg(cx.theme().accent.opacity(0.15))
-                                .child(
-                                    Icon::new(IconName::Component)
-                                        .size(px(14.0))
-                                        .text_color(if is_selected {
-                                            text_color
-                                        } else {
-                                            cx.theme().accent
-                                        }),
-                                ),
-                        )
-                        // Component class name
-                        .child(
-                            div()
-                                .flex_1()
-                                .text_sm()
-                                .text_color(text_color)
-                                .overflow_hidden()
-                                .text_ellipsis()
-                                .child(class_name),
-                        )
-                        // Delete button (shown when selected)
-                        .when(is_selected, |row| {
-                            let scene_db = self.scene_db.clone();
-                            let obj_id = self.object_id.clone();
-                            row.child(
-                                Button::new(format!("delete-component-{}", idx))
-                                    .icon(IconName::Trash)
-                                    .xsmall()
-                                    .ghost()
-                                    .on_click(move |_, _, _| {
-                                        scene_db.remove_component(&obj_id, idx);
-                                    }),
+                        // Row content
+                        h_flex()
+                            .id(SharedString::from(format!("component-{}", idx)))
+                            .w_full()
+                            .items_center()
+                            .gap_1()
+                            .h_7()
+                            .pl(indent)
+                            .pr_2()
+                            .rounded(px(4.0))
+                            .cursor_pointer()
+                            .when(is_selected, |s| s.bg(cx.theme().accent).shadow_sm())
+                            .when(!is_selected, |s| {
+                                s.hover(|style| style.bg(cx.theme().muted.opacity(0.3)))
+                            })
+                            .child(expand_arrow)
+                            // Component icon
+                            .child(
+                                div()
+                                    .w_5()
+                                    .h_5()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(px(3.0))
+                                    .bg(cx.theme().accent.opacity(0.15))
+                                    .child(
+                                        Icon::new(IconName::Component).size(px(14.0)).text_color(
+                                            if is_selected {
+                                                text_color
+                                            } else {
+                                                cx.theme().accent
+                                            },
+                                        ),
+                                    ),
                             )
-                        }),
-                ),
+                            // Component class name
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .text_sm()
+                                    .text_color(text_color)
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .child(class_name),
+                            )
+                            // Delete button (shown when selected)
+                            .when(is_selected, |row| {
+                                let scene_db = self.scene_db.clone();
+                                let obj_id = self.object_id.clone();
+                                row.child(
+                                    Button::new(format!("delete-component-{}", idx))
+                                        .icon(IconName::Trash)
+                                        .xsmall()
+                                        .ghost()
+                                        .on_click(move |_, _, _| {
+                                            scene_db.remove_component(&obj_id, idx);
+                                        }),
+                                )
+                            }),
+                    ),
             )
     }
 }

@@ -6,7 +6,11 @@
 use gpui::{prelude::*, *};
 use pulsar_reflection::{PropertyValue, REGISTRY};
 use serde_json::Value;
-use ui::{input::{InputState, TextInput}, scroll::ScrollbarAxis, v_flex, ActiveTheme, Icon, IconName, Sizable, StyledExt};
+use ui::{
+    input::{InputState, TextInput},
+    scroll::ScrollbarAxis,
+    v_flex, ActiveTheme, Icon, IconName, Sizable, StyledExt,
+};
 
 use crate::level_editor::scene_database::SceneDatabase;
 
@@ -46,7 +50,8 @@ impl AddComponentDialog {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search components…"));
+        let search_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Search components…"));
         cx.observe(&search_input, |_, _, cx| cx.notify()).detach();
 
         let mut engine_classes = pulsar_reflection::REGISTRY.get_class_names();
@@ -104,7 +109,9 @@ fn property_value_to_json(value: &PropertyValue) -> Value {
         PropertyValue::Color(v) => serde_json::json!([v[0], v[1], v[2], v[3]]),
         PropertyValue::EnumVariant(v) => Value::from(*v as u64),
         PropertyValue::Vec(v) => Value::Array(v.iter().map(property_value_to_json).collect()),
-        PropertyValue::Component { class_name, .. } => serde_json::json!({"class_name": class_name}),
+        PropertyValue::Component { class_name, .. } => {
+            serde_json::json!({"class_name": class_name})
+        }
     }
 }
 
@@ -148,63 +155,56 @@ impl Render for AddComponentDialog {
                     .child(TextInput::new(&self.search_input).w_full().xsmall()),
             )
             .child(
-                div()
-                    .flex_1()
-                    .w_full()
-                    .overflow_hidden()
-                    .child(
-                        div()
-                            .size_full()
-                            .scrollable(ScrollbarAxis::Vertical)
-                            .child(
-                                v_flex()
-                                    .w_full()
-                                    .when(classes.is_empty(), |el| {
-                                        el.child(
-                                            div()
-                                                .px_2()
-                                                .py_1()
-                                                .text_xs()
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child("No components found"),
+                div().flex_1().w_full().overflow_hidden().child(
+                    div().size_full().scrollable(ScrollbarAxis::Vertical).child(
+                        v_flex()
+                            .w_full()
+                            .when(classes.is_empty(), |el| {
+                                el.child(
+                                    div()
+                                        .px_2()
+                                        .py_1()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("No components found"),
+                                )
+                            })
+                            .when(!classes.is_empty(), |el| {
+                                el.child(
+                                    div()
+                                        .px_2()
+                                        .pt_1()
+                                        .text_xs()
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Engine Classes"),
+                                )
+                                .children(classes.into_iter().map(|name| {
+                                    let theme = cx.theme().clone();
+                                    row_style(div())
+                                        .id(ElementId::Name(name.into()))
+                                        .hover(move |s| s.bg(theme.accent.opacity(0.12)))
+                                        .on_mouse_down(
+                                            MouseButton::Left,
+                                            cx.listener(move |this, _, _, cx| {
+                                                this.add_component(name, cx);
+                                            }),
                                         )
-                                    })
-                                    .when(!classes.is_empty(), |el| {
-                                        el.child(
-                                            div()
-                                                .px_2()
-                                                .pt_1()
-                                                .text_xs()
-                                                .font_weight(FontWeight::SEMIBOLD)
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child("Engine Classes"),
+                                        .child(
+                                            Icon::new(IconName::Component)
+                                                .size(px(13.0))
+                                                .text_color(cx.theme().muted_foreground),
                                         )
-                                        .children(classes.into_iter().map(|name| {
-                                            let theme = cx.theme().clone();
-                                            row_style(div())
-                                                .id(ElementId::Name(name.into()))
-                                                .hover(move |s| s.bg(theme.accent.opacity(0.12)))
-                                                .on_mouse_down(
-                                                    MouseButton::Left,
-                                                    cx.listener(move |this, _, _, cx| {
-                                                        this.add_component(name, cx);
-                                                    }),
-                                                )
-                                                .child(
-                                                    Icon::new(IconName::Component)
-                                                        .size(px(13.0))
-                                                        .text_color(cx.theme().muted_foreground),
-                                                )
-                                                .child(
-                                                    div()
-                                                        .text_sm()
-                                                        .text_color(cx.theme().foreground)
-                                                        .child(name),
-                                                )
-                                        }))
-                                    }),
-                            ),
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .text_color(cx.theme().foreground)
+                                                .child(name),
+                                        )
+                                }))
+                            }),
                     ),
+                ),
             )
     }
 }
