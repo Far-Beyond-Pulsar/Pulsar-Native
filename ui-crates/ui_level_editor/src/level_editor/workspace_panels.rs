@@ -1,12 +1,13 @@
 //! Workspace panels for Level Editor
 
 use super::ui::{
-    add_object_dialog::AddObjectDialog, ComponentFieldsSection, HierarchyPanel, LevelEditorState,
+    add_object_dialog::{AddObjectDialog, ObjectSpawnedEvent},
+    ComponentFieldsSection, HierarchyPanel, LevelEditorState,
     ObjectHeaderSection, PropertiesPanel, TransformSection, ViewportPanel, WorldSettingsReplicated,
 };
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use engine_backend::GameThread;
-use gpui::{Corner, *};
+use gpui::{Corner, Subscription, *};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -97,20 +98,32 @@ pub struct HierarchyPanelWrapper {
     hierarchy: HierarchyPanel,
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
     focus_handle: FocusHandle,
-    last_object_count: usize,
+    add_dialog: Entity<AddObjectDialog>,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl HierarchyPanelWrapper {
     pub fn new(
         state: Arc<parking_lot::RwLock<LevelEditorState>>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let last_object_count = state.read().scene_objects().len();
+        let state_for_dialog = state.clone();
+        let add_dialog = cx.new(|cx| AddObjectDialog::new(state_for_dialog, window, cx));
+        
+        let subscriptions = vec![
+            // Listen for ObjectSpawnedEvent from the dialog and notify to re-render
+            cx.subscribe(&add_dialog, |_this, _entity: Entity<AddObjectDialog>, _event: &ObjectSpawnedEvent, cx: &mut Context<Self>| {
+                cx.notify();
+            }),
+        ];
+
         Self {
             hierarchy: HierarchyPanel::new(),
             state,
             focus_handle: cx.focus_handle(),
-            last_object_count,
+            add_dialog,
+            _subscriptions: subscriptions,
         }
     }
 }
@@ -120,20 +133,9 @@ impl EventEmitter<PanelEvent> for HierarchyPanelWrapper {}
 ui_common::panel_boilerplate!(HierarchyPanelWrapper);
 
 impl Render for HierarchyPanelWrapper {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.state.read();
-        
-        // Check if state changed (new objects added) and notify if so
-        let current_count = state.scene_objects().len();
-        if current_count != self.last_object_count {
-            self.last_object_count = current_count;
-            drop(state); // release lock before notifying
-            cx.notify();
-            // Re-read state after notify
-        }
-        
-        let state = self.state.read();
-        let state_for_picker = self.state.clone();
+        let add_dialog = self.add_dialog.clone();
 
         let add_button = Popover::<AddObjectDialog>::new("add-object-picker")
             .anchor(Corner::TopLeft)
@@ -143,9 +145,7 @@ impl Render for HierarchyPanelWrapper {
                     .ghost()
                     .xsmall(),
             )
-            .content(move |window, cx| {
-                cx.new(|cx| AddObjectDialog::new(state_for_picker.clone(), window, cx))
-            })
+            .content(move |_, _| add_dialog.clone())
             .into_any_element();
 
         v_flex()

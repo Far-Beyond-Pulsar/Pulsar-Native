@@ -17,6 +17,11 @@ use crate::level_editor::scene_database::{
 };
 use crate::level_editor::ui::state::LevelEditorState;
 
+// ── Events ────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy)]
+pub struct ObjectSpawnedEvent;
+
 // ── Built-in types ────────────────────────────────────────────────────────────
 
 struct BuiltinEntry {
@@ -51,6 +56,7 @@ pub struct AddObjectDialog {
 }
 
 impl EventEmitter<DismissEvent> for AddObjectDialog {}
+impl EventEmitter<ObjectSpawnedEvent> for AddObjectDialog {}
 
 impl Focusable for AddObjectDialog {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
@@ -100,6 +106,7 @@ impl AddObjectDialog {
             scene_path: String::new(),
         };
         self.state_arc.read().scene_database.add_object(new_object, None);
+        cx.emit(ObjectSpawnedEvent);
         cx.emit(DismissEvent);
     }
 }
