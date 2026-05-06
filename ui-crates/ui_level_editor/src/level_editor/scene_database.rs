@@ -1,210 +1,383 @@
-//! Production Scene Database with Full Reflection System Integration
+//! Production Scene Database
 //!
-//! This is the level file system that:
-//! 1. Clears the entire Helio Scene when loading
-//! 2. Reconstructs everything from saved JSON
-//! 3. Auto-deserializes components using the registry
-//! 4. Rebuilds the complete hierarchy
-//! 5. Syncs to Helio for rendering
+//! Primary scene storage backed by the concurrency-safe `SceneDb` (atomic
+//! transforms, lock-free renderer reads) with an additional `SceneMetadataDb`
+//! layer for the reflection-based component system.
 
-use engine_backend::{
-    ComponentInstance, EditorObjectId, HelioActorHandle, MetadataObjectType, SceneMetadataDb,
-    SceneObjectMetadata, SceneSnapshot,
-};
+use engine_backend::scene::SceneObjectSnapshot;
+use engine_backend::{ComponentInstance, EditorObjectId, SceneMetadataDb};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
-// ── Production Scene Database ─────────────────────────────────────────────────
+// ── Public re-exports for UI layer compatibility ───────────────────────────
 
-/// Production-ready scene database with full component reflection support
+pub use engine_backend::scene::{Component, LightType, MeshType, ObjectId, ObjectType, SceneDb};
+
+// ── Transform ─────────────────────────────────────────────────────────────
+
+/// Editor transform: position, Euler rotation (degrees), and scale.
+///
+/// Stored inline in `SceneObjectData` for easy UI access.  The underlying
+/// `SceneDb` stores the same values as lock-free atomics so the renderer can
+/// read them without acquiring any mutex.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Transform {
+    pub position: [f32; 3],
+    pub rotation: [f32; 3],
+    pub scale: [f32; 3],
+}
+
+impl Default for Transform {
+    fn default() -> Self {
+        Self {
+            position: [0.0, 0.0, 0.0],
+            rotation: [0.0, 0.0, 0.0],
+            scale: [1.0, 1.0, 1.0],
+        }
+    }
+}
+
+// ── SceneObjectData ────────────────────────────────────────────────────────
+
+/// Snapshot of a single scene object – the primary data type used by editor panels.
+///
+/// This is a cheap-to-clone value that is produced by `SceneDatabase::get_object` /
+/// `get_all_objects` and consumed by `SceneDatabase::add_object` /
+/// `update_object`.  Transform data is stored both here (for easy editing) and
+/// in the underlying `SceneDb` (for atomic renderer reads); calling
+/// `update_object` keeps them in sync.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SceneObjectData {
+    pub id: ObjectId,
+    pub name: String,
+    pub object_type: ObjectType,
+    pub transform: Transform,
+    pub visible: bool,
+    pub locked: bool,
+    /// Parent object ID (`None` = root level).
+    pub parent: Option<ObjectId>,
+    /// Direct children (populated by `SceneDb` on read, ignored on write).
+    pub children: Vec<ObjectId>,
+    pub components: Vec<Component>,
+    pub scene_path: String,
+}
+
+impl SceneObjectData {
+    fn from_snapshot(snap: SceneObjectSnapshot) -> Self {
+        Self {
+            id: snap.id,
+            name: snap.name,
+            object_type: snap.object_type,
+            transform: Transform {
+                position: snap.position,
+                rotation: snap.rotation,
+                scale: snap.scale,
+            },
+            visible: snap.visible,
+            locked: snap.locked,
+            parent: snap.parent,
+            children: snap.children,
+            components: snap.components,
+            scene_path: snap.scene_path,
+        }
+    }
+
+    fn into_snapshot(self) -> SceneObjectSnapshot {
+        SceneObjectSnapshot {
+            id: self.id,
+            name: self.name,
+            object_type: self.object_type,
+            position: self.transform.position,
+            rotation: self.transform.rotation,
+            scale: self.transform.scale,
+            visible: self.visible,
+            locked: self.locked,
+            parent: self.parent,
+            children: self.children,
+            components: self.components,
+            scene_path: self.scene_path,
+        }
+    }
+}
+
+// ── Production Scene Database ──────────────────────────────────────────────
+
+/// Production-ready scene database.
+///
+/// Wraps `SceneDb` (the concurrency-safe object store used by the renderer)
+/// and adds the `SceneMetadataDb` layer for the new reflection-based component
+/// system.  All UI panels interact exclusively with `SceneDatabase`; they never
+/// talk to `SceneDb` or `SceneMetadataDb` directly.
 #[derive(Clone)]
 pub struct SceneDatabase {
-    /// The metadata layer that bridges to Helio Scene
+    /// Primary store: lock-free atomic transforms + hierarchy.
+    pub scene_db: Arc<SceneDb>,
+    /// Reflection-based component store (new system).
     pub metadata_db: Arc<SceneMetadataDb>,
 }
 
 impl SceneDatabase {
     pub fn new() -> Self {
         Self {
+            scene_db: Arc::new(SceneDb::new()),
             metadata_db: Arc::new(SceneMetadataDb::new()),
         }
     }
 
-    /// Build the default demo scene
+    /// Create with the default demo scene objects.
     pub fn with_default_scene() -> Self {
         let this = Self::new();
         this.populate_default_scene();
         this
     }
 
-    fn populate_default_scene(&self) {
-        // Create folders
-        let geometry = self.add_folder("Geometry", None);
-        let spheres = self.add_folder("Spheres", Some(geometry.clone()));
-        let lights_folder = self.add_folder("Lights", None);
-        let effects = self.add_folder("Effects", None);
-
-        // Add camera
-        self.add_object("Main Camera", MetadataObjectType::Camera, None);
-
-        // Add lights
-        self.add_object("Directional Light", MetadataObjectType::Light, None);
-        self.add_object("Point Light", MetadataObjectType::Light, Some(lights_folder.clone()));
-        self.add_object("Spot Light", MetadataObjectType::Light, Some(lights_folder));
-
-        // Add meshes
-        self.add_object("Red Cube", MetadataObjectType::Mesh, Some(geometry.clone()));
-        self.add_object("Blue Sphere", MetadataObjectType::Mesh, Some(spheres.clone()));
-        self.add_object("Gold Sphere", MetadataObjectType::Mesh, Some(spheres.clone()));
-        self.add_object("Green Sphere", MetadataObjectType::Mesh, Some(spheres));
-
-        // Add particle system
-        self.add_object("Fire Particles", MetadataObjectType::ParticleSystem, Some(effects));
-
-        tracing::info!("Default scene populated with reflection system");
-    }
-
-    pub fn add_folder(&self, name: &str, parent: Option<EditorObjectId>) -> EditorObjectId {
-        self.metadata_db.add_object(
-            name.to_string(),
-            MetadataObjectType::Folder,
-            HelioActorHandle::Folder,
-            parent,
-        )
-    }
-
-    pub fn add_object(
-        &self,
-        name: &str,
-        object_type: MetadataObjectType,
-        parent: Option<EditorObjectId>,
-    ) -> EditorObjectId {
-        self.metadata_db.add_object(
-            name.to_string(),
-            object_type,
-            HelioActorHandle::Empty, // TODO: Create Helio actors when integration is complete
-            parent,
-        )
-    }
-
-    // ── Scene Management ──────────────────────────────────────────────────────
-
-    /// Clear the entire scene (Helio + metadata + components)
-    pub fn clear(&self) {
-        self.metadata_db.clear();
-        // TODO: Clear Helio Scene when integration is complete
-        tracing::info!("Scene cleared - ready for new level");
-    }
-
-    /// Save the complete scene to JSON
+    /// Create using a caller-supplied `SceneDb` that is shared with the renderer.
     ///
-    /// Saves:
-    /// - All object metadata (names, types, hierarchy, scene paths)
-    /// - All component instances (serialized with reflection data)
-    /// - Complete hierarchy structure with cycle-free parent-child relationships
-    pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), String> {
-        // Create directories
-        if let Some(parent) = path.as_ref().parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create directory: {e}"))?;
-        }
-
-        // Create snapshot
-        let snapshot = self.metadata_db.create_snapshot();
-
-        // Build level file
-        let now = chrono::Utc::now().to_rfc3339();
-        let level_file = LevelFile {
-            version: "2.0".into(), // Version 2.0 = reflection component system
-            snapshot,
-            metadata: LevelMetadata {
-                created: now.clone(),
-                modified: now,
-                editor_version: env!("CARGO_PKG_VERSION").into(),
-            },
+    /// Populates the default demo scene into the provided database.
+    pub fn with_default_scene_on(scene_db: Arc<SceneDb>) -> Self {
+        let this = Self {
+            scene_db,
+            metadata_db: Arc::new(SceneMetadataDb::new()),
         };
-
-        // Serialize
-        let json = serde_json::to_string_pretty(&level_file)
-            .map_err(|e| format!("Failed to serialize: {e}"))?;
-
-        // Write
-        fs::write(&path, json).map_err(|e| format!("Failed to write file: {e}"))?;
-
-        tracing::info!("✓ Scene saved to: {}", path.as_ref().display());
-        Ok(())
+        this.populate_default_scene();
+        this
     }
 
-    /// Load a complete scene from JSON
-    ///
-    /// This performs a complete scene replacement:
-    /// 1. Clears entire current scene (Helio + metadata)
-    /// 2. Loads all object metadata from file
-    /// 3. Deserializes ALL components using the reflection registry
-    /// 4. Rebuilds complete hierarchy with all parent-child relationships
-    /// 5. Creates Helio Scene actors for rendering
-    ///
-    /// This is the AAA-quality level loading system.
-    pub fn load_from_file<P: AsRef<Path>>(&self, path: P) -> Result<(), String> {
-        // Read file
-        let json = fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read file: {e}"))?;
-
-        // Parse
-        let level_file: LevelFile =
-            serde_json::from_str(&json).map_err(|e| format!("Failed to parse JSON: {e}"))?;
-
-        // Validate version
-        if !level_file.version.starts_with("2.") && !level_file.version.starts_with("1.") {
-            return Err(format!(
-                "Unsupported scene version: {}. Expected 1.x or 2.x",
-                level_file.version
-            ));
+    fn mk(name: &str, object_type: ObjectType, parent: Option<ObjectId>) -> SceneObjectData {
+        SceneObjectData {
+            id: String::new(),
+            name: name.to_string(),
+            object_type,
+            transform: Transform::default(),
+            visible: true,
+            locked: false,
+            parent,
+            children: vec![],
+            components: vec![],
+            scene_path: String::new(),
         }
+    }
 
-        // STEP 1: Clear everything (Helio + metadata)
-        self.clear();
+    fn populate_default_scene(&self) {
+        // ── Folders ──────────────────────────────────────────────────────
+        let geometry = self.add_object(Self::mk("Geometry", ObjectType::Folder, None), None);
+        let spheres = self.add_object(
+            Self::mk("Spheres", ObjectType::Folder, Some(geometry.clone())),
+            Some(geometry.clone()),
+        );
+        let lights_folder = self.add_object(Self::mk("Lights", ObjectType::Folder, None), None);
+        let effects = self.add_object(Self::mk("Effects", ObjectType::Folder, None), None);
 
-        // STEP 2: Restore from snapshot (includes component deserialization)
-        self.metadata_db.load_snapshot(level_file.snapshot);
+        // ── Camera ───────────────────────────────────────────────────────
+        self.add_object(Self::mk("Main Camera", ObjectType::Camera, None), None);
 
-        // TODO: STEP 3: Create Helio Scene actors when integration is complete
-
-        tracing::info!(
-            "✓ Scene loaded from: {} (version: {}, created: {})",
-            path.as_ref().display(),
-            level_file.version,
-            level_file.metadata.created
+        // ── Lights ───────────────────────────────────────────────────────
+        self.add_object(
+            Self::mk("Directional Light", ObjectType::Light(LightType::Directional), None),
+            None,
+        );
+        self.add_object(
+            Self::mk(
+                "Point Light",
+                ObjectType::Light(LightType::Point),
+                Some(lights_folder.clone()),
+            ),
+            Some(lights_folder.clone()),
+        );
+        self.add_object(
+            Self::mk(
+                "Spot Light",
+                ObjectType::Light(LightType::Spot),
+                Some(lights_folder.clone()),
+            ),
+            Some(lights_folder),
         );
 
-        Ok(())
+        // ── Meshes ───────────────────────────────────────────────────────
+        self.add_object(
+            Self::mk("Red Cube", ObjectType::Mesh(MeshType::Cube), Some(geometry.clone())),
+            Some(geometry.clone()),
+        );
+        self.add_object(
+            Self::mk("Blue Sphere", ObjectType::Mesh(MeshType::Sphere), Some(spheres.clone())),
+            Some(spheres.clone()),
+        );
+        self.add_object(
+            Self::mk("Gold Sphere", ObjectType::Mesh(MeshType::Sphere), Some(spheres.clone())),
+            Some(spheres.clone()),
+        );
+        self.add_object(
+            Self::mk("Green Sphere", ObjectType::Mesh(MeshType::Sphere), Some(spheres.clone())),
+            Some(spheres),
+        );
+
+        // ── Particles ────────────────────────────────────────────────────
+        self.add_object(
+            Self::mk("Fire Particles", ObjectType::ParticleSystem, Some(effects.clone())),
+            Some(effects),
+        );
+
+        tracing::info!("Default scene populated");
     }
 
-    // ── Query API for UI ──────────────────────────────────────────────────────
+    // ── Object CRUD ───────────────────────────────────────────────────────
 
-    /// Get all objects (for hierarchy display)
-    pub fn get_all_objects(&self) -> Vec<SceneObjectMetadata> {
-        self.metadata_db.get_all_objects()
+    /// Add an object. Returns the assigned `ObjectId`.
+    pub fn add_object(&self, obj: SceneObjectData, parent: Option<ObjectId>) -> ObjectId {
+        self.scene_db.add_object(obj.into_snapshot(), parent)
     }
 
-    /// Get root objects (top-level in hierarchy)
-    pub fn get_root_objects(&self) -> Vec<EditorObjectId> {
-        self.metadata_db.get_root_objects()
+    /// Remove an object and all of its descendants. Returns `true` if found.
+    pub fn remove_object(&self, id: &ObjectId) -> bool {
+        self.scene_db.remove_object(id)
     }
 
-    /// Get children of an object
-    pub fn get_children(&self, object_id: &EditorObjectId) -> Vec<EditorObjectId> {
-        self.metadata_db.get_children(object_id)
+    /// Write updated data back to an existing object.
+    ///
+    /// Synchronises the atomic renderer transforms as well as all cold data
+    /// (name, visibility, locked, components).  Returns `true` on success.
+    pub fn update_object(&self, obj: SceneObjectData) -> bool {
+        let id = obj.id.clone();
+        if self.scene_db.get_entry(&id).is_none() {
+            return false;
+        }
+        self.scene_db.apply_transform(
+            &id,
+            obj.transform.position,
+            obj.transform.rotation,
+            obj.transform.scale,
+        );
+        self.scene_db.set_name(&id, obj.name);
+        self.scene_db.set_visible(&id, obj.visible);
+        self.scene_db.set_locked(&id, obj.locked);
+        if let Some(entry) = self.scene_db.get_entry(&id) {
+            entry.meta.write().components = obj.components;
+        }
+        true
     }
 
-    /// Get object metadata
-    pub fn get_object(&self, object_id: &EditorObjectId) -> Option<SceneObjectMetadata> {
-        self.metadata_db.get_object(object_id)
+    /// Clear the entire scene.
+    pub fn clear(&self) {
+        let root_ids: Vec<ObjectId> = self
+            .scene_db
+            .get_root_snapshots()
+            .into_iter()
+            .map(|s| s.id)
+            .collect();
+        for id in root_ids {
+            self.scene_db.remove_object(&id);
+        }
+        tracing::info!("Scene cleared – ready for new level");
     }
 
-    /// Add a component to an object (uses reflection registry)
+    // ── Queries ───────────────────────────────────────────────────────────
+
+    /// All objects in depth-first order.
+    pub fn get_all_objects(&self) -> Vec<SceneObjectData> {
+        self.scene_db
+            .get_all_snapshots()
+            .into_iter()
+            .map(SceneObjectData::from_snapshot)
+            .collect()
+    }
+
+    /// Root-level objects (no parent).
+    pub fn get_root_objects(&self) -> Vec<SceneObjectData> {
+        self.scene_db
+            .get_root_snapshots()
+            .into_iter()
+            .map(SceneObjectData::from_snapshot)
+            .collect()
+    }
+
+    /// Single object by ID, `None` if not found.
+    pub fn get_object(&self, id: &ObjectId) -> Option<SceneObjectData> {
+        self.scene_db.get_object(id).map(SceneObjectData::from_snapshot)
+    }
+
+    /// Direct children of `id`.
+    pub fn get_children(&self, id: &ObjectId) -> Vec<ObjectId> {
+        self.scene_db.get_children(Some(id.as_str()))
+    }
+
+    // ── Selection ─────────────────────────────────────────────────────────
+
+    pub fn select_object(&self, id: Option<ObjectId>) {
+        self.scene_db.select_object(id);
+    }
+
+    pub fn get_selected_object_id(&self) -> Option<ObjectId> {
+        self.scene_db.get_selected_id()
+    }
+
+    pub fn get_selected_object(&self) -> Option<SceneObjectData> {
+        self.scene_db.get_selected().map(SceneObjectData::from_snapshot)
+    }
+
+    // ── Properties ────────────────────────────────────────────────────────
+
+    pub fn set_name(&self, id: &ObjectId, name: String) -> bool {
+        self.scene_db.set_name(id, name)
+    }
+
+    pub fn set_visible(&self, id: &ObjectId, visible: bool) -> bool {
+        self.scene_db.set_visible(id, visible)
+    }
+
+    pub fn set_locked(&self, id: &ObjectId, locked: bool) -> bool {
+        self.scene_db.set_locked(id, locked)
+    }
+
+    /// Re-parent an object (cycle-safe).
+    pub fn reparent_object(&self, id: &ObjectId, new_parent: Option<ObjectId>) -> bool {
+        self.scene_db.reparent_object(id, new_parent)
+    }
+
+    /// Alias for `reparent_object` kept for backward compatibility.
+    pub fn set_parent(&self, id: &ObjectId, new_parent: Option<ObjectId>) -> bool {
+        self.reparent_object(id, new_parent)
+    }
+
+    // ── Ordering ──────────────────────────────────────────────────────────
+
+    /// Move an object one step earlier among its siblings.
+    ///
+    /// Full reorder support requires a `SceneDb` API extension; this is a
+    /// best-effort stub that is safe to call today.
+    pub fn move_object_up(&self, _id: &str) {
+        // TODO: implement when SceneDb exposes sibling reordering
+    }
+
+    /// Move an object one step later among its siblings.
+    pub fn move_object_down(&self, _id: &str) {
+        // TODO: implement when SceneDb exposes sibling reordering
+    }
+
+    // ── Duplication ────────────────────────────────────────────────────────
+
+    /// Shallow-duplicate an object (children are not copied). Returns the new ID.
+    pub fn duplicate_object(&self, id: &str) -> Option<ObjectId> {
+        let mut obj = self.get_object(&id.to_string())?;
+        obj.id = String::new(); // force auto-assign
+        obj.name = format!("{} (Copy)", obj.name);
+        obj.children = vec![];
+        let parent = obj.parent.clone();
+        Some(self.add_object(obj, parent))
+    }
+
+    // ── Folder helper ──────────────────────────────────────────────────────
+
+    pub fn add_folder(&self, name: &str, parent: Option<ObjectId>) -> ObjectId {
+        self.add_object(
+            Self::mk(name, ObjectType::Folder, parent.clone()),
+            parent,
+        )
+    }
+
+    // ── Reflection component system ────────────────────────────────────────
+
     pub fn add_component(
         &self,
         object_id: &EditorObjectId,
@@ -214,59 +387,64 @@ impl SceneDatabase {
         self.metadata_db.add_component(object_id, class_name, data);
     }
 
-    /// Remove a component from an object
     pub fn remove_component(&self, object_id: &EditorObjectId, component_index: usize) {
-        self.metadata_db
-            .remove_component(object_id, component_index);
+        self.metadata_db.remove_component(object_id, component_index);
     }
 
-    /// Get all components for an object
     pub fn get_components(&self, object_id: &EditorObjectId) -> Vec<ComponentInstance> {
         self.metadata_db.get_components(object_id)
     }
 
-    /// Add a new object to the scene
-    pub fn add_object_with_type(
-        &self,
-        name: String,
-        object_type: MetadataObjectType,
-        parent: Option<EditorObjectId>,
-    ) -> EditorObjectId {
-        self.metadata_db.add_object(
-            name,
-            object_type,
-            HelioActorHandle::Empty,
-            parent,
-        )
+    // ── Persistence ────────────────────────────────────────────────────────
+
+    /// Serialize the scene to a JSON level file.
+    pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), String> {
+        if let Some(parent_dir) = path.as_ref().parent() {
+            fs::create_dir_all(parent_dir)
+                .map_err(|e| format!("Failed to create directory: {e}"))?;
+        }
+        let objects = self.get_all_objects();
+        let now = chrono::Utc::now().to_rfc3339();
+        let level_file = LevelFile {
+            version: "2.0".into(),
+            objects,
+            metadata: LevelMetadata {
+                created: now.clone(),
+                modified: now,
+                editor_version: env!("CARGO_PKG_VERSION").into(),
+            },
+        };
+        let json = serde_json::to_string_pretty(&level_file)
+            .map_err(|e| format!("Failed to serialize: {e}"))?;
+        fs::write(&path, json).map_err(|e| format!("Failed to write file: {e}"))?;
+        tracing::info!("Scene saved to: {}", path.as_ref().display());
+        Ok(())
     }
 
-    /// Remove an object and all its descendants
-    pub fn remove_object(&self, object_id: &EditorObjectId) -> bool {
-        self.metadata_db.remove_object(object_id)
-    }
-
-    /// Reparent an object (with cycle prevention)
-    pub fn reparent_object(
-        &self,
-        object_id: &EditorObjectId,
-        new_parent: Option<EditorObjectId>,
-    ) -> bool {
-        self.metadata_db.set_parent(object_id, new_parent)
-    }
-
-    /// Rename an object (updates entire subtree's scene paths)
-    pub fn set_name(&self, object_id: &EditorObjectId, name: String) -> bool {
-        self.metadata_db.set_name(object_id, name)
-    }
-
-    /// Set visibility
-    pub fn set_visible(&self, object_id: &EditorObjectId, visible: bool) -> bool {
-        self.metadata_db.set_visible(object_id, visible)
-    }
-
-    /// Set locked state
-    pub fn set_locked(&self, object_id: &EditorObjectId, locked: bool) -> bool {
-        self.metadata_db.set_locked(object_id, locked)
+    /// Load a scene from a JSON level file (replaces the current scene).
+    pub fn load_from_file<P: AsRef<Path>>(&self, path: P) -> Result<(), String> {
+        let json =
+            fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {e}"))?;
+        let level_file: LevelFile =
+            serde_json::from_str(&json).map_err(|e| format!("Failed to parse JSON: {e}"))?;
+        if !level_file.version.starts_with("2.") && !level_file.version.starts_with("1.") {
+            return Err(format!(
+                "Unsupported scene version: {}. Expected 1.x or 2.x",
+                level_file.version
+            ));
+        }
+        self.clear();
+        // Objects are stored in DFS order so parents are always inserted first.
+        for obj in level_file.objects {
+            let parent = obj.parent.clone();
+            self.add_object(obj, parent);
+        }
+        tracing::info!(
+            "Scene loaded from: {} (version: {})",
+            path.as_ref().display(),
+            level_file.version
+        );
+        Ok(())
     }
 }
 
@@ -276,18 +454,13 @@ impl Default for SceneDatabase {
     }
 }
 
-// ── Level File Format ──────────────────────────────────────────────────────────
+// ── Level File Format ──────────────────────────────────────────────────────
 
-/// Production-ready level file format with full reflection component support
+/// JSON level file (version 2.0).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LevelFile {
-    /// File format version ("2.0" = reflection system)
     pub version: String,
-
-    /// Complete scene snapshot (objects + components + hierarchy)
-    pub snapshot: SceneSnapshot,
-
-    /// File metadata
+    pub objects: Vec<SceneObjectData>,
     pub metadata: LevelMetadata,
 }
 
