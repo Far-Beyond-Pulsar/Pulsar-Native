@@ -6,6 +6,7 @@ use ui::button::ButtonVariants as _;
 use ui::popover::Popover;
 
 use super::add_component_dialog::AddComponentDialog;
+use super::ComponentHierarchyPanel;
 use crate::level_editor::scene_database::{ObjectType, SceneDatabase};
 
 pub struct ObjectTypeFieldsSection {
@@ -398,12 +399,8 @@ impl Render for ObjectTypeFieldsSection {
             None
         };
 
-        // ── Component list panel (mini hierarchy) ─────────────────────────
-        // Shows every attached component as a row; "+" opens AddComponentDialog popover.
-        let selected_idx = self.selected_component;
-        let object_id_for_remove = self.object_id.clone();
-        let scene_db_for_remove = self.scene_db.clone();
-
+        // ── Component hierarchy panel ─────────────────────────────────────
+        // Shows components in a tree structure similar to the scene hierarchy
         let dialog = self.add_component_dialog.clone();
         let add_popover = Popover::<AddComponentDialog>::new("add-component-picker")
             .anchor(Corner::TopRight)
@@ -415,110 +412,14 @@ impl Render for ObjectTypeFieldsSection {
             )
             .content(move |_window, _cx| {
                 dialog.clone()
-            });
+            })
+            .into_any_element();
 
-        let component_list_rows = attached.iter().enumerate().map(|(idx, component)| {
-            let is_selected = selected_idx == Some(idx);
-            let class_name = component.class_name.clone();
-            let scene_db = scene_db_for_remove.clone();
-            let obj_id = object_id_for_remove.clone();
-            let theme = cx.theme().clone();
-            let selected_bg = if is_selected { theme.accent.opacity(0.15) } else { theme.sidebar };
-
-            h_flex()
-                .w_full()
-                .h(px(26.0))
-                .px_2()
-                .gap_2()
-                .items_center()
-                .rounded(px(4.0))
-                .bg(selected_bg)
-                .cursor_pointer()
-                .id(ElementId::Integer(idx as u64))
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |this, _, _, cx| {
-                        this.selected_component = Some(idx);
-                        cx.notify();
-                    }),
-                )
-                .child(
-                    Icon::new(IconName::Component)
-                        .size(px(12.0))
-                        .text_color(cx.theme().muted_foreground),
-                )
-                .child(
-                    div()
-                        .flex_1()
-                        .text_sm()
-                        .text_color(cx.theme().foreground)
-                        .child(class_name.clone()),
-                )
-                // Remove button — only shown when this row is selected
-                .when(is_selected, |row| {
-                    let scene_db2 = scene_db.clone();
-                    let obj_id2 = obj_id.clone();
-                    row.child(
-                        ui::button::Button::new(format!("remove-comp-{}", idx))
-                            .icon(IconName::Trash)
-                            .xsmall()
-                            .ghost()
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                scene_db2.remove_component(&obj_id2, idx);
-                                this.selected_component = None;
-                                cx.notify();
-                            })),
-                    )
-                })
-                .into_any_element()
-        }).collect::<Vec<_>>();
-
-        let component_panel = v_flex()
-            .w_full()
-            .bg(cx.theme().sidebar)
-            .rounded(px(8.0))
-            .border_1()
-            .border_color(cx.theme().border)
-            .overflow_hidden()
-            // Header row: "Components" label + Add button
-            .child(
-                h_flex()
-                    .w_full()
-                    .px_3()
-                    .py(px(6.0))
-                    .justify_between()
-                    .items_center()
-                    .border_b_1()
-                    .border_color(cx.theme().border)
-                    .child(
-                        h_flex().gap_2().items_center()
-                            .child(Icon::new(IconName::Component).small()
-                                .text_color(cx.theme().muted_foreground))
-                            .child(
-                                div().text_sm().font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(cx.theme().foreground)
-                                    .child("Components"),
-                            ),
-                    )
-                    .child(add_popover),
-            )
-            // Scrollable component list, height-limited to ~5 rows
-            .child(
-                div()
-                    .id("component-list-scroll")
-                    .w_full()
-                    .max_h(px(140.0))
-                    .overflow_y_scroll()
-                    .p_1()
-                    .when(component_list_rows.is_empty(), |el| {
-                        el.child(
-                            div().px_2().py_1().text_xs()
-                                .text_color(cx.theme().muted_foreground)
-                                .child("No components — click + to add"),
-                        )
-                    })
-                    .children(component_list_rows),
-            );
+        let component_hierarchy = ComponentHierarchyPanel::new(
+            self.object_id.clone(),
+            self.scene_db.clone(),
+        );
+        let component_panel = component_hierarchy.render(add_popover, cx).into_any_element();
 
         // ── Property sections for every attached component ─────────────────
         let component_sections = attached
