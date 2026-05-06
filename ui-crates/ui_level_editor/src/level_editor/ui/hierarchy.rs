@@ -3,7 +3,7 @@ use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
-    draggable::{Draggable, DragHandlePosition},
+    draggable::{DragHandlePosition, Draggable},
     drop_area::DropArea,
     h_flex,
     hierarchical_tree::tree_colors,
@@ -208,9 +208,12 @@ impl HierarchyPanel {
                                                 .text_color(cx.theme().muted_foreground)
                                                 .child("Root"),
                                         )
-                                        .on_mouse_down(MouseButton::Left, move |_event, _window, _cx| {
-                                            state_arc_root_click.write().select_object(None);
-                                        }),
+                                        .on_mouse_down(
+                                            MouseButton::Left,
+                                            move |_event, _window, _cx| {
+                                                state_arc_root_click.write().select_object(None);
+                                            },
+                                        ),
                                 ),
                         )
                         .child(
@@ -394,41 +397,36 @@ impl HierarchyPanel {
             object_name: object.name.clone(),
         };
 
-        let draggable_row = Draggable::new(
-            format!("hierarchy-drag-{}", object_id),
-            drag_payload,
-        )
-        .drag_handle(DragHandlePosition::Left)
-        .w_full()
-        .child(row_content);
+        let draggable_row = Draggable::new(format!("hierarchy-drag-{}", object_id), drag_payload)
+            .drag_handle(DragHandlePosition::Left)
+            .w_full()
+            .child(row_content);
 
         // ── Drop target wrapper (folders accept any hierarchy item) ───────
         let state_arc_for_drop = state_arc.clone();
         let drop_target_id = object_id.clone();
 
-        let drop_row = DropArea::<HierarchyDragPayload>::new(
-            format!("hierarchy-drop-{}", object_id),
-        )
-        .can_accept(move |payload| payload.object_id != drop_target_id)
-        .on_drop({
-            let drop_target_id2 = object_id.clone();
-            move |payload, _window, _cx| {
-                if payload.object_id != drop_target_id2 {
-                    // Use a single write lock for both operations to avoid
-                    // a deadlock (read then write on the same RwLock).
-                    let mut state = state_arc_for_drop.write();
-                    let success = state.scene_database.reparent_object(
-                        &payload.object_id,
-                        Some(drop_target_id2.clone()),
-                    );
-                    if success {
-                        state.expanded_objects.insert(drop_target_id2.clone());
+        let drop_row =
+            DropArea::<HierarchyDragPayload>::new(format!("hierarchy-drop-{}", object_id))
+                .can_accept(move |payload| payload.object_id != drop_target_id)
+                .on_drop({
+                    let drop_target_id2 = object_id.clone();
+                    move |payload, _window, _cx| {
+                        if payload.object_id != drop_target_id2 {
+                            // Use a single write lock for both operations to avoid
+                            // a deadlock (read then write on the same RwLock).
+                            let mut state = state_arc_for_drop.write();
+                            let success = state
+                                .scene_database
+                                .reparent_object(&payload.object_id, Some(drop_target_id2.clone()));
+                            if success {
+                                state.expanded_objects.insert(drop_target_id2.clone());
+                            }
+                        }
                     }
-                }
-            }
-        })
-        .w_full()
-        .child(draggable_row);
+                })
+                .w_full()
+                .child(draggable_row);
 
         // ── Compose: drop zone + children ─────────────────────────────────
         let children: Vec<AnyElement> = if has_children && is_expanded {
@@ -451,10 +449,7 @@ impl HierarchyPanel {
             vec![]
         };
 
-        v_flex()
-            .w_full()
-            .child(drop_row)
-            .children(children)
+        v_flex().w_full().child(drop_row).children(children)
     }
 
     fn get_icon_for_object_type(object_type: ObjectType) -> IconName {

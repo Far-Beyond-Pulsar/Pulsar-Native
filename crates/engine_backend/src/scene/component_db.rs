@@ -60,11 +60,7 @@ impl ComponentDb {
     ///
     /// Removes the first component matching the class name. Returns true if
     /// a component was removed.
-    pub fn remove_component_by_class(
-        &self,
-        object_id: &EditorObjectId,
-        class_name: &str,
-    ) -> bool {
+    pub fn remove_component_by_class(&self, object_id: &EditorObjectId, class_name: &str) -> bool {
         if let Some(mut components) = self.components.get_mut(object_id) {
             if let Some(pos) = components.iter().position(|c| c.class_name == class_name) {
                 components.remove(pos);
@@ -104,14 +100,12 @@ impl ComponentDb {
         object_id: &EditorObjectId,
         class_name: &str,
     ) -> Option<ComponentInstance> {
-        self.components
-            .get(object_id)
-            .and_then(|components| {
-                components
-                    .iter()
-                    .find(|c| c.class_name == class_name)
-                    .cloned()
-            })
+        self.components.get(object_id).and_then(|components| {
+            components
+                .iter()
+                .find(|c| c.class_name == class_name)
+                .cloned()
+        })
     }
 
     /// Check if an object has a specific component class
@@ -124,10 +118,7 @@ impl ComponentDb {
 
     /// Get the number of components on an object
     pub fn component_count(&self, object_id: &EditorObjectId) -> usize {
-        self.components
-            .get(object_id)
-            .map(|c| c.len())
-            .unwrap_or(0)
+        self.components.get(object_id).map(|c| c.len()).unwrap_or(0)
     }
 
     /// Update a component's data
@@ -229,11 +220,7 @@ mod tests {
             "PhysicsComponent".to_string(),
             serde_json::json!({}),
         );
-        db.add_component(
-            &obj_id,
-            "LightComponent".to_string(),
-            serde_json::json!({}),
-        );
+        db.add_component(&obj_id, "LightComponent".to_string(), serde_json::json!({}));
 
         assert_eq!(db.component_count(&obj_id), 2);
 

@@ -20,7 +20,9 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, Data, Fields, Field, Attribute, Lit, Meta, MetaNameValue, Type};
+use syn::{
+    Attribute, Data, DeriveInput, Field, Fields, Lit, Meta, MetaNameValue, Type, parse_macro_input,
+};
 
 #[proc_macro_derive(EngineClass, attributes(property, category))]
 pub fn derive_engine_class(input: TokenStream) -> TokenStream {
@@ -42,27 +44,30 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
     // Extract fields marked with #[property]
     let property_impls = match &input.data {
         Data::Struct(data_struct) => match &data_struct.fields {
-            Fields::Named(fields) => {
-                fields.named.iter().filter_map(|field| {
+            Fields::Named(fields) => fields
+                .named
+                .iter()
+                .filter_map(|field| {
                     if has_property_attr(field) {
                         Some(generate_property_metadata(field, name, &category))
                     } else {
                         None
                     }
-                }).collect::<Vec<_>>()
-            }
+                })
+                .collect::<Vec<_>>(),
             _ => {
                 return syn::Error::new_spanned(
                     &input,
-                    "EngineClass can only be derived for structs with named fields"
-                ).to_compile_error().into();
+                    "EngineClass can only be derived for structs with named fields",
+                )
+                .to_compile_error()
+                .into();
             }
         },
         _ => {
-            return syn::Error::new_spanned(
-                &input,
-                "EngineClass can only be derived for structs"
-            ).to_compile_error().into();
+            return syn::Error::new_spanned(&input, "EngineClass can only be derived for structs")
+                .to_compile_error()
+                .into();
         }
     };
 
@@ -111,14 +116,21 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
 
 /// Check if a field has the #[property] attribute
 fn has_property_attr(field: &Field) -> bool {
-    field.attrs.iter().any(|attr| attr.path().is_ident("property"))
+    field
+        .attrs
+        .iter()
+        .any(|attr| attr.path().is_ident("property"))
 }
 
 /// Extract category from struct-level attributes
 fn extract_category(attrs: &[Attribute]) -> Option<String> {
     for attr in attrs {
         if attr.path().is_ident("category") {
-            if let Ok(Meta::NameValue(MetaNameValue { value: syn::Expr::Lit(expr_lit), .. })) = attr.parse_args() {
+            if let Ok(Meta::NameValue(MetaNameValue {
+                value: syn::Expr::Lit(expr_lit),
+                ..
+            })) = attr.parse_args()
+            {
                 if let Lit::Str(lit_str) = &expr_lit.lit {
                     return Some(lit_str.value());
                 }
@@ -129,7 +141,11 @@ fn extract_category(attrs: &[Attribute]) -> Option<String> {
 }
 
 /// Generate PropertyMetadata for a single field
-fn generate_property_metadata(field: &Field, struct_name: &syn::Ident, category: &Option<String>) -> proc_macro2::TokenStream {
+fn generate_property_metadata(
+    field: &Field,
+    struct_name: &syn::Ident,
+    category: &Option<String>,
+) -> proc_macro2::TokenStream {
     let field_name = field.ident.as_ref().unwrap();
     let field_name_str = field_name.to_string();
     let display_name = capitalize_first(&field_name_str);
@@ -369,7 +385,13 @@ fn infer_property_type(ty: &Type, attrs: &[Attribute]) -> proc_macro2::TokenStre
 }
 
 /// Extract numeric constraints from #[property(min = ..., max = ..., step = ...)]
-fn extract_numeric_constraints(attrs: &[Attribute]) -> (proc_macro2::TokenStream, proc_macro2::TokenStream, proc_macro2::TokenStream) {
+fn extract_numeric_constraints(
+    attrs: &[Attribute],
+) -> (
+    proc_macro2::TokenStream,
+    proc_macro2::TokenStream,
+    proc_macro2::TokenStream,
+) {
     let mut min = quote! { None };
     let mut max = quote! { None };
     let mut step = quote! { None };

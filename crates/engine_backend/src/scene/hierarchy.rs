@@ -286,7 +286,10 @@ mod tests {
 
         assert_eq!(hierarchy.get_children(Some("obj1")).len(), 0);
         assert_eq!(hierarchy.get_children(Some("obj2")).len(), 1);
-        assert_eq!(hierarchy.get_parent(&"obj3".to_string()), Some("obj2".to_string()));
+        assert_eq!(
+            hierarchy.get_parent(&"obj3".to_string()),
+            Some("obj2".to_string())
+        );
     }
 
     #[test]

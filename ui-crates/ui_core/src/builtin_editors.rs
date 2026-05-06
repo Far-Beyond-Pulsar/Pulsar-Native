@@ -68,10 +68,7 @@ impl BuiltinEditorProvider for LevelEditorBuiltinProvider {
         vec![EditorMetadata {
             id: EditorId::new("level-editor"),
             display_name: "Level Editor".into(),
-            supported_file_types: vec![
-                FileTypeId::new("level"),
-                FileTypeId::new("level.json"),
-            ],
+            supported_file_types: vec![FileTypeId::new("level"), FileTypeId::new("level.json")],
         }]
     }
 

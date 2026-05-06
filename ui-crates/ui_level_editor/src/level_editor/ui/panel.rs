@@ -80,10 +80,7 @@ impl LevelEditorPanel {
 
         if let Some(parent) = default_path.parent() {
             if let Err(e) = std::fs::create_dir_all(parent) {
-                tracing::warn!(
-                    "Could not create default level directory {:?}: {e}",
-                    parent
-                );
+                tracing::warn!("Could not create default level directory {:?}: {e}", parent);
                 return;
             }
         }
@@ -107,19 +104,13 @@ impl LevelEditorPanel {
             // File does not exist — write the current default scene to disk, then set the path.
             match scene_db.save_to_file(&default_path) {
                 Ok(_) => {
-                    tracing::info!(
-                        "Created default level file at {:?}",
-                        default_path
-                    );
+                    tracing::info!("Created default level file at {:?}", default_path);
                     let mut w = self.shared_state.write();
                     w.current_scene = Some(default_path);
                     w.has_unsaved_changes = false;
                 }
                 Err(e) => {
-                    tracing::warn!(
-                        "Could not write default level to {:?}: {e}",
-                        default_path
-                    );
+                    tracing::warn!("Could not write default level to {:?}: {e}", default_path);
                 }
             }
         }
@@ -268,98 +259,105 @@ impl LevelEditorPanel {
         let viewport = self.viewport.clone();
         let render_enabled = self.render_enabled.clone();
 
-        let (hierarchy_handle, properties_handle) = workspace.update(cx, |workspace, cx| {
-            let dock_area = workspace.dock_area().downgrade();
+        let (hierarchy_handle, properties_handle) =
+            workspace.update(cx, |workspace, cx| {
+                let dock_area = workspace.dock_area().downgrade();
 
-            // Create viewport in center
-            let viewport_panel_inner = ViewportPanel::new(viewport.clone(), render_enabled.clone(), window, cx);
-            let viewport_panel = cx.new(|cx| {
-                use crate::level_editor::ViewportPanelWrapper;
-                ViewportPanelWrapper::new(
-                    viewport_panel_inner,
-                    shared_state.clone(),
-                    fps_graph.clone(),
-                    gpu.clone(),
-                    game.clone(),
-                    cx,
-                )
-            });
-
-            // Create right dock panels
-            let hierarchy_panel = cx.new(|cx| {
-                use crate::level_editor::HierarchyPanelWrapper;
-                HierarchyPanelWrapper::new(shared_state.clone(), cx)
-            });
-            let hierarchy_handle = hierarchy_panel.clone();
-            let properties_panel = cx.new(|cx| {
-                use crate::level_editor::PropertiesPanelWrapper;
-                PropertiesPanelWrapper::new(shared_state.clone(), window, cx)
-            });
-            let properties_handle = properties_panel.clone();
-            let world_settings_panel = cx.new(|cx| {
-                use crate::level_editor::WorldSettingsPanel;
-                WorldSettingsPanel::new(shared_state.clone(), window, cx)
-            });
-
-            // Wire up cross-panel notification: whenever the hierarchy is notified (e.g.
-            // after a selection click), the properties panel is also notified so it
-            // re-reads the selected object and updates its sections.
-            {
-                let hierarchy_for_observe = hierarchy_panel.clone();
-                properties_panel.update(cx, |_, cx| {
-                    cx.observe(&hierarchy_for_observe, |_, _, cx| {
-                                                cx.notify();
-                    }).detach();
+                // Create viewport in center
+                let viewport_panel_inner =
+                    ViewportPanel::new(viewport.clone(), render_enabled.clone(), window, cx);
+                let viewport_panel = cx.new(|cx| {
+                    use crate::level_editor::ViewportPanelWrapper;
+                    ViewportPanelWrapper::new(
+                        viewport_panel_inner,
+                        shared_state.clone(),
+                        fps_graph.clone(),
+                        gpu.clone(),
+                        game.clone(),
+                        cx,
+                    )
                 });
-                            }
 
-            // Bottom right: tabs for Properties and World Settings
-            let bottom_tabs = DockItem::tabs(
-                vec![
-                    std::sync::Arc::new(properties_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
-                    std::sync::Arc::new(world_settings_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
-                ],
-                Some(0),
-                &dock_area,
-                window,
-                cx,
-            );
+                // Create right dock panels
+                let hierarchy_panel = cx.new(|cx| {
+                    use crate::level_editor::HierarchyPanelWrapper;
+                    HierarchyPanelWrapper::new(shared_state.clone(), cx)
+                });
+                let hierarchy_handle = hierarchy_panel.clone();
+                let properties_panel = cx.new(|cx| {
+                    use crate::level_editor::PropertiesPanelWrapper;
+                    PropertiesPanelWrapper::new(shared_state.clone(), window, cx)
+                });
+                let properties_handle = properties_panel.clone();
+                let world_settings_panel = cx.new(|cx| {
+                    use crate::level_editor::WorldSettingsPanel;
+                    WorldSettingsPanel::new(shared_state.clone(), window, cx)
+                });
 
-            // Top right: hierarchy panel (as a single-tab TabPanel)
-            let top_hierarchy = DockItem::tabs(
-                vec![std::sync::Arc::new(hierarchy_panel) as std::sync::Arc<dyn ui::dock::PanelView>],
-                Some(0),
-                &dock_area,
-                window,
-                cx,
-            );
+                // Wire up cross-panel notification: whenever the hierarchy is notified (e.g.
+                // after a selection click), the properties panel is also notified so it
+                // re-reads the selected object and updates its sections.
+                {
+                    let hierarchy_for_observe = hierarchy_panel.clone();
+                    properties_panel.update(cx, |_, cx| {
+                        cx.observe(&hierarchy_for_observe, |_, _, cx| {
+                            cx.notify();
+                        })
+                        .detach();
+                    });
+                }
 
-            // Compose right dock as a vertical split: top = hierarchy (25%), bottom = tabs (75%)
-            // Hierarchy gets smaller fixed size, Properties/World gets larger
-            let right = ui::dock::DockItem::split_with_sizes(
-                gpui::Axis::Vertical,
-                vec![top_hierarchy, bottom_tabs],
-                vec![Some(px(150.0)), Some(px(550.0))],  // 150px hierarchy, 550px for Properties/World
-                &dock_area,
-                window,
-                cx,
-            );
+                // Bottom right: tabs for Properties and World Settings
+                let bottom_tabs = DockItem::tabs(
+                    vec![
+                        std::sync::Arc::new(properties_panel)
+                            as std::sync::Arc<dyn ui::dock::PanelView>,
+                        std::sync::Arc::new(world_settings_panel)
+                            as std::sync::Arc<dyn ui::dock::PanelView>,
+                    ],
+                    Some(0),
+                    &dock_area,
+                    window,
+                    cx,
+                );
 
-            // Set center and right dock only (no left dock, matching DAW approach)
-            let center_tabs = DockItem::tabs(
-                vec![std::sync::Arc::new(viewport_panel) as std::sync::Arc<dyn ui::dock::PanelView>],
-                Some(0),
-                &dock_area,
-                window,
-                cx,
-            );
-            let _ = dock_area.update(cx, |dock_area, cx| {
-                dock_area.set_center(center_tabs, window, cx);
-                dock_area.set_right_dock(right, Some(px(400.0)), true, window, cx);
+                // Top right: hierarchy panel (as a single-tab TabPanel)
+                let top_hierarchy = DockItem::tabs(
+                    vec![std::sync::Arc::new(hierarchy_panel)
+                        as std::sync::Arc<dyn ui::dock::PanelView>],
+                    Some(0),
+                    &dock_area,
+                    window,
+                    cx,
+                );
+
+                // Compose right dock as a vertical split: top = hierarchy (25%), bottom = tabs (75%)
+                // Hierarchy gets smaller fixed size, Properties/World gets larger
+                let right = ui::dock::DockItem::split_with_sizes(
+                    gpui::Axis::Vertical,
+                    vec![top_hierarchy, bottom_tabs],
+                    vec![Some(px(150.0)), Some(px(550.0))], // 150px hierarchy, 550px for Properties/World
+                    &dock_area,
+                    window,
+                    cx,
+                );
+
+                // Set center and right dock only (no left dock, matching DAW approach)
+                let center_tabs = DockItem::tabs(
+                    vec![std::sync::Arc::new(viewport_panel)
+                        as std::sync::Arc<dyn ui::dock::PanelView>],
+                    Some(0),
+                    &dock_area,
+                    window,
+                    cx,
+                );
+                let _ = dock_area.update(cx, |dock_area, cx| {
+                    dock_area.set_center(center_tabs, window, cx);
+                    dock_area.set_right_dock(right, Some(px(400.0)), true, window, cx);
+                });
+
+                (hierarchy_handle, properties_handle)
             });
-
-            (hierarchy_handle, properties_handle)
-        });
 
         self.hierarchy_panel_entity = Some(hierarchy_handle);
         self.properties_panel_entity = Some(properties_handle);
@@ -1032,24 +1030,18 @@ impl Panel for LevelEditorPanel {
     fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
         let state = self.shared_state.read();
         div()
-            .child(
-                if let Some(ref scene) = state.current_scene {
-                    format!(
-                        "Level Editor - {}{}",
-                        scene
-                            .file_stem()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or("Untitled"),
-                        if state.has_unsaved_changes {
-                            " *"
-                        } else {
-                            ""
-                        }
-                    )
-                } else {
-                    "Level Editor".to_string()
-                },
-            )
+            .child(if let Some(ref scene) = state.current_scene {
+                format!(
+                    "Level Editor - {}{}",
+                    scene
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("Untitled"),
+                    if state.has_unsaved_changes { " *" } else { "" }
+                )
+            } else {
+                "Level Editor".to_string()
+            })
             .into_any_element()
     }
 

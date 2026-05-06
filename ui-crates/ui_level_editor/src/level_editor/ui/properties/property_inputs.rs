@@ -47,7 +47,7 @@ pub fn render_f32_input(
                 .border_1()
                 .border_color(cx.theme().border)
                 .rounded_md()
-                .child(Label::new(value_str).text_color(cx.theme().foreground))
+                .child(Label::new(value_str).text_color(cx.theme().foreground)),
         )
         // Decrement button
         .child(
@@ -55,9 +55,7 @@ pub fn render_f32_input(
                 .icon(IconName::Minus)
                 .xsmall()
                 .ghost()
-                .when_some(min, |button, min_val| {
-                    button.disabled(value <= min_val)
-                })
+                .when_some(min, |button, min_val| button.disabled(value <= min_val)),
         )
         // Increment button
         .child(
@@ -65,22 +63,20 @@ pub fn render_f32_input(
                 .icon(IconName::Plus)
                 .xsmall()
                 .ghost()
-                .when_some(max, |button, max_val| {
-                    button.disabled(value >= max_val)
-                })
+                .when_some(max, |button, max_val| button.disabled(value >= max_val)),
         )
         .when_some(min, |this, min_val| {
             this.child(
                 Label::new(format!("Min: {}", min_val))
                     .text_xs()
-                    .text_color(cx.theme().muted_foreground)
+                    .text_color(cx.theme().muted_foreground),
             )
         })
         .when_some(max, |this, max_val| {
             this.child(
                 Label::new(format!("Max: {}", max_val))
                     .text_xs()
-                    .text_color(cx.theme().muted_foreground)
+                    .text_color(cx.theme().muted_foreground),
             )
         })
 }
@@ -108,25 +104,21 @@ pub fn render_i32_input(
                 .border_1()
                 .border_color(cx.theme().border)
                 .rounded_md()
-                .child(Label::new(value_str).text_color(cx.theme().foreground))
+                .child(Label::new(value_str).text_color(cx.theme().foreground)),
         )
         .child(
             Button::new("dec")
                 .icon(IconName::Minus)
                 .xsmall()
                 .ghost()
-                .when_some(min, |button, min_val| {
-                    button.disabled(value <= min_val)
-                })
+                .when_some(min, |button, min_val| button.disabled(value <= min_val)),
         )
         .child(
             Button::new("inc")
                 .icon(IconName::Plus)
                 .xsmall()
                 .ghost()
-                .when_some(max, |button, max_val| {
-                    button.disabled(value >= max_val)
-                })
+                .when_some(max, |button, max_val| button.disabled(value >= max_val)),
         )
 }
 
@@ -156,13 +148,13 @@ pub fn render_bool_input(
                     this.child(
                         Icon::new(IconName::Check)
                             .xsmall()
-                            .text_color(cx.theme().accent_foreground)
+                            .text_color(cx.theme().accent_foreground),
                     )
-                })
+                }),
         )
         .child(
             Label::new(if value { "Enabled" } else { "Disabled" })
-                .text_color(cx.theme().foreground)
+                .text_color(cx.theme().foreground),
         )
 }
 
@@ -197,7 +189,11 @@ pub fn render_vec3_input(
             v_flex()
                 .gap_1()
                 .flex_1()
-                .child(Label::new("X").text_xs().text_color(cx.theme().muted_foreground))
+                .child(
+                    Label::new("X")
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground),
+                )
                 .child(
                     div()
                         .h_8()
@@ -206,14 +202,21 @@ pub fn render_vec3_input(
                         .border_1()
                         .border_color(cx.theme().border)
                         .rounded_md()
-                        .child(Label::new(format!("{:.2}", value[0])).text_color(cx.theme().foreground))
-                )
+                        .child(
+                            Label::new(format!("{:.2}", value[0]))
+                                .text_color(cx.theme().foreground),
+                        ),
+                ),
         )
         .child(
             v_flex()
                 .gap_1()
                 .flex_1()
-                .child(Label::new("Y").text_xs().text_color(cx.theme().muted_foreground))
+                .child(
+                    Label::new("Y")
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground),
+                )
                 .child(
                     div()
                         .h_8()
@@ -222,14 +225,21 @@ pub fn render_vec3_input(
                         .border_1()
                         .border_color(cx.theme().border)
                         .rounded_md()
-                        .child(Label::new(format!("{:.2}", value[1])).text_color(cx.theme().foreground))
-                )
+                        .child(
+                            Label::new(format!("{:.2}", value[1]))
+                                .text_color(cx.theme().foreground),
+                        ),
+                ),
         )
         .child(
             v_flex()
                 .gap_1()
                 .flex_1()
-                .child(Label::new("Z").text_xs().text_color(cx.theme().muted_foreground))
+                .child(
+                    Label::new("Z")
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground),
+                )
                 .child(
                     div()
                         .h_8()
@@ -238,8 +248,11 @@ pub fn render_vec3_input(
                         .border_1()
                         .border_color(cx.theme().border)
                         .rounded_md()
-                        .child(Label::new(format!("{:.2}", value[2])).text_color(cx.theme().foreground))
-                )
+                        .child(
+                            Label::new(format!("{:.2}", value[2]))
+                                .text_color(cx.theme().foreground),
+                        ),
+                ),
         )
 }
 
@@ -268,7 +281,7 @@ pub fn render_color_input(
                 .bg(rgb)
                 .border_1()
                 .border_color(cx.theme().border)
-                .rounded_md()
+                .rounded_md(),
         )
         // RGBA values
         .child(
@@ -280,7 +293,7 @@ pub fn render_color_input(
                 value[3]
             ))
             .text_xs()
-            .text_color(cx.theme().muted_foreground)
+            .text_color(cx.theme().muted_foreground),
         )
 }
 
@@ -302,14 +315,14 @@ pub fn render_vec_input(
                 .items_center()
                 .child(
                     Label::new(format!("Array ({} items)", items.len()))
-                        .text_color(cx.theme().foreground)
+                        .text_color(cx.theme().foreground),
                 )
                 .child(
                     Button::new("add-item")
                         .icon(IconName::Plus)
                         .xsmall()
-                        .ghost()
-                )
+                        .ghost(),
+                ),
         )
         // Array items
         .children(items.iter().enumerate().map(|(idx, item)| {
@@ -321,7 +334,7 @@ pub fn render_vec_input(
                     Label::new(format!("[{}]", idx))
                         .text_xs()
                         .text_color(cx.theme().muted_foreground)
-                        .w(px(30.0))
+                        .w(px(30.0)),
                 )
                 .child(
                     div()
@@ -332,13 +345,13 @@ pub fn render_vec_input(
                         .border_1()
                         .border_color(cx.theme().border)
                         .rounded_md()
-                        .child(Label::new(item.clone()).text_color(cx.theme().foreground))
+                        .child(Label::new(item.clone()).text_color(cx.theme().foreground)),
                 )
                 .child(
                     Button::new(format!("remove-{}", idx))
                         .icon(IconName::Trash)
                         .xsmall()
-                        .ghost()
+                        .ghost(),
                 )
         }))
 }
@@ -364,11 +377,11 @@ pub fn render_enum_input(
                 .border_1()
                 .border_color(cx.theme().border)
                 .rounded_md()
-                .child(Label::new(selected_name.to_string()).text_color(cx.theme().foreground))
+                .child(Label::new(selected_name.to_string()).text_color(cx.theme().foreground)),
         )
         .child(
             Icon::new(IconName::ChevronDown)
                 .xsmall()
-                .text_color(cx.theme().muted_foreground)
+                .text_color(cx.theme().muted_foreground),
         )
 }

@@ -93,7 +93,9 @@ impl EngineClassRegistry {
     ///
     /// Returns None if the class name is not registered
     pub fn create_instance(&self, class_name: &str) -> Option<Box<dyn EngineClass>> {
-        self.classes.get(class_name).map(|entry| (entry.constructor)())
+        self.classes
+            .get(class_name)
+            .map(|entry| (entry.constructor)())
     }
 
     /// Check if a class is registered

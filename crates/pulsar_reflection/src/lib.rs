@@ -129,9 +129,7 @@ pub enum PropertyType {
     Enum { variants: Vec<&'static str> },
 
     /// Dynamic array of elements
-    Vec {
-        element_type: Box<PropertyType>,
-    },
+    Vec { element_type: Box<PropertyType> },
 
     /// Nested component
     Component { class_name: &'static str },

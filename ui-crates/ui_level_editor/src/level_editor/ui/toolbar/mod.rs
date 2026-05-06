@@ -1,7 +1,7 @@
 use gpui::*;
 use rust_i18n::t;
-use std::sync::Arc;
 use std::path::PathBuf;
+use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
     h_flex, ActiveTheme,
@@ -94,7 +94,11 @@ impl ToolbarPanel {
 
     fn default_level_path() -> Option<PathBuf> {
         let project_str = engine_state::get_project_path()?;
-        Some(PathBuf::from(project_str).join("scene").join("default.level"))
+        Some(
+            PathBuf::from(project_str)
+                .join("scene")
+                .join("default.level"),
+        )
     }
 
     fn render_save_button(

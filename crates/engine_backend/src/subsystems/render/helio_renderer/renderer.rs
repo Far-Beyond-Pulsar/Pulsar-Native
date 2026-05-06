@@ -704,8 +704,8 @@ impl HelioRenderer {
                 // Decompose Mat4 → (translation, rotation_euler_yxz_degrees, scale).
                 let (scale_v, quat, pos_v) = mat.to_scale_rotation_translation();
                 let (yaw, pitch, roll) = quat.to_euler(EulerRot::YXZ);
-                let pos   = [pos_v.x, pos_v.y, pos_v.z];
-                let rot   = [pitch.to_degrees(), yaw.to_degrees(), roll.to_degrees()];
+                let pos = [pos_v.x, pos_v.y, pos_v.z];
+                let rot = [pitch.to_degrees(), yaw.to_degrees(), roll.to_degrees()];
                 let scale = [scale_v.x, scale_v.y, scale_v.z];
 
                 // Find the SceneDb id for this Helio ObjectId.
@@ -718,7 +718,9 @@ impl HelioRenderer {
                     self.scene_db.apply_transform(&scene_id, pos, rot, scale);
                     tracing::debug!(
                         "[HELIO] Wrote gizmo transform back to SceneDb: {} pos={:?} rot={:?}",
-                        scene_id, pos, rot
+                        scene_id,
+                        pos,
+                        rot
                     );
                 }
             }
@@ -871,9 +873,7 @@ impl HelioRenderer {
 
         // Rebuild the BVH once per sync if any new objects were inserted.
         if picker_dirty {
-            inner
-                .scene_picker
-                .rebuild_instances(inner.renderer.scene());
+            inner.scene_picker.rebuild_instances(inner.renderer.scene());
         }
     }
 }

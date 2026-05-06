@@ -512,7 +512,9 @@ impl SceneDatabase {
 
     /// Single object by ID, `None` if not found.
     pub fn get_object(&self, id: &ObjectId) -> Option<SceneObjectData> {
-        self.scene_db.get_object(id).map(SceneObjectData::from_snapshot)
+        self.scene_db
+            .get_object(id)
+            .map(SceneObjectData::from_snapshot)
     }
 
     /// Direct children of `id`.
@@ -531,7 +533,9 @@ impl SceneDatabase {
     }
 
     pub fn get_selected_object(&self) -> Option<SceneObjectData> {
-        self.scene_db.get_selected().map(SceneObjectData::from_snapshot)
+        self.scene_db
+            .get_selected()
+            .map(SceneObjectData::from_snapshot)
     }
 
     // ── Properties ────────────────────────────────────────────────────────
@@ -588,10 +592,7 @@ impl SceneDatabase {
     // ── Folder helper ──────────────────────────────────────────────────────
 
     pub fn add_folder(&self, name: &str, parent: Option<ObjectId>) -> ObjectId {
-        self.add_object(
-            Self::mk(name, ObjectType::Folder, parent.clone()),
-            parent,
-        )
+        self.add_object(Self::mk(name, ObjectType::Folder, parent.clone()), parent)
     }
 
     // ── Reflection component system ────────────────────────────────────────
@@ -606,7 +607,8 @@ impl SceneDatabase {
     }
 
     pub fn remove_component(&self, object_id: &EditorObjectId, component_index: usize) {
-        self.metadata_db.remove_component(object_id, component_index);
+        self.metadata_db
+            .remove_component(object_id, component_index);
     }
 
     pub fn get_components(&self, object_id: &EditorObjectId) -> Vec<ComponentInstance> {
@@ -641,8 +643,7 @@ impl SceneDatabase {
 
     /// Load a scene from a JSON level file (replaces the current scene).
     pub fn load_from_file<P: AsRef<Path>>(&self, path: P) -> Result<(), String> {
-        let json =
-            fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {e}"))?;
+        let json = fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {e}"))?;
         let level_file: LevelFile =
             serde_json::from_str(&json).map_err(|e| format!("Failed to parse JSON: {e}"))?;
         if !level_file.version.starts_with("2.") && !level_file.version.starts_with("1.") {

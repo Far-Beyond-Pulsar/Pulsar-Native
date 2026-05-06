@@ -5,7 +5,9 @@
 //! and renders appropriate input widgets based on PropertyType.
 
 use super::property_inputs::*;
-use engine_backend::{ComponentInstance, EditorObjectId, EngineClass, PropertyType, PropertyValue, REGISTRY};
+use engine_backend::{
+    ComponentInstance, EditorObjectId, EngineClass, PropertyType, PropertyValue, REGISTRY,
+};
 use gpui::{prelude::*, App, *};
 use ui::{
     button::{Button, ButtonVariants as _},
@@ -32,11 +34,7 @@ pub struct ComponentRenderer {
 
 impl ComponentRenderer {
     /// Create a new component renderer
-    pub fn new(
-        object_id: EditorObjectId,
-        component_index: usize,
-        class_name: String,
-    ) -> Self {
+    pub fn new(object_id: EditorObjectId, component_index: usize, class_name: String) -> Self {
         Self {
             object_id,
             component_index,
@@ -83,19 +81,19 @@ impl ComponentRenderer {
                     .child(
                         Icon::new(IconName::Component)
                             .small()
-                            .text_color(cx.theme().accent)
+                            .text_color(cx.theme().accent),
                     )
                     .child(
                         Label::new(self.class_name.clone())
                             .text_sm()
-                            .text_color(cx.theme().foreground)
-                    )
+                            .text_color(cx.theme().foreground),
+                    ),
             )
             .child(
                 Button::new(format!("remove-component-{}", self.component_index))
                     .icon(IconName::Trash)
                     .xsmall()
-                    .ghost()
+                    .ghost(),
             )
     }
 
@@ -106,11 +104,7 @@ impl ComponentRenderer {
     /// 2. Deserializes the JSON data into it (if possible)
     /// 3. Calls get_properties() to get reflection metadata
     /// 4. Renders each property with appropriate widget
-    fn render_properties(
-        &self,
-        component_data: &serde_json::Value,
-        cx: &App,
-    ) -> impl IntoElement {
+    fn render_properties(&self, component_data: &serde_json::Value, cx: &App) -> impl IntoElement {
         // Try to create an instance from the registry
         let instance_opt = REGISTRY.create_instance(&self.class_name);
 
@@ -127,7 +121,7 @@ impl ComponentRenderer {
                         .child(
                             Label::new("No properties defined")
                                 .text_xs()
-                                .text_color(cx.theme().muted_foreground)
+                                .text_color(cx.theme().muted_foreground),
                         )
                         .into_any_element();
                 }
@@ -151,7 +145,7 @@ impl ComponentRenderer {
                     .child(
                         Label::new(format!("Unknown component: {}", self.class_name))
                             .text_xs()
-                            .text_color(cx.theme().danger_foreground)
+                            .text_color(cx.theme().danger_foreground),
                     )
                     .child(
                         div()
@@ -163,8 +157,8 @@ impl ComponentRenderer {
                             .child(
                                 Label::new(format!("Raw data: {}", component_data))
                                     .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                            )
+                                    .text_color(cx.theme().muted_foreground),
+                            ),
                     )
                     .into_any_element()
             }
@@ -239,49 +233,35 @@ impl ComponentRenderer {
 
             // Vec<T> array editor
             (PropertyType::Vec { element_type }, PropertyValue::Vec(items)) => {
-                let items_str: Vec<String> = items
-                    .iter()
-                    .map(|v| format!("{:?}", v))
-                    .collect();
+                let items_str: Vec<String> = items.iter().map(|v| format!("{:?}", v)).collect();
 
-                render_vec_input(
-                    &items_str,
-                    "element",
-                    || {},
-                    |_index| {},
-                    cx,
-                )
-                .into_any_element()
+                render_vec_input(&items_str, "element", || {}, |_index| {}, cx).into_any_element()
             }
 
             // Nested component
-            (PropertyType::Component { class_name }, PropertyValue::Component { .. }) => {
-                v_flex()
-                    .gap_1()
-                    .ml_4()
-                    .p_2()
-                    .bg(cx.theme().background)
-                    .border_1()
-                    .border_color(cx.theme().border)
-                    .rounded_sm()
-                    .child(
-                        Label::new(format!("Nested Component: {}", class_name))
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                    )
-                    .into_any_element()
-            }
+            (PropertyType::Component { class_name }, PropertyValue::Component { .. }) => v_flex()
+                .gap_1()
+                .ml_4()
+                .p_2()
+                .bg(cx.theme().background)
+                .border_1()
+                .border_color(cx.theme().border)
+                .rounded_sm()
+                .child(
+                    Label::new(format!("Nested Component: {}", class_name))
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground),
+                )
+                .into_any_element(),
 
             // Type mismatch fallback
-            _ => {
-                div()
-                    .child(
-                        Label::new("Type mismatch in property")
-                            .text_xs()
-                            .text_color(cx.theme().danger_foreground)
-                    )
-                    .into_any_element()
-            }
+            _ => div()
+                .child(
+                    Label::new("Type mismatch in property")
+                        .text_xs()
+                        .text_color(cx.theme().danger_foreground),
+                )
+                .into_any_element(),
         }
     }
 }
@@ -300,11 +280,7 @@ impl ComponentListSection {
     }
 
     /// Render all components for the object
-    pub fn render(
-        &self,
-        components: &[ComponentInstance],
-        cx: &App,
-    ) -> impl IntoElement {
+    pub fn render(&self, components: &[ComponentInstance], cx: &App) -> impl IntoElement {
         v_flex()
             .w_full()
             .gap_2()
@@ -312,12 +288,8 @@ impl ComponentListSection {
             .child(self.render_header(cx))
             // Component list
             .children(components.iter().enumerate().map(|(idx, component)| {
-                ComponentRenderer::new(
-                    self.object_id.clone(),
-                    idx,
-                    component.class_name.clone(),
-                )
-                .render(&component.data, false, cx)
+                ComponentRenderer::new(self.object_id.clone(), idx, component.class_name.clone())
+                    .render(&component.data, false, cx)
             }))
             // Empty state if no components
             .when(components.is_empty(), |this| {
@@ -333,13 +305,13 @@ impl ComponentListSection {
             .child(
                 Label::new("Components")
                     .text_sm()
-                    .text_color(cx.theme().foreground)
+                    .text_color(cx.theme().foreground),
             )
             .child(
                 Button::new("add-component")
                     .icon(IconName::Plus)
                     .xsmall()
-                    .ghost()
+                    .ghost(),
             )
     }
 
@@ -358,18 +330,18 @@ impl ComponentListSection {
                     .child(
                         Icon::new(IconName::Component)
                             .with_size(ui::Size::Medium)
-                            .text_color(cx.theme().muted_foreground)
+                            .text_color(cx.theme().muted_foreground),
                     )
                     .child(
                         Label::new("No components")
                             .text_sm()
-                            .text_color(cx.theme().muted_foreground)
+                            .text_color(cx.theme().muted_foreground),
                     )
                     .child(
                         Label::new("Click + to add a component")
                             .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                    )
+                            .text_color(cx.theme().muted_foreground),
+                    ),
             )
     }
 }
@@ -391,7 +363,7 @@ fn example_render_component_with_reflection(
         .child(
             Label::new(class_name)
                 .text_sm()
-                .text_color(cx.theme().foreground)
+                .text_color(cx.theme().foreground),
         )
         .children(properties.iter().map(|prop| {
             let value = (prop.getter)(component);
@@ -400,17 +372,15 @@ fn example_render_component_with_reflection(
                 .w_full()
                 .gap_2()
                 .child(render_property_label(&prop.display_name, cx))
-                .child(
-                    match (&prop.property_type, &value) {
-                        (PropertyType::F32 { min, max, step }, PropertyValue::F32(v)) => {
-                            render_f32_input(*v, *min, *max, *step, |_| {}, cx).into_any_element()
-                        }
-                        (PropertyType::Bool, PropertyValue::Bool(v)) => {
-                            render_bool_input(*v, |_| {}, cx).into_any_element()
-                        }
-                        // ... other types
-                        _ => div().into_any_element(),
+                .child(match (&prop.property_type, &value) {
+                    (PropertyType::F32 { min, max, step }, PropertyValue::F32(v)) => {
+                        render_f32_input(*v, *min, *max, *step, |_| {}, cx).into_any_element()
                     }
-                )
+                    (PropertyType::Bool, PropertyValue::Bool(v)) => {
+                        render_bool_input(*v, |_| {}, cx).into_any_element()
+                    }
+                    // ... other types
+                    _ => div().into_any_element(),
+                })
         }))
 }

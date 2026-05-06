@@ -203,7 +203,10 @@ impl SceneMetadataDb {
         new_parent: Option<EditorObjectId>,
     ) -> bool {
         // Try to reparent in hierarchy (this checks for cycles)
-        if !self.hierarchy.reparent_object(object_id, new_parent.clone()) {
+        if !self
+            .hierarchy
+            .reparent_object(object_id, new_parent.clone())
+        {
             return false;
         }
 
@@ -310,7 +313,9 @@ impl SceneMetadataDb {
     pub fn find_by_helio_light(&self, helio_id: HelioLightId) -> Option<EditorObjectId> {
         self.objects
             .iter()
-            .find(|entry| matches!(entry.helio_handle, HelioActorHandle::Light(id) if id == helio_id))
+            .find(
+                |entry| matches!(entry.helio_handle, HelioActorHandle::Light(id) if id == helio_id),
+            )
             .map(|entry| entry.key().clone())
     }
 
@@ -478,6 +483,9 @@ mod tests {
 
         // Check paths updated
         assert_eq!(db.get_object(&parent_id).unwrap().scene_path, "NewName");
-        assert_eq!(db.get_object(&child_id).unwrap().scene_path, "NewName/Child");
+        assert_eq!(
+            db.get_object(&child_id).unwrap().scene_path,
+            "NewName/Child"
+        );
     }
 }
