@@ -140,7 +140,11 @@ impl HierarchyPanel {
             )
             .child(
                 // Sticky Root row + scrollable items below it
-                v_flex().flex_1().overflow_hidden().p_2().gap_1()
+                v_flex()
+                    .flex_1()
+                    .overflow_hidden()
+                    .p_2()
+                    .gap_1()
                     .child({
                         let state_arc_root_drop = state_arc.clone();
                         let state_arc_root_click = state_arc.clone();
@@ -190,13 +194,7 @@ impl HierarchyPanel {
                             .gap_px()
                             .scrollable(ScrollbarAxis::Vertical)
                             .children(state.scene_objects().iter().map(|obj| {
-                                Self::render_object_tree_item(
-                                    obj,
-                                    state,
-                                    state_arc.clone(),
-                                    0,
-                                    cx,
-                                )
+                                Self::render_object_tree_item(obj, state, state_arc.clone(), 0, cx)
                             })),
                     ),
             )

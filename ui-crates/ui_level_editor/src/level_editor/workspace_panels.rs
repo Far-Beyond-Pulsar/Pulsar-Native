@@ -1,8 +1,7 @@
 //! Workspace panels for Level Editor
 
 use super::ui::{
-    add_object_dialog::AddObjectDialog,
-    ComponentFieldsSection, HierarchyPanel, LevelEditorState,
+    add_object_dialog::AddObjectDialog, ComponentFieldsSection, HierarchyPanel, LevelEditorState,
     ObjectHeaderSection, PropertiesPanel, TransformSection, ViewportPanel, WorldSettingsReplicated,
 };
 use engine_backend::services::gpu_renderer::GpuRenderer;
@@ -128,7 +127,7 @@ ui_common::panel_boilerplate!(HierarchyPanelWrapper);
 impl Render for HierarchyPanelWrapper {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.state.read();
-        
+
         // Track scene changes by checking object count
         let current_revision = state.scene_database.scene_db.get_all_snapshots().len() as u64;
         if current_revision != self.last_scene_revision {
@@ -136,7 +135,7 @@ impl Render for HierarchyPanelWrapper {
             cx.notify();
         }
         drop(state);
-        
+
         let state = self.state.read();
         let add_dialog = self.add_dialog.clone();
 
@@ -155,7 +154,10 @@ impl Render for HierarchyPanelWrapper {
             .size_full()
             .bg(cx.theme().sidebar)
             .p_1()
-            .child(self.hierarchy.render(&state, self.state.clone(), add_button, cx))
+            .child(
+                self.hierarchy
+                    .render(&state, self.state.clone(), add_button, cx),
+            )
     }
 }
 

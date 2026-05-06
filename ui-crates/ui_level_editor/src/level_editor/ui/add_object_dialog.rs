@@ -13,7 +13,7 @@ use ui::{
 };
 
 use crate::level_editor::scene_database::{
-    LightType, MeshType, ObjectType, SceneObjectData, SceneDb, Transform,
+    LightType, MeshType, ObjectType, SceneDb, SceneObjectData, Transform,
 };
 use crate::level_editor::ui::state::LevelEditorState;
 
@@ -31,18 +31,66 @@ struct BuiltinEntry {
 }
 
 static BUILTIN_TYPES: &[BuiltinEntry] = &[
-    BuiltinEntry { label: "Empty",              icon: IconName::Circle,     object_type: || ObjectType::Empty },
-    BuiltinEntry { label: "Camera",             icon: IconName::Camera,     object_type: || ObjectType::Camera },
-    BuiltinEntry { label: "Directional Light",  icon: IconName::Sun,        object_type: || ObjectType::Light(LightType::Directional) },
-    BuiltinEntry { label: "Point Light",        icon: IconName::LightBulb,  object_type: || ObjectType::Light(LightType::Point) },
-    BuiltinEntry { label: "Spot Light",         icon: IconName::Flash,      object_type: || ObjectType::Light(LightType::Spot) },
-    BuiltinEntry { label: "Area Light",         icon: IconName::SunLight,   object_type: || ObjectType::Light(LightType::Area) },
-    BuiltinEntry { label: "Cube",               icon: IconName::Cube,       object_type: || ObjectType::Mesh(MeshType::Cube) },
-    BuiltinEntry { label: "Sphere",             icon: IconName::Sphere,     object_type: || ObjectType::Mesh(MeshType::Sphere) },
-    BuiltinEntry { label: "Cylinder",           icon: IconName::Cylinder,   object_type: || ObjectType::Mesh(MeshType::Cylinder) },
-    BuiltinEntry { label: "Plane",              icon: IconName::Square,     object_type: || ObjectType::Mesh(MeshType::Plane) },
-    BuiltinEntry { label: "Particle System",    icon: IconName::Sparks,     object_type: || ObjectType::ParticleSystem },
-    BuiltinEntry { label: "Audio Source",       icon: IconName::MusicNote,  object_type: || ObjectType::AudioSource },
+    BuiltinEntry {
+        label: "Empty",
+        icon: IconName::Circle,
+        object_type: || ObjectType::Empty,
+    },
+    BuiltinEntry {
+        label: "Camera",
+        icon: IconName::Camera,
+        object_type: || ObjectType::Camera,
+    },
+    BuiltinEntry {
+        label: "Directional Light",
+        icon: IconName::Sun,
+        object_type: || ObjectType::Light(LightType::Directional),
+    },
+    BuiltinEntry {
+        label: "Point Light",
+        icon: IconName::LightBulb,
+        object_type: || ObjectType::Light(LightType::Point),
+    },
+    BuiltinEntry {
+        label: "Spot Light",
+        icon: IconName::Flash,
+        object_type: || ObjectType::Light(LightType::Spot),
+    },
+    BuiltinEntry {
+        label: "Area Light",
+        icon: IconName::SunLight,
+        object_type: || ObjectType::Light(LightType::Area),
+    },
+    BuiltinEntry {
+        label: "Cube",
+        icon: IconName::Cube,
+        object_type: || ObjectType::Mesh(MeshType::Cube),
+    },
+    BuiltinEntry {
+        label: "Sphere",
+        icon: IconName::Sphere,
+        object_type: || ObjectType::Mesh(MeshType::Sphere),
+    },
+    BuiltinEntry {
+        label: "Cylinder",
+        icon: IconName::Cylinder,
+        object_type: || ObjectType::Mesh(MeshType::Cylinder),
+    },
+    BuiltinEntry {
+        label: "Plane",
+        icon: IconName::Square,
+        object_type: || ObjectType::Mesh(MeshType::Plane),
+    },
+    BuiltinEntry {
+        label: "Particle System",
+        icon: IconName::Sparks,
+        object_type: || ObjectType::ParticleSystem,
+    },
+    BuiltinEntry {
+        label: "Audio Source",
+        icon: IconName::MusicNote,
+        object_type: || ObjectType::AudioSource,
+    },
 ];
 
 // ── Entity ────────────────────────────────────────────────────────────────────
@@ -70,9 +118,7 @@ impl AddObjectDialog {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let search_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("Search…")
-        });
+        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search…"));
         cx.observe(&search_input, |_, _, cx| cx.notify()).detach();
 
         let engine_classes = pulsar_reflection::REGISTRY.get_class_names();
@@ -105,7 +151,10 @@ impl AddObjectDialog {
             components: vec![],
             scene_path: String::new(),
         };
-        self.state_arc.read().scene_database.add_object(new_object, None);
+        self.state_arc
+            .read()
+            .scene_database
+            .add_object(new_object, None);
         cx.emit(ObjectSpawnedEvent);
         cx.emit(DismissEvent);
     }
@@ -180,9 +229,12 @@ impl Render for AddObjectDialog {
                     row_style(div())
                         .id(ElementId::Name(label.into()))
                         .hover(move |s| s.bg(theme.accent.opacity(0.12)))
-                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                            this.spawn_object(label, make_type(), cx);
-                        }))
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |this, _, _, cx| {
+                                this.spawn_object(label, make_type(), cx);
+                            }),
+                        )
                         .child(
                             Icon::new(icon)
                                 .size(px(13.0))
@@ -212,9 +264,12 @@ impl Render for AddObjectDialog {
                     row_style(div())
                         .id(ElementId::Name(name.into()))
                         .hover(move |s| s.bg(theme.accent.opacity(0.12)))
-                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                            this.spawn_object(name, ObjectType::Empty, cx);
-                        }))
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |this, _, _, cx| {
+                                this.spawn_object(name, ObjectType::Empty, cx);
+                            }),
+                        )
                         .child(
                             Icon::new(IconName::Code)
                                 .size(px(13.0))
@@ -229,17 +284,20 @@ impl Render for AddObjectDialog {
                 }))
             })
             // ── Empty state ──────────────────────────────────────────────────
-            .when(builtins_empty_and_classes_empty(&query, &self.engine_classes), |el| {
-                el.child(
-                    div()
-                        .flex()
-                        .justify_center()
-                        .py_4()
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child("No results"),
-                )
-            })
+            .when(
+                builtins_empty_and_classes_empty(&query, &self.engine_classes),
+                |el| {
+                    el.child(
+                        div()
+                            .flex()
+                            .justify_center()
+                            .py_4()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("No results"),
+                    )
+                },
+            )
     }
 }
 
@@ -248,7 +306,11 @@ fn builtins_empty_and_classes_empty(query: &str, engine_classes: &[&str]) -> boo
         return false;
     }
     let q = query.to_lowercase();
-    let no_builtin = BUILTIN_TYPES.iter().all(|e| !e.label.to_lowercase().contains(&q));
-    let no_class = engine_classes.iter().all(|n| !n.to_lowercase().contains(&q));
+    let no_builtin = BUILTIN_TYPES
+        .iter()
+        .all(|e| !e.label.to_lowercase().contains(&q));
+    let no_class = engine_classes
+        .iter()
+        .all(|n| !n.to_lowercase().contains(&q));
     no_builtin && no_class
 }
