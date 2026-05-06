@@ -2,7 +2,8 @@
 
 use super::ui::{
     add_object_dialog::AddObjectDialog, ComponentFieldsSection, HierarchyPanel, LevelEditorState,
-    ObjectHeaderSection, PropertiesPanel, TransformSection, ViewportPanel, WorldSettingsReplicated,
+    ObjectHeaderSection, ObjectTypeFieldsSection, PropertiesPanel, TransformSection,
+    ViewportPanel, WorldSettingsReplicated,
 };
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use engine_backend::GameThread;
@@ -179,6 +180,7 @@ pub struct PropertiesPanelWrapper {
     // New field binding system
     object_header_section: Option<Entity<ObjectHeaderSection>>,
     transform_section: Option<Entity<TransformSection>>,
+    object_type_fields_section: Option<Entity<ObjectTypeFieldsSection>>,
     component_sections: Vec<Entity<ComponentFieldsSection>>,
     current_object_id: Option<String>,
     // DEPRECATED: Old manual property editing (will be removed)
@@ -215,6 +217,7 @@ impl PropertiesPanelWrapper {
             focus_handle: cx.focus_handle(),
             object_header_section: None,
             transform_section: None,
+            object_type_fields_section: None,
             component_sections: Vec::new(),
             current_object_id: None,
             editing_property: None,
@@ -321,6 +324,16 @@ impl Render for PropertiesPanelWrapper {
                     TransformSection::new(object_id_clone.clone(), scene_db.clone(), window, cx)
                 }));
 
+                // Reflection-backed object type property section
+                self.object_type_fields_section = Some(cx.new(|cx| {
+                    ObjectTypeFieldsSection::new(
+                        object_id_clone.clone(),
+                        scene_db.clone(),
+                        window,
+                        cx,
+                    )
+                }));
+
                 // Component sections - create one for each component
                 self.component_sections.clear();
                 if let Some(obj) = scene_db.get_object(&object_id_clone) {
@@ -343,6 +356,7 @@ impl Render for PropertiesPanelWrapper {
                 // No selection - clear all sections
                 self.object_header_section = None;
                 self.transform_section = None;
+                self.object_type_fields_section = None;
                 self.component_sections.clear();
                 self.current_object_id = None;
             }
@@ -365,6 +379,7 @@ impl Render for PropertiesPanelWrapper {
                 &collapsed_sections,
                 &self.object_header_section,
                 &self.transform_section,
+                &self.object_type_fields_section,
                 &self.component_sections,
                 window,
                 cx,

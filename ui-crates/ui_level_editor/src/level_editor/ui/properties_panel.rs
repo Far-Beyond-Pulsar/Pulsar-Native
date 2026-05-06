@@ -31,6 +31,7 @@ impl PropertiesPanel {
         collapsed_sections: &HashSet<String>,
         object_header_section: &Option<Entity<super::ObjectHeaderSection>>,
         transform_section: &Option<Entity<super::TransformSection>>,
+        object_type_fields_section: &Option<Entity<super::ObjectTypeFieldsSection>>,
         component_sections: &Vec<Entity<super::ComponentFieldsSection>>,
         window: &mut Window,
         cx: &mut Context<PropertiesPanelWrapper>,
@@ -53,6 +54,11 @@ impl PropertiesPanel {
 
                         // Render new TransformSection if available (new binding system)
                         if let Some(ref section) = transform_section {
+                            flex = flex.child(section.clone());
+                        }
+
+                        // Reflection-backed object type properties (editable)
+                        if let Some(ref section) = object_type_fields_section {
                             flex = flex.child(section.clone());
                         }
 
