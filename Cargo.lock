@@ -12790,6 +12790,7 @@ dependencies = [
  "plugin_editor_api",
  "profiling 0.1.0",
  "raw-window-handle 0.6.2",
+ "rfd 0.15.4",
  "rust-i18n",
  "schemars",
  "serde",

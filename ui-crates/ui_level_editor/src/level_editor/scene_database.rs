@@ -161,6 +161,11 @@ impl SceneDatabase {
     }
 
     fn populate_default_scene(&self) {
+        self.populate_default_scene_pub();
+    }
+
+    /// Public entry-point for in-place scene reset (called by `on_new_scene`).
+    pub fn populate_default_scene_pub(&self) {
         // ── Folders ──────────────────────────────────────────────────────
         let geometry = self.add_object(Self::mk("Geometry", ObjectType::Folder, None), None);
         let spheres = self.add_object(

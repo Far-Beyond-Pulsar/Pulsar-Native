@@ -742,38 +742,89 @@ impl LevelEditorPanel {
     }
 
     fn on_save_scene_as(&mut self, _: &SaveSceneAs, _window: &mut Window, cx: &mut Context<Self>) {
-        // TODO: Implement async file dialog
-        if let Some(ref path) = self.shared_state.read().current_scene {
-            match self.shared_state.read().scene_database.save_to_file(path) {
-                Ok(_) => {
-                    self.shared_state.write().has_unsaved_changes = false;
-                    cx.notify();
-                }
-                Err(e) => {}
+        let state_arc = self.shared_state.clone();
+        let dialog = rfd::AsyncFileDialog::new()
+            .set_title("Save Scene As")
+            .add_filter("Level file", &["level", "json"])
+            .set_file_name("untitled.level");
+        cx.spawn(async move |this, cx| {
+            if let Some(handle) = dialog.save_file().await {
+                let path = handle.path().to_path_buf();
+                let result = state_arc.read().scene_database.save_to_file(&path);
+                cx.update(|cx| {
+                    this.update(cx, |_, cx| {
+                        match result {
+                            Ok(_) => {
+                                state_arc.write().current_scene = Some(path);
+                                state_arc.write().has_unsaved_changes = false;
+                            }
+                            Err(e) => tracing::error!("Save failed: {}", e),
+                        }
+                        cx.notify();
+                    })
+                    .ok();
+                })
+                .ok();
             }
-        }
+        })
+        .detach();
     }
 
     fn on_open_scene(&mut self, _: &OpenScene, _window: &mut Window, cx: &mut Context<Self>) {
-        // TODO: Implement async file dialog
-        cx.notify();
+        let state_arc = self.shared_state.clone();
+        let default_dir = state_arc
+            .read()
+            .current_scene
+            .as_ref()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+        let dialog = rfd::AsyncFileDialog::new()
+            .set_title("Open Scene")
+            .add_filter("Level file", &["level", "json"])
+            .set_directory(default_dir);
+        cx.spawn(async move |this, cx| {
+            if let Some(handle) = dialog.pick_file().await {
+                let path = handle.path().to_path_buf();
+                // Load into the existing shared SceneDb (renderer keeps its Arc).
+                let result = state_arc.read().scene_database.load_from_file(&path);
+                cx.update(|cx| {
+                    this.update(cx, |_, cx| {
+                        match result {
+                            Ok(_) => {
+                                let mut state = state_arc.write();
+                                state.current_scene = Some(path);
+                                state.has_unsaved_changes = false;
+                                // Deselect so properties panel clears stale data.
+                                state.select_object(None);
+                            }
+                            Err(e) => tracing::error!("Open scene failed: {}", e),
+                        }
+                        cx.notify();
+                    })
+                    .ok();
+                })
+                .ok();
+            }
+        })
+        .detach();
     }
 
     fn on_new_scene(&mut self, _: &NewScene, _: &mut Window, cx: &mut Context<Self>) {
-        // Warn if unsaved changes
-        if self.shared_state.write().has_unsaved_changes {
-            // TODO: Show confirmation dialog
+        // Warn if unsaved changes (TODO: modal dialog)
+        // Clear the scene IN-PLACE so the renderer keeps its Arc<SceneDb>.
+        {
+            let state = self.shared_state.read();
+            state.scene_database.clear();
+            // Re-populate defaults into the same shared SceneDb.
+            state.scene_database.populate_default_scene_pub();
         }
-
-        // Clear scene and reset to defaults
-        self.shared_state.read().scene_database.clear();
-        self.shared_state.write().current_scene = None;
-        self.shared_state.write().has_unsaved_changes = false;
-
-        // Re-add default objects
-        self.shared_state.write().scene_database =
-            crate::level_editor::SceneDatabase::with_default_scene();
-
+        {
+            let mut state = self.shared_state.write();
+            state.current_scene = None;
+            state.has_unsaved_changes = false;
+            // Deselect so properties panel clears stale data.
+            state.select_object(None);
+        }
         cx.notify();
     }
 
