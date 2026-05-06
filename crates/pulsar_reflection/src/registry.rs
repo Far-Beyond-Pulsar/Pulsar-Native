@@ -128,7 +128,7 @@ mod tests {
     fn test_registry_initialization() {
         // Registry should be initialized (even if empty in tests)
         let registry = &*REGISTRY;
-        assert!(registry.len() >= 0);
+        let _ = registry.len();
     }
 
     #[test]
