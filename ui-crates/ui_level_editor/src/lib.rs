@@ -5,6 +5,12 @@
 // Initialize translations
 rust_i18n::i18n!("locales", fallback = "en");
 
+// Force-link crates that register engine classes via inventory::submit!.
+// Without an explicit symbol reference the linker can dead-strip these
+// crates before inventory collects their EngineClass registrations.
+extern crate pulsar_physics;
+extern crate pulsar_rendering;
+
 use gpui::AppContext;
 
 mod level_editor;
