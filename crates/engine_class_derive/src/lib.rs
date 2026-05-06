@@ -30,7 +30,7 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     // Extract category from struct attributes
-    let _category = extract_category(&input.attrs);
+    let category = extract_category(&input.attrs);
 
     // Extract fields marked with #[property]
     let property_impls = match &input.data {
@@ -38,7 +38,7 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
             Fields::Named(fields) => {
                 fields.named.iter().filter_map(|field| {
                     if has_property_attr(field) {
-                        Some(generate_property_metadata(field, name))
+                        Some(generate_property_metadata(field, name, &category))
                     } else {
                         None
                     }
@@ -121,20 +121,28 @@ fn extract_category(attrs: &[Attribute]) -> Option<String> {
 }
 
 /// Generate PropertyMetadata for a single field
-fn generate_property_metadata(field: &Field, struct_name: &syn::Ident) -> proc_macro2::TokenStream {
+fn generate_property_metadata(field: &Field, struct_name: &syn::Ident, category: &Option<String>) -> proc_macro2::TokenStream {
     let field_name = field.ident.as_ref().unwrap();
     let field_name_str = field_name.to_string();
     let display_name = capitalize_first(&field_name_str);
 
     // Extract property attributes (min, max, step)
     let property_type = infer_property_type(&field.ty, &field.attrs);
-    let property_value = infer_property_value(&field.ty, field_name);
+    let property_value_getter = infer_property_value(&field.ty, field_name);
+    let property_value_setter = infer_property_setter(&field.ty, field_name);
+
+    // Generate category option
+    let category_expr = if let Some(cat) = category {
+        quote! { Some(#cat) }
+    } else {
+        quote! { None }
+    };
 
     // Generate getter closure
     let getter = quote! {
         Box::new(|obj: &dyn pulsar_reflection::EngineClass| {
             let concrete = obj.as_any().downcast_ref::<#struct_name>().unwrap();
-            #property_value
+            #property_value_getter
         })
     };
 
@@ -142,7 +150,7 @@ fn generate_property_metadata(field: &Field, struct_name: &syn::Ident) -> proc_m
     let setter = quote! {
         Box::new(|obj: &mut dyn pulsar_reflection::EngineClass, value: pulsar_reflection::PropertyValue| {
             let concrete = obj.as_any_mut().downcast_mut::<#struct_name>().unwrap();
-            // TODO: Implement setter based on property type
+            #property_value_setter
         })
     };
 
@@ -150,7 +158,7 @@ fn generate_property_metadata(field: &Field, struct_name: &syn::Ident) -> proc_m
         pulsar_reflection::PropertyMetadata {
             name: #field_name_str,
             display_name: #display_name.to_string(),
-            category: None,
+            category: #category_expr,
             property_type: #property_type,
             getter: #getter,
             setter: #setter,
@@ -195,10 +203,13 @@ fn infer_property_value(ty: &Type, field_name: &syn::Ident) -> proc_macro2::Toke
                 }
             }
             _ if type_str.starts_with("Vec <") || type_str.starts_with("Vec<") => {
-                // For Vec<T>, we'll return an empty vec for now
-                // TODO: Properly handle Vec<T> serialization
+                // For Vec<T>, serialize each item to PropertyValue
                 quote! {
-                    pulsar_reflection::PropertyValue::Vec(vec![])
+                    pulsar_reflection::PropertyValue::Vec(
+                        concrete.#field_name.iter().map(|item| {
+                            pulsar_reflection::PropertyValue::String(format!("{:?}", item))
+                        }).collect()
+                    )
                 }
             }
             _ => {
@@ -212,6 +223,77 @@ fn infer_property_value(ty: &Type, field_name: &syn::Ident) -> proc_macro2::Toke
         // Fallback
         quote! {
             pulsar_reflection::PropertyValue::String(String::from("unsupported"))
+        }
+    }
+}
+
+/// Infer PropertyValue setter from field type
+fn infer_property_setter(ty: &Type, field_name: &syn::Ident) -> proc_macro2::TokenStream {
+    if let Type::Path(type_path) = ty {
+        let type_str = quote!(#type_path).to_string();
+
+        match type_str.as_str() {
+            "f32" => {
+                quote! {
+                    if let Some(new_value) = value.as_f32() {
+                        concrete.#field_name = new_value;
+                    }
+                }
+            }
+            "i32" => {
+                quote! {
+                    if let Some(new_value) = value.as_i32() {
+                        concrete.#field_name = new_value;
+                    }
+                }
+            }
+            "bool" => {
+                quote! {
+                    if let Some(new_value) = value.as_bool() {
+                        concrete.#field_name = new_value;
+                    }
+                }
+            }
+            "String" => {
+                quote! {
+                    if let Some(new_value) = value.as_string() {
+                        concrete.#field_name = new_value.clone();
+                    }
+                }
+            }
+            "[f32; 3]" | "[f32 ; 3]" => {
+                quote! {
+                    if let Some(new_value) = value.as_vec3() {
+                        concrete.#field_name = new_value;
+                    }
+                }
+            }
+            "[f32; 4]" | "[f32 ; 4]" => {
+                quote! {
+                    if let Some(new_value) = value.as_color() {
+                        concrete.#field_name = new_value;
+                    }
+                }
+            }
+            _ if type_str.starts_with("Vec <") || type_str.starts_with("Vec<") => {
+                // For Vec<T>, we can't easily deserialize without knowing T
+                // For now, just log that it's not supported in setter
+                quote! {
+                    // Vec<T> setters not yet fully supported - use direct mutation
+                    tracing::warn!("Vec<T> property setter called but not fully implemented");
+                }
+            }
+            _ => {
+                // Unknown types can't be set
+                quote! {
+                    tracing::warn!("Attempted to set unsupported property type");
+                }
+            }
+        }
+    } else {
+        // Fallback
+        quote! {
+            tracing::warn!("Attempted to set property with unsupported type structure");
         }
     }
 }

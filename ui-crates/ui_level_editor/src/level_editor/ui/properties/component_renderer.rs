@@ -6,11 +6,12 @@
 
 use super::property_inputs::*;
 use engine_backend::{ComponentInstance, EditorObjectId, EngineClass, PropertyType, PropertyValue};
-use gpui::{prelude::*, *};
+use gpui::{prelude::*, App, *};
 use ui::{
-    button::Button,
+    button::{Button, ButtonVariants as _},
     h_flex,
-    v_flex, ActiveTheme, CollapsibleSection, Icon, IconName, Label, Sizable, StyledExt,
+    label::Label,
+    v_flex, ActiveTheme, CollapsibleSection, Icon, IconName, Sizable, StyledExt,
 };
 
 /// Auto-generates UI for a component based on reflection metadata
@@ -53,7 +54,7 @@ impl ComponentRenderer {
         &self,
         component_data: &serde_json::Value,
         _collapsed: bool,
-        cx: &AppContext,
+        cx: &App,
     ) -> impl IntoElement {
         v_flex()
             .w_full()
@@ -70,7 +71,7 @@ impl ComponentRenderer {
     }
 
     /// Render component header with name and remove button
-    fn render_header(&self, cx: &AppContext) -> impl IntoElement {
+    fn render_header(&self, cx: &App) -> impl IntoElement {
         h_flex()
             .w_full()
             .justify_between()
@@ -81,19 +82,18 @@ impl ComponentRenderer {
                     .items_center()
                     .child(
                         Icon::new(IconName::Component)
-                            .size(Sizable::Small)
-                            .color(Color::Custom(cx.theme().accent))
+                            .small()
+                            .text_color(cx.theme().accent)
                     )
                     .child(
                         Label::new(self.class_name.clone())
-                            .text_ui()
+                            .text_sm()
                             .text_color(cx.theme().foreground)
                     )
             )
             .child(
                 Button::new(format!("remove-component-{}", self.component_index))
                     .icon(IconName::Trash)
-                    .icon_size(Sizable::XSmall)
                     .xsmall()
                     .ghost()
             )
@@ -111,7 +111,7 @@ impl ComponentRenderer {
     fn render_properties(
         &self,
         component_data: &serde_json::Value,
-        cx: &AppContext,
+        cx: &App,
     ) -> impl IntoElement {
         v_flex()
             .w_full()
@@ -146,7 +146,7 @@ impl ComponentRenderer {
         property_name: &str,
         property_type: &PropertyType,
         property_value: &PropertyValue,
-        cx: &AppContext,
+        cx: &App,
     ) -> impl IntoElement {
         h_flex()
             .w_full()
@@ -164,7 +164,7 @@ impl ComponentRenderer {
         &self,
         property_type: &PropertyType,
         property_value: &PropertyValue,
-        cx: &AppContext,
+        cx: &App,
     ) -> impl IntoElement {
         match (property_type, property_value) {
             // F32 input with constraints
@@ -245,7 +245,7 @@ impl ComponentRenderer {
                     .child(
                         Label::new("Type mismatch in property")
                             .text_xs()
-                            .text_color(cx.theme().destructive)
+                            .text_color(cx.theme().danger_foreground)
                     )
                     .into_any_element()
             }
@@ -270,7 +270,7 @@ impl ComponentListSection {
     pub fn render(
         &self,
         components: &[ComponentInstance],
-        cx: &AppContext,
+        cx: &App,
     ) -> impl IntoElement {
         v_flex()
             .w_full()
@@ -292,33 +292,31 @@ impl ComponentListSection {
             })
     }
 
-    fn render_header(&self, cx: &AppContext) -> impl IntoElement {
+    fn render_header(&self, cx: &App) -> impl IntoElement {
         h_flex()
             .w_full()
             .justify_between()
             .items_center()
             .child(
                 Label::new("Components")
-                    .text_ui()
+                    .text_sm()
                     .text_color(cx.theme().foreground)
             )
             .child(
                 Button::new("add-component")
                     .icon(IconName::Plus)
-                    .icon_size(Sizable::XSmall)
                     .xsmall()
                     .ghost()
             )
     }
 
-    fn render_empty_state(&self, cx: &AppContext) -> impl IntoElement {
+    fn render_empty_state(&self, cx: &App) -> impl IntoElement {
         div()
             .w_full()
             .p_4()
             .bg(cx.theme().background)
             .border_1()
             .border_color(cx.theme().border)
-            .border_style(gpui::BorderStyle::Dashed)
             .rounded_md()
             .child(
                 v_flex()
@@ -326,8 +324,8 @@ impl ComponentListSection {
                     .items_center()
                     .child(
                         Icon::new(IconName::Component)
-                            .size(Sizable::Medium)
-                            .color(Color::Custom(cx.theme().muted_foreground))
+                            .with_size(ui::Size::Medium)
+                            .text_color(cx.theme().muted_foreground)
                     )
                     .child(
                         Label::new("No components")
@@ -349,9 +347,9 @@ impl ComponentListSection {
 #[allow(dead_code)]
 fn example_render_component_with_reflection(
     component: &dyn EngineClass,
-    cx: &AppContext,
+    cx: &App,
 ) -> impl IntoElement {
-    let class_name = component.class_name();
+    let class_name = std::any::type_name_of_val(component);
     let properties = component.get_properties();
 
     v_flex()
@@ -359,7 +357,7 @@ fn example_render_component_with_reflection(
         .gap_3()
         .child(
             Label::new(class_name)
-                .text_ui()
+                .text_sm()
                 .text_color(cx.theme().foreground)
         )
         .children(properties.iter().map(|prop| {

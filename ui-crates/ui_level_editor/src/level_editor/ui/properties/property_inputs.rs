@@ -3,17 +3,18 @@
 //! This module provides input widgets that automatically render based on
 //! PropertyType metadata from the reflection system.
 
-use engine_backend::{ComponentInstance, EditorObjectId, PropertyType, PropertyValue};
-use gpui::{prelude::*, *};
+use gpui::{prelude::*, App, *};
 use ui::{
-    button::Button,
+    button::{Button, ButtonVariants as _},
     h_flex,
     input::{InputState, TextInput},
-    v_flex, ActiveTheme, Icon, IconName, Label, Sizable, StyledExt,
+    label::Label,
+    v_flex, ActiveTheme, Disableable, Icon, IconName, Sizable, StyledExt,
 };
 
 /// Render a label for a property
-pub fn render_property_label(name: &str, cx: &AppContext) -> impl IntoElement {
+pub fn render_property_label(name: &str, cx: &App) -> impl IntoElement {
+    let name = name.to_string();
     div()
         .w(px(120.0))
         .flex_shrink_0()
@@ -27,10 +28,10 @@ pub fn render_f32_input(
     max: Option<f32>,
     step: Option<f32>,
     _on_change: impl Fn(f32) + 'static,
-    cx: &AppContext,
+    cx: &App,
 ) -> impl IntoElement {
     let value_str = format!("{:.2}", value);
-    let step_size = step.unwrap_or(0.1);
+    let _step_size = step.unwrap_or(0.1);
 
     h_flex()
         .gap_1()
@@ -52,7 +53,6 @@ pub fn render_f32_input(
         .child(
             Button::new("dec")
                 .icon(IconName::Minus)
-                .icon_size(Sizable::XSmall)
                 .xsmall()
                 .ghost()
                 .when_some(min, |button, min_val| {
@@ -63,7 +63,6 @@ pub fn render_f32_input(
         .child(
             Button::new("inc")
                 .icon(IconName::Plus)
-                .icon_size(Sizable::XSmall)
                 .xsmall()
                 .ghost()
                 .when_some(max, |button, max_val| {
@@ -92,7 +91,7 @@ pub fn render_i32_input(
     min: Option<i32>,
     max: Option<i32>,
     _on_change: impl Fn(i32) + 'static,
-    cx: &AppContext,
+    cx: &App,
 ) -> impl IntoElement {
     let value_str = value.to_string();
 
@@ -114,7 +113,6 @@ pub fn render_i32_input(
         .child(
             Button::new("dec")
                 .icon(IconName::Minus)
-                .icon_size(Sizable::XSmall)
                 .xsmall()
                 .ghost()
                 .when_some(min, |button, min_val| {
@@ -124,7 +122,6 @@ pub fn render_i32_input(
         .child(
             Button::new("inc")
                 .icon(IconName::Plus)
-                .icon_size(Sizable::XSmall)
                 .xsmall()
                 .ghost()
                 .when_some(max, |button, max_val| {
@@ -137,7 +134,7 @@ pub fn render_i32_input(
 pub fn render_bool_input(
     value: bool,
     _on_change: impl Fn(bool) + 'static,
-    cx: &AppContext,
+    cx: &App,
 ) -> impl IntoElement {
     h_flex()
         .gap_2()
@@ -158,8 +155,8 @@ pub fn render_bool_input(
                 .when(value, |this| {
                     this.child(
                         Icon::new(IconName::Check)
-                            .size(Sizable::XSmall)
-                            .color(Color::Custom(cx.theme().accent_foreground))
+                            .xsmall()
+                            .text_color(cx.theme().accent_foreground)
                     )
                 })
         )
@@ -174,7 +171,7 @@ pub fn render_string_input(
     value: &str,
     _max_length: Option<usize>,
     _on_change: impl Fn(String) + 'static,
-    cx: &AppContext,
+    cx: &App,
 ) -> impl IntoElement {
     div()
         .flex_1()
@@ -191,7 +188,7 @@ pub fn render_string_input(
 pub fn render_vec3_input(
     value: [f32; 3],
     _on_change: impl Fn([f32; 3]) + 'static,
-    cx: &AppContext,
+    cx: &App,
 ) -> impl IntoElement {
     h_flex()
         .gap_1()
@@ -250,7 +247,7 @@ pub fn render_vec3_input(
 pub fn render_color_input(
     value: [f32; 4],
     _on_change: impl Fn([f32; 4]) + 'static,
-    cx: &AppContext,
+    cx: &App,
 ) -> impl IntoElement {
     let rgb = Rgba {
         r: value[0],
@@ -293,7 +290,7 @@ pub fn render_vec_input(
     _element_type_name: &str,
     _on_add: impl Fn() + 'static,
     _on_remove: impl Fn(usize) + 'static,
-    cx: &AppContext,
+    cx: &App,
 ) -> impl IntoElement {
     v_flex()
         .gap_2()
@@ -310,7 +307,6 @@ pub fn render_vec_input(
                 .child(
                     Button::new("add-item")
                         .icon(IconName::Plus)
-                        .icon_size(Sizable::XSmall)
                         .xsmall()
                         .ghost()
                 )
@@ -341,7 +337,6 @@ pub fn render_vec_input(
                 .child(
                     Button::new(format!("remove-{}", idx))
                         .icon(IconName::Trash)
-                        .icon_size(Sizable::XSmall)
                         .xsmall()
                         .ghost()
                 )
@@ -354,7 +349,7 @@ pub fn render_enum_input(
     selected_index: usize,
     selected_name: &str,
     _on_change: impl Fn(usize) + 'static,
-    cx: &AppContext,
+    cx: &App,
 ) -> impl IntoElement {
     h_flex()
         .gap_2()
@@ -373,7 +368,7 @@ pub fn render_enum_input(
         )
         .child(
             Icon::new(IconName::ChevronDown)
-                .size(Sizable::XSmall)
-                .color(Color::Custom(cx.theme().muted_foreground))
+                .xsmall()
+                .text_color(cx.theme().muted_foreground)
         )
 }

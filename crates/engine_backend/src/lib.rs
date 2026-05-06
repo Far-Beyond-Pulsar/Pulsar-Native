@@ -23,6 +23,9 @@ pub use helio::GizmoMode;
 // Re-export reflection system for convenience
 pub use pulsar_reflection::*;
 
+// Re-export scene types used by UI crates
+pub use scene::{ComponentInstance, EditorObjectId};
+
 pub const ENGINE_THREADS: [&str; 8] = [
     "GameThread",
     "RenderThread",
