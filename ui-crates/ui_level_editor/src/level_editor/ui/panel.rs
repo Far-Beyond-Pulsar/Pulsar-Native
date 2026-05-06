@@ -88,13 +88,13 @@ impl LevelEditorPanel {
             }
         }
 
+        let scene_db = { self.shared_state.read().scene_database.clone() };
+
         if default_path.exists() {
             // File already on disk — load it into the shared scene db.
-            let state = self.shared_state.read();
-            state.scene_database.clear();
-            match state.scene_database.load_from_file(&default_path) {
+            scene_db.clear();
+            match scene_db.load_from_file(&default_path) {
                 Ok(_) => {
-                    drop(state);
                     let mut w = self.shared_state.write();
                     w.current_scene = Some(default_path);
                     w.has_unsaved_changes = false;
@@ -105,14 +105,12 @@ impl LevelEditorPanel {
             }
         } else {
             // File does not exist — write the current default scene to disk, then set the path.
-            let state = self.shared_state.read();
-            match state.scene_database.save_to_file(&default_path) {
+            match scene_db.save_to_file(&default_path) {
                 Ok(_) => {
                     tracing::info!(
                         "Created default level file at {:?}",
                         default_path
                     );
-                    drop(state);
                     let mut w = self.shared_state.write();
                     w.current_scene = Some(default_path);
                     w.has_unsaved_changes = false;
@@ -139,11 +137,9 @@ impl LevelEditorPanel {
     ) -> Result<Self, String> {
         let mut panel = Self::new_internal(None, window, cx);
         // Clear the default scene that was just populated, then load from file.
-        {
-            let state = panel.shared_state.read();
-            state.scene_database.clear();
-            state.scene_database.load_from_file(&path)?;
-        }
+        let scene_db = { panel.shared_state.read().scene_database.clone() };
+        scene_db.clear();
+        scene_db.load_from_file(&path)?;
         {
             let mut state = panel.shared_state.write();
             state.current_scene = Some(path);
@@ -847,8 +843,13 @@ impl LevelEditorPanel {
             return;
         }
 
-        if let Some(ref path) = self.shared_state.read().current_scene {
-            match self.shared_state.read().scene_database.save_to_file(path) {
+        let (scene_db, path_opt) = {
+            let state = self.shared_state.read();
+            (state.scene_database.clone(), state.current_scene.clone())
+        };
+
+        if let Some(path) = path_opt {
+            match scene_db.save_to_file(&path) {
                 Ok(_) => {
                     self.shared_state.write().has_unsaved_changes = false;
                     cx.notify();
@@ -860,6 +861,7 @@ impl LevelEditorPanel {
 
     fn on_save_scene_as(&mut self, _: &SaveSceneAs, _window: &mut Window, cx: &mut Context<Self>) {
         let state_arc = self.shared_state.clone();
+        let scene_db = { state_arc.read().scene_database.clone() };
         let dialog = rfd::AsyncFileDialog::new()
             .set_title("Save Scene As")
             .add_filter("Level file", &["level", "json"])
@@ -867,7 +869,7 @@ impl LevelEditorPanel {
         cx.spawn(async move |this, cx| {
             if let Some(handle) = dialog.save_file().await {
                 let path = handle.path().to_path_buf();
-                let result = state_arc.read().scene_database.save_to_file(&path);
+                let result = scene_db.save_to_file(&path);
                 cx.update(|cx| {
                     this.update(cx, |_, cx| {
                         match result {
@@ -889,6 +891,7 @@ impl LevelEditorPanel {
 
     fn on_open_scene(&mut self, _: &OpenScene, _window: &mut Window, cx: &mut Context<Self>) {
         let state_arc = self.shared_state.clone();
+        let scene_db = { state_arc.read().scene_database.clone() };
         let default_dir = state_arc
             .read()
             .current_scene
@@ -903,7 +906,7 @@ impl LevelEditorPanel {
             if let Some(handle) = dialog.pick_file().await {
                 let path = handle.path().to_path_buf();
                 // Load into the existing shared SceneDb (renderer keeps its Arc).
-                let result = state_arc.read().scene_database.load_from_file(&path);
+                let result = scene_db.load_from_file(&path);
                 cx.update(|cx| {
                     this.update(cx, |this, cx| {
                         match result {
