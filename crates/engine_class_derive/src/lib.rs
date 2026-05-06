@@ -90,7 +90,7 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
         }
 
         // Auto-register with global registry
-        inventory::submit! {
+        pulsar_reflection::inventory::submit! {
             pulsar_reflection::EngineClassRegistration {
                 name: stringify!(#name),
                 constructor: || Box::new(#name::default()),
@@ -128,12 +128,13 @@ fn generate_property_metadata(field: &Field, struct_name: &syn::Ident) -> proc_m
 
     // Extract property attributes (min, max, step)
     let property_type = infer_property_type(&field.ty, &field.attrs);
+    let property_value = infer_property_value(&field.ty, field_name);
 
     // Generate getter closure
     let getter = quote! {
         Box::new(|obj: &dyn pulsar_reflection::EngineClass| {
             let concrete = obj.as_any().downcast_ref::<#struct_name>().unwrap();
-            #property_type
+            #property_value
         })
     };
 
@@ -153,6 +154,64 @@ fn generate_property_metadata(field: &Field, struct_name: &syn::Ident) -> proc_m
             property_type: #property_type,
             getter: #getter,
             setter: #setter,
+        }
+    }
+}
+
+/// Infer PropertyValue getter from field type
+fn infer_property_value(ty: &Type, field_name: &syn::Ident) -> proc_macro2::TokenStream {
+    if let Type::Path(type_path) = ty {
+        let type_str = quote!(#type_path).to_string();
+
+        match type_str.as_str() {
+            "f32" => {
+                quote! {
+                    pulsar_reflection::PropertyValue::F32(concrete.#field_name)
+                }
+            }
+            "i32" => {
+                quote! {
+                    pulsar_reflection::PropertyValue::I32(concrete.#field_name)
+                }
+            }
+            "bool" => {
+                quote! {
+                    pulsar_reflection::PropertyValue::Bool(concrete.#field_name)
+                }
+            }
+            "String" => {
+                quote! {
+                    pulsar_reflection::PropertyValue::String(concrete.#field_name.clone())
+                }
+            }
+            "[f32; 3]" | "[f32 ; 3]" => {
+                quote! {
+                    pulsar_reflection::PropertyValue::Vec3(concrete.#field_name)
+                }
+            }
+            "[f32; 4]" | "[f32 ; 4]" => {
+                quote! {
+                    pulsar_reflection::PropertyValue::Color(concrete.#field_name)
+                }
+            }
+            _ if type_str.starts_with("Vec <") || type_str.starts_with("Vec<") => {
+                // For Vec<T>, we'll return an empty vec for now
+                // TODO: Properly handle Vec<T> serialization
+                quote! {
+                    pulsar_reflection::PropertyValue::Vec(vec![])
+                }
+            }
+            _ => {
+                // Default to String for unknown types (serialize as debug)
+                quote! {
+                    pulsar_reflection::PropertyValue::String(format!("{:?}", concrete.#field_name))
+                }
+            }
+        }
+    } else {
+        // Fallback
+        quote! {
+            pulsar_reflection::PropertyValue::String(String::from("unsupported"))
         }
     }
 }

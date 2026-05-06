@@ -1,0 +1,12 @@
+[package]
+name = "pulsar_physics"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+engine_class_derive = { path = "../engine_class_derive" }
+pulsar_reflection = { path = "../pulsar_reflection" }
+serde = { version = "1.0", features = ["derive"] }
+
+[lints]
+workspace = true

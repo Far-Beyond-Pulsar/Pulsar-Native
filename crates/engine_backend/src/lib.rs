@@ -20,6 +20,9 @@ pub use subsystems::world::World;
 // Re-export Helio types for UI integration
 pub use helio::GizmoMode;
 
+// Re-export reflection system for convenience
+pub use pulsar_reflection::*;
+
 pub const ENGINE_THREADS: [&str; 8] = [
     "GameThread",
     "RenderThread",

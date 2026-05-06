@@ -29,6 +29,9 @@ use std::fmt;
 // Re-export for convenience
 pub use registry::{EngineClassRegistration, EngineClassRegistry, REGISTRY};
 
+// Re-export inventory for derive macro
+pub use inventory;
+
 /// Core trait for all engine classes (components, actors, etc.)
 ///
 /// This trait is automatically implemented by the `#[derive(EngineClass)]` macro.
