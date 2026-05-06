@@ -51,11 +51,90 @@ pub struct LevelEditorPanel {
 
 impl LevelEditorPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self::new_internal(None, window, cx)
+        let mut panel = Self::new_internal(None, window, cx);
+        panel.ensure_default_level_file();
+        panel
     }
 
     pub fn new_with_window_id(window_id: u64, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self::new_internal(Some(window_id), window, cx)
+        let mut panel = Self::new_internal(Some(window_id), window, cx);
+        panel.ensure_default_level_file();
+        panel
+    }
+
+    /// If no project is open, do nothing. Otherwise resolve `<project>/Newlevel.level.json`:
+    /// - If the file already exists, load it.
+    /// - If it doesn't exist, save the current in-memory default scene to it and
+    ///   set `current_scene` so the title bar and save-as shortcuts work correctly.
+    fn ensure_default_level_file(&mut self) {
+        let Some(project_str) = engine_state::get_project_path() else {
+            return;
+        };
+        let default_path =
+            std::path::PathBuf::from(&project_str).join("Newlevel.level.json");
+
+        if default_path.exists() {
+            // File already on disk — load it into the shared scene db.
+            let state = self.shared_state.read();
+            state.scene_database.clear();
+            match state.scene_database.load_from_file(&default_path) {
+                Ok(_) => {
+                    drop(state);
+                    let mut w = self.shared_state.write();
+                    w.current_scene = Some(default_path);
+                    w.has_unsaved_changes = false;
+                }
+                Err(e) => {
+                    tracing::warn!("Default level exists but could not be loaded: {e}");
+                }
+            }
+        } else {
+            // File does not exist — write the current default scene to disk, then set the path.
+            let state = self.shared_state.read();
+            match state.scene_database.save_to_file(&default_path) {
+                Ok(_) => {
+                    tracing::info!(
+                        "Created default level file at {:?}",
+                        default_path
+                    );
+                    drop(state);
+                    let mut w = self.shared_state.write();
+                    w.current_scene = Some(default_path);
+                    w.has_unsaved_changes = false;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Could not write default level to {:?}: {e}",
+                        default_path
+                    );
+                }
+            }
+        }
+    }
+
+    /// Create the editor and immediately load a level file from disk.
+    ///
+    /// The scene is cleared and reloaded into the existing shared `Arc<SceneDb>`
+    /// so the renderer stays in sync. Returns an error string on load failure
+    /// (the panel is still valid and shows the default empty scene).
+    pub fn new_with_path(
+        path: std::path::PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<Self, String> {
+        let mut panel = Self::new_internal(None, window, cx);
+        // Clear the default scene that was just populated, then load from file.
+        {
+            let state = panel.shared_state.read();
+            state.scene_database.clear();
+            state.scene_database.load_from_file(&path)?;
+        }
+        {
+            let mut state = panel.shared_state.write();
+            state.current_scene = Some(path);
+            state.has_unsaved_changes = false;
+        }
+        Ok(panel)
     }
 
     fn new_internal(window_id: Option<u64>, window: &mut Window, cx: &mut Context<Self>) -> Self {
