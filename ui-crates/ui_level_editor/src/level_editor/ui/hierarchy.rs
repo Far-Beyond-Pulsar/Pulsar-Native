@@ -43,7 +43,7 @@ impl HierarchyPanel {
         &self,
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
-        on_add_click: impl Fn(&mut Window, &mut App) + 'static,
+        add_button: AnyElement,
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
@@ -91,16 +91,7 @@ impl HierarchyPanel {
                     .child(
                         h_flex()
                             .gap_1()
-                            .child({
-                                Button::new("add_object")
-                                    .icon(IconName::Plus)
-                                    .ghost()
-                                    .xsmall()
-                                    .tooltip(t!("LevelEditor.Hierarchy.AddObject"))
-                                    .on_click(move |_, window, cx| {
-                                        on_add_click(window, cx);
-                                    })
-                            })
+                            .child(add_button)
                             .child({
                                 let state_clone = state_arc.clone();
                                 Button::new("add_folder")

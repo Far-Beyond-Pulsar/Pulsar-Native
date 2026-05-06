@@ -12,9 +12,11 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 use ui::{
+    button::{Button, ButtonVariants as _},
     dock::{Panel, PanelEvent},
     input::InputState,
-    v_flex, ActiveTheme,
+    popover::Popover,
+    v_flex, ActiveTheme, IconName, Sizable,
 };
 
 /// World Settings Panel (replaced Scene Browser)
@@ -95,21 +97,17 @@ pub struct HierarchyPanelWrapper {
     hierarchy: HierarchyPanel,
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
     focus_handle: FocusHandle,
-    add_dialog: Entity<AddObjectDialog>,
 }
 
 impl HierarchyPanelWrapper {
     pub fn new(
         state: Arc<parking_lot::RwLock<LevelEditorState>>,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let add_dialog = cx.new(|cx| AddObjectDialog::new(state.clone(), window, cx));
         Self {
             hierarchy: HierarchyPanel::new(),
             state,
             focus_handle: cx.focus_handle(),
-            add_dialog,
         }
     }
 }
@@ -119,28 +117,28 @@ impl EventEmitter<PanelEvent> for HierarchyPanelWrapper {}
 ui_common::panel_boilerplate!(HierarchyPanelWrapper);
 
 impl Render for HierarchyPanelWrapper {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.state.read();
-        let add_dialog = self.add_dialog.clone();
-        let on_add_click = move |window: &mut Window, cx: &mut App| {
-            use ui::ContextModal as _;
-            window.open_modal(cx, {
-                let add_dialog = add_dialog.clone();
-                move |modal, _w, _cx| {
-                    modal
-                        .title("Add Object")
-                        .width(px(480.0))
-                        .show_close(true)
-                        .overlay_closable(true)
-                        .child(add_dialog.clone())
-                }
-            });
-        };
+        let state_for_picker = self.state.clone();
+
+        let add_button = Popover::<AddObjectDialog>::new("add-object-picker")
+            .anchor(Corner::TopLeft)
+            .trigger(
+                Button::new("add_object")
+                    .icon(IconName::Plus)
+                    .ghost()
+                    .xsmall(),
+            )
+            .content(move |window, cx| {
+                cx.new(|cx| AddObjectDialog::new(state_for_picker.clone(), window, cx))
+            })
+            .into_any_element();
+
         v_flex()
             .size_full()
             .bg(cx.theme().sidebar)
             .p_1()
-            .child(self.hierarchy.render(&state, self.state.clone(), on_add_click, cx))
+            .child(self.hierarchy.render(&state, self.state.clone(), add_button, cx))
     }
 }
 
