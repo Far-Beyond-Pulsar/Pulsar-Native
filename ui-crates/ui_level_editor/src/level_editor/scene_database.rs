@@ -611,6 +611,61 @@ impl SceneDatabase {
             .remove_component(object_id, component_index);
     }
 
+    pub fn reorder_component(
+        &self,
+        object_id: &EditorObjectId,
+        from_index: usize,
+        to_index: usize,
+    ) {
+        // Get all components
+        let components = self.get_components(object_id);
+        if from_index >= components.len() || to_index >= components.len() {
+            return;
+        }
+
+        // Remove the component at from_index
+        let component_to_move = components[from_index].clone();
+        self.remove_component(object_id, from_index);
+
+        // If we removed from before the target, adjust target index
+        let adjusted_to = if from_index < to_index {
+            to_index - 1
+        } else {
+            to_index
+        };
+
+        // Get updated component list and insert at new position
+        let mut updated_components = self.get_components(object_id);
+
+        // Remove all components after the insertion point
+        while updated_components.len() > adjusted_to {
+            self.remove_component(object_id, adjusted_to);
+            updated_components = self.get_components(object_id);
+        }
+
+        // Re-add the moved component
+        self.add_component(
+            object_id,
+            component_to_move.class_name.clone(),
+            component_to_move.data.clone(),
+        );
+
+        // Re-add the components that were after the insertion point
+        for i in (adjusted_to..components.len()).skip(1) {
+            if i == from_index {
+                continue; // Skip the one we moved
+            }
+            let idx = if i > from_index { i - 1 } else { i };
+            if idx < components.len() && idx != from_index {
+                self.add_component(
+                    object_id,
+                    components[idx].class_name.clone(),
+                    components[idx].data.clone(),
+                );
+            }
+        }
+    }
+
     pub fn get_components(&self, object_id: &EditorObjectId) -> Vec<ComponentInstance> {
         self.metadata_db.get_components(object_id)
     }
