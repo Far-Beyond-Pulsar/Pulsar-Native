@@ -8641,6 +8641,7 @@ dependencies = [
  "engine_class_derive",
  "pulsar_reflection",
  "serde",
+ "tracing",
 ]
 
 [[package]]
@@ -8660,6 +8661,7 @@ dependencies = [
  "engine_class_derive",
  "pulsar_reflection",
  "serde",
+ "tracing",
 ]
 
 [[package]]

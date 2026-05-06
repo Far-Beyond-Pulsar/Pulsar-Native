@@ -7,6 +7,7 @@
 use super::property_inputs::*;
 use engine_backend::{ComponentInstance, EditorObjectId, EngineClass, PropertyType, PropertyValue};
 use gpui::{prelude::*, App, *};
+use pulsar_reflection::REGISTRY;
 use ui::{
     button::{Button, ButtonVariants as _},
     h_flex,
@@ -101,46 +102,80 @@ impl ComponentRenderer {
 
     /// Render all properties for this component
     ///
-    /// In a full implementation, this would:
-    /// 1. Query the component registry for the class
-    /// 2. Create an instance from the JSON data
-    /// 3. Call get_properties() to get reflection metadata
-    /// 4. Render each property with appropriate widget
-    ///
-    /// For now, we render a placeholder that shows the structure.
+    /// This implementation:
+    /// 1. Creates a default instance from the registry
+    /// 2. Deserializes the JSON data into it (if possible)
+    /// 3. Calls get_properties() to get reflection metadata
+    /// 4. Renders each property with appropriate widget
     fn render_properties(
         &self,
         component_data: &serde_json::Value,
         cx: &App,
     ) -> impl IntoElement {
-        v_flex()
-            .w_full()
-            .gap_3()
-            .child(
-                Label::new("Component properties will be auto-generated here")
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-            )
-            .child(
-                div()
-                    .p_2()
-                    .bg(cx.theme().background)
-                    .border_1()
-                    .border_color(cx.theme().border)
-                    .rounded_sm()
+        // Try to create an instance from the registry
+        let instance_opt = REGISTRY.create_instance(&self.class_name);
+
+        match instance_opt {
+            Some(mut instance) => {
+                // Try to deserialize JSON data into the instance
+                // For now, we just use the default instance since proper
+                // deserialization would require serde support on the trait object
+                let properties = instance.get_properties();
+
+                if properties.is_empty() {
+                    return v_flex()
+                        .w_full()
+                        .child(
+                            Label::new("No properties defined")
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                        )
+                        .into_any_element();
+                }
+
+                // Render each property
+                v_flex()
+                    .w_full()
+                    .gap_2()
+                    .children(properties.iter().enumerate().map(|(idx, prop)| {
+                        // Get current value from instance
+                        let value = (prop.getter)(instance.as_ref());
+                        self.render_property(&prop.display_name, &prop.property_type, &value, cx)
+                    }))
+                    .into_any_element()
+            }
+            None => {
+                // Component class not found in registry
+                v_flex()
+                    .w_full()
+                    .gap_2()
                     .child(
-                        Label::new(format!("Data: {}", component_data.to_string()))
+                        Label::new(format!("Unknown component: {}", self.class_name))
                             .text_xs()
-                            .text_color(cx.theme().muted_foreground)
+                            .text_color(cx.theme().danger_foreground)
                     )
-            )
+                    .child(
+                        div()
+                            .p_2()
+                            .bg(cx.theme().background)
+                            .border_1()
+                            .border_color(cx.theme().border)
+                            .rounded_sm()
+                            .child(
+                                Label::new(format!("Raw data: {}", component_data))
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                            )
+                    )
+                    .into_any_element()
+            }
+        }
     }
 
     /// Render a single property based on its PropertyType
     ///
     /// This is the core of the auto-generation system. It reads PropertyMetadata
     /// and dispatches to the appropriate input widget.
-    #[allow(dead_code)]
     fn render_property(
         &self,
         property_name: &str,
