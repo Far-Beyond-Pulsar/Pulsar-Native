@@ -25,11 +25,6 @@ actions!(
         // Hierarchy operations
         ExpandAll,
         CollapseAll,
-        // Gizmo operations
-        ToggleSnapping,        // Keyboard: G - Toggle grid snapping
-        ToggleLocalSpace,      // Keyboard: L - Toggle local/world space
-        IncreaseSnapIncrement, // Keyboard: ] - Increase snap grid size
-        DecreaseSnapIncrement, // Keyboard: [ - Decrease snap grid size
         // View operations
         ToggleGrid,
         ToggleWireframe,

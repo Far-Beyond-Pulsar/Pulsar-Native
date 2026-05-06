@@ -948,66 +948,6 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
-    fn on_toggle_snapping(&mut self, _: &ToggleSnapping, _: &mut Window, cx: &mut Context<Self>) {
-        // Toggle snapping in gizmo state
-        let state = self.shared_state.read();
-        let mut gizmo_state = state.gizmo_state.write();
-        gizmo_state.toggle_snap();
-        let _enabled = gizmo_state.snap_enabled;
-        let _increment = gizmo_state.snap_increment;
-        drop(gizmo_state);
-
-        cx.notify();
-    }
-
-    fn on_toggle_local_space(
-        &mut self,
-        _: &ToggleLocalSpace,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        // Toggle local/world space in gizmo state
-        let state = self.shared_state.read();
-        let mut gizmo_state = state.gizmo_state.write();
-        gizmo_state.toggle_space();
-        let _is_local = gizmo_state.local_space;
-        drop(gizmo_state);
-
-        cx.notify();
-    }
-
-    fn on_increase_snap_increment(
-        &mut self,
-        _: &IncreaseSnapIncrement,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let state = self.shared_state.read();
-        let mut gizmo_state = state.gizmo_state.write();
-        // Double the snap increment (0.25, 0.5, 1.0, 2.0, 4.0, etc.)
-        gizmo_state.snap_increment = (gizmo_state.snap_increment * 2.0).min(10.0);
-        let _increment = gizmo_state.snap_increment;
-        drop(gizmo_state);
-
-        cx.notify();
-    }
-
-    fn on_decrease_snap_increment(
-        &mut self,
-        _: &DecreaseSnapIncrement,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let state = self.shared_state.read();
-        let mut gizmo_state = state.gizmo_state.write();
-        // Halve the snap increment (10.0, 5.0, 2.5, 1.0, 0.5, 0.25, etc.)
-        gizmo_state.snap_increment = (gizmo_state.snap_increment / 2.0).max(0.1);
-        let _increment = gizmo_state.snap_increment;
-        drop(gizmo_state);
-
-        cx.notify();
-    }
-
     fn on_focus_selected(
         &mut self,
         _: &FocusSelected,
@@ -1114,11 +1054,6 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_select_object))
             .on_action(cx.listener(Self::on_toggle_object_expanded))
             .on_action(cx.listener(Self::on_focus_selected))
-            // Gizmo operations - KEYBOARD: G/L/[/]
-            .on_action(cx.listener(Self::on_toggle_snapping))
-            .on_action(cx.listener(Self::on_toggle_local_space))
-            .on_action(cx.listener(Self::on_increase_snap_increment))
-            .on_action(cx.listener(Self::on_decrease_snap_increment))
             // View operations
             .on_action(cx.listener(Self::on_toggle_grid))
             .on_action(cx.listener(Self::on_toggle_wireframe))
@@ -1182,10 +1117,8 @@ impl Render for LevelEditorPanel {
                     "e" => this.on_rotate_tool(&RotateTool, window, cx),
                     "r" => this.on_rotate_tool(&RotateTool, window, cx), // Blender: R = Rotate
                     "s" => this.on_scale_tool(&ScaleTool, window, cx),   // Blender: S = Scale
-                    "l" => cx.dispatch_action(&ToggleLocalSpace),
+                    "l" => {}
                     "f" => cx.dispatch_action(&FocusSelected),
-                    "[" => cx.dispatch_action(&DecreaseSnapIncrement),
-                    "]" => cx.dispatch_action(&IncreaseSnapIncrement),
                     _ => {}
                 }
             }))
