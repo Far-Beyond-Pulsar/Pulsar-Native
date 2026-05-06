@@ -6,7 +6,7 @@ use super::ui::{
 };
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use engine_backend::GameThread;
-use gpui::*;
+use gpui::{Corner, *};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -97,6 +97,7 @@ pub struct HierarchyPanelWrapper {
     hierarchy: HierarchyPanel,
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
     focus_handle: FocusHandle,
+    last_object_count: usize,
 }
 
 impl HierarchyPanelWrapper {
@@ -104,10 +105,12 @@ impl HierarchyPanelWrapper {
         state: Arc<parking_lot::RwLock<LevelEditorState>>,
         cx: &mut Context<Self>,
     ) -> Self {
+        let last_object_count = state.read().scene_objects().len();
         Self {
             hierarchy: HierarchyPanel::new(),
             state,
             focus_handle: cx.focus_handle(),
+            last_object_count,
         }
     }
 }
@@ -118,6 +121,17 @@ ui_common::panel_boilerplate!(HierarchyPanelWrapper);
 
 impl Render for HierarchyPanelWrapper {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let state = self.state.read();
+        
+        // Check if state changed (new objects added) and notify if so
+        let current_count = state.scene_objects().len();
+        if current_count != self.last_object_count {
+            self.last_object_count = current_count;
+            drop(state); // release lock before notifying
+            cx.notify();
+            // Re-read state after notify
+        }
+        
         let state = self.state.read();
         let state_for_picker = self.state.clone();
 
