@@ -5,9 +5,8 @@
 //! and renders appropriate input widgets based on PropertyType.
 
 use super::property_inputs::*;
-use engine_backend::{ComponentInstance, EditorObjectId, EngineClass, PropertyType, PropertyValue};
+use engine_backend::{ComponentInstance, EditorObjectId, EngineClass, PropertyType, PropertyValue, REGISTRY};
 use gpui::{prelude::*, App, *};
-use pulsar_reflection::REGISTRY;
 use ui::{
     button::{Button, ButtonVariants as _},
     h_flex,

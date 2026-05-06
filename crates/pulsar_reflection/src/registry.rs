@@ -12,18 +12,25 @@ use std::collections::HashMap;
 /// Automatically submitted by the `#[derive(EngineClass)]` macro via `inventory::submit!`
 pub struct EngineClassRegistration {
     pub name: &'static str,
+    pub category: Option<&'static str>,
     pub constructor: fn() -> Box<dyn EngineClass>,
 }
 
 // Collect all engine class registrations at link time
 inventory::collect!(EngineClassRegistration);
 
+/// Entry stored in the registry
+struct RegistryEntry {
+    constructor: fn() -> Box<dyn EngineClass>,
+    category: Option<&'static str>,
+}
+
 /// Global registry of all engine classes
 ///
 /// Auto-populated at startup with all types that derive `EngineClass`.
 /// Used by the object creation menu and property system.
 pub struct EngineClassRegistry {
-    classes: HashMap<&'static str, fn() -> Box<dyn EngineClass>>,
+    classes: HashMap<&'static str, RegistryEntry>,
 }
 
 impl EngineClassRegistry {
@@ -32,7 +39,13 @@ impl EngineClassRegistry {
 
         // Auto-discover all #[derive(EngineClass)] types via inventory
         for registration in inventory::iter::<EngineClassRegistration> {
-            classes.insert(registration.name, registration.constructor);
+            classes.insert(
+                registration.name,
+                RegistryEntry {
+                    constructor: registration.constructor,
+                    category: registration.category,
+                },
+            );
         }
 
         tracing::info!(
@@ -53,16 +66,34 @@ impl EngineClassRegistry {
     /// Get list of class names filtered by category
     ///
     /// Categories are defined via `#[category("Physics")]` attribute on the struct
-    pub fn get_class_names_by_category(&self, _category: &str) -> Vec<&'static str> {
-        // TODO: Implement category filtering once proc macro supports it
-        self.get_class_names()
+    pub fn get_class_names_by_category(&self, category: &str) -> Vec<&'static str> {
+        let mut names: Vec<&'static str> = self
+            .classes
+            .iter()
+            .filter(|(_, entry)| entry.category == Some(category))
+            .map(|(name, _)| *name)
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// Get all unique categories
+    pub fn get_categories(&self) -> Vec<&'static str> {
+        let mut categories: Vec<&'static str> = self
+            .classes
+            .values()
+            .filter_map(|entry| entry.category)
+            .collect();
+        categories.sort();
+        categories.dedup();
+        categories
     }
 
     /// Create instance of class by name
     ///
     /// Returns None if the class name is not registered
     pub fn create_instance(&self, class_name: &str) -> Option<Box<dyn EngineClass>> {
-        self.classes.get(class_name).map(|ctor| ctor())
+        self.classes.get(class_name).map(|entry| (entry.constructor)())
     }
 
     /// Check if a class is registered

@@ -93,6 +93,7 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
         pulsar_reflection::inventory::submit! {
             pulsar_reflection::EngineClassRegistration {
                 name: stringify!(#name),
+                category: #category,
                 constructor: || Box::new(#name::default()),
             }
         }
