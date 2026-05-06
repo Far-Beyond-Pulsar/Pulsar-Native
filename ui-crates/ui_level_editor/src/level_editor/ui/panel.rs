@@ -66,7 +66,7 @@ impl LevelEditorPanel {
         panel
     }
 
-    /// If no project is open, do nothing. Otherwise resolve `<project>/Newlevel.level.json`:
+    /// If no project is open, do nothing. Otherwise resolve `<project>/scene/default.level`:
     /// - If the file already exists, load it.
     /// - If it doesn't exist, save the current in-memory default scene to it and
     ///   set `current_scene` so the title bar and save-as shortcuts work correctly.
@@ -74,8 +74,19 @@ impl LevelEditorPanel {
         let Some(project_str) = engine_state::get_project_path() else {
             return;
         };
-        let default_path =
-            std::path::PathBuf::from(&project_str).join("Newlevel.level.json");
+        let default_path = std::path::PathBuf::from(&project_str)
+            .join("scene")
+            .join("default.level");
+
+        if let Some(parent) = default_path.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                tracing::warn!(
+                    "Could not create default level directory {:?}: {e}",
+                    parent
+                );
+                return;
+            }
+        }
 
         if default_path.exists() {
             // File already on disk — load it into the shared scene db.

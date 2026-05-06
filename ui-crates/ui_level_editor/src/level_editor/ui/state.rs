@@ -24,6 +24,16 @@ pub enum HierarchyDragState {
     },
 }
 
+/// Drag payload for GPUI-native hierarchy drag-and-drop.
+///
+/// Wraps the dragged object's ID string.  Implements [`gpui::Render`] so it can
+/// serve as the drag ghost element (renders as an invisible placeholder).
+#[derive(Clone, Debug)]
+pub struct HierarchyDragPayload {
+    pub object_id: String,
+    pub object_name: String,
+}
+
 /// Shared state for the Level Editor
 #[derive(Clone)]
 pub struct LevelEditorState {

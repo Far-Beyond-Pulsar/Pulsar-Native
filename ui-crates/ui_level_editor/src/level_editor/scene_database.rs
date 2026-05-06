@@ -186,95 +186,258 @@ impl SceneDatabase {
     /// is wired up).  The shared `Arc<SceneDb>` means every change here is
     /// immediately visible to the renderer.
     pub fn populate_default_scene_pub(&self) {
-        // ── Lighting & camera (metadata / future renderer support) ────────
+        // ── Camera ────────────────────────────────────────────────────────
         let mut cam = Self::mk("Main Camera", ObjectType::Camera, None);
-        cam.transform.position = [0.0, 4.0, 10.0];
-        cam.transform.rotation = [-20.0, 0.0, 0.0];
+        cam.transform.position = [0.0, 6.0, 14.0];
+        cam.transform.rotation = [-18.0, 0.0, 0.0];
         self.add_object(cam, None);
 
+        // ── Lighting ──────────────────────────────────────────────────────
         self.add_object(
             Self::mk_at(
-                "Directional Light",
-                ObjectType::Light(LightType::Directional),
-                [5.0, 8.0, 5.0],
-                [-45.0, 45.0, 0.0],
+                "Blue Light",
+                ObjectType::Light(LightType::Point),
+                [-8.0, 6.0, -6.0],
+                [0.0, 0.0, 0.0],
                 [1.0, 1.0, 1.0],
             ),
             None,
         );
 
-        // ── Ground plane ─────────────────────────────────────────────────
+        self.add_object(
+            Self::mk_at(
+                "Red Light",
+                ObjectType::Light(LightType::Point),
+                [8.0, 6.0, -6.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 1.0, 1.0],
+            ),
+            None,
+        );
+
+        self.add_object(
+            Self::mk_at(
+                "Yellow Light",
+                ObjectType::Light(LightType::Point),
+                [0.0, 7.0, 8.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 1.0, 1.0],
+            ),
+            None,
+        );
+
+        // ── Ground ───────────────────────────────────────────────────────
         self.add_object(
             Self::mk_at(
                 "Ground",
                 ObjectType::Mesh(MeshType::Plane),
                 [0.0, 0.0, 0.0],
                 [0.0, 0.0, 0.0],
-                [2.0, 1.0, 2.0], // plane_mesh(5.0) → 10 units; ×2 = 20 unit floor
+                [3.0, 1.0, 3.0], // 30 × 30 unit floor
             ),
             None,
         );
 
-        // ── Hero cube (centre stage) ──────────────────────────────────────
+        // ── Centre composition ────────────────────────────────────────────
+        // Stepped podium: three stacked cubes of decreasing size
         self.add_object(
             Self::mk_at(
-                "Cube",
+                "Podium Base",
+                ObjectType::Mesh(MeshType::Cube),
+                [0.0, 0.15, 0.0],
+                [0.0, 0.0, 0.0],
+                [3.0, 0.3, 3.0],
+            ),
+            None,
+        );
+
+        self.add_object(
+            Self::mk_at(
+                "Podium Mid",
                 ObjectType::Mesh(MeshType::Cube),
                 [0.0, 0.5, 0.0],
                 [0.0, 0.0, 0.0],
-                [1.0, 1.0, 1.0],
+                [2.0, 0.2, 2.0],
             ),
             None,
         );
 
-        // ── Sphere ───────────────────────────────────────────────────────
+        // Hero sphere on top of the podium
         self.add_object(
             Self::mk_at(
-                "Sphere",
+                "Hero Sphere",
                 ObjectType::Mesh(MeshType::Sphere),
-                [3.0, 0.5, 0.0],
+                [0.0, 1.5, 0.0],
                 [0.0, 0.0, 0.0],
                 [1.0, 1.0, 1.0],
             ),
             None,
         );
 
-        // ── Two small accent cubes ────────────────────────────────────────
+        // ── Left wing — arch of cubes ─────────────────────────────────────
         self.add_object(
             Self::mk_at(
-                "Cube.001",
-                ObjectType::Mesh(MeshType::Cube),
-                [-2.5, 0.375, 1.0],
-                [0.0, 30.0, 0.0],
-                [0.75, 0.75, 0.75],
-            ),
-            None,
-        );
-
-        self.add_object(
-            Self::mk_at(
-                "Cube.002",
-                ObjectType::Mesh(MeshType::Cube),
-                [-1.5, 1.0, -2.0],
-                [0.0, -15.0, 0.0],
-                [0.5, 2.0, 0.5],
-            ),
-            None,
-        );
-
-        // ── Cylinder ─────────────────────────────────────────────────────
-        self.add_object(
-            Self::mk_at(
-                "Cylinder",
+                "Column L1",
                 ObjectType::Mesh(MeshType::Cylinder),
-                [1.5, 0.75, -2.5],
+                [-4.0, 1.5, -2.0],
                 [0.0, 0.0, 0.0],
-                [0.6, 1.5, 0.6],
+                [0.4, 3.0, 0.4],
             ),
             None,
         );
 
-        tracing::info!("Default scene populated (ground + 3 meshes + cylinder + sphere + camera + light)");
+        self.add_object(
+            Self::mk_at(
+                "Column L2",
+                ObjectType::Mesh(MeshType::Cylinder),
+                [-4.0, 1.5, 2.0],
+                [0.0, 0.0, 0.0],
+                [0.4, 3.0, 0.4],
+            ),
+            None,
+        );
+
+        // Lintel across the two left columns
+        self.add_object(
+            Self::mk_at(
+                "Lintel L",
+                ObjectType::Mesh(MeshType::Cube),
+                [-4.0, 3.2, 0.0],
+                [0.0, 0.0, 0.0],
+                [0.6, 0.4, 4.8],
+            ),
+            None,
+        );
+
+        // ── Right wing — stepped tower ────────────────────────────────────
+        self.add_object(
+            Self::mk_at(
+                "Tower Base",
+                ObjectType::Mesh(MeshType::Cube),
+                [4.5, 0.75, 0.0],
+                [0.0, 20.0, 0.0],
+                [1.5, 1.5, 1.5],
+            ),
+            None,
+        );
+
+        self.add_object(
+            Self::mk_at(
+                "Tower Mid",
+                ObjectType::Mesh(MeshType::Cube),
+                [4.5, 2.25, 0.0],
+                [0.0, 35.0, 0.0],
+                [1.1, 1.5, 1.1],
+            ),
+            None,
+        );
+
+        self.add_object(
+            Self::mk_at(
+                "Tower Top",
+                ObjectType::Mesh(MeshType::Cube),
+                [4.5, 3.5, 0.0],
+                [0.0, 50.0, 0.0],
+                [0.7, 0.7, 0.7],
+            ),
+            None,
+        );
+
+        // ── Scattered detail props ────────────────────────────────────────
+        self.add_object(
+            Self::mk_at(
+                "Rock A",
+                ObjectType::Mesh(MeshType::Sphere),
+                [-2.0, 0.3, 4.0],
+                [15.0, 30.0, 0.0],
+                [0.6, 0.5, 0.7],
+            ),
+            None,
+        );
+
+        self.add_object(
+            Self::mk_at(
+                "Rock B",
+                ObjectType::Mesh(MeshType::Sphere),
+                [2.5, 0.25, 4.5],
+                [0.0, 60.0, 20.0],
+                [0.45, 0.4, 0.55],
+            ),
+            None,
+        );
+
+        // Ramp (tilted plane)
+        self.add_object(
+            Self::mk_at(
+                "Ramp",
+                ObjectType::Mesh(MeshType::Plane),
+                [-1.0, 0.6, -4.5],
+                [-25.0, 15.0, 0.0],
+                [1.0, 1.0, 1.5],
+            ),
+            None,
+        );
+
+        // Elevated bridge segment crossing the center line
+        self.add_object(
+            Self::mk_at(
+                "Bridge Deck",
+                ObjectType::Mesh(MeshType::Cube),
+                [0.0, 1.8, -6.0],
+                [0.0, 0.0, 0.0],
+                [4.5, 0.25, 1.0],
+            ),
+            None,
+        );
+
+        self.add_object(
+            Self::mk_at(
+                "Bridge Pillar L",
+                ObjectType::Mesh(MeshType::Cylinder),
+                [-2.0, 0.9, -6.0],
+                [0.0, 0.0, 0.0],
+                [0.3, 1.8, 0.3],
+            ),
+            None,
+        );
+
+        self.add_object(
+            Self::mk_at(
+                "Bridge Pillar R",
+                ObjectType::Mesh(MeshType::Cylinder),
+                [2.0, 0.9, -6.0],
+                [0.0, 0.0, 0.0],
+                [0.3, 1.8, 0.3],
+            ),
+            None,
+        );
+
+        // Floating accents to add silhouette variation
+        self.add_object(
+            Self::mk_at(
+                "Float Orb A",
+                ObjectType::Mesh(MeshType::Sphere),
+                [-6.0, 3.8, 3.0],
+                [0.0, 0.0, 0.0],
+                [0.45, 0.45, 0.45],
+            ),
+            None,
+        );
+
+        self.add_object(
+            Self::mk_at(
+                "Float Orb B",
+                ObjectType::Mesh(MeshType::Sphere),
+                [6.0, 4.2, 2.5],
+                [0.0, 0.0, 0.0],
+                [0.55, 0.55, 0.55],
+            ),
+            None,
+        );
+
+        tracing::info!(
+            "Default scene populated: three-point color lights + podium composition + bridge + tower + floating accents"
+        );
     }
 
     // ── Object CRUD ───────────────────────────────────────────────────────
