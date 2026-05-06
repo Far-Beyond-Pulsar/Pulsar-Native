@@ -46,6 +46,19 @@ impl ObjectTypeFieldsSection {
         }
     }
 
+    fn property_value_to_json(value: &PropertyValue) -> Value {
+        match value {
+            PropertyValue::F32(v) => Value::from(*v),
+            PropertyValue::I32(v) => Value::from(*v),
+            PropertyValue::Bool(v) => Value::from(*v),
+            PropertyValue::String(v) => Value::from(v.clone()),
+            PropertyValue::Vec3(v) => serde_json::json!([v[0], v[1], v[2]]),
+            PropertyValue::Color(v) => serde_json::json!([v[0], v[1], v[2], v[3]]),
+            PropertyValue::EnumVariant(v) => Value::from(*v as u64),
+            PropertyValue::Vec(v) => Value::Array(v.iter().map(Self::property_value_to_json).collect()),
+            PropertyValue::Component { class_name, .. } => serde_json::json!({"class_name": class_name}),
+        }
+    }
 
     fn json_to_property_value(property_type: &PropertyType, json: &Value) -> Option<PropertyValue> {
         match property_type {

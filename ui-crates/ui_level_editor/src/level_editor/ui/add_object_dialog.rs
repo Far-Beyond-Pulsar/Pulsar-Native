@@ -9,7 +9,8 @@ use std::sync::Arc;
 use gpui::{prelude::*, *};
 use ui::{
     input::{InputState, TextInput},
-    v_flex, ActiveTheme, Icon, IconName, Sizable,
+    scroll::ScrollbarAxis,
+    v_flex, ActiveTheme, Icon, IconName, Sizable, StyledExt,
 };
 
 use crate::level_editor::scene_database::{
@@ -209,6 +210,19 @@ impl Render for AddObjectDialog {
                     .border_color(cx.theme().border)
                     .child(TextInput::new(&self.search_input).w_full().xsmall()),
             )
+            // ── Scrollable content ──────────────────────────────────────────
+            .child(
+                div()
+                    .flex_1()
+                    .w_full()
+                    .overflow_hidden()
+                    .child(
+                        div()
+                            .size_full()
+                            .scrollable(ScrollbarAxis::Vertical)
+                            .child(
+                                v_flex()
+                                    .w_full()
             // ── Built-in section ────────────────────────────────────────────
             .when(!builtins.is_empty(), |el| {
                 el.child(
@@ -297,6 +311,9 @@ impl Render for AddObjectDialog {
                             .child("No results"),
                     )
                 },
+            ),
+                            ),
+                    ),
             )
     }
 }

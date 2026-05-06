@@ -6,7 +6,7 @@
 use gpui::{prelude::*, *};
 use pulsar_reflection::{PropertyValue, REGISTRY};
 use serde_json::Value;
-use ui::{input::{InputState, TextInput}, v_flex, ActiveTheme, Icon, IconName, Sizable};
+use ui::{input::{InputState, TextInput}, scroll::ScrollbarAxis, v_flex, ActiveTheme, Icon, IconName, Sizable, StyledExt};
 
 use crate::level_editor::scene_database::SceneDatabase;
 
@@ -66,13 +66,7 @@ impl AddComponentDialog {
     }
 
     fn add_component(&self, class_name: &str, cx: &mut Context<Self>) {
-        // Skip if already attached
-        let existing = self.scene_db.get_components(&self.object_id);
-        if existing.iter().any(|c| c.class_name == class_name) {
-            cx.emit(DismissEvent);
-            return;
-        }
-
+        // Allow multiple components of the same type
         if !REGISTRY.has_class(class_name) {
             cx.emit(DismissEvent);
             return;
@@ -153,49 +147,64 @@ impl Render for AddComponentDialog {
                     .border_color(cx.theme().border)
                     .child(TextInput::new(&self.search_input).w_full().xsmall()),
             )
-            .when(classes.is_empty(), |el| {
-                el.child(
-                    div()
-                        .px_2()
-                        .py_1()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child("No components found"),
-                )
-            })
-            .when(!classes.is_empty(), |el| {
-                el.child(
-                    div()
-                        .px_2()
-                        .pt_1()
-                        .text_xs()
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(cx.theme().muted_foreground)
-                        .child("Engine Classes"),
-                )
-                .children(classes.into_iter().map(|name| {
-                    let theme = cx.theme().clone();
-                    row_style(div())
-                        .id(ElementId::Name(name.into()))
-                        .hover(move |s| s.bg(theme.accent.opacity(0.12)))
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(move |this, _, _, cx| {
-                                this.add_component(name, cx);
-                            }),
-                        )
-                        .child(
-                            Icon::new(IconName::Component)
-                                .size(px(13.0))
-                                .text_color(cx.theme().muted_foreground),
-                        )
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().foreground)
-                                .child(name),
-                        )
-                }))
-            })
+            .child(
+                div()
+                    .flex_1()
+                    .w_full()
+                    .overflow_hidden()
+                    .child(
+                        div()
+                            .size_full()
+                            .scrollable(ScrollbarAxis::Vertical)
+                            .child(
+                                v_flex()
+                                    .w_full()
+                                    .when(classes.is_empty(), |el| {
+                                        el.child(
+                                            div()
+                                                .px_2()
+                                                .py_1()
+                                                .text_xs()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child("No components found"),
+                                        )
+                                    })
+                                    .when(!classes.is_empty(), |el| {
+                                        el.child(
+                                            div()
+                                                .px_2()
+                                                .pt_1()
+                                                .text_xs()
+                                                .font_weight(FontWeight::SEMIBOLD)
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child("Engine Classes"),
+                                        )
+                                        .children(classes.into_iter().map(|name| {
+                                            let theme = cx.theme().clone();
+                                            row_style(div())
+                                                .id(ElementId::Name(name.into()))
+                                                .hover(move |s| s.bg(theme.accent.opacity(0.12)))
+                                                .on_mouse_down(
+                                                    MouseButton::Left,
+                                                    cx.listener(move |this, _, _, cx| {
+                                                        this.add_component(name, cx);
+                                                    }),
+                                                )
+                                                .child(
+                                                    Icon::new(IconName::Component)
+                                                        .size(px(13.0))
+                                                        .text_color(cx.theme().muted_foreground),
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_sm()
+                                                        .text_color(cx.theme().foreground)
+                                                        .child(name),
+                                                )
+                                        }))
+                                    }),
+                            ),
+                    ),
+            )
     }
 }

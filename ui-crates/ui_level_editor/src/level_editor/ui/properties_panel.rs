@@ -42,29 +42,29 @@ impl PropertiesPanel {
             // Professional header
             .child(self.render_header(state, cx))
             // Main content area
-            .child(div().flex_1().overflow_hidden().child(
+            .child(div().flex_1().overflow_hidden().w_full().child(
                 div().size_full().scrollable(ScrollbarAxis::Vertical).child(
                     if let Some(_selected) = state.get_selected_object() {
-                        let mut flex = v_flex().w_full().p_3().gap_4();
+                        let mut flex = v_flex().w_full().p_3().gap_4().min_w_full();
 
                         // Render new ObjectHeaderSection if available (new binding system)
                         if let Some(ref section) = object_header_section {
-                            flex = flex.child(div().w_full().child(section.clone()));
+                            flex = flex.child(section.clone());
                         }
 
                         // Render new TransformSection if available (new binding system)
                         if let Some(ref section) = transform_section {
-                            flex = flex.child(div().w_full().child(section.clone()));
+                            flex = flex.child(section.clone());
                         }
 
                         // Reflection-backed object type properties — always present.
                         if let Some(ref section) = object_type_fields_section {
-                            flex = flex.child(div().w_full().child(section.clone()));
+                            flex = flex.child(section.clone());
                         }
 
                         // Render component sections dynamically
                         for section in component_sections {
-                            flex = flex.child(div().w_full().child(section.clone()));
+                            flex = flex.child(section.clone());
                         }
 
                         // Keep old sections for now (TODO: convert to binding system)
