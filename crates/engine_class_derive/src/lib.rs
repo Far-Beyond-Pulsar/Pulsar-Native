@@ -265,7 +265,7 @@ fn infer_property_setter(ty: &Type, field_name: &syn::Ident) -> proc_macro2::Tok
             "String" => {
                 quote! {
                     if let Some(new_value) = value.as_string() {
-                        concrete.#field_name = new_value.clone();
+                        concrete.#field_name = new_value.to_string();
                     }
                 }
             }
