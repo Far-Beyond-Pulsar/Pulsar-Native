@@ -8,7 +8,6 @@ mod material_section;
 mod object_header_section;
 mod object_type_fields_section;
 mod panel;
-pub mod properties; // New component renderer module
 mod properties_panel; // Old properties panel (to be integrated)
 mod state;
 mod toolbar;
