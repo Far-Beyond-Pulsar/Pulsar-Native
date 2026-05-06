@@ -2657,6 +2657,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "engine_class_derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "pulsar_reflection",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "engine_fs"
 version = "0.1.0"
 dependencies = [
@@ -8621,6 +8631,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "pulsar_reflection"
+version = "0.1.0"
+dependencies = [
+ "inventory",
+ "once_cell",
+ "serde",
+ "tracing",
 ]
 
 [[package]]
