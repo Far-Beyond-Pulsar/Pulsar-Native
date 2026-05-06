@@ -13,64 +13,39 @@ pub struct ObjectTypeFieldsSection {
     scene_db: SceneDatabase,
     /// Selected component index in the component list (for highlighting).
     selected_component: Option<usize>,
+    /// Add component dialog entity
+    add_component_dialog: Entity<AddComponentDialog>,
 }
 
 impl ObjectTypeFieldsSection {
     pub fn new(
         object_id: String,
         scene_db: SceneDatabase,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        // Subscribe to our own ComponentAddedEvent forwarded from the popover.
-        // (Actual subscription is done via cx.on_action / popover dismiss handler in render.)
-        let _ = cx; // suppress unused warning
+        // Create the add component dialog entity
+        let dialog_object_id = object_id.clone();
+        let dialog_scene_db = scene_db.clone();
+        let add_component_dialog = cx.new(|cx| {
+            AddComponentDialog::new(dialog_object_id, dialog_scene_db, window, cx)
+        });
+
+        // Subscribe to ComponentAddedEvent to refresh the UI
+        cx.subscribe(&add_component_dialog, |this, _dialog, event: &super::add_component_dialog::ComponentAddedEvent, cx| {
+            // Refresh the UI when a component is added
+            let _ = event; // Event contains class_name but we don't need it
+            cx.notify();
+        }).detach();
+
         Self {
             object_id,
             scene_db,
             selected_component: None,
+            add_component_dialog,
         }
     }
 
-    fn add_component_from_registry(&mut self, class_name: &str, cx: &mut Context<Self>) {
-        // Skip if already attached.
-        let existing = self.scene_db.get_components(&self.object_id);
-        if existing.iter().any(|c| c.class_name == class_name) {
-            return;
-        }
-        if !REGISTRY.has_class(class_name) {
-            return;
-        }
-        // Build default values from reflection metadata.
-        if let Some(mut instance) = REGISTRY.create_instance(class_name) {
-            let props = instance.get_properties();
-            let mut map = serde_json::Map::new();
-            for prop in &props {
-                let v = (prop.getter)(instance.as_ref());
-                map.insert(prop.name.to_string(), Self::property_value_to_json(&v));
-            }
-            self.scene_db.add_component(
-                &self.object_id,
-                class_name.to_string(),
-                Value::Object(map),
-            );
-        }
-        cx.notify();
-    }
-
-    fn property_value_to_json(value: &PropertyValue) -> Value {
-        match value {
-            PropertyValue::F32(v) => Value::from(*v),
-            PropertyValue::I32(v) => Value::from(*v),
-            PropertyValue::Bool(v) => Value::from(*v),
-            PropertyValue::String(v) => Value::from(v.clone()),
-            PropertyValue::Vec3(v) => serde_json::json!([v[0], v[1], v[2]]),
-            PropertyValue::Color(v) => serde_json::json!([v[0], v[1], v[2], v[3]]),
-            PropertyValue::EnumVariant(v) => Value::from(*v as u64),
-            PropertyValue::Vec(v) => Value::Array(v.iter().map(Self::property_value_to_json).collect()),
-            PropertyValue::Component { class_name, .. } => serde_json::json!({"class_name": class_name}),
-        }
-    }
 
     fn json_to_property_value(property_type: &PropertyType, json: &Value) -> Option<PropertyValue> {
         match property_type {
@@ -416,6 +391,7 @@ impl Render for ObjectTypeFieldsSection {
         let object_id_for_remove = self.object_id.clone();
         let scene_db_for_remove = self.scene_db.clone();
 
+        let dialog = self.add_component_dialog.clone();
         let add_popover = Popover::<AddComponentDialog>::new("add-component-picker")
             .anchor(Corner::TopRight)
             .trigger(
@@ -424,19 +400,9 @@ impl Render for ObjectTypeFieldsSection {
                     .xsmall()
                     .ghost(),
             )
-            .content(|window, cx| {
-                cx.new(|cx| AddComponentDialog::new(window, cx))
+            .content(move |_window, _cx| {
+                dialog.clone()
             });
-
-        // Wire ComponentAddedEvent from the dialog back to self.
-        // GPUI Popover surfaces child events via cx subscription; we subscribe here.
-        // We need to listen on the dialog entity — done via the popover's on_dismiss
-        // by observing at the workspace level. Instead, use a global action approach:
-        // Capture the event by observing any ComponentAddedEvent emitted in our subtree.
-        // GPUI doesn't directly bubble custom events, so we use cx.subscribe on a
-        // freshly created dialog entity held in the popover. The cleanest approach is
-        // to just render a manual row-click-based add rather than popover subscription.
-        // We work around this by storing a pending add in a shared cell via on_mouse_down.
 
         let component_list_rows = attached.iter().enumerate().map(|(idx, component)| {
             let is_selected = selected_idx == Some(idx);
