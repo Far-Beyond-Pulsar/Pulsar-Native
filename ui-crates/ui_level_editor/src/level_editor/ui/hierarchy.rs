@@ -43,6 +43,7 @@ impl HierarchyPanel {
         &self,
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        on_add_click: impl Fn(&mut Window, &mut App) + 'static,
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
@@ -91,34 +92,13 @@ impl HierarchyPanel {
                         h_flex()
                             .gap_1()
                             .child({
-                                let state_clone = state_arc.clone();
                                 Button::new("add_object")
                                     .icon(IconName::Plus)
                                     .ghost()
                                     .xsmall()
                                     .tooltip(t!("LevelEditor.Hierarchy.AddObject"))
-                                    .on_click(move |_, _, _| {
-                                        use crate::level_editor::scene_database::{
-                                            ObjectType, SceneObjectData, Transform,
-                                        };
-                                        let objects_count =
-                                            state_clone.read().scene_objects().len();
-                                        let new_object = SceneObjectData {
-                                            id: format!("object_{}", objects_count + 1),
-                                            name: "New Object".to_string(),
-                                            object_type: ObjectType::Empty,
-                                            transform: Transform::default(),
-                                            visible: true,
-                                            locked: false,
-                                            parent: None,
-                                            children: vec![],
-                                            components: vec![],
-                                            scene_path: String::new(),
-                                        };
-                                        state_clone
-                                            .read()
-                                            .scene_database
-                                            .add_object(new_object, None);
+                                    .on_click(move |_, window, cx| {
+                                        on_add_click(window, cx);
                                     })
                             })
                             .child({

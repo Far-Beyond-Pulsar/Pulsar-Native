@@ -1,8 +1,8 @@
 //! Workspace panels for Level Editor
 
 use super::ui::{
-    ComponentFieldsSection, HierarchyPanel, LevelEditorState, ObjectHeaderSection, PropertiesPanel,
-    TransformSection, ViewportPanel, WorldSettingsReplicated,
+    add_object_dialog::AddObjectDialog, ComponentFieldsSection, HierarchyPanel, LevelEditorState,
+    ObjectHeaderSection, PropertiesPanel, TransformSection, ViewportPanel, WorldSettingsReplicated,
 };
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use engine_backend::GameThread;
@@ -95,14 +95,21 @@ pub struct HierarchyPanelWrapper {
     hierarchy: HierarchyPanel,
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
     focus_handle: FocusHandle,
+    add_dialog: Entity<AddObjectDialog>,
 }
 
 impl HierarchyPanelWrapper {
-    pub fn new(state: Arc<parking_lot::RwLock<LevelEditorState>>, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        state: Arc<parking_lot::RwLock<LevelEditorState>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let add_dialog = cx.new(|cx| AddObjectDialog::new(state.clone(), window, cx));
         Self {
             hierarchy: HierarchyPanel::new(),
             state,
             focus_handle: cx.focus_handle(),
+            add_dialog,
         }
     }
 }
@@ -114,11 +121,26 @@ ui_common::panel_boilerplate!(HierarchyPanelWrapper);
 impl Render for HierarchyPanelWrapper {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.state.read();
+        let add_dialog = self.add_dialog.clone();
+        let on_add_click = move |window: &mut Window, cx: &mut App| {
+            use ui::ContextModal as _;
+            window.open_modal(cx, {
+                let add_dialog = add_dialog.clone();
+                move |modal, _w, _cx| {
+                    modal
+                        .title("Add Object")
+                        .width(px(480.0))
+                        .show_close(true)
+                        .overlay_closable(true)
+                        .child(add_dialog.clone())
+                }
+            });
+        };
         v_flex()
             .size_full()
             .bg(cx.theme().sidebar)
             .p_1()
-            .child(self.hierarchy.render(&state, self.state.clone(), cx))
+            .child(self.hierarchy.render(&state, self.state.clone(), on_add_click, cx))
     }
 }
 
