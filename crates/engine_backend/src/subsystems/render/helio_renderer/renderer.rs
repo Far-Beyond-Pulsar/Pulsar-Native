@@ -684,10 +684,50 @@ impl HelioRenderer {
     }
 
     /// Handle left-click release to end gizmo dragging.
+    /// If a gizmo drag was active, reads the final transform back from the Helio
+    /// scene and writes it to the SceneDb so properties panels stay in sync.
     pub fn handle_left_release(&mut self) {
+        let Some(inner) = &mut self.inner else { return };
+
+        // Capture the selected object before ending the drag so we can read its transform.
+        let dragged_object: Option<helio::ObjectId> = if inner.editor_state.is_dragging() {
+            inner.editor_state.selected_object()
+        } else {
+            None
+        };
+
+        inner.editor_state.end_drag();
+
+        // Write the final gizmo transform back to the SceneDb.
+        if let Some(obj_id) = dragged_object {
+            if let Ok(mat) = inner.renderer.scene().get_object_transform(obj_id) {
+                // Decompose Mat4 → (translation, rotation_euler_yxz_degrees, scale).
+                let (scale_v, quat, pos_v) = mat.to_scale_rotation_translation();
+                let (yaw, pitch, roll) = quat.to_euler(EulerRot::YXZ);
+                let pos = [pos_v.x, pos_v.y, pos_v.z];
+                let rot = [pitch.to_degrees(), yaw.to_degrees(), roll.to_degrees()];
+                let scale = [scale_v.x, scale_v.y, scale_v.z];
+
+                // Find the SceneDb id for this Helio ObjectId.
+                if let Some(scene_id) = inner
+                    .object_map
+                    .iter()
+                    .find(|(_, &(oid, _))| oid == obj_id)
+                    .map(|(id, _)| id.clone())
+                {
+                    self.scene_db.apply_transform(&scene_id, pos, rot, scale);
+                    tracing::debug!(
+                        "[HELIO] Wrote gizmo transform back to SceneDb: {} pos={:?} rot={:?}",
+                        scene_id,
+                        pos,
+                        rot
+                    );
+                }
+            }
+        }
+
+        // Rebuild picker BVH after an object may have been moved by a drag.
         if let Some(inner) = &mut self.inner {
-            inner.editor_state.end_drag();
-            // Rebuild picker BVH after an object may have been moved by a drag.
             inner.scene_picker.rebuild_instances(inner.renderer.scene());
         }
     }
@@ -703,134 +743,67 @@ impl HelioRenderer {
         ));
         tracing::info!("[HELIO SCENE] Added sky");
 
-        // Sun (directional light)
-        let sun_dir = Vec3::new(-0.5, -1.0, -0.3).normalize();
+        // Three spaced point lights: blue, red, and yellow.
         inner
             .renderer
             .scene_mut()
             .insert_actor(SceneActor::light(GpuLight {
-                position_range: [0.0, 0.0, 0.0, f32::MAX],
-                direction_outer: [sun_dir.x, sun_dir.y, sun_dir.z, 0.0],
-                color_intensity: [1.0, 0.95, 0.9, 5.0],
-                shadow_index: 0,
-                light_type: LightType::Directional as u32,
-                inner_angle: 0.0,
-                _pad: 0,
-            }));
-        tracing::info!("[HELIO SCENE] Added directional light");
-
-        // Fill light (softer ambient)
-        inner
-            .renderer
-            .scene_mut()
-            .insert_actor(SceneActor::light(GpuLight {
-                position_range: [0.0, 10.0, 0.0, 100.0],
-                direction_outer: [0.0, -1.0, 0.0, 0.0],
-                color_intensity: [0.4, 0.5, 0.7, 2.0],
+                position_range: [-8.0, 6.0, -6.0, 100.0],
+                direction_outer: [0.0, 0.0, 0.0, 0.0],
+                color_intensity: [0.2, 0.45, 1.0, 7.0],
                 shadow_index: u32::MAX,
                 light_type: LightType::Point as u32,
                 inner_angle: 0.0,
                 _pad: 0,
             }));
-        tracing::info!("[HELIO SCENE] Added fill light");
+        tracing::info!("[HELIO SCENE] Added blue point light");
 
-        // Ground plane
-        let ground_upload = plane_mesh(50.0);
-        let ground_mesh = match inner
-            .renderer
-            .scene_mut()
-            .insert_actor(SceneActor::mesh(ground_upload.clone()))
-            .as_mesh()
-        {
-            Some(id) => id,
-            None => {
-                tracing::error!("[HELIO SCENE] Failed to insert ground mesh");
-                return;
-            }
-        };
         inner
-            .scene_picker
-            .register_mesh(ground_mesh, &ground_upload);
-        tracing::info!("[HELIO SCENE] Ground mesh registered: {:?}", ground_mesh);
-
-        let ground_mat = inner.renderer.scene_mut().insert_material(make_material(
-            [0.35, 0.35, 0.35, 1.0],
-            0.9,
-            0.0,
-        ));
-        let ground_obj =
-            inner
-                .renderer
-                .scene_mut()
-                .insert_actor(SceneActor::object(ObjectDescriptor {
-                    mesh: ground_mesh,
-                    material: ground_mat,
-                    transform: Mat4::IDENTITY,
-                    bounds: [0.0, 0.0, 0.0, 50.0],
-                    flags: 0,
-                    groups: GroupMask::NONE,
-                    movability: None, // Ground stays static
-                }));
-        tracing::info!("[HELIO SCENE] Ground object created: {:?}", ground_obj);
-
-        // Test cubes
-        let cube_upload = box_mesh([0.5, 0.5, 0.5]);
-        tracing::info!(
-            "[HELIO SCENE] Created cube mesh with {} vertices, {} indices",
-            cube_upload.vertices.len(),
-            cube_upload.indices.len()
-        );
-        let cube_mesh = match inner
             .renderer
             .scene_mut()
-            .insert_actor(SceneActor::mesh(cube_upload.clone()))
-            .as_mesh()
-        {
-            Some(id) => id,
-            None => {
-                tracing::error!("[HELIO SCENE] Failed to insert cube mesh");
-                return;
-            }
-        };
-        // Register cube mesh with picker
-        inner.scene_picker.register_mesh(cube_mesh, &cube_upload);
-        tracing::info!("[HELIO SCENE] Cube mesh registered: {:?}", cube_mesh);
+            .insert_actor(SceneActor::light(GpuLight {
+                position_range: [8.0, 6.0, -6.0, 100.0],
+                direction_outer: [0.0, 0.0, 0.0, 0.0],
+                color_intensity: [1.0, 0.22, 0.2, 7.0],
+                shadow_index: u32::MAX,
+                light_type: LightType::Point as u32,
+                inner_angle: 0.0,
+                _pad: 0,
+            }));
+        tracing::info!("[HELIO SCENE] Added red point light");
 
-        let positions_and_colors: &[([f32; 3], [f32; 4])] = &[
-            ([0.0, 1.0, 0.0], [0.8, 0.2, 0.2, 1.0]),  // red center
-            ([3.0, 1.0, 0.0], [0.2, 0.7, 0.2, 1.0]),  // green right
-            ([-3.0, 1.0, 0.0], [0.2, 0.3, 0.9, 1.0]), // blue left
-            ([0.0, 1.0, 5.0], [0.9, 0.9, 0.2, 1.0]),  // yellow front
-            ([0.0, 1.0, -5.0], [0.8, 0.3, 0.8, 1.0]), // magenta back
-        ];
+        inner
+            .renderer
+            .scene_mut()
+            .insert_actor(SceneActor::light(GpuLight {
+                position_range: [0.0, 7.0, 8.0, 100.0],
+                direction_outer: [0.0, 0.0, 0.0, 0.0],
+                color_intensity: [1.0, 0.9, 0.2, 6.0],
+                shadow_index: u32::MAX,
+                light_type: LightType::Point as u32,
+                inner_angle: 0.0,
+                _pad: 0,
+            }));
+        tracing::info!("[HELIO SCENE] Added yellow point light");
 
-        for (idx, &(pos, color)) in positions_and_colors.iter().enumerate() {
-            let mat = inner
-                .renderer
-                .scene_mut()
-                .insert_material(make_material(color, 0.5, 0.1));
-            let transform = Mat4::from_translation(Vec3::from_array(pos));
-            let obj =
-                inner
-                    .renderer
-                    .scene_mut()
-                    .insert_actor(SceneActor::object(ObjectDescriptor {
-                        mesh: cube_mesh,
-                        material: mat,
-                        transform,
-                        bounds: [pos[0], pos[1], pos[2], 1.0],
-                        flags: 0,
-                        groups: GroupMask::NONE,
-                        movability: Some(Movability::Movable), // Make cubes movable!
-                    }));
-            tracing::info!("[HELIO SCENE] Cube #{} at {:?}: {:?}", idx, pos, obj);
-        }
-
-        tracing::info!("[HELIO SCENE] Scene population complete!");
+        // Mesh objects (ground, cubes, etc.) are driven exclusively through SceneDb
+        // via sync_scene() so that the hierarchy panel and the renderer always show
+        // the same state.  Nothing is hardcoded here.
+        tracing::info!("[HELIO SCENE] Scene population complete (sky + 3 colored point lights; meshes driven by SceneDb)");
     }
 
     fn sync_scene(scene_db: &crate::scene::SceneDb, inner: &mut HelioInner) {
         let snapshots = scene_db.get_all_snapshots();
+        let mut picker_dirty = false;
+
+        // While a gizmo drag is active the selected object's transform is owned
+        // by Helio — don't overwrite it from the SceneDb this frame.
+        let gizmo_dragging = inner.editor_state.is_dragging();
+        let dragged_obj_id: Option<ObjectId> = if gizmo_dragging {
+            inner.editor_state.selected_object()
+        } else {
+            None
+        };
 
         for snap in &snapshots {
             let key = match snap.object_type {
@@ -842,13 +815,19 @@ impl HelioRenderer {
             }
 
             if let Some(&(obj_id, _)) = inner.object_map.get(&snap.id) {
-                // Update transform
-                let _ = inner
-                    .renderer
-                    .scene_mut()
-                    .update_object_transform(obj_id, build_transform(snap));
+                // Skip transform update while the gizmo is dragging this object —
+                // the transform is owned by Helio until the drag ends.
+                let skip = dragged_obj_id.map_or(false, |did| did == obj_id);
+                if !skip {
+                    let _ = inner
+                        .renderer
+                        .scene_mut()
+                        .update_object_transform(obj_id, build_transform(snap));
+                }
             } else {
-                // Insert new object
+                // Insert new object — track whether this is a fresh mesh type so
+                // we can register it with the scene picker afterward.
+                let is_new_mesh_type = !inner.mesh_cache.contains_key(&key);
                 let (mesh_id, mat_id) = *inner.mesh_cache.entry(key).or_insert_with(|| {
                     let upload = mesh_for_key(key);
                     let mid = inner
@@ -861,6 +840,12 @@ impl HelioRenderer {
                     let matid = inner.renderer.scene_mut().insert_material(mat);
                     (mid, matid)
                 });
+
+                // Register the mesh with the picker the first time it is seen.
+                if is_new_mesh_type {
+                    let upload = mesh_for_key(key);
+                    inner.scene_picker.register_mesh(mesh_id, &upload);
+                }
 
                 let transform = build_transform(snap);
                 let radius = Vec3::from_array(snap.scale).length() * 0.5;
@@ -881,8 +866,14 @@ impl HelioRenderer {
                     .as_object()
                 {
                     inner.object_map.insert(snap.id.clone(), (obj_id, mesh_id));
+                    picker_dirty = true;
                 }
             }
+        }
+
+        // Rebuild the BVH once per sync if any new objects were inserted.
+        if picker_dirty {
+            inner.scene_picker.rebuild_instances(inner.renderer.scene());
         }
     }
 }

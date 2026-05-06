@@ -1,4 +1,5 @@
 mod actions;
+pub mod add_object_dialog;
 mod bound_field;
 mod component_fields_section;
 mod field_bindings;
@@ -6,7 +7,8 @@ mod hierarchy;
 mod material_section;
 mod object_header_section;
 mod panel;
-mod properties;
+pub mod properties; // New component renderer module
+mod properties_panel; // Old properties panel (to be integrated)
 mod state;
 mod toolbar;
 mod transform_section;
@@ -18,7 +20,7 @@ pub use component_fields_section::ComponentFieldsSection;
 pub use hierarchy::HierarchyPanel;
 pub use object_header_section::ObjectHeaderSection;
 pub use panel::LevelEditorPanel;
-pub use properties::PropertiesPanel;
+pub use properties_panel::PropertiesPanel;
 pub use state::*;
 pub use toolbar::ToolbarPanel;
 pub use transform_section::TransformSection;

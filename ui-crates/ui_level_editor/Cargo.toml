@@ -18,6 +18,7 @@ plugin_editor_api.workspace = true
 # Engine
 engine_state.workspace = true
 engine_backend.workspace = true
+pulsar_reflection.workspace = true
 profiling.workspace = true
 
 # Helio renderer and asset loading
@@ -27,6 +28,7 @@ glam.workspace = true
 # Standard dependencies
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+rfd = "0.15"
 parking_lot = "0.12"
 tracing.workspace = true
 chrono = { version = "0.4", features = ["serde"] }

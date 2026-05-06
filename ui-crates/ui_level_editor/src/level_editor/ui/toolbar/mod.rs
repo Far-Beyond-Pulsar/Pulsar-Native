@@ -1,5 +1,6 @@
 use gpui::*;
 use rust_i18n::t;
+use std::path::PathBuf;
 use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
@@ -86,7 +87,66 @@ impl ToolbarPanel {
             .child(div().flex_1())
             .child(ModeIndicator::render(state, cx))
             .child(self.render_separator(cx))
+            .child(self.render_save_button(state_arc.clone()))
+            .child(self.render_separator(cx))
             .child(self.render_profiling_button(state, state_arc.clone(), cx))
+    }
+
+    fn default_level_path() -> Option<PathBuf> {
+        let project_str = engine_state::get_project_path()?;
+        Some(
+            PathBuf::from(project_str)
+                .join("scene")
+                .join("default.level"),
+        )
+    }
+
+    fn render_save_button(
+        &self,
+        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+    ) -> impl IntoElement {
+        let state_clone = state_arc.clone();
+        Button::new("toolbar_save_scene")
+            .label("Save")
+            .primary()
+            .tooltip("Save scene")
+            .on_click(move |_, _, _| {
+                let target_path = {
+                    let state = state_clone.read();
+                    state
+                        .current_scene
+                        .clone()
+                        .or_else(Self::default_level_path)
+                };
+
+                let Some(path) = target_path else {
+                    tracing::warn!("Save skipped: no current scene and no project path");
+                    return;
+                };
+
+                if let Some(parent) = path.parent() {
+                    if let Err(e) = std::fs::create_dir_all(parent) {
+                        tracing::error!("Save failed: could not create {:?}: {e}", parent);
+                        return;
+                    }
+                }
+
+                let save_result = {
+                    let state = state_clone.read();
+                    state.scene_database.save_to_file(&path)
+                };
+
+                match save_result {
+                    Ok(_) => {
+                        let mut state = state_clone.write();
+                        state.current_scene = Some(path);
+                        state.has_unsaved_changes = false;
+                    }
+                    Err(e) => {
+                        tracing::error!("Save failed: {e}");
+                    }
+                }
+            })
     }
 
     fn render_separator<V: 'static>(&self, cx: &mut Context<V>) -> impl IntoElement {

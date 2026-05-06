@@ -2638,6 +2638,7 @@ dependencies = [
  "profiling 0.1.0",
  "pulsar_diagnostics",
  "pulsar_lsp",
+ "pulsar_reflection",
  "rapier3d",
  "ropey",
  "serde",
@@ -2654,6 +2655,16 @@ dependencies = [
  "wgpu",
  "winapi",
  "windows 0.62.2",
+]
+
+[[package]]
+name = "engine_class_derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "pulsar_reflection",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -8624,6 +8635,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_physics"
+version = "0.1.0"
+dependencies = [
+ "engine_class_derive",
+ "pulsar_reflection",
+ "serde",
+ "tracing",
+]
+
+[[package]]
+name = "pulsar_reflection"
+version = "0.1.0"
+dependencies = [
+ "inventory",
+ "once_cell",
+ "serde",
+ "tracing",
+]
+
+[[package]]
+name = "pulsar_rendering"
+version = "0.1.0"
+dependencies = [
+ "engine_class_derive",
+ "pulsar_reflection",
+ "serde",
+ "tracing",
+]
+
+[[package]]
 name = "pulsar_replication"
 version = "0.1.0"
 dependencies = [
@@ -12748,7 +12789,9 @@ dependencies = [
  "parking_lot",
  "plugin_editor_api",
  "profiling 0.1.0",
+ "pulsar_reflection",
  "raw-window-handle 0.6.2",
+ "rfd 0.15.4",
  "rust-i18n",
  "schemars",
  "serde",

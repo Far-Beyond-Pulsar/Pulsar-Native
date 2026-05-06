@@ -37,6 +37,7 @@ use std::rc::Rc;
 ///     }))
 ///     .child(self.render_viewport(window, cx))
 /// ```
+#[derive(IntoElement)]
 pub struct DropArea<T: Clone + Render + 'static> {
     id: ElementId,
     can_accept: Rc<dyn Fn(&T) -> bool>,

@@ -44,6 +44,7 @@ use crate::IconName;
 ///             .child(file_name_input)  // Fully interactive
 ///     )
 /// ```
+#[derive(IntoElement)]
 pub struct Draggable<T: Clone + Render + 'static> {
     id: ElementId,
     payload: T,

@@ -12,6 +12,91 @@ use std::sync::Arc;
 use ui::dock::PanelView;
 
 // ---------------------------------------------------------------------------
+// Level Editor — built-in provider
+// ---------------------------------------------------------------------------
+
+/// Opens `.level` and `.level.json` files in the Level Editor panel.
+pub struct LevelEditorBuiltinProvider;
+
+impl BuiltinEditorProvider for LevelEditorBuiltinProvider {
+    fn provider_id(&self) -> &str {
+        "com.pulsar.level-editor"
+    }
+
+    fn file_types(&self) -> Vec<FileTypeDefinition> {
+        vec![
+            FileTypeDefinition {
+                id: FileTypeId::new("level"),
+                extension: "level".to_string(),
+                display_name: "Pulsar Level".to_string(),
+                icon: ui::IconName::Map,
+                color: gpui::rgb(0x4CAF50).into(),
+                structure: FileStructure::Standalone,
+                default_content: serde_json::json!({
+                    "version": "2.0",
+                    "objects": [],
+                    "metadata": {
+                        "created": "",
+                        "modified": "",
+                        "editor_version": ""
+                    }
+                }),
+                categories: vec!["Levels".to_string()],
+            },
+            FileTypeDefinition {
+                id: FileTypeId::new("level.json"),
+                extension: "level.json".to_string(),
+                display_name: "Pulsar Level (JSON)".to_string(),
+                icon: ui::IconName::Map,
+                color: gpui::rgb(0x4CAF50).into(),
+                structure: FileStructure::Standalone,
+                default_content: serde_json::json!({
+                    "version": "2.0",
+                    "objects": [],
+                    "metadata": {
+                        "created": "",
+                        "modified": "",
+                        "editor_version": ""
+                    }
+                }),
+                categories: vec!["Levels".to_string()],
+            },
+        ]
+    }
+
+    fn editors(&self) -> Vec<EditorMetadata> {
+        vec![EditorMetadata {
+            id: EditorId::new("level-editor"),
+            display_name: "Level Editor".into(),
+            supported_file_types: vec![FileTypeId::new("level"), FileTypeId::new("level.json")],
+        }]
+    }
+
+    fn can_handle(&self, editor_id: &EditorId) -> bool {
+        editor_id.as_str() == "level-editor"
+    }
+
+    fn create_editor(
+        &self,
+        file_path: PathBuf,
+        _editor_context: &EditorContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
+        let panel = cx.new(|cx| {
+            match ui_level_editor::LevelEditorPanel::new_with_path(file_path.clone(), window, cx) {
+                Ok(p) => p,
+                Err(e) => {
+                    tracing::error!("Failed to load level {:?}: {}", file_path, e);
+                    ui_level_editor::LevelEditorPanel::new(window, cx)
+                }
+            }
+        });
+        Ok(Arc::new(panel))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Blueprint Editor — built-in provider (no DLL boundary)
 // ---------------------------------------------------------------------------
 
@@ -104,6 +189,9 @@ pub fn register_all_builtin_editors(registry: &mut BuiltinEditorRegistry) {
 
     // Blueprint editor (compiled-in, no DLL boundary)
     registry.register_provider(Arc::new(BlueprintEditorBuiltinProvider));
+
+    // Level editor (opens .level and .level.json files)
+    registry.register_provider(Arc::new(LevelEditorBuiltinProvider));
 
     tracing::info!("Built-in editor registration complete");
 }

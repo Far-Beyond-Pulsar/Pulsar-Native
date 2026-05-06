@@ -1,4 +1,3 @@
-mod gizmos;
 mod scene_database;
 /// Modular Level Editor
 ///
@@ -13,12 +12,10 @@ mod scene_database;
 /// - Asset Browser: Browse and preview project assets
 /// - Toolbar: Transform tools and quick actions
 /// - Scene Database: In-memory scene management with undo/redo
-/// - Gizmos: 3D manipulation tools (translate, rotate, scale)
 mod ui;
 mod workspace_panels;
 mod world_settings_data;
 
-pub use gizmos::{GizmoState, GizmoType};
 pub use scene_database::SceneDatabase;
 pub use ui::LevelEditorPanel;
 pub use workspace_panels::*;

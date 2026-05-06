@@ -47,15 +47,96 @@ pub struct LevelEditorPanel {
 
     // Workspace for draggable panels
     workspace: Option<Entity<Workspace>>,
+
+    // Handles to sub-panels so we can forward notifications after scene mutations.
+    hierarchy_panel_entity: Option<Entity<crate::level_editor::HierarchyPanelWrapper>>,
+    properties_panel_entity: Option<Entity<crate::level_editor::PropertiesPanelWrapper>>,
 }
 
 impl LevelEditorPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self::new_internal(None, window, cx)
+        let mut panel = Self::new_internal(None, window, cx);
+        panel.ensure_default_level_file();
+        panel
     }
 
     pub fn new_with_window_id(window_id: u64, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self::new_internal(Some(window_id), window, cx)
+        let mut panel = Self::new_internal(Some(window_id), window, cx);
+        panel.ensure_default_level_file();
+        panel
+    }
+
+    /// If no project is open, do nothing. Otherwise resolve `<project>/scene/default.level`:
+    /// - If the file already exists, load it.
+    /// - If it doesn't exist, save the current in-memory default scene to it and
+    ///   set `current_scene` so the title bar and save-as shortcuts work correctly.
+    fn ensure_default_level_file(&mut self) {
+        let Some(project_str) = engine_state::get_project_path() else {
+            return;
+        };
+        let default_path = std::path::PathBuf::from(&project_str)
+            .join("scene")
+            .join("default.level");
+
+        if let Some(parent) = default_path.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                tracing::warn!("Could not create default level directory {:?}: {e}", parent);
+                return;
+            }
+        }
+
+        let scene_db = { self.shared_state.read().scene_database.clone() };
+
+        if default_path.exists() {
+            // File already on disk — load it into the shared scene db.
+            scene_db.clear();
+            match scene_db.load_from_file(&default_path) {
+                Ok(_) => {
+                    let mut w = self.shared_state.write();
+                    w.current_scene = Some(default_path);
+                    w.has_unsaved_changes = false;
+                }
+                Err(e) => {
+                    tracing::warn!("Default level exists but could not be loaded: {e}");
+                }
+            }
+        } else {
+            // File does not exist — write the current default scene to disk, then set the path.
+            match scene_db.save_to_file(&default_path) {
+                Ok(_) => {
+                    tracing::info!("Created default level file at {:?}", default_path);
+                    let mut w = self.shared_state.write();
+                    w.current_scene = Some(default_path);
+                    w.has_unsaved_changes = false;
+                }
+                Err(e) => {
+                    tracing::warn!("Could not write default level to {:?}: {e}", default_path);
+                }
+            }
+        }
+    }
+
+    /// Create the editor and immediately load a level file from disk.
+    ///
+    /// The scene is cleared and reloaded into the existing shared `Arc<SceneDb>`
+    /// so the renderer stays in sync. Returns an error string on load failure
+    /// (the panel is still valid and shows the default empty scene).
+    pub fn new_with_path(
+        path: std::path::PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<Self, String> {
+        let mut panel = Self::new_internal(None, window, cx);
+        // Clear the default scene that was just populated, then load from file.
+        let scene_db = { panel.shared_state.read().scene_database.clone() };
+        scene_db.clear();
+        scene_db.load_from_file(&path)?;
+        {
+            let mut state = panel.shared_state.write();
+            state.current_scene = Some(path);
+            state.has_unsaved_changes = false;
+        }
+        Ok(panel)
     }
 
     fn new_internal(window_id: Option<u64>, window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -141,6 +222,19 @@ impl LevelEditorPanel {
             game_thread: game_thread.clone(),
             shared_state: Arc::new(parking_lot::RwLock::new(state)),
             workspace: None,
+            hierarchy_panel_entity: None,
+            properties_panel_entity: None,
+        }
+    }
+
+    /// Notify the hierarchy (and, via its observer, the properties panel) so they
+    /// re-render after any scene or selection mutation.
+    fn notify_sub_panels(&self, cx: &mut Context<Self>) {
+        if let Some(ref h) = self.hierarchy_panel_entity {
+            h.update(cx, |_, cx| cx.notify());
+        }
+        if let Some(ref p) = self.properties_panel_entity {
+            p.update(cx, |_, cx| cx.notify());
         }
     }
 
@@ -165,95 +259,108 @@ impl LevelEditorPanel {
         let viewport = self.viewport.clone();
         let render_enabled = self.render_enabled.clone();
 
-        workspace.update(cx, |workspace, cx| {
-            let dock_area = workspace.dock_area().downgrade();
+        let (hierarchy_handle, properties_handle) =
+            workspace.update(cx, |workspace, cx| {
+                let dock_area = workspace.dock_area().downgrade();
 
-            // Create viewport in center
-            let viewport_panel_inner = ViewportPanel::new(viewport.clone(), render_enabled.clone(), window, cx);
-            let viewport_panel = cx.new(|cx| {
-                use crate::level_editor::ViewportPanelWrapper;
-                ViewportPanelWrapper::new(
-                    viewport_panel_inner,
-                    shared_state.clone(),
-                    fps_graph.clone(),
-                    gpu.clone(),
-                    game.clone(),
-                    cx,
-                )
-            });
-
-            // Create right dock panels
-            let hierarchy_panel = cx.new(|cx| {
-                use crate::level_editor::HierarchyPanelWrapper;
-                HierarchyPanelWrapper::new(shared_state.clone(), cx)
-            });
-            let properties_panel = cx.new(|cx| {
-                use crate::level_editor::PropertiesPanelWrapper;
-                PropertiesPanelWrapper::new(shared_state.clone(), window, cx)
-            });
-            let world_settings_panel = cx.new(|cx| {
-                use crate::level_editor::WorldSettingsPanel;
-                WorldSettingsPanel::new(shared_state.clone(), window, cx)
-            });
-
-            // Wire up cross-panel notification: whenever the hierarchy is notified (e.g.
-            // after a selection click), the properties panel is also notified so it
-            // re-reads the selected object and updates its sections.
-            {
-                let hierarchy_for_observe = hierarchy_panel.clone();
-                properties_panel.update(cx, |_, cx| {
-                    cx.observe(&hierarchy_for_observe, |_, _, cx| {
-                                                cx.notify();
-                    }).detach();
+                // Create viewport in center
+                let viewport_panel_inner =
+                    ViewportPanel::new(viewport.clone(), render_enabled.clone(), window, cx);
+                let viewport_panel = cx.new(|cx| {
+                    use crate::level_editor::ViewportPanelWrapper;
+                    ViewportPanelWrapper::new(
+                        viewport_panel_inner,
+                        shared_state.clone(),
+                        fps_graph.clone(),
+                        gpu.clone(),
+                        game.clone(),
+                        cx,
+                    )
                 });
-                            }
 
-            // Bottom right: tabs for Properties and World Settings
-            let bottom_tabs = DockItem::tabs(
-                vec![
-                    std::sync::Arc::new(properties_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
-                    std::sync::Arc::new(world_settings_panel) as std::sync::Arc<dyn ui::dock::PanelView>,
-                ],
-                Some(0),
-                &dock_area,
-                window,
-                cx,
-            );
+                // Create right dock panels
+                let hierarchy_panel = cx.new(|cx| {
+                    use crate::level_editor::HierarchyPanelWrapper;
+                    HierarchyPanelWrapper::new(shared_state.clone(), window, cx)
+                });
+                let hierarchy_handle = hierarchy_panel.clone();
+                let properties_panel = cx.new(|cx| {
+                    use crate::level_editor::PropertiesPanelWrapper;
+                    PropertiesPanelWrapper::new(shared_state.clone(), window, cx)
+                });
+                let properties_handle = properties_panel.clone();
+                let world_settings_panel = cx.new(|cx| {
+                    use crate::level_editor::WorldSettingsPanel;
+                    WorldSettingsPanel::new(shared_state.clone(), window, cx)
+                });
 
-            // Top right: hierarchy panel (as a single-tab TabPanel)
-            let top_hierarchy = DockItem::tabs(
-                vec![std::sync::Arc::new(hierarchy_panel) as std::sync::Arc<dyn ui::dock::PanelView>],
-                Some(0),
-                &dock_area,
-                window,
-                cx,
-            );
+                // Wire up cross-panel notification: whenever the hierarchy is notified (e.g.
+                // after a selection click), the properties panel is also notified so it
+                // re-reads the selected object and updates its sections.
+                {
+                    let hierarchy_for_observe = hierarchy_panel.clone();
+                    properties_panel.update(cx, |_, cx| {
+                        cx.observe(&hierarchy_for_observe, |_, _, cx| {
+                            cx.notify();
+                        })
+                        .detach();
+                    });
+                }
 
-            // Compose right dock as a vertical split: top = hierarchy (25%), bottom = tabs (75%)
-            // Hierarchy gets smaller fixed size, Properties/World gets larger
-            let right = ui::dock::DockItem::split_with_sizes(
-                gpui::Axis::Vertical,
-                vec![top_hierarchy, bottom_tabs],
-                vec![Some(px(150.0)), Some(px(550.0))],  // 150px hierarchy, 550px for Properties/World
-                &dock_area,
-                window,
-                cx,
-            );
+                // Bottom right: tabs for Properties and World Settings
+                let bottom_tabs = DockItem::tabs(
+                    vec![
+                        std::sync::Arc::new(properties_panel)
+                            as std::sync::Arc<dyn ui::dock::PanelView>,
+                        std::sync::Arc::new(world_settings_panel)
+                            as std::sync::Arc<dyn ui::dock::PanelView>,
+                    ],
+                    Some(0),
+                    &dock_area,
+                    window,
+                    cx,
+                );
 
-            // Set center and right dock only (no left dock, matching DAW approach)
-            let center_tabs = DockItem::tabs(
-                vec![std::sync::Arc::new(viewport_panel) as std::sync::Arc<dyn ui::dock::PanelView>],
-                Some(0),
-                &dock_area,
-                window,
-                cx,
-            );
-            let _ = dock_area.update(cx, |dock_area, cx| {
-                dock_area.set_center(center_tabs, window, cx);
-                dock_area.set_right_dock(right, Some(px(400.0)), true, window, cx);
+                // Top right: hierarchy panel (as a single-tab TabPanel)
+                let top_hierarchy = DockItem::tabs(
+                    vec![std::sync::Arc::new(hierarchy_panel)
+                        as std::sync::Arc<dyn ui::dock::PanelView>],
+                    Some(0),
+                    &dock_area,
+                    window,
+                    cx,
+                );
+
+                // Compose right dock as a vertical split: top = hierarchy (25%), bottom = tabs (75%)
+                // Hierarchy gets smaller fixed size, Properties/World gets larger
+                let right = ui::dock::DockItem::split_with_sizes(
+                    gpui::Axis::Vertical,
+                    vec![top_hierarchy, bottom_tabs],
+                    vec![Some(px(150.0)), Some(px(550.0))], // 150px hierarchy, 550px for Properties/World
+                    &dock_area,
+                    window,
+                    cx,
+                );
+
+                // Set center and right dock only (no left dock, matching DAW approach)
+                let center_tabs = DockItem::tabs(
+                    vec![std::sync::Arc::new(viewport_panel)
+                        as std::sync::Arc<dyn ui::dock::PanelView>],
+                    Some(0),
+                    &dock_area,
+                    window,
+                    cx,
+                );
+                let _ = dock_area.update(cx, |dock_area, cx| {
+                    dock_area.set_center(center_tabs, window, cx);
+                    dock_area.set_right_dock(right, Some(px(400.0)), true, window, cx);
+                });
+
+                (hierarchy_handle, properties_handle)
             });
-        });
 
+        self.hierarchy_panel_entity = Some(hierarchy_handle);
+        self.properties_panel_entity = Some(properties_handle);
         self.workspace = Some(workspace);
     }
 
@@ -490,6 +597,7 @@ impl LevelEditorPanel {
             .scene_database
             .add_object(new_object, None);
         self.shared_state.write().has_unsaved_changes = true;
+        self.notify_sub_panels(cx);
         cx.notify();
     }
 
@@ -503,6 +611,7 @@ impl LevelEditorPanel {
             self.shared_state.write().select_object(None);
             self.sync_gizmo_to_helio(); // Clear gizmo after deletion
         }
+        self.notify_sub_panels(cx);
         cx.notify();
     }
 
@@ -514,6 +623,7 @@ impl LevelEditorPanel {
                 .duplicate_object(&id);
             self.shared_state.write().has_unsaved_changes = true;
         }
+        self.notify_sub_panels(cx);
         cx.notify();
     }
 
@@ -522,6 +632,7 @@ impl LevelEditorPanel {
             .write()
             .select_object(Some(action.object_id.clone()));
         self.sync_gizmo_to_helio(); // Sync gizmo to follow selected object
+        self.notify_sub_panels(cx);
         cx.notify();
     }
 
@@ -730,8 +841,13 @@ impl LevelEditorPanel {
             return;
         }
 
-        if let Some(ref path) = self.shared_state.read().current_scene {
-            match self.shared_state.read().scene_database.save_to_file(path) {
+        let (scene_db, path_opt) = {
+            let state = self.shared_state.read();
+            (state.scene_database.clone(), state.current_scene.clone())
+        };
+
+        if let Some(path) = path_opt {
+            match scene_db.save_to_file(&path) {
                 Ok(_) => {
                     self.shared_state.write().has_unsaved_changes = false;
                     cx.notify();
@@ -742,98 +858,93 @@ impl LevelEditorPanel {
     }
 
     fn on_save_scene_as(&mut self, _: &SaveSceneAs, _window: &mut Window, cx: &mut Context<Self>) {
-        // TODO: Implement async file dialog
-        if let Some(ref path) = self.shared_state.read().current_scene {
-            match self.shared_state.read().scene_database.save_to_file(path) {
-                Ok(_) => {
-                    self.shared_state.write().has_unsaved_changes = false;
-                    cx.notify();
-                }
-                Err(e) => {}
+        let state_arc = self.shared_state.clone();
+        let scene_db = { state_arc.read().scene_database.clone() };
+        let dialog = rfd::AsyncFileDialog::new()
+            .set_title("Save Scene As")
+            .add_filter("Level file", &["level", "json"])
+            .set_file_name("untitled.level");
+        cx.spawn(async move |this, cx| {
+            if let Some(handle) = dialog.save_file().await {
+                let path = handle.path().to_path_buf();
+                let result = scene_db.save_to_file(&path);
+                cx.update(|cx| {
+                    this.update(cx, |_, cx| {
+                        match result {
+                            Ok(_) => {
+                                state_arc.write().current_scene = Some(path);
+                                state_arc.write().has_unsaved_changes = false;
+                            }
+                            Err(e) => tracing::error!("Save failed: {}", e),
+                        }
+                        cx.notify();
+                    })
+                    .ok();
+                })
+                .ok();
             }
-        }
+        })
+        .detach();
     }
 
     fn on_open_scene(&mut self, _: &OpenScene, _window: &mut Window, cx: &mut Context<Self>) {
-        // TODO: Implement async file dialog
-        cx.notify();
+        let state_arc = self.shared_state.clone();
+        let scene_db = { state_arc.read().scene_database.clone() };
+        let default_dir = state_arc
+            .read()
+            .current_scene
+            .as_ref()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+        let dialog = rfd::AsyncFileDialog::new()
+            .set_title("Open Scene")
+            .add_filter("Level file", &["level", "json"])
+            .set_directory(default_dir);
+        cx.spawn(async move |this, cx| {
+            if let Some(handle) = dialog.pick_file().await {
+                let path = handle.path().to_path_buf();
+                // Load into the existing shared SceneDb (renderer keeps its Arc).
+                let result = scene_db.load_from_file(&path);
+                cx.update(|cx| {
+                    this.update(cx, |this, cx| {
+                        match result {
+                            Ok(_) => {
+                                let mut state = state_arc.write();
+                                state.current_scene = Some(path);
+                                state.has_unsaved_changes = false;
+                                // Deselect so properties panel clears stale data.
+                                state.select_object(None);
+                            }
+                            Err(e) => tracing::error!("Open scene failed: {}", e),
+                        }
+                        this.notify_sub_panels(cx);
+                        cx.notify();
+                    })
+                    .ok();
+                })
+                .ok();
+            }
+        })
+        .detach();
     }
 
     fn on_new_scene(&mut self, _: &NewScene, _: &mut Window, cx: &mut Context<Self>) {
-        // Warn if unsaved changes
-        if self.shared_state.write().has_unsaved_changes {
-            // TODO: Show confirmation dialog
+        // Warn if unsaved changes (TODO: modal dialog)
+        // Clear the scene IN-PLACE so the renderer keeps its Arc<SceneDb>.
+        {
+            let state = self.shared_state.read();
+            state.scene_database.clear();
+            // Re-populate defaults into the same shared SceneDb.
+            state.scene_database.populate_default_scene_pub();
         }
-
-        // Clear scene and reset to defaults
-        self.shared_state.read().scene_database.clear();
-        self.shared_state.write().current_scene = None;
-        self.shared_state.write().has_unsaved_changes = false;
-
-        // Re-add default objects
-        self.shared_state.write().scene_database =
-            crate::level_editor::SceneDatabase::with_default_scene();
-
-        cx.notify();
-    }
-
-    fn on_toggle_snapping(&mut self, _: &ToggleSnapping, _: &mut Window, cx: &mut Context<Self>) {
-        // Toggle snapping in gizmo state
-        let state = self.shared_state.read();
-        let mut gizmo_state = state.gizmo_state.write();
-        gizmo_state.toggle_snap();
-        let _enabled = gizmo_state.snap_enabled;
-        let _increment = gizmo_state.snap_increment;
-        drop(gizmo_state);
-
-        cx.notify();
-    }
-
-    fn on_toggle_local_space(
-        &mut self,
-        _: &ToggleLocalSpace,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        // Toggle local/world space in gizmo state
-        let state = self.shared_state.read();
-        let mut gizmo_state = state.gizmo_state.write();
-        gizmo_state.toggle_space();
-        let _is_local = gizmo_state.local_space;
-        drop(gizmo_state);
-
-        cx.notify();
-    }
-
-    fn on_increase_snap_increment(
-        &mut self,
-        _: &IncreaseSnapIncrement,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let state = self.shared_state.read();
-        let mut gizmo_state = state.gizmo_state.write();
-        // Double the snap increment (0.25, 0.5, 1.0, 2.0, 4.0, etc.)
-        gizmo_state.snap_increment = (gizmo_state.snap_increment * 2.0).min(10.0);
-        let _increment = gizmo_state.snap_increment;
-        drop(gizmo_state);
-
-        cx.notify();
-    }
-
-    fn on_decrease_snap_increment(
-        &mut self,
-        _: &DecreaseSnapIncrement,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let state = self.shared_state.read();
-        let mut gizmo_state = state.gizmo_state.write();
-        // Halve the snap increment (10.0, 5.0, 2.5, 1.0, 0.5, 0.25, etc.)
-        gizmo_state.snap_increment = (gizmo_state.snap_increment / 2.0).max(0.1);
-        let _increment = gizmo_state.snap_increment;
-        drop(gizmo_state);
-
+        self.notify_sub_panels(cx);
+        {
+            let mut state = self.shared_state.write();
+            state.current_scene = None;
+            state.has_unsaved_changes = false;
+            // Deselect so properties panel clears stale data.
+            state.select_object(None);
+        }
         cx.notify();
     }
 
@@ -857,25 +968,20 @@ impl Panel for LevelEditorPanel {
     }
 
     fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
+        let state = self.shared_state.read();
         div()
-            .child(
-                if let Some(ref scene) = self.shared_state.read().current_scene {
-                    format!(
-                        "Level Editor - {}{}",
-                        scene
-                            .file_stem()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or("Untitled"),
-                        if self.shared_state.write().has_unsaved_changes {
-                            " *"
-                        } else {
-                            ""
-                        }
-                    )
-                } else {
-                    "Level Editor".to_string()
-                },
-            )
+            .child(if let Some(ref scene) = state.current_scene {
+                format!(
+                    "Level Editor - {}{}",
+                    scene
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("Untitled"),
+                    if state.has_unsaved_changes { " *" } else { "" }
+                )
+            } else {
+                "Level Editor".to_string()
+            })
             .into_any_element()
     }
 
@@ -948,11 +1054,6 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_select_object))
             .on_action(cx.listener(Self::on_toggle_object_expanded))
             .on_action(cx.listener(Self::on_focus_selected))
-            // Gizmo operations - KEYBOARD: G/L/[/]
-            .on_action(cx.listener(Self::on_toggle_snapping))
-            .on_action(cx.listener(Self::on_toggle_local_space))
-            .on_action(cx.listener(Self::on_increase_snap_increment))
-            .on_action(cx.listener(Self::on_decrease_snap_increment))
             // View operations
             .on_action(cx.listener(Self::on_toggle_grid))
             .on_action(cx.listener(Self::on_toggle_wireframe))
@@ -1016,10 +1117,8 @@ impl Render for LevelEditorPanel {
                     "e" => this.on_rotate_tool(&RotateTool, window, cx),
                     "r" => this.on_rotate_tool(&RotateTool, window, cx), // Blender: R = Rotate
                     "s" => this.on_scale_tool(&ScaleTool, window, cx),   // Blender: S = Scale
-                    "l" => cx.dispatch_action(&ToggleLocalSpace),
+                    "l" => {}
                     "f" => cx.dispatch_action(&FocusSelected),
-                    "[" => cx.dispatch_action(&DecreaseSnapIncrement),
-                    "]" => cx.dispatch_action(&IncreaseSnapIncrement),
                     _ => {}
                 }
             }))

@@ -1,18 +1,38 @@
 //! Shared scene database for the Pulsar engine.
 //!
-//! This module provides a single `SceneDb` that is shared by:
-//! - The Helio renderer (reads transforms lock-free via atomics)
-//! - The hierarchy panel (reads/writes object list)
-//! - The properties panel (writes transforms atomically)
+//! This module provides two scene management systems:
 //!
-//! ## Design
+//! ## Legacy SceneDb (existing system)
+//! - Single `SceneDb` that is shared by UI panels and renderer
+//! - Stores transforms as atomics for lock-free access
+//! - Being phased out in favor of Helio Scene + metadata layer
 //!
-//! Hot-path data (transforms, visibility) is stored as atomics so the
-//! render thread never blocks on a lock. Structural changes (add/remove objects,
-//! reparenting) use a fast `parking_lot::RwLock` that is only held briefly.
+//! ## New Metadata System (production-ready)
+//! - `SceneMetadataDb`: Organizational layer (folders, names, hierarchy)
+//! - `ComponentDb`: Component instances using reflection system
+//! - `HierarchyManager`: Parent-child relationships with cycle prevention
+//! - Helio Scene is the single source of truth for transform/render data
+//! - Uses engine class reflection system for extensible components
 //!
-//! Object storage uses `dashmap::DashMap` which provides concurrent access
-//! without a global lock — reads on different shards proceed in parallel.
+//! The new system reduces memory footprint by eliminating duplicate transform
+//! storage and provides a clean separation between organizational metadata
+//! and render data.
+
+// New metadata system modules
+pub mod component_db;
+pub mod hierarchy;
+pub mod metadata;
+pub mod metadata_db;
+
+// Re-export new system types for convenience
+pub use component_db::ComponentDb;
+pub use hierarchy::HierarchyManager;
+pub use metadata::{
+    ComponentInstance, EditorObjectId, HelioActorHandle, HelioLightId, HelioObjectId,
+    LightType as MetadataLightType, MeshType as MetadataMeshType, ObjectType as MetadataObjectType,
+    SceneObjectMetadata,
+};
+pub use metadata_db::{SceneMetadataDb, SceneSnapshot};
 
 use dashmap::DashMap;
 use glam::{Mat4, Vec3};

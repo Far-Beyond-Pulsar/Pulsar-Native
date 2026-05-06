@@ -10,7 +10,7 @@ use gpui::AppContext;
 mod level_editor;
 
 // Re-export main types
-pub use level_editor::{GizmoState, GizmoType, LevelEditorPanel, SceneDatabase};
+pub use level_editor::{LevelEditorPanel, SceneDatabase};
 
 /// Get current locale
 pub fn locale() -> String {

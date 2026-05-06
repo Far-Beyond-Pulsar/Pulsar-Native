@@ -3,9 +3,9 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-// Import our scene database and gizmo systems
+// Import our scene database
 use crate::level_editor::scene_database::SceneDb;
-use crate::level_editor::{GizmoState, GizmoType, SceneDatabase};
+use crate::level_editor::SceneDatabase;
 
 /// Editor mode - Edit or Play
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -24,6 +24,16 @@ pub enum HierarchyDragState {
     },
 }
 
+/// Drag payload for GPUI-native hierarchy drag-and-drop.
+///
+/// Wraps the dragged object's ID string.  Implements [`gpui::Render`] so it can
+/// serve as the drag ghost element (renders as an invisible placeholder).
+#[derive(Clone, Debug)]
+pub struct HierarchyDragPayload {
+    pub object_id: String,
+    pub object_name: String,
+}
+
 /// Shared state for the Level Editor
 #[derive(Clone)]
 pub struct LevelEditorState {
@@ -32,8 +42,6 @@ pub struct LevelEditorState {
     /// Snapshot of scene state when entering play mode (for reset on stop)
     pub scene_snapshot:
         Option<Arc<parking_lot::RwLock<Vec<crate::level_editor::scene_database::SceneObjectData>>>>,
-    /// Gizmo state for 3D manipulation
-    pub gizmo_state: Arc<parking_lot::RwLock<GizmoState>>,
     /// Current editor mode
     pub editor_mode: EditorMode,
     /// Currently open scene file
@@ -215,14 +223,9 @@ impl Default for LevelEditorState {
         // Create scene database with default objects matching Helio renderer
         let scene_database = SceneDatabase::with_default_scene();
 
-        // Create gizmo state with translate tool active
-        let mut gizmo_state = GizmoState::new();
-        gizmo_state.set_gizmo_type(GizmoType::Translate);
-
         Self {
             scene_database,
             scene_snapshot: None,
-            gizmo_state: Arc::new(parking_lot::RwLock::new(gizmo_state)),
             editor_mode: EditorMode::Edit, // Start in edit mode
             current_scene: None,
             has_unsaved_changes: false,
@@ -280,8 +283,6 @@ impl LevelEditorState {
     /// The default scene objects are populated into the shared database.
     pub fn new_with_scene_db(scene_db: Arc<SceneDb>) -> Self {
         let scene_database = SceneDatabase::with_default_scene_on(scene_db);
-        let mut gizmo_state = GizmoState::new();
-        gizmo_state.set_gizmo_type(GizmoType::Translate);
         Self {
             scene_database,
             ..Self::default()
@@ -296,10 +297,6 @@ impl LevelEditorState {
 
         // Switch to play mode
         self.editor_mode = EditorMode::Play;
-
-        // Hide gizmos
-        let mut gizmo = self.gizmo_state.write();
-        gizmo.set_gizmo_type(GizmoType::None);
     }
 
     /// Exit play mode - restore scene state and stop game thread
@@ -319,17 +316,6 @@ impl LevelEditorState {
 
         // Switch back to edit mode
         self.editor_mode = EditorMode::Edit;
-
-        // Restore gizmo based on current tool
-        let gizmo_type = match self.current_tool {
-            TransformTool::Select => GizmoType::None,
-            TransformTool::Move => GizmoType::Translate,
-            TransformTool::Rotate => GizmoType::Rotate,
-            TransformTool::Scale => GizmoType::Scale,
-        };
-
-        let mut gizmo = self.gizmo_state.write();
-        gizmo.set_gizmo_type(gizmo_type);
 
         // Clear snapshot
         self.scene_snapshot = None;
@@ -358,11 +344,7 @@ impl LevelEditorState {
 
     /// Select an object
     pub fn select_object(&mut self, object_id: Option<String>) {
-        self.scene_database.select_object(object_id.clone());
-
-        // Update gizmo target
-        let mut gizmo = self.gizmo_state.write();
-        gizmo.target_object_id = object_id;
+        self.scene_database.select_object(object_id);
     }
 
     /// Get selected object data
@@ -377,17 +359,6 @@ impl LevelEditorState {
         }
 
         self.current_tool = tool;
-
-        // Update gizmo type in the shared gizmo state
-        let gizmo_type = match tool {
-            TransformTool::Select => GizmoType::None,
-            TransformTool::Move => GizmoType::Translate,
-            TransformTool::Rotate => GizmoType::Rotate,
-            TransformTool::Scale => GizmoType::Scale,
-        };
-
-        let mut gizmo = self.gizmo_state.write();
-        gizmo.set_gizmo_type(gizmo_type);
     }
 
     /// Set camera mode

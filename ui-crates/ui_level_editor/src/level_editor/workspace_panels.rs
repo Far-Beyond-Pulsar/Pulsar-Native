@@ -1,20 +1,23 @@
 //! Workspace panels for Level Editor
 
 use super::ui::{
-    ComponentFieldsSection, HierarchyPanel, LevelEditorState, ObjectHeaderSection, PropertiesPanel,
-    TransformSection, ViewportPanel, WorldSettingsReplicated,
+    add_object_dialog::AddObjectDialog,
+    ComponentFieldsSection, HierarchyPanel, LevelEditorState,
+    ObjectHeaderSection, PropertiesPanel, TransformSection, ViewportPanel, WorldSettingsReplicated,
 };
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use engine_backend::GameThread;
-use gpui::*;
+use gpui::{Corner, *};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 use ui::{
+    button::{Button, ButtonVariants as _},
     dock::{Panel, PanelEvent},
     input::InputState,
-    v_flex, ActiveTheme,
+    popover::Popover,
+    v_flex, ActiveTheme, IconName, Sizable,
 };
 
 /// World Settings Panel (replaced Scene Browser)
@@ -95,14 +98,25 @@ pub struct HierarchyPanelWrapper {
     hierarchy: HierarchyPanel,
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
     focus_handle: FocusHandle,
+    add_dialog: Entity<AddObjectDialog>,
+    last_scene_revision: u64,
 }
 
 impl HierarchyPanelWrapper {
-    pub fn new(state: Arc<parking_lot::RwLock<LevelEditorState>>, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        state: Arc<parking_lot::RwLock<LevelEditorState>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let state_for_dialog = state.clone();
+        let add_dialog = cx.new(|cx| AddObjectDialog::new(state_for_dialog, window, cx));
+
         Self {
             hierarchy: HierarchyPanel::new(),
             state,
             focus_handle: cx.focus_handle(),
+            add_dialog,
+            last_scene_revision: 0,
         }
     }
 }
@@ -114,11 +128,34 @@ ui_common::panel_boilerplate!(HierarchyPanelWrapper);
 impl Render for HierarchyPanelWrapper {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.state.read();
+        
+        // Track scene changes by checking object count
+        let current_revision = state.scene_database.scene_db.get_all_snapshots().len() as u64;
+        if current_revision != self.last_scene_revision {
+            self.last_scene_revision = current_revision;
+            cx.notify();
+        }
+        drop(state);
+        
+        let state = self.state.read();
+        let add_dialog = self.add_dialog.clone();
+
+        let add_button = Popover::<AddObjectDialog>::new("add-object-picker")
+            .anchor(Corner::TopLeft)
+            .trigger(
+                Button::new("add_object")
+                    .icon(IconName::Plus)
+                    .ghost()
+                    .xsmall(),
+            )
+            .content(move |_, _| add_dialog.clone())
+            .into_any_element();
+
         v_flex()
             .size_full()
             .bg(cx.theme().sidebar)
             .p_1()
-            .child(self.hierarchy.render(&state, self.state.clone(), cx))
+            .child(self.hierarchy.render(&state, self.state.clone(), add_button, cx))
     }
 }
 
