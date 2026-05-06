@@ -47,6 +47,10 @@ pub struct LevelEditorPanel {
 
     // Workspace for draggable panels
     workspace: Option<Entity<Workspace>>,
+
+    // Handles to sub-panels so we can forward notifications after scene mutations.
+    hierarchy_panel_entity: Option<Entity<crate::level_editor::HierarchyPanelWrapper>>,
+    properties_panel_entity: Option<Entity<crate::level_editor::PropertiesPanelWrapper>>,
 }
 
 impl LevelEditorPanel {
@@ -220,6 +224,19 @@ impl LevelEditorPanel {
             game_thread: game_thread.clone(),
             shared_state: Arc::new(parking_lot::RwLock::new(state)),
             workspace: None,
+            hierarchy_panel_entity: None,
+            properties_panel_entity: None,
+        }
+    }
+
+    /// Notify the hierarchy (and, via its observer, the properties panel) so they
+    /// re-render after any scene or selection mutation.
+    fn notify_sub_panels(&self, cx: &mut Context<Self>) {
+        if let Some(ref h) = self.hierarchy_panel_entity {
+            h.update(cx, |_, cx| cx.notify());
+        }
+        if let Some(ref p) = self.properties_panel_entity {
+            p.update(cx, |_, cx| cx.notify());
         }
     }
 
@@ -244,7 +261,7 @@ impl LevelEditorPanel {
         let viewport = self.viewport.clone();
         let render_enabled = self.render_enabled.clone();
 
-        workspace.update(cx, |workspace, cx| {
+        let (hierarchy_handle, properties_handle) = workspace.update(cx, |workspace, cx| {
             let dock_area = workspace.dock_area().downgrade();
 
             // Create viewport in center
@@ -266,10 +283,12 @@ impl LevelEditorPanel {
                 use crate::level_editor::HierarchyPanelWrapper;
                 HierarchyPanelWrapper::new(shared_state.clone(), cx)
             });
+            let hierarchy_handle = hierarchy_panel.clone();
             let properties_panel = cx.new(|cx| {
                 use crate::level_editor::PropertiesPanelWrapper;
                 PropertiesPanelWrapper::new(shared_state.clone(), window, cx)
             });
+            let properties_handle = properties_panel.clone();
             let world_settings_panel = cx.new(|cx| {
                 use crate::level_editor::WorldSettingsPanel;
                 WorldSettingsPanel::new(shared_state.clone(), window, cx)
@@ -331,8 +350,12 @@ impl LevelEditorPanel {
                 dock_area.set_center(center_tabs, window, cx);
                 dock_area.set_right_dock(right, Some(px(400.0)), true, window, cx);
             });
+
+            (hierarchy_handle, properties_handle)
         });
 
+        self.hierarchy_panel_entity = Some(hierarchy_handle);
+        self.properties_panel_entity = Some(properties_handle);
         self.workspace = Some(workspace);
     }
 
@@ -569,6 +592,7 @@ impl LevelEditorPanel {
             .scene_database
             .add_object(new_object, None);
         self.shared_state.write().has_unsaved_changes = true;
+        self.notify_sub_panels(cx);
         cx.notify();
     }
 
@@ -582,6 +606,7 @@ impl LevelEditorPanel {
             self.shared_state.write().select_object(None);
             self.sync_gizmo_to_helio(); // Clear gizmo after deletion
         }
+        self.notify_sub_panels(cx);
         cx.notify();
     }
 
@@ -593,6 +618,7 @@ impl LevelEditorPanel {
                 .duplicate_object(&id);
             self.shared_state.write().has_unsaved_changes = true;
         }
+        self.notify_sub_panels(cx);
         cx.notify();
     }
 
@@ -601,6 +627,7 @@ impl LevelEditorPanel {
             .write()
             .select_object(Some(action.object_id.clone()));
         self.sync_gizmo_to_helio(); // Sync gizmo to follow selected object
+        self.notify_sub_panels(cx);
         cx.notify();
     }
 
@@ -867,7 +894,7 @@ impl LevelEditorPanel {
                 // Load into the existing shared SceneDb (renderer keeps its Arc).
                 let result = state_arc.read().scene_database.load_from_file(&path);
                 cx.update(|cx| {
-                    this.update(cx, |_, cx| {
+                    this.update(cx, |this, cx| {
                         match result {
                             Ok(_) => {
                                 let mut state = state_arc.write();
@@ -878,6 +905,7 @@ impl LevelEditorPanel {
                             }
                             Err(e) => tracing::error!("Open scene failed: {}", e),
                         }
+                        this.notify_sub_panels(cx);
                         cx.notify();
                     })
                     .ok();
@@ -897,6 +925,7 @@ impl LevelEditorPanel {
             // Re-populate defaults into the same shared SceneDb.
             state.scene_database.populate_default_scene_pub();
         }
+        self.notify_sub_panels(cx);
         {
             let mut state = self.shared_state.write();
             state.current_scene = None;
