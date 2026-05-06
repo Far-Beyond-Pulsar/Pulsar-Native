@@ -1030,16 +1030,17 @@ impl Panel for LevelEditorPanel {
     }
 
     fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
+        let state = self.shared_state.read();
         div()
             .child(
-                if let Some(ref scene) = self.shared_state.read().current_scene {
+                if let Some(ref scene) = state.current_scene {
                     format!(
                         "Level Editor - {}{}",
                         scene
                             .file_stem()
                             .and_then(|s| s.to_str())
                             .unwrap_or("Untitled"),
-                        if self.shared_state.write().has_unsaved_changes {
+                        if state.has_unsaved_changes {
                             " *"
                         } else {
                             ""
