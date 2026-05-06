@@ -49,17 +49,17 @@ impl PropertiesPanel {
 
                         // Render new ObjectHeaderSection if available (new binding system)
                         if let Some(ref section) = object_header_section {
-                            flex = flex.child(section.clone());
+                            flex = flex.child(div().w_full().child(section.clone()));
                         }
 
                         // Render new TransformSection if available (new binding system)
                         if let Some(ref section) = transform_section {
-                            flex = flex.child(section.clone());
+                            flex = flex.child(div().w_full().child(section.clone()));
                         }
 
                         // Reflection-backed object type properties — always present.
                         if let Some(ref section) = object_type_fields_section {
-                            flex = flex.child(section.clone());
+                            flex = flex.child(div().w_full().child(section.clone()));
                         }
 
                         // Render component sections dynamically
