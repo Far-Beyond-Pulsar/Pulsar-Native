@@ -8,6 +8,8 @@ use gpui::{prelude::*, *};
 use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
+    draggable::{DragHandlePosition, Draggable},
+    drop_area::DropArea,
     h_flex,
     hierarchical_tree::tree_colors,
     scroll::ScrollbarAxis,
@@ -15,6 +17,31 @@ use ui::{
 };
 
 use crate::level_editor::scene_database::SceneDatabase;
+
+// ── Drag Payload ──────────────────────────────────────────────────────────────
+
+#[derive(Clone)]
+pub struct ComponentDragPayload {
+    pub object_id: String,
+    pub component_index: usize,
+    pub component_name: String,
+}
+
+impl Render for ComponentDragPayload {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px_3()
+            .py_1()
+            .rounded(px(4.0))
+            .bg(cx.theme().background)
+            .border_1()
+            .border_color(cx.theme().border)
+            .text_sm()
+            .font_weight(FontWeight::MEDIUM)
+            .text_color(cx.theme().foreground)
+            .child(self.component_name.clone())
+    }
+}
 
 /// Component Hierarchy - Shows all components in a tree structure
 pub struct ComponentHierarchyPanel {
