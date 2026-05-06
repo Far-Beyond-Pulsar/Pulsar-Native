@@ -19,6 +19,8 @@ plugin_editor_api.workspace = true
 engine_state.workspace = true
 engine_backend.workspace = true
 pulsar_reflection.workspace = true
+pulsar_rendering.workspace = true
+pulsar_physics.workspace = true
 profiling.workspace = true
 
 # Helio renderer and asset loading

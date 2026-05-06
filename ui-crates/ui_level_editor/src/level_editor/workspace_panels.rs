@@ -307,8 +307,10 @@ impl Render for PropertiesPanelWrapper {
         let collapsed_sections = self.collapsed_sections.clone();
         let selected_object_id = state.selected_object();
 
-        // Update sections when selection changes
-        if selected_object_id != self.current_object_id {
+        // Update sections when selection changes or when sections are unexpectedly missing
+        if selected_object_id != self.current_object_id
+            || (selected_object_id.is_some() && self.object_type_fields_section.is_none())
+        {
             if let Some(ref object_id) = selected_object_id {
                 // Create new sections for the selected object
                 let scene_db = state.scene_database.clone();

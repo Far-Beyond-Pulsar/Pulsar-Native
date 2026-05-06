@@ -24,51 +24,6 @@ impl ObjectTypeFieldsSection {
         }
     }
 
-    fn required_classes_for_type(object_type: ObjectType) -> Vec<&'static str> {
-        match object_type {
-            ObjectType::Light(_) => vec!["LightComponent"],
-            ObjectType::Mesh(_) => vec!["MaterialOverride", "LodComponent"],
-            ObjectType::Camera => vec![],
-            ObjectType::Folder => vec![],
-            ObjectType::Empty => vec![],
-            ObjectType::ParticleSystem => vec![],
-            ObjectType::AudioSource => vec![],
-        }
-    }
-
-    fn ensure_type_components(&self, object_type: ObjectType) {
-        let required = Self::required_classes_for_type(object_type);
-        if required.is_empty() {
-            return;
-        }
-
-        let existing = self.scene_db.get_components(&self.object_id);
-        for class_name in required {
-            let already_present = existing.iter().any(|c| c.class_name == class_name);
-            if already_present || !REGISTRY.has_class(class_name) {
-                continue;
-            }
-
-            if let Some(default_data) = Self::build_default_component_data(class_name) {
-                self.scene_db
-                    .add_component(&self.object_id, class_name.to_string(), default_data);
-            }
-        }
-    }
-
-    fn build_default_component_data(class_name: &str) -> Option<Value> {
-        let instance = REGISTRY.create_instance(class_name)?;
-        let props = instance.get_properties();
-        let mut map = serde_json::Map::new();
-
-        for prop in props {
-            let value = (prop.getter)(instance.as_ref());
-            map.insert(prop.name.to_string(), Self::property_value_to_json(&value));
-        }
-
-        Some(Value::Object(map))
-    }
-
     fn property_value_to_json(value: &PropertyValue) -> Value {
         match value {
             PropertyValue::F32(v) => Value::from(*v),
@@ -321,20 +276,56 @@ impl ObjectTypeFieldsSection {
 
 impl Render for ObjectTypeFieldsSection {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let Some(obj) = self.scene_db.get_object(&self.object_id) else {
-            return div().into_any_element();
+        // Resolve the object type — always display a label, even if the object is missing.
+        let type_label = match self.scene_db.get_object(&self.object_id) {
+            Some(obj) => match obj.object_type {
+                ObjectType::Empty => "Empty".to_string(),
+                ObjectType::Folder => "Folder".to_string(),
+                ObjectType::Camera => "Camera".to_string(),
+                ObjectType::ParticleSystem => "Particle System".to_string(),
+                ObjectType::AudioSource => "Audio Source".to_string(),
+                ObjectType::Light(lt) => format!("Light ({lt:?})"),
+                ObjectType::Mesh(mt) => format!("Mesh ({mt:?})"),
+            },
+            None => "Unknown".to_string(),
         };
 
-        self.ensure_type_components(obj.object_type);
-        let required_classes = Self::required_classes_for_type(obj.object_type);
+        // The type card is ALWAYS rendered.
+        let type_card = v_flex()
+            .w_full()
+            .gap_2()
+            .p_3()
+            .bg(cx.theme().sidebar)
+            .rounded(px(8.0))
+            .border_1()
+            .border_color(cx.theme().border)
+            .child(
+                h_flex()
+                    .w_full()
+                    .justify_between()
+                    .items_center()
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(cx.theme().foreground)
+                            .child("Object Type"),
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(type_label),
+                    ),
+            );
 
-        if required_classes.is_empty() {
-            return div().into_any_element();
-        }
-
-        let sections = required_classes
-            .into_iter()
-            .filter_map(|class_name| {
+        // Drive component sections entirely from what is attached to the object in the scene
+        // database. No hardcoded class lists — if the registry knows about it, we show it.
+        let attached = self.scene_db.get_components(&self.object_id);
+        let component_sections = attached
+            .iter()
+            .filter_map(|component| {
+                let class_name = component.class_name.as_str();
                 let mut instance = REGISTRY.create_instance(class_name)?;
                 let properties = instance.get_properties();
                 if properties.is_empty() {
@@ -390,10 +381,11 @@ impl Render for ObjectTypeFieldsSection {
             })
             .collect::<Vec<_>>();
 
-        if sections.is_empty() {
-            div().into_any_element()
-        } else {
-            v_flex().w_full().gap_3().children(sections).into_any_element()
-        }
+        v_flex()
+            .w_full()
+            .gap_3()
+            .child(type_card)
+            .children(component_sections)
+            .into_any_element()
     }
 }

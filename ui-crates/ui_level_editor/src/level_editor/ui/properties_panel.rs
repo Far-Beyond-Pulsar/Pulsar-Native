@@ -57,7 +57,7 @@ impl PropertiesPanel {
                             flex = flex.child(section.clone());
                         }
 
-                        // Reflection-backed object type properties (editable)
+                        // Reflection-backed object type properties — always present.
                         if let Some(ref section) = object_type_fields_section {
                             flex = flex.child(section.clone());
                         }
