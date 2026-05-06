@@ -1,4 +1,5 @@
 mod actions;
+pub mod add_component_dialog;
 pub mod add_object_dialog;
 mod bound_field;
 mod component_fields_section;
