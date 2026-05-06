@@ -64,7 +64,7 @@ impl PropertiesPanel {
 
                         // Render component sections dynamically
                         for section in component_sections {
-                            flex = flex.child(section.clone());
+                            flex = flex.child(div().w_full().child(section.clone()));
                         }
 
                         // Keep old sections for now (TODO: convert to binding system)
