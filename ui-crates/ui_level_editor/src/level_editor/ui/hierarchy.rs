@@ -139,71 +139,66 @@ impl HierarchyPanel {
                     ),
             )
             .child(
-                // Object tree with proper scroll container
-                div().flex_1().overflow_hidden().child({
-                    let state_arc_root_drop = state_arc.clone();
-                    let state_arc_root_click = state_arc.clone();
-                    v_flex()
-                        .size_full()
-                        .p_2()
-                        .gap_2()
-                        .child(
-                            DropArea::<HierarchyDragPayload>::new("hierarchy-root-drop")
-                                .on_drop(move |payload, _window, _cx| {
-                                    state_arc_root_drop
-                                        .read()
-                                        .scene_database
-                                        .reparent_object(&payload.object_id, None);
-                                })
-                                .child(
-                                    h_flex()
-                                        .w_full()
-                                        .items_center()
-                                        .gap_1()
-                                        .h_7()
-                                        .pl(px(8.0))
-                                        .pr_2()
-                                        .rounded(px(4.0))
-                                        .border_1()
-                                        .border_color(cx.theme().border)
-                                        .bg(cx.theme().muted.opacity(0.18))
-                                        .child(
-                                            Icon::new(IconName::Folder)
-                                                .size(px(14.0))
-                                                .text_color(tree_colors::FOLDER),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .font_weight(FontWeight::MEDIUM)
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child("Root"),
-                                        )
-                                        .on_mouse_down(
-                                            MouseButton::Left,
-                                            move |_event, _window, _cx| {
-                                                state_arc_root_click.write().select_object(None);
-                                            },
-                                        ),
-                                ),
-                        )
-                        .child(
-                            v_flex()
-                                .flex_1()
-                                .w_full()
-                                .gap_px()
-                                .scrollable(ScrollbarAxis::Vertical)
-                                .children(state.scene_objects().iter().map(|obj| {
-                                    Self::render_object_tree_item(
-                                        obj,
-                                        state,
-                                        state_arc.clone(),
-                                        0,
-                                        cx,
+                // Sticky Root row + scrollable items below it
+                v_flex().flex_1().overflow_hidden().p_2().gap_1()
+                    .child({
+                        let state_arc_root_drop = state_arc.clone();
+                        let state_arc_root_click = state_arc.clone();
+                        DropArea::<HierarchyDragPayload>::new("hierarchy-root-drop")
+                            .on_drop(move |payload, _window, _cx| {
+                                state_arc_root_drop
+                                    .read()
+                                    .scene_database
+                                    .reparent_object(&payload.object_id, None);
+                            })
+                            .child(
+                                h_flex()
+                                    .w_full()
+                                    .items_center()
+                                    .gap_1()
+                                    .h_7()
+                                    .pl(px(8.0))
+                                    .pr_2()
+                                    .rounded(px(4.0))
+                                    .border_1()
+                                    .border_color(cx.theme().border)
+                                    .bg(cx.theme().muted.opacity(0.18))
+                                    .child(
+                                        Icon::new(IconName::Folder)
+                                            .size(px(14.0))
+                                            .text_color(tree_colors::FOLDER),
                                     )
-                                })),
-                        )
-                }),
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child("Root"),
+                                    )
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        move |_event, _window, _cx| {
+                                            state_arc_root_click.write().select_object(None);
+                                        },
+                                    ),
+                            )
+                    })
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .w_full()
+                            .gap_px()
+                            .scrollable(ScrollbarAxis::Vertical)
+                            .children(state.scene_objects().iter().map(|obj| {
+                                Self::render_object_tree_item(
+                                    obj,
+                                    state,
+                                    state_arc.clone(),
+                                    0,
+                                    cx,
+                                )
+                            })),
+                    ),
             )
     }
 
