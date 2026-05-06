@@ -1,13 +1,13 @@
 //! Workspace panels for Level Editor
 
 use super::ui::{
-    add_object_dialog::{AddObjectDialog, ObjectSpawnedEvent},
+    add_object_dialog::AddObjectDialog,
     ComponentFieldsSection, HierarchyPanel, LevelEditorState,
     ObjectHeaderSection, PropertiesPanel, TransformSection, ViewportPanel, WorldSettingsReplicated,
 };
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use engine_backend::GameThread;
-use gpui::{Corner, Subscription, *};
+use gpui::{Corner, *};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -99,7 +99,7 @@ pub struct HierarchyPanelWrapper {
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
     focus_handle: FocusHandle,
     add_dialog: Entity<AddObjectDialog>,
-    _subscriptions: Vec<Subscription>,
+    last_scene_revision: u64,
 }
 
 impl HierarchyPanelWrapper {
@@ -110,20 +110,13 @@ impl HierarchyPanelWrapper {
     ) -> Self {
         let state_for_dialog = state.clone();
         let add_dialog = cx.new(|cx| AddObjectDialog::new(state_for_dialog, window, cx));
-        
-        let subscriptions = vec![
-            // Listen for ObjectSpawnedEvent from the dialog and notify to re-render
-            cx.subscribe(&add_dialog, |_this, _entity: Entity<AddObjectDialog>, _event: &ObjectSpawnedEvent, cx: &mut Context<Self>| {
-                cx.notify();
-            }),
-        ];
 
         Self {
             hierarchy: HierarchyPanel::new(),
             state,
             focus_handle: cx.focus_handle(),
             add_dialog,
-            _subscriptions: subscriptions,
+            last_scene_revision: 0,
         }
     }
 }
@@ -134,6 +127,16 @@ ui_common::panel_boilerplate!(HierarchyPanelWrapper);
 
 impl Render for HierarchyPanelWrapper {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let state = self.state.read();
+        
+        // Track scene changes by checking object count
+        let current_revision = state.scene_database.scene_db.get_all_snapshots().len() as u64;
+        if current_revision != self.last_scene_revision {
+            self.last_scene_revision = current_revision;
+            cx.notify();
+        }
+        drop(state);
+        
         let state = self.state.read();
         let add_dialog = self.add_dialog.clone();
 
