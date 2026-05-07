@@ -425,6 +425,8 @@ fn make_window_options(
         window_decorations: Some(gpui::WindowDecorations::Client),
         window_min_size: min_size,
         app_icon,
+        window_background: gpui::WindowBackgroundAppearance::Blurred,
+        always_transparent: true,
         ..Default::default()
     }
 }
