@@ -297,10 +297,19 @@ impl ComponentHierarchyPanel {
                     return; // Can't drop onto self
                 }
 
-                // Check if Alt key is pressed to determine nest vs reorder
-                // Alt+drag = nest as child, regular drag = reorder
+                // Check modifier keys to determine operation:
+                // - Alt+drag = nest as child
+                // - Shift+drag = remove parent (un-nest to root)
+                // - Regular drag = reorder at same level
                 let modifiers = window.modifiers();
-                if modifiers.alt {
+                if modifiers.shift {
+                    // Remove parent - un-nest to root level
+                    scene_db_for_drop.set_component_parent(
+                        &obj_id_for_drop,
+                        from_idx,
+                        None,
+                    );
+                } else if modifiers.alt {
                     // Nest the dragged component under the drop target
                     scene_db_for_drop.set_component_parent(
                         &obj_id_for_drop,
