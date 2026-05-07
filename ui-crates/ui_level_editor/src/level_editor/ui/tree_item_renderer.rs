@@ -11,7 +11,7 @@ use std::sync::Arc;
 use ui::{
     draggable::{DragHandlePosition, Draggable},
     drop_area::DropArea,
-    h_flex, Icon, IconName, Sizable, StyledExt, v_flex, ActiveTheme,
+    h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable, StyledExt,
 };
 
 /// Generic tree item configuration
@@ -115,58 +115,64 @@ where
 
     // Row content
     let on_click = config.on_click.clone();
-    let row_content = h_flex()
-        .id(SharedString::from(format!("tree-item-{}", config.id)))
-        .w_full()
-        .items_center()
-        .gap_1()
-        .h_7()
-        .pl(indent)
-        .pr_2()
-        .rounded(px(4.0))
-        .cursor_pointer()
-        .when(config.is_selected, |s| s.bg(cx.theme().accent).shadow_sm())
-        .when(!config.is_selected, |s| {
-            s.hover(|style| style.bg(cx.theme().muted.opacity(0.3)))
-        })
-        .on_click(cx.listener(move |_view, _event, _window, cx| {
-            (on_click)();
-            cx.notify();
-        }))
-        .child(expand_arrow)
-        // Type icon
-        .child(
-            div()
-                .w_5()
-                .h_5()
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(3.0))
-                .bg(config.icon_color.opacity(0.15))
-                .child(Icon::new(config.icon).size(px(14.0)).text_color(if config.is_selected {
-                    text_color
-                } else {
-                    config.icon_color
-                })),
-        )
-        // Name
-        .child(
-            div()
-                .flex_1()
-                .text_sm()
-                .text_color(text_color)
-                .overflow_hidden()
-                .text_ellipsis()
-                .child(config.name.clone()),
-        )
-        .children(config.extra_content);
+    let row_content =
+        h_flex()
+            .id(SharedString::from(format!("tree-item-{}", config.id)))
+            .w_full()
+            .items_center()
+            .gap_1()
+            .h_7()
+            .pl(indent)
+            .pr_2()
+            .rounded(px(4.0))
+            .cursor_pointer()
+            .when(config.is_selected, |s| s.bg(cx.theme().accent).shadow_sm())
+            .when(!config.is_selected, |s| {
+                s.hover(|style| style.bg(cx.theme().muted.opacity(0.3)))
+            })
+            .on_click(cx.listener(move |_view, _event, _window, cx| {
+                (on_click)();
+                cx.notify();
+            }))
+            .child(expand_arrow)
+            // Type icon
+            .child(
+                div()
+                    .w_5()
+                    .h_5()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(3.0))
+                    .bg(config.icon_color.opacity(0.15))
+                    .child(Icon::new(config.icon).size(px(14.0)).text_color(
+                        if config.is_selected {
+                            text_color
+                        } else {
+                            config.icon_color
+                        },
+                    )),
+            )
+            // Name
+            .child(
+                div()
+                    .flex_1()
+                    .text_sm()
+                    .text_color(text_color)
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .child(config.name.clone()),
+            )
+            .children(config.extra_content);
 
     // Drag source wrapper
-    let draggable_row = Draggable::new(format!("tree-drag-{}", config.id), config.drag_payload.clone())
-        .drag_handle(DragHandlePosition::Left)
-        .w_full()
-        .child(row_content);
+    let draggable_row = Draggable::new(
+        format!("tree-drag-{}", config.id),
+        config.drag_payload.clone(),
+    )
+    .drag_handle(DragHandlePosition::Left)
+    .w_full()
+    .child(row_content);
 
     // Drop target wrapper
     let can_accept = config.can_accept_drop.clone();

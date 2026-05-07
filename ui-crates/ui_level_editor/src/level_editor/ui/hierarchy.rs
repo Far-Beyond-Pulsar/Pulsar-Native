@@ -8,7 +8,9 @@ use ui::{
     ActiveTheme, Icon, IconName, Sizable, StyledExt,
 };
 
-use super::hierarchical_list::{HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout};
+use super::hierarchical_list::{
+    HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout,
+};
 use super::state::{HierarchyDragPayload, LevelEditorState, SceneObject};
 use crate::level_editor::scene_database::{ObjectType, SceneDatabase};
 
@@ -55,7 +57,10 @@ impl HierarchyItem for SceneObjectItem {
         HierarchyPanel::get_icon_for_object_type(self.object.object_type)
     }
 
-    fn icon_color<V>(&self, cx: &Context<V>) -> Hsla where V: Render {
+    fn icon_color<V>(&self, cx: &Context<V>) -> Hsla
+    where
+        V: Render,
+    {
         HierarchyPanel::get_icon_color_for_type(self.object.object_type, cx)
     }
 
@@ -78,7 +83,10 @@ impl HierarchyItem for SceneObjectItem {
         format!("hierarchy-{}", self.object.id)
     }
 
-    fn extra_row_content<V>(&self, cx: &mut Context<V>) -> Option<AnyElement> where V: Render {
+    fn extra_row_content<V>(&self, cx: &mut Context<V>) -> Option<AnyElement>
+    where
+        V: Render,
+    {
         let scene_db = self.scene_db.clone();
         let object_id = self.object.id.clone();
         let is_visible = self.object.visible;
@@ -170,10 +178,18 @@ impl HierarchyPanel {
         V: 'static + EventEmitter<PanelEvent> + Render,
     {
         let all_objects = state.scene_database.get_all_objects();
-        let items = Self::build_items(&all_objects, state.selected_object().as_ref(), &state.scene_database);
+        let items = Self::build_items(
+            &all_objects,
+            state.selected_object().as_ref(),
+            &state.scene_database,
+        );
 
         // Root-level objects (those without parents)
-        let root_ids: Vec<String> = state.scene_objects().iter().map(|obj| obj.id.clone()).collect();
+        let root_ids: Vec<String> = state
+            .scene_objects()
+            .iter()
+            .map(|obj| obj.id.clone())
+            .collect();
 
         let state_arc_for_expand = state_arc.clone();
         let state_arc_for_select = state_arc.clone();
@@ -195,8 +211,7 @@ impl HierarchyPanel {
                         use crate::level_editor::scene_database::{
                             ObjectType, SceneObjectData, Transform,
                         };
-                        let objects_count =
-                            state_clone.read().scene_objects().len();
+                        let objects_count = state_clone.read().scene_objects().len();
                         let new_folder = SceneObjectData {
                             id: format!("folder_{}", objects_count + 1),
                             name: "New Folder".to_string(),
@@ -273,27 +288,33 @@ impl HierarchyPanel {
             on_select: Arc::new(move |id: &String| {
                 state_arc_for_select.write().select_object(Some(id.clone()));
             }),
-            on_drop: Arc::new(move |payload: HierarchyDragPayload, target_id: &String, modifiers: &Modifiers| {
-                if payload.object_id != *target_id {
-                    let mut state = state_arc_for_drop.write();
+            on_drop: Arc::new(
+                move |payload: HierarchyDragPayload, target_id: &String, modifiers: &Modifiers| {
+                    if payload.object_id != *target_id {
+                        let mut state = state_arc_for_drop.write();
 
-                    if modifiers.shift {
-                        // Shift+drag: remove parent (un-nest to root)
-                        state.scene_database.reparent_object(&payload.object_id, None);
-                    } else if modifiers.alt {
-                        // Alt+drag: reorder at same level
-                        state.scene_database.reorder_object_siblings(&payload.object_id, target_id);
-                    } else {
-                        // Regular drag: reparent under drop target
-                        let success = state
-                            .scene_database
-                            .reparent_object(&payload.object_id, Some(target_id.clone()));
-                        if success {
-                            state.expanded_objects.insert(target_id.clone());
+                        if modifiers.shift {
+                            // Shift+drag: remove parent (un-nest to root)
+                            state
+                                .scene_database
+                                .reparent_object(&payload.object_id, None);
+                        } else if modifiers.alt {
+                            // Alt+drag: reorder at same level
+                            state
+                                .scene_database
+                                .reorder_object_siblings(&payload.object_id, target_id);
+                        } else {
+                            // Regular drag: reparent under drop target
+                            let success = state
+                                .scene_database
+                                .reparent_object(&payload.object_id, Some(target_id.clone()));
+                            if success {
+                                state.expanded_objects.insert(target_id.clone());
+                            }
                         }
                     }
-                }
-            }),
+                },
+            ),
         };
 
         HierarchicalTreeView::new(config).render(cx)
@@ -311,7 +332,10 @@ impl HierarchyPanel {
         }
     }
 
-    pub fn get_icon_color_for_type<V>(object_type: ObjectType, cx: &Context<V>) -> Hsla where V: Render {
+    pub fn get_icon_color_for_type<V>(object_type: ObjectType, cx: &Context<V>) -> Hsla
+    where
+        V: Render,
+    {
         match object_type {
             ObjectType::Camera => tree_colors::CODE_BLUE,
             ObjectType::Folder => tree_colors::FOLDER,

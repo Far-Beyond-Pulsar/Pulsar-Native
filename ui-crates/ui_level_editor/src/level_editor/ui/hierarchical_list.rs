@@ -30,14 +30,19 @@ pub trait HierarchyItem: Clone + 'static {
     fn id(&self) -> Self::Id;
     fn name(&self) -> String;
     fn icon(&self) -> IconName;
-    fn icon_color<V>(&self, cx: &Context<V>) -> Hsla where V: Render;
+    fn icon_color<V>(&self, cx: &Context<V>) -> Hsla
+    where
+        V: Render;
     fn children_ids(&self) -> Vec<Self::Id>;
     fn is_selected(&self) -> bool;
     fn create_drag_payload(&self) -> Self::DragPayload;
     fn drag_drop_id(&self) -> String;
 
     /// Optional extra content to render at the end of the row (e.g., visibility toggle)
-    fn extra_row_content<V>(&self, _cx: &mut Context<V>) -> Option<AnyElement> where V: Render {
+    fn extra_row_content<V>(&self, _cx: &mut Context<V>) -> Option<AnyElement>
+    where
+        V: Render,
+    {
         None
     }
 
@@ -93,7 +98,8 @@ impl<Item: HierarchyItem> HierarchicalTreeView<Item> {
     }
 
     fn get_root_item_indices(&self) -> Vec<usize> {
-        self.config.items
+        self.config
+            .items
             .iter()
             .enumerate()
             .filter_map(|(idx, item)| {
@@ -110,7 +116,12 @@ impl<Item: HierarchyItem> HierarchicalTreeView<Item> {
         self.config.items.iter().find(|item| item.id() == *id)
     }
 
-    fn render_tree_item<V>(&self, item: &Item, depth: usize, cx: &mut Context<V>) -> impl IntoElement
+    fn render_tree_item<V>(
+        &self,
+        item: &Item,
+        depth: usize,
+        cx: &mut Context<V>,
+    ) -> impl IntoElement
     where
         V: 'static + Render,
     {
@@ -248,13 +259,19 @@ impl<Item: HierarchyItem> HierarchicalTreeView<Item> {
             children_ids
                 .iter()
                 .filter_map(|child_id| self.find_item(child_id))
-                .map(|child| self.render_tree_item(child, depth + 1, cx).into_any_element())
+                .map(|child| {
+                    self.render_tree_item(child, depth + 1, cx)
+                        .into_any_element()
+                })
                 .collect()
         } else {
             vec![]
         };
 
-        v_flex().w_full().child(drop_row).children(children_elements)
+        v_flex()
+            .w_full()
+            .child(drop_row)
+            .children(children_elements)
     }
 
     pub fn render<V>(mut self, cx: &mut Context<V>) -> AnyElement
@@ -264,12 +281,8 @@ impl<Item: HierarchyItem> HierarchicalTreeView<Item> {
         let layout = self.config.layout.clone();
 
         match layout {
-            HierarchyLayout::Panel => {
-                self.render_panel_layout(cx).into_any_element()
-            }
-            HierarchyLayout::Widget => {
-                self.render_widget_layout(cx).into_any_element()
-            }
+            HierarchyLayout::Panel => self.render_panel_layout(cx).into_any_element(),
+            HierarchyLayout::Widget => self.render_widget_layout(cx).into_any_element(),
         }
     }
 
@@ -462,9 +475,10 @@ impl<Item: HierarchyItem> HierarchicalTreeView<Item> {
                         )
                     })
                     .children(root_indices.into_iter().filter_map(|idx| {
-                        self.config.items.get(idx).map(|item| {
-                            self.render_tree_item(item, 0, cx).into_any_element()
-                        })
+                        self.config
+                            .items
+                            .get(idx)
+                            .map(|item| self.render_tree_item(item, 0, cx).into_any_element())
                     })),
             )
     }

@@ -14,7 +14,9 @@ use gpui::{prelude::*, *};
 use std::sync::Arc;
 use ui::{ActiveTheme, IconName};
 
-use super::hierarchical_list::{HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout};
+use super::hierarchical_list::{
+    HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout,
+};
 use crate::level_editor::scene_database::SceneDatabase;
 use crate::level_editor::ui::state::LevelEditorState;
 
@@ -71,7 +73,10 @@ impl HierarchyItem for ComponentItem {
         IconName::Component
     }
 
-    fn icon_color<V>(&self, _cx: &Context<V>) -> Hsla where V: Render {
+    fn icon_color<V>(&self, _cx: &Context<V>) -> Hsla
+    where
+        V: Render,
+    {
         use ui::hierarchical_tree::tree_colors;
         tree_colors::CODE_PURPLE
     }
