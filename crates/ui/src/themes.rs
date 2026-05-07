@@ -83,19 +83,27 @@ pub fn init(cx: &mut App) {
     let app_data_dir = proj_dirs.data_dir();
     let themes_dir = app_data_dir.join("themes");
 
-    // Extract embedded themes if not already done
-    if !themes_dir.exists() || !themes_dir.join("default.json").exists() {
-        tracing::info!("Extracting embedded themes to {}", themes_dir.display());
-        std::fs::create_dir_all(&themes_dir).expect("Failed to create themes directory");
-        for file in EmbeddedThemes::iter() {
-            let file_path = themes_dir.join(file.as_ref());
-            tracing::info!("Extracting theme file: {}", file.as_ref());
-            let data = EmbeddedThemes::get(&file).unwrap();
-            std::fs::write(&file_path, data.data).expect("Failed to write theme file");
+    // Ensure bundled themes exist in app data without overwriting user edits.
+    std::fs::create_dir_all(&themes_dir).expect("Failed to create themes directory");
+
+    let mut extracted = 0usize;
+    for file in EmbeddedThemes::iter() {
+        let file_path = themes_dir.join(file.as_ref());
+        if file_path.exists() {
+            continue;
         }
-        tracing::info!("Embedded themes extracted");
+
+        tracing::info!("Extracting missing theme file: {}", file.as_ref());
+        if let Some(data) = EmbeddedThemes::get(&file) {
+            std::fs::write(&file_path, data.data).expect("Failed to write theme file");
+            extracted += 1;
+        }
+    }
+
+    if extracted > 0 {
+        tracing::info!("Extracted {extracted} missing embedded theme files");
     } else {
-        tracing::info!("Embedded themes already extracted");
+        tracing::info!("All embedded themes already present");
     }
 
     tracing::info!("Themes dir: {}", themes_dir.display());

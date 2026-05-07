@@ -1,0 +1,116 @@
+{
+  "$schema": "https://github.com/longbridge/gpui-component/raw/refs/heads/main/.theme-schema.json",
+  "name": "Glassy Blur Test",
+  "author": "Copilot",
+  "url": "https://github.com/Far-Beyond-Pulsar/Pulsar-Native",
+  "themes": [
+    {
+      "name": "Glassy Blur Dark",
+      "mode": "dark",
+      "window.background": "blurred",
+      "colors": {
+        "accent.background": "#9ad9ff2a",
+        "accent.foreground": "#dff4ff",
+        "background": "#0a0f1a88",
+        "border": "#9ac9ff3d",
+        "window.border": "#b5d9ff52",
+        "ring": "#89d7ff",
+        "danger.background": "#ff6b7a",
+        "danger.active.background": "#ff5668",
+        "danger.foreground": "#fff3f5",
+        "danger.hover.background": "#ff6b7ae0",
+        "foreground": "#e9f5ff",
+        "input.border": "#9ac9ff40",
+        "link.active.foreground": "#c8ecff",
+        "link.foreground": "#9fdfff",
+        "link.hover.foreground": "#d8f2ff",
+        "list.active.background": "#9fdfff2a",
+        "list.active.border": "#95dcff75",
+        "list.even.background": "#ffffff08",
+        "muted.background": "#0f1a2a66",
+        "muted.foreground": "#b9cfe0",
+        "panel.background": "#0f1a2a66",
+        "popover.background": "#111a2bcc",
+        "popover.foreground": "#ebf7ff",
+        "primary.active.background": "#7fd4ffde",
+        "primary.background": "#82d7ff",
+        "primary.foreground": "#08131f",
+        "primary.hover.background": "#93deff",
+        "scrollbar.background": "#00000000",
+        "scrollbar.thumb.background": "#9ddfff5c",
+        "scrollbar.thumb.hover.background": "#b2e8ff7a",
+        "secondary.active.background": "#c4ebff3d",
+        "secondary.background": "#8ecfff24",
+        "secondary.foreground": "#dff4ff",
+        "secondary.hover.background": "#a9deff30",
+        "tab.active.background": "#c7ecff2b",
+        "tab.active.foreground": "#f4fbff",
+        "tab.background": "#00000000",
+        "tab.foreground": "#cae3f2",
+        "tab_bar.background": "#0b142288",
+        "title_bar.background": "#0b132188",
+        "title_bar.border": "#a9d9ff4a",
+        "base.red": "#ff7d8a",
+        "base.green": "#79d7b5",
+        "base.yellow": "#ffd67a",
+        "base.blue": "#82d7ff",
+        "base.magenta": "#d7a0ff",
+        "base.cyan": "#79f0ff"
+      },
+      "highlight": {
+        "editor.foreground": "#e9f5ff",
+        "editor.background": "#0a0f1a66",
+        "editor.active_line.background": "#ffffff14",
+        "editor.line_number": "#88a9bf",
+        "editor.active_line_number": "#d8eeff",
+        "conflict": "#ff8b98",
+        "created": "#7ee8be",
+        "deleted": "#ff8b98",
+        "error": "#ff8b98",
+        "hidden": "#93acc0",
+        "hint": "#9ddfff",
+        "info": "#9ddfff",
+        "modified": "#ffd67a",
+        "predictive": "#90a8bb",
+        "success": "#7ee8be",
+        "warning": "#ffd67a",
+        "syntax": {
+          "attribute": {
+            "color": "#9ddfff"
+          },
+          "boolean": {
+            "color": "#ffd67a"
+          },
+          "comment": {
+            "color": "#8fa9bc",
+            "font_style": "italic"
+          },
+          "constant": {
+            "color": "#ffd67a"
+          },
+          "function": {
+            "color": "#9fdfff"
+          },
+          "keyword": {
+            "color": "#d7a0ff"
+          },
+          "number": {
+            "color": "#ffd67a"
+          },
+          "string": {
+            "color": "#7ee8be"
+          },
+          "type": {
+            "color": "#9ddfff"
+          },
+          "variable": {
+            "color": "#e9f5ff"
+          },
+          "variable.special": {
+            "color": "#ff8b98"
+          }
+        }
+      }
+    }
+  ]
+}

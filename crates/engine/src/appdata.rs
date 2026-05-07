@@ -23,21 +23,21 @@ pub fn setup_appdata() -> AppDataPaths {
     let config_dir = appdata_dir.join("configs");
     let config_file = config_dir.join("engine.toml");
 
-    // Extract bundled themes if not present
-    if !themes_dir.exists() {
-        if let Err(e) = fs::create_dir_all(&themes_dir) {
-            tracing::error!("Failed to create themes directory: {e}");
-        } else {
-            let project_themes_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .parent()
-                .unwrap()
-                .join("themes");
-            if let Ok(entries) = fs::read_dir(&project_themes_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_file() {
-                        if let Some(name) = path.file_name() {
-                            let dest = themes_dir.join(name);
+    // Ensure bundled themes exist in appdata without overwriting user-edited files.
+    if let Err(e) = fs::create_dir_all(&themes_dir) {
+        tracing::error!("Failed to create themes directory: {e}");
+    } else {
+        let project_themes_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("themes");
+        if let Ok(entries) = fs::read_dir(&project_themes_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(name) = path.file_name() {
+                        let dest = themes_dir.join(name);
+                        if !dest.exists() {
                             let _ = fs::copy(&path, &dest);
                         }
                     }
