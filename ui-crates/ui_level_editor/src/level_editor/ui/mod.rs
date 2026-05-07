@@ -6,6 +6,7 @@ mod component_fields_section;
 mod component_hierarchy;
 mod field_bindings;
 mod hierarchy;
+mod hierarchical_list;
 mod material_section;
 mod object_header_section;
 mod object_type_fields_section;
@@ -14,6 +15,7 @@ mod properties_panel; // Old properties panel (to be integrated)
 mod state;
 mod toolbar;
 mod transform_section;
+mod tree_item_renderer;
 mod viewport;
 mod world_settings;
 mod world_settings_replicated;
