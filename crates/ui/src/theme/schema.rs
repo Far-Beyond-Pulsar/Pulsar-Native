@@ -92,6 +92,14 @@ pub struct ThemeConfig {
     /// theme JSON files that don't include this field.
     #[serde(rename = "window.background", skip_serializing_if = "Option::is_none")]
     pub window_background: Option<ThemeWindowBackground>,
+    /// When `true` the window stays transparent even when unfocused.
+    ///
+    /// Set this alongside `window.background: transparent` or `blurred` to
+    /// prevent the OS from reverting to an opaque fallback when the window
+    /// loses focus (e.g. Windows Acrylic going solid on deactivation).
+    /// Defaults to `false` for full backward compatibility.
+    #[serde(rename = "window.always_transparent", skip_serializing_if = "Option::is_none")]
+    pub window_always_transparent: Option<bool>,
 }
 
 #[derive(Debug, Default, Clone, JsonSchema, Serialize, Deserialize)]
@@ -684,6 +692,10 @@ impl Theme {
         self.window_background = config
             .window_background
             .unwrap_or(ThemeWindowBackground::Opaque);
+
+        // Apply always-transparent flag from the theme, defaulting to false so
+        // existing themes that don't set it are unaffected.
+        self.always_transparent = config.window_always_transparent.unwrap_or(false);
     }
 }
 

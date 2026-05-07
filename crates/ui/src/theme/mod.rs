@@ -66,6 +66,12 @@ pub struct Theme {
     /// `opaque` so that themes which don't specify this field behave exactly
     /// as before.
     pub window_background: ThemeWindowBackground,
+    /// When `true` the window stays transparent even when it loses OS focus.
+    ///
+    /// Useful for themes that rely on compositor blur/transparency so the
+    /// effect is not broken by window deactivation (e.g. Windows Acrylic).
+    /// Defaults to `false` for full backward-compatibility.
+    pub always_transparent: bool,
 }
 
 impl Default for Theme {
@@ -211,7 +217,9 @@ impl Theme {
         }
 
         if let Some(window) = window {
-            window.set_background_appearance(cx.global::<Theme>().window_background.into());
+            let theme = cx.global::<Theme>();
+            window.set_background_appearance(theme.window_background.into());
+            window.set_always_transparent(theme.always_transparent);
             window.refresh();
         }
     }
@@ -241,6 +249,7 @@ impl From<ThemeColor> for Theme {
             dark_theme: Rc::new(ThemeConfig::default()),
             highlight_theme: HighlightTheme::default_light(),
             window_background: ThemeWindowBackground::Opaque,
+            always_transparent: false,
         }
     }
 }

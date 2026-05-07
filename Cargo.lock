@@ -1083,7 +1083,7 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.4.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=d8310793522917d6671aceaa69e15bb4fca323ab#d8310793522917d6671aceaa69e15bb4fca323ab"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=84f81ba9353b38485606e8a710d41f40c9028a0a#84f81ba9353b38485606e8a710d41f40c9028a0a"
 dependencies = [
  "arboard",
  "chrono",
@@ -3852,7 +3852,7 @@ dependencies = [
 [[package]]
 name = "gpui-ce"
 version = "1.0.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI?rev=9b23f51bee79e565fdc4a8c20ea0c321d51c19c9#9b23f51bee79e565fdc4a8c20ea0c321d51c19c9"
+source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI?rev=a6ee7fd49b75eddaabc62bf5d7ea8acb9c65ab5f#a6ee7fd49b75eddaabc62bf5d7ea8acb9c65ab5f"
 dependencies = [
  "anyhow",
  "async-task",

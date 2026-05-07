@@ -8,6 +8,7 @@
       "name": "Glassy Blur Dark",
       "mode": "dark",
       "window.background": "blurred",
+      "window.always_transparent": true,
       "colors": {
         "accent.background": "#9ad9ff2a",
         "accent.foreground": "#dff4ff",
