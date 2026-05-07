@@ -147,7 +147,10 @@ impl AddObjectDialog {
         }));
 
         let searchable_list = cx.new(|cx| {
-            SearchableList::new(window, cx, items, |item| item.label.to_string())
+            SearchableList::new(window, cx, items, |item| match item.kind {
+                ObjectMenuKind::Builtin(_) => format!("Built-in: {}", item.label),
+                ObjectMenuKind::EngineClass => format!("Engine Class: {}", item.label),
+            })
                 .with_empty_text("No results")
                 .with_max_width(px(240.0))
                 .with_max_height(px(380.0))
