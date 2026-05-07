@@ -175,8 +175,8 @@ impl ViewportPanel {
         let gpu_engine_clone = gpu_engine.clone();
         let mouse_right_captured = self.mouse_right_captured.clone();
         let mouse_middle_captured = self.mouse_middle_captured.clone();
-        let locked_cursor_x = self.locked_cursor_x.clone();
-        let locked_cursor_y = self.locked_cursor_y.clone();
+        let locked_cursor_screen_x = self.locked_cursor_screen_x.clone();
+        let locked_cursor_screen_y = self.locked_cursor_screen_y.clone();
 
         std::thread::spawn(move || {
             profiling::set_thread_name("Input Thread");
@@ -261,8 +261,8 @@ impl ViewportPanel {
                     profiling::profile_scope!("mouse_poll");
                     #[cfg(target_os = "windows")]
                     {
-                        let locked_screen_x = locked_cursor_x.load(Ordering::Relaxed);
-                        let locked_screen_y = locked_cursor_y.load(Ordering::Relaxed);
+                        let locked_screen_x = locked_cursor_screen_x.load(Ordering::Relaxed);
+                        let locked_screen_y = locked_cursor_screen_y.load(Ordering::Relaxed);
 
                         if locked_screen_x > 0 && locked_screen_y > 0 {
                             use winapi::shared::windef::POINT;
@@ -537,6 +537,10 @@ impl ViewportPanel {
                 let input_state_clone = self.input_state.clone();
                 let last_mouse_x = last_mouse_x.clone();
                 let last_mouse_y = last_mouse_y.clone();
+                let locked_cursor_x = locked_cursor_x.clone();
+                let locked_cursor_y = locked_cursor_y.clone();
+                let locked_cursor_screen_x = locked_cursor_screen_x.clone();
+                let locked_cursor_screen_y = locked_cursor_screen_y.clone();
                 let gpu_engine_move = gpu_engine_move.clone();
                 let mouse_right_captured = mouse_right_captured.clone();
                 let mouse_middle_captured = mouse_middle_captured.clone();
@@ -552,22 +556,23 @@ impl ViewportPanel {
                             // Cursor stays hidden on Windows
                         }
 
-                        #[cfg(not(target_os = "windows"))]
+                        #[cfg(target_os = "macos")]
                         {
                             let pos_x: f32 = event.position.x.into();
                             let pos_y: f32 = event.position.y.into();
                             let x = (pos_x * 1000.0) as i32;
                             let y = (pos_y * 1000.0) as i32;
-
-                            let prev_x = last_mouse_x.swap(x, Ordering::Relaxed);
-                            let prev_y = last_mouse_y.swap(y, Ordering::Relaxed);
+                            let lock_x = locked_cursor_x.load(Ordering::Relaxed);
+                            let lock_y = locked_cursor_y.load(Ordering::Relaxed);
+                            let lock_screen_x = locked_cursor_screen_x.load(Ordering::Relaxed);
+                            let lock_screen_y = locked_cursor_screen_y.load(Ordering::Relaxed);
 
                             input_state_clone.mouse_x.store(x, Ordering::Relaxed);
                             input_state_clone.mouse_y.store(y, Ordering::Relaxed);
 
-                            if prev_x != 0 || prev_y != 0 {
-                                let dx = (x - prev_x) as f32 / 1000.0;
-                                let dy = (y - prev_y) as f32 / 1000.0;
+                            if lock_x != 0 || lock_y != 0 {
+                                let dx = (x - lock_x) as f32 / 1000.0;
+                                let dy = (y - lock_y) as f32 / 1000.0;
 
                                 if dx != 0.0 || dy != 0.0 {
                                     if let Ok(engine) = gpu_engine_move.try_lock() {
@@ -589,8 +594,30 @@ impl ViewportPanel {
                                     } else {
                                         input_state_clone.set_pan_delta(dx, dy);
                                     }
+
+                                    if lock_screen_x != 0 || lock_screen_y != 0 {
+                                        crate::level_editor::ui::viewport::platform::set_cursor_position(
+                                            lock_screen_x,
+                                            lock_screen_y,
+                                        );
+                                    }
+
+                                    last_mouse_x.store(lock_x, Ordering::Relaxed);
+                                    last_mouse_y.store(lock_y, Ordering::Relaxed);
+                                    input_state_clone.mouse_x.store(lock_x, Ordering::Relaxed);
+                                    input_state_clone.mouse_y.store(lock_y, Ordering::Relaxed);
                                 }
                             }
+                        }
+
+                        #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+                        {
+                            let pos_x: f32 = event.position.x.into();
+                            let pos_y: f32 = event.position.y.into();
+                            let x = (pos_x * 1000.0) as i32;
+                            let y = (pos_y * 1000.0) as i32;
+                            input_state_clone.mouse_x.store(x, Ordering::Relaxed);
+                            input_state_clone.mouse_y.store(y, Ordering::Relaxed);
                         }
 
                         window.set_window_cursor_style(CursorStyle::None);
@@ -692,23 +719,25 @@ impl ViewportPanel {
                     let shift_pressed = event.modifiers.shift;
                     let window_x: f32 = event.position.x.into();
                     let window_y: f32 = event.position.y.into();
+                    let x = (window_x * 1000.0) as i32;
+                    let y = (window_y * 1000.0) as i32;
 
                     if let Some((screen_x, screen_y)) =
                         crate::level_editor::ui::viewport::platform::window_to_screen_position(
                             window, window_x, window_y,
                         )
                     {
-                        locked_cursor_x.store(screen_x, Ordering::Relaxed);
-                        locked_cursor_y.store(screen_y, Ordering::Relaxed);
+                        locked_cursor_x.store(x, Ordering::Relaxed);
+                        locked_cursor_y.store(y, Ordering::Relaxed);
                         locked_cursor_screen_x.store(screen_x, Ordering::Relaxed);
                         locked_cursor_screen_y.store(screen_y, Ordering::Relaxed);
                         crate::level_editor::ui::viewport::platform::lock_cursor_to_window(window);
                     } else {
+                        locked_cursor_x.store(x, Ordering::Relaxed);
+                        locked_cursor_y.store(y, Ordering::Relaxed);
                         crate::level_editor::ui::viewport::platform::lock_cursor_to_window(window);
                     }
 
-                    let x = (window_x * 1000.0) as i32;
-                    let y = (window_y * 1000.0) as i32;
                     last_mouse_x.store(x, Ordering::Relaxed);
                     last_mouse_y.store(y, Ordering::Relaxed);
                     input_state_clone.mouse_x.store(x, Ordering::Relaxed);
@@ -728,6 +757,8 @@ impl ViewportPanel {
             .on_mouse_up(gpui::MouseButton::Right, {
                 let last_mouse_x = last_mouse_x.clone();
                 let last_mouse_y = last_mouse_y.clone();
+                let locked_cursor_x = locked_cursor_x.clone();
+                let locked_cursor_y = locked_cursor_y.clone();
                 let mouse_right_captured = mouse_right_captured.clone();
                 let mouse_middle_captured = mouse_middle_captured.clone();
                 let locked_cursor_screen_x = locked_cursor_screen_x.clone();
@@ -736,6 +767,8 @@ impl ViewportPanel {
                 move |_event, window, _cx| {
                     last_mouse_x.store(0, Ordering::Relaxed);
                     last_mouse_y.store(0, Ordering::Relaxed);
+                    locked_cursor_x.store(0, Ordering::Relaxed);
+                    locked_cursor_y.store(0, Ordering::Relaxed);
                     mouse_right_captured.store(false, Ordering::Release);
                     mouse_middle_captured.store(false, Ordering::Release);
                     locked_cursor_screen_x.store(0, Ordering::Relaxed);
