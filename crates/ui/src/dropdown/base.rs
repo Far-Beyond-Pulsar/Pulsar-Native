@@ -16,9 +16,6 @@ use crate::{
     StyleSized, StyledExt,
 };
 
-mod searchable_list;
-pub use searchable_list::{SearchableList, SearchableListEvent};
-
 #[derive(Clone)]
 pub enum ListEvent {
     /// Single click or move to selected row.
@@ -30,7 +27,7 @@ pub enum ListEvent {
 }
 
 const CONTEXT: &str = "Dropdown";
-pub(crate) fn init(cx: &mut App) {
+pub fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("up", SelectUp, Some(CONTEXT)),
         KeyBinding::new("down", SelectDown, Some(CONTEXT)),

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
     dock::{Panel, PanelEvent},
+    dropdown::{SearchableList, SearchableListEvent},
     Disableable,
     h_flex,
     input::{InputState, TextInput},
@@ -40,27 +41,89 @@ struct ChatMessage {
 pub struct AgentChatPanel {
     focus_handle: FocusHandle,
     prompt_input: Entity<InputState>,
+    provider_list: Entity<SearchableList<ProviderDefinition>>,
+    model_list: Entity<SearchableList<ModelDefinition>>,
     provider_catalog: Vec<ProviderDefinition>,
     active_provider_ix: usize,
     active_model_ix: usize,
     messages: Vec<ChatMessage>,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl AgentChatPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let provider_catalog = Self::default_provider_catalog();
         let prompt_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Ask the engine assistant..."));
+
+        let provider_list = cx.new(|cx| {
+            SearchableList::new(window, cx, provider_catalog.clone(), |p: &ProviderDefinition| {
+                format!("{} ({})", p.label, p.id)
+            })
+            .with_empty_text("No providers found")
+            .with_max_width(px(220.0))
+            .with_max_height(px(180.0))
+            .with_icon_getter(|_| IconName::Brain)
+        });
+
+        let initial_models = provider_catalog
+            .first()
+            .map(|provider| provider.models.as_ref().clone())
+            .unwrap_or_default();
+        let model_list = cx.new(|cx| {
+            SearchableList::new(window, cx, initial_models.clone(), |m: &ModelDefinition| {
+                format!("{} ({})", m.label, m.id)
+            })
+            .with_empty_text("No models found")
+            .with_max_width(px(220.0))
+            .with_max_height(px(180.0))
+            .with_icon_getter(|_| IconName::Cpu)
+        });
+
+        let subscriptions = vec![
+            cx.subscribe(
+                &provider_list,
+                move |this, _, event: &SearchableListEvent<ProviderDefinition>, cx| {
+                    let SearchableListEvent::Select(selected_provider) = event;
+                    if let Some(index) = this
+                        .provider_catalog
+                        .iter()
+                        .position(|provider| provider.id == selected_provider.id)
+                    {
+                        this.set_provider(index, cx);
+                    }
+                },
+            ),
+            cx.subscribe(
+                &model_list,
+                move |this, _, event: &SearchableListEvent<ModelDefinition>, cx| {
+                    let SearchableListEvent::Select(selected_model) = event;
+                    if let Some(provider) = this.active_provider() {
+                        if let Some(index) = provider
+                            .models
+                            .iter()
+                            .position(|model| model.id == selected_model.id)
+                        {
+                            this.set_model(index, cx);
+                        }
+                    }
+                },
+            ),
+        ];
 
         Self {
             focus_handle: cx.focus_handle(),
             prompt_input,
-            provider_catalog: Self::default_provider_catalog(),
+            provider_list,
+            model_list,
+            provider_catalog,
             active_provider_ix: 0,
             active_model_ix: 0,
             messages: vec![ChatMessage {
                 role: "system",
                 content: "Agent Chat is ready. Choose provider/model and ask anything about your project.".to_string(),
             }],
+            _subscriptions: subscriptions,
         }
     }
 
@@ -147,6 +210,15 @@ impl AgentChatPanel {
         if index < self.provider_catalog.len() {
             self.active_provider_ix = index;
             self.active_model_ix = 0;
+
+            let models = self
+                .active_provider()
+                .map(|provider| provider.models.as_ref().clone())
+                .unwrap_or_default();
+            self.model_list.update(cx, |list, cx| {
+                list.set_items(models, cx);
+            });
+
             cx.notify();
         }
     }
@@ -279,76 +351,28 @@ impl Render for AgentChatPanel {
                             ),
                     )
                     .child(
-                        h_flex()
+                        v_flex()
+                            .w_full()
                             .gap_1()
-                            .items_center()
-                            .child(
-                                Button::new("agent-chat-provider-prev")
-                                    .xsmall()
-                                    .ghost()
-                                    .icon(IconName::ChevronLeft)
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.cycle_provider(-1, cx);
-                                    })),
-                            )
                             .child(
                                 div()
-                                    .flex_1()
-                                    .min_w_0()
                                     .text_xs()
-                                    .text_ellipsis()
-                                    .whitespace_nowrap()
-                                    .child(
-                                        provider
-                                            .map(|p| format!("{} ({})", p.label, p.id))
-                                            .unwrap_or_else(|| "No provider".to_string()),
-                                    ),
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Provider"),
                             )
-                            .child(
-                                Button::new("agent-chat-provider-next")
-                                    .xsmall()
-                                    .ghost()
-                                    .icon(IconName::ChevronRight)
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.cycle_provider(1, cx);
-                                    })),
-                            ),
+                            .child(self.provider_list.clone()),
                     )
                     .child(
-                        h_flex()
+                        v_flex()
+                            .w_full()
                             .gap_1()
-                            .items_center()
-                            .child(
-                                Button::new("agent-chat-model-prev")
-                                    .xsmall()
-                                    .ghost()
-                                    .icon(IconName::ChevronLeft)
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.cycle_model(-1, cx);
-                                    })),
-                            )
                             .child(
                                 div()
-                                    .flex_1()
-                                    .min_w_0()
                                     .text_xs()
-                                    .text_ellipsis()
-                                    .whitespace_nowrap()
-                                    .child(
-                                        model
-                                            .map(|m| format!("{} ({})", m.label, m.id))
-                                            .unwrap_or_else(|| "No model".to_string()),
-                                    ),
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Model"),
                             )
-                            .child(
-                                Button::new("agent-chat-model-next")
-                                    .xsmall()
-                                    .ghost()
-                                    .icon(IconName::ChevronRight)
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.cycle_model(1, cx);
-                                    })),
-                            ),
+                            .child(self.model_list.clone()),
                     )
                     .child(
                         div()
