@@ -2,6 +2,12 @@
 //!
 //! A tree view showing components attached to an object, similar to the scene hierarchy.
 //! Supports drag-and-drop reordering and nesting of components.
+//!
+//! ## Drag and Drop Controls
+//! - **Drag** - Reorder components at the same hierarchy level
+//! - **Alt+Drag onto component** - Nest the dragged component as a child
+//! - **Shift+Drag** - Remove parent (un-nest to root level)
+//! - **Click chevron** - Expand/collapse components with children
 
 use engine_backend::ComponentInstance;
 use gpui::{prelude::*, *};
@@ -275,6 +281,7 @@ impl ComponentHierarchyPanel {
         let scene_db_for_drop = self.scene_db.clone();
         let obj_id_for_drop = object_id.clone();
         let drop_target_idx = idx;
+        let state_for_drop = state_arc.clone();
 
         DropArea::<ComponentDragPayload>::new(format!("component-drop-{}", idx))
             .on_drop(move |payload, window, _cx| {
@@ -286,11 +293,24 @@ impl ComponentHierarchyPanel {
                 let from_idx = payload.component_index;
                 let to_idx = drop_target_idx;
 
-                // Check if modifier keys are pressed to determine operation
-                // TODO: Implement proper modifier key detection
-                // For now: if dropping onto same component, do nothing
-                // Otherwise, reorder at same level
-                if from_idx != to_idx {
+                if from_idx == to_idx {
+                    return; // Can't drop onto self
+                }
+
+                // Check if Alt key is pressed to determine nest vs reorder
+                // Alt+drag = nest as child, regular drag = reorder
+                let modifiers = window.modifiers();
+                if modifiers.alt {
+                    // Nest the dragged component under the drop target
+                    scene_db_for_drop.set_component_parent(
+                        &obj_id_for_drop,
+                        from_idx,
+                        Some(to_idx),
+                    );
+                    // Auto-expand the parent to show the new child
+                    state_for_drop.write().expanded_components.insert((obj_id_for_drop.clone(), to_idx));
+                } else {
+                    // Regular reorder at same level
                     scene_db_for_drop.reorder_component(&obj_id_for_drop, from_idx, to_idx);
                 }
             })
