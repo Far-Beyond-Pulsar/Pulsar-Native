@@ -83,9 +83,26 @@
             }
           ],
           "default": null
+        },
+        "window.background": {
+          "description": "Optional window background appearance override.\n\nAllows a theme to request a specific window background mode — opaque, transparent, or a frosted-glass blur. When absent the engine default (`opaque`) is used, keeping full backwards compatibility with existing theme JSON files that don't include this field.\n\nSupport varies by platform:\n- `blurred` requires a compositor that supports backdrop blur.\n- `mica_backdrop` / `mica_alt_backdrop` are Windows 11 exclusive.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ThemeWindowBackground"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": ["name", "mode", "colors"]
+    },
+    "ThemeWindowBackground": {
+      "description": "Controls the background appearance of the window.",
+      "type": "string",
+      "enum": ["opaque", "transparent", "blurred", "mica_backdrop", "mica_alt_backdrop"]
     },
     "ThemeMode": {
       "type": "string",

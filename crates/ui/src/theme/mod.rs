@@ -59,6 +59,13 @@ pub struct Theme {
     pub tile_grid_size: Pixels,
     /// The shadow of the tile panel.
     pub tile_shadow: bool,
+    /// The requested window background appearance for this theme.
+    ///
+    /// Themes can set this to `transparent` or `blurred` to enable
+    /// compositor-level transparency / frosted-glass effects. Defaults to
+    /// `opaque` so that themes which don't specify this field behave exactly
+    /// as before.
+    pub window_background: ThemeWindowBackground,
 }
 
 impl Default for Theme {
@@ -204,6 +211,7 @@ impl Theme {
         }
 
         if let Some(window) = window {
+            window.set_background_appearance(cx.global::<Theme>().window_background.into());
             window.refresh();
         }
     }
@@ -232,6 +240,7 @@ impl From<ThemeColor> for Theme {
             light_theme: Rc::new(ThemeConfig::default()),
             dark_theme: Rc::new(ThemeConfig::default()),
             highlight_theme: HighlightTheme::default_light(),
+            window_background: ThemeWindowBackground::Opaque,
         }
     }
 }

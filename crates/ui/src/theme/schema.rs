@@ -1,7 +1,7 @@
 use std::{rc::Rc, sync::Arc};
 
 use anyhow::Result;
-use gpui::{Hsla, SharedString};
+use gpui::{Hsla, SharedString, WindowBackgroundAppearance};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -9,6 +9,46 @@ use crate::{
     highlighter::{HighlightTheme, HighlightThemeStyle},
     Colorize, Theme, ThemeColor, ThemeMode,
 };
+
+/// Controls the background appearance of the window.
+///
+/// This is an optional theme-level setting that allows a theme to suggest
+/// whether the application window should be opaque, transparent, or use a
+/// frosted-glass blur effect. When omitted the application defaults to `opaque`.
+///
+/// Support varies by platform:
+/// - `blurred` requires a compositor that supports backdrop blur (most
+///   modern desktop environments on Linux/Windows/macOS).
+/// - `mica_backdrop` / `mica_alt_backdrop` are Windows 11 exclusive.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ThemeWindowBackground {
+    /// Fully opaque window (default). The compositor does not need to render
+    /// anything behind this window.
+    #[default]
+    Opaque,
+    /// Plain alpha transparency — content behind the window shows through.
+    Transparent,
+    /// Frosted-glass effect: transparent with a blur applied to the content
+    /// behind the window.
+    Blurred,
+    /// The Mica backdrop material (Windows 11 only).
+    MicaBackdrop,
+    /// The Mica Alt backdrop material (Windows 11 only).
+    MicaAltBackdrop,
+}
+
+impl From<ThemeWindowBackground> for WindowBackgroundAppearance {
+    fn from(value: ThemeWindowBackground) -> Self {
+        match value {
+            ThemeWindowBackground::Opaque => WindowBackgroundAppearance::Opaque,
+            ThemeWindowBackground::Transparent => WindowBackgroundAppearance::Transparent,
+            ThemeWindowBackground::Blurred => WindowBackgroundAppearance::Blurred,
+            ThemeWindowBackground::MicaBackdrop => WindowBackgroundAppearance::MicaBackdrop,
+            ThemeWindowBackground::MicaAltBackdrop => WindowBackgroundAppearance::MicaAltBackdrop,
+        }
+    }
+}
 
 /// Represents a theme configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
@@ -44,6 +84,14 @@ pub struct ThemeConfig {
     ///
     /// https://github.com/zed-industries/zed/blob/f50041779dcfd7a76c8aec293361c60c53f02d51/assets/themes/ayu/ayu.json#L9
     pub highlight: Option<HighlightThemeStyle>,
+    /// Optional window background appearance override.
+    ///
+    /// Allows a theme to request a specific window background mode — opaque,
+    /// transparent, or a frosted-glass blur. When absent the application default
+    /// (`opaque`) is used, keeping full backwards compatibility with existing
+    /// theme JSON files that don't include this field.
+    #[serde(rename = "window.background", skip_serializing_if = "Option::is_none")]
+    pub window_background: Option<ThemeWindowBackground>,
 }
 
 #[derive(Debug, Default, Clone, JsonSchema, Serialize, Deserialize)]
@@ -630,6 +678,12 @@ impl Theme {
 
         self.colors.apply_config(&config, &default_theme);
         self.mode = config.mode;
+
+        // Apply window background appearance from the theme, defaulting to opaque
+        // so that switching away from a theme with a custom background resets it.
+        self.window_background = config
+            .window_background
+            .unwrap_or(ThemeWindowBackground::Opaque);
     }
 }
 
