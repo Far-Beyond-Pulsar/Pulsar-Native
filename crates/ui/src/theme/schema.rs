@@ -13,8 +13,8 @@ use crate::{
 /// Controls the background appearance of the window.
 ///
 /// This is an optional theme-level setting that allows a theme to suggest
-/// whether the engine window should be opaque, transparent, or use a
-/// frosted-glass blur effect. When omitted the engine defaults to `opaque`.
+/// whether the application window should be opaque, transparent, or use a
+/// frosted-glass blur effect. When omitted the application defaults to `opaque`.
 ///
 /// Support varies by platform:
 /// - `blurred` requires a compositor that supports backdrop blur (most
@@ -87,7 +87,7 @@ pub struct ThemeConfig {
     /// Optional window background appearance override.
     ///
     /// Allows a theme to request a specific window background mode — opaque,
-    /// transparent, or a frosted-glass blur. When absent the engine default
+    /// transparent, or a frosted-glass blur. When absent the application default
     /// (`opaque`) is used, keeping full backwards compatibility with existing
     /// theme JSON files that don't include this field.
     #[serde(rename = "window.background", skip_serializing_if = "Option::is_none")]
