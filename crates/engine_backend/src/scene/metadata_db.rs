@@ -224,6 +224,38 @@ impl SceneMetadataDb {
         true
     }
 
+    /// Reorder two sibling objects by swapping their positions
+    ///
+    /// Both objects must have the same parent. Returns false if they don't share a parent
+    /// or if the operation fails.
+    pub fn reorder_object_siblings(
+        &self,
+        object_id: &EditorObjectId,
+        target_id: &EditorObjectId,
+    ) -> bool {
+        // Get the parent of both objects
+        let object_parent = self.get_parent(object_id);
+        let target_parent = self.get_parent(target_id);
+
+        // Both must have the same parent
+        if object_parent != target_parent {
+            return false;
+        }
+
+        // Get the children list of the shared parent
+        let parent_key = object_parent.as_deref();
+        let children = self.hierarchy.get_children(parent_key);
+
+        // Find indices of both objects in the children list
+        let from_index = children.iter().position(|id| id == object_id);
+        let to_index = children.iter().position(|id| id == target_id);
+
+        match (from_index, to_index) {
+            (Some(from), Some(to)) => self.hierarchy.reorder_child(parent_key, from, to),
+            _ => false,
+        }
+    }
+
     // ── Selection ─────────────────────────────────────────────────────────
 
     /// Select an object

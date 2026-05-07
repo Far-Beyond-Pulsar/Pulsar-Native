@@ -562,6 +562,14 @@ impl SceneDatabase {
         self.reparent_object(id, new_parent)
     }
 
+    /// Reorder two sibling objects by swapping their positions
+    ///
+    /// Both objects must have the same parent. Returns false if they don't share a parent.
+    pub fn reorder_object_siblings(&self, object_id: &ObjectId, target_id: &ObjectId) -> bool {
+        self.metadata_db
+            .reorder_object_siblings(object_id, target_id)
+    }
+
     // ── Ordering ──────────────────────────────────────────────────────────
 
     /// Move an object one step earlier among its siblings.
@@ -647,6 +655,33 @@ impl SceneDatabase {
         self.metadata_db.get_components(object_id)
     }
 
+    /// Check if a component is a descendant of another component
+    fn is_component_descendant(
+        components: &[ComponentInstance],
+        potential_descendant: usize,
+        potential_ancestor: usize,
+    ) -> bool {
+        let mut current = potential_descendant;
+        loop {
+            if current == potential_ancestor {
+                return true;
+            }
+            // Get parent of current component
+            let parent = components[current]
+                .data
+                .get("__parent_index")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as usize);
+
+            match parent {
+                Some(parent_idx) if parent_idx < components.len() => {
+                    current = parent_idx;
+                }
+                _ => return false, // Reached root or invalid parent
+            }
+        }
+    }
+
     /// Set the parent of a component (for hierarchical organization)
     pub fn set_component_parent(
         &self,
@@ -659,12 +694,18 @@ impl SceneDatabase {
             return;
         }
 
-        // Prevent cycles: a component cannot be a parent of itself or its ancestors
+        // Prevent cycles: a component cannot be a parent of itself or its descendants
         if let Some(parent_idx) = parent_index {
             if parent_idx == component_index {
-                return;
+                return; // Can't be parent of itself
             }
-            // TODO: Add cycle detection for deeper hierarchies
+            if parent_idx >= components.len() {
+                return; // Invalid parent index
+            }
+            // Check if the target parent is actually a descendant of this component
+            if Self::is_component_descendant(&components, parent_idx, component_index) {
+                return; // Would create a cycle
+            }
         }
 
         // Update the component's data to include parent_index

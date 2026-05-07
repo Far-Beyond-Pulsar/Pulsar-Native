@@ -375,16 +375,25 @@ impl HierarchyPanel {
                 .can_accept(move |payload| payload.object_id != drop_target_id)
                 .on_drop({
                     let drop_target_id2 = object_id.clone();
-                    move |payload, _window, _cx| {
+                    move |payload, window, _cx| {
                         if payload.object_id != drop_target_id2 {
-                            // Use a single write lock for both operations to avoid
-                            // a deadlock (read then write on the same RwLock).
+                            let modifiers = window.modifiers();
                             let mut state = state_arc_for_drop.write();
-                            let success = state
-                                .scene_database
-                                .reparent_object(&payload.object_id, Some(drop_target_id2.clone()));
-                            if success {
-                                state.expanded_objects.insert(drop_target_id2.clone());
+
+                            if modifiers.shift {
+                                // Shift+drag: remove parent (un-nest to root)
+                                state.scene_database.reparent_object(&payload.object_id, None);
+                            } else if modifiers.alt {
+                                // Alt+drag: reorder at same level (swap positions with target)
+                                state.scene_database.reorder_object_siblings(&payload.object_id, &drop_target_id2);
+                            } else {
+                                // Regular drag: reparent under drop target
+                                let success = state
+                                    .scene_database
+                                    .reparent_object(&payload.object_id, Some(drop_target_id2.clone()));
+                                if success {
+                                    state.expanded_objects.insert(drop_target_id2.clone());
+                                }
                             }
                         }
                     }

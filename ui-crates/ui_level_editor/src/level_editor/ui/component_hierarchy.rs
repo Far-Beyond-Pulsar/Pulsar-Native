@@ -4,8 +4,8 @@
 //! Supports drag-and-drop reordering and nesting of components.
 //!
 //! ## Drag and Drop Controls
-//! - **Drag** - Reorder components at the same hierarchy level
-//! - **Alt+Drag onto component** - Nest the dragged component as a child
+//! - **Drag onto component** - Nest the dragged component as a child (reparent)
+//! - **Alt+Drag** - Reorder components at the same hierarchy level
 //! - **Shift+Drag** - Remove parent (un-nest to root level)
 //! - **Click chevron** - Expand/collapse components with children
 
@@ -298,9 +298,9 @@ impl ComponentHierarchyPanel {
                 }
 
                 // Check modifier keys to determine operation:
-                // - Alt+drag = nest as child
+                // - Regular drag = nest as child (reparent)
+                // - Alt+drag = reorder at same level
                 // - Shift+drag = remove parent (un-nest to root)
-                // - Regular drag = reorder at same level
                 let modifiers = window.modifiers();
                 if modifiers.shift {
                     // Remove parent - un-nest to root level
@@ -310,7 +310,10 @@ impl ComponentHierarchyPanel {
                         None,
                     );
                 } else if modifiers.alt {
-                    // Nest the dragged component under the drop target
+                    // Reorder at same level
+                    scene_db_for_drop.reorder_component(&obj_id_for_drop, from_idx, to_idx);
+                } else {
+                    // Default: nest the dragged component under the drop target
                     scene_db_for_drop.set_component_parent(
                         &obj_id_for_drop,
                         from_idx,
@@ -318,9 +321,6 @@ impl ComponentHierarchyPanel {
                     );
                     // Auto-expand the parent to show the new child
                     state_for_drop.write().expanded_components.insert((obj_id_for_drop.clone(), to_idx));
-                } else {
-                    // Regular reorder at same level
-                    scene_db_for_drop.reorder_component(&obj_id_for_drop, from_idx, to_idx);
                 }
             })
             .child(
