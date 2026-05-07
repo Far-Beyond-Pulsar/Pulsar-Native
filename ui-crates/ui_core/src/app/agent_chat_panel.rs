@@ -305,14 +305,13 @@ impl Render for AgentChatPanel {
             Button::new("agent-chat-provider-trigger")
                 .xsmall()
                 .ghost()
-                .w_full()
-                .justify_between()
+            .justify_start()
                 .label(
                     provider
-                        .map(|p| format!("{} ({})", p.label, p.id))
+                .map(|p| format!("Provider: {} ({})", p.label, p.id))
                         .unwrap_or_else(|| "No provider".to_string()),
                 )
-                .icon(IconName::ChevronDown),
+            .dropdown_caret(true),
         )
         .content(move |_window, _cx| provider_list.clone());
 
@@ -324,14 +323,13 @@ impl Render for AgentChatPanel {
             Button::new("agent-chat-model-trigger")
                 .xsmall()
                 .ghost()
-                .w_full()
-                .justify_between()
+            .justify_start()
                 .label(
                     model
-                        .map(|m| format!("{} ({})", m.label, m.id))
+                .map(|m| format!("Model: {} ({})", m.label, m.id))
                         .unwrap_or_else(|| "No model".to_string()),
                 )
-                .icon(IconName::ChevronDown),
+            .dropdown_caret(true),
         )
         .content(move |_window, _cx| model_list.clone());
 
@@ -367,27 +365,13 @@ impl Render for AgentChatPanel {
                         h_flex()
                             .w_full()
                             .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child("Provider"),
-                            )
-                            .child(div().flex_1().child(provider_popover)),
+                            .child(provider_popover),
                     )
                     .child(
                         h_flex()
                             .w_full()
                             .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child("Model"),
-                            )
-                            .child(div().flex_1().child(model_popover)),
+                            .child(model_popover),
                     )
                     .child(
                         div()
