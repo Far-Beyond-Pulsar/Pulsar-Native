@@ -98,7 +98,10 @@ pub struct ThemeConfig {
     /// prevent the OS from reverting to an opaque fallback when the window
     /// loses focus (e.g. Windows Acrylic going solid on deactivation).
     /// Defaults to `false` for full backward compatibility.
-    #[serde(rename = "window.always_transparent", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "window.always_transparent",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub window_always_transparent: Option<bool>,
 }
 

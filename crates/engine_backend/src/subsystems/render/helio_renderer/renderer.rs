@@ -693,7 +693,9 @@ impl HelioRenderer {
         if let Some(ref id) = scene_db_id {
             // Look up the Helio ObjectId from the scene_db_id
             if let Some((helio_obj_id, _)) = inner.object_map.get(id) {
-                inner.editor_state.select(SceneActorId::Object(*helio_obj_id));
+                inner
+                    .editor_state
+                    .select(SceneActorId::Object(*helio_obj_id));
                 tracing::info!("[ATOMIC] Selected object: {} -> {:?}", id, helio_obj_id);
                 true
             } else {
