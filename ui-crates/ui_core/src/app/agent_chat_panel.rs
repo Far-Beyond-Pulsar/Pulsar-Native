@@ -364,28 +364,30 @@ impl Render for AgentChatPanel {
                             ),
                     )
                     .child(
-                        v_flex()
+                        h_flex()
                             .w_full()
-                            .gap_1()
+                            .items_center()
+                            .gap_2()
                             .child(
                                 div()
                                     .text_xs()
                                     .text_color(cx.theme().muted_foreground)
                                     .child("Provider"),
                             )
-                                    .child(provider_popover),
+                            .child(div().flex_1().child(provider_popover)),
                     )
                     .child(
-                        v_flex()
+                        h_flex()
                             .w_full()
-                            .gap_1()
+                            .items_center()
+                            .gap_2()
                             .child(
                                 div()
                                     .text_xs()
                                     .text_color(cx.theme().muted_foreground)
                                     .child("Model"),
                             )
-                                    .child(model_popover),
+                            .child(div().flex_1().child(model_popover)),
                     )
                     .child(
                         div()
