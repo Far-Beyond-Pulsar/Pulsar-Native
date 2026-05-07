@@ -30,6 +30,11 @@ pub struct ToggleLogViewer;
 #[action(namespace = pulsar_app)]
 pub struct ToggleMultiplayer;
 
+/// Action to toggle the global right-side agent chat panel
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = pulsar_app)]
+pub struct ToggleAgentChat;
+
 /// Action to toggle the flamegraph profiler
 #[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 #[action(namespace = pulsar_app)]

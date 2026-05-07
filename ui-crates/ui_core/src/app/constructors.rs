@@ -13,7 +13,7 @@ use ui_log_viewer::MissionControlPanel;
 use ui_problems::ProblemsDrawer;
 use ui_type_debugger::TypeDebuggerDrawer;
 
-use super::{event_handlers, PulsarApp};
+use super::{agent_chat_panel::AgentChatPanel, event_handlers, PulsarApp};
 
 impl PulsarApp {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -123,8 +123,19 @@ impl PulsarApp {
             }
         };
 
+        // Build left dock tabs before mutating DockArea to avoid re-entrant DockArea reads.
+        let agent_chat_panel = cx.new(|cx| AgentChatPanel::new(window, cx));
+        let left_dock = DockItem::tabs(
+            vec![Arc::new(agent_chat_panel) as Arc<dyn ui::dock::PanelView>],
+            Some(0),
+            &weak_dock,
+            window,
+            cx,
+        );
+
         dock_area.update(cx, |dock, cx| {
             dock.set_center(center_dock_item, window, cx);
+            dock.set_left_dock(left_dock, Some(gpui::px(420.0)), false, window, cx);
         });
 
         // Create entry screen only if no project path is provided
@@ -377,6 +388,17 @@ impl PulsarApp {
                     "Application",
                     |window, cx| {
                         window.dispatch_action(Box::new(ToggleMultiplayer), cx);
+                    },
+                    cx,
+                );
+                
+                palette.add_item(
+                    "Toggle Agent Chat",
+                    "Show or hide the global agent chat side panel",
+                    IconName::PanelRight,
+                    "View",
+                    |window, cx| {
+                        window.dispatch_action(Box::new(ToggleAgentChat), cx);
                     },
                     cx,
                 );

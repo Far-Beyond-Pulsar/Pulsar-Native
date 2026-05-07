@@ -12,6 +12,7 @@ use std::time::Duration;
 use ui::notification::Notification;
 use ui::{
     button::{Button, ButtonVariants as _},
+    dock::DockPlacement,
     h_flex, v_flex, ActiveTheme as _, ContextModal as _, Icon, IconName, StyledExt as _,
 };
 
@@ -39,6 +40,11 @@ impl PulsarApp {
             .count_by_severity(ui_problems::DiagnosticSeverity::Warning);
 
         let type_count = self.state.type_debugger_drawer.read(cx).total_count();
+        let is_agent_chat_open = self
+            .state
+            .dock_area
+            .read(cx)
+            .is_dock_open(DockPlacement::Left, cx);
 
         let (status_color, status_icon) = match status {
             AnalyzerStatus::Ready => (cx.theme().success, IconName::CheckCircle),
@@ -219,6 +225,27 @@ impl PulsarApp {
                                     .tooltip(t!("StatusBar.Multiplayer").to_string())
                                     .on_click(cx.listener(|app, _, window, cx| {
                                         app.toggle_multiplayer(window, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("toggle-agent-chat")
+                                    .ghost()
+                                    .icon(Icon::new(IconName::PanelRight).size(px(16.)).text_color(
+                                        if is_agent_chat_open {
+                                            cx.theme().primary
+                                        } else {
+                                            cx.theme().muted_foreground
+                                        },
+                                    ))
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(4.))
+                                    .when(is_agent_chat_open, |s| {
+                                        s.bg(cx.theme().primary.opacity(0.15))
+                                    })
+                                    .tooltip("Toggle Agent Chat")
+                                    .on_click(cx.listener(|app, _, window, cx| {
+                                        app.toggle_agent_chat(window, cx);
                                     })),
                             )
                             .child(
@@ -635,6 +662,7 @@ impl Render for PulsarApp {
             .on_action(cx.listener(Self::on_toggle_type_debugger))
             .on_action(cx.listener(Self::on_toggle_log_viewer))
             .on_action(cx.listener(Self::on_toggle_flamegraph))
+            .on_action(cx.listener(Self::on_toggle_agent_chat))
             .on_action(cx.listener(Self::on_toggle_command_palette))
             .on_action(cx.listener(Self::on_open_file))
             .on_action(cx.listener(Self::on_open_settings))

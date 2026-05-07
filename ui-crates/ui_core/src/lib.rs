@@ -17,7 +17,8 @@ pub use root::PulsarRoot;
 
 // Re-export actions
 pub use actions::{
-    OpenFile, ToggleCommandPalette, ToggleFileManager, ToggleMultiplayer, ToggleProblems,
+    OpenFile, ToggleAgentChat, ToggleCommandPalette, ToggleFileManager, ToggleMultiplayer,
+    ToggleProblems,
 };
 
 // Re-export file_utils from ui_common
