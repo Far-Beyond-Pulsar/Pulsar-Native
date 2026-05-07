@@ -1,6 +1,6 @@
 use gpui::{
     div, prelude::FluentBuilder, px, App, AppContext, Context, Div, Entity, EventEmitter,
-    FocusHandle,
+    DismissEvent, FocusHandle,
     Focusable, InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels, Render,
     SharedString, Styled, Window,
 };
@@ -28,6 +28,7 @@ pub struct SearchableList<T: Clone + 'static> {
 }
 
 impl<T: Clone + 'static> EventEmitter<SearchableListEvent<T>> for SearchableList<T> {}
+impl<T: Clone + 'static> EventEmitter<DismissEvent> for SearchableList<T> {}
 
 impl<T: Clone + 'static> Focusable for SearchableList<T> {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
@@ -150,6 +151,7 @@ impl<T: Clone + 'static> Render for SearchableList<T> {
                                         MouseButton::Left,
                                         cx.listener(move |_this, _, _, cx| {
                                             cx.emit(SearchableListEvent::Select(selected_item.clone()));
+                                            cx.emit(DismissEvent);
                                         }),
                                     )
                                     .when_some(icon, |el, icon| {

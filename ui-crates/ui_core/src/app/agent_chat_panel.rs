@@ -4,6 +4,7 @@ use ui::{
     button::{Button, ButtonVariants as _},
     dock::{Panel, PanelEvent},
     dropdown::{SearchableList, SearchableListEvent},
+    popover::Popover,
     Disableable,
     h_flex,
     input::{InputState, TextInput},
@@ -232,34 +233,6 @@ impl AgentChatPanel {
         }
     }
 
-    fn cycle_provider(&mut self, step: isize, cx: &mut Context<Self>) {
-        if self.provider_catalog.is_empty() {
-            return;
-        }
-
-        let len = self.provider_catalog.len() as isize;
-        let current = self.active_provider_ix as isize;
-        let next = (current + step).rem_euclid(len) as usize;
-        self.active_provider_ix = next;
-        self.active_model_ix = 0;
-        cx.notify();
-    }
-
-    fn cycle_model(&mut self, step: isize, cx: &mut Context<Self>) {
-        let Some(provider) = self.active_provider() else {
-            return;
-        };
-        if provider.models.is_empty() {
-            return;
-        }
-
-        let len = provider.models.len() as isize;
-        let current = self.active_model_ix as isize;
-        let next = (current + step).rem_euclid(len) as usize;
-        self.active_model_ix = next;
-        cx.notify();
-    }
-
     fn send_prompt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let prompt = self.prompt_input.read(cx).text().to_string();
         let prompt = prompt.trim().to_string();
@@ -321,6 +294,46 @@ impl Render for AgentChatPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let provider = self.active_provider();
         let model = self.active_model();
+        let provider_list = self.provider_list.clone();
+        let model_list = self.model_list.clone();
+
+        let provider_popover = Popover::<SearchableList<ProviderDefinition>>::new(
+            "agent-chat-provider-popover",
+        )
+        .anchor(Corner::TopLeft)
+        .trigger(
+            Button::new("agent-chat-provider-trigger")
+                .xsmall()
+                .ghost()
+                .w_full()
+                .justify_between()
+                .label(
+                    provider
+                        .map(|p| format!("{} ({})", p.label, p.id))
+                        .unwrap_or_else(|| "No provider".to_string()),
+                )
+                .icon(IconName::ChevronDown),
+        )
+        .content(move |_window, _cx| provider_list.clone());
+
+        let model_popover = Popover::<SearchableList<ModelDefinition>>::new(
+            "agent-chat-model-popover",
+        )
+        .anchor(Corner::TopLeft)
+        .trigger(
+            Button::new("agent-chat-model-trigger")
+                .xsmall()
+                .ghost()
+                .w_full()
+                .justify_between()
+                .label(
+                    model
+                        .map(|m| format!("{} ({})", m.label, m.id))
+                        .unwrap_or_else(|| "No model".to_string()),
+                )
+                .icon(IconName::ChevronDown),
+        )
+        .content(move |_window, _cx| model_list.clone());
 
         v_flex()
             .size_full()
@@ -360,7 +373,7 @@ impl Render for AgentChatPanel {
                                     .text_color(cx.theme().muted_foreground)
                                     .child("Provider"),
                             )
-                            .child(self.provider_list.clone()),
+                                    .child(provider_popover),
                     )
                     .child(
                         v_flex()
@@ -372,7 +385,7 @@ impl Render for AgentChatPanel {
                                     .text_color(cx.theme().muted_foreground)
                                     .child("Model"),
                             )
-                            .child(self.model_list.clone()),
+                                    .child(model_popover),
                     )
                     .child(
                         div()
