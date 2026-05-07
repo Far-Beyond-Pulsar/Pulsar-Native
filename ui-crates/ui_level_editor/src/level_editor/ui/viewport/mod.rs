@@ -307,6 +307,33 @@ impl ViewportPanel {
                             }
                         }
                     }
+
+                    #[cfg(target_os = "macos")]
+                    {
+                        let (dx, dy) = platform::take_mouse_delta();
+
+                        if dx != 0.0 || dy != 0.0 {
+                            if let Ok(engine) = gpu_engine_clone.try_lock() {
+                                if let Some(ref helio_renderer) = engine.helio_renderer {
+                                    if let Ok(mut input) = helio_renderer.camera_input.try_lock() {
+                                        if is_rotating {
+                                            input.mouse_delta_x = dx;
+                                            input.mouse_delta_y = dy;
+                                        } else if is_panning {
+                                            input.pan_delta_x = dx;
+                                            input.pan_delta_y = dy;
+                                        }
+                                    }
+                                }
+                            }
+
+                            if is_rotating {
+                                input_state.set_mouse_delta(dx, dy);
+                            } else if is_panning {
+                                input_state.set_pan_delta(dx, dy);
+                            }
+                        }
+                    }
                 }
 
                 // Track latency
@@ -537,11 +564,6 @@ impl ViewportPanel {
                 let input_state_clone = self.input_state.clone();
                 let last_mouse_x = last_mouse_x.clone();
                 let last_mouse_y = last_mouse_y.clone();
-                let locked_cursor_x = locked_cursor_x.clone();
-                let locked_cursor_y = locked_cursor_y.clone();
-                let locked_cursor_screen_x = locked_cursor_screen_x.clone();
-                let locked_cursor_screen_y = locked_cursor_screen_y.clone();
-                let gpu_engine_move = gpu_engine_move.clone();
                 let mouse_right_captured = mouse_right_captured.clone();
                 let mouse_middle_captured = mouse_middle_captured.clone();
                 let state_arc_move = state_arc.clone();
@@ -556,61 +578,7 @@ impl ViewportPanel {
                             // Cursor stays hidden on Windows
                         }
 
-                        #[cfg(target_os = "macos")]
-                        {
-                            let pos_x: f32 = event.position.x.into();
-                            let pos_y: f32 = event.position.y.into();
-                            let x = (pos_x * 1000.0) as i32;
-                            let y = (pos_y * 1000.0) as i32;
-                            let lock_x = locked_cursor_x.load(Ordering::Relaxed);
-                            let lock_y = locked_cursor_y.load(Ordering::Relaxed);
-                            let lock_screen_x = locked_cursor_screen_x.load(Ordering::Relaxed);
-                            let lock_screen_y = locked_cursor_screen_y.load(Ordering::Relaxed);
-
-                            input_state_clone.mouse_x.store(x, Ordering::Relaxed);
-                            input_state_clone.mouse_y.store(y, Ordering::Relaxed);
-
-                            if lock_x != 0 || lock_y != 0 {
-                                let dx = (x - lock_x) as f32 / 1000.0;
-                                let dy = (y - lock_y) as f32 / 1000.0;
-
-                                if dx != 0.0 || dy != 0.0 {
-                                    if let Ok(engine) = gpu_engine_move.try_lock() {
-                                        if let Some(ref helio_renderer) = engine.helio_renderer {
-                                            if let Ok(mut input) = helio_renderer.camera_input.try_lock() {
-                                                if is_rotating {
-                                                    input.mouse_delta_x = dx;
-                                                    input.mouse_delta_y = dy;
-                                                } else {
-                                                    input.pan_delta_x = dx;
-                                                    input.pan_delta_y = dy;
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    if is_rotating {
-                                        input_state_clone.set_mouse_delta(dx, dy);
-                                    } else {
-                                        input_state_clone.set_pan_delta(dx, dy);
-                                    }
-
-                                    if lock_screen_x != 0 || lock_screen_y != 0 {
-                                        crate::level_editor::ui::viewport::platform::set_cursor_position(
-                                            lock_screen_x,
-                                            lock_screen_y,
-                                        );
-                                    }
-
-                                    last_mouse_x.store(lock_x, Ordering::Relaxed);
-                                    last_mouse_y.store(lock_y, Ordering::Relaxed);
-                                    input_state_clone.mouse_x.store(lock_x, Ordering::Relaxed);
-                                    input_state_clone.mouse_y.store(lock_y, Ordering::Relaxed);
-                                }
-                            }
-                        }
-
-                        #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+                        #[cfg(not(target_os = "windows"))]
                         {
                             let pos_x: f32 = event.position.x.into();
                             let pos_y: f32 = event.position.y.into();
@@ -749,7 +717,7 @@ impl ViewportPanel {
                         mouse_right_captured.store(true, Ordering::Release);
                     }
 
-                    crate::level_editor::ui::viewport::platform::hide_cursor();
+                    crate::level_editor::ui::viewport::platform::begin_relative_mouse_mode();
                     window.set_window_cursor_style(CursorStyle::None);
                 }
             })
@@ -774,7 +742,7 @@ impl ViewportPanel {
                     locked_cursor_screen_x.store(0, Ordering::Relaxed);
                     locked_cursor_screen_y.store(0, Ordering::Relaxed);
 
-                    crate::level_editor::ui::viewport::platform::show_cursor();
+                    crate::level_editor::ui::viewport::platform::end_relative_mouse_mode();
                     window.set_window_cursor_style(CursorStyle::Arrow);
                     crate::level_editor::ui::viewport::platform::unlock_cursor();
                 }

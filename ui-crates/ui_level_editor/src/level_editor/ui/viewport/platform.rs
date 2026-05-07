@@ -199,6 +199,56 @@ pub fn set_cursor_position(screen_x: i32, screen_y: i32) {
 }
 
 #[cfg(target_os = "macos")]
+pub fn begin_relative_mouse_mode() {
+    use core_graphics2::direct_display::CGGetLastMouseDelta;
+    use core_graphics2::display::CGDisplay;
+    use core_graphics2::event_source::CGEventSource;
+    use core_graphics2::event_types::CGEventSourceStateID;
+    use core_graphics2::remote_operation::CGAssociateMouseAndMouseCursorPosition;
+
+    unsafe {
+        let _ = CGAssociateMouseAndMouseCursorPosition(0);
+    }
+
+    let _ = CGDisplay::main().hide_cursor();
+
+    if let Ok(src) = CGEventSource::new(CGEventSourceStateID::CombinedSessionState) {
+        src.set_local_events_suppression_interval(0.0);
+    }
+
+    let mut delta_x = 0;
+    let mut delta_y = 0;
+    unsafe {
+        let _ = CGGetLastMouseDelta(&mut delta_x, &mut delta_y);
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn end_relative_mouse_mode() {
+    use core_graphics2::display::CGDisplay;
+    use core_graphics2::remote_operation::CGAssociateMouseAndMouseCursorPosition;
+
+    unsafe {
+        let _ = CGAssociateMouseAndMouseCursorPosition(1);
+    }
+
+    let _ = CGDisplay::main().show_cursor();
+}
+
+#[cfg(target_os = "macos")]
+pub fn take_mouse_delta() -> (f32, f32) {
+    use core_graphics2::direct_display::CGGetLastMouseDelta;
+
+    let mut delta_x = 0;
+    let mut delta_y = 0;
+    unsafe {
+        let _ = CGGetLastMouseDelta(&mut delta_x, &mut delta_y);
+    }
+
+    (delta_x as f32, delta_y as f32)
+}
+
+#[cfg(target_os = "macos")]
 pub fn window_to_screen_position(
     window: &Window,
     window_x: f32,
@@ -232,7 +282,7 @@ pub fn window_to_screen_position(
 #[cfg(target_os = "macos")]
 pub fn lock_cursor_to_window(_window: &Window) {
     // macOS doesn't support cursor confinement natively
-    // We rely on cursor repositioning instead
+    // We rely on relative mouse mode instead.
 }
 
 #[cfg(target_os = "macos")]
@@ -253,6 +303,17 @@ pub fn hide_cursor() {
 #[cfg(target_os = "macos")]
 pub fn show_cursor() {
     // macOS cursor showing is typically handled through GPUI/window system
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn begin_relative_mouse_mode() {}
+
+#[cfg(not(target_os = "macos"))]
+pub fn end_relative_mouse_mode() {}
+
+#[cfg(not(target_os = "macos"))]
+pub fn take_mouse_delta() -> (f32, f32) {
+    (0.0, 0.0)
 }
 
 // Linux/fallback implementations
