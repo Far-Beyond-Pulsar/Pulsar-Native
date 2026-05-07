@@ -237,6 +237,20 @@ pub(crate) struct ActiveModal {
 
 impl Root {
     pub fn new(view: AnyView, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // Apply the current theme's window-appearance settings (background mode and
+        // always-transparent flag) to this window immediately on creation.  The theme
+        // is already loaded by the time any window opens, but `Theme::change` was
+        // called with `window = None` so the window-level settings were never pushed.
+        // We do it here so every window — including those opened later at runtime —
+        // always starts with the correct compositor appearance.
+        if cx.has_global::<crate::theme::Theme>() {
+            let theme = cx.global::<crate::theme::Theme>();
+            let bg = theme.window_background.into();
+            let always = theme.always_transparent;
+            window.set_background_appearance(bg);
+            window.set_always_transparent(always);
+        }
+
         Self {
             previous_focus_handle: None,
             active_drawer: None,

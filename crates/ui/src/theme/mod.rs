@@ -221,6 +221,18 @@ impl Theme {
             window.set_background_appearance(theme.window_background.into());
             window.set_always_transparent(theme.always_transparent);
             window.refresh();
+        } else {
+            // No specific window supplied — push the appearance update to every
+            // open window so a theme switch takes effect everywhere immediately.
+            let bg = cx.global::<Theme>().window_background.into();
+            let always = cx.global::<Theme>().always_transparent;
+            for handle in cx.windows() {
+                let _ = handle.update(cx, |_view, window, _cx| {
+                    window.set_background_appearance(bg);
+                    window.set_always_transparent(always);
+                });
+            }
+            cx.refresh_windows();
         }
     }
 }
