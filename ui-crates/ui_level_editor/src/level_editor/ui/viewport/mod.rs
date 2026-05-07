@@ -474,6 +474,8 @@ impl ViewportPanel {
         let element_bounds_for_click = self.element_bounds.clone();
         let _state_arc_scroll = state_arc.clone();
         let gpu_engine_clone = gpu_engine.clone();
+        let last_mouse_x = self.last_mouse_x.clone();
+        let last_mouse_y = self.last_mouse_y.clone();
         let locked_cursor_x = self.locked_cursor_x.clone();
         let locked_cursor_y = self.locked_cursor_y.clone();
         let locked_cursor_screen_x = self.locked_cursor_screen_x.clone();
@@ -533,6 +535,9 @@ impl ViewportPanel {
             // Track mouse movement and update Helio input
             .on_mouse_move({
                 let input_state_clone = self.input_state.clone();
+                let last_mouse_x = last_mouse_x.clone();
+                let last_mouse_y = last_mouse_y.clone();
+                let gpu_engine_move = gpu_engine_move.clone();
                 let mouse_right_captured = mouse_right_captured.clone();
                 let mouse_middle_captured = mouse_middle_captured.clone();
                 let state_arc_move = state_arc.clone();
@@ -553,8 +558,39 @@ impl ViewportPanel {
                             let pos_y: f32 = event.position.y.into();
                             let x = (pos_x * 1000.0) as i32;
                             let y = (pos_y * 1000.0) as i32;
+
+                            let prev_x = last_mouse_x.swap(x, Ordering::Relaxed);
+                            let prev_y = last_mouse_y.swap(y, Ordering::Relaxed);
+
                             input_state_clone.mouse_x.store(x, Ordering::Relaxed);
                             input_state_clone.mouse_y.store(y, Ordering::Relaxed);
+
+                            if prev_x != 0 || prev_y != 0 {
+                                let dx = (x - prev_x) as f32 / 1000.0;
+                                let dy = (y - prev_y) as f32 / 1000.0;
+
+                                if dx != 0.0 || dy != 0.0 {
+                                    if let Ok(engine) = gpu_engine_move.try_lock() {
+                                        if let Some(ref helio_renderer) = engine.helio_renderer {
+                                            if let Ok(mut input) = helio_renderer.camera_input.try_lock() {
+                                                if is_rotating {
+                                                    input.mouse_delta_x = dx;
+                                                    input.mouse_delta_y = dy;
+                                                } else {
+                                                    input.pan_delta_x = dx;
+                                                    input.pan_delta_y = dy;
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if is_rotating {
+                                        input_state_clone.set_mouse_delta(dx, dy);
+                                    } else {
+                                        input_state_clone.set_pan_delta(dx, dy);
+                                    }
+                                }
+                            }
                         }
 
                         window.set_window_cursor_style(CursorStyle::None);
@@ -563,6 +599,8 @@ impl ViewportPanel {
                         let pos_y: f32 = event.position.y.into();
                         let x = (pos_x * 1000.0) as i32;
                         let y = (pos_y * 1000.0) as i32;
+                        last_mouse_x.store(x, Ordering::Relaxed);
+                        last_mouse_y.store(y, Ordering::Relaxed);
                         input_state_clone.mouse_x.store(x, Ordering::Relaxed);
                         input_state_clone.mouse_y.store(y, Ordering::Relaxed);
                     }
@@ -640,6 +678,8 @@ impl ViewportPanel {
             })
             // Right-click for camera controls
             .on_mouse_down(gpui::MouseButton::Right, {
+                let last_mouse_x = last_mouse_x.clone();
+                let last_mouse_y = last_mouse_y.clone();
                 let mouse_right_captured = mouse_right_captured.clone();
                 let mouse_middle_captured = mouse_middle_captured.clone();
                 let locked_cursor_x = locked_cursor_x.clone();
@@ -669,6 +709,8 @@ impl ViewportPanel {
 
                     let x = (window_x * 1000.0) as i32;
                     let y = (window_y * 1000.0) as i32;
+                    last_mouse_x.store(x, Ordering::Relaxed);
+                    last_mouse_y.store(y, Ordering::Relaxed);
                     input_state_clone.mouse_x.store(x, Ordering::Relaxed);
                     input_state_clone.mouse_y.store(y, Ordering::Relaxed);
 
@@ -684,12 +726,16 @@ impl ViewportPanel {
             })
             // Right-click release
             .on_mouse_up(gpui::MouseButton::Right, {
+                let last_mouse_x = last_mouse_x.clone();
+                let last_mouse_y = last_mouse_y.clone();
                 let mouse_right_captured = mouse_right_captured.clone();
                 let mouse_middle_captured = mouse_middle_captured.clone();
                 let locked_cursor_screen_x = locked_cursor_screen_x.clone();
                 let locked_cursor_screen_y = locked_cursor_screen_y.clone();
 
                 move |_event, window, _cx| {
+                    last_mouse_x.store(0, Ordering::Relaxed);
+                    last_mouse_y.store(0, Ordering::Relaxed);
                     mouse_right_captured.store(false, Ordering::Release);
                     mouse_middle_captured.store(false, Ordering::Release);
                     locked_cursor_screen_x.store(0, Ordering::Relaxed);
