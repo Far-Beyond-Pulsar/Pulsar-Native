@@ -1002,12 +1002,44 @@ impl Render for LevelEditorPanel {
         // Initialize workspace on first render
         self.initialize_workspace(window, cx);
 
-        // Sync selection and gizmo tool state to the backend SceneDB every frame.
-        if let Ok(engine_guard) = self.gpu_engine.try_lock() {
-            if let Some(ref helio_renderer) = engine_guard.helio_renderer {
-                let state = self.shared_state.read();
-                let gpui_selected = state.selected_object();
+        // Sync selection and gizmo tool state between UI and backend (bidirectional).
+        if let Ok(mut engine_guard) = self.gpu_engine.try_lock() {
+            if let Some(ref mut helio_renderer) = engine_guard.helio_renderer {
+                let mut state = self.shared_state.write();
+                let ui_selected = state.selected_object();
+                let scene_db_selected = helio_renderer.scene_db.get_selected_id();
 
+                // Check if Helio's viewport selection changed (from clicking in 3D view)
+                let helio_selected = helio_renderer.get_selected_scene_db_id();
+
+                // Determine the source of truth based on what changed
+                if helio_selected != scene_db_selected {
+                    // Helio changed (user clicked in viewport) - sync to UI
+                    if let Some(ref helio_id) = helio_selected {
+                        state.select_object(Some(helio_id.clone()));
+                        helio_renderer
+                            .scene_db
+                            .select_object(Some(helio_id.clone()));
+                        tracing::info!("[SYNC] Viewport -> Hierarchy: {}", helio_id);
+                    } else {
+                        state.select_object(None);
+                        helio_renderer.scene_db.select_object(None);
+                        tracing::info!("[SYNC] Viewport -> Hierarchy: deselected");
+                    }
+                } else if ui_selected != scene_db_selected {
+                    // UI changed (user clicked in hierarchy) - sync to viewport
+                    if let Some(ref ui_id) = ui_selected {
+                        helio_renderer.select_by_scene_db_id(ui_id);
+                        helio_renderer.scene_db.select_object(Some(ui_id.clone()));
+                        tracing::info!("[SYNC] Hierarchy -> Viewport: {}", ui_id);
+                    } else {
+                        helio_renderer.deselect();
+                        helio_renderer.scene_db.select_object(None);
+                        tracing::info!("[SYNC] Hierarchy -> Viewport: deselected");
+                    }
+                }
+
+                // Sync gizmo tool state
                 use engine_backend::scene::GizmoType as SceneGizmoType;
                 let gizmo_type = match state.current_tool {
                     TransformTool::Select => SceneGizmoType::None,
@@ -1015,11 +1047,7 @@ impl Render for LevelEditorPanel {
                     TransformTool::Rotate => SceneGizmoType::Rotate,
                     TransformTool::Scale => SceneGizmoType::Scale,
                 };
-                drop(state);
 
-                if gpui_selected != helio_renderer.scene_db.get_selected_id() {
-                    helio_renderer.scene_db.select_object(gpui_selected.clone());
-                }
                 if gizmo_type != helio_renderer.scene_db.get_gizmo_state().gizmo_type {
                     helio_renderer.scene_db.set_gizmo_type(gizmo_type);
                 }

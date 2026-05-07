@@ -615,9 +615,65 @@ impl HelioRenderer {
         }
     }
 
-    /// Get the currently selected object ID.
+    /// Get the currently selected object ID (Helio internal ID).
     pub fn get_selected_object(&self) -> Option<helio::SceneActorId> {
         self.inner.as_ref()?.editor_state.selected()
+    }
+
+    /// Get the SceneDb ID of the currently selected object.
+    pub fn get_selected_scene_db_id(&self) -> Option<String> {
+        use helio::SceneActorId;
+        let selected = self.inner.as_ref()?.editor_state.selected()?;
+
+        // Extract ObjectId from SceneActorId
+        let helio_obj_id = match selected {
+            SceneActorId::Object(obj_id) => obj_id,
+            _ => return None, // Not an object (maybe a light or camera)
+        };
+
+        // Reverse lookup in object_map
+        for (scene_db_id, (obj_id, _)) in &self.inner.as_ref()?.object_map {
+            if *obj_id == helio_obj_id {
+                return Some(scene_db_id.clone());
+            }
+        }
+        None
+    }
+
+    /// Select an object by its SceneDb ID.
+    /// Returns true if the object was found and selected, false otherwise.
+    pub fn select_by_scene_db_id(&mut self, scene_db_id: &str) -> bool {
+        use helio::SceneActorId;
+        let Some(inner) = &mut self.inner else {
+            return false;
+        };
+
+        // Look up the Helio ObjectId from the scene_db_id
+        if let Some((helio_obj_id, _)) = inner.object_map.get(scene_db_id) {
+            inner
+                .editor_state
+                .select(SceneActorId::Object(*helio_obj_id));
+            tracing::info!(
+                "[HELIO] Selected object by SceneDb ID: {} -> {:?}",
+                scene_db_id,
+                helio_obj_id
+            );
+            true
+        } else {
+            tracing::warn!(
+                "[HELIO] Failed to select object by SceneDb ID: {} (not found in object_map)",
+                scene_db_id
+            );
+            false
+        }
+    }
+
+    /// Deselect the currently selected object.
+    pub fn deselect(&mut self) {
+        if let Some(inner) = &mut self.inner {
+            inner.editor_state.deselect();
+            tracing::info!("[HELIO] Deselected");
+        }
     }
 
     /// Build a ray from normalized cursor position for object picking.
