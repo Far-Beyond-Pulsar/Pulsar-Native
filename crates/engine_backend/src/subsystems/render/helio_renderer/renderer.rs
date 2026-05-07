@@ -676,6 +676,38 @@ impl HelioRenderer {
         }
     }
 
+    /// Atomically select an object by SceneDb ID in both SceneDb and Helio EditorState.
+    /// This ensures both systems are always in sync without needing a reconciliation loop.
+    /// Returns true if the object was found and selected.
+    pub fn select_object_atomic(&mut self, scene_db_id: Option<String>) -> bool {
+        use helio::SceneActorId;
+
+        // First update SceneDb (single source of truth for object list)
+        self.scene_db.select_object(scene_db_id.clone());
+
+        // Then update Helio EditorState (for gizmo rendering)
+        let Some(inner) = &mut self.inner else {
+            return false;
+        };
+
+        if let Some(ref id) = scene_db_id {
+            // Look up the Helio ObjectId from the scene_db_id
+            if let Some((helio_obj_id, _)) = inner.object_map.get(id) {
+                inner.editor_state.select(SceneActorId::Object(*helio_obj_id));
+                tracing::info!("[ATOMIC] Selected object: {} -> {:?}", id, helio_obj_id);
+                true
+            } else {
+                tracing::warn!("[ATOMIC] Object not found in object_map: {}", id);
+                false
+            }
+        } else {
+            // Deselect in both
+            inner.editor_state.deselect();
+            tracing::info!("[ATOMIC] Deselected");
+            true
+        }
+    }
+
     /// Build a ray from normalized cursor position for object picking.
     /// `norm_x` and `norm_y` are in [0.0, 1.0] relative to the viewport.
     /// This is DPI-agnostic: both GPUI logical coords and physical pixels normalize the same way.
@@ -697,27 +729,62 @@ impl HelioRenderer {
     /// Handle left-click for object selection or gizmo dragging.
     /// `norm_x`/`norm_y` must be in [0.0, 1.0] relative to the viewport area.
     pub fn handle_left_click(&mut self, norm_x: f32, norm_y: f32) {
+        use helio::SceneActorId;
         let (ray_o, ray_d) = self.build_pick_ray(norm_x, norm_y);
-        let Some(inner) = &mut self.inner else { return };
 
-        // Try to start gizmo drag first.
-        if !inner
-            .editor_state
-            .try_start_drag(ray_o, ray_d, inner.renderer.scene())
-        {
-            // No gizmo hit — do object picking.
-            // The picker is kept warm (rebuild_instances is called after scene mutations);
-            // no need to rebuild on every click.
-            if let Some(hit) = inner
-                .scene_picker
-                .cast_ray(inner.renderer.scene(), ray_o, ray_d)
+        // Determine what to select (if anything) by doing raycast and lookup
+        let selection_target: Option<Option<String>> = {
+            let Some(inner) = &mut self.inner else { return };
+
+            // Try to start gizmo drag first.
+            if inner
+                .editor_state
+                .try_start_drag(ray_o, ray_d, inner.renderer.scene())
             {
-                inner.editor_state.select(hit.actor_id);
-                tracing::info!("[HELIO] Selected object: {:?}", hit.actor_id);
+                // Gizmo drag started - don't change selection
+                None
             } else {
-                inner.editor_state.deselect();
-                tracing::info!("[HELIO] Deselected");
+                // No gizmo hit — do object picking.
+                if let Some(hit) = inner
+                    .scene_picker
+                    .cast_ray(inner.renderer.scene(), ray_o, ray_d)
+                {
+                    // Extract Helio ObjectId from SceneActorId
+                    if let SceneActorId::Object(helio_obj_id) = hit.actor_id {
+                        // Look up SceneDb ID from object_map
+                        if let Some((scene_db_id, _)) = inner
+                            .object_map
+                            .iter()
+                            .find(|(_, (obj_id, _))| *obj_id == helio_obj_id)
+                            .map(|(id, ids)| (id.clone(), ids))
+                        {
+                            // Found object - select it atomically
+                            Some(Some(scene_db_id))
+                        } else {
+                            // Object not in map (shouldn't happen), just select in Helio
+                            inner.editor_state.select(hit.actor_id);
+                            tracing::warn!(
+                                "[VIEWPORT] Selected object not in object_map: {:?}",
+                                helio_obj_id
+                            );
+                            None
+                        }
+                    } else {
+                        // Not an object (light, camera, etc.) - just select in Helio
+                        inner.editor_state.select(hit.actor_id);
+                        tracing::info!("[VIEWPORT] Selected non-object actor: {:?}", hit.actor_id);
+                        None
+                    }
+                } else {
+                    // No hit - deselect
+                    Some(None)
+                }
             }
+        };
+
+        // Now apply the selection atomically (if needed)
+        if let Some(target) = selection_target {
+            self.select_object_atomic(target);
         }
     }
 

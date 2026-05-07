@@ -1002,40 +1002,23 @@ impl Render for LevelEditorPanel {
         // Initialize workspace on first render
         self.initialize_workspace(window, cx);
 
-        // Sync selection and gizmo tool state between UI and backend (bidirectional).
+        // Sync gizmo tool state and hierarchy selection to Helio.
+        // NOTE: Viewport clicks use atomic selection (select_object_atomic) which updates
+        // both SceneDb and Helio immediately, so no sync needed for those.
+        // Hierarchy clicks only update SceneDb, so we sync SceneDb → Helio here (one-way).
         if let Ok(mut engine_guard) = self.gpu_engine.try_lock() {
             if let Some(ref mut helio_renderer) = engine_guard.helio_renderer {
-                let mut state = self.shared_state.write();
-                let ui_selected = state.selected_object();
-                let scene_db_selected = helio_renderer.scene_db.get_selected_id();
+                let state = self.shared_state.read();
 
-                // Check if Helio's viewport selection changed (from clicking in 3D view)
+                // Simple one-way sync: SceneDb → Helio (for hierarchy clicks and UI updates)
+                let scene_db_selected = helio_renderer.scene_db.get_selected_id();
                 let helio_selected = helio_renderer.get_selected_scene_db_id();
 
-                // Determine the source of truth based on what changed
-                if helio_selected != scene_db_selected {
-                    // Helio changed (user clicked in viewport) - sync to UI
-                    if let Some(ref helio_id) = helio_selected {
-                        state.select_object(Some(helio_id.clone()));
-                        helio_renderer
-                            .scene_db
-                            .select_object(Some(helio_id.clone()));
-                        tracing::info!("[SYNC] Viewport -> Hierarchy: {}", helio_id);
-                    } else {
-                        state.select_object(None);
-                        helio_renderer.scene_db.select_object(None);
-                        tracing::info!("[SYNC] Viewport -> Hierarchy: deselected");
-                    }
-                } else if ui_selected != scene_db_selected {
-                    // UI changed (user clicked in hierarchy) - sync to viewport
-                    if let Some(ref ui_id) = ui_selected {
-                        helio_renderer.select_by_scene_db_id(ui_id);
-                        helio_renderer.scene_db.select_object(Some(ui_id.clone()));
-                        tracing::info!("[SYNC] Hierarchy -> Viewport: {}", ui_id);
+                if scene_db_selected != helio_selected {
+                    if let Some(ref db_id) = scene_db_selected {
+                        helio_renderer.select_by_scene_db_id(db_id);
                     } else {
                         helio_renderer.deselect();
-                        helio_renderer.scene_db.select_object(None);
-                        tracing::info!("[SYNC] Hierarchy -> Viewport: deselected");
                     }
                 }
 
