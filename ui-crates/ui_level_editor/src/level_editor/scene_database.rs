@@ -647,6 +647,52 @@ impl SceneDatabase {
         self.metadata_db.get_components(object_id)
     }
 
+    /// Set the parent of a component (for hierarchical organization)
+    pub fn set_component_parent(
+        &self,
+        object_id: &EditorObjectId,
+        component_index: usize,
+        parent_index: Option<usize>,
+    ) {
+        let mut components = self.get_components(object_id);
+        if component_index >= components.len() {
+            return;
+        }
+
+        // Prevent cycles: a component cannot be a parent of itself or its ancestors
+        if let Some(parent_idx) = parent_index {
+            if parent_idx == component_index {
+                return;
+            }
+            // TODO: Add cycle detection for deeper hierarchies
+        }
+
+        // Update the component's data to include parent_index
+        let component = &mut components[component_index];
+        let mut data = component.data.as_object().cloned().unwrap_or_default();
+
+        if let Some(parent_idx) = parent_index {
+            data.insert("__parent_index".to_string(), serde_json::json!(parent_idx));
+        } else {
+            data.remove("__parent_index");
+        }
+
+        component.data = serde_json::Value::Object(data);
+
+        // Clear and re-add all components with updated data
+        while !self.get_components(object_id).is_empty() {
+            self.remove_component(object_id, 0);
+        }
+
+        for component in components {
+            self.add_component(
+                object_id,
+                component.class_name.clone(),
+                component.data.clone(),
+            );
+        }
+    }
+
     // ── Persistence ────────────────────────────────────────────────────────
 
     /// Serialize the scene to a JSON level file.

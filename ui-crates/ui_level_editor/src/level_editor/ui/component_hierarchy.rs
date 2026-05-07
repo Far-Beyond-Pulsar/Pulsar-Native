@@ -5,6 +5,7 @@
 
 use engine_backend::ComponentInstance;
 use gpui::{prelude::*, *};
+use std::collections::HashSet;
 use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
@@ -17,6 +18,7 @@ use ui::{
 };
 
 use crate::level_editor::scene_database::SceneDatabase;
+use crate::level_editor::ui::state::LevelEditorState;
 
 // ── Drag Payload ──────────────────────────────────────────────────────────────
 
@@ -60,12 +62,58 @@ impl ComponentHierarchyPanel {
         }
     }
 
-    pub fn render<V>(&self, add_button: AnyElement, cx: &mut Context<V>) -> impl IntoElement
+    /// Get the parent index of a component from its data
+    fn get_parent_index(&self, component: &ComponentInstance) -> Option<usize> {
+        component
+            .data
+            .get("__parent_index")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+    }
+
+    /// Get child components of a given component index
+    fn get_children(&self, components: &[ComponentInstance], parent_index: usize) -> Vec<usize> {
+        components
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, comp)| {
+                if self.get_parent_index(comp) == Some(parent_index) {
+                    Some(idx)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// Get root-level components (those without parents)
+    fn get_root_components(&self, components: &[ComponentInstance]) -> Vec<usize> {
+        components
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, comp)| {
+                if self.get_parent_index(comp).is_none() {
+                    Some(idx)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    pub fn render<V>(
+        &self,
+        state: &LevelEditorState,
+        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        add_button: AnyElement,
+        cx: &mut Context<V>,
+    ) -> impl IntoElement
     where
         V: 'static + Render,
     {
         let components = self.scene_db.get_components(&self.object_id);
         let component_count = components.len();
+        let object_id = self.object_id.clone();
 
         v_flex()
             .w_full()
@@ -133,9 +181,20 @@ impl ComponentHierarchyPanel {
                                 .child("No components — click + to add"),
                         )
                     })
-                    .children(components.iter().enumerate().map(|(idx, component)| {
-                        self.render_component_tree_item(idx, component, 0, cx)
-                    })),
+                    .children({
+                        let root_indices = self.get_root_components(&components);
+                        root_indices.into_iter().map(|idx| {
+                            self.render_component_tree_item(
+                                idx,
+                                &components[idx],
+                                &components,
+                                0,
+                                state,
+                                state_arc.clone(),
+                                cx,
+                            )
+                        })
+                    }),
             )
     }
 
@@ -143,7 +202,10 @@ impl ComponentHierarchyPanel {
         &self,
         idx: usize,
         component: &ComponentInstance,
+        all_components: &[ComponentInstance],
         depth: usize,
+        state: &LevelEditorState,
+        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
@@ -153,6 +215,7 @@ impl ComponentHierarchyPanel {
         let indent = px(depth as f32 * 20.0 + 4.0);
         let class_name = component.class_name.clone();
         let object_id = self.object_id.clone();
+        let component_key = (object_id.clone(), idx);
 
         // Text colors based on selection state
         let text_color = if is_selected {
@@ -161,9 +224,15 @@ impl ComponentHierarchyPanel {
             cx.theme().foreground
         };
 
-        // For now, components don't have children (we can add nested component support later)
-        let has_children = false;
+        // Check if this component has children
+        let children = self.get_children(all_components, idx);
+        let has_children = !children.is_empty();
+        let is_expanded = state.expanded_components.contains(&component_key);
+
+        // Expand/collapse arrow
         let expand_arrow: AnyElement = if has_children {
+            let state_for_expand = state_arc.clone();
+            let key_for_expand = component_key.clone();
             div()
                 .w_4()
                 .h_4()
@@ -171,10 +240,24 @@ impl ComponentHierarchyPanel {
                 .items_center()
                 .justify_center()
                 .rounded(px(2.0))
+                .cursor_pointer()
+                .hover(|s| s.bg(cx.theme().muted.opacity(0.5)))
+                .on_mouse_down(MouseButton::Left, move |_, _, _| {
+                    let mut state_write = state_for_expand.write();
+                    if state_write.expanded_components.contains(&key_for_expand) {
+                        state_write.expanded_components.remove(&key_for_expand);
+                    } else {
+                        state_write.expanded_components.insert(key_for_expand.clone());
+                    }
+                })
                 .child(
-                    Icon::new(IconName::ChevronRight)
-                        .size(px(12.0))
-                        .text_color(cx.theme().muted_foreground),
+                    Icon::new(if is_expanded {
+                        IconName::ChevronDown
+                    } else {
+                        IconName::ChevronRight
+                    })
+                    .size(px(12.0))
+                    .text_color(cx.theme().muted_foreground),
                 )
                 .into_any_element()
         } else {
@@ -188,19 +271,27 @@ impl ComponentHierarchyPanel {
             component_name: class_name.clone(),
         };
 
-        // Drop area for reordering
+        // Drop area for reordering and nesting
         let scene_db_for_drop = self.scene_db.clone();
         let obj_id_for_drop = object_id.clone();
+        let drop_target_idx = idx;
 
         DropArea::<ComponentDragPayload>::new(format!("component-drop-{}", idx))
-            .on_drop(move |payload, _window, _cx| {
-                // Only allow reordering within the same object
-                if payload.object_id == obj_id_for_drop {
-                    let from_idx = payload.component_index;
-                    let to_idx = idx;
-                    if from_idx != to_idx {
-                        scene_db_for_drop.reorder_component(&obj_id_for_drop, from_idx, to_idx);
-                    }
+            .on_drop(move |payload, window, _cx| {
+                // Only allow operations within the same object
+                if payload.object_id != obj_id_for_drop {
+                    return;
+                }
+
+                let from_idx = payload.component_index;
+                let to_idx = drop_target_idx;
+
+                // Check if modifier keys are pressed to determine operation
+                // TODO: Implement proper modifier key detection
+                // For now: if dropping onto same component, do nothing
+                // Otherwise, reorder at same level
+                if from_idx != to_idx {
+                    scene_db_for_drop.reorder_component(&obj_id_for_drop, from_idx, to_idx);
                 }
             })
             .child(
@@ -270,5 +361,19 @@ impl ComponentHierarchyPanel {
                             }),
                     ),
             )
+            // Recursively render children if expanded
+            .when(has_children && is_expanded, |parent| {
+                parent.children(children.into_iter().map(|child_idx| {
+                    self.render_component_tree_item(
+                        child_idx,
+                        &all_components[child_idx],
+                        all_components,
+                        depth + 1,
+                        state,
+                        state_arc.clone(),
+                        cx,
+                    )
+                }))
+            })
     }
 }

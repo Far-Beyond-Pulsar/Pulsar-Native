@@ -1,11 +1,13 @@
 use gpui::{prelude::*, *};
 use pulsar_reflection::{PropertyType, PropertyValue, REGISTRY};
 use serde_json::Value;
+use std::sync::Arc;
 use ui::button::ButtonVariants as _;
 use ui::popover::Popover;
 use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
 
 use super::add_component_dialog::AddComponentDialog;
+use super::state::LevelEditorState;
 use super::ComponentHierarchyPanel;
 use crate::level_editor::scene_database::{ObjectType, SceneDatabase};
 
@@ -16,12 +18,15 @@ pub struct ObjectTypeFieldsSection {
     selected_component: Option<usize>,
     /// Add component dialog entity
     add_component_dialog: Entity<AddComponentDialog>,
+    /// Shared state for expand/collapse tracking
+    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
 }
 
 impl ObjectTypeFieldsSection {
     pub fn new(
         object_id: String,
         scene_db: SceneDatabase,
+        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -47,6 +52,7 @@ impl ObjectTypeFieldsSection {
             scene_db,
             selected_component: None,
             add_component_dialog,
+            state_arc,
         }
     }
 
@@ -534,8 +540,9 @@ impl Render for ObjectTypeFieldsSection {
 
         let component_hierarchy =
             ComponentHierarchyPanel::new(self.object_id.clone(), self.scene_db.clone());
+        let state = self.state_arc.read();
         let component_panel = component_hierarchy
-            .render(add_popover, cx)
+            .render(&state, self.state_arc.clone(), add_popover, cx)
             .into_any_element();
 
         // ── Property sections for every attached component ─────────────────

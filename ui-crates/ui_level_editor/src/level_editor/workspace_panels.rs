@@ -331,6 +331,7 @@ impl Render for PropertiesPanelWrapper {
                     ObjectTypeFieldsSection::new(
                         object_id_clone.clone(),
                         scene_db.clone(),
+                        self.state.clone(),
                         window,
                         cx,
                     )
