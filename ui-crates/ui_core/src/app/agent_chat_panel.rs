@@ -123,7 +123,7 @@ impl AgentChatPanel {
             })
             .with_empty_text("No chats found")
             .with_max_width(px(340.0))
-            .with_max_height(px(380.0))
+            .with_max_height(px(200.0))
         });
 
         let wip_for_list = wip_providers.clone();
@@ -876,6 +876,7 @@ impl AgentChatPanel {
 
     fn chats_dir() -> PathBuf {
         std::env::current_dir()
+            .and_then(|p| p.canonicalize())
             .unwrap_or_else(|_| PathBuf::from("."))
             .join(".pulsar")
             .join("chats")
@@ -1548,20 +1549,6 @@ impl Render for AgentChatPanel {
         )
         .content(move |_window, _cx| model_list.clone());
 
-        let chat_history_popover = Popover::<SearchableList<ChatHistoryEntry>>::new(
-            "agent-chat-history-popover",
-        )
-        .anchor(Corner::TopLeft)
-        .trigger(
-            Button::new("agent-chat-history-trigger")
-                .xsmall()
-                .ghost()
-                .justify_start()
-                .label(format!("Chats: {}", current_chat_id))
-                .dropdown_caret(true),
-        )
-        .content(move |_window, _cx| chat_history_list.clone());
-
         v_flex()
             .size_full()
             .bg(cx.theme().sidebar)
@@ -1580,6 +1567,7 @@ impl Render for AgentChatPanel {
                             .w_full()
                             .items_center()
                             .gap_1()
+                            .justify_between()
                             .child(
                                 Button::new("agent-chat-new-chat")
                                     .xsmall()
@@ -1589,7 +1577,30 @@ impl Render for AgentChatPanel {
                                         this.start_new_chat(cx);
                                     })),
                             )
-                            .child(chat_history_popover),
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(format!("Current: {}", current_chat_id)),
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .w_full()
+                            .gap_1()
+                            .p_1()
+                            .rounded(px(6.0))
+                            .bg(cx.theme().background.opacity(0.65))
+                            .border_1()
+                            .border_color(cx.theme().border.opacity(0.6))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_semibold()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Chats in this project"),
+                            )
+                            .child(chat_history_list.clone()),
                     )
                     .child(
                         h_flex()
