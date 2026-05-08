@@ -877,7 +877,8 @@ impl AgentChatPanel {
     fn chats_dir() -> PathBuf {
         std::env::current_dir()
             .unwrap_or_else(|_| PathBuf::from("."))
-            .join(".ppulsar.chats")
+            .join(".pulsar")
+            .join("chats")
     }
 
     fn ensure_chats_dir() -> Option<PathBuf> {
