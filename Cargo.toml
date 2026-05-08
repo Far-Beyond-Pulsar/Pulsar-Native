@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/*",
+    "agent-providers/*",
     "ui-crates/*",
 ]
 
@@ -32,7 +33,7 @@ ttf-parser = { opt-level = 3 }
 [workspace.dependencies]
 
 # ---------- GPUI (WGPUI) ----------
-gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "415f90086887dd17114b2ba24c3c42710fedabad" }
+gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "1f6f3843e8bea050ed3882b45b5ca1d433adf61f" }
 
 # ---------- Core Engine ----------
 ui                    = { path = "crates/ui" }
@@ -50,6 +51,17 @@ window_manager        = { path = "crates/window_manager" }
 blueprint_compiler    = { path = "crates/blueprint_compiler" }
 pulsar_graph          = { path = "crates/pulsar_graph" }
 pulsar_replication    = { path = "crates/pulsar_replication" }
+agent_chat_core       = { path = "agent-providers/agent_chat_core" }
+agent_chat_tools      = { path = "agent-providers/agent_chat_tools" }
+agent_provider_demo_random = { path = "agent-providers/agent_provider_demo_random" }
+agent_provider_github_copilot = { path = "agent-providers/agent_provider_github_copilot" }
+agent_provider_openai = { path = "agent-providers/agent_provider_openai" }
+agent_provider_anthropic = { path = "agent-providers/agent_provider_anthropic" }
+agent_provider_openrouter = { path = "agent-providers/agent_provider_openrouter" }
+agent_provider_groq = { path = "agent-providers/agent_provider_groq" }
+agent_provider_together = { path = "agent-providers/agent_provider_together" }
+agent_provider_mistral = { path = "agent-providers/agent_provider_mistral" }
+agent_provider_gemini = { path = "agent-providers/agent_provider_gemini" }
 
 # ---------- Reflection System ----------
 pulsar_reflection     = { path = "crates/pulsar_reflection" }

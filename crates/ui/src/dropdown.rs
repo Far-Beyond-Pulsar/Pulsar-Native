@@ -16,6 +16,11 @@ use crate::{
     StyleSized, StyledExt,
 };
 
+mod searchable_list;
+pub use searchable_list::{
+    SearchableList, SearchableListEvent, SearchableListItemAction, SearchableListItemState,
+};
+
 #[derive(Clone)]
 pub enum ListEvent {
     /// Single click or move to selected row.

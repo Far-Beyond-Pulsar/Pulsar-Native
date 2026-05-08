@@ -640,8 +640,6 @@ impl TabPanel {
             .child(
                 div()
                     .id("tab-content")
-                    .overflow_y_scroll()
-                    .overflow_x_hidden()
                     .flex_1()
                     .child(
                         active_panel
@@ -718,7 +716,6 @@ impl Render for TabPanel {
             .track_focus(&focus_handle)
             .tab_group()
             .size_full()
-            .overflow_hidden()
             // NO BACKGROUND - allow transparency for viewports
             .child(self.render_title_bar(&state, window, cx))
             .child(self.render_active_panel(&state, window, cx))

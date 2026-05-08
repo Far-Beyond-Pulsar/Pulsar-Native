@@ -1,13 +1,24 @@
-use std::{collections::HashMap, ops::Range};
+use std::{
+    collections::{hash_map::DefaultHasher, HashMap},
+    hash::{Hash, Hasher},
+    ops::Range,
+    sync::Arc,
+    time::Duration,
+};
 
 use gpui::{
     div, img, prelude::FluentBuilder as _, px, relative, rems, AnyElement, App, AppContext as _,
-    DefiniteLength, Div, ElementId, Entity, FontStyle, FontWeight, Half, HighlightStyle,
-    InteractiveElement as _, IntoElement, Length, ObjectFit, ParentElement, SharedString,
-    SharedUri, StatefulInteractiveElement, Styled, StyledImage as _, Window,
+    ClipboardItem, DefiniteLength, Div, ElementId, Entity, FontStyle, FontWeight, Half,
+    HighlightStyle, Image, ImageFormat, ImageSource, InteractiveElement as _, IntoElement,
+    Length, MouseButton, ObjectFit, ParentElement, RenderImage, SharedString, SharedUri,
+    StatefulInteractiveElement, Styled, StyledImage as _, Window,
 };
 use markdown::mdast;
+use once_cell::sync::Lazy;
+use regex;
 use ropey::Rope;
+use resvg::{tiny_skia, usvg};
+use std::sync::Mutex;
 
 use crate::{
     h_flex,
@@ -18,6 +29,16 @@ use crate::{
 };
 
 use super::{utils::list_item_prefix, TextViewStyle};
+
+static SVG_RENDER_CACHE: Lazy<Mutex<HashMap<(u64, u16), Arc<CachedSvgImage>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+#[derive(Clone)]
+struct CachedSvgImage {
+    image: Arc<RenderImage>,
+    width_px: f32,
+    height_px: f32,
+}
 
 #[allow(unused)]
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -83,6 +104,11 @@ pub struct ImageNode {
     pub link: Option<LinkMark>,
     pub title: Option<SharedString>,
     pub alt: Option<SharedString>,
+    pub math_tex: Option<SharedString>,
+    pub math_svg: Option<SharedString>,
+    pub math_display_mode: bool,
+    pub mermaid_code: Option<SharedString>,
+    pub mermaid_svg: Option<SharedString>,
     pub width: Option<DefiniteLength>,
     pub height: Option<DefiniteLength>,
 }
@@ -102,6 +128,11 @@ impl PartialEq for ImageNode {
             && self.link == other.link
             && self.title == other.title
             && self.alt == other.alt
+            && self.math_tex == other.math_tex
+            && self.math_svg == other.math_svg
+            && self.math_display_mode == other.math_display_mode
+            && self.mermaid_code == other.mermaid_code
+            && self.mermaid_svg == other.mermaid_svg
             && self.width == other.width
             && self.height == other.height
     }
@@ -184,6 +215,14 @@ impl Paragraph {
         let mut text = String::new();
 
         for c in self.children.iter() {
+            if let Some(image) = &c.image {
+                if let Some(alt) = &image.alt {
+                    text.push_str(alt);
+                } else if let Some(title) = &image.title {
+                    text.push_str(title);
+                }
+            }
+
             if let Some(state) = &c.state {
                 let state = state.read(cx);
                 if let Some(selection) = &state.selection {
@@ -308,11 +347,14 @@ pub(crate) struct CodeBlock {
     lang: Option<SharedString>,
     styles: Vec<(Range<usize>, HighlightStyle)>,
     code: SharedString,
+    code_font_family: SharedString,
 }
 
 impl PartialEq for CodeBlock {
     fn eq(&self, other: &Self) -> bool {
-        self.lang == other.lang && self.styles == other.styles
+        self.lang == other.lang
+            && self.styles == other.styles
+            && self.code_font_family == other.code_font_family
     }
 }
 
@@ -320,7 +362,7 @@ impl CodeBlock {
     pub(crate) fn new(
         code: SharedString,
         lang: Option<SharedString>,
-        _: &TextViewStyle,
+        style: &TextViewStyle,
         highlight_theme: &HighlightTheme,
     ) -> Self {
         let mut styles = vec![];
@@ -330,7 +372,12 @@ impl CodeBlock {
             styles = highlighter.styles(&(0..code.len()), highlight_theme);
         };
 
-        Self { lang, styles, code }
+        Self {
+            lang,
+            styles,
+            code,
+            code_font_family: style.code_font_family.clone(),
+        }
     }
 
     fn code(&self) -> SharedString {
@@ -342,27 +389,22 @@ impl CodeBlock {
         String::new()
     }
 
-    fn render(&self, node_cx: &NodeContext, _: &mut Window, cx: &mut App) -> AnyElement {
+    fn render(&self, node_cx: &NodeContext, window: &mut Window, cx: &mut App) -> AnyElement {
         let style = &node_cx.style;
         let code = self.code();
+        let code_font_family = self.code_font_family.clone();
+        let copy_code = code.clone();
+        let view_id = window.current_view();
+
+        let mut hasher = DefaultHasher::new();
+        code.hash(&mut hasher);
+        self.lang.hash(&mut hasher);
+        let copy_state_id = SharedString::from(format!("md-code-copy-{}", hasher.finish()));
+        let copied_state = window.use_keyed_state(copy_state_id, cx, |_, _| false);
+        let copied = *copied_state.read(cx);
 
         // Split code into lines to preserve line breaks (StyledText doesn't preserve \n)
         let lines: Vec<&str> = code.as_str().lines().collect();
-
-        // If code is empty or has no lines, render empty block
-        if lines.is_empty() {
-            return v_flex()
-                .id("codeblock")
-                .mb(style.paragraph_gap)
-                .p_3()
-                .rounded(cx.theme().radius)
-                .bg(cx.theme().secondary.opacity(0.85))
-                .font_family("Menlo, Monaco, Consolas, monospace")
-                .text_size(rems(0.875))
-                .relative()
-                .refine_style(&style.code_block)
-                .into_any_element();
-        }
 
         // Render each line as a separate Inline element to preserve line breaks
         let mut line_elements = Vec::new();
@@ -372,12 +414,10 @@ impl CodeBlock {
             let line_len = line.len();
             let line_end = current_offset + line_len;
 
-            // Filter and remap highlights that apply to this line
             let line_highlights: Vec<(Range<usize>, HighlightStyle)> = self
                 .styles
                 .iter()
                 .filter_map(|(range, style)| {
-                    // Check if this highlight overlaps with current line
                     if range.start < line_end && range.end > current_offset {
                         let start = range.start.saturating_sub(current_offset).min(line_len);
                         let end = (range.end - current_offset).min(line_len);
@@ -392,7 +432,6 @@ impl CodeBlock {
                 })
                 .collect();
 
-            // Create entity for this line
             let text: SharedString = line.to_string().into();
             let line_entity = cx.new(|_| {
                 let mut s = InlineState::default();
@@ -412,18 +451,65 @@ impl CodeBlock {
             current_offset = line_end + 1;
         }
 
-        v_flex()
+        let copy_button = div()
+            .absolute()
+            .top_2()
+            .right_2()
+            .px_2()
+            .py_1()
+            .rounded(px(6.0))
+            .border_1()
+            .border_color(cx.theme().border)
+            .bg(if copied {
+                cx.theme().primary.opacity(0.18)
+            } else {
+                cx.theme().background.opacity(0.95)
+            })
+            .text_xs()
+            .text_color(if copied {
+                cx.theme().primary
+            } else {
+                cx.theme().muted_foreground
+            })
+            .cursor_pointer()
+            .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                cx.stop_propagation();
+                cx.write_to_clipboard(ClipboardItem::new_string(copy_code.to_string()));
+                _ = copied_state.update(cx, |copied, _| *copied = true);
+                cx.notify(view_id);
+
+                cx.spawn({
+                    let copied_state = copied_state.clone();
+                    async move |cx| {
+                        cx.background_executor()
+                            .timer(Duration::from_millis(850))
+                            .await;
+                        _ = copied_state.update(cx, |copied, _| *copied = false);
+                        cx.update(|cx| cx.notify(view_id)).ok();
+                    }
+                })
+                .detach();
+            })
+            .child(if copied { "Copied" } else { "Copy" });
+
+        let code_box = v_flex()
             .id("codeblock")
             .mb(style.paragraph_gap)
             .p_3()
-            .rounded(cx.theme().radius)
+            .rounded(px(10.0))
+            .border_1()
+            .border_color(cx.theme().border)
             .bg(cx.theme().secondary.opacity(0.85))
-            .font_family("Menlo, Monaco, Consolas, monospace")
+            .font_family(code_font_family)
             .text_size(rems(0.875))
             .relative()
-            .refine_style(&style.code_block)
-            .children(line_elements)
-            .into_any_element()
+            .refine_style(&style.code_block);
+
+        if line_elements.is_empty() {
+            code_box.child(copy_button).into_any_element()
+        } else {
+            code_box.children(line_elements).child(copy_button).into_any_element()
+        }
     }
 }
 
@@ -580,13 +666,93 @@ impl Node {
 }
 
 impl Paragraph {
+    fn colorize_svg(svg: &str, text_color: gpui::Hsla) -> String {
+        let rgba: gpui::Rgba = text_color.into();
+        let r = (rgba.r * 255.0).round().clamp(0.0, 255.0) as u8;
+        let g = (rgba.g * 255.0).round().clamp(0.0, 255.0) as u8;
+        let b = (rgba.b * 255.0).round().clamp(0.0, 255.0) as u8;
+        let a = rgba.a.clamp(0.0, 1.0);
+        let css_color = format!("rgba({r}, {g}, {b}, {a:.3})");
+        svg.replace("currentColor", &css_color)
+    }
+
+    fn strip_background_from_svg(svg: &str) -> String {
+        // Remove background rectangles from Mermaid SVGs
+        // Match <rect ...> elements that appear to be backgrounds
+        let re = regex::Regex::new(r#"<rect[^>]*\s+(?:x="0"[^>]*y="0"|y="0"[^>]*x="0")[^>]*>"#)
+            .unwrap_or_else(|_| regex::Regex::new(r#"<rect[^>]*>"#).unwrap());
+        re.replace_all(svg, "").to_string()
+    }
+
+    fn render_cached_svg(
+        svg: &str,
+        text_color: gpui::Hsla,
+        raster_scale: f32,
+        colorize: bool,
+    ) -> Option<Arc<CachedSvgImage>> {
+        let mut svg_to_render = if colorize {
+            Self::colorize_svg(svg, text_color)
+        } else {
+            // Strip background from Mermaid diagrams
+            Self::strip_background_from_svg(svg)
+        };
+        let scale_key = (raster_scale * 100.0).round().clamp(1.0, u16::MAX as f32) as u16;
+
+        let mut hasher = DefaultHasher::new();
+        svg_to_render.hash(&mut hasher);
+        let svg_hash = hasher.finish();
+
+        if let Some(cached) = SVG_RENDER_CACHE
+            .lock()
+            .ok()?
+            .get(&(svg_hash, scale_key))
+            .cloned()
+        {
+            return Some(cached);
+        }
+
+        let options = usvg::Options::default();
+        let tree = usvg::Tree::from_str(&svg_to_render, &options).ok()?;
+        let logical_size = tree.size();
+        let width_px = logical_size.width();
+        let height_px = logical_size.height();
+        let raster_width = (width_px * raster_scale).ceil().max(1.0) as u32;
+        let raster_height = (height_px * raster_scale).ceil().max(1.0) as u32;
+
+        let mut pixmap = tiny_skia::Pixmap::new(raster_width, raster_height)?;
+        resvg::render(
+            &tree,
+            tiny_skia::Transform::from_scale(raster_scale, raster_scale),
+            &mut pixmap.as_mut(),
+        );
+
+        let png_bytes = pixmap.encode_png().ok()?;
+        let rgba = image::load_from_memory(&png_bytes).ok()?.into_rgba8();
+        let frame = image::Frame::new(rgba);
+        let cached = Arc::new(CachedSvgImage {
+            image: Arc::new(RenderImage::new(smallvec::smallvec![frame])),
+            width_px,
+            height_px,
+        });
+
+        if let Ok(mut cache) = SVG_RENDER_CACHE.lock() {
+            cache.insert((svg_hash, scale_key), cached.clone());
+        }
+
+        Some(cached)
+    }
+
     fn render(
         &mut self,
         node_cx: &NodeContext,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut App,
     ) -> impl IntoElement {
         let span = self.span;
+        let text_color = window.text_style().color;
+        let text_size = window.text_style().font_size.to_pixels(window.rem_size());
+        let text_size_px: f32 = text_size.into();
+        let raster_scale = ((text_size_px / 16.0).max(1.0) * 2.0).clamp(2.0, 4.0);
 
         let mut child_nodes: Vec<AnyElement> = vec![];
 
@@ -619,15 +785,73 @@ impl Paragraph {
                         .into_any_element(),
                     );
                 }
-                child_nodes.push(
-                    img(image.url.as_ref())
+                let image_node = image;
+                let image_element = if let Some(svg) = image_node
+                    .math_svg
+                    .as_ref()
+                    .or(image_node.mermaid_svg.as_ref())
+                {
+                    let is_math = image_node.math_svg.is_some();
+                    let colored_svg = if is_math {
+                        Self::colorize_svg(svg, text_color)
+                    } else {
+                        svg.to_string()
+                    };
+
+                    if let Some(rendered) = Self::render_cached_svg(svg, text_color, raster_scale, is_math) {
+                        img(ImageSource::Render(rendered.image.clone()))
+                            .id(ix)
+                            .object_fit(ObjectFit::Contain)
+                            .w(px(rendered.width_px))
+                            .h(px(rendered.height_px))
+                            .when_some(image_node.width, |this, width| this.w(width))
+                            .when_some(image_node.height, |this, height| this.h(height))
+                            .when_some(image_node.link.clone(), |this, link| {
+                                let title = image_node.title();
+                                this.cursor_pointer()
+                                    .tooltip(move |window, cx| {
+                                        Tooltip::new(title.clone()).build(window, cx)
+                                    })
+                                    .on_click(move |_, _, cx| {
+                                        cx.stop_propagation();
+                                        cx.open_url(&link.url);
+                                    })
+                            })
+                            .into_any_element()
+                    } else {
+                        // Fallback to GPUI SVG decoding if rasterization fails.
+                        let image = std::sync::Arc::new(Image::from_bytes(
+                            ImageFormat::Svg,
+                            colored_svg.as_bytes().to_vec(),
+                        ));
+
+                        img(image)
+                            .id(ix)
+                            .object_fit(ObjectFit::Contain)
+                            .when_some(image_node.width, |this, width| this.w(width))
+                            .when_some(image_node.height, |this, height| this.h(height))
+                            .when_some(image_node.link.clone(), |this, link| {
+                                let title = image_node.title();
+                                this.cursor_pointer()
+                                    .tooltip(move |window, cx| {
+                                        Tooltip::new(title.clone()).build(window, cx)
+                                    })
+                                    .on_click(move |_, _, cx| {
+                                        cx.stop_propagation();
+                                        cx.open_url(&link.url);
+                                    })
+                            })
+                            .into_any_element()
+                    }
+                } else {
+                    img(image_node.url.as_ref())
                         .id(ix)
                         .object_fit(ObjectFit::Contain)
                         .w_full()
-                        .when_some(image.width, |this, width| this.w(width))
-                        .when_some(image.height, |this, height| this.h(height))
-                        .when_some(image.link.clone(), |this, link| {
-                            let title = image.title();
+                        .when_some(image_node.width, |this, width| this.w(width))
+                        .when_some(image_node.height, |this, height| this.h(height))
+                        .when_some(image_node.link.clone(), |this, link| {
+                            let title = image_node.title();
                             this.cursor_pointer()
                                 .tooltip(move |window, cx| {
                                     Tooltip::new(title.clone()).build(window, cx)
@@ -637,8 +861,9 @@ impl Paragraph {
                                     cx.open_url(&link.url);
                                 })
                         })
-                        .into_any_element(),
-                );
+                        .into_any_element()
+                };
+                child_nodes.push(image_element);
 
                 text.clear();
                 links.clear();
@@ -1076,12 +1301,22 @@ impl Paragraph {
                 }
 
                 if let Some(image) = &text_node.image {
-                    let alt = image.alt.clone().unwrap_or_default();
-                    let title = image
-                        .title
-                        .clone()
-                        .map_or(String::new(), |t| format!(" \"{}\"", t));
-                    text.push_str(&format!("![{}]({}{})", alt, image.url, title))
+                    if let Some(math_tex) = &image.math_tex {
+                        if image.math_display_mode {
+                            text.push_str(&format!("$$\n{}\n$$", math_tex));
+                        } else {
+                            text.push_str(&format!("${}$", math_tex));
+                        }
+                    } else if let Some(mermaid_code) = &image.mermaid_code {
+                        text.push_str(&format!("```mermaid\n{}\n```", mermaid_code));
+                    } else {
+                        let alt = image.alt.clone().unwrap_or_default();
+                        let title = image
+                            .title
+                            .clone()
+                            .map_or(String::new(), |t| format!(" \"{}\"", t));
+                        text.push_str(&format!("![{}]({}{})", alt, image.url, title))
+                    }
                 }
 
                 text

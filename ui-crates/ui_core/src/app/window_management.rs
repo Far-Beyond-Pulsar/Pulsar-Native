@@ -9,6 +9,7 @@ use gpui::{
 };
 use std::path::PathBuf;
 use std::sync::Arc;
+use ui::dock::DockPlacement;
 use ui::Root;
 use ui_about::AboutWindow;
 use ui_common::open_pulsar_window;
@@ -136,6 +137,13 @@ impl PulsarApp {
 
     pub(super) fn toggle_multiplayer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         open_pulsar_window::<MultiplayerWindow>(self.state.project_path.clone(), cx);
+    }
+
+    pub(super) fn toggle_agent_chat(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.state.dock_area.update(cx, |dock, cx| {
+            dock.toggle_dock(DockPlacement::Left, window, cx);
+        });
+        cx.notify();
     }
 
     pub(super) fn toggle_plugin_manager(&mut self, _window: &mut Window, cx: &mut Context<Self>) {

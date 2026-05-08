@@ -1,4 +1,5 @@
 pub mod accessibility;
+pub mod agentic_chat;
 pub mod ai;
 pub mod animation;
 pub mod audio;
@@ -38,6 +39,7 @@ pub fn register_all(cfg: &'static ConfigManager) {
     packaging::register(cfg);
     ai::register(cfg);
     accessibility::register(cfg);
+    agentic_chat::register(cfg);
     localization::register(cfg);
     plugins::register(cfg);
     scripting::register(cfg);

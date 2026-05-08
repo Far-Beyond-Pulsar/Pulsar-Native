@@ -1,5 +1,8 @@
 use crate::{
-    h_flex, text::Text, tooltip::Tooltip, ActiveTheme, Disableable, Side, Sizable, Size, StyledExt,
+    h_flex,
+    text::Text,
+    tooltip::{HoverTooltip, Tooltip},
+    ActiveTheme, Disableable, Side, Sizable, Size, StyledExt,
 };
 use gpui::{
     div, prelude::FluentBuilder as _, px, Animation, AnimationExt as _, App, ElementId,
@@ -122,8 +125,12 @@ impl RenderOnce for Switch {
             cx.theme().radius
         };
 
-        div().refine_style(&self.style).child(
-            h_flex()
+        let element = div()
+            .refine_style(&self.style)
+            .relative()
+            .group("")
+            .child(
+                h_flex()
                 .id(self.id.clone())
                 .gap_2()
                 .items_start()
@@ -140,11 +147,6 @@ impl RenderOnce for Switch {
                         .border(inset)
                         .border_color(cx.theme().transparent)
                         .bg(bg)
-                        .when_some(self.tooltip.clone(), |this, tooltip| {
-                            this.tooltip(move |window, cx| {
-                                Tooltip::new(tooltip.clone()).build(window, cx)
-                            })
-                        })
                         .child(
                             // Switch Toggle
                             div()
@@ -210,6 +212,16 @@ impl RenderOnce for Switch {
                         })
                     },
                 ),
-        )
+            )
+            ;
+
+        if let Some(tooltip) = self.tooltip {
+            HoverTooltip::new((self.id.clone(), "hover-tooltip"), element, move |window, cx| {
+                Tooltip::new(tooltip.clone()).build(window, cx)
+            })
+            .into_any_element()
+        } else {
+            element.into_any_element()
+        }
     }
 }

@@ -1,13 +1,17 @@
 use crate::popup_menu::{PopupMenu, PopupMenuExt};
 use crate::{
-    h_flex, indicator::Indicator, tooltip::Tooltip, ActiveTheme, Colorize as _, Disableable,
-    FocusableExt as _, Icon, Selectable, Sizable, Size, StyleSized, StyledExt,
+    h_flex,
+    indicator::Indicator,
+    tooltip::{HoverTooltip, Tooltip},
+    ActiveTheme, Colorize as _, Disableable, FocusableExt as _, Icon, Selectable, Sizable, Size,
+    StyleSized, StyledExt,
 };
 use gpui::{
-    div, prelude::FluentBuilder as _, px, relative, Action, AnyElement, App, ClickEvent, Context,
-    Corner, Corners, Div, Edges, ElementId, Hsla, InteractiveElement, Interactivity, IntoElement,
-    ParentElement, Pixels, RenderOnce, SharedString, Stateful, StatefulInteractiveElement as _,
-    StyleRefinement, Styled, Window,
+    div, prelude::FluentBuilder as _, px, relative, Action, AnyElement, App, ClickEvent,
+    Context, Corner, Corners, Div, Edges, ElementId, Hsla,
+    InteractiveElement, Interactivity, IntoElement, ParentElement, Pixels, RenderOnce,
+    SharedString, Stateful,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, Window,
 };
 use std::rc::Rc;
 
@@ -433,8 +437,10 @@ impl RenderOnce for Button {
             .clone();
         let is_focused = focus_handle.is_focused(window);
 
-        self.base
+        let element = self.base
             .refine_style(&self.style)
+            .relative()
+            .group("")
             .when(!self.disabled, |this| {
                 this.track_focus(
                     &focus_handle
@@ -577,19 +583,23 @@ impl RenderOnce for Button {
                     .border_color(normal_style.border.opacity(0.8))
                     .text_color(normal_style.fg.opacity(0.8))
             })
-            .when_some(self.tooltip, |this, (tooltip, action)| {
-                this.tooltip(move |window, cx| {
-                    Tooltip::new(tooltip.clone())
-                        .when_some(action.clone(), |this, (action, context)| {
-                            this.action(
-                                action.boxed_clone().as_ref(),
-                                context.as_ref().map(|c| c.as_ref()),
-                            )
-                        })
-                        .build(window, cx)
-                })
+            .focus_ring(is_focused, px(0.), window, cx);
+
+        if let Some((tooltip, action)) = self.tooltip {
+            HoverTooltip::new((self.id.clone(), "hover-tooltip"), element, move |window, cx| {
+                Tooltip::new(tooltip.clone())
+                    .when_some(action.clone(), |this, (action, context)| {
+                        this.action(
+                            action.boxed_clone().as_ref(),
+                            context.as_ref().map(|c| c.as_ref()),
+                        )
+                    })
+                    .build(window, cx)
             })
-            .focus_ring(is_focused, px(0.), window, cx)
+            .into_any_element()
+        } else {
+            element.into_any_element()
+        }
     }
 }
 

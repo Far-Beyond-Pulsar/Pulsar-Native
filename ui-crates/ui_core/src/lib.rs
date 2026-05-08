@@ -9,6 +9,7 @@ rust_i18n::i18n!("locales", fallback = "en");
 pub mod actions;
 pub mod app;
 pub mod builtin_editors;
+pub mod custom_providers;
 pub mod root;
 
 // Re-export main types
@@ -17,7 +18,8 @@ pub use root::PulsarRoot;
 
 // Re-export actions
 pub use actions::{
-    OpenFile, ToggleCommandPalette, ToggleFileManager, ToggleMultiplayer, ToggleProblems,
+    OpenFile, ToggleAgentChat, ToggleCommandPalette, ToggleFileManager, ToggleMultiplayer,
+    ToggleProblems,
 };
 
 // Re-export file_utils from ui_common

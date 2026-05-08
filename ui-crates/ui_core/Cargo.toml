@@ -37,7 +37,7 @@ plugin_manager = { path = "../../crates/plugin_manager" }
 plugin_editor_api = { path = "../../crates/plugin_editor_api" }
 
 # Built-in plugins
-blueprint_editor_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints", rev = "1e24abe0392f59d024aeb69c80a281aae42a2479" }
+blueprint_editor_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints", rev = "2fd49f17e4f94a9ebc9d8ce6c13754cfc0978c45" }
 serde = { version = "1.0", features = ["derive"] }
 schemars = "1.0"
 tracing.workspace = true
@@ -45,3 +45,17 @@ smol = "2"
 futures = "0.3"
 rust-i18n.workspace = true
 serde_json = "1.0"
+anyhow.workspace = true
+agent_chat_core.workspace = true
+agent_chat_tools.workspace = true
+agent_provider_demo_random.workspace = true
+agent_provider_github_copilot.workspace = true
+agent_provider_openai.workspace = true
+agent_provider_anthropic.workspace = true
+agent_provider_openrouter.workspace = true
+agent_provider_groq.workspace = true
+agent_provider_together.workspace = true
+agent_provider_mistral.workspace = true
+agent_provider_gemini.workspace = true
+dirs = "5.0"
+rfd = "0.14"

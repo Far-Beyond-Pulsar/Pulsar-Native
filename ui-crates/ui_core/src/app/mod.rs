@@ -1,5 +1,6 @@
 //! Core application module
 
+mod agent_chat_panel;
 mod constructors;
 pub mod event_handlers;
 mod panel_window;
@@ -72,6 +73,15 @@ impl PulsarApp {
         cx: &mut Context<Self>,
     ) {
         self.toggle_flamegraph(window, cx);
+    }
+
+    fn on_toggle_agent_chat(
+        &mut self,
+        _: &ToggleAgentChat,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.toggle_agent_chat(window, cx);
     }
 
     fn on_open_file(&mut self, action: &OpenFile, window: &mut Window, cx: &mut Context<Self>) {
