@@ -4,10 +4,11 @@ use crate::{
     FocusableExt as _, Icon, Selectable, Sizable, Size, StyleSized, StyledExt,
 };
 use gpui::{
-    div, prelude::FluentBuilder as _, px, relative, Action, AnyElement, App, ClickEvent, Context,
-    Corner, Corners, Div, Edges, ElementId, Hsla, InteractiveElement, Interactivity, IntoElement,
-    ParentElement, Pixels, RenderOnce, SharedString, Stateful, StatefulInteractiveElement as _,
-    StyleRefinement, Styled, Window,
+    anchored, deferred, div, point, prelude::FluentBuilder as _, px, relative, Action,
+    AnyElement, App, ClickEvent, Context, Corner, Corners, Div, Edges, ElementId, Hsla,
+    InteractiveElement, Interactivity, IntoElement, ParentElement, Pixels, RenderOnce,
+    SharedString, Stateful,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, Window,
 };
 use std::rc::Rc;
 
@@ -435,6 +436,8 @@ impl RenderOnce for Button {
 
         self.base
             .refine_style(&self.style)
+            .relative()
+            .group("")
             .when(!self.disabled, |this| {
                 this.track_focus(
                     &focus_handle
@@ -578,16 +581,32 @@ impl RenderOnce for Button {
                     .text_color(normal_style.fg.opacity(0.8))
             })
             .when_some(self.tooltip, |this, (tooltip, action)| {
-                this.tooltip(move |window, cx| {
-                    Tooltip::new(tooltip.clone())
-                        .when_some(action.clone(), |this, (action, context)| {
-                            this.action(
-                                action.boxed_clone().as_ref(),
-                                context.as_ref().map(|c| c.as_ref()),
-                            )
-                        })
-                        .build(window, cx)
-                })
+                this.child(
+                    deferred(
+                        anchored()
+                            .snap_to_window_with_margin(px(8.))
+                            .position({
+                                let mouse = window.mouse_position();
+                                point(mouse.x + px(12.), mouse.y + px(12.))
+                            })
+                            .child(
+                                div()
+                                    .invisible()
+                                    .group_hover("", |this| this.visible())
+                                    .child(
+                                        Tooltip::new(tooltip.clone())
+                                            .when_some(action.clone(), |this, (action, context)| {
+                                                this.action(
+                                                    action.boxed_clone().as_ref(),
+                                                    context.as_ref().map(|c| c.as_ref()),
+                                                )
+                                            })
+                                            .build(window, cx),
+                                    ),
+                            ),
+                    )
+                    .with_priority(1),
+                )
             })
             .focus_ring(is_focused, px(0.), window, cx)
     }

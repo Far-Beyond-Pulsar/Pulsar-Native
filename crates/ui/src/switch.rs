@@ -2,9 +2,9 @@ use crate::{
     h_flex, text::Text, tooltip::Tooltip, ActiveTheme, Disableable, Side, Sizable, Size, StyledExt,
 };
 use gpui::{
-    div, prelude::FluentBuilder as _, px, Animation, AnimationExt as _, App, ElementId,
-    InteractiveElement, IntoElement, ParentElement as _, RenderOnce, SharedString,
-    StatefulInteractiveElement, StyleRefinement, Styled, Window,
+    anchored, deferred, div, point, prelude::FluentBuilder as _, px, Animation,
+    AnimationExt as _, App, ElementId, InteractiveElement, IntoElement, ParentElement as _,
+    RenderOnce, SharedString, StatefulInteractiveElement, StyleRefinement, Styled, Window,
 };
 use std::{rc::Rc, time::Duration};
 
@@ -122,8 +122,12 @@ impl RenderOnce for Switch {
             cx.theme().radius
         };
 
-        div().refine_style(&self.style).child(
-            h_flex()
+        div()
+            .refine_style(&self.style)
+            .relative()
+            .group("")
+            .child(
+                h_flex()
                 .id(self.id.clone())
                 .gap_2()
                 .items_start()
@@ -140,11 +144,6 @@ impl RenderOnce for Switch {
                         .border(inset)
                         .border_color(cx.theme().transparent)
                         .bg(bg)
-                        .when_some(self.tooltip.clone(), |this, tooltip| {
-                            this.tooltip(move |window, cx| {
-                                Tooltip::new(tooltip.clone()).build(window, cx)
-                            })
-                        })
                         .child(
                             // Switch Toggle
                             div()
@@ -210,6 +209,25 @@ impl RenderOnce for Switch {
                         })
                     },
                 ),
-        )
+            )
+            .when_some(self.tooltip.clone(), |this, tooltip| {
+                this.child(
+                    deferred(
+                        anchored()
+                            .snap_to_window_with_margin(px(8.))
+                            .position({
+                                let mouse = window.mouse_position();
+                                point(mouse.x + px(12.), mouse.y + px(12.))
+                            })
+                            .child(
+                                div()
+                                    .invisible()
+                                    .group_hover("", |this| this.visible())
+                                    .child(Tooltip::new(tooltip.clone()).build(window, cx)),
+                            ),
+                    )
+                    .with_priority(1),
+                )
+            })
     }
 }
