@@ -14,8 +14,10 @@ use gpui::{
     StatefulInteractiveElement, Styled, StyledImage as _, Window,
 };
 use markdown::mdast;
+use once_cell::sync::Lazy;
 use ropey::Rope;
 use resvg::{tiny_skia, usvg};
+use std::sync::Mutex;
 
 use crate::{
     h_flex,
@@ -26,6 +28,16 @@ use crate::{
 };
 
 use super::{utils::list_item_prefix, TextViewStyle};
+
+static MATH_RENDER_CACHE: Lazy<Mutex<HashMap<(u64, u16), Arc<CachedMathImage>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+#[derive(Clone)]
+struct CachedMathImage {
+    image: Arc<RenderImage>,
+    width_px: f32,
+    height_px: f32,
+}
 
 #[allow(unused)]
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -659,19 +671,56 @@ impl Paragraph {
         svg.replace("currentColor", &css_color)
     }
 
-    fn render_math_svg(svg: &str, text_color: gpui::Hsla) -> Option<Arc<RenderImage>> {
+    fn render_math_svg(
+        svg: &str,
+        text_color: gpui::Hsla,
+        raster_scale: f32,
+    ) -> Option<Arc<CachedMathImage>> {
         let colored_svg = Self::colorize_math_svg(svg, text_color);
+        let scale_key = (raster_scale * 100.0).round().clamp(1.0, u16::MAX as f32) as u16;
+
+        let mut hasher = DefaultHasher::new();
+        colored_svg.hash(&mut hasher);
+        let svg_hash = hasher.finish();
+
+        if let Some(cached) = MATH_RENDER_CACHE
+            .lock()
+            .ok()?
+            .get(&(svg_hash, scale_key))
+            .cloned()
+        {
+            return Some(cached);
+        }
+
         let options = usvg::Options::default();
         let tree = usvg::Tree::from_str(&colored_svg, &options).ok()?;
-        let size = tree.size().to_int_size();
+        let logical_size = tree.size();
+        let width_px = logical_size.width();
+        let height_px = logical_size.height();
+        let raster_width = (width_px * raster_scale).ceil().max(1.0) as u32;
+        let raster_height = (height_px * raster_scale).ceil().max(1.0) as u32;
 
-        let mut pixmap = tiny_skia::Pixmap::new(size.width(), size.height())?;
-        resvg::render(&tree, tiny_skia::Transform::default(), &mut pixmap.as_mut());
+        let mut pixmap = tiny_skia::Pixmap::new(raster_width, raster_height)?;
+        resvg::render(
+            &tree,
+            tiny_skia::Transform::from_scale(raster_scale, raster_scale),
+            &mut pixmap.as_mut(),
+        );
 
         let png_bytes = pixmap.encode_png().ok()?;
         let rgba = image::load_from_memory(&png_bytes).ok()?.into_rgba8();
         let frame = image::Frame::new(rgba);
-        Some(Arc::new(RenderImage::new(smallvec::smallvec![frame])))
+        let cached = Arc::new(CachedMathImage {
+            image: Arc::new(RenderImage::new(smallvec::smallvec![frame])),
+            width_px,
+            height_px,
+        });
+
+        if let Ok(mut cache) = MATH_RENDER_CACHE.lock() {
+            cache.insert((svg_hash, scale_key), cached.clone());
+        }
+
+        Some(cached)
     }
 
     fn render(
@@ -682,6 +731,9 @@ impl Paragraph {
     ) -> impl IntoElement {
         let span = self.span;
         let text_color = window.text_style().color;
+        let text_size = window.text_style().font_size.to_pixels(window.rem_size());
+        let text_size_px: f32 = text_size.into();
+        let raster_scale = ((text_size_px / 16.0).max(1.0) * 2.0).clamp(2.0, 4.0);
 
         let mut child_nodes: Vec<AnyElement> = vec![];
 
@@ -718,10 +770,12 @@ impl Paragraph {
                 let image_element = if let Some(svg) = &image_node.math_svg {
                     let colored_svg = Self::colorize_math_svg(svg, text_color);
 
-                    if let Some(render_image) = Self::render_math_svg(svg, text_color) {
-                        img(ImageSource::Render(render_image))
+                    if let Some(rendered) = Self::render_math_svg(svg, text_color, raster_scale) {
+                        img(ImageSource::Render(rendered.image.clone()))
                             .id(ix)
                             .object_fit(ObjectFit::Contain)
+                            .w(px(rendered.width_px))
+                            .h(px(rendered.height_px))
                             .when_some(image_node.width, |this, width| this.w(width))
                             .when_some(image_node.height, |this, height| this.h(height))
                             .when_some(image_node.link.clone(), |this, link| {
