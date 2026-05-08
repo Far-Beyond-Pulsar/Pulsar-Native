@@ -33,7 +33,7 @@ ttf-parser = { opt-level = 3 }
 [workspace.dependencies]
 
 # ---------- GPUI (WGPUI) ----------
-gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "2f9c88eaf06cc8b0a9be6c6a80236a9d2bace7d2" }
+gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "1f6f3843e8bea050ed3882b45b5ca1d433adf61f" }
 
 # ---------- Core Engine ----------
 ui                    = { path = "crates/ui" }
