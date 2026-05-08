@@ -322,18 +322,13 @@ impl Element for HoverTooltip {
                 let mouse_moved =
                     !state.hovered || moved_significantly(state.mouse_position, event.position);
                 if mouse_moved {
-                    let was_visible = state.visible;
                     state.hovered = true;
                     state.visible = false;
                     state.mouse_position = event.position;
                     state.hover_started_at = Some(Instant::now());
 
-                    // Drive a delayed show via animation frames while hover is stationary.
-                    window.request_animation_frame();
-
-                    if was_visible {
-                        window.refresh();
-                    }
+                    // Kick the next paint so the delay loop can run in paint context.
+                    window.refresh();
                 }
                 return;
             }
