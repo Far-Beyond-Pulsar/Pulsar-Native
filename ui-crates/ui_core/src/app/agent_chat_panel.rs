@@ -13,6 +13,7 @@ use agent_provider_mistral::MistralProvider;
 use agent_provider_openai::OpenAiProvider;
 use agent_provider_openrouter::OpenRouterProvider;
 use agent_provider_together::TogetherProvider;
+use crate::custom_providers::{self, CustomProvider};
 use engine_state;
 use gpui::{prelude::FluentBuilder as _, *};
 use serde::{Deserialize, Serialize};
@@ -103,6 +104,7 @@ pub struct AgentChatPanel {
     provider_list: Entity<SearchableList<ProviderDefinition>>,
     model_list: Entity<SearchableList<ModelDefinition>>,
     provider_catalog: Vec<ProviderDefinition>,
+    custom_providers_list: Vec<CustomProvider>,
     wip_providers: HashMap<&'static str, String>,
     provider_registry: ProviderRegistry,
     tool_registry: ToolRegistry,
@@ -230,6 +232,9 @@ impl AgentChatPanel {
             provider_list,
             model_list,
             provider_catalog,
+            custom_providers_list: custom_providers::load_custom_providers(
+                &dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")),
+            ),
             wip_providers,
             provider_registry,
             tool_registry: ToolRegistry::with_default_tools(),
@@ -1250,6 +1255,27 @@ impl AgentChatPanel {
         }
     }
 
+    fn show_add_provider_dialog(&mut self, cx: &mut Context<Self>) {
+        let message = "Custom providers can be added by creating YAML files in:\n~/.config/pulsar/providers/\n\n\
+                      Example provider file:\n\n\
+                      name: \"My Custom Provider\"\n\
+                      id: \"my_custom_provider\"\n\
+                      endpoint: \"http://localhost:8000/v1\"\n\
+                      kind: \"Local\"\n\
+                      models:\n\
+                        - id: \"model-1\"\n\
+                          label: \"Model 1\"\n\
+                          supports_tools: true";
+        
+        self.messages.push(ChatMessage {
+            role: "system",
+            content: message.to_string(),
+        });
+        self.save_current_chat();
+        self.scroll_messages_to_bottom();
+        cx.notify();
+    }
+
     fn complete_prompt_auth(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(provider_id) = self.pending_auth_provider else {
             return;
@@ -1934,7 +1960,17 @@ impl Render for AgentChatPanel {
                         h_flex()
                             .w_full()
                             .items_center()
-                            .child(provider_popover),
+                            .gap_2()
+                            .child(provider_popover)
+                            .child(
+                                Button::new("agent-chat-add-provider")
+                                    .icon(IconName::Plus)
+                                    .xsmall()
+                                    .ghost()
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.show_add_provider_dialog(cx);
+                                    }))
+                            ),
                     )
                     .child(
                         h_flex()

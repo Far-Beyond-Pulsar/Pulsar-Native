@@ -9,6 +9,7 @@ rust_i18n::i18n!("locales", fallback = "en");
 pub mod actions;
 pub mod app;
 pub mod builtin_editors;
+pub mod custom_providers;
 pub mod root;
 
 // Re-export main types

@@ -12725,6 +12725,7 @@ dependencies = [
  "agent_provider_together",
  "anyhow",
  "blueprint_editor_plugin",
+ "dirs 5.0.1",
  "engine_backend",
  "engine_state",
  "futures",
