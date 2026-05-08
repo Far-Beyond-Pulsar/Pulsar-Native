@@ -47,7 +47,8 @@ impl GeminiProvider {
     }
 
     fn auth_token_from_env(env: &dyn ProviderEnvironment) -> Option<String> {
-        env.get_env("GOOGLE_API_KEY").or_else(|| env.get_env("GEMINI_API_KEY"))
+        env.get_env("GOOGLE_API_KEY")
+            .or_else(|| env.get_env("GEMINI_API_KEY"))
     }
 
     fn map_role(role: ChatRole) -> &'static str {

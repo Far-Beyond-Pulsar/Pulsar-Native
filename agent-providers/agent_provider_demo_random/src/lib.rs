@@ -36,7 +36,7 @@ impl DemoRandomProvider {
         ]
     }
 
-fn sentence_pool() -> &'static [&'static str] {
+    fn sentence_pool() -> &'static [&'static str] {
         &[
             "When evaluating the lifecycle of a provider bridge, it is vital to consider how the internal state machine transitions from a 'connecting' status to a 'streaming' status, especially when the underlying transport layer is being mocked. This specific mock implementation bypasses the standard handshake protocol to deliver immediate feedback to the UI components, which is essential for rapid prototyping of the editor's primary viewport and ensuring the layout remains responsive under heavy text loads.",
             "The architectural decoupling we've achieved here allows the frontend to remain blissfully unaware of whether it is communicating with a multi-billion parameter model running on a high-end GPU cluster or a simple static array within a Rust binary. By simulating the asynchronous nature of a real-world inference stream, we can verify that our reactive hooks—specifically those responsible for managing the message buffer—are correctly handling append operations without introducing unnecessary re-renders that would degrade the user experience.",

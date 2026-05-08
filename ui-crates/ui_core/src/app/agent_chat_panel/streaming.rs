@@ -1,7 +1,16 @@
 use super::*;
-use agent_chat_core::{ChatMessage as ProviderChatMessage, ChatRequest, ChatRole, AvailabilityState, ProcessEnvironment};
+use agent_chat_core::{
+    AvailabilityState, ChatMessage as ProviderChatMessage, ChatRequest, ChatRole,
+    ProcessEnvironment,
+};
 use smol::Timer;
-use std::{sync::{Arc, atomic::{AtomicBool, Ordering}}, time::{Duration, Instant, SystemTime, UNIX_EPOCH}};
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+};
 use ui::input::Enter;
 
 impl AgentChatPanel {
@@ -178,12 +187,22 @@ impl AgentChatPanel {
         .detach();
     }
 
-    pub(super) fn on_prompt_enter(&mut self, enter: &Enter, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn on_prompt_enter(
+        &mut self,
+        enter: &Enter,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if enter.secondary {
             return;
         }
 
-        if self.prompt_input.read(cx).focus_handle(cx).is_focused(window) {
+        if self
+            .prompt_input
+            .read(cx)
+            .focus_handle(cx)
+            .is_focused(window)
+        {
             self.send_prompt(window, cx);
         }
     }
@@ -242,7 +261,10 @@ impl AgentChatPanel {
                 .active_provider()
                 .map(|p| p.label)
                 .unwrap_or("Unknown Provider");
-            let model = self.active_model().map(|m| m.label).unwrap_or("Unknown Model");
+            let model = self
+                .active_model()
+                .map(|m| m.label)
+                .unwrap_or("Unknown Model");
             self.messages.push(ChatMessage {
                 role: "assistant",
                 content: format!("Queued with {provider} / {model}."),

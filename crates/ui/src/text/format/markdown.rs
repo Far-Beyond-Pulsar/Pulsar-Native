@@ -1,12 +1,13 @@
 use gpui::SharedString;
-use mathjax_svg_rs::{render_tex as render_mathjax_tex, HorizontalAlign, Options as MathJaxOptions};
+use markdown::{
+    mdast::{self, Node},
+    Constructs, ParseOptions,
+};
+use mathjax_svg_rs::{
+    render_tex as render_mathjax_tex, HorizontalAlign, Options as MathJaxOptions,
+};
 use mermaid_rs_renderer::render as render_mermaid;
 use once_cell::sync::Lazy;
-use markdown::{
-    Constructs,
-    mdast::{self, Node},
-    ParseOptions,
-};
 use regex::Regex;
 use std::{collections::HashMap, sync::Mutex};
 
@@ -31,8 +32,9 @@ fn normalize_svg(svg: &str) -> String {
         Lazy::new(|| Regex::new(r"(?s)^<svg\b([^>]*)>").expect("valid svg tag regex"));
     static WIDTH_EX_RE: Lazy<Regex> =
         Lazy::new(|| Regex::new(r#"\bwidth="([0-9]*\.?[0-9]+)ex""#).expect("valid width ex regex"));
-    static HEIGHT_EX_RE: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r#"\bheight="([0-9]*\.?[0-9]+)ex""#).expect("valid height ex regex"));
+    static HEIGHT_EX_RE: Lazy<Regex> = Lazy::new(|| {
+        Regex::new(r#"\bheight="([0-9]*\.?[0-9]+)ex""#).expect("valid height ex regex")
+    });
     static STYLE_ATTR_RE: Lazy<Regex> =
         Lazy::new(|| Regex::new(r#"\sstyle="[^"]*""#).expect("valid style attr regex"));
     static XLINK_HREF_RE: Lazy<Regex> =

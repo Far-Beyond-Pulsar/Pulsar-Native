@@ -359,8 +359,8 @@ impl ChatProvider for OpenAiProvider {
                 break;
             }
 
-            let event: Value = serde_json::from_str(data)
-                .context("invalid JSON event in OpenAI stream")?;
+            let event: Value =
+                serde_json::from_str(data).context("invalid JSON event in OpenAI stream")?;
 
             if let Some(choice) = event
                 .get("choices")

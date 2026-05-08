@@ -1,7 +1,7 @@
 use agent_chat_core::{
     AuthHost, AuthMethod, AuthResult, ChatMessage, ChatProvider, ChatRequest, ChatResponse,
-    ChatRole, ModelDescriptor, PromptTokenRequest,
-    ProviderAvailability, ProviderEnvironment, ProviderKind, ProviderMetadata, ToolCall,
+    ChatRole, ModelDescriptor, PromptTokenRequest, ProviderAvailability, ProviderEnvironment,
+    ProviderKind, ProviderMetadata, ToolCall,
 };
 use anyhow::{anyhow, Context};
 use reqwest::blocking::Client;
@@ -189,11 +189,7 @@ impl ChatProvider for GithubCopilotProvider {
         Ok(Self::static_models())
     }
 
-    fn chat_completion(
-        &self,
-        token: &str,
-        request: &ChatRequest,
-    ) -> anyhow::Result<ChatResponse> {
+    fn chat_completion(&self, token: &str, request: &ChatRequest) -> anyhow::Result<ChatResponse> {
         let messages: Vec<Value> = request
             .messages
             .iter()
@@ -256,11 +252,7 @@ impl ChatProvider for GithubCopilotProvider {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().unwrap_or_default();
-            return Err(anyhow!(
-                "GitHub Models API returned {}: {}",
-                status,
-                body
-            ));
+            return Err(anyhow!("GitHub Models API returned {}: {}", status, body));
         }
 
         let raw_response: Value = response

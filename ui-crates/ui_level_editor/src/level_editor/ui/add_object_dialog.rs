@@ -151,10 +151,10 @@ impl AddObjectDialog {
                 ObjectMenuKind::Builtin(_) => format!("Built-in: {}", item.label),
                 ObjectMenuKind::EngineClass => format!("Engine Class: {}", item.label),
             })
-                .with_empty_text("No results")
-                .with_max_width(px(240.0))
-                .with_max_height(px(380.0))
-                .with_icon_getter(|item| item.icon.clone())
+            .with_empty_text("No results")
+            .with_max_width(px(240.0))
+            .with_max_height(px(380.0))
+            .with_icon_getter(|item| item.icon.clone())
         });
 
         let subscriptions = vec![cx.subscribe(

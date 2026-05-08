@@ -180,8 +180,7 @@ pub trait ChatProvider: Send + Sync {
 
     fn list_models_api(&self, token: &str) -> anyhow::Result<Vec<ModelDescriptor>>;
 
-    fn chat_completion(&self, token: &str, request: &ChatRequest)
-        -> anyhow::Result<ChatResponse>;
+    fn chat_completion(&self, token: &str, request: &ChatRequest) -> anyhow::Result<ChatResponse>;
 
     /// Streaming variant for providers that can deliver incremental chunks.
     /// Default behavior falls back to `chat_completion` and emits whatever
@@ -217,7 +216,9 @@ pub trait ChatProvider: Send + Sync {
     /// Returns `Ok(Some(token))` when the user has approved, `Ok(None)` when
     /// still pending, or `Err` on expiry / denial.
     fn poll_device_code(&self, _device_code: &str) -> anyhow::Result<Option<String>> {
-        Err(anyhow::anyhow!("device code polling not supported by this provider"))
+        Err(anyhow::anyhow!(
+            "device code polling not supported by this provider"
+        ))
     }
 }
 

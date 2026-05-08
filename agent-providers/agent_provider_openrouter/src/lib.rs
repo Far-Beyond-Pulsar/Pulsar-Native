@@ -176,7 +176,9 @@ impl ChatProvider for OpenRouterProvider {
             return Err(anyhow!("OpenRouter API returned {}: {}", status, body));
         }
 
-        let raw_response: Value = response.json().context("invalid JSON from OpenRouter API")?;
+        let raw_response: Value = response
+            .json()
+            .context("invalid JSON from OpenRouter API")?;
         let assistant_message = Self::parse_assistant_message(&raw_response);
         let streamed_text_chunks = assistant_message
             .as_ref()

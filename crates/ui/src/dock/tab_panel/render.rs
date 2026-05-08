@@ -638,14 +638,11 @@ impl TabPanel {
             .group("")
             .flex_1()
             .child(
-                div()
-                    .id("tab-content")
-                    .flex_1()
-                    .child(
-                        active_panel
-                            .view()
-                            .cached(StyleRefinement::default().absolute().size_full()),
-                    ),
+                div().id("tab-content").flex_1().child(
+                    active_panel
+                        .view()
+                        .cached(StyleRefinement::default().absolute().size_full()),
+                ),
             )
             .when(state.droppable, |this| {
                 let channel = state.channel;

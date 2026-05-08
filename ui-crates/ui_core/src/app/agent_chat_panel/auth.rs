@@ -1,7 +1,15 @@
 use super::*;
-use agent_chat_core::{AuthHost, AuthMethod, AuthResult, AvailabilityState, ProcessEnvironment, PromptTokenRequest};
+use agent_chat_core::{
+    AuthHost, AuthMethod, AuthResult, AvailabilityState, ProcessEnvironment, PromptTokenRequest,
+};
 use smol::Timer;
-use std::{sync::{Arc, atomic::{AtomicBool, Ordering}}, time::Duration};
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 impl AgentChatPanel {
     pub(super) fn auth_token_for_provider(&self, provider_id: &str) -> Option<String> {

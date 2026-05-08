@@ -1,6 +1,10 @@
 use super::*;
 use engine_state;
-use std::{fs, path::PathBuf, time::{SystemTime, UNIX_EPOCH}};
+use std::{
+    fs,
+    path::PathBuf,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 impl AgentChatPanel {
     pub(super) fn chats_dir() -> Option<PathBuf> {
@@ -47,7 +51,9 @@ impl AgentChatPanel {
     pub(super) fn default_system_message() -> ChatMessage {
         ChatMessage {
             role: "system",
-            content: "Agent Chat is ready. Choose provider/model and ask anything about your project.".to_string(),
+            content:
+                "Agent Chat is ready. Choose provider/model and ask anything about your project."
+                    .to_string(),
         }
     }
 
@@ -212,7 +218,10 @@ impl AgentChatPanel {
         };
 
         let file = rfd::FileDialog::new()
-            .set_file_name(format!("{}.json", Self::inferred_chat_title(&self.messages)))
+            .set_file_name(format!(
+                "{}.json",
+                Self::inferred_chat_title(&self.messages)
+            ))
             .add_filter("JSON Chat Files", &["json"])
             .add_filter("All Files", &["*"])
             .save_file();

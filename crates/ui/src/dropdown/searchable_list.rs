@@ -1,8 +1,7 @@
 use gpui::{
-    div, prelude::FluentBuilder, px, App, AppContext, Context, Div, Entity, EventEmitter,
-    DismissEvent, FocusHandle,
-    Focusable, InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels, Render,
-    SharedString, Styled, Window,
+    div, prelude::FluentBuilder, px, App, AppContext, Context, DismissEvent, Div, Entity,
+    EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement, MouseButton,
+    ParentElement, Pixels, Render, SharedString, Styled, Window,
 };
 use std::rc::Rc;
 
@@ -192,9 +191,7 @@ impl<T: Clone + 'static> Render for SearchableList<T> {
                                     .when(is_enabled, |el| {
                                         el.hover(move |s| s.bg(theme.accent.opacity(0.12)))
                                     })
-                                    .when(!is_enabled, |el| {
-                                        el.cursor_default().opacity(0.7)
-                                    })
+                                    .when(!is_enabled, |el| el.cursor_default().opacity(0.7))
                                     .child(
                                         div()
                                             .flex()
@@ -215,15 +212,13 @@ impl<T: Clone + 'static> Render for SearchableList<T> {
                                                 )
                                             })
                                             .when_some(icon, |el, icon| {
-                                                el.child(
-                                                    Icon::new(icon)
-                                                        .size(px(13.0))
-                                                        .text_color(if is_enabled {
-                                                            cx.theme().muted_foreground
-                                                        } else {
-                                                            cx.theme().muted_foreground.opacity(0.7)
-                                                        }),
-                                                )
+                                                el.child(Icon::new(icon).size(px(13.0)).text_color(
+                                                    if is_enabled {
+                                                        cx.theme().muted_foreground
+                                                    } else {
+                                                        cx.theme().muted_foreground.opacity(0.7)
+                                                    },
+                                                ))
                                             })
                                             .child(
                                                 div()
@@ -233,7 +228,9 @@ impl<T: Clone + 'static> Render for SearchableList<T> {
                                                     } else {
                                                         cx.theme().muted_foreground
                                                     })
-                                                    .when(!is_enabled, |el| el.italic().line_through())
+                                                    .when(!is_enabled, |el| {
+                                                        el.italic().line_through()
+                                                    })
                                                     .child(label),
                                             ),
                                     )
@@ -249,8 +246,7 @@ impl<T: Clone + 'static> Render for SearchableList<T> {
                                                     let action_id = action.id.clone();
                                                     let button_id = format!(
                                                         "searchable-list-action-{}-{}",
-                                                        ix,
-                                                        action.id
+                                                        ix, action.id
                                                     );
 
                                                     let button = Button::new(button_id)
@@ -259,26 +255,32 @@ impl<T: Clone + 'static> Render for SearchableList<T> {
                                                         .when(action.destructive, |b| {
                                                             b.text_color(cx.theme().danger)
                                                         })
-                                                        .on_click(cx.listener(move |_this, _, _, cx| {
-                                                            cx.emit(SearchableListEvent::Action {
-                                                                item: action_item.clone(),
-                                                                action_id: action_id.clone(),
-                                                            });
-                                                        }));
+                                                        .on_click(cx.listener(
+                                                            move |_this, _, _, cx| {
+                                                                cx.emit(
+                                                                    SearchableListEvent::Action {
+                                                                        item: action_item.clone(),
+                                                                        action_id: action_id
+                                                                            .clone(),
+                                                                    },
+                                                                );
+                                                            },
+                                                        ));
 
                                                     match (action.icon, action.label.clone()) {
-                                                        (Some(icon), Some(label)) => {
-                                                            button.icon(icon).label(label).into_any_element()
-                                                        }
+                                                        (Some(icon), Some(label)) => button
+                                                            .icon(icon)
+                                                            .label(label)
+                                                            .into_any_element(),
                                                         (Some(icon), None) => {
                                                             button.icon(icon).into_any_element()
                                                         }
                                                         (None, Some(label)) => {
                                                             button.label(label).into_any_element()
                                                         }
-                                                        (None, None) => {
-                                                            button.label("Action").into_any_element()
-                                                        }
+                                                        (None, None) => button
+                                                            .label("Action")
+                                                            .into_any_element(),
                                                     }
                                                 })),
                                         )

@@ -9,6 +9,7 @@ pub mod types;
 
 pub use types::*;
 
+use crate::custom_providers::{self, CustomProvider};
 use agent_chat_core::ProviderRegistry;
 use agent_chat_tools::ToolRegistry;
 use agent_provider_anthropic::AnthropicProvider;
@@ -20,7 +21,6 @@ use agent_provider_mistral::MistralProvider;
 use agent_provider_openai::OpenAiProvider;
 use agent_provider_openrouter::OpenRouterProvider;
 use agent_provider_together::TogetherProvider;
-use crate::custom_providers::{self, CustomProvider};
 use gpui::{prelude::FluentBuilder as _, *};
 use std::{
     cell::RefCell,
@@ -35,15 +35,14 @@ use ui::{
     dropdown::{
         SearchableList, SearchableListEvent, SearchableListItemAction, SearchableListItemState,
     },
+    h_flex,
     input::Enter,
+    input::{InputState, TextInput},
     popover::Popover,
     scroll::{Scrollbar, ScrollbarState},
     spinner::Spinner,
     text::TextView,
-    Disableable,
-    h_flex,
-    input::{InputState, TextInput},
-    v_flex, v_virtual_list, ActiveTheme as _, IconName, Sizable, Size, StyledExt,
+    v_flex, v_virtual_list, ActiveTheme as _, Disableable, IconName, Sizable, Size, StyledExt,
     VirtualListScrollHandle,
 };
 
@@ -114,9 +113,8 @@ impl AgentChatPanel {
             cx.new(|cx| InputState::new(window, cx).placeholder("Ask the engine assistant..."));
         let auth_token_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Paste provider token..."));
-        let custom_provider_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("Enter provider field value...")
-        });
+        let custom_provider_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Enter provider field value..."));
 
         let chat_history_list = cx.new(|cx| {
             SearchableList::new(window, cx, Vec::<ChatHistoryEntry>::new(), |chat| {
@@ -130,9 +128,12 @@ impl AgentChatPanel {
         let wip_for_list = wip_providers.clone();
         let custom_ids_for_list = custom_provider_ids.clone();
         let provider_list = cx.new(|cx| {
-            SearchableList::new(window, cx, provider_catalog.clone(), |p: &ProviderDefinition| {
-                format!("{} ({})", p.label, p.id)
-            })
+            SearchableList::new(
+                window,
+                cx,
+                provider_catalog.clone(),
+                |p: &ProviderDefinition| format!("{} ({})", p.label, p.id),
+            )
             .with_empty_text("No providers found")
             .with_max_width(px(220.0))
             .with_max_height(px(320.0))
@@ -175,21 +176,19 @@ impl AgentChatPanel {
         let subscriptions = vec![
             cx.subscribe(
                 &provider_list,
-                move |this, _, event: &SearchableListEvent<ProviderDefinition>, cx| {
-                    match event {
-                        SearchableListEvent::Select(selected_provider) => {
-                            if let Some(index) = this
-                                .provider_catalog
-                                .iter()
-                                .position(|provider| provider.id == selected_provider.id)
-                            {
-                                this.set_provider(index, cx);
-                            }
+                move |this, _, event: &SearchableListEvent<ProviderDefinition>, cx| match event {
+                    SearchableListEvent::Select(selected_provider) => {
+                        if let Some(index) = this
+                            .provider_catalog
+                            .iter()
+                            .position(|provider| provider.id == selected_provider.id)
+                        {
+                            this.set_provider(index, cx);
                         }
-                        SearchableListEvent::Action { item, action_id } => {
-                            if action_id.as_ref() == "delete" {
-                                this.delete_custom_provider(item.id, cx);
-                            }
+                    }
+                    SearchableListEvent::Action { item, action_id } => {
+                        if action_id.as_ref() == "delete" {
+                            this.delete_custom_provider(item.id, cx);
                         }
                     }
                 },

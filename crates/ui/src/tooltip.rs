@@ -1,10 +1,14 @@
 use gpui::{
-    anchored, deferred, div, point, prelude::FluentBuilder, px, Action, AnyElement, AnyView,
-    App, AppContext, Bounds, Context, Corner, Element, ElementId, GlobalElementId, Hitbox,
+    anchored, deferred, div, point, prelude::FluentBuilder, px, Action, AnyElement, AnyView, App,
+    AppContext, Bounds, Context, Corner, Element, ElementId, GlobalElementId, Hitbox,
     HitboxBehavior, InspectorElementId, IntoElement, LayoutId, ParentElement, Pixels, Point,
     Render, SharedString, StyleRefinement, Styled, Window,
 };
-use std::{cell::RefCell, rc::Rc, time::{Duration, Instant}};
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    time::{Duration, Instant},
+};
 
 use crate::{h_flex, text::Text, ActiveTheme, Kbd, StyledExt};
 
@@ -201,53 +205,59 @@ impl Element for HoverTooltip {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        self.with_element_state(id.unwrap(), window, cx, |this, element_state, window, cx| {
-            let hover_state = element_state.hover_state.clone();
-            let mut tooltip_layout_id = None;
-            let mut tooltip_element = None;
+        self.with_element_state(
+            id.unwrap(),
+            window,
+            cx,
+            |this, element_state, window, cx| {
+                let hover_state = element_state.hover_state.clone();
+                let mut tooltip_layout_id = None;
+                let mut tooltip_element = None;
 
-            if hover_state.borrow().visible {
-                let mouse_position = hover_state.borrow().mouse_position;
-                let (anchor, position) = smart_tooltip_anchor_and_position_at(mouse_position, window);
-                let builder = this.tooltip_builder.clone();
+                if hover_state.borrow().visible {
+                    let mouse_position = hover_state.borrow().mouse_position;
+                    let (anchor, position) =
+                        smart_tooltip_anchor_and_position_at(mouse_position, window);
+                    let builder = this.tooltip_builder.clone();
 
-                let mut element = deferred(
-                    anchored()
-                        .anchor(anchor)
-                        .snap_to_window_with_margin(px(8.))
-                        .position(position)
-                        .child(div().child(builder(window, cx))),
+                    let mut element = deferred(
+                        anchored()
+                            .anchor(anchor)
+                            .snap_to_window_with_margin(px(8.))
+                            .position(position)
+                            .child(div().child(builder(window, cx))),
+                    )
+                    .with_priority(1)
+                    .into_any();
+
+                    tooltip_layout_id = Some(element.request_layout(window, cx));
+                    tooltip_element = Some(element);
+                }
+
+                let mut trigger_element = this
+                    .trigger
+                    .take()
+                    .unwrap_or_else(|| div().into_any_element());
+                let trigger_layout_id = trigger_element.request_layout(window, cx);
+
+                let layout_id = window.request_layout(
+                    gpui::Style::default(),
+                    Some(trigger_layout_id).into_iter().chain(tooltip_layout_id),
+                    cx,
+                );
+
+                (
+                    layout_id,
+                    HoverTooltipElementState {
+                        trigger_layout_id: Some(trigger_layout_id),
+                        tooltip_layout_id,
+                        trigger_element: Some(trigger_element),
+                        tooltip_element,
+                        hover_state,
+                    },
                 )
-                .with_priority(1)
-                .into_any();
-
-                tooltip_layout_id = Some(element.request_layout(window, cx));
-                tooltip_element = Some(element);
-            }
-
-            let mut trigger_element = this
-                .trigger
-                .take()
-                .unwrap_or_else(|| div().into_any_element());
-            let trigger_layout_id = trigger_element.request_layout(window, cx);
-
-            let layout_id = window.request_layout(
-                gpui::Style::default(),
-                Some(trigger_layout_id).into_iter().chain(tooltip_layout_id),
-                cx,
-            );
-
-            (
-                layout_id,
-                HoverTooltipElementState {
-                    trigger_layout_id: Some(trigger_layout_id),
-                    tooltip_layout_id,
-                    trigger_element: Some(trigger_element),
-                    tooltip_element,
-                    hover_state,
-                },
-            )
-        })
+            },
+        )
     }
 
     fn prepaint(
@@ -269,7 +279,8 @@ impl Element for HoverTooltip {
         let trigger_bounds = request_layout
             .trigger_layout_id
             .map(|layout_id| window.layout_bounds(layout_id));
-        let hitbox = window.insert_hitbox(trigger_bounds.unwrap_or_default(), HitboxBehavior::Normal);
+        let hitbox =
+            window.insert_hitbox(trigger_bounds.unwrap_or_default(), HitboxBehavior::Normal);
 
         let _ = trigger_bounds;
 

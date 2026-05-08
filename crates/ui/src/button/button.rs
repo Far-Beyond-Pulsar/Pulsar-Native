@@ -7,11 +7,10 @@ use crate::{
     StyleSized, StyledExt,
 };
 use gpui::{
-    div, prelude::FluentBuilder as _, px, relative, Action, AnyElement, App, ClickEvent,
-    Context, Corner, Corners, Div, Edges, ElementId, Hsla,
-    InteractiveElement, Interactivity, IntoElement, ParentElement, Pixels, RenderOnce,
-    SharedString, Stateful,
-    StatefulInteractiveElement as _, StyleRefinement, Styled, Window,
+    div, prelude::FluentBuilder as _, px, relative, Action, AnyElement, App, ClickEvent, Context,
+    Corner, Corners, Div, Edges, ElementId, Hsla, InteractiveElement, Interactivity, IntoElement,
+    ParentElement, Pixels, RenderOnce, SharedString, Stateful, StatefulInteractiveElement as _,
+    StyleRefinement, Styled, Window,
 };
 use std::rc::Rc;
 
@@ -437,7 +436,8 @@ impl RenderOnce for Button {
             .clone();
         let is_focused = focus_handle.is_focused(window);
 
-        let element = self.base
+        let element = self
+            .base
             .refine_style(&self.style)
             .relative()
             .group("")
@@ -586,16 +586,20 @@ impl RenderOnce for Button {
             .focus_ring(is_focused, px(0.), window, cx);
 
         if let Some((tooltip, action)) = self.tooltip {
-            HoverTooltip::new((self.id.clone(), "hover-tooltip"), element, move |window, cx| {
-                Tooltip::new(tooltip.clone())
-                    .when_some(action.clone(), |this, (action, context)| {
-                        this.action(
-                            action.boxed_clone().as_ref(),
-                            context.as_ref().map(|c| c.as_ref()),
-                        )
-                    })
-                    .build(window, cx)
-            })
+            HoverTooltip::new(
+                (self.id.clone(), "hover-tooltip"),
+                element,
+                move |window, cx| {
+                    Tooltip::new(tooltip.clone())
+                        .when_some(action.clone(), |this, (action, context)| {
+                            this.action(
+                                action.boxed_clone().as_ref(),
+                                context.as_ref().map(|c| c.as_ref()),
+                            )
+                        })
+                        .build(window, cx)
+                },
+            )
             .into_any_element()
         } else {
             element.into_any_element()

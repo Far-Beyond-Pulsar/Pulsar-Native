@@ -119,7 +119,8 @@ impl AnthropicProvider {
 
                         let id = part.get("id")?.as_str()?.to_string();
                         let name = part.get("name")?.as_str()?.to_string();
-                        let arguments_json = part.get("input").cloned().unwrap_or_else(|| json!({}));
+                        let arguments_json =
+                            part.get("input").cloned().unwrap_or_else(|| json!({}));
 
                         Some(ToolCall {
                             id,

@@ -19,29 +19,32 @@ pub fn register(cfg: &'static ConfigManager) {
     )
     .setting(
         "default_provider",
-        SchemaEntry::new("Default model provider used for new chat sessions", "openai")
-            .label("Default Provider")
-            .page("Agent Chat")
-            .field_type(FieldType::Dropdown {
-                options: vec![
-                    DropdownOption::new("OpenAI", "openai"),
-                    DropdownOption::new("Anthropic", "anthropic"),
-                    DropdownOption::new("Google", "google"),
-                    DropdownOption::new("OpenRouter", "openrouter"),
-                    DropdownOption::new("Ollama (Local)", "ollama"),
-                    DropdownOption::new("LM Studio (Local)", "lmstudio"),
-                    DropdownOption::new("Custom", "custom"),
-                ],
-            })
-            .validator(Validator::string_one_of([
-                "openai",
-                "anthropic",
-                "google",
-                "openrouter",
-                "ollama",
-                "lmstudio",
-                "custom",
-            ])),
+        SchemaEntry::new(
+            "Default model provider used for new chat sessions",
+            "openai",
+        )
+        .label("Default Provider")
+        .page("Agent Chat")
+        .field_type(FieldType::Dropdown {
+            options: vec![
+                DropdownOption::new("OpenAI", "openai"),
+                DropdownOption::new("Anthropic", "anthropic"),
+                DropdownOption::new("Google", "google"),
+                DropdownOption::new("OpenRouter", "openrouter"),
+                DropdownOption::new("Ollama (Local)", "ollama"),
+                DropdownOption::new("LM Studio (Local)", "lmstudio"),
+                DropdownOption::new("Custom", "custom"),
+            ],
+        })
+        .validator(Validator::string_one_of([
+            "openai",
+            "anthropic",
+            "google",
+            "openrouter",
+            "ollama",
+            "lmstudio",
+            "custom",
+        ])),
     )
     .setting(
         "default_model",
@@ -82,10 +85,13 @@ pub fn register(cfg: &'static ConfigManager) {
     )
     .setting(
         "allow_model_auto_discovery",
-        SchemaEntry::new("Automatically discover available models from active providers", true)
-            .label("Auto-Discover Models")
-            .page("Agent Chat")
-            .field_type(FieldType::Checkbox),
+        SchemaEntry::new(
+            "Automatically discover available models from active providers",
+            true,
+        )
+        .label("Auto-Discover Models")
+        .page("Agent Chat")
+        .field_type(FieldType::Checkbox),
     )
     .setting(
         "cloud_api_base_url",
@@ -99,13 +105,16 @@ pub fn register(cfg: &'static ConfigManager) {
     )
     .setting(
         "local_api_base_url",
-        SchemaEntry::new("Override base URL for local provider runtime", "http://localhost:11434")
-            .label("Local API Base URL")
-            .page("Agent Chat")
-            .field_type(FieldType::TextInput {
-                placeholder: Some("http://localhost:11434".into()),
-                multiline: false,
-            }),
+        SchemaEntry::new(
+            "Override base URL for local provider runtime",
+            "http://localhost:11434",
+        )
+        .label("Local API Base URL")
+        .page("Agent Chat")
+        .field_type(FieldType::TextInput {
+            placeholder: Some("http://localhost:11434".into()),
+            multiline: false,
+        }),
     )
     .setting(
         "api_key_env_var",
@@ -134,15 +143,18 @@ pub fn register(cfg: &'static ConfigManager) {
     )
     .setting(
         "max_context_tokens",
-        SchemaEntry::new("Maximum context window tokens for chat requests", 65_536_i64)
-            .label("Max Context Tokens")
-            .page("Agent Chat")
-            .field_type(FieldType::NumberInput {
-                min: Some(1_024.0),
-                max: Some(1_000_000.0),
-                step: Some(1_024.0),
-            })
-            .validator(Validator::int_range(1_024, 1_000_000)),
+        SchemaEntry::new(
+            "Maximum context window tokens for chat requests",
+            65_536_i64,
+        )
+        .label("Max Context Tokens")
+        .page("Agent Chat")
+        .field_type(FieldType::NumberInput {
+            min: Some(1_024.0),
+            max: Some(1_000_000.0),
+            step: Some(1_024.0),
+        })
+        .validator(Validator::int_range(1_024, 1_000_000)),
     )
     .setting(
         "temperature",
@@ -177,22 +189,28 @@ pub fn register(cfg: &'static ConfigManager) {
     )
     .setting(
         "enable_tool_calls",
-        SchemaEntry::new("Allow tool and function-call execution from the selected model", true)
-            .label("Enable Tool Calls")
-            .page("Agent Chat")
-            .field_type(FieldType::Checkbox),
+        SchemaEntry::new(
+            "Allow tool and function-call execution from the selected model",
+            true,
+        )
+        .label("Enable Tool Calls")
+        .page("Agent Chat")
+        .field_type(FieldType::Checkbox),
     )
     .setting(
         "chat_history_limit",
-        SchemaEntry::new("Maximum number of messages retained in local chat history", 200_i64)
-            .label("Chat History Limit")
-            .page("Agent Chat")
-            .field_type(FieldType::NumberInput {
-                min: Some(20.0),
-                max: Some(2_000.0),
-                step: Some(10.0),
-            })
-            .validator(Validator::int_range(20, 2_000)),
+        SchemaEntry::new(
+            "Maximum number of messages retained in local chat history",
+            200_i64,
+        )
+        .label("Chat History Limit")
+        .page("Agent Chat")
+        .field_type(FieldType::NumberInput {
+            min: Some(20.0),
+            max: Some(2_000.0),
+            step: Some(10.0),
+        })
+        .validator(Validator::int_range(20, 2_000)),
     );
 
     let _ = cfg.register(NS, OWNER, schema);

@@ -125,12 +125,8 @@ impl RenderOnce for Switch {
             cx.theme().radius
         };
 
-        let element = div()
-            .refine_style(&self.style)
-            .relative()
-            .group("")
-            .child(
-                h_flex()
+        let element = div().refine_style(&self.style).relative().group("").child(
+            h_flex()
                 .id(self.id.clone())
                 .gap_2()
                 .items_start()
@@ -212,13 +208,14 @@ impl RenderOnce for Switch {
                         })
                     },
                 ),
-            )
-            ;
+        );
 
         if let Some(tooltip) = self.tooltip {
-            HoverTooltip::new((self.id.clone(), "hover-tooltip"), element, move |window, cx| {
-                Tooltip::new(tooltip.clone()).build(window, cx)
-            })
+            HoverTooltip::new(
+                (self.id.clone(), "hover-tooltip"),
+                element,
+                move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx),
+            )
             .into_any_element()
         } else {
             element.into_any_element()

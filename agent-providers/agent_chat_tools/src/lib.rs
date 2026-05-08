@@ -133,8 +133,8 @@ impl ChatTool for ListDirTool {
         let full = resolve_workspace_path(&ctx.workspace_root, path)?;
 
         let mut entries = Vec::new();
-        for entry in fs::read_dir(&full)
-            .with_context(|| format!("Failed reading dir {}", full.display()))?
+        for entry in
+            fs::read_dir(&full).with_context(|| format!("Failed reading dir {}", full.display()))?
         {
             let entry = entry?;
             let p = entry.path();

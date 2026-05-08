@@ -246,11 +246,7 @@ impl ChatProvider for GroqProvider {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().unwrap_or_default();
-            return Err(anyhow!(
-                "Groq streaming API returned {}: {}",
-                status,
-                body
-            ));
+            return Err(anyhow!("Groq streaming API returned {}: {}", status, body));
         }
 
         let mut raw_events = Vec::new();
@@ -274,8 +270,8 @@ impl ChatProvider for GroqProvider {
                 break;
             }
 
-            let event: Value = serde_json::from_str(data)
-                .context("invalid JSON event in Groq stream")?;
+            let event: Value =
+                serde_json::from_str(data).context("invalid JSON event in Groq stream")?;
 
             if let Some(choice) = event
                 .get("choices")

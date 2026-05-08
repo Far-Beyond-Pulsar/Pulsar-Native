@@ -43,7 +43,11 @@ impl AgentChatPanel {
         cx.notify();
     }
 
-    pub(super) fn request_rollback_confirmation(&mut self, message_ix: usize, cx: &mut Context<Self>) {
+    pub(super) fn request_rollback_confirmation(
+        &mut self,
+        message_ix: usize,
+        cx: &mut Context<Self>,
+    ) {
         if self.is_request_in_flight || message_ix >= self.messages.len() {
             return;
         }

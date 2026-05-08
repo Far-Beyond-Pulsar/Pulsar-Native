@@ -391,7 +391,7 @@ impl PulsarApp {
                     },
                     cx,
                 );
-                
+
                 palette.add_item(
                     "Toggle Agent Chat",
                     "Show or hide the global agent chat side panel",

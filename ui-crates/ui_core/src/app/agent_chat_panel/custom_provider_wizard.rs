@@ -192,11 +192,7 @@ impl AgentChatPanel {
         }
     }
 
-    pub(super) fn delete_custom_provider(
-        &mut self,
-        provider_id: &str,
-        cx: &mut Context<Self>,
-    ) {
+    pub(super) fn delete_custom_provider(&mut self, provider_id: &str, cx: &mut Context<Self>) {
         if !self.custom_provider_ids.borrow().contains(provider_id) {
             return;
         }
@@ -206,8 +202,9 @@ impl AgentChatPanel {
             provider_id,
         ) {
             Ok(()) => {
-                let previous_active_id =
-                    self.active_provider().map(|provider| provider.id.to_string());
+                let previous_active_id = self
+                    .active_provider()
+                    .map(|provider| provider.id.to_string());
 
                 self.custom_provider_ids.borrow_mut().remove(provider_id);
                 self.custom_providers_list
@@ -243,10 +240,7 @@ impl AgentChatPanel {
             Err(err) => {
                 self.messages.push(ChatMessage {
                     role: "system",
-                    content: format!(
-                        "Failed to delete custom provider '{}': {err}",
-                        provider_id
-                    ),
+                    content: format!("Failed to delete custom provider '{}': {err}", provider_id),
                 });
                 self.save_current_chat();
                 self.scroll_messages_to_bottom();

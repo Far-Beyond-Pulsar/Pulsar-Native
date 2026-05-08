@@ -9,15 +9,15 @@ use std::{
 use gpui::{
     div, img, prelude::FluentBuilder as _, px, relative, rems, AnyElement, App, AppContext as _,
     ClipboardItem, DefiniteLength, Div, ElementId, Entity, FontStyle, FontWeight, Half,
-    HighlightStyle, Image, ImageFormat, ImageSource, InteractiveElement as _, IntoElement,
-    Length, MouseButton, ObjectFit, ParentElement, RenderImage, SharedString, SharedUri,
+    HighlightStyle, Image, ImageFormat, ImageSource, InteractiveElement as _, IntoElement, Length,
+    MouseButton, ObjectFit, ParentElement, RenderImage, SharedString, SharedUri,
     StatefulInteractiveElement, Styled, StyledImage as _, Window,
 };
 use markdown::mdast;
 use once_cell::sync::Lazy;
 use regex;
-use ropey::Rope;
 use resvg::{tiny_skia, usvg};
+use ropey::Rope;
 use std::sync::Mutex;
 
 use crate::{
@@ -508,7 +508,10 @@ impl CodeBlock {
         if line_elements.is_empty() {
             code_box.child(copy_button).into_any_element()
         } else {
-            code_box.children(line_elements).child(copy_button).into_any_element()
+            code_box
+                .children(line_elements)
+                .child(copy_button)
+                .into_any_element()
         }
     }
 }
@@ -798,7 +801,9 @@ impl Paragraph {
                         svg.to_string()
                     };
 
-                    if let Some(rendered) = Self::render_cached_svg(svg, text_color, raster_scale, is_math) {
+                    if let Some(rendered) =
+                        Self::render_cached_svg(svg, text_color, raster_scale, is_math)
+                    {
                         img(ImageSource::Render(rendered.image.clone()))
                             .id(ix)
                             .object_fit(ObjectFit::Contain)
