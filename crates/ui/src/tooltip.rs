@@ -9,7 +9,7 @@ use std::{cell::RefCell, rc::Rc, time::{Duration, Instant}};
 use crate::{h_flex, text::Text, ActiveTheme, Kbd, StyledExt};
 
 const TOOLTIP_CURSOR_OFFSET: Pixels = px(5.0);
-const TOOLTIP_STATIONARY_DELAY: Duration = Duration::from_secs(1);
+const TOOLTIP_STATIONARY_DELAY: Duration = Duration::from_millis(250);
 const TOOLTIP_STATIONARY_TOLERANCE: Pixels = px(2.0);
 
 enum TooltipContext {
