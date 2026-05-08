@@ -19,9 +19,11 @@ use gpui::{prelude::FluentBuilder as _, *};
 use serde::{Deserialize, Serialize};
 use smol::Timer;
 use std::{
-    collections::HashMap,
+    cell::RefCell,
+    collections::{HashMap, HashSet},
     fs,
     path::PathBuf,
+    rc::Rc,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -31,7 +33,9 @@ use std::{
 use ui::{
     button::{Button, ButtonVariants as _},
     dock::{Panel, PanelEvent},
-    dropdown::{SearchableList, SearchableListEvent, SearchableListItemState},
+    dropdown::{
+        SearchableList, SearchableListEvent, SearchableListItemAction, SearchableListItemState,
+    },
     input::Enter,
     popover::Popover,
     scroll::{Scrollbar, ScrollbarState},
@@ -126,6 +130,7 @@ pub struct AgentChatPanel {
     model_list: Entity<SearchableList<ModelDefinition>>,
     provider_catalog: Vec<ProviderDefinition>,
     custom_providers_list: Vec<CustomProvider>,
+    custom_provider_ids: Rc<RefCell<HashSet<String>>>,
     pending_custom_provider: Option<PendingCustomProvider>,
     pending_custom_provider_step: Option<AddProviderPromptStep>,
     wip_providers: HashMap<&'static str, String>,
@@ -151,6 +156,12 @@ impl AgentChatPanel {
         let mut provider_catalog = Self::default_provider_catalog();
         let custom_providers_list =
             custom_providers::load_custom_providers(&Self::custom_provider_config_dir());
+        let custom_provider_ids = Rc::new(RefCell::new(
+            custom_providers_list
+                .iter()
+                .map(|provider| provider.id.clone())
+                .collect::<HashSet<_>>(),
+        ));
         provider_catalog.extend(
             custom_providers_list
                 .iter()
@@ -187,6 +198,7 @@ impl AgentChatPanel {
         });
 
         let wip_for_list = wip_providers.clone();
+        let custom_ids_for_list = custom_provider_ids.clone();
         let provider_list = cx.new(|cx| {
             SearchableList::new(window, cx, provider_catalog.clone(), |p: &ProviderDefinition| {
                 format!("{} ({})", p.label, p.id)
@@ -195,6 +207,18 @@ impl AgentChatPanel {
             .with_max_width(px(220.0))
             .with_max_height(px(320.0))
             .with_icon_getter(|_| IconName::Brain)
+            .with_item_actions(move |provider| {
+                if custom_ids_for_list.borrow().contains(provider.id) {
+                    vec![SearchableListItemAction {
+                        id: "delete".into(),
+                        icon: Some(IconName::Trash),
+                        label: None,
+                        destructive: true,
+                    }]
+                } else {
+                    Vec::new()
+                }
+            })
             .with_item_state(move |provider| {
                 if wip_for_list.contains_key(provider.id) {
                     SearchableListItemState::Disabled
@@ -222,27 +246,39 @@ impl AgentChatPanel {
             cx.subscribe(
                 &provider_list,
                 move |this, _, event: &SearchableListEvent<ProviderDefinition>, cx| {
-                    let SearchableListEvent::Select(selected_provider) = event;
-                    if let Some(index) = this
-                        .provider_catalog
-                        .iter()
-                        .position(|provider| provider.id == selected_provider.id)
-                    {
-                        this.set_provider(index, cx);
+                    match event {
+                        SearchableListEvent::Select(selected_provider) => {
+                            if let Some(index) = this
+                                .provider_catalog
+                                .iter()
+                                .position(|provider| provider.id == selected_provider.id)
+                            {
+                                this.set_provider(index, cx);
+                            }
+                        }
+                        SearchableListEvent::Action {
+                            item,
+                            action_id,
+                        } => {
+                            if action_id.as_ref() == "delete" {
+                                this.delete_custom_provider(item.id, cx);
+                            }
+                        }
                     }
                 },
             ),
             cx.subscribe(
                 &model_list,
                 move |this, _, event: &SearchableListEvent<ModelDefinition>, cx| {
-                    let SearchableListEvent::Select(selected_model) = event;
-                    if let Some(provider) = this.active_provider() {
-                        if let Some(index) = provider
-                            .models
-                            .iter()
-                            .position(|model| model.id == selected_model.id)
-                        {
-                            this.set_model(index, cx);
+                    if let SearchableListEvent::Select(selected_model) = event {
+                        if let Some(provider) = this.active_provider() {
+                            if let Some(index) = provider
+                                .models
+                                .iter()
+                                .position(|model| model.id == selected_model.id)
+                            {
+                                this.set_model(index, cx);
+                            }
                         }
                     }
                 },
@@ -250,8 +286,9 @@ impl AgentChatPanel {
             cx.subscribe(
                 &chat_history_list,
                 move |this, _, event: &SearchableListEvent<ChatHistoryEntry>, cx| {
-                    let SearchableListEvent::Select(entry) = event;
-                    this.load_chat_session(&entry.id, cx);
+                    if let SearchableListEvent::Select(entry) = event {
+                        this.load_chat_session(&entry.id, cx);
+                    }
                 },
             ),
         ];
@@ -268,6 +305,7 @@ impl AgentChatPanel {
             model_list,
             provider_catalog,
             custom_providers_list,
+            custom_provider_ids,
             pending_custom_provider: None,
             pending_custom_provider_step: None,
             wip_providers,
@@ -1446,6 +1484,9 @@ impl AgentChatPanel {
         match custom_providers::add_custom_provider(&Self::custom_provider_config_dir(), provider.clone()) {
             Ok(()) => {
                 let provider_definition = Self::custom_provider_to_definition(&provider);
+                self.custom_provider_ids
+                    .borrow_mut()
+                    .insert(provider.id.clone());
                 self.custom_providers_list.push(provider);
                 self.provider_catalog.push(provider_definition);
                 self.provider_list.update(cx, |list, cx| {
@@ -1471,6 +1512,58 @@ impl AgentChatPanel {
                 self.messages.push(ChatMessage {
                     role: "system",
                     content: format!("Failed to save custom provider: {err}"),
+                });
+                self.save_current_chat();
+                self.scroll_messages_to_bottom();
+                cx.notify();
+            }
+        }
+    }
+
+    fn delete_custom_provider(&mut self, provider_id: &str, cx: &mut Context<Self>) {
+        if !self.custom_provider_ids.borrow().contains(provider_id) {
+            return;
+        }
+
+        match custom_providers::remove_custom_provider(&Self::custom_provider_config_dir(), provider_id) {
+            Ok(()) => {
+                let previous_active_id = self.active_provider().map(|provider| provider.id.to_string());
+
+                self.custom_provider_ids.borrow_mut().remove(provider_id);
+                self.custom_providers_list
+                    .retain(|provider| provider.id != provider_id);
+                self.provider_catalog
+                    .retain(|provider| provider.id != provider_id);
+
+                self.provider_list.update(cx, |list, cx| {
+                    list.set_items(self.provider_catalog.clone(), cx);
+                });
+
+                if !self.provider_catalog.is_empty() {
+                    let fallback_ix = previous_active_id
+                        .as_deref()
+                        .and_then(|id| {
+                            self.provider_catalog
+                                .iter()
+                                .position(|provider| provider.id == id)
+                        })
+                        .unwrap_or(0);
+                    self.set_provider(fallback_ix, cx);
+                }
+
+                self.messages.push(ChatMessage {
+                    role: "system",
+                    content: format!("Custom provider '{}' deleted.", provider_id),
+                });
+                self.save_current_chat();
+                self.refresh_chat_history_list(cx);
+                self.scroll_messages_to_bottom();
+                cx.notify();
+            }
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: "system",
+                    content: format!("Failed to delete custom provider '{}': {err}", provider_id),
                 });
                 self.save_current_chat();
                 self.scroll_messages_to_bottom();

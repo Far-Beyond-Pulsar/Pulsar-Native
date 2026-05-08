@@ -61,8 +61,9 @@ impl AddComponentDialog {
         let subscriptions = vec![cx.subscribe(
             &searchable_list,
             |this, _, event: &SearchableListEvent<&'static str>, cx| {
-                let SearchableListEvent::Select(class_name) = event;
-                this.add_component(class_name, cx);
+                if let SearchableListEvent::Select(class_name) = event {
+                    this.add_component(class_name, cx);
+                }
             },
         )];
 

@@ -160,13 +160,14 @@ impl AddObjectDialog {
         let subscriptions = vec![cx.subscribe(
             &searchable_list,
             |this, _, event: &SearchableListEvent<ObjectMenuItem>, cx| {
-                let SearchableListEvent::Select(item) = event;
-                match item.kind {
-                    ObjectMenuKind::Builtin(make_type) => {
-                        this.spawn_object(item.label, make_type(), cx);
-                    }
-                    ObjectMenuKind::EngineClass => {
-                        this.spawn_object(item.label, ObjectType::Empty, cx);
+                if let SearchableListEvent::Select(item) = event {
+                    match item.kind {
+                        ObjectMenuKind::Builtin(make_type) => {
+                            this.spawn_object(item.label, make_type(), cx);
+                        }
+                        ObjectMenuKind::EngineClass => {
+                            this.spawn_object(item.label, ObjectType::Empty, cx);
+                        }
                     }
                 }
             },

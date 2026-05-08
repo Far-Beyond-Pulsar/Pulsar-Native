@@ -7,6 +7,7 @@ use gpui::{
 use std::rc::Rc;
 
 use crate::{
+    button::{Button, ButtonVariants as _},
     input::{InputState, TextInput},
     scroll::ScrollbarAxis,
     v_flex, ActiveTheme, Icon, IconName, Sizable, StyledExt,
@@ -14,6 +15,15 @@ use crate::{
 
 pub enum SearchableListEvent<T: Clone + 'static> {
     Select(T),
+    Action { item: T, action_id: SharedString },
+}
+
+#[derive(Clone, Debug)]
+pub struct SearchableListItemAction {
+    pub id: SharedString,
+    pub icon: Option<IconName>,
+    pub label: Option<SharedString>,
+    pub destructive: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -29,6 +39,7 @@ pub struct SearchableList<T: Clone + 'static> {
     format_item: Rc<dyn Fn(&T) -> String>,
     item_state: Rc<dyn Fn(&T) -> SearchableListItemState>,
     icon_for: Option<Rc<dyn Fn(&T) -> IconName>>,
+    item_actions: Option<Rc<dyn Fn(&T) -> Vec<SearchableListItemAction>>>,
     empty_text: SharedString,
     max_width: Pixels,
     max_height: Pixels,
@@ -60,6 +71,7 @@ impl<T: Clone + 'static> SearchableList<T> {
             format_item: Rc::new(format_item),
             item_state: Rc::new(|_| SearchableListItemState::Enabled),
             icon_for: None,
+            item_actions: None,
             empty_text: "No results".into(),
             max_width: px(240.0),
             max_height: px(320.0),
@@ -91,6 +103,14 @@ impl<T: Clone + 'static> SearchableList<T> {
         item_state: impl Fn(&T) -> SearchableListItemState + 'static,
     ) -> Self {
         self.item_state = Rc::new(item_state);
+        self
+    }
+
+    pub fn with_item_actions(
+        mut self,
+        item_actions: impl Fn(&T) -> Vec<SearchableListItemAction> + 'static,
+    ) -> Self {
+        self.item_actions = Some(Rc::new(item_actions));
         self
     }
 
@@ -157,6 +177,11 @@ impl<T: Clone + 'static> Render for SearchableList<T> {
                             .children(filtered_items.into_iter().enumerate().map(|(ix, item)| {
                                 let label = (self.format_item)(&item);
                                 let icon = self.icon_for.as_ref().map(|f| f(&item));
+                                let actions = self
+                                    .item_actions
+                                    .as_ref()
+                                    .map(|f| f(&item))
+                                    .unwrap_or_default();
                                 let item_state = (self.item_state)(&item);
                                 let theme = cx.theme().clone();
                                 let selected_item = item.clone();
@@ -166,41 +191,98 @@ impl<T: Clone + 'static> Render for SearchableList<T> {
                                     .id(("searchable-list-item", ix))
                                     .when(is_enabled, |el| {
                                         el.hover(move |s| s.bg(theme.accent.opacity(0.12)))
-                                            .on_mouse_down(
-                                                MouseButton::Left,
-                                                cx.listener(move |_this, _, _, cx| {
-                                                    cx.emit(SearchableListEvent::Select(
-                                                        selected_item.clone(),
-                                                    ));
-                                                    cx.emit(DismissEvent);
-                                                }),
-                                            )
                                     })
                                     .when(!is_enabled, |el| {
                                         el.cursor_default().opacity(0.7)
                                     })
-                                    .when_some(icon, |el, icon| {
-                                        el.child(
-                                            Icon::new(icon)
-                                                .size(px(13.0))
-                                                .text_color(if is_enabled {
-                                                    cx.theme().muted_foreground
-                                                } else {
-                                                    cx.theme().muted_foreground.opacity(0.7)
-                                                }),
-                                        )
-                                    })
                                     .child(
                                         div()
-                                            .text_sm()
-                                            .text_color(if is_enabled {
-                                                cx.theme().foreground
-                                            } else {
-                                                cx.theme().muted_foreground
+                                            .flex()
+                                            .flex_row()
+                                            .flex_1()
+                                            .min_w_0()
+                                            .gap_2()
+                                            .items_center()
+                                            .when(is_enabled, |el| {
+                                                el.on_mouse_down(
+                                                    MouseButton::Left,
+                                                    cx.listener(move |_this, _, _, cx| {
+                                                        cx.emit(SearchableListEvent::Select(
+                                                            selected_item.clone(),
+                                                        ));
+                                                        cx.emit(DismissEvent);
+                                                    }),
+                                                )
                                             })
-                                            .when(!is_enabled, |el| el.italic().line_through())
-                                            .child(label),
+                                            .when_some(icon, |el, icon| {
+                                                el.child(
+                                                    Icon::new(icon)
+                                                        .size(px(13.0))
+                                                        .text_color(if is_enabled {
+                                                            cx.theme().muted_foreground
+                                                        } else {
+                                                            cx.theme().muted_foreground.opacity(0.7)
+                                                        }),
+                                                )
+                                            })
+                                            .child(
+                                                div()
+                                                    .text_sm()
+                                                    .text_color(if is_enabled {
+                                                        cx.theme().foreground
+                                                    } else {
+                                                        cx.theme().muted_foreground
+                                                    })
+                                                    .when(!is_enabled, |el| el.italic().line_through())
+                                                    .child(label),
+                                            ),
                                     )
+                                    .when(!actions.is_empty(), |el| {
+                                        el.child(
+                                            div()
+                                                .flex()
+                                                .flex_row()
+                                                .items_center()
+                                                .gap_1()
+                                                .children(actions.into_iter().map(|action| {
+                                                    let action_item = item.clone();
+                                                    let action_id = action.id.clone();
+                                                    let button_id = format!(
+                                                        "searchable-list-action-{}-{}",
+                                                        ix,
+                                                        action.id
+                                                    );
+
+                                                    let button = Button::new(button_id)
+                                                        .xsmall()
+                                                        .ghost()
+                                                        .when(action.destructive, |b| {
+                                                            b.text_color(cx.theme().danger)
+                                                        })
+                                                        .on_click(cx.listener(move |_this, _, _, cx| {
+                                                            cx.emit(SearchableListEvent::Action {
+                                                                item: action_item.clone(),
+                                                                action_id: action_id.clone(),
+                                                            });
+                                                        }));
+
+                                                    match (action.icon, action.label.clone()) {
+                                                        (Some(icon), Some(label)) => {
+                                                            button.icon(icon).label(label).into_any_element()
+                                                        }
+                                                        (Some(icon), None) => {
+                                                            button.icon(icon).into_any_element()
+                                                        }
+                                                        (None, Some(label)) => {
+                                                            button.label(label).into_any_element()
+                                                        }
+                                                        (None, None) => {
+                                                            button.label("Action").into_any_element()
+                                                        }
+                                                    }
+                                                })),
+                                        )
+                                    })
                             })),
                     ),
                 ),

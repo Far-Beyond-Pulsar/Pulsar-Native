@@ -18,7 +18,7 @@ use crate::{
 
 mod searchable_list;
 pub use searchable_list::{
-    SearchableList, SearchableListEvent, SearchableListItemState,
+    SearchableList, SearchableListEvent, SearchableListItemAction, SearchableListItemState,
 };
 
 #[derive(Clone)]
