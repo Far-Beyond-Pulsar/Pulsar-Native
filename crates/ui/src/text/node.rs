@@ -675,21 +675,30 @@ impl Paragraph {
         svg.replace("currentColor", &css_color)
     }
 
+    fn strip_background_from_svg(svg: &str) -> String {
+        // Remove background rectangles from Mermaid SVGs
+        // Match <rect ...> elements that appear to be backgrounds
+        let re = regex::Regex::new(r#"<rect[^>]*\s+(?:x="0"[^>]*y="0"|y="0"[^>]*x="0")[^>]*>"#)
+            .unwrap_or_else(|_| regex::Regex::new(r#"<rect[^>]*>"#).unwrap());
+        re.replace_all(svg, "").to_string()
+    }
+
     fn render_cached_svg(
         svg: &str,
         text_color: gpui::Hsla,
         raster_scale: f32,
         colorize: bool,
     ) -> Option<Arc<CachedSvgImage>> {
-        let colored_svg = if colorize {
+        let mut svg_to_render = if colorize {
             Self::colorize_svg(svg, text_color)
         } else {
-            svg.to_string()
+            // Strip background from Mermaid diagrams
+            Self::strip_background_from_svg(svg)
         };
         let scale_key = (raster_scale * 100.0).round().clamp(1.0, u16::MAX as f32) as u16;
 
         let mut hasher = DefaultHasher::new();
-        colored_svg.hash(&mut hasher);
+        svg_to_render.hash(&mut hasher);
         let svg_hash = hasher.finish();
 
         if let Some(cached) = SVG_RENDER_CACHE
@@ -702,7 +711,7 @@ impl Paragraph {
         }
 
         let options = usvg::Options::default();
-        let tree = usvg::Tree::from_str(&colored_svg, &options).ok()?;
+        let tree = usvg::Tree::from_str(&svg_to_render, &options).ok()?;
         let logical_size = tree.size();
         let width_px = logical_size.width();
         let height_px = logical_size.height();
