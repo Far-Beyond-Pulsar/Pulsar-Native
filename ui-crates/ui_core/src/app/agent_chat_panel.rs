@@ -25,6 +25,7 @@ use ui::{
     input::Enter,
     popover::Popover,
     scroll::{Scrollbar, ScrollbarState},
+    text::TextView,
     Disableable,
     h_flex,
     input::{InputState, TextInput},
@@ -1781,7 +1782,7 @@ impl Render for AgentChatPanel {
                             move |
                                 this,
                                 range: std::ops::Range<usize>,
-                                _window,
+                                window,
                                 cx: &mut Context<Self>,
                             | {
                                 range
@@ -1792,6 +1793,7 @@ impl Render for AgentChatPanel {
 
                                         let is_user = message.role == "user";
                                         let panel = cx.entity().clone();
+                                        let content = message.content.clone();
 
                                         div()
                                             .relative()
@@ -1830,15 +1832,25 @@ impl Render for AgentChatPanel {
                                                                         "Agent"
                                                                     }),
                                                             )
-                                                            .child(
+                                                            .child(if is_user {
                                                                 div()
                                                                     .w_full()
                                                                     .min_w_0()
                                                                     .whitespace_normal()
                                                                     .text_sm()
                                                                     .text_color(cx.theme().foreground)
-                                                                    .child(message.content.clone()),
-                                                            ),
+                                                                    .child(content)
+                                                                    .into_any_element()
+                                                            } else {
+                                                                TextView::markdown(
+                                                                    ("agent-chat-md", ix),
+                                                                    content,
+                                                                    window,
+                                                                    cx,
+                                                                )
+                                                                .debounce_ms(30)
+                                                                .into_any_element()
+                                                            }),
                                                     )
                                                     .id(("agent-chat-message", ix)),
                                             )
