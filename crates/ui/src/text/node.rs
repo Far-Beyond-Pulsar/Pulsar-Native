@@ -15,6 +15,7 @@ use gpui::{
 };
 use markdown::mdast;
 use once_cell::sync::Lazy;
+use regex;
 use ropey::Rope;
 use resvg::{tiny_skia, usvg};
 use std::sync::Mutex;
