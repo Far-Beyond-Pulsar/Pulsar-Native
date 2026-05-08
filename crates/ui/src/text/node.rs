@@ -8,8 +8,8 @@ use std::{
 use gpui::{
     div, img, prelude::FluentBuilder as _, px, relative, rems, AnyElement, App, AppContext as _,
     ClipboardItem, DefiniteLength, Div, ElementId, Entity, FontStyle, FontWeight, Half,
-    HighlightStyle, InteractiveElement as _, IntoElement, Length, MouseButton, ObjectFit,
-    ParentElement, SharedString, SharedUri, StatefulInteractiveElement, Styled,
+    HighlightStyle, Image, ImageFormat, InteractiveElement as _, IntoElement, Length, MouseButton,
+    ObjectFit, ParentElement, SharedString, SharedUri, StatefulInteractiveElement, Styled,
     StyledImage as _, Window,
 };
 use markdown::mdast;
@@ -89,6 +89,9 @@ pub struct ImageNode {
     pub link: Option<LinkMark>,
     pub title: Option<SharedString>,
     pub alt: Option<SharedString>,
+    pub math_tex: Option<SharedString>,
+    pub math_svg: Option<SharedString>,
+    pub math_display_mode: bool,
     pub width: Option<DefiniteLength>,
     pub height: Option<DefiniteLength>,
 }
@@ -108,6 +111,9 @@ impl PartialEq for ImageNode {
             && self.link == other.link
             && self.title == other.title
             && self.alt == other.alt
+            && self.math_tex == other.math_tex
+            && self.math_svg == other.math_svg
+            && self.math_display_mode == other.math_display_mode
             && self.width == other.width
             && self.height == other.height
     }
@@ -681,24 +687,50 @@ impl Paragraph {
                     );
                 }
                 child_nodes.push(
-                    img(image.url.as_ref())
-                        .id(ix)
-                        .object_fit(ObjectFit::Contain)
-                        .w_full()
-                        .when_some(image.width, |this, width| this.w(width))
-                        .when_some(image.height, |this, height| this.h(height))
-                        .when_some(image.link.clone(), |this, link| {
-                            let title = image.title();
-                            this.cursor_pointer()
-                                .tooltip(move |window, cx| {
-                                    Tooltip::new(title.clone()).build(window, cx)
+                        if let Some(svg) = &image.math_svg {
+                            let image = std::sync::Arc::new(Image::from_bytes(
+                                ImageFormat::Svg,
+                                svg.as_str().as_bytes().to_vec(),
+                            ));
+
+                            img(image)
+                                .id(ix)
+                                .object_fit(ObjectFit::Contain)
+                                .w_full()
+                                .when_some(image.width, |this, width| this.w(width))
+                                .when_some(image.height, |this, height| this.h(height))
+                                .when_some(image.link.clone(), |this, link| {
+                                    let title = image.title();
+                                    this.cursor_pointer()
+                                        .tooltip(move |window, cx| {
+                                            Tooltip::new(title.clone()).build(window, cx)
+                                        })
+                                        .on_click(move |_, _, cx| {
+                                            cx.stop_propagation();
+                                            cx.open_url(&link.url);
+                                        })
                                 })
-                                .on_click(move |_, _, cx| {
-                                    cx.stop_propagation();
-                                    cx.open_url(&link.url);
+                                .into_any_element()
+                        } else {
+                            img(image.url.as_ref())
+                                .id(ix)
+                                .object_fit(ObjectFit::Contain)
+                                .w_full()
+                                .when_some(image.width, |this, width| this.w(width))
+                                .when_some(image.height, |this, height| this.h(height))
+                                .when_some(image.link.clone(), |this, link| {
+                                    let title = image.title();
+                                    this.cursor_pointer()
+                                        .tooltip(move |window, cx| {
+                                            Tooltip::new(title.clone()).build(window, cx)
+                                        })
+                                        .on_click(move |_, _, cx| {
+                                            cx.stop_propagation();
+                                            cx.open_url(&link.url);
+                                        })
                                 })
-                        })
-                        .into_any_element(),
+                                .into_any_element()
+                        },
                 );
 
                 text.clear();
@@ -1137,12 +1169,20 @@ impl Paragraph {
                 }
 
                 if let Some(image) = &text_node.image {
-                    let alt = image.alt.clone().unwrap_or_default();
-                    let title = image
-                        .title
-                        .clone()
-                        .map_or(String::new(), |t| format!(" \"{}\"", t));
-                    text.push_str(&format!("![{}]({}{})", alt, image.url, title))
+                    if let Some(math_tex) = &image.math_tex {
+                        if image.math_display_mode {
+                            text.push_str(&format!("$$\n{}\n$$", math_tex));
+                        } else {
+                            text.push_str(&format!("${}$", math_tex));
+                        }
+                    } else {
+                        let alt = image.alt.clone().unwrap_or_default();
+                        let title = image
+                            .title
+                            .clone()
+                            .map_or(String::new(), |t| format!(" \"{}\"", t));
+                        text.push_str(&format!("![{}]({}{})", alt, image.url, title))
+                    }
                 }
 
                 text
