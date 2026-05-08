@@ -5,6 +5,114 @@ use std::{sync::{Arc, atomic::{AtomicBool, Ordering}}, time::{Duration, Instant,
 use ui::input::Enter;
 
 impl AgentChatPanel {
+    const CONTEXT_CHAR_BUDGET: usize = 24_000;
+    const COMPACTION_SUMMARY_CHAR_BUDGET: usize = 2_400;
+
+    fn provider_role_from_chat_role(role: &str) -> ChatRole {
+        match role {
+            "system" => ChatRole::System,
+            "user" => ChatRole::User,
+            "assistant" => ChatRole::Assistant,
+            _ => ChatRole::Assistant,
+        }
+    }
+
+    fn build_provider_history_messages(&self) -> Vec<ProviderChatMessage> {
+        self.messages
+            .iter()
+            .filter(|m| !m.content.trim().is_empty())
+            .map(|m| ProviderChatMessage {
+                role: Self::provider_role_from_chat_role(m.role),
+                content: m.content.clone(),
+            })
+            .collect()
+    }
+
+    fn compact_provider_messages(
+        messages: Vec<ProviderChatMessage>,
+        max_chars: usize,
+    ) -> (Vec<ProviderChatMessage>, bool) {
+        let total_chars: usize = messages.iter().map(|m| m.content.chars().count()).sum();
+        if total_chars <= max_chars {
+            return (messages, false);
+        }
+
+        let mut system_messages = Vec::new();
+        let mut dialog_messages = Vec::new();
+        for message in messages {
+            if message.role == ChatRole::System {
+                system_messages.push(message);
+            } else {
+                dialog_messages.push(message);
+            }
+        }
+
+        let system_chars: usize = system_messages
+            .iter()
+            .map(|m| m.content.chars().count())
+            .sum();
+
+        let kept_dialog_budget = max_chars
+            .saturating_sub(system_chars)
+            .saturating_sub(Self::COMPACTION_SUMMARY_CHAR_BUDGET)
+            .max(1_500);
+
+        let mut kept_dialog_reversed = Vec::new();
+        let mut kept_chars = 0usize;
+
+        for message in dialog_messages.iter().rev() {
+            let len = message.content.chars().count();
+            if kept_dialog_reversed.is_empty() || kept_chars + len <= kept_dialog_budget {
+                kept_chars += len;
+                kept_dialog_reversed.push(message.clone());
+            } else {
+                break;
+            }
+        }
+
+        kept_dialog_reversed.reverse();
+        let dropped_count = dialog_messages
+            .len()
+            .saturating_sub(kept_dialog_reversed.len());
+
+        if dropped_count == 0 {
+            let mut merged = system_messages;
+            merged.extend(kept_dialog_reversed);
+            return (merged, false);
+        }
+
+        let dropped = &dialog_messages[..dropped_count];
+        let mut summary_lines = Vec::new();
+        for message in dropped.iter().take(18) {
+            let role = match message.role {
+                ChatRole::User => "user",
+                ChatRole::Assistant => "assistant",
+                ChatRole::Tool => "tool",
+                ChatRole::System => "system",
+            };
+
+            let snippet = message
+                .content
+                .replace('\n', " ")
+                .chars()
+                .take(220)
+                .collect::<String>();
+            summary_lines.push(format!("- {role}: {snippet}"));
+        }
+
+        let mut compacted = system_messages;
+        compacted.push(ProviderChatMessage {
+            role: ChatRole::System,
+            content: format!(
+                "Conversation summary (auto-compacted to fit context window):\n{}",
+                summary_lines.join("\n")
+            ),
+        });
+        compacted.extend(kept_dialog_reversed);
+
+        (compacted, true)
+    }
+
     pub(super) fn scroll_messages_to_bottom(&self) {
         self.messages_scroll_handle.scroll_to_bottom();
     }
@@ -180,13 +288,14 @@ impl AgentChatPanel {
         self.is_request_in_flight = true;
         self.streaming_message_ix = Some(message_ix);
 
+        let provider_messages = self.build_provider_history_messages();
+        let (provider_messages, was_compacted) =
+            Self::compact_provider_messages(provider_messages, Self::CONTEXT_CHAR_BUDGET);
+
         let token = token.unwrap_or_default();
         let request = ChatRequest {
             model,
-            messages: vec![ProviderChatMessage {
-                role: ChatRole::User,
-                content: prompt,
-            }],
+            messages: provider_messages,
             // Stream first-party model output directly into UI.
             enable_tool_calls: false,
             tools: Vec::new(),
@@ -195,10 +304,12 @@ impl AgentChatPanel {
             max_tokens: Some(1024),
         };
         println!(
-            "[agent_chat][request={}] dispatched provider={} model={} entering in-flight",
+            "[agent_chat][request={}] dispatched provider={} model={} entering in-flight compacted={} message_count={}",
             request_id,
             provider_id,
-            request.model
+            request.model,
+            was_compacted,
+            request.messages.len()
         );
 
         enum StreamEvent {
