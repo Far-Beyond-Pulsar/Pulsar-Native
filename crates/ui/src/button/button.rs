@@ -586,7 +586,7 @@ impl RenderOnce for Button {
             .focus_ring(is_focused, px(0.), window, cx);
 
         if let Some((tooltip, action)) = self.tooltip {
-            HoverTooltip::new(self.id.clone(), element, move |window, cx| {
+            HoverTooltip::new((self.id.clone(), "hover-tooltip"), element, move |window, cx| {
                 Tooltip::new(tooltip.clone())
                     .when_some(action.clone(), |this, (action, context)| {
                         this.action(

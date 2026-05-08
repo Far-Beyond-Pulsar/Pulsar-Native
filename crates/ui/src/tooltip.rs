@@ -4,12 +4,13 @@ use gpui::{
     HitboxBehavior, InspectorElementId, IntoElement, LayoutId, ParentElement, Pixels, Point,
     Render, SharedString, StyleRefinement, Styled, Window,
 };
-use std::{cell::RefCell, rc::Rc, time::Duration};
+use std::{cell::RefCell, rc::Rc, time::{Duration, Instant}};
 
 use crate::{h_flex, text::Text, ActiveTheme, Kbd, StyledExt};
 
 const TOOLTIP_CURSOR_OFFSET: Pixels = px(5.0);
 const TOOLTIP_STATIONARY_DELAY: Duration = Duration::from_secs(1);
+const TOOLTIP_STATIONARY_TOLERANCE: Pixels = px(2.0);
 
 enum TooltipContext {
     Text(Text),
@@ -99,12 +100,17 @@ pub fn smart_tooltip_anchor_and_position_at(
     (anchor, point(x, y))
 }
 
+fn moved_significantly(from: Point<Pixels>, to: Point<Pixels>) -> bool {
+    (from.x - to.x).abs() > TOOLTIP_STATIONARY_TOLERANCE
+        || (from.y - to.y).abs() > TOOLTIP_STATIONARY_TOLERANCE
+}
+
 #[derive(Default)]
 struct HoverTooltipSharedState {
     hovered: bool,
     visible: bool,
     mouse_position: Point<Pixels>,
-    hover_generation: u64,
+    hover_started_at: Option<Instant>,
 }
 
 pub struct HoverTooltip {
@@ -288,10 +294,23 @@ impl Element for HoverTooltip {
             element.paint(window, cx);
         }
 
+        {
+            let mut state = request_layout.hover_state.borrow_mut();
+            if state.hovered && !state.visible {
+                if let Some(hover_started_at) = state.hover_started_at {
+                    if hover_started_at.elapsed() >= TOOLTIP_STATIONARY_DELAY {
+                        state.visible = true;
+                        window.refresh();
+                    } else {
+                        window.request_animation_frame();
+                    }
+                }
+            }
+        }
+
         let hitbox = prepaint.hitbox.clone();
         let hover_state = request_layout.hover_state.clone();
-        let window_handle = window.window_handle().into();
-        window.on_mouse_event(move |event: &gpui::MouseMoveEvent, phase, window, cx| {
+        window.on_mouse_event(move |event: &gpui::MouseMoveEvent, phase, window, _cx| {
             if !phase.bubble() {
                 return;
             }
@@ -300,41 +319,33 @@ impl Element for HoverTooltip {
             let mut state = hover_state.borrow_mut();
 
             if hovered {
-                let mouse_moved = !state.hovered || state.mouse_position != event.position;
+                let mouse_moved =
+                    !state.hovered || moved_significantly(state.mouse_position, event.position);
                 if mouse_moved {
+                    let was_visible = state.visible;
                     state.hovered = true;
                     state.visible = false;
                     state.mouse_position = event.position;
-                    state.hover_generation = state.hover_generation.saturating_add(1);
+                    state.hover_started_at = Some(Instant::now());
 
-                    let hover_generation = state.hover_generation;
-                    let hover_state = hover_state.clone();
-                    let window_handle = window_handle;
-                    cx.spawn(async move |cx| {
-                        cx.background_executor().timer(TOOLTIP_STATIONARY_DELAY).await;
-                        let _ = cx.update_window(window_handle, |_root, window, _cx| {
-                            let mut hover_state = hover_state.borrow_mut();
-                            if hover_state.hovered
-                                && hover_state.hover_generation == hover_generation
-                                && !hover_state.visible
-                            {
-                                hover_state.visible = true;
-                                window.refresh();
-                            }
-                        });
-                    })
-                    .detach();
+                    // Drive a delayed show via animation frames while hover is stationary.
+                    window.request_animation_frame();
 
-                    window.refresh();
+                    if was_visible {
+                        window.refresh();
+                    }
                 }
                 return;
             }
 
             if state.hovered || state.visible {
+                let was_visible = state.visible;
                 state.hovered = false;
                 state.visible = false;
-                state.hover_generation = state.hover_generation.saturating_add(1);
-                window.refresh();
+                state.hover_started_at = None;
+                if was_visible {
+                    window.refresh();
+                }
             }
         });
     }

@@ -216,7 +216,7 @@ impl RenderOnce for Switch {
             ;
 
         if let Some(tooltip) = self.tooltip {
-            HoverTooltip::new(self.id.clone(), element, move |window, cx| {
+            HoverTooltip::new((self.id.clone(), "hover-tooltip"), element, move |window, cx| {
                 Tooltip::new(tooltip.clone()).build(window, cx)
             })
             .into_any_element()
