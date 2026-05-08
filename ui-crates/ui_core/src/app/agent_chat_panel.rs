@@ -97,6 +97,7 @@ pub struct AgentChatPanel {
     tool_registry: ToolRegistry,
     provider_tokens: HashMap<&'static str, String>,
     pending_auth_provider: Option<&'static str>,
+    pending_device_code: Option<String>,
     current_chat_id: String,
     current_chat_created_at: u64,
     loaded_chat_project_root: Option<PathBuf>,
@@ -214,6 +215,7 @@ impl AgentChatPanel {
             tool_registry: ToolRegistry::with_default_tools(),
             provider_tokens: HashMap::new(),
             pending_auth_provider: None,
+            pending_device_code: None,
             current_chat_id: String::new(),
             current_chat_created_at: 0,
             loaded_chat_project_root: None,
@@ -439,28 +441,28 @@ impl AgentChatPanel {
             },
             ProviderDefinition {
                 id: "github_copilot",
-                label: "GitHub Copilot",
+                label: "GitHub Models",
                 kind: ProviderKind::Cloud,
-                endpoint: "https://api.githubcopilot.com/chat/completions",
+                endpoint: "https://models.github.ai/inference/chat/completions",
                 models: Arc::new(vec![
                     ModelDefinition {
-                        id: "gpt-5.3-codex",
-                        label: "GPT-5.3 Codex (Copilot)",
+                        id: "openai/gpt-4.1",
+                        label: "GPT-4.1 (GitHub Models)",
                         supports_tools: true,
                     },
                     ModelDefinition {
-                        id: "claude-sonnet-4",
-                        label: "Claude Sonnet 4 (Copilot)",
+                        id: "openai/gpt-5-mini",
+                        label: "GPT-5 mini (GitHub Models)",
                         supports_tools: true,
                     },
                     ModelDefinition {
-                        id: "o4-mini",
-                        label: "o4 Mini (Copilot)",
+                        id: "anthropic/claude-sonnet-4-6",
+                        label: "Claude Sonnet 4.6 (GitHub Models)",
                         supports_tools: true,
                     },
                     ModelDefinition {
-                        id: "gemini-2.5-pro",
-                        label: "Gemini 2.5 Pro (Copilot)",
+                        id: "google/gemini-2.5-pro",
+                        label: "Gemini 2.5 Pro (GitHub Models)",
                         supports_tools: true,
                     },
                 ]),
@@ -1216,6 +1218,104 @@ impl AgentChatPanel {
             return;
         };
 
+        // If the provider supports the OAuth device-code flow, use it instead of
+        // asking the user to paste a token (PATs are rejected by the Copilot API).
+        if let Some(flow_result) = provider.start_device_flow() {
+            match flow_result {
+                Ok(info) => {
+                    self.messages.push(ChatMessage {
+                        role: "system",
+                        content: format!(
+                            "Open {} in your browser and enter code: **{}**",
+                            info.verification_uri, info.user_code
+                        ),
+                    });
+                    self.pending_device_code = Some(info.device_code.clone());
+                    self.scroll_messages_to_bottom();
+                    cx.notify();
+                    cx.open_url(&info.verification_uri);
+
+                    let device_code = info.device_code;
+                    let interval = info.interval.max(5);
+
+                    cx.spawn(async move |this, cx| {
+                        loop {
+                            Timer::after(Duration::from_secs(interval)).await;
+
+                            // Perform a single blocking poll on whatever thread GPUI picks.
+                            let poll = cx.update(|cx| {
+                                this.update(cx, |panel, _cx| {
+                                    panel
+                                        .provider_registry
+                                        .get(provider_id)
+                                        .cloned()
+                                        .map(|p| p.poll_device_code(&device_code))
+                                })
+                                .ok()
+                                .flatten()
+                            });
+
+                            match poll {
+                                Ok(Some(Ok(Some(token)))) => {
+                                    cx.update(|cx| {
+                                        this.update(cx, |panel, cx| {
+                                            panel.provider_tokens.insert(provider_id, token);
+                                            panel.pending_device_code = None;
+                                            panel.pending_auth_provider = None;
+                                            panel.messages.push(ChatMessage {
+                                                role: "system",
+                                                content: format!(
+                                                    "{} authenticated successfully.",
+                                                    provider_id
+                                                ),
+                                            });
+                                            panel.save_current_chat();
+                                            panel.refresh_chat_history_list(cx);
+                                            panel.scroll_messages_to_bottom();
+                                            cx.notify();
+                                        })
+                                        .ok();
+                                    })
+                                    .ok();
+                                    break;
+                                }
+                                // authorization_pending or slow_down — keep polling
+                                Ok(Some(Ok(None))) => {}
+                                // error or the entity/context was dropped
+                                _ => {
+                                    cx.update(|cx| {
+                                        this.update(cx, |panel, cx| {
+                                            panel.pending_device_code = None;
+                                            panel.messages.push(ChatMessage {
+                                                role: "system",
+                                                content: "Device code authentication failed or timed out.".to_string(),
+                                            });
+                                            panel.scroll_messages_to_bottom();
+                                            cx.notify();
+                                        })
+                                        .ok();
+                                    })
+                                    .ok();
+                                    break;
+                                }
+                            }
+                        }
+                    })
+                    .detach();
+                }
+                Err(err) => {
+                    self.messages.push(ChatMessage {
+                        role: "system",
+                        content: format!("Failed to start device flow: {err}"),
+                    });
+                    self.scroll_messages_to_bottom();
+                    cx.notify();
+                }
+            }
+            return;
+        }
+
+        // Fallback: providers that only support opening a URL (no device-code polling).
         struct BrowserOnlyAuthHost {
             browser_url: Option<String>,
         }

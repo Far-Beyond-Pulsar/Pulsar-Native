@@ -78,6 +78,16 @@ pub struct OpenBrowserRequest {
     pub code_hint: Option<String>,
 }
 
+/// Information returned by the GitHub device code flow's first step.
+#[derive(Clone, Debug)]
+pub struct DeviceCodeInfo {
+    pub device_code: String,
+    pub user_code: String,
+    pub verification_uri: String,
+    pub expires_in: u64,
+    pub interval: u64,
+}
+
 #[derive(Clone, Debug)]
 pub enum AuthResult {
     Authenticated { token: String },
@@ -172,6 +182,19 @@ pub trait ChatProvider: Send + Sync {
 
     fn chat_completion(&self, token: &str, request: &ChatRequest)
         -> anyhow::Result<ChatResponse>;
+
+    /// Start a GitHub-style OAuth device code flow.  Returns `None` if the
+    /// provider does not support this flow.
+    fn start_device_flow(&self) -> Option<anyhow::Result<DeviceCodeInfo>> {
+        None
+    }
+
+    /// Poll the token endpoint once for the given `device_code`.
+    /// Returns `Ok(Some(token))` when the user has approved, `Ok(None)` when
+    /// still pending, or `Err` on expiry / denial.
+    fn poll_device_code(&self, _device_code: &str) -> anyhow::Result<Option<String>> {
+        Err(anyhow::anyhow!("device code polling not supported by this provider"))
+    }
 }
 
 #[derive(Clone, Debug)]
