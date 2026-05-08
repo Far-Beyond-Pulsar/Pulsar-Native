@@ -688,6 +688,13 @@ impl Paragraph {
                 }
                 let image_node = image;
                 let image_element = if let Some(svg) = &image_node.math_svg {
+                    eprintln!(
+                        "math svg render node display_mode={} tex={:?}\n{}\n",
+                        image_node.math_display_mode,
+                        image_node.math_tex.as_ref().map(|value| value.as_ref()).unwrap_or(""),
+                        svg
+                    );
+
                     let image = std::sync::Arc::new(Image::from_bytes(
                         ImageFormat::Svg,
                         svg.as_str().as_bytes().to_vec(),

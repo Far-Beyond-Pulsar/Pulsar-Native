@@ -23,6 +23,55 @@ use crate::{
 static MATH_SVG_CACHE: Lazy<Mutex<HashMap<(bool, String), SharedString>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
+fn normalize_math_svg(svg: &str) -> String {
+    static SVG_OPEN_TAG_RE: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"(?s)^<svg\b([^>]*)>").expect("valid svg tag regex"));
+    static WIDTH_EX_RE: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r#"\bwidth="([0-9]*\.?[0-9]+)ex""#).expect("valid width ex regex"));
+    static HEIGHT_EX_RE: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r#"\bheight="([0-9]*\.?[0-9]+)ex""#).expect("valid height ex regex"));
+    static STYLE_ATTR_RE: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r#"\sstyle="[^"]*""#).expect("valid style attr regex"));
+
+    let Some(captures) = SVG_OPEN_TAG_RE.captures(svg) else {
+        return svg.to_string();
+    };
+
+    let mut attributes = captures
+        .get(1)
+        .map(|value| value.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    // GPUI's SVG decoding path does not consistently honor CSS `ex` lengths.
+    // Convert them to explicit px dimensions derived from MathJax's 16px font size.
+    attributes = WIDTH_EX_RE
+        .replace_all(&attributes, |caps: &regex::Captures| {
+            let ex = caps
+                .get(1)
+                .and_then(|v| v.as_str().parse::<f32>().ok())
+                .unwrap_or(0.0);
+            format!(r#"width=\"{:.3}px\""#, ex * 8.0)
+        })
+        .into_owned();
+
+    attributes = HEIGHT_EX_RE
+        .replace_all(&attributes, |caps: &regex::Captures| {
+            let ex = caps
+                .get(1)
+                .and_then(|v| v.as_str().parse::<f32>().ok())
+                .unwrap_or(0.0);
+            format!(r#"height=\"{:.3}px\""#, ex * 8.0)
+        })
+        .into_owned();
+
+    // `vertical-align` is an HTML/CSS concern; remove inline style to avoid parser quirks.
+    let normalized_attributes = STYLE_ATTR_RE.replace_all(&attributes, "");
+    let open_tag_end = captures.get(0).map(|value| value.end()).unwrap_or(0);
+
+    format!("<svg{}>{}", normalized_attributes, &svg[open_tag_end..])
+}
+
 fn render_math_svg(value: &str, display_mode: bool) -> Option<SharedString> {
     let cache_key = (display_mode, value.to_string());
     if let Some(cached) = MATH_SVG_CACHE.lock().ok()?.get(&cache_key).cloned() {
@@ -38,12 +87,11 @@ fn render_math_svg(value: &str, display_mode: bool) -> Option<SharedString> {
     )
     .ok()?;
 
-    #[cfg(debug_assertions)]
     eprintln!(
         "math svg render display_mode={display_mode} tex={value:?}\n{svg}\n"
     );
 
-    let svg: SharedString = svg.into();
+    let svg: SharedString = normalize_math_svg(&svg).into();
 
     if let Ok(mut cache) = MATH_SVG_CACHE.lock() {
         cache.insert(cache_key, svg.clone());
