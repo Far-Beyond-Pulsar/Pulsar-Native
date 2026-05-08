@@ -58,3 +58,4 @@ agent_provider_together.workspace = true
 agent_provider_mistral.workspace = true
 agent_provider_gemini.workspace = true
 dirs = "5.0"
+rfd = "0.14"

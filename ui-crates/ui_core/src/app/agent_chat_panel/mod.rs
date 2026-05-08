@@ -780,6 +780,36 @@ impl Render for AgentChatPanel {
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.start_new_chat(cx);
                                     })),
+                            )
+                            .child(
+                                Button::new("agent-chat-import")
+                                    .icon(IconName::Upload)
+                                    .xsmall()
+                                    .ghost()
+                                    .tooltip("Import chat")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.import_chat(cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("agent-chat-export")
+                                    .icon(IconName::Download)
+                                    .xsmall()
+                                    .ghost()
+                                    .tooltip("Export current chat")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.export_current_chat();
+                                    })),
+                            )
+                            .child(
+                                Button::new("agent-chat-export-all")
+                                    .icon(IconName::FolderOpen)
+                                    .xsmall()
+                                    .ghost()
+                                    .tooltip("Export all chats")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.export_all_chats();
+                                    })),
                             ),
                     )
                     .child(

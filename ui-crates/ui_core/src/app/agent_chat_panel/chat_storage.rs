@@ -202,4 +202,66 @@ impl AgentChatPanel {
             self.bootstrap_chat_storage(cx);
         }
     }
+
+    pub(super) fn export_current_chat(&self) {
+        let Some(path) = Self::chat_file_path(&self.current_chat_id) else {
+            return;
+        };
+        let Ok(raw) = fs::read_to_string(&path) else {
+            return;
+        };
+
+        let file = rfd::FileDialog::new()
+            .set_file_name(format!("{}.json", Self::inferred_chat_title(&self.messages)))
+            .add_filter("JSON Chat Files", &["json"])
+            .add_filter("All Files", &["*"])
+            .save_file();
+
+        if let Some(save_path) = file {
+            let _ = fs::write(save_path, raw);
+        }
+    }
+
+    pub(super) fn export_all_chats(&self) {
+        let Some(dir) = rfd::FileDialog::new().pick_folder() else {
+            return;
+        };
+
+        if let Some(chats_dir) = Self::chats_dir() {
+            if let Ok(entries) = fs::read_dir(&chats_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().and_then(|ext| ext.to_str()) == Some("json") {
+                        if let Ok(content) = fs::read(&path) {
+                            if let Some(file_name) = path.file_name() {
+                                let dest_path = dir.join(file_name);
+                                let _ = fs::write(dest_path, &content);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub(super) fn import_chat(&mut self, cx: &mut Context<Self>) {
+        let file = rfd::FileDialog::new()
+            .add_filter("JSON Chat Files", &["json"])
+            .add_filter("All Files", &["*"])
+            .pick_file();
+
+        if let Some(file_path) = file {
+            if let Ok(raw) = fs::read_to_string(&file_path) {
+                if let Ok(chat) = serde_json::from_str::<ChatSessionFile>(&raw) {
+                    if let Some(save_path) = Self::chat_file_path(&chat.id) {
+                        if let Ok(serialized) = serde_json::to_string_pretty(&chat) {
+                            let _ = fs::write(save_path, serialized);
+                            self.refresh_chat_history_list(cx);
+                            self.load_chat_session(&chat.id, cx);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
