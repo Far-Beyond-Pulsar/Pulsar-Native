@@ -1260,6 +1260,46 @@ impl AgentChatPanel {
         cx.notify();
     }
 
+    fn rollback_chat_to_message(&mut self, message_ix: usize, cx: &mut Context<Self>) {
+        if self.is_request_in_flight || message_ix >= self.messages.len() {
+            return;
+        }
+
+        self.messages.truncate(message_ix + 1);
+        if self.messages.is_empty() {
+            self.messages.push(Self::default_system_message());
+        }
+
+        self.streaming_message_ix = None;
+        self.message_row_heights.clear();
+        self.save_current_chat();
+        self.refresh_chat_history_list(cx);
+        self.scroll_messages_to_bottom();
+        cx.notify();
+    }
+
+    fn fork_chat_here(&mut self, message_ix: usize, cx: &mut Context<Self>) {
+        if self.is_request_in_flight || message_ix >= self.messages.len() {
+            return;
+        }
+
+        let mut forked_messages = self.messages[..=message_ix].to_vec();
+        if forked_messages.is_empty() {
+            forked_messages.push(Self::default_system_message());
+        }
+
+        self.current_chat_id = format!("chat-{}", Self::now_epoch_nanos());
+        self.current_chat_created_at = Self::now_epoch_secs();
+        self.messages = forked_messages;
+        self.streaming_message_ix = None;
+        self.message_row_heights.clear();
+
+        self.save_current_chat();
+        self.refresh_chat_history_list(cx);
+        self.scroll_messages_to_bottom();
+        cx.notify();
+    }
+
     fn bootstrap_chat_storage(&mut self, cx: &mut Context<Self>) {
         let entries = Self::read_chat_index();
         self.chat_history_list.update(cx, |list, cx| {
@@ -2402,6 +2442,7 @@ impl Render for AgentChatPanel {
                                         let is_user = message.role == "user";
                                         let is_streaming_assistant =
                                             !is_user && this.streaming_message_ix == Some(ix);
+                                        let is_actionable_message = message.role != "system";
                                         let panel = cx.entity().clone();
                                         let content = message.content.clone();
 
@@ -2475,6 +2516,43 @@ impl Render for AgentChatPanel {
                                                     )
                                                     .id(("agent-chat-message", ix)),
                                             )
+                                            .when(is_actionable_message, |el| {
+                                                el.child(
+                                                    h_flex()
+                                                        .absolute()
+                                                        .w_full()
+                                                        .bottom(px(-8.0))
+                                                        .px_6()
+                                                        .justify_start()
+                                                        .when(is_user, |this| this.justify_end())
+                                                        .invisible()
+                                                        .group_hover("", |this| this.visible())
+                                                        .child(
+                                                            h_flex()
+                                                                .gap_1()
+                                                                .child(
+                                                                    Button::new(("agent-chat-rollback", ix))
+                                                                        .xsmall()
+                                                                        .ghost()
+                                                                        .label("Rollback")
+                                                                        .disabled(this.is_request_in_flight)
+                                                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                                                            this.rollback_chat_to_message(ix, cx);
+                                                                        })),
+                                                                )
+                                                                .child(
+                                                                    Button::new(("agent-chat-fork", ix))
+                                                                        .xsmall()
+                                                                        .ghost()
+                                                                        .label("Fork chat here")
+                                                                        .disabled(this.is_request_in_flight)
+                                                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                                                            this.fork_chat_here(ix, cx);
+                                                                        })),
+                                                                ),
+                                                        ),
+                                                )
+                                            })
                                             .child(
                                                 canvas(
                                                     move |bounds, _, cx| {
