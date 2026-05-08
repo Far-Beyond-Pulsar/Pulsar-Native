@@ -99,6 +99,8 @@ pub struct AgentChatPanel {
     pending_auth_provider: Option<&'static str>,
     current_chat_id: String,
     current_chat_created_at: u64,
+    loaded_chat_project_root: Option<PathBuf>,
+    message_row_heights: HashMap<usize, Pixels>,
     active_provider_ix: usize,
     active_model_ix: usize,
     messages: Vec<ChatMessage>,
@@ -214,6 +216,8 @@ impl AgentChatPanel {
             pending_auth_provider: None,
             current_chat_id: String::new(),
             current_chat_created_at: 0,
+            loaded_chat_project_root: None,
+            message_row_heights: HashMap::new(),
             active_provider_ix: 0,
             active_model_ix: 0,
             messages: vec![ChatMessage {
@@ -1006,6 +1010,7 @@ impl AgentChatPanel {
 
         self.current_chat_id = chat.id;
         self.current_chat_created_at = chat.created_at;
+        self.message_row_heights.clear();
         self.messages = chat
             .messages
             .into_iter()
@@ -1026,6 +1031,7 @@ impl AgentChatPanel {
     fn start_new_chat(&mut self, cx: &mut Context<Self>) {
         self.current_chat_id = format!("chat-{}", Self::now_epoch_nanos());
         self.current_chat_created_at = Self::now_epoch_secs();
+        self.message_row_heights.clear();
         self.messages = vec![Self::default_system_message()];
         self.save_current_chat();
         self.refresh_chat_history_list(cx);
@@ -1043,6 +1049,19 @@ impl AgentChatPanel {
             self.load_chat_session(&latest.id, cx);
         } else {
             self.start_new_chat(cx);
+        }
+
+        self.loaded_chat_project_root = engine_state::get_project_path().map(PathBuf::from);
+    }
+
+    fn maybe_reload_chats_from_disk(&mut self, cx: &mut Context<Self>) {
+        let current_root = engine_state::get_project_path().map(PathBuf::from);
+        if current_root.is_none() {
+            return;
+        }
+
+        if self.loaded_chat_project_root != current_root {
+            self.bootstrap_chat_storage(cx);
         }
     }
 
@@ -1258,6 +1277,7 @@ impl AgentChatPanel {
                         if let Some(message) = panel.messages.get_mut(message_ix) {
                             message.content.push_str(&chunk);
                         }
+                        panel.message_row_heights.remove(&message_ix);
                         panel.save_current_chat();
                         panel.scroll_messages_to_bottom();
                         cx.notify();
@@ -1293,13 +1313,13 @@ impl AgentChatPanel {
             .map(|line| {
                 // Use a conservative wrap estimate so rows never under-size and overlap.
                 let chars = line.chars().count().max(1);
-                chars.div_ceil(52)
+                chars.div_ceil(64)
             })
             .sum::<usize>()
             .max(1);
 
-        // header + paddings + text lines + outer row vertical spacing
-        let estimated = 12.0 + 16.0 + 16.0 + (visual_lines as f32 * 20.0) + 8.0;
+        // Header + paddings + line-height budget + row gap.
+        let estimated = 10.0 + 14.0 + 14.0 + (visual_lines as f32 * 18.0) + 6.0;
         px(estimated.min(520.0))
     }
 
@@ -1499,6 +1519,8 @@ impl Panel for AgentChatPanel {
 
 impl Render for AgentChatPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.maybe_reload_chats_from_disk(cx);
+
         let provider = self.active_provider();
         let model = self.active_model();
         let auth_provider = self.pending_auth_provider;
@@ -1509,7 +1531,15 @@ impl Render for AgentChatPanel {
         let message_item_sizes = std::rc::Rc::new(
             self.messages
                 .iter()
-                .map(|message| size(px(0.0), Self::message_row_height(message)))
+                .enumerate()
+                .map(|(ix, message)| {
+                    let h = self
+                        .message_row_heights
+                        .get(&ix)
+                        .copied()
+                        .unwrap_or_else(|| Self::message_row_height(message));
+                    size(px(0.0), h)
+                })
                 .collect::<Vec<_>>(),
         );
 
@@ -1661,47 +1691,80 @@ impl Render for AgentChatPanel {
                                         };
 
                                         let is_user = message.role == "user";
-                                        let row_height = Self::message_row_height(message);
-                                        h_flex()
+                                        let panel = cx.entity().clone();
+
+                                        div()
+                                            .relative()
                                             .w_full()
-                                            .h(row_height)
                                             .min_w_0()
                                             .px_3()
                                             .py_1()
-                                            .justify_start()
-                                            .when(is_user, |el| el.justify_end())
                                             .child(
-                                                v_flex()
-                                                    .w_auto()
-                                                    .max_w(px(620.0))
+                                                h_flex()
+                                                    .w_full()
                                                     .min_w_0()
-                                                    .gap_1()
-                                                    .px_3()
-                                                    .py_2()
-                                                    .rounded(px(8.0))
-                                                    .bg(if is_user {
-                                                        cx.theme().primary.opacity(0.16)
-                                                    } else {
-                                                        cx.theme().secondary
-                                                    })
+                                                    .justify_start()
+                                                    .when(is_user, |el| el.justify_end())
                                                     .child(
-                                                        div()
-                                                            .text_xs()
-                                                            .font_semibold()
-                                                            .text_color(cx.theme().muted_foreground)
-                                                            .child(if is_user { "You" } else { "Agent" }),
-                                                    )
-                                                    .child(
-                                                        div()
-                                                            .w_full()
+                                                        v_flex()
+                                                            .w_auto()
+                                                            .max_w(px(620.0))
                                                             .min_w_0()
-                                                            .whitespace_normal()
-                                                            .text_sm()
-                                                            .text_color(cx.theme().foreground)
-                                                            .child(message.content.clone()),
-                                                    ),
+                                                            .gap_1()
+                                                            .px_3()
+                                                            .py_2()
+                                                            .rounded(px(8.0))
+                                                            .bg(if is_user {
+                                                                cx.theme().primary.opacity(0.16)
+                                                            } else {
+                                                                cx.theme().secondary
+                                                            })
+                                                            .child(
+                                                                div()
+                                                                    .text_xs()
+                                                                    .font_semibold()
+                                                                    .text_color(cx.theme().muted_foreground)
+                                                                    .child(if is_user {
+                                                                        "You"
+                                                                    } else {
+                                                                        "Agent"
+                                                                    }),
+                                                            )
+                                                            .child(
+                                                                div()
+                                                                    .w_full()
+                                                                    .min_w_0()
+                                                                    .whitespace_normal()
+                                                                    .text_sm()
+                                                                    .text_color(cx.theme().foreground)
+                                                                    .child(message.content.clone()),
+                                                            ),
+                                                    )
+                                                    .id(("agent-chat-message", ix)),
                                             )
-                                            .id(("agent-chat-message", ix))
+                                            .child(
+                                                canvas(
+                                                    move |bounds, _, cx| {
+                                                        panel.update(cx, |panel, cx| {
+                                                            let measured = bounds.size.height;
+                                                            if panel
+                                                                .message_row_heights
+                                                                .get(&ix)
+                                                                .copied()
+                                                                != Some(measured)
+                                                            {
+                                                                panel.message_row_heights.insert(
+                                                                    ix, measured,
+                                                                );
+                                                                cx.notify();
+                                                            }
+                                                        });
+                                                    },
+                                                    |_, _, _, _| {},
+                                                )
+                                                .absolute()
+                                                .inset_0(),
+                                            )
                                             .into_any_element()
                                     })
                                     .collect::<Vec<_>>()
