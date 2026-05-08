@@ -50,6 +50,26 @@ enum ProviderKind {
     Local,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AddProviderPromptStep {
+    ProviderId,
+    ProviderLabel,
+    Endpoint,
+    ModelId,
+    ModelLabel,
+    ModelSupportsTools,
+}
+
+#[derive(Clone, Debug, Default)]
+struct PendingCustomProvider {
+    id: String,
+    label: String,
+    endpoint: String,
+    model_id: String,
+    model_label: String,
+    model_supports_tools: bool,
+}
+
 #[derive(Clone, Debug)]
 struct ModelDefinition {
     id: &'static str,
@@ -100,11 +120,14 @@ pub struct AgentChatPanel {
     messages_scroll_state: ScrollbarState,
     prompt_input: Entity<InputState>,
     auth_token_input: Entity<InputState>,
+    custom_provider_input: Entity<InputState>,
     chat_history_list: Entity<SearchableList<ChatHistoryEntry>>,
     provider_list: Entity<SearchableList<ProviderDefinition>>,
     model_list: Entity<SearchableList<ModelDefinition>>,
     provider_catalog: Vec<ProviderDefinition>,
     custom_providers_list: Vec<CustomProvider>,
+    pending_custom_provider: Option<PendingCustomProvider>,
+    pending_custom_provider_step: Option<AddProviderPromptStep>,
     wip_providers: HashMap<&'static str, String>,
     provider_registry: ProviderRegistry,
     tool_registry: ToolRegistry,
@@ -125,7 +148,15 @@ pub struct AgentChatPanel {
 
 impl AgentChatPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let provider_catalog = Self::default_provider_catalog();
+        let mut provider_catalog = Self::default_provider_catalog();
+        let custom_providers_list =
+            custom_providers::load_custom_providers(&Self::custom_provider_config_dir());
+        provider_catalog.extend(
+            custom_providers_list
+                .iter()
+                .map(Self::custom_provider_to_definition),
+        );
+
         let mut provider_registry = ProviderRegistry::new();
         provider_registry.register(Arc::new(GithubCopilotProvider::new()));
         provider_registry.register(Arc::new(DemoRandomProvider::new()));
@@ -142,6 +173,9 @@ impl AgentChatPanel {
             cx.new(|cx| InputState::new(window, cx).placeholder("Ask the engine assistant..."));
         let auth_token_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Paste provider token..."));
+        let custom_provider_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("Enter provider field value...")
+        });
 
         let chat_history_list = cx.new(|cx| {
             SearchableList::new(window, cx, Vec::<ChatHistoryEntry>::new(), |chat| {
@@ -228,13 +262,14 @@ impl AgentChatPanel {
             messages_scroll_state: ScrollbarState::default(),
             prompt_input,
             auth_token_input,
+            custom_provider_input,
             chat_history_list,
             provider_list,
             model_list,
             provider_catalog,
-            custom_providers_list: custom_providers::load_custom_providers(
-                &dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")),
-            ),
+            custom_providers_list,
+            pending_custom_provider: None,
+            pending_custom_provider_step: None,
             wip_providers,
             provider_registry,
             tool_registry: ToolRegistry::with_default_tools(),
@@ -957,6 +992,58 @@ impl AgentChatPanel {
         ]
     }
 
+    fn custom_provider_config_dir() -> PathBuf {
+        dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("pulsar")
+    }
+
+    fn static_str(value: String) -> &'static str {
+        Box::leak(value.into_boxed_str())
+    }
+
+    fn custom_provider_to_definition(provider: &CustomProvider) -> ProviderDefinition {
+        let models = provider
+            .models
+            .iter()
+            .map(|model| ModelDefinition {
+                id: Self::static_str(model.id.clone()),
+                label: Self::static_str(model.label.clone()),
+                supports_tools: model.supports_tools,
+            })
+            .collect::<Vec<_>>();
+
+        ProviderDefinition {
+            id: Self::static_str(provider.id.clone()),
+            label: Self::static_str(provider.label.clone()),
+            kind: ProviderKind::Local,
+            endpoint: Self::static_str(provider.endpoint.clone()),
+            models: Arc::new(models),
+        }
+    }
+
+    fn add_provider_prompt_title(step: AddProviderPromptStep) -> &'static str {
+        match step {
+            AddProviderPromptStep::ProviderId => "Provider ID (example: my_local_provider)",
+            AddProviderPromptStep::ProviderLabel => "Provider label (example: My Local Provider)",
+            AddProviderPromptStep::Endpoint => "Provider endpoint URL",
+            AddProviderPromptStep::ModelId => "Default model ID",
+            AddProviderPromptStep::ModelLabel => "Default model label",
+            AddProviderPromptStep::ModelSupportsTools => "Does this model support tools? (yes/no)",
+        }
+    }
+
+    fn next_add_provider_step(step: AddProviderPromptStep) -> Option<AddProviderPromptStep> {
+        match step {
+            AddProviderPromptStep::ProviderId => Some(AddProviderPromptStep::ProviderLabel),
+            AddProviderPromptStep::ProviderLabel => Some(AddProviderPromptStep::Endpoint),
+            AddProviderPromptStep::Endpoint => Some(AddProviderPromptStep::ModelId),
+            AddProviderPromptStep::ModelId => Some(AddProviderPromptStep::ModelLabel),
+            AddProviderPromptStep::ModelLabel => Some(AddProviderPromptStep::ModelSupportsTools),
+            AddProviderPromptStep::ModelSupportsTools => None,
+        }
+    }
+
     fn active_provider(&self) -> Option<&ProviderDefinition> {
         self.provider_catalog.get(self.active_provider_ix)
     }
@@ -1255,25 +1342,141 @@ impl AgentChatPanel {
         }
     }
 
-    fn show_add_provider_dialog(&mut self, cx: &mut Context<Self>) {
-        let message = "Custom providers can be added by creating YAML files in:\n~/.config/pulsar/providers/\n\n\
-                      Example provider file:\n\n\
-                      name: \"My Custom Provider\"\n\
-                      id: \"my_custom_provider\"\n\
-                      endpoint: \"http://localhost:8000/v1\"\n\
-                      kind: \"Local\"\n\
-                      models:\n\
-                        - id: \"model-1\"\n\
-                          label: \"Model 1\"\n\
-                          supports_tools: true";
-        
-        self.messages.push(ChatMessage {
-            role: "system",
-            content: message.to_string(),
+    fn start_add_provider_prompt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.pending_custom_provider = Some(PendingCustomProvider::default());
+        self.pending_custom_provider_step = Some(AddProviderPromptStep::ProviderId);
+        self.custom_provider_input.update(cx, |input, cx| {
+            input.set_value("", window, cx);
         });
-        self.save_current_chat();
-        self.scroll_messages_to_bottom();
         cx.notify();
+    }
+
+    fn cancel_add_provider_prompt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.pending_custom_provider = None;
+        self.pending_custom_provider_step = None;
+        self.custom_provider_input.update(cx, |input, cx| {
+            input.set_value("", window, cx);
+        });
+        cx.notify();
+    }
+
+    fn submit_add_provider_prompt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(step) = self.pending_custom_provider_step else {
+            return;
+        };
+        let Some(pending) = self.pending_custom_provider.as_mut() else {
+            return;
+        };
+
+        let value = self.custom_provider_input.read(cx).text().to_string();
+        let value = value.trim().to_string();
+
+        if value.is_empty() {
+            return;
+        }
+
+        match step {
+            AddProviderPromptStep::ProviderId => {
+                if self.provider_catalog.iter().any(|p| p.id == value)
+                    || self.custom_providers_list.iter().any(|p| p.id == value)
+                {
+                    self.messages.push(ChatMessage {
+                        role: "system",
+                        content: format!("Provider ID '{}' already exists. Choose another ID.", value),
+                    });
+                    self.save_current_chat();
+                    self.scroll_messages_to_bottom();
+                    cx.notify();
+                    return;
+                }
+                pending.id = value;
+            }
+            AddProviderPromptStep::ProviderLabel => {
+                pending.label = value;
+            }
+            AddProviderPromptStep::Endpoint => {
+                pending.endpoint = value;
+            }
+            AddProviderPromptStep::ModelId => {
+                pending.model_id = value;
+            }
+            AddProviderPromptStep::ModelLabel => {
+                pending.model_label = value;
+            }
+            AddProviderPromptStep::ModelSupportsTools => {
+                let normalized = value.to_ascii_lowercase();
+                pending.model_supports_tools = match normalized.as_str() {
+                    "y" | "yes" | "true" | "1" => true,
+                    "n" | "no" | "false" | "0" => false,
+                    _ => {
+                        self.messages.push(ChatMessage {
+                            role: "system",
+                            content: "Enter yes/no for tools support.".to_string(),
+                        });
+                        self.save_current_chat();
+                        self.scroll_messages_to_bottom();
+                        cx.notify();
+                        return;
+                    }
+                };
+            }
+        }
+
+        self.custom_provider_input.update(cx, |input, cx| {
+            input.set_value("", window, cx);
+        });
+
+        if let Some(next_step) = Self::next_add_provider_step(step) {
+            self.pending_custom_provider_step = Some(next_step);
+            cx.notify();
+            return;
+        }
+
+        let provider = CustomProvider {
+            id: pending.id.clone(),
+            label: pending.label.clone(),
+            endpoint: pending.endpoint.clone(),
+            models: vec![crate::custom_providers::CustomModel {
+                id: pending.model_id.clone(),
+                label: pending.model_label.clone(),
+                supports_tools: pending.model_supports_tools,
+            }],
+        };
+
+        match custom_providers::add_custom_provider(&Self::custom_provider_config_dir(), provider.clone()) {
+            Ok(()) => {
+                let provider_definition = Self::custom_provider_to_definition(&provider);
+                self.custom_providers_list.push(provider);
+                self.provider_catalog.push(provider_definition);
+                self.provider_list.update(cx, |list, cx| {
+                    list.set_items(self.provider_catalog.clone(), cx);
+                });
+
+                self.pending_custom_provider = None;
+                self.pending_custom_provider_step = None;
+
+                let new_ix = self.provider_catalog.len().saturating_sub(1);
+                self.set_provider(new_ix, cx);
+
+                self.messages.push(ChatMessage {
+                    role: "system",
+                    content: "Custom provider saved to JSON and added to the provider list.".to_string(),
+                });
+                self.save_current_chat();
+                self.refresh_chat_history_list(cx);
+                self.scroll_messages_to_bottom();
+                cx.notify();
+            }
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: "system",
+                    content: format!("Failed to save custom provider: {err}"),
+                });
+                self.save_current_chat();
+                self.scroll_messages_to_bottom();
+                cx.notify();
+            }
+        }
     }
 
     fn complete_prompt_auth(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1874,6 +2077,9 @@ impl Render for AgentChatPanel {
         let provider = self.active_provider();
         let model = self.active_model();
         let auth_provider = self.pending_auth_provider;
+        let add_provider_prompt = self
+            .pending_custom_provider_step
+            .map(Self::add_provider_prompt_title);
         let provider_list = self.provider_list.clone();
         let model_list = self.model_list.clone();
         let chat_history_list = self.chat_history_list.clone();
@@ -1967,8 +2173,8 @@ impl Render for AgentChatPanel {
                                     .icon(IconName::Plus)
                                     .xsmall()
                                     .ghost()
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.show_add_provider_dialog(cx);
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.start_add_provider_prompt(window, cx);
                                     }))
                             ),
                     )
@@ -2026,6 +2232,56 @@ impl Render for AgentChatPanel {
                                                 })),
                                             ),
                                         ),
+                        )
+                    })
+                    .when(add_provider_prompt.is_some(), |el| {
+                        el.child(
+                            v_flex()
+                                .w_full()
+                                .gap_1()
+                                .p_2()
+                                .rounded(px(6.0))
+                                .bg(cx.theme().primary.opacity(0.08))
+                                .border_1()
+                                .border_color(cx.theme().primary.opacity(0.25))
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().primary)
+                                        .child(add_provider_prompt.unwrap_or("")),
+                                )
+                                .child(TextInput::new(&self.custom_provider_input).w_full().xsmall())
+                                .child(
+                                    h_flex()
+                                        .w_full()
+                                        .gap_1()
+                                        .child(
+                                            Button::new("agent-chat-add-provider-cancel")
+                                                .xsmall()
+                                                .ghost()
+                                                .label("Cancel")
+                                                .on_click(cx.listener(|this, _, window, cx| {
+                                                    this.cancel_add_provider_prompt(window, cx);
+                                                })),
+                                        )
+                                        .child(
+                                            Button::new("agent-chat-add-provider-next")
+                                                .xsmall()
+                                                .primary()
+                                                .label("Next")
+                                                .disabled(
+                                                    self.custom_provider_input
+                                                        .read(cx)
+                                                        .text()
+                                                        .to_string()
+                                                        .trim()
+                                                        .is_empty(),
+                                                )
+                                                .on_click(cx.listener(|this, _, window, cx| {
+                                                    this.submit_add_provider_prompt(window, cx);
+                                                })),
+                                        ),
+                                ),
                         )
                     }),
             )

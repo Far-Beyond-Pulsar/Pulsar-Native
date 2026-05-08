@@ -14,6 +14,8 @@ pub struct CustomProvider {
 pub struct CustomModel {
     pub id: String,
     pub label: String,
+    #[serde(default)]
+    pub supports_tools: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
