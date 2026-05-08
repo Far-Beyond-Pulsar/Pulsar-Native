@@ -1042,12 +1042,20 @@ impl AgentChatPanel {
     }
 
     fn message_row_height(message: &ChatMessage) -> Pixels {
-        let line_breaks = message.content.matches('\n').count();
-        let chars = message.content.chars().count();
-        let wrapped_lines = (chars / 72).max(1);
-        let total_lines = (wrapped_lines + line_breaks).max(1);
-        let estimated = 36.0 + (total_lines as f32 * 18.0);
-        px(estimated.min(260.0))
+        let explicit_lines = message.content.lines().collect::<Vec<_>>();
+        let visual_lines: usize = explicit_lines
+            .iter()
+            .map(|line| {
+                // Use a conservative wrap estimate so rows never under-size and overlap.
+                let chars = line.chars().count().max(1);
+                chars.div_ceil(52)
+            })
+            .sum::<usize>()
+            .max(1);
+
+        // header + paddings + text lines + outer row vertical spacing
+        let estimated = 12.0 + 16.0 + 16.0 + (visual_lines as f32 * 20.0) + 8.0;
+        px(estimated.min(520.0))
     }
 
     fn send_prompt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1388,8 +1396,10 @@ impl Render for AgentChatPanel {
                                         };
 
                                         let is_user = message.role == "user";
+                                        let row_height = Self::message_row_height(message);
                                         h_flex()
                                             .w_full()
+                                            .h(row_height)
                                             .min_w_0()
                                             .px_3()
                                             .py_1()
