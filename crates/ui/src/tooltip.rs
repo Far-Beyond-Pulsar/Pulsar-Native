@@ -4,10 +4,11 @@ use gpui::{
     HitboxBehavior, InspectorElementId, IntoElement, LayoutId, ParentElement, Pixels, Point,
     Render, SharedString, StyleRefinement, Styled, Window,
 };
-use std::{cell::RefCell, 
-rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 use crate::{h_flex, text::Text, ActiveTheme, Kbd, StyledExt};
+
+const TOOLTIP_CURSOR_OFFSET: Pixels = px(5.0);
 
 enum TooltipContext {
     Text(Text),
@@ -86,12 +87,12 @@ pub fn smart_tooltip_anchor_and_position_at(
     };
 
     let x = match anchor {
-        Corner::TopLeft | Corner::BottomLeft => mouse.x + px(12.0),
-        Corner::TopRight | Corner::BottomRight => mouse.x - px(12.0),
+        Corner::TopLeft | Corner::BottomLeft => mouse.x + TOOLTIP_CURSOR_OFFSET,
+        Corner::TopRight | Corner::BottomRight => mouse.x - TOOLTIP_CURSOR_OFFSET,
     };
     let y = match anchor {
-        Corner::TopLeft | Corner::TopRight => mouse.y + px(12.0),
-        Corner::BottomLeft | Corner::BottomRight => mouse.y - px(12.0),
+        Corner::TopLeft | Corner::TopRight => mouse.y + TOOLTIP_CURSOR_OFFSET,
+        Corner::BottomLeft | Corner::BottomRight => mouse.y - TOOLTIP_CURSOR_OFFSET,
     };
 
     (anchor, point(x, y))
