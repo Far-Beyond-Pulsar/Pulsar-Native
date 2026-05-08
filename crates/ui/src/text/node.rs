@@ -2,18 +2,20 @@ use std::{
     collections::{hash_map::DefaultHasher, HashMap},
     hash::{Hash, Hasher},
     ops::Range,
+    sync::Arc,
     time::Duration,
 };
 
 use gpui::{
     div, img, prelude::FluentBuilder as _, px, relative, rems, AnyElement, App, AppContext as _,
     ClipboardItem, DefiniteLength, Div, ElementId, Entity, FontStyle, FontWeight, Half,
-    HighlightStyle, Image, ImageFormat, InteractiveElement as _, IntoElement, Length, MouseButton,
-    ObjectFit, ParentElement, SharedString, SharedUri, StatefulInteractiveElement, Styled,
-    StyledImage as _, Window,
+    HighlightStyle, Image, ImageFormat, ImageSource, InteractiveElement as _, IntoElement,
+    Length, MouseButton, ObjectFit, ParentElement, RenderImage, SharedString, SharedUri,
+    StatefulInteractiveElement, Styled, StyledImage as _, Window,
 };
 use markdown::mdast;
 use ropey::Rope;
+use resvg::{tiny_skia, usvg};
 
 use crate::{
     h_flex,
@@ -647,13 +649,39 @@ impl Node {
 }
 
 impl Paragraph {
+    fn colorize_math_svg(svg: &str, text_color: gpui::Hsla) -> String {
+        let rgba: gpui::Rgba = text_color.into();
+        let r = (rgba.r * 255.0).round().clamp(0.0, 255.0) as u8;
+        let g = (rgba.g * 255.0).round().clamp(0.0, 255.0) as u8;
+        let b = (rgba.b * 255.0).round().clamp(0.0, 255.0) as u8;
+        let a = rgba.a.clamp(0.0, 1.0);
+        let css_color = format!("rgba({r}, {g}, {b}, {a:.3})");
+        svg.replace("currentColor", &css_color)
+    }
+
+    fn render_math_svg(svg: &str, text_color: gpui::Hsla) -> Option<Arc<RenderImage>> {
+        let colored_svg = Self::colorize_math_svg(svg, text_color);
+        let options = usvg::Options::default();
+        let tree = usvg::Tree::from_str(&colored_svg, &options).ok()?;
+        let size = tree.size().to_int_size();
+
+        let mut pixmap = tiny_skia::Pixmap::new(size.width(), size.height())?;
+        resvg::render(&tree, tiny_skia::Transform::default(), &mut pixmap.as_mut());
+
+        let png_bytes = pixmap.encode_png().ok()?;
+        let rgba = image::load_from_memory(&png_bytes).ok()?.into_rgba8();
+        let frame = image::Frame::new(rgba);
+        Some(Arc::new(RenderImage::new(smallvec::smallvec![frame])))
+    }
+
     fn render(
         &mut self,
         node_cx: &NodeContext,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut App,
     ) -> impl IntoElement {
         let span = self.span;
+        let text_color = window.text_style().color;
 
         let mut child_nodes: Vec<AnyElement> = vec![];
 
@@ -688,36 +716,51 @@ impl Paragraph {
                 }
                 let image_node = image;
                 let image_element = if let Some(svg) = &image_node.math_svg {
-                    eprintln!(
-                        "math svg render node display_mode={} tex={:?}\n{}\n",
-                        image_node.math_display_mode,
-                        image_node.math_tex.as_ref().map(|value| value.as_ref()).unwrap_or(""),
-                        svg
-                    );
+                    let colored_svg = Self::colorize_math_svg(svg, text_color);
 
-                    let image = std::sync::Arc::new(Image::from_bytes(
-                        ImageFormat::Svg,
-                        svg.as_str().as_bytes().to_vec(),
-                    ));
+                    if let Some(render_image) = Self::render_math_svg(svg, text_color) {
+                        img(ImageSource::Render(render_image))
+                            .id(ix)
+                            .object_fit(ObjectFit::Contain)
+                            .when_some(image_node.width, |this, width| this.w(width))
+                            .when_some(image_node.height, |this, height| this.h(height))
+                            .when_some(image_node.link.clone(), |this, link| {
+                                let title = image_node.title();
+                                this.cursor_pointer()
+                                    .tooltip(move |window, cx| {
+                                        Tooltip::new(title.clone()).build(window, cx)
+                                    })
+                                    .on_click(move |_, _, cx| {
+                                        cx.stop_propagation();
+                                        cx.open_url(&link.url);
+                                    })
+                            })
+                            .into_any_element()
+                    } else {
+                        // Fallback to GPUI SVG decoding if rasterization fails.
+                        let image = std::sync::Arc::new(Image::from_bytes(
+                            ImageFormat::Svg,
+                            colored_svg.as_bytes().to_vec(),
+                        ));
 
-                    img(image)
-                        .id(ix)
-                        .object_fit(ObjectFit::Contain)
-                        .w_full()
-                        .when_some(image_node.width, |this, width| this.w(width))
-                        .when_some(image_node.height, |this, height| this.h(height))
-                        .when_some(image_node.link.clone(), |this, link| {
-                            let title = image_node.title();
-                            this.cursor_pointer()
-                                .tooltip(move |window, cx| {
-                                    Tooltip::new(title.clone()).build(window, cx)
-                                })
-                                .on_click(move |_, _, cx| {
-                                    cx.stop_propagation();
-                                    cx.open_url(&link.url);
-                                })
-                        })
-                        .into_any_element()
+                        img(image)
+                            .id(ix)
+                            .object_fit(ObjectFit::Contain)
+                            .when_some(image_node.width, |this, width| this.w(width))
+                            .when_some(image_node.height, |this, height| this.h(height))
+                            .when_some(image_node.link.clone(), |this, link| {
+                                let title = image_node.title();
+                                this.cursor_pointer()
+                                    .tooltip(move |window, cx| {
+                                        Tooltip::new(title.clone()).build(window, cx)
+                                    })
+                                    .on_click(move |_, _, cx| {
+                                        cx.stop_propagation();
+                                        cx.open_url(&link.url);
+                                    })
+                            })
+                            .into_any_element()
+                    }
                 } else {
                     img(image_node.url.as_ref())
                         .id(ix)

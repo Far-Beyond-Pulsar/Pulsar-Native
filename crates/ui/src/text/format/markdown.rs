@@ -32,6 +32,8 @@ fn normalize_math_svg(svg: &str) -> String {
         Lazy::new(|| Regex::new(r#"\bheight="([0-9]*\.?[0-9]+)ex""#).expect("valid height ex regex"));
     static STYLE_ATTR_RE: Lazy<Regex> =
         Lazy::new(|| Regex::new(r#"\sstyle="[^"]*""#).expect("valid style attr regex"));
+    static XLINK_HREF_RE: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r#"\bxlink:href="#).expect("valid xlink href regex"));
 
     let Some(captures) = SVG_OPEN_TAG_RE.captures(svg) else {
         return svg.to_string();
@@ -51,7 +53,7 @@ fn normalize_math_svg(svg: &str) -> String {
                 .get(1)
                 .and_then(|v| v.as_str().parse::<f32>().ok())
                 .unwrap_or(0.0);
-            format!(r#"width=\"{:.3}px\""#, ex * 8.0)
+            format!(r#"width="{:.3}px""#, ex * 8.0)
         })
         .into_owned();
 
@@ -61,7 +63,7 @@ fn normalize_math_svg(svg: &str) -> String {
                 .get(1)
                 .and_then(|v| v.as_str().parse::<f32>().ok())
                 .unwrap_or(0.0);
-            format!(r#"height=\"{:.3}px\""#, ex * 8.0)
+            format!(r#"height="{:.3}px""#, ex * 8.0)
         })
         .into_owned();
 
@@ -69,7 +71,10 @@ fn normalize_math_svg(svg: &str) -> String {
     let normalized_attributes = STYLE_ATTR_RE.replace_all(&attributes, "");
     let open_tag_end = captures.get(0).map(|value| value.end()).unwrap_or(0);
 
-    format!("<svg{}>{}", normalized_attributes, &svg[open_tag_end..])
+    let normalized = format!("<svg{}>{}", normalized_attributes, &svg[open_tag_end..]);
+
+    // Some SVG renderers only honor `href` on <use>, not legacy `xlink:href`.
+    XLINK_HREF_RE.replace_all(&normalized, "href=").into_owned()
 }
 
 fn render_math_svg(value: &str, display_mode: bool) -> Option<SharedString> {
@@ -86,10 +91,6 @@ fn render_math_svg(value: &str, display_mode: bool) -> Option<SharedString> {
         },
     )
     .ok()?;
-
-    eprintln!(
-        "math svg render display_mode={display_mode} tex={value:?}\n{svg}\n"
-    );
 
     let svg: SharedString = normalize_math_svg(&svg).into();
 
