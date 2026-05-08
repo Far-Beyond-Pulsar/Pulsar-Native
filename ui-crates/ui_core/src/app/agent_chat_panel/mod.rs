@@ -302,6 +302,7 @@ impl Render for AgentChatPanel {
         let model_list = self.model_list.clone();
         let chat_history_list = self.chat_history_list.clone();
         let current_chat_id = self.current_chat_id.clone();
+        let message_count = self.messages.len();
         let message_item_sizes = std::rc::Rc::new(
             self.messages
                 .iter()
@@ -314,6 +315,7 @@ impl Render for AgentChatPanel {
                         .unwrap_or_else(|| Self::message_row_height(message));
                     size(px(0.0), h)
                 })
+                .chain(std::iter::once(size(px(0.0), px(120.0))))
                 .collect::<Vec<_>>(),
         );
 
@@ -519,6 +521,10 @@ impl Render for AgentChatPanel {
                                   cx: &mut Context<Self>| {
                                 range
                                     .map(|ix| {
+                                        if ix == message_count {
+                                            return div().h(px(120.0)).into_any_element();
+                                        }
+
                                         let Some(message) = this.messages.get(ix) else {
                                             return div().h(px(52.0)).into_any_element();
                                         };
@@ -527,6 +533,7 @@ impl Render for AgentChatPanel {
                                         let is_streaming_assistant =
                                             !is_user && this.streaming_message_ix == Some(ix);
                                         let is_actionable_message = message.role != "system";
+                                        let hover_group = format!("agent-chat-msg-hover-{ix}");
                                         let is_confirming_rollback =
                                             this.pending_rollback_confirm_ix == Some(ix);
                                         let panel = cx.entity().clone();
@@ -534,6 +541,7 @@ impl Render for AgentChatPanel {
 
                                         div()
                                             .relative()
+                                            .group(hover_group.clone())
                                             .w_full()
                                             .min_w_0()
                                             .px_3()
@@ -618,10 +626,15 @@ impl Render for AgentChatPanel {
                                                         .justify_start()
                                                         .when(is_user, |this| this.justify_end())
                                                         .invisible()
-                                                        .group_hover("", |this| this.visible())
+                                                        .group_hover(hover_group, |this| this.visible())
                                                         .child(
                                                             h_flex()
                                                                 .gap_1()
+                                                                .p_1()
+                                                                .rounded(px(8.0))
+                                                                .bg(cx.theme().background)
+                                                                .border_1()
+                                                                .border_color(cx.theme().border)
                                                                 .when(!is_confirming_rollback, |el| {
                                                                     el.child(
                                                                         Button::new((
@@ -630,7 +643,7 @@ impl Render for AgentChatPanel {
                                                                         ))
                                                                         .xsmall()
                                                                         .ghost()
-                                                                        .label("Rollback")
+                                                                        .icon(IconName::Undo)
                                                                         .disabled(
                                                                             this.is_request_in_flight,
                                                                         )
@@ -651,7 +664,7 @@ impl Render for AgentChatPanel {
                                                                         ))
                                                                         .xsmall()
                                                                         .primary()
-                                                                        .label("Confirm rollback")
+                                                                        .icon(IconName::Check)
                                                                         .disabled(
                                                                             this.is_request_in_flight,
                                                                         )
@@ -670,7 +683,7 @@ impl Render for AgentChatPanel {
                                                                         ))
                                                                         .xsmall()
                                                                         .ghost()
-                                                                        .label("Cancel")
+                                                                        .icon(IconName::Close)
                                                                         .on_click(cx.listener(
                                                                             |this, _, _, cx| {
                                                                                 this.cancel_rollback_confirmation(
@@ -687,7 +700,7 @@ impl Render for AgentChatPanel {
                                                                     ))
                                                                     .xsmall()
                                                                     .ghost()
-                                                                    .label("Fork chat here")
+                                                                    .icon(IconName::GitFork)
                                                                     .disabled(
                                                                         this.is_request_in_flight,
                                                                     )
