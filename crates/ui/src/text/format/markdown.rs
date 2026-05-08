@@ -1,8 +1,12 @@
 use gpui::SharedString;
+use katex::{Opts, OutputType};
+use once_cell::sync::Lazy;
 use markdown::{
+    Constructs,
     mdast::{self, Node},
     ParseOptions,
 };
+use regex::Regex;
 
 use crate::{
     highlighter::HighlightTheme,
@@ -15,6 +19,83 @@ use crate::{
     },
 };
 
+fn render_math_html(value: &str, display_mode: bool) -> Option<String> {
+    let opts = Opts::builder()
+        .display_mode(display_mode)
+        .output_type(OutputType::Html)
+        .throw_on_error(false)
+        .build()
+        .ok()?;
+
+    katex::render_with_opts(value, opts).ok()
+}
+
+static BLOCK_DELIM_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\\\[(?s:(.*?))\\\]").expect("valid block math regex"));
+static INLINE_DELIM_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\\\((.*?)\\\)").expect("valid inline math regex"));
+
+fn normalize_katex_default_delimiters(raw: &str) -> String {
+    fn normalize_non_code_span(segment: &str) -> String {
+        // Convert KaTeX default delimiters to markdown-math delimiters.
+        // \[...\] -> $$...$$, \(...\) -> $...$
+        let with_blocks = BLOCK_DELIM_RE
+            .replace_all(segment, |caps: &regex::Captures| {
+                format!("$$\n{}\n$$", &caps[1])
+            })
+            .into_owned();
+
+        INLINE_DELIM_RE
+            .replace_all(&with_blocks, |caps: &regex::Captures| {
+                format!("${}$", &caps[1])
+            })
+            .into_owned()
+    }
+
+    // Skip fenced code blocks when normalizing delimiters.
+    let mut out = String::with_capacity(raw.len());
+    let mut rest = raw;
+    let mut in_fence = false;
+
+    while let Some(ix) = rest.find("```") {
+        let (segment, tail) = rest.split_at(ix);
+        if in_fence {
+            out.push_str(segment);
+        } else {
+            out.push_str(&normalize_non_code_span(segment));
+        }
+
+        out.push_str("```");
+        rest = &tail[3..];
+        in_fence = !in_fence;
+    }
+
+    if in_fence {
+        out.push_str(rest);
+    } else {
+        out.push_str(&normalize_non_code_span(rest));
+    }
+
+    out
+}
+
+fn merge_inline_math_from_node(paragraph: &mut Paragraph, node: node::Node) {
+    match node {
+        node::Node::Paragraph(child) => {
+            paragraph.merge(child);
+        }
+        node::Node::Root { children } => {
+            for child in children {
+                merge_inline_math_from_node(paragraph, child);
+            }
+        }
+        node::Node::Break { .. } => {
+            paragraph.push_str("\n");
+        }
+        _ => {}
+    }
+}
+
 /// Parse Markdown into a tree of nodes.
 pub(crate) fn parse(
     raw: &str,
@@ -22,7 +103,17 @@ pub(crate) fn parse(
     cx: &mut NodeContext,
     highlight_theme: &HighlightTheme,
 ) -> Result<node::Node, SharedString> {
-    markdown::to_mdast(&raw, &ParseOptions::gfm())
+    let normalized = normalize_katex_default_delimiters(raw);
+    let parse_options = ParseOptions {
+        constructs: Constructs {
+            math_flow: true,
+            math_text: true,
+            ..Constructs::gfm()
+        },
+        ..ParseOptions::gfm()
+    };
+
+    markdown::to_mdast(&normalized, &parse_options)
         .map(|n| ast_to_node(n, style, cx, highlight_theme))
         .map_err(|e| e.to_string().into())
 }
@@ -147,9 +238,23 @@ fn parse_paragraph(paragraph: &mut Paragraph, node: &mdast::Node, cx: &mut NodeC
         }
         Node::InlineMath(raw) => {
             text = raw.value.clone();
-            paragraph.push(
-                InlineNode::new(&text).marks(vec![(0..text.len(), TextMark::default().code())]),
-            );
+            if let Some(rendered_html) = render_math_html(&raw.value, false) {
+                match super::html::parse(&rendered_html, cx) {
+                    Ok(node) => {
+                        merge_inline_math_from_node(paragraph, node);
+                    }
+                    Err(_) => {
+                        paragraph.push(
+                            InlineNode::new(&text)
+                                .marks(vec![(0..text.len(), TextMark::default().code())]),
+                        );
+                    }
+                }
+            } else {
+                paragraph.push(
+                    InlineNode::new(&text).marks(vec![(0..text.len(), TextMark::default().code())]),
+                );
+            }
         }
         Node::MdxTextExpression(raw) => {
             text = raw.value.clone();
@@ -288,12 +393,26 @@ fn ast_to_node(
                 children: paragraph,
             }
         }
-        Node::Math(val) => node::Node::CodeBlock(CodeBlock::new(
-            val.value.into(),
-            None,
-            style,
-            highlight_theme,
-        )),
+        Node::Math(val) => {
+            if let Some(rendered_html) = render_math_html(&val.value, true) {
+                match super::html::parse(&rendered_html, cx) {
+                    Ok(node) => node,
+                    Err(_) => node::Node::CodeBlock(CodeBlock::new(
+                        val.value.into(),
+                        None,
+                        style,
+                        highlight_theme,
+                    )),
+                }
+            } else {
+                node::Node::CodeBlock(CodeBlock::new(
+                    val.value.into(),
+                    None,
+                    style,
+                    highlight_theme,
+                ))
+            }
+        }
         Node::Html(val) => match super::html::parse(&val.value, cx) {
             Ok(el) => el,
             Err(err) => {
