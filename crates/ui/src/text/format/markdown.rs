@@ -1,4 +1,3 @@
-use base64::{engine::general_purpose::STANDARD, Engine as _};
 use gpui::SharedString;
 use mathjax_svg_rs::{render_tex as render_mathjax_tex, HorizontalAlign, Options as MathJaxOptions};
 use once_cell::sync::Lazy;
@@ -24,7 +23,7 @@ use crate::{
 static MATH_SVG_CACHE: Lazy<Mutex<HashMap<(bool, String), SharedString>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
-fn render_math_svg_data_uri(value: &str, display_mode: bool) -> Option<SharedString> {
+fn render_math_svg(value: &str, display_mode: bool) -> Option<SharedString> {
     let cache_key = (display_mode, value.to_string());
     if let Some(cached) = MATH_SVG_CACHE.lock().ok()?.get(&cache_key).cloned() {
         return Some(cached);
@@ -39,17 +38,13 @@ fn render_math_svg_data_uri(value: &str, display_mode: bool) -> Option<SharedStr
     )
     .ok()?;
 
-    let data_uri = format!(
-        "data:image/svg+xml;base64,{}",
-        STANDARD.encode(svg.as_bytes())
-    );
-    let data_uri: SharedString = data_uri.into();
+    let svg: SharedString = svg.into();
 
     if let Ok(mut cache) = MATH_SVG_CACHE.lock() {
-        cache.insert(cache_key, data_uri.clone());
+        cache.insert(cache_key, svg.clone());
     }
 
-    Some(data_uri)
+    Some(svg)
 }
 
 static BLOCK_DELIM_RE: Lazy<Regex> =
@@ -243,11 +238,14 @@ fn parse_paragraph(paragraph: &mut Paragraph, node: &mdast::Node, cx: &mut NodeC
         }
         Node::InlineMath(raw) => {
             text = raw.value.clone();
-            if let Some(svg_uri) = render_math_svg_data_uri(&raw.value, false) {
+            if let Some(svg) = render_math_svg(&raw.value, false) {
                 paragraph.push_image(ImageNode {
-                    url: svg_uri.into(),
+                    url: raw.value.clone().into(),
                     alt: Some(raw.value.clone().into()),
                     title: Some(raw.value.clone().into()),
+                    math_tex: Some(raw.value.clone().into()),
+                    math_svg: Some(svg),
+                    math_display_mode: false,
                     ..Default::default()
                 });
             } else {
@@ -394,12 +392,15 @@ fn ast_to_node(
             }
         }
         Node::Math(val) => {
-            if let Some(svg_uri) = render_math_svg_data_uri(&val.value, true) {
+            if let Some(svg) = render_math_svg(&val.value, true) {
                 let mut paragraph = Paragraph::default();
                 paragraph.push_image(ImageNode {
-                    url: svg_uri.into(),
+                    url: val.value.clone().into(),
                     alt: Some(val.value.clone().into()),
                     title: Some(val.value.clone().into()),
+                    math_tex: Some(val.value.clone().into()),
+                    math_svg: Some(svg),
+                    math_display_mode: true,
                     ..Default::default()
                 });
                 node::Node::Paragraph(paragraph)
