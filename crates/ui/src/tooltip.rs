@@ -1,6 +1,7 @@
 use gpui::{
-    div, prelude::FluentBuilder, px, Action, AnyElement, AnyView, App, AppContext, Context,
-    IntoElement, ParentElement, Render, SharedString, StyleRefinement, Styled, Window,
+    div, point, prelude::FluentBuilder, px, Action, AnyElement, AnyView, App, AppContext,
+    Context, Corner, IntoElement, ParentElement, Point, Render, SharedString, StyleRefinement,
+    Styled, Window, Pixels,
 };
 
 use crate::{h_flex, text::Text, ActiveTheme, Kbd, StyledExt};
@@ -60,6 +61,31 @@ impl Tooltip {
     pub fn build(self, _: &mut Window, cx: &mut App) -> AnyView {
         cx.new(|_| self).into()
     }
+}
+
+pub fn smart_tooltip_anchor_and_position(window: &Window) -> (Corner, Point<Pixels>) {
+    let mouse = window.mouse_position();
+    let bounds = window.bounds();
+    let anchor = match (
+        mouse.x > bounds.size.width / 2.0,
+        mouse.y > bounds.size.height / 2.0,
+    ) {
+        (false, false) => Corner::TopLeft,
+        (true, false) => Corner::TopRight,
+        (false, true) => Corner::BottomLeft,
+        (true, true) => Corner::BottomRight,
+    };
+
+    let x = match anchor {
+        Corner::TopLeft | Corner::BottomLeft => mouse.x + px(12.0),
+        Corner::TopRight | Corner::BottomRight => mouse.x - px(12.0),
+    };
+    let y = match anchor {
+        Corner::TopLeft | Corner::TopRight => mouse.y + px(12.0),
+        Corner::BottomLeft | Corner::BottomRight => mouse.y - px(12.0),
+    };
+
+    (anchor, point(x, y))
 }
 
 impl FluentBuilder for Tooltip {}

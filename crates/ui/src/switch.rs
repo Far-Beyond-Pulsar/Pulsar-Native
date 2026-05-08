@@ -1,8 +1,11 @@
 use crate::{
-    h_flex, text::Text, tooltip::Tooltip, ActiveTheme, Disableable, Side, Sizable, Size, StyledExt,
+    h_flex,
+    text::Text,
+    tooltip::{smart_tooltip_anchor_and_position, Tooltip},
+    ActiveTheme, Disableable, Side, Sizable, Size, StyledExt,
 };
 use gpui::{
-    anchored, deferred, div, point, prelude::FluentBuilder as _, px, Animation,
+    anchored, deferred, div, prelude::FluentBuilder as _, px, Animation,
     AnimationExt as _, App, ElementId, InteractiveElement, IntoElement, ParentElement as _,
     RenderOnce, SharedString, StatefulInteractiveElement, StyleRefinement, Styled, Window,
 };
@@ -211,14 +214,13 @@ impl RenderOnce for Switch {
                 ),
             )
             .when_some(self.tooltip.clone(), |this, tooltip| {
+                let (anchor, position) = smart_tooltip_anchor_and_position(window);
                 this.child(
                     deferred(
                         anchored()
+                            .anchor(anchor)
                             .snap_to_window_with_margin(px(8.))
-                            .position({
-                                let mouse = window.mouse_position();
-                                point(mouse.x + px(12.), mouse.y + px(12.))
-                            })
+                            .position(position)
                             .child(
                                 div()
                                     .invisible()

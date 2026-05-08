@@ -1,10 +1,13 @@
 use crate::popup_menu::{PopupMenu, PopupMenuExt};
 use crate::{
-    h_flex, indicator::Indicator, tooltip::Tooltip, ActiveTheme, Colorize as _, Disableable,
-    FocusableExt as _, Icon, Selectable, Sizable, Size, StyleSized, StyledExt,
+    h_flex,
+    indicator::Indicator,
+    tooltip::{smart_tooltip_anchor_and_position, Tooltip},
+    ActiveTheme, Colorize as _, Disableable, FocusableExt as _, Icon, Selectable, Sizable, Size,
+    StyleSized, StyledExt,
 };
 use gpui::{
-    anchored, deferred, div, point, prelude::FluentBuilder as _, px, relative, Action,
+    anchored, deferred, div, prelude::FluentBuilder as _, px, relative, Action,
     AnyElement, App, ClickEvent, Context, Corner, Corners, Div, Edges, ElementId, Hsla,
     InteractiveElement, Interactivity, IntoElement, ParentElement, Pixels, RenderOnce,
     SharedString, Stateful,
@@ -581,14 +584,13 @@ impl RenderOnce for Button {
                     .text_color(normal_style.fg.opacity(0.8))
             })
             .when_some(self.tooltip, |this, (tooltip, action)| {
+                let (anchor, position) = smart_tooltip_anchor_and_position(window);
                 this.child(
                     deferred(
                         anchored()
+                            .anchor(anchor)
                             .snap_to_window_with_margin(px(8.))
-                            .position({
-                                let mouse = window.mouse_position();
-                                point(mouse.x + px(12.), mouse.y + px(12.))
-                            })
+                            .position(position)
                             .child(
                                 div()
                                     .invisible()
