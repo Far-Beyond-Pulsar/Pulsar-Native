@@ -686,52 +686,52 @@ impl Paragraph {
                         .into_any_element(),
                     );
                 }
-                child_nodes.push(
-                        if let Some(svg) = &image.math_svg {
-                            let image = std::sync::Arc::new(Image::from_bytes(
-                                ImageFormat::Svg,
-                                svg.as_str().as_bytes().to_vec(),
-                            ));
+                let image_node = image;
+                let image_element = if let Some(svg) = &image_node.math_svg {
+                    let image = std::sync::Arc::new(Image::from_bytes(
+                        ImageFormat::Svg,
+                        svg.as_str().as_bytes().to_vec(),
+                    ));
 
-                            img(image)
-                                .id(ix)
-                                .object_fit(ObjectFit::Contain)
-                                .w_full()
-                                .when_some(image.width, |this, width| this.w(width))
-                                .when_some(image.height, |this, height| this.h(height))
-                                .when_some(image.link.clone(), |this, link| {
-                                    let title = image.title();
-                                    this.cursor_pointer()
-                                        .tooltip(move |window, cx| {
-                                            Tooltip::new(title.clone()).build(window, cx)
-                                        })
-                                        .on_click(move |_, _, cx| {
-                                            cx.stop_propagation();
-                                            cx.open_url(&link.url);
-                                        })
+                    img(image)
+                        .id(ix)
+                        .object_fit(ObjectFit::Contain)
+                        .w_full()
+                        .when_some(image_node.width, |this, width| this.w(width))
+                        .when_some(image_node.height, |this, height| this.h(height))
+                        .when_some(image_node.link.clone(), |this, link| {
+                            let title = image_node.title();
+                            this.cursor_pointer()
+                                .tooltip(move |window, cx| {
+                                    Tooltip::new(title.clone()).build(window, cx)
                                 })
-                                .into_any_element()
-                        } else {
-                            img(image.url.as_ref())
-                                .id(ix)
-                                .object_fit(ObjectFit::Contain)
-                                .w_full()
-                                .when_some(image.width, |this, width| this.w(width))
-                                .when_some(image.height, |this, height| this.h(height))
-                                .when_some(image.link.clone(), |this, link| {
-                                    let title = image.title();
-                                    this.cursor_pointer()
-                                        .tooltip(move |window, cx| {
-                                            Tooltip::new(title.clone()).build(window, cx)
-                                        })
-                                        .on_click(move |_, _, cx| {
-                                            cx.stop_propagation();
-                                            cx.open_url(&link.url);
-                                        })
+                                .on_click(move |_, _, cx| {
+                                    cx.stop_propagation();
+                                    cx.open_url(&link.url);
                                 })
-                                .into_any_element()
-                        },
-                );
+                        })
+                        .into_any_element()
+                } else {
+                    img(image_node.url.as_ref())
+                        .id(ix)
+                        .object_fit(ObjectFit::Contain)
+                        .w_full()
+                        .when_some(image_node.width, |this, width| this.w(width))
+                        .when_some(image_node.height, |this, height| this.h(height))
+                        .when_some(image_node.link.clone(), |this, link| {
+                            let title = image_node.title();
+                            this.cursor_pointer()
+                                .tooltip(move |window, cx| {
+                                    Tooltip::new(title.clone()).build(window, cx)
+                                })
+                                .on_click(move |_, _, cx| {
+                                    cx.stop_propagation();
+                                    cx.open_url(&link.url);
+                                })
+                        })
+                        .into_any_element()
+                };
+                child_nodes.push(image_element);
 
                 text.clear();
                 links.clear();
