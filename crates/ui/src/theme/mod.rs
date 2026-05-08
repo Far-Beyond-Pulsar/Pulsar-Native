@@ -219,7 +219,6 @@ impl Theme {
         if let Some(window) = window {
             let theme = cx.global::<Theme>();
             window.set_background_appearance(theme.window_background.into());
-            window.set_always_transparent(theme.always_transparent);
             window.refresh();
         } else {
             // No specific window supplied — push the appearance update to every
@@ -229,7 +228,6 @@ impl Theme {
             for handle in cx.windows() {
                 let _ = handle.update(cx, |_view, window, _cx| {
                     window.set_background_appearance(bg);
-                    window.set_always_transparent(always);
                 });
             }
             cx.refresh_windows();
