@@ -85,7 +85,8 @@ rust_decimal = { version = "1.37.0", optional = true }
 
 # Markdown Parser
 markdown = "1.0.0"
-katex = "0.4"
+mathjax-svg-rs = "0.4"
+base64 = "0.22"
 
 # HTML Parser
 html5ever = "0.27"

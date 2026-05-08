@@ -1,5 +1,6 @@
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use gpui::SharedString;
-use katex::{Opts, OutputType};
+use mathjax_svg_rs::{render_tex as render_mathjax_tex, HorizontalAlign, Options as MathJaxOptions};
 use once_cell::sync::Lazy;
 use markdown::{
     Constructs,
@@ -7,6 +8,7 @@ use markdown::{
     ParseOptions,
 };
 use regex::Regex;
+use std::{collections::HashMap, sync::Mutex};
 
 use crate::{
     highlighter::HighlightTheme,
@@ -19,15 +21,35 @@ use crate::{
     },
 };
 
-fn render_math_html(value: &str, display_mode: bool) -> Option<String> {
-    let opts = Opts::builder()
-        .display_mode(display_mode)
-        .output_type(OutputType::Html)
-        .throw_on_error(false)
-        .build()
-        .ok()?;
+static MATH_SVG_CACHE: Lazy<Mutex<HashMap<(bool, String), SharedString>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
-    katex::render_with_opts(value, opts).ok()
+fn render_math_svg_data_uri(value: &str, display_mode: bool) -> Option<SharedString> {
+    let cache_key = (display_mode, value.to_string());
+    if let Some(cached) = MATH_SVG_CACHE.lock().ok()?.get(&cache_key).cloned() {
+        return Some(cached);
+    }
+
+    let svg = render_mathjax_tex(
+        value,
+        &MathJaxOptions {
+            font_size: 16.0,
+            horizontal_align: HorizontalAlign::Center,
+        },
+    )
+    .ok()?;
+
+    let data_uri = format!(
+        "data:image/svg+xml;base64,{}",
+        STANDARD.encode(svg.as_bytes())
+    );
+    let data_uri: SharedString = data_uri.into();
+
+    if let Ok(mut cache) = MATH_SVG_CACHE.lock() {
+        cache.insert(cache_key, data_uri.clone());
+    }
+
+    Some(data_uri)
 }
 
 static BLOCK_DELIM_RE: Lazy<Regex> =
@@ -77,23 +99,6 @@ fn normalize_katex_default_delimiters(raw: &str) -> String {
     }
 
     out
-}
-
-fn merge_inline_math_from_node(paragraph: &mut Paragraph, node: node::Node) {
-    match node {
-        node::Node::Paragraph(child) => {
-            paragraph.merge(child);
-        }
-        node::Node::Root { children } => {
-            for child in children {
-                merge_inline_math_from_node(paragraph, child);
-            }
-        }
-        node::Node::Break { .. } => {
-            paragraph.push_str("\n");
-        }
-        _ => {}
-    }
 }
 
 /// Parse Markdown into a tree of nodes.
@@ -238,18 +243,13 @@ fn parse_paragraph(paragraph: &mut Paragraph, node: &mdast::Node, cx: &mut NodeC
         }
         Node::InlineMath(raw) => {
             text = raw.value.clone();
-            if let Some(rendered_html) = render_math_html(&raw.value, false) {
-                match super::html::parse(&rendered_html, cx) {
-                    Ok(node) => {
-                        merge_inline_math_from_node(paragraph, node);
-                    }
-                    Err(_) => {
-                        paragraph.push(
-                            InlineNode::new(&text)
-                                .marks(vec![(0..text.len(), TextMark::default().code())]),
-                        );
-                    }
-                }
+            if let Some(svg_uri) = render_math_svg_data_uri(&raw.value, false) {
+                paragraph.push_image(ImageNode {
+                    url: svg_uri.into(),
+                    alt: Some(raw.value.clone().into()),
+                    title: Some(raw.value.clone().into()),
+                    ..Default::default()
+                });
             } else {
                 paragraph.push(
                     InlineNode::new(&text).marks(vec![(0..text.len(), TextMark::default().code())]),
@@ -394,16 +394,15 @@ fn ast_to_node(
             }
         }
         Node::Math(val) => {
-            if let Some(rendered_html) = render_math_html(&val.value, true) {
-                match super::html::parse(&rendered_html, cx) {
-                    Ok(node) => node,
-                    Err(_) => node::Node::CodeBlock(CodeBlock::new(
-                        val.value.into(),
-                        None,
-                        style,
-                        highlight_theme,
-                    )),
-                }
+            if let Some(svg_uri) = render_math_svg_data_uri(&val.value, true) {
+                let mut paragraph = Paragraph::default();
+                paragraph.push_image(ImageNode {
+                    url: svg_uri.into(),
+                    alt: Some(val.value.clone().into()),
+                    title: Some(val.value.clone().into()),
+                    ..Default::default()
+                });
+                node::Node::Paragraph(paragraph)
             } else {
                 node::Node::CodeBlock(CodeBlock::new(
                     val.value.into(),

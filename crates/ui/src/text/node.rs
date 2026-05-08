@@ -190,6 +190,14 @@ impl Paragraph {
         let mut text = String::new();
 
         for c in self.children.iter() {
+            if let Some(image) = &c.image {
+                if let Some(alt) = &image.alt {
+                    text.push_str(alt);
+                } else if let Some(title) = &image.title {
+                    text.push_str(title);
+                }
+            }
+
             if let Some(state) = &c.state {
                 let state = state.read(cx);
                 if let Some(selection) = &state.selection {
