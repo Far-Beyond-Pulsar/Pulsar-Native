@@ -679,8 +679,13 @@ impl Paragraph {
         svg: &str,
         text_color: gpui::Hsla,
         raster_scale: f32,
+        colorize: bool,
     ) -> Option<Arc<CachedSvgImage>> {
-        let colored_svg = Self::colorize_svg(svg, text_color);
+        let colored_svg = if colorize {
+            Self::colorize_svg(svg, text_color)
+        } else {
+            svg.to_string()
+        };
         let scale_key = (raster_scale * 100.0).round().clamp(1.0, u16::MAX as f32) as u16;
 
         let mut hasher = DefaultHasher::new();
@@ -776,9 +781,14 @@ impl Paragraph {
                     .as_ref()
                     .or(image_node.mermaid_svg.as_ref())
                 {
-                    let colored_svg = Self::colorize_svg(svg, text_color);
+                    let is_math = image_node.math_svg.is_some();
+                    let colored_svg = if is_math {
+                        Self::colorize_svg(svg, text_color)
+                    } else {
+                        svg.to_string()
+                    };
 
-                    if let Some(rendered) = Self::render_cached_svg(svg, text_color, raster_scale) {
+                    if let Some(rendered) = Self::render_cached_svg(svg, text_color, raster_scale, is_math) {
                         img(ImageSource::Render(rendered.image.clone()))
                             .id(ix)
                             .object_fit(ObjectFit::Contain)
