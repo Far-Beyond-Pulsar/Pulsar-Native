@@ -1549,6 +1549,20 @@ impl Render for AgentChatPanel {
         )
         .content(move |_window, _cx| model_list.clone());
 
+        let chat_history_popover = Popover::<SearchableList<ChatHistoryEntry>>::new(
+            "agent-chat-history-popover",
+        )
+        .anchor(Corner::BottomLeft)
+        .trigger(
+            Button::new("agent-chat-history-trigger")
+                .xsmall()
+                .ghost()
+                .justify_start()
+                .label(format!("Chat: {}", current_chat_id))
+                .dropdown_caret(true),
+        )
+        .content(move |_window, _cx| chat_history_list.clone());
+
         v_flex()
             .size_full()
             .bg(cx.theme().sidebar)
@@ -1562,46 +1576,6 @@ impl Render for AgentChatPanel {
                     .border_b_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().tab_bar)
-                    .child(
-                        h_flex()
-                            .w_full()
-                            .items_center()
-                            .gap_1()
-                            .justify_between()
-                            .child(
-                                Button::new("agent-chat-new-chat")
-                                    .xsmall()
-                                    .ghost()
-                                    .label("New Chat")
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.start_new_chat(cx);
-                                    })),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(format!("Current: {}", current_chat_id)),
-                            ),
-                    )
-                    .child(
-                        v_flex()
-                            .w_full()
-                            .gap_1()
-                            .p_1()
-                            .rounded(px(6.0))
-                            .bg(cx.theme().background.opacity(0.65))
-                            .border_1()
-                            .border_color(cx.theme().border.opacity(0.6))
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .font_semibold()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child("Chats in this project"),
-                            )
-                            .child(chat_history_list.clone()),
-                    )
                     .child(
                         h_flex()
                             .w_full()
@@ -1755,6 +1729,23 @@ impl Render for AgentChatPanel {
                     .border_t_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().background)
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .min_w_0()
+                            .gap_1()
+                            .items_center()
+                            .child(chat_history_popover)
+                            .child(
+                                Button::new("agent-chat-new-chat")
+                                    .xsmall()
+                                    .ghost()
+                                    .label("+")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.start_new_chat(cx);
+                                    })),
+                            ),
+                    )
                     .child(
                         h_flex()
                             .w_full()
