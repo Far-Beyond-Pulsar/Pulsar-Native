@@ -16,8 +16,8 @@ pub struct ProviderMetadata {
 
 #[derive(Clone, Debug)]
 pub struct ModelDescriptor {
-    pub id: String,
-    pub label: String,
+    pub id: &'static str,
+    pub label: &'static str,
     pub supports_tools: bool,
 }
 

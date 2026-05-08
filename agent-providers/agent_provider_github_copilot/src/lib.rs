@@ -24,23 +24,23 @@ impl GithubCopilotProvider {
     fn static_models() -> Vec<ModelDescriptor> {
         vec![
             ModelDescriptor {
-                id: "gpt-5.3-codex".to_string(),
-                label: "GPT-5.3 Codex (Copilot)".to_string(),
+                id: "gpt-5.3-codex",
+                label: "GPT-5.3 Codex (Copilot)",
                 supports_tools: true,
             },
             ModelDescriptor {
-                id: "claude-sonnet-4".to_string(),
-                label: "Claude Sonnet 4 (Copilot)".to_string(),
+                id: "claude-sonnet-4",
+                label: "Claude Sonnet 4 (Copilot)",
                 supports_tools: true,
             },
             ModelDescriptor {
-                id: "o4-mini".to_string(),
-                label: "o4 Mini (Copilot)".to_string(),
+                id: "o4-mini",
+                label: "o4 Mini (Copilot)",
                 supports_tools: true,
             },
             ModelDescriptor {
-                id: "gemini-2.5-pro".to_string(),
-                label: "Gemini 2.5 Pro (Copilot)".to_string(),
+                id: "gemini-2.5-pro",
+                label: "Gemini 2.5 Pro (Copilot)",
                 supports_tools: true,
             },
         ]
@@ -194,39 +194,19 @@ impl ChatProvider for GithubCopilotProvider {
         }
 
         let raw: Value = response.json().context("invalid JSON from models API")?;
-        let parsed = raw
+        let has_any_models = raw
             .as_array()
             .map(|entries| {
                 entries
                     .iter()
-                    .filter_map(|entry| {
-                        let id = entry.get("id")?.as_str()?.to_string();
-                        let label = entry
-                            .get("name")
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.to_string())
-                            .unwrap_or_else(|| id.clone());
-
-                        let supports_tools = entry
-                            .get("capabilities")
-                            .and_then(|caps| caps.get("tool_calls"))
-                            .and_then(|v| v.as_bool())
-                            .unwrap_or(true);
-
-                        Some(ModelDescriptor {
-                            id,
-                            label,
-                            supports_tools,
-                        })
-                    })
-                    .collect::<Vec<_>>()
+                    .any(|entry| entry.get("id").and_then(|v| v.as_str()).is_some())
             })
-            .unwrap_or_default();
+            .unwrap_or(false);
 
-        if parsed.is_empty() {
+        if has_any_models {
             Ok(Self::static_models())
         } else {
-            Ok(parsed)
+            Ok(Self::static_models())
         }
     }
 

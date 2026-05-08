@@ -1,0 +1,9 @@
+[package]
+name = "agent_chat_tools"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow = "1"
+serde_json = "1"

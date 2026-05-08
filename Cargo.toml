@@ -52,6 +52,8 @@ blueprint_compiler    = { path = "crates/blueprint_compiler" }
 pulsar_graph          = { path = "crates/pulsar_graph" }
 pulsar_replication    = { path = "crates/pulsar_replication" }
 agent_chat_core       = { path = "agent-providers/agent_chat_core" }
+agent_chat_tools      = { path = "agent-providers/agent_chat_tools" }
+agent_provider_demo_random = { path = "agent-providers/agent_provider_demo_random" }
 agent_provider_github_copilot = { path = "agent-providers/agent_provider_github_copilot" }
 
 # ---------- Reflection System ----------

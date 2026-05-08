@@ -68,6 +68,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent_chat_tools"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde_json",
+]
+
+[[package]]
+name = "agent_provider_demo_random"
+version = "0.1.0"
+dependencies = [
+ "agent_chat_core",
+ "anyhow",
+ "serde_json",
+]
+
+[[package]]
 name = "agent_provider_github_copilot"
 version = "0.1.0"
 dependencies = [
@@ -12627,6 +12644,8 @@ name = "ui_core"
 version = "0.1.0"
 dependencies = [
  "agent_chat_core",
+ "agent_chat_tools",
+ "agent_provider_demo_random",
  "agent_provider_github_copilot",
  "anyhow",
  "blueprint_editor_plugin",

@@ -1,8 +1,11 @@
 use agent_chat_core::{
     AuthHost, AuthMethod, AuthResult, AvailabilityState, ChatMessage as ProviderChatMessage,
     ChatRequest, ChatRole, ProcessEnvironment, PromptTokenRequest, ProviderEnvironment,
+    ToolDefinition,
     ProviderRegistry,
 };
+use agent_chat_tools::{ToolContext, ToolRegistry};
+use agent_provider_demo_random::DemoRandomProvider;
 use agent_provider_github_copilot::GithubCopilotProvider;
 use gpui::{prelude::FluentBuilder as _, *};
 use std::{collections::HashMap, sync::Arc};
@@ -54,6 +57,7 @@ pub struct AgentChatPanel {
     provider_catalog: Vec<ProviderDefinition>,
     wip_providers: HashMap<&'static str, String>,
     provider_registry: ProviderRegistry,
+    tool_registry: ToolRegistry,
     provider_tokens: HashMap<&'static str, String>,
     pending_auth_provider: Option<&'static str>,
     active_provider_ix: usize,
@@ -65,9 +69,10 @@ pub struct AgentChatPanel {
 impl AgentChatPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let provider_catalog = Self::default_provider_catalog();
-        let wip_providers = Self::wip_providers_from_catalog(&provider_catalog);
         let mut provider_registry = ProviderRegistry::new();
         provider_registry.register(Arc::new(GithubCopilotProvider::new()));
+        provider_registry.register(Arc::new(DemoRandomProvider::new()));
+        let wip_providers = Self::wip_providers_from_catalog(&provider_catalog, &provider_registry);
 
         let prompt_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Ask the engine assistant..."));
@@ -146,6 +151,7 @@ impl AgentChatPanel {
             provider_catalog,
             wip_providers,
             provider_registry,
+            tool_registry: ToolRegistry::with_default_tools(),
             provider_tokens: HashMap::new(),
             pending_auth_provider: None,
             active_provider_ix: 0,
@@ -160,16 +166,40 @@ impl AgentChatPanel {
 
     fn wip_providers_from_catalog(
         provider_catalog: &[ProviderDefinition],
+        provider_registry: &ProviderRegistry,
     ) -> HashMap<&'static str, String> {
         provider_catalog
             .iter()
-            .filter(|provider| provider.id != "github_copilot")
+            .filter(|provider| provider_registry.get(provider.id).is_none())
             .map(|provider| (provider.id, "WIP provider".to_string()))
             .collect()
     }
 
     fn default_provider_catalog() -> Vec<ProviderDefinition> {
         vec![
+            ProviderDefinition {
+                id: "demo_random",
+                label: "Demo Random",
+                kind: ProviderKind::Local,
+                endpoint: "local://demo-random",
+                models: Arc::new(vec![
+                    ModelDefinition {
+                        id: "demo-breeze",
+                        label: "Demo Breeze",
+                        supports_tools: false,
+                    },
+                    ModelDefinition {
+                        id: "demo-story",
+                        label: "Demo Story",
+                        supports_tools: false,
+                    },
+                    ModelDefinition {
+                        id: "demo-chaos",
+                        label: "Demo Chaos",
+                        supports_tools: false,
+                    },
+                ]),
+            },
             ProviderDefinition {
                 id: "openai",
                 label: "OpenAI",
@@ -967,64 +997,130 @@ impl AgentChatPanel {
                 role: "assistant",
                 content: "Selected provider is still WIP and not yet executable.".to_string(),
             });
-        } else if provider_id == "github_copilot" {
+        } else if let Some(provider) = self.provider_registry.get(provider_id) {
             let token = self.auth_token_for_provider(provider_id);
             let model = self
                 .active_model()
                 .map(|m| m.id.to_string())
-                .unwrap_or_else(|| "gpt-5.3-codex".to_string());
+                .unwrap_or_else(|| "default".to_string());
+            let availability = provider.availability(&ProcessEnvironment);
 
-            if let Some(token) = token {
-                if let Some(provider) = self.provider_registry.get(provider_id) {
-                    let request = ChatRequest {
-                        model,
-                        messages: vec![ProviderChatMessage {
-                            role: ChatRole::User,
-                            content: prompt.clone(),
-                        }],
-                        enable_tool_calls: true,
-                        tools: Vec::new(),
-                        temperature: Some(0.2),
-                        top_p: Some(1.0),
-                        max_tokens: Some(1024),
-                    };
-
-                    match provider.chat_completion(&token, &request) {
-                        Ok(response) => {
-                            if let Some(message) = response.assistant_message {
-                                self.messages.push(ChatMessage {
-                                    role: "assistant",
-                                    content: message,
-                                });
-                            } else if !response.tool_calls.is_empty() {
-                                self.messages.push(ChatMessage {
-                                    role: "assistant",
-                                    content: format!(
-                                        "Copilot requested {} tool call(s). Tool runtime wiring is next.",
-                                        response.tool_calls.len()
-                                    ),
-                                });
-                            } else {
-                                self.messages.push(ChatMessage {
-                                    role: "assistant",
-                                    content: "Copilot returned an empty response.".to_string(),
-                                });
-                            }
-                        }
-                        Err(err) => {
-                            self.messages.push(ChatMessage {
-                                role: "assistant",
-                                content: format!("Copilot request failed: {err}"),
-                            });
-                        }
-                    }
-                }
-            } else {
+            if matches!(availability.state, AvailabilityState::RequiresAuth) && token.is_none() {
                 self.pending_auth_provider = Some(provider_id);
                 self.messages.push(ChatMessage {
                     role: "assistant",
                     content: "Authentication required. Paste token in the auth row above.".to_string(),
                 });
+            } else {
+                let token = token.unwrap_or_default();
+                let request = ChatRequest {
+                    model,
+                    messages: vec![ProviderChatMessage {
+                        role: ChatRole::User,
+                        content: prompt.clone(),
+                    }],
+                    enable_tool_calls: true,
+                    tools: self
+                        .tool_registry
+                        .available_tools_schema()
+                        .into_iter()
+                        .filter_map(|schema| {
+                            Some(ToolDefinition {
+                                name: schema.get("name")?.as_str()?.to_string(),
+                                description: schema
+                                    .get("description")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string()),
+                                parameters_json_schema: schema.get("parameters")?.clone(),
+                            })
+                        })
+                        .collect(),
+                    temperature: Some(0.2),
+                    top_p: Some(1.0),
+                    max_tokens: Some(1024),
+                };
+
+                match provider.chat_completion(&token, &request) {
+                    Ok(response) => {
+                        if !response.tool_calls.is_empty() {
+                            let workspace_root = std::env::current_dir()
+                                .unwrap_or_else(|_| std::path::PathBuf::from("."));
+                            let tool_ctx = ToolContext { workspace_root };
+
+                            let mut followup_messages = request.messages.clone();
+                            for tool_call in response.tool_calls {
+                                let result = self.tool_registry.execute(
+                                    &tool_call.name,
+                                    tool_call.arguments_json,
+                                    &tool_ctx,
+                                );
+
+                                let rendered = match result {
+                                    Ok(value) => value,
+                                    Err(err) => serde_json::json!({
+                                        "error": err.to_string(),
+                                    }),
+                                };
+
+                                followup_messages.push(ProviderChatMessage {
+                                    role: ChatRole::Tool,
+                                    content: rendered.to_string(),
+                                });
+                            }
+
+                            let followup_request = ChatRequest {
+                                model: request.model.clone(),
+                                messages: followup_messages,
+                                enable_tool_calls: false,
+                                tools: Vec::new(),
+                                temperature: request.temperature,
+                                top_p: request.top_p,
+                                max_tokens: request.max_tokens,
+                            };
+
+                            match provider.chat_completion(&token, &followup_request) {
+                                Ok(final_response) => {
+                                    if let Some(message) = final_response.assistant_message {
+                                        self.messages.push(ChatMessage {
+                                            role: "assistant",
+                                            content: message,
+                                        });
+                                    } else {
+                                        self.messages.push(ChatMessage {
+                                            role: "assistant",
+                                            content: "Provider finished tool run but returned no text response."
+                                                .to_string(),
+                                        });
+                                    }
+                                }
+                                Err(err) => {
+                                    self.messages.push(ChatMessage {
+                                        role: "assistant",
+                                        content: format!(
+                                            "Provider follow-up after tool calls failed: {err}"
+                                        ),
+                                    });
+                                }
+                            }
+                        } else if let Some(message) = response.assistant_message {
+                            self.messages.push(ChatMessage {
+                                role: "assistant",
+                                content: message,
+                            });
+                        } else {
+                            self.messages.push(ChatMessage {
+                                role: "assistant",
+                                content: "Provider returned an empty response.".to_string(),
+                            });
+                        }
+                    }
+                    Err(err) => {
+                        self.messages.push(ChatMessage {
+                            role: "assistant",
+                            content: format!("Provider request failed: {err}"),
+                        });
+                    }
+                }
             }
         } else {
             let provider = self
