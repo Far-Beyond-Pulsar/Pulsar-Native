@@ -1,0 +1,205 @@
+use super::*;
+use engine_state;
+use std::{fs, path::PathBuf, time::{SystemTime, UNIX_EPOCH}};
+
+impl AgentChatPanel {
+    pub(super) fn chats_dir() -> Option<PathBuf> {
+        let project_root = engine_state::get_project_path().map(PathBuf::from)?;
+        Some(project_root.join(".pulsar").join("chats"))
+    }
+
+    pub(super) fn ensure_chats_dir() -> Option<PathBuf> {
+        let dir = Self::chats_dir()?;
+        if fs::create_dir_all(&dir).is_ok() {
+            Some(dir)
+        } else {
+            None
+        }
+    }
+
+    pub(super) fn chat_file_path(chat_id: &str) -> Option<PathBuf> {
+        Some(Self::ensure_chats_dir()?.join(format!("{chat_id}.json")))
+    }
+
+    pub(super) fn now_epoch_secs() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
+    }
+
+    pub(super) fn now_epoch_nanos() -> u128 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    }
+
+    pub(super) fn normalize_role(role: &str) -> &'static str {
+        match role {
+            "user" => "user",
+            "assistant" => "assistant",
+            "system" => "system",
+            _ => "assistant",
+        }
+    }
+
+    pub(super) fn default_system_message() -> ChatMessage {
+        ChatMessage {
+            role: "system",
+            content: "Agent Chat is ready. Choose provider/model and ask anything about your project.".to_string(),
+        }
+    }
+
+    pub(super) fn inferred_chat_title(messages: &[ChatMessage]) -> String {
+        if let Some(user_message) = messages.iter().find(|m| m.role == "user") {
+            user_message
+                .content
+                .chars()
+                .take(60)
+                .collect::<String>()
+                .trim()
+                .to_string()
+        } else {
+            "New Chat".to_string()
+        }
+    }
+
+    pub(super) fn read_chat_index() -> Vec<ChatHistoryEntry> {
+        let Some(dir) = Self::ensure_chats_dir() else {
+            return Vec::new();
+        };
+
+        let mut entries = Vec::new();
+        let Ok(files) = fs::read_dir(dir) else {
+            return entries;
+        };
+
+        for file in files.flatten() {
+            let path = file.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+                continue;
+            }
+
+            let Ok(raw) = fs::read_to_string(&path) else {
+                continue;
+            };
+            let Ok(chat) = serde_json::from_str::<ChatSessionFile>(&raw) else {
+                continue;
+            };
+
+            entries.push(ChatHistoryEntry {
+                id: chat.id,
+                title: chat.title,
+                updated_at: chat.updated_at,
+            });
+        }
+
+        entries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        entries
+    }
+
+    pub(super) fn save_current_chat(&self) {
+        if self.current_chat_id.is_empty() {
+            return;
+        }
+
+        let Some(path) = Self::chat_file_path(&self.current_chat_id) else {
+            return;
+        };
+
+        let payload = ChatSessionFile {
+            id: self.current_chat_id.clone(),
+            title: Self::inferred_chat_title(&self.messages),
+            created_at: self.current_chat_created_at,
+            updated_at: Self::now_epoch_secs(),
+            messages: self
+                .messages
+                .iter()
+                .map(|m| PersistedChatMessage {
+                    role: m.role.to_string(),
+                    content: m.content.clone(),
+                })
+                .collect(),
+        };
+
+        if let Ok(serialized) = serde_json::to_string_pretty(&payload) {
+            let _ = fs::write(path, serialized);
+        }
+    }
+
+    pub(super) fn refresh_chat_history_list(&mut self, cx: &mut Context<Self>) {
+        let entries = Self::read_chat_index();
+        self.chat_history_list.update(cx, |list, cx| {
+            list.set_items(entries, cx);
+        });
+    }
+
+    pub(super) fn load_chat_session(&mut self, chat_id: &str, cx: &mut Context<Self>) {
+        let Some(path) = Self::chat_file_path(chat_id) else {
+            return;
+        };
+        let Ok(raw) = fs::read_to_string(path) else {
+            return;
+        };
+        let Ok(chat) = serde_json::from_str::<ChatSessionFile>(&raw) else {
+            return;
+        };
+
+        self.current_chat_id = chat.id;
+        self.current_chat_created_at = chat.created_at;
+        self.message_row_heights.clear();
+        self.messages = chat
+            .messages
+            .into_iter()
+            .map(|m| ChatMessage {
+                role: Self::normalize_role(&m.role),
+                content: m.content,
+            })
+            .collect();
+
+        if self.messages.is_empty() {
+            self.messages.push(Self::default_system_message());
+        }
+
+        self.scroll_messages_to_bottom();
+        cx.notify();
+    }
+
+    pub(super) fn start_new_chat(&mut self, cx: &mut Context<Self>) {
+        self.current_chat_id = format!("chat-{}", Self::now_epoch_nanos());
+        self.current_chat_created_at = Self::now_epoch_secs();
+        self.message_row_heights.clear();
+        self.messages = vec![Self::default_system_message()];
+        self.save_current_chat();
+        self.refresh_chat_history_list(cx);
+        self.scroll_messages_to_bottom();
+        cx.notify();
+    }
+
+    pub(super) fn bootstrap_chat_storage(&mut self, cx: &mut Context<Self>) {
+        let entries = Self::read_chat_index();
+        self.chat_history_list.update(cx, |list, cx| {
+            list.set_items(entries.clone(), cx);
+        });
+
+        if let Some(latest) = entries.first() {
+            self.load_chat_session(&latest.id, cx);
+        } else {
+            self.start_new_chat(cx);
+        }
+
+        self.loaded_chat_project_root = engine_state::get_project_path().map(PathBuf::from);
+    }
+
+    pub(super) fn maybe_reload_chats_from_disk(&mut self, cx: &mut Context<Self>) {
+        let current_root = engine_state::get_project_path().map(PathBuf::from);
+        if current_root.is_none() {
+            return;
+        }
+
+        if self.loaded_chat_project_root != current_root {
+            self.bootstrap_chat_storage(cx);
+        }
+    }
+}
