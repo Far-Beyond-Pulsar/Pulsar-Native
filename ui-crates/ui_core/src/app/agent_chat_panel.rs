@@ -147,6 +147,7 @@ pub struct AgentChatPanel {
     active_model_ix: usize,
     is_request_in_flight: bool,
     streaming_message_ix: Option<usize>,
+    pending_rollback_confirm_ix: Option<usize>,
     messages: Vec<ChatMessage>,
     _subscriptions: Vec<Subscription>,
 }
@@ -322,6 +323,7 @@ impl AgentChatPanel {
             active_model_ix: 0,
             is_request_in_flight: false,
             streaming_message_ix: None,
+            pending_rollback_confirm_ix: None,
             messages: vec![ChatMessage {
                 role: "system",
                 content: "Agent Chat is ready. Choose provider/model and ask anything about your project.".to_string(),
@@ -1265,6 +1267,7 @@ impl AgentChatPanel {
             return;
         }
 
+        self.pending_rollback_confirm_ix = None;
         self.messages.truncate(message_ix + 1);
         if self.messages.is_empty() {
             self.messages.push(Self::default_system_message());
@@ -1283,6 +1286,7 @@ impl AgentChatPanel {
             return;
         }
 
+        self.pending_rollback_confirm_ix = None;
         let mut forked_messages = self.messages[..=message_ix].to_vec();
         if forked_messages.is_empty() {
             forked_messages.push(Self::default_system_message());
@@ -1297,6 +1301,20 @@ impl AgentChatPanel {
         self.save_current_chat();
         self.refresh_chat_history_list(cx);
         self.scroll_messages_to_bottom();
+        cx.notify();
+    }
+
+    fn request_rollback_confirmation(&mut self, message_ix: usize, cx: &mut Context<Self>) {
+        if self.is_request_in_flight || message_ix >= self.messages.len() {
+            return;
+        }
+
+        self.pending_rollback_confirm_ix = Some(message_ix);
+        cx.notify();
+    }
+
+    fn cancel_rollback_confirmation(&mut self, cx: &mut Context<Self>) {
+        self.pending_rollback_confirm_ix = None;
         cx.notify();
     }
 
@@ -2443,6 +2461,8 @@ impl Render for AgentChatPanel {
                                         let is_streaming_assistant =
                                             !is_user && this.streaming_message_ix == Some(ix);
                                         let is_actionable_message = message.role != "system";
+                                        let is_confirming_rollback =
+                                            this.pending_rollback_confirm_ix == Some(ix);
                                         let panel = cx.entity().clone();
                                         let content = message.content.clone();
 
@@ -2530,16 +2550,39 @@ impl Render for AgentChatPanel {
                                                         .child(
                                                             h_flex()
                                                                 .gap_1()
-                                                                .child(
-                                                                    Button::new(("agent-chat-rollback", ix))
-                                                                        .xsmall()
-                                                                        .ghost()
-                                                                        .label("Rollback")
-                                                                        .disabled(this.is_request_in_flight)
-                                                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                                                            this.rollback_chat_to_message(ix, cx);
-                                                                        })),
-                                                                )
+                                                                .when(!is_confirming_rollback, |el| {
+                                                                    el.child(
+                                                                        Button::new(("agent-chat-rollback", ix))
+                                                                            .xsmall()
+                                                                            .ghost()
+                                                                            .label("Rollback")
+                                                                            .disabled(this.is_request_in_flight)
+                                                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                                                this.request_rollback_confirmation(ix, cx);
+                                                                            })),
+                                                                    )
+                                                                })
+                                                                .when(is_confirming_rollback, |el| {
+                                                                    el.child(
+                                                                        Button::new(("agent-chat-rollback-confirm", ix))
+                                                                            .xsmall()
+                                                                            .primary()
+                                                                            .label("Confirm rollback")
+                                                                            .disabled(this.is_request_in_flight)
+                                                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                                                this.rollback_chat_to_message(ix, cx);
+                                                                            })),
+                                                                    )
+                                                                    .child(
+                                                                        Button::new(("agent-chat-rollback-cancel", ix))
+                                                                            .xsmall()
+                                                                            .ghost()
+                                                                            .label("Cancel")
+                                                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                                                this.cancel_rollback_confirmation(cx);
+                                                                            })),
+                                                                    )
+                                                                })
                                                                 .child(
                                                                     Button::new(("agent-chat-fork", ix))
                                                                         .xsmall()
