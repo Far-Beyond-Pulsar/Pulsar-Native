@@ -6,6 +6,7 @@ use agent_chat_core::{
 use anyhow::{anyhow, Context};
 use reqwest::blocking::Client;
 use serde_json::{json, Value};
+use std::io::{BufRead, BufReader};
 
 /// GitHub Models inference endpoint. Requires a fine-grained PAT with `models:read` scope.
 const GITHUB_MODELS_CHAT_URL: &str = "https://models.github.ai/inference/chat/completions";
@@ -291,6 +292,205 @@ impl ChatProvider for GithubCopilotProvider {
             tool_calls,
             finish_reason,
             raw_response,
+        })
+    }
+
+    fn chat_completion_streaming(
+        &self,
+        token: &str,
+        request: &ChatRequest,
+        on_chunk: &mut dyn FnMut(String),
+    ) -> anyhow::Result<ChatResponse> {
+        println!(
+            "[agent_provider_github_copilot] starting streaming request model={}",
+            request.model
+        );
+        let messages: Vec<Value> = request
+            .messages
+            .iter()
+            .map(|message: &ChatMessage| {
+                json!({
+                    "role": Self::map_role(message.role),
+                    "content": message.content,
+                })
+            })
+            .collect();
+
+        let tools = if request.enable_tool_calls {
+            request
+                .tools
+                .iter()
+                .map(|tool| {
+                    json!({
+                        "type": "function",
+                        "function": {
+                            "name": tool.name,
+                            "description": tool.description,
+                            "parameters": tool.parameters_json_schema,
+                        }
+                    })
+                })
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+
+        let mut payload = json!({
+            "model": request.model,
+            "messages": messages,
+            "stream": true,
+        });
+
+        if let Some(temperature) = request.temperature {
+            payload["temperature"] = json!(temperature);
+        }
+        if let Some(top_p) = request.top_p {
+            payload["top_p"] = json!(top_p);
+        }
+        if let Some(max_tokens) = request.max_tokens {
+            payload["max_tokens"] = json!(max_tokens);
+        }
+        if request.enable_tool_calls && !tools.is_empty() {
+            payload["tools"] = Value::Array(tools);
+        }
+
+        let response = self
+            .client
+            .post(GITHUB_MODELS_CHAT_URL)
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+            .header("Accept", "text/event-stream")
+            .header("X-GitHub-Api-Version", GITHUB_API_VERSION)
+            .json(&payload)
+            .send()
+            .context("failed to call GitHub Models streaming chat API")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().unwrap_or_default();
+            eprintln!(
+                "[agent_provider_github_copilot] streaming request failed status={} body_len={}",
+                status,
+                body.len()
+            );
+            return Err(anyhow!(
+                "GitHub Models streaming API returned {}: {}",
+                status,
+                body
+            ));
+        }
+
+        let mut raw_events = Vec::new();
+        let mut streamed_text_chunks = Vec::new();
+        let mut assistant_message = String::new();
+        let mut finish_reason = None;
+        let mut saw_first_chunk = false;
+        let mut event_count = 0usize;
+        let mut end_reason = "eof";
+
+        let reader = BufReader::new(response);
+        for line in reader.lines() {
+            let line = line.context("failed reading streaming response line")?;
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+
+            let Some(data) = line.strip_prefix("data:") else {
+                continue;
+            };
+            let data = data.trim();
+            if data == "[DONE]" {
+                end_reason = "done-token";
+                break;
+            }
+
+            let event: Value =
+                serde_json::from_str(data).context("invalid JSON event in stream")?;
+            event_count += 1;
+
+            if let Some(choice) = event
+                .get("choices")
+                .and_then(|choices| choices.as_array())
+                .and_then(|choices| choices.first())
+            {
+                let mut should_finish = false;
+                if finish_reason.is_none() {
+                    finish_reason = choice
+                        .get("finish_reason")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                }
+                if finish_reason.is_some() {
+                    should_finish = true;
+                }
+
+                if let Some(delta) = choice.get("delta") {
+                    if let Some(content) = delta.get("content").and_then(|v| v.as_str()) {
+                        if !content.is_empty() {
+                            let chunk = content.to_string();
+                            if !saw_first_chunk {
+                                saw_first_chunk = true;
+                                println!(
+                                    "[agent_provider_github_copilot] first chunk len={}",
+                                    chunk.len()
+                                );
+                            }
+                            assistant_message.push_str(&chunk);
+                            streamed_text_chunks.push(chunk.clone());
+                            on_chunk(chunk);
+                        }
+                    } else if let Some(parts) = delta.get("content").and_then(|v| v.as_array()) {
+                        for part in parts {
+                            if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
+                                if !text.is_empty() {
+                                    let chunk = text.to_string();
+                                    if !saw_first_chunk {
+                                        saw_first_chunk = true;
+                                        println!(
+                                            "[agent_provider_github_copilot] first chunk len={}",
+                                            chunk.len()
+                                        );
+                                    }
+                                    assistant_message.push_str(&chunk);
+                                    streamed_text_chunks.push(chunk.clone());
+                                    on_chunk(chunk);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                raw_events.push(event);
+                if should_finish {
+                    end_reason = "finish-reason";
+                    break;
+                }
+                continue;
+            }
+
+            raw_events.push(event);
+        }
+
+        println!(
+            "[agent_provider_github_copilot] streaming completed events={} chunks={} assistant_len={} finish_reason={} end_reason={}",
+            event_count,
+            streamed_text_chunks.len(),
+            assistant_message.len(),
+            finish_reason.as_deref().unwrap_or("none"),
+            end_reason
+        );
+
+        Ok(ChatResponse {
+            assistant_message: if assistant_message.is_empty() {
+                None
+            } else {
+                Some(assistant_message)
+            },
+            streamed_text_chunks,
+            tool_calls: Vec::new(),
+            finish_reason,
+            raw_response: Value::Array(raw_events),
         })
     }
 }

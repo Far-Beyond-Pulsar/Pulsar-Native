@@ -412,6 +412,18 @@ impl TextView {
         }
     }
 
+    /// Create a new markdown text view with a custom fenced-code font family.
+    pub fn markdown_with_code_font(
+        id: impl Into<ElementId>,
+        markdown: impl Into<SharedString>,
+        code_font_family: impl Into<SharedString>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Self {
+        Self::markdown(id, markdown, window, cx)
+            .style(TextViewStyle::default().code_font_family(code_font_family))
+    }
+
     /// Set the debounce delay in milliseconds for text parsing.
     /// Default is 200ms. Use smaller values (e.g., 30-50ms) for more responsive preview.
     pub fn debounce_ms(mut self, ms: u64) -> Self {

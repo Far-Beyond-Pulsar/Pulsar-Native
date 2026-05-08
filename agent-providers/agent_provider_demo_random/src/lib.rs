@@ -4,7 +4,10 @@ use agent_chat_core::{
 };
 use anyhow::anyhow;
 use serde_json::json;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    thread,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 pub struct DemoRandomProvider;
 
@@ -159,5 +162,28 @@ impl ChatProvider for DemoRandomProvider {
                 "mode": "synthetic_random_sentences"
             }),
         })
+    }
+
+    fn chat_completion_streaming(
+        &self,
+        token: &str,
+        request: &ChatRequest,
+        on_chunk: &mut dyn FnMut(String),
+    ) -> anyhow::Result<ChatResponse> {
+        let response = self.chat_completion(token, request)?;
+
+        let chunk_delay = match request.model.as_str() {
+            "demo-breeze" => Duration::from_millis(55),
+            "demo-story" => Duration::from_millis(70),
+            "demo-chaos" => Duration::from_millis(85),
+            _ => Duration::from_millis(65),
+        };
+
+        for chunk in response.streamed_text_chunks.iter() {
+            on_chunk(chunk.clone());
+            thread::sleep(chunk_delay);
+        }
+
+        Ok(response)
     }
 }

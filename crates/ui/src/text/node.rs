@@ -1,10 +1,16 @@
-use std::{collections::HashMap, ops::Range};
+use std::{
+    collections::{hash_map::DefaultHasher, HashMap},
+    hash::{Hash, Hasher},
+    ops::Range,
+    time::Duration,
+};
 
 use gpui::{
     div, img, prelude::FluentBuilder as _, px, relative, rems, AnyElement, App, AppContext as _,
-    DefiniteLength, Div, ElementId, Entity, FontStyle, FontWeight, Half, HighlightStyle,
-    InteractiveElement as _, IntoElement, Length, ObjectFit, ParentElement, SharedString,
-    SharedUri, StatefulInteractiveElement, Styled, StyledImage as _, Window,
+    ClipboardItem, DefiniteLength, Div, ElementId, Entity, FontStyle, FontWeight, Half,
+    HighlightStyle, InteractiveElement as _, IntoElement, Length, MouseButton, ObjectFit,
+    ParentElement, SharedString, SharedUri, StatefulInteractiveElement, Styled,
+    StyledImage as _, Window,
 };
 use markdown::mdast;
 use ropey::Rope;
@@ -308,11 +314,14 @@ pub(crate) struct CodeBlock {
     lang: Option<SharedString>,
     styles: Vec<(Range<usize>, HighlightStyle)>,
     code: SharedString,
+    code_font_family: SharedString,
 }
 
 impl PartialEq for CodeBlock {
     fn eq(&self, other: &Self) -> bool {
-        self.lang == other.lang && self.styles == other.styles
+        self.lang == other.lang
+            && self.styles == other.styles
+            && self.code_font_family == other.code_font_family
     }
 }
 
@@ -320,7 +329,7 @@ impl CodeBlock {
     pub(crate) fn new(
         code: SharedString,
         lang: Option<SharedString>,
-        _: &TextViewStyle,
+        style: &TextViewStyle,
         highlight_theme: &HighlightTheme,
     ) -> Self {
         let mut styles = vec![];
@@ -330,7 +339,12 @@ impl CodeBlock {
             styles = highlighter.styles(&(0..code.len()), highlight_theme);
         };
 
-        Self { lang, styles, code }
+        Self {
+            lang,
+            styles,
+            code,
+            code_font_family: style.code_font_family.clone(),
+        }
     }
 
     fn code(&self) -> SharedString {
@@ -342,27 +356,22 @@ impl CodeBlock {
         String::new()
     }
 
-    fn render(&self, node_cx: &NodeContext, _: &mut Window, cx: &mut App) -> AnyElement {
+    fn render(&self, node_cx: &NodeContext, window: &mut Window, cx: &mut App) -> AnyElement {
         let style = &node_cx.style;
         let code = self.code();
+        let code_font_family = self.code_font_family.clone();
+        let copy_code = code.clone();
+        let view_id = window.current_view();
+
+        let mut hasher = DefaultHasher::new();
+        code.hash(&mut hasher);
+        self.lang.hash(&mut hasher);
+        let copy_state_id = SharedString::from(format!("md-code-copy-{}", hasher.finish()));
+        let copied_state = window.use_keyed_state(copy_state_id, cx, |_, _| false);
+        let copied = *copied_state.read(cx);
 
         // Split code into lines to preserve line breaks (StyledText doesn't preserve \n)
         let lines: Vec<&str> = code.as_str().lines().collect();
-
-        // If code is empty or has no lines, render empty block
-        if lines.is_empty() {
-            return v_flex()
-                .id("codeblock")
-                .mb(style.paragraph_gap)
-                .p_3()
-                .rounded(cx.theme().radius)
-                .bg(cx.theme().secondary.opacity(0.85))
-                .font_family("Menlo, Monaco, Consolas, monospace")
-                .text_size(rems(0.875))
-                .relative()
-                .refine_style(&style.code_block)
-                .into_any_element();
-        }
 
         // Render each line as a separate Inline element to preserve line breaks
         let mut line_elements = Vec::new();
@@ -372,12 +381,10 @@ impl CodeBlock {
             let line_len = line.len();
             let line_end = current_offset + line_len;
 
-            // Filter and remap highlights that apply to this line
             let line_highlights: Vec<(Range<usize>, HighlightStyle)> = self
                 .styles
                 .iter()
                 .filter_map(|(range, style)| {
-                    // Check if this highlight overlaps with current line
                     if range.start < line_end && range.end > current_offset {
                         let start = range.start.saturating_sub(current_offset).min(line_len);
                         let end = (range.end - current_offset).min(line_len);
@@ -392,7 +399,6 @@ impl CodeBlock {
                 })
                 .collect();
 
-            // Create entity for this line
             let text: SharedString = line.to_string().into();
             let line_entity = cx.new(|_| {
                 let mut s = InlineState::default();
@@ -412,18 +418,65 @@ impl CodeBlock {
             current_offset = line_end + 1;
         }
 
-        v_flex()
+        let copy_button = div()
+            .absolute()
+            .top_2()
+            .right_2()
+            .px_2()
+            .py_1()
+            .rounded(px(6.0))
+            .border_1()
+            .border_color(cx.theme().border)
+            .bg(if copied {
+                cx.theme().primary.opacity(0.18)
+            } else {
+                cx.theme().background.opacity(0.95)
+            })
+            .text_xs()
+            .text_color(if copied {
+                cx.theme().primary
+            } else {
+                cx.theme().muted_foreground
+            })
+            .cursor_pointer()
+            .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                cx.stop_propagation();
+                cx.write_to_clipboard(ClipboardItem::new_string(copy_code.to_string()));
+                _ = copied_state.update(cx, |copied, _| *copied = true);
+                cx.notify(view_id);
+
+                cx.spawn({
+                    let copied_state = copied_state.clone();
+                    async move |cx| {
+                        cx.background_executor()
+                            .timer(Duration::from_millis(850))
+                            .await;
+                        _ = copied_state.update(cx, |copied, _| *copied = false);
+                        cx.update(|cx| cx.notify(view_id)).ok();
+                    }
+                })
+                .detach();
+            })
+            .child(if copied { "Copied" } else { "Copy" });
+
+        let code_box = v_flex()
             .id("codeblock")
             .mb(style.paragraph_gap)
             .p_3()
-            .rounded(cx.theme().radius)
+            .rounded(px(10.0))
+            .border_1()
+            .border_color(cx.theme().border)
             .bg(cx.theme().secondary.opacity(0.85))
-            .font_family("Menlo, Monaco, Consolas, monospace")
+            .font_family(code_font_family)
             .text_size(rems(0.875))
             .relative()
-            .refine_style(&style.code_block)
-            .children(line_elements)
-            .into_any_element()
+            .refine_style(&style.code_block);
+
+        if line_elements.is_empty() {
+            code_box.child(copy_button).into_any_element()
+        } else {
+            code_box.children(line_elements).child(copy_button).into_any_element()
+        }
     }
 }
 

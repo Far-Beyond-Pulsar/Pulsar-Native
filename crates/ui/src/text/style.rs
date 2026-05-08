@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use gpui::{px, rems, Pixels, Rems, StyleRefinement};
+use gpui::{px, rems, Pixels, Rems, SharedString, StyleRefinement};
 
 use crate::highlighter::HighlightTheme;
 
@@ -20,6 +20,8 @@ pub struct TextViewStyle {
     pub highlight_theme: Arc<HighlightTheme>,
     /// The style refinement for code blocks.
     pub code_block: StyleRefinement,
+    /// Font family used only for fenced code blocks in markdown/html rendering.
+    pub code_font_family: SharedString,
     pub is_dark: bool,
 }
 
@@ -28,6 +30,7 @@ impl PartialEq for TextViewStyle {
         self.paragraph_gap == other.paragraph_gap
             && self.heading_base_font_size == other.heading_base_font_size
             && self.highlight_theme == other.highlight_theme
+            && self.code_font_family == other.code_font_family
     }
 }
 
@@ -39,6 +42,7 @@ impl Default for TextViewStyle {
             heading_font_size: None,
             highlight_theme: HighlightTheme::default_light().clone(),
             code_block: StyleRefinement::default(),
+            code_font_family: "Menlo, Monaco, Consolas, monospace".into(),
             is_dark: false,
         }
     }
@@ -62,6 +66,12 @@ impl TextViewStyle {
     /// Set style for code blocks.
     pub fn code_block(mut self, style: StyleRefinement) -> Self {
         self.code_block = style;
+        self
+    }
+
+    /// Set font family for fenced code blocks.
+    pub fn code_font_family(mut self, family: impl Into<SharedString>) -> Self {
+        self.code_font_family = family.into();
         self
     }
 }

@@ -1,10 +1,9 @@
 use agent_chat_core::{
     AuthHost, AuthMethod, AuthResult, AvailabilityState, ChatMessage as ProviderChatMessage,
     ChatRequest, ChatRole, ProcessEnvironment, PromptTokenRequest, ProviderEnvironment,
-    ToolDefinition,
     ProviderRegistry,
 };
-use agent_chat_tools::{ToolContext, ToolRegistry};
+use agent_chat_tools::ToolRegistry;
 use agent_provider_demo_random::DemoRandomProvider;
 use agent_provider_github_copilot::GithubCopilotProvider;
 use engine_state;
@@ -15,8 +14,11 @@ use std::{
     collections::HashMap,
     fs,
     path::PathBuf,
-    sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use ui::{
     button::{Button, ButtonVariants as _},
@@ -25,11 +27,12 @@ use ui::{
     input::Enter,
     popover::Popover,
     scroll::{Scrollbar, ScrollbarState},
+    spinner::Spinner,
     text::TextView,
     Disableable,
     h_flex,
     input::{InputState, TextInput},
-    v_flex, v_virtual_list, ActiveTheme as _, IconName, Sizable, StyledExt,
+    v_flex, v_virtual_list, ActiveTheme as _, IconName, Sizable, Size, StyledExt,
     VirtualListScrollHandle,
 };
 
@@ -105,6 +108,8 @@ pub struct AgentChatPanel {
     message_row_heights: HashMap<usize, Pixels>,
     active_provider_ix: usize,
     active_model_ix: usize,
+    is_request_in_flight: bool,
+    streaming_message_ix: Option<usize>,
     messages: Vec<ChatMessage>,
     _subscriptions: Vec<Subscription>,
 }
@@ -223,6 +228,8 @@ impl AgentChatPanel {
             message_row_heights: HashMap::new(),
             active_provider_ix: 0,
             active_model_ix: 0,
+            is_request_in_flight: false,
+            streaming_message_ix: None,
             messages: vec![ChatMessage {
                 role: "system",
                 content: "Agent Chat is ready. Choose provider/model and ask anything about your project.".to_string(),
@@ -1425,11 +1432,21 @@ impl AgentChatPanel {
     }
 
     fn send_prompt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.is_request_in_flight {
+            println!("[agent_chat] send_prompt ignored: request already in flight");
+            return;
+        }
+
         let prompt = self.prompt_input.read(cx).text().to_string();
         let prompt = prompt.trim().to_string();
         if prompt.is_empty() {
             return;
         }
+
+        let request_id = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
 
         self.messages.push(ChatMessage {
             role: "user",
@@ -1441,136 +1458,29 @@ impl AgentChatPanel {
             .active_provider()
             .map(|p| p.id)
             .unwrap_or("unknown_provider");
+        println!(
+            "[agent_chat][request={}] send_prompt started provider={} prompt_len={}",
+            request_id,
+            provider_id,
+            prompt.len()
+        );
 
         if self.wip_providers.contains_key(provider_id) {
             self.messages.push(ChatMessage {
                 role: "assistant",
                 content: "Selected provider is still WIP and not yet executable.".to_string(),
             });
-        } else if let Some(provider) = self.provider_registry.get(provider_id) {
-            let token = self.auth_token_for_provider(provider_id);
-            let model = self
-                .active_model()
-                .map(|m| m.id.to_string())
-                .unwrap_or_else(|| "default".to_string());
-            let availability = provider.availability(&ProcessEnvironment);
+            self.prompt_input.update(cx, |input, cx| {
+                input.set_value("", window, cx);
+            });
+            self.save_current_chat();
+            self.refresh_chat_history_list(cx);
+            self.scroll_messages_to_bottom();
+            cx.notify();
+            return;
+        }
 
-            if matches!(availability.state, AvailabilityState::RequiresAuth) && token.is_none() {
-                self.pending_auth_provider = Some(provider_id);
-                self.messages.push(ChatMessage {
-                    role: "assistant",
-                    content: "Authentication required. Paste token in the auth row above.".to_string(),
-                });
-            } else {
-                let token = token.unwrap_or_default();
-                let request = ChatRequest {
-                    model,
-                    messages: vec![ProviderChatMessage {
-                        role: ChatRole::User,
-                        content: prompt.clone(),
-                    }],
-                    enable_tool_calls: true,
-                    tools: self
-                        .tool_registry
-                        .available_tools_schema()
-                        .into_iter()
-                        .filter_map(|schema| {
-                            Some(ToolDefinition {
-                                name: schema.get("name")?.as_str()?.to_string(),
-                                description: schema
-                                    .get("description")
-                                    .and_then(|v| v.as_str())
-                                    .map(|s| s.to_string()),
-                                parameters_json_schema: schema.get("parameters")?.clone(),
-                            })
-                        })
-                        .collect(),
-                    temperature: Some(0.2),
-                    top_p: Some(1.0),
-                    max_tokens: Some(1024),
-                };
-
-                match provider.chat_completion(&token, &request) {
-                    Ok(response) => {
-                        if !response.tool_calls.is_empty() {
-                            let workspace_root = engine_state::get_project_path()
-                                .map(PathBuf::from)
-                                .or_else(|| std::env::current_dir().ok())
-                                .unwrap_or_else(|| std::path::PathBuf::from("."));
-                            let tool_ctx = ToolContext { workspace_root };
-
-                            let mut followup_messages = request.messages.clone();
-                            for tool_call in response.tool_calls {
-                                let result = self.tool_registry.execute(
-                                    &tool_call.name,
-                                    tool_call.arguments_json,
-                                    &tool_ctx,
-                                );
-
-                                let rendered = match result {
-                                    Ok(value) => value,
-                                    Err(err) => serde_json::json!({
-                                        "error": err.to_string(),
-                                    }),
-                                };
-
-                                followup_messages.push(ProviderChatMessage {
-                                    role: ChatRole::Tool,
-                                    content: rendered.to_string(),
-                                });
-                            }
-
-                            let followup_request = ChatRequest {
-                                model: request.model.clone(),
-                                messages: followup_messages,
-                                enable_tool_calls: false,
-                                tools: Vec::new(),
-                                temperature: request.temperature,
-                                top_p: request.top_p,
-                                max_tokens: request.max_tokens,
-                            };
-
-                            match provider.chat_completion(&token, &followup_request) {
-                                Ok(final_response) => {
-                                    self.stream_assistant_chunks(
-                                        final_response.streamed_text_chunks,
-                                        final_response.assistant_message,
-                                        cx,
-                                    );
-                                }
-                                Err(err) => {
-                                    self.messages.push(ChatMessage {
-                                        role: "assistant",
-                                        content: format!(
-                                            "Provider follow-up after tool calls failed: {err}"
-                                        ),
-                                    });
-                                }
-                            }
-                        } else if response.assistant_message.is_some()
-                            || !response.streamed_text_chunks.is_empty()
-                        {
-                            self.stream_assistant_chunks(
-                                response.streamed_text_chunks,
-                                response.assistant_message,
-                                cx,
-                            );
-                        } else {
-                            self.messages.push(ChatMessage {
-                                role: "assistant",
-                                content: "Provider returned an empty response.".to_string(),
-                            });
-                        }
-                    }
-                    Err(err) => {
-                        self.messages.push(ChatMessage {
-                            role: "assistant",
-                            content: format!("Provider request failed: {err}"),
-                        });
-                    }
-                }
-            }
-        } else {
+        let Some(provider) = self.provider_registry.get(provider_id).cloned() else {
             let provider = self
                 .active_provider()
                 .map(|p| p.label)
@@ -1580,7 +1490,222 @@ impl AgentChatPanel {
                 role: "assistant",
                 content: format!("Queued with {provider} / {model}."),
             });
+            self.prompt_input.update(cx, |input, cx| {
+                input.set_value("", window, cx);
+            });
+            self.save_current_chat();
+            self.refresh_chat_history_list(cx);
+            self.scroll_messages_to_bottom();
+            cx.notify();
+            return;
+        };
+
+        let token = self.auth_token_for_provider(provider_id);
+        let model = self
+            .active_model()
+            .map(|m| m.id.to_string())
+            .unwrap_or_else(|| "default".to_string());
+        let availability = provider.availability(&ProcessEnvironment);
+
+        if matches!(availability.state, AvailabilityState::RequiresAuth) && token.is_none() {
+            self.pending_auth_provider = Some(provider_id);
+            self.messages.push(ChatMessage {
+                role: "assistant",
+                content: "Authentication required. Paste token in the auth row above.".to_string(),
+            });
+            self.prompt_input.update(cx, |input, cx| {
+                input.set_value("", window, cx);
+            });
+            self.save_current_chat();
+            self.refresh_chat_history_list(cx);
+            self.scroll_messages_to_bottom();
+            cx.notify();
+            return;
         }
+
+        let message_ix = self.messages.len();
+        self.messages.push(ChatMessage {
+            role: "assistant",
+            content: String::new(),
+        });
+        self.is_request_in_flight = true;
+        self.streaming_message_ix = Some(message_ix);
+
+        let token = token.unwrap_or_default();
+        let request = ChatRequest {
+            model,
+            messages: vec![ProviderChatMessage {
+                role: ChatRole::User,
+                content: prompt,
+            }],
+            // Stream first-party model output directly into UI.
+            enable_tool_calls: false,
+            tools: Vec::new(),
+            temperature: Some(0.2),
+            top_p: Some(1.0),
+            max_tokens: Some(1024),
+        };
+        println!(
+            "[agent_chat][request={}] dispatched provider={} model={} entering in-flight",
+            request_id,
+            provider_id,
+            request.model
+        );
+
+        enum StreamEvent {
+            Chunk(String),
+            Finished(Result<agent_chat_core::ChatResponse, String>),
+        }
+
+        let (tx, rx) = smol::channel::unbounded::<StreamEvent>();
+        let tx_for_chunks = tx.clone();
+        let tx_for_finish = tx.clone();
+        let provider_for_task = provider.clone();
+        let completion_sent = Arc::new(AtomicBool::new(false));
+
+        let completion_for_worker = completion_sent.clone();
+        let worker_request_id = request_id;
+        std::thread::spawn(move || {
+            println!(
+                "[agent_chat][request={}] background worker started",
+                worker_request_id
+            );
+            let mut pending_chunk = String::new();
+            let mut last_emit = Instant::now();
+            let mut on_chunk = |chunk: String| {
+                pending_chunk.push_str(&chunk);
+
+                let should_emit = pending_chunk.len() >= 256
+                    || pending_chunk.contains('\n')
+                    || last_emit.elapsed() >= Duration::from_millis(24);
+
+                if should_emit {
+                    let chunk = std::mem::take(&mut pending_chunk);
+                    let _ = tx_for_chunks.try_send(StreamEvent::Chunk(chunk));
+                    last_emit = Instant::now();
+                }
+            };
+
+            let result = provider_for_task
+                .chat_completion_streaming(&token, &request, &mut on_chunk)
+                .map_err(|err| err.to_string());
+
+            if !pending_chunk.is_empty() {
+                let _ = tx_for_chunks.try_send(StreamEvent::Chunk(pending_chunk));
+            }
+
+            if !completion_for_worker.swap(true, Ordering::SeqCst) {
+                println!(
+                    "[agent_chat][request={}] background worker emitted terminal event",
+                    worker_request_id
+                );
+                let _ = tx_for_finish.try_send(StreamEvent::Finished(result));
+            }
+        });
+
+        let tx_timeout = tx.clone();
+        let completion_for_timeout = completion_sent.clone();
+        let timeout_request_id = request_id;
+        cx.background_spawn(async move {
+            Timer::after(Duration::from_secs(75)).await;
+            if !completion_for_timeout.swap(true, Ordering::SeqCst) {
+                eprintln!(
+                    "[agent_chat][request={}] watchdog timeout fired",
+                    timeout_request_id
+                );
+                let _ = tx_timeout.try_send(StreamEvent::Finished(Err(
+                    "Provider response timed out.".to_string(),
+                )));
+            }
+        })
+        .detach();
+
+        let consume_request_id = request_id;
+        cx.spawn(async move |this, cx| {
+            let mut saw_first_chunk = false;
+            while let Ok(event) = rx.recv().await {
+                let should_break = matches!(event, StreamEvent::Finished(_));
+                cx.update(|cx| {
+                    this.update(cx, |panel, cx| {
+                        match event {
+                            StreamEvent::Chunk(chunk) => {
+                                if !saw_first_chunk {
+                                    println!(
+                                        "[agent_chat][request={}] first chunk received len={}",
+                                        consume_request_id,
+                                        chunk.len()
+                                    );
+                                    saw_first_chunk = true;
+                                }
+                                if panel.is_request_in_flight {
+                                    panel.is_request_in_flight = false;
+                                    println!(
+                                        "[agent_chat][request={}] in-flight cleared on first chunk",
+                                        consume_request_id
+                                    );
+                                }
+                                if let Some(message) = panel.messages.get_mut(message_ix) {
+                                    message.content.push_str(&chunk);
+                                    panel.message_row_heights.remove(&message_ix);
+                                }
+                                panel.scroll_messages_to_bottom();
+                                cx.notify();
+                            }
+                            StreamEvent::Finished(Ok(response)) => {
+                                panel.is_request_in_flight = false;
+                                panel.streaming_message_ix = None;
+                                println!(
+                                    "[agent_chat][request={}] stream finished ok had_chunks={} fallback_msg={}",
+                                    consume_request_id,
+                                    saw_first_chunk,
+                                    response.assistant_message.is_some()
+                                );
+
+                                if let Some(message) = panel.messages.get_mut(message_ix) {
+                                    if message.content.is_empty() {
+                                        if let Some(text) = response.assistant_message {
+                                            message.content = text;
+                                        } else {
+                                            message.content =
+                                                "Provider returned an empty response.".to_string();
+                                        }
+                                    }
+                                    panel.message_row_heights.remove(&message_ix);
+                                }
+                                panel.save_current_chat();
+                                panel.refresh_chat_history_list(cx);
+                                panel.scroll_messages_to_bottom();
+                                cx.notify();
+                            }
+                            StreamEvent::Finished(Err(err)) => {
+                                panel.is_request_in_flight = false;
+                                panel.streaming_message_ix = None;
+                                eprintln!(
+                                    "[agent_chat][request={}] stream finished with error: {}",
+                                    consume_request_id,
+                                    err
+                                );
+                                if let Some(message) = panel.messages.get_mut(message_ix) {
+                                    message.content = format!("Provider request failed: {err}");
+                                    panel.message_row_heights.remove(&message_ix);
+                                }
+                                panel.save_current_chat();
+                                panel.refresh_chat_history_list(cx);
+                                panel.scroll_messages_to_bottom();
+                                cx.notify();
+                            }
+                        }
+                    })
+                    .ok();
+                })
+                .ok();
+
+                if should_break {
+                    break;
+                }
+            }
+        })
+        .detach();
 
         self.prompt_input.update(cx, |input, cx| {
             input.set_value("", window, cx);
@@ -1792,6 +1917,8 @@ impl Render for AgentChatPanel {
                                         };
 
                                         let is_user = message.role == "user";
+                                        let is_streaming_assistant =
+                                            !is_user && this.streaming_message_ix == Some(ix);
                                         let panel = cx.entity().clone();
                                         let content = message.content.clone();
 
@@ -1841,14 +1968,25 @@ impl Render for AgentChatPanel {
                                                                     .text_color(cx.theme().foreground)
                                                                     .child(content)
                                                                     .into_any_element()
+                                                            } else if is_streaming_assistant {
+                                                                div()
+                                                                    .w_full()
+                                                                    .min_w_0()
+                                                                    .whitespace_normal()
+                                                                    .text_sm()
+                                                                    .text_color(cx.theme().foreground)
+                                                                    .child(content)
+                                                                    .into_any_element()
                                                             } else {
-                                                                TextView::markdown(
+                                                                TextView::markdown_with_code_font(
                                                                     ("agent-chat-md", ix),
                                                                     content,
+                                                                    "JetBrains Mono",
                                                                     window,
                                                                     cx,
                                                                 )
-                                                                .debounce_ms(30)
+                                                                .debounce_ms(0)
+                                                                .selectable()
                                                                 .into_any_element()
                                                             }),
                                                     )
@@ -1928,12 +2066,28 @@ impl Render for AgentChatPanel {
                             .gap_2()
                             .items_center()
                             .child(TextInput::new(&self.prompt_input).flex_1().min_w_0())
+                            .when(self.is_request_in_flight, |this| {
+                                this.child(
+                                    h_flex()
+                                        .gap_1()
+                                        .items_center()
+                                        .child(Spinner::new().with_size(Size::Small))
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child("Thinking..."),
+                                        ),
+                                )
+                            })
                             .child(
                                 // Rope-based input text is converted to String for validation.
                                 Button::new("agent-chat-send")
                                     .icon(IconName::Send)
                                     .label("Send")
                                     .disabled(
+                                        self.is_request_in_flight
+                                            ||
                                         self.prompt_input
                                             .read(cx)
                                             .text()

@@ -183,6 +183,30 @@ pub trait ChatProvider: Send + Sync {
     fn chat_completion(&self, token: &str, request: &ChatRequest)
         -> anyhow::Result<ChatResponse>;
 
+    /// Streaming variant for providers that can deliver incremental chunks.
+    /// Default behavior falls back to `chat_completion` and emits whatever
+    /// chunks are available in the final response.
+    fn chat_completion_streaming(
+        &self,
+        token: &str,
+        request: &ChatRequest,
+        on_chunk: &mut dyn FnMut(String),
+    ) -> anyhow::Result<ChatResponse> {
+        let response = self.chat_completion(token, request)?;
+
+        if response.streamed_text_chunks.is_empty() {
+            if let Some(text) = response.assistant_message.clone() {
+                on_chunk(text);
+            }
+        } else {
+            for chunk in response.streamed_text_chunks.iter() {
+                on_chunk(chunk.clone());
+            }
+        }
+
+        Ok(response)
+    }
+
     /// Start a GitHub-style OAuth device code flow.  Returns `None` if the
     /// provider does not support this flow.
     fn start_device_flow(&self) -> Option<anyhow::Result<DeviceCodeInfo>> {
