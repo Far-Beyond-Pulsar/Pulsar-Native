@@ -28,3 +28,5 @@ composed_shader_debug.wgsl
 /.vscode/fastsearch
 .cargo_metadata_full.json
 .cargo_metadata.json
+crates/ui/src/dropdown/searchable_list.rs
+docs/AGENT_CHAT_PROVIDER_PLAN.md

@@ -16,11 +16,18 @@ pub enum SearchableListEvent<T: Clone + 'static> {
     Select(T),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SearchableListItemState {
+    Enabled,
+    Disabled,
+}
+
 pub struct SearchableList<T: Clone + 'static> {
     focus_handle: FocusHandle,
     search_input: Entity<InputState>,
     items: Vec<T>,
     format_item: Rc<dyn Fn(&T) -> String>,
+    item_state: Rc<dyn Fn(&T) -> SearchableListItemState>,
     icon_for: Option<Rc<dyn Fn(&T) -> IconName>>,
     empty_text: SharedString,
     max_width: Pixels,
@@ -51,6 +58,7 @@ impl<T: Clone + 'static> SearchableList<T> {
             search_input,
             items,
             format_item: Rc::new(format_item),
+            item_state: Rc::new(|_| SearchableListItemState::Enabled),
             icon_for: None,
             empty_text: "No results".into(),
             max_width: px(240.0),
@@ -75,6 +83,14 @@ impl<T: Clone + 'static> SearchableList<T> {
 
     pub fn with_icon_getter(mut self, icon_for: impl Fn(&T) -> IconName + 'static) -> Self {
         self.icon_for = Some(Rc::new(icon_for));
+        self
+    }
+
+    pub fn with_item_state(
+        mut self,
+        item_state: impl Fn(&T) -> SearchableListItemState + 'static,
+    ) -> Self {
+        self.item_state = Rc::new(item_state);
         self
     }
 
@@ -141,30 +157,48 @@ impl<T: Clone + 'static> Render for SearchableList<T> {
                             .children(filtered_items.into_iter().enumerate().map(|(ix, item)| {
                                 let label = (self.format_item)(&item);
                                 let icon = self.icon_for.as_ref().map(|f| f(&item));
+                                let item_state = (self.item_state)(&item);
                                 let theme = cx.theme().clone();
                                 let selected_item = item.clone();
+                                let is_enabled = item_state == SearchableListItemState::Enabled;
 
                                 row_style(div())
                                     .id(("searchable-list-item", ix))
-                                    .hover(move |s| s.bg(theme.accent.opacity(0.12)))
-                                    .on_mouse_down(
-                                        MouseButton::Left,
-                                        cx.listener(move |_this, _, _, cx| {
-                                            cx.emit(SearchableListEvent::Select(selected_item.clone()));
-                                            cx.emit(DismissEvent);
-                                        }),
-                                    )
+                                    .when(is_enabled, |el| {
+                                        el.hover(move |s| s.bg(theme.accent.opacity(0.12)))
+                                            .on_mouse_down(
+                                                MouseButton::Left,
+                                                cx.listener(move |_this, _, _, cx| {
+                                                    cx.emit(SearchableListEvent::Select(
+                                                        selected_item.clone(),
+                                                    ));
+                                                    cx.emit(DismissEvent);
+                                                }),
+                                            )
+                                    })
+                                    .when(!is_enabled, |el| {
+                                        el.cursor_default().opacity(0.7)
+                                    })
                                     .when_some(icon, |el, icon| {
                                         el.child(
                                             Icon::new(icon)
                                                 .size(px(13.0))
-                                                .text_color(cx.theme().muted_foreground),
+                                                .text_color(if is_enabled {
+                                                    cx.theme().muted_foreground
+                                                } else {
+                                                    cx.theme().muted_foreground.opacity(0.7)
+                                                }),
                                         )
                                     })
                                     .child(
                                         div()
                                             .text_sm()
-                                            .text_color(cx.theme().foreground)
+                                            .text_color(if is_enabled {
+                                                cx.theme().foreground
+                                            } else {
+                                                cx.theme().muted_foreground
+                                            })
+                                            .when(!is_enabled, |el| el.italic().line_through())
                                             .child(label),
                                     )
                             })),

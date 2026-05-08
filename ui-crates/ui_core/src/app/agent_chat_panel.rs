@@ -1,9 +1,15 @@
+use agent_chat_core::{
+    AuthHost, AuthMethod, AuthResult, AvailabilityState, ChatMessage as ProviderChatMessage,
+    ChatRequest, ChatRole, ProcessEnvironment, PromptTokenRequest, ProviderEnvironment,
+    ProviderRegistry,
+};
+use agent_provider_github_copilot::GithubCopilotProvider;
 use gpui::{prelude::FluentBuilder as _, *};
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use ui::{
     button::{Button, ButtonVariants as _},
     dock::{Panel, PanelEvent},
-    dropdown::{SearchableList, SearchableListEvent},
+    dropdown::{SearchableList, SearchableListEvent, SearchableListItemState},
     popover::Popover,
     Disableable,
     h_flex,
@@ -42,9 +48,14 @@ struct ChatMessage {
 pub struct AgentChatPanel {
     focus_handle: FocusHandle,
     prompt_input: Entity<InputState>,
+    auth_token_input: Entity<InputState>,
     provider_list: Entity<SearchableList<ProviderDefinition>>,
     model_list: Entity<SearchableList<ModelDefinition>>,
     provider_catalog: Vec<ProviderDefinition>,
+    wip_providers: HashMap<&'static str, String>,
+    provider_registry: ProviderRegistry,
+    provider_tokens: HashMap<&'static str, String>,
+    pending_auth_provider: Option<&'static str>,
     active_provider_ix: usize,
     active_model_ix: usize,
     messages: Vec<ChatMessage>,
@@ -54,9 +65,16 @@ pub struct AgentChatPanel {
 impl AgentChatPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let provider_catalog = Self::default_provider_catalog();
+        let wip_providers = Self::wip_providers_from_catalog(&provider_catalog);
+        let mut provider_registry = ProviderRegistry::new();
+        provider_registry.register(Arc::new(GithubCopilotProvider::new()));
+
         let prompt_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Ask the engine assistant..."));
+        let auth_token_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Paste provider token..."));
 
+        let wip_for_list = wip_providers.clone();
         let provider_list = cx.new(|cx| {
             SearchableList::new(window, cx, provider_catalog.clone(), |p: &ProviderDefinition| {
                 format!("{} ({})", p.label, p.id)
@@ -65,6 +83,13 @@ impl AgentChatPanel {
             .with_max_width(px(220.0))
             .with_max_height(px(320.0))
             .with_icon_getter(|_| IconName::Brain)
+            .with_item_state(move |provider| {
+                if wip_for_list.contains_key(provider.id) {
+                    SearchableListItemState::Disabled
+                } else {
+                    SearchableListItemState::Enabled
+                }
+            })
         });
 
         let initial_models = provider_catalog
@@ -115,9 +140,14 @@ impl AgentChatPanel {
         Self {
             focus_handle: cx.focus_handle(),
             prompt_input,
+            auth_token_input,
             provider_list,
             model_list,
             provider_catalog,
+            wip_providers,
+            provider_registry,
+            provider_tokens: HashMap::new(),
+            pending_auth_provider: None,
             active_provider_ix: 0,
             active_model_ix: 0,
             messages: vec![ChatMessage {
@@ -126,6 +156,16 @@ impl AgentChatPanel {
             }],
             _subscriptions: subscriptions,
         }
+    }
+
+    fn wip_providers_from_catalog(
+        provider_catalog: &[ProviderDefinition],
+    ) -> HashMap<&'static str, String> {
+        provider_catalog
+            .iter()
+            .filter(|provider| provider.id != "github_copilot")
+            .map(|provider| (provider.id, "WIP provider".to_string()))
+            .collect()
     }
 
     fn default_provider_catalog() -> Vec<ProviderDefinition> {
@@ -733,8 +773,52 @@ impl AgentChatPanel {
             .and_then(|provider| provider.models.get(self.active_model_ix))
     }
 
+    fn auth_token_for_provider(&self, provider_id: &str) -> Option<String> {
+        self.provider_tokens
+            .get(provider_id)
+            .cloned()
+            .or_else(|| ProcessEnvironment.get_env("GITHUB_COPILOT_TOKEN"))
+            .or_else(|| ProcessEnvironment.get_env("COPILOT_TOKEN"))
+    }
+
+    fn maybe_require_auth_for_active_provider(&mut self, cx: &mut Context<Self>) {
+        let Some(provider) = self.active_provider() else {
+            self.pending_auth_provider = None;
+            return;
+        };
+
+        if self.wip_providers.contains_key(provider.id) {
+            self.pending_auth_provider = None;
+            return;
+        }
+
+        if self.auth_token_for_provider(provider.id).is_some() {
+            self.pending_auth_provider = None;
+            return;
+        }
+
+        if let Some(provider_impl) = self.provider_registry.get(provider.id) {
+            let availability = provider_impl.availability(&ProcessEnvironment);
+            if matches!(availability.state, AvailabilityState::RequiresAuth) {
+                self.pending_auth_provider = Some(provider.id);
+                cx.notify();
+                return;
+            }
+        }
+
+        self.pending_auth_provider = None;
+    }
+
     fn set_provider(&mut self, index: usize, cx: &mut Context<Self>) {
         if index < self.provider_catalog.len() {
+            if self
+                .provider_catalog
+                .get(index)
+                .is_some_and(|provider| self.wip_providers.contains_key(provider.id))
+            {
+                return;
+            }
+
             self.active_provider_ix = index;
             self.active_model_ix = 0;
 
@@ -746,6 +830,8 @@ impl AgentChatPanel {
                 list.set_items(models, cx);
             });
 
+            self.maybe_require_auth_for_active_provider(cx);
+
             cx.notify();
         }
     }
@@ -755,6 +841,106 @@ impl AgentChatPanel {
             if index < provider.models.len() {
                 self.active_model_ix = index;
                 cx.notify();
+            }
+        }
+    }
+
+    fn complete_prompt_auth(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(provider_id) = self.pending_auth_provider else {
+            return;
+        };
+
+        let token = self.auth_token_input.read(cx).text().to_string();
+        let token = token.trim().to_string();
+        if token.is_empty() {
+            return;
+        }
+
+        let Some(provider) = self.provider_registry.get(provider_id).cloned() else {
+            return;
+        };
+
+        struct PromptOnlyAuthHost {
+            token: String,
+        }
+
+        impl AuthHost for PromptOnlyAuthHost {
+            fn prompt_for_token(
+                &mut self,
+                _request: PromptTokenRequest,
+            ) -> anyhow::Result<Option<String>> {
+                Ok(Some(self.token.clone()))
+            }
+
+            fn open_browser_for_token(
+                &mut self,
+                _request: agent_chat_core::OpenBrowserRequest,
+            ) -> anyhow::Result<Option<String>> {
+                Ok(None)
+            }
+        }
+
+        let mut host = PromptOnlyAuthHost { token };
+        match provider.authenticate(AuthMethod::PromptToken, &mut host) {
+            Ok(AuthResult::Authenticated { token }) => {
+                self.provider_tokens.insert(provider_id, token);
+                self.pending_auth_provider = None;
+                self.auth_token_input.update(cx, |input, cx| {
+                    input.set_value("", window, cx);
+                });
+                self.messages.push(ChatMessage {
+                    role: "system",
+                    content: format!("{} authenticated successfully.", provider_id),
+                });
+                cx.notify();
+            }
+            Ok(AuthResult::Cancelled) => {}
+            Err(err) => {
+                self.messages.push(ChatMessage {
+                    role: "system",
+                    content: format!("Authentication failed: {err}"),
+                });
+                cx.notify();
+            }
+        }
+    }
+
+    fn begin_browser_auth(&mut self, cx: &mut Context<Self>) {
+        let Some(provider_id) = self.pending_auth_provider else {
+            return;
+        };
+        let Some(provider) = self.provider_registry.get(provider_id).cloned() else {
+            return;
+        };
+
+        struct BrowserOnlyAuthHost {
+            browser_url: Option<String>,
+        }
+
+        impl AuthHost for BrowserOnlyAuthHost {
+            fn prompt_for_token(
+                &mut self,
+                _request: PromptTokenRequest,
+            ) -> anyhow::Result<Option<String>> {
+                Ok(None)
+            }
+
+            fn open_browser_for_token(
+                &mut self,
+                request: agent_chat_core::OpenBrowserRequest,
+            ) -> anyhow::Result<Option<String>> {
+                self.browser_url = Some(request.url);
+                Ok(None)
+            }
+        }
+
+        let mut host = BrowserOnlyAuthHost { browser_url: None };
+        if provider
+            .authenticate(AuthMethod::BrowserDeviceCode, &mut host)
+            .is_ok()
+        {
+            if let Some(url) = host.browser_url {
+                cx.open_url(&url);
             }
         }
     }
@@ -771,17 +957,86 @@ impl AgentChatPanel {
             content: prompt.clone(),
         });
 
-        let provider = self
+        let provider_id = self
             .active_provider()
-            .map(|p| p.label)
-            .unwrap_or("Unknown Provider");
-        let model = self.active_model().map(|m| m.label).unwrap_or("Unknown Model");
-        self.messages.push(ChatMessage {
-            role: "assistant",
-            content: format!(
-                "Queued with {provider} / {model}. Provider adapters are modular; add a transport implementation to stream live responses here."
-            ),
-        });
+            .map(|p| p.id)
+            .unwrap_or("unknown_provider");
+
+        if self.wip_providers.contains_key(provider_id) {
+            self.messages.push(ChatMessage {
+                role: "assistant",
+                content: "Selected provider is still WIP and not yet executable.".to_string(),
+            });
+        } else if provider_id == "github_copilot" {
+            let token = self.auth_token_for_provider(provider_id);
+            let model = self
+                .active_model()
+                .map(|m| m.id.to_string())
+                .unwrap_or_else(|| "gpt-5.3-codex".to_string());
+
+            if let Some(token) = token {
+                if let Some(provider) = self.provider_registry.get(provider_id) {
+                    let request = ChatRequest {
+                        model,
+                        messages: vec![ProviderChatMessage {
+                            role: ChatRole::User,
+                            content: prompt.clone(),
+                        }],
+                        enable_tool_calls: true,
+                        tools: Vec::new(),
+                        temperature: Some(0.2),
+                        top_p: Some(1.0),
+                        max_tokens: Some(1024),
+                    };
+
+                    match provider.chat_completion(&token, &request) {
+                        Ok(response) => {
+                            if let Some(message) = response.assistant_message {
+                                self.messages.push(ChatMessage {
+                                    role: "assistant",
+                                    content: message,
+                                });
+                            } else if !response.tool_calls.is_empty() {
+                                self.messages.push(ChatMessage {
+                                    role: "assistant",
+                                    content: format!(
+                                        "Copilot requested {} tool call(s). Tool runtime wiring is next.",
+                                        response.tool_calls.len()
+                                    ),
+                                });
+                            } else {
+                                self.messages.push(ChatMessage {
+                                    role: "assistant",
+                                    content: "Copilot returned an empty response.".to_string(),
+                                });
+                            }
+                        }
+                        Err(err) => {
+                            self.messages.push(ChatMessage {
+                                role: "assistant",
+                                content: format!("Copilot request failed: {err}"),
+                            });
+                        }
+                    }
+                }
+            } else {
+                self.pending_auth_provider = Some(provider_id);
+                self.messages.push(ChatMessage {
+                    role: "assistant",
+                    content: "Authentication required. Paste token in the auth row above.".to_string(),
+                });
+            }
+        } else {
+            let provider = self
+                .active_provider()
+                .map(|p| p.label)
+                .unwrap_or("Unknown Provider");
+            let model = self.active_model().map(|m| m.label).unwrap_or("Unknown Model");
+            self.messages.push(ChatMessage {
+                role: "assistant",
+                content: format!("Queued with {provider} / {model}."),
+            });
+        }
 
         self.prompt_input.update(cx, |input, cx| {
             input.set_value("", window, cx);
@@ -820,6 +1075,7 @@ impl Render for AgentChatPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let provider = self.active_provider();
         let model = self.active_model();
+        let auth_provider = self.pending_auth_provider;
         let provider_list = self.provider_list.clone();
         let model_list = self.model_list.clone();
 
@@ -882,7 +1138,57 @@ impl Render for AgentChatPanel {
                             .w_full()
                             .items_center()
                             .child(model_popover),
-                    ),
+                    )
+                    .when(auth_provider.is_some(), |el| {
+                        el.child(
+                            v_flex()
+                                .w_full()
+                                .gap_1()
+                                .p_2()
+                                .rounded(px(6.0))
+                                .bg(cx.theme().danger.opacity(0.08))
+                                .border_1()
+                                .border_color(cx.theme().danger.opacity(0.25))
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().danger)
+                                        .child("Authentication required for selected provider"),
+                                )
+                                .child(TextInput::new(&self.auth_token_input).w_full().xsmall())
+                                .child(
+                                    h_flex()
+                                        .w_full()
+                                        .gap_1()
+                                        .child(
+                                            Button::new("agent-chat-auth-browser")
+                                                .xsmall()
+                                                .ghost()
+                                                .label("Open Browser")
+                                                .on_click(cx.listener(|this, _, _, cx| {
+                                                    this.begin_browser_auth(cx);
+                                                })),
+                                        )
+                                        .child(
+                                            Button::new("agent-chat-auth-token")
+                                                .xsmall()
+                                                .primary()
+                                                .label("Use Token")
+                                                .disabled(
+                                                    self.auth_token_input
+                                                        .read(cx)
+                                                        .text()
+                                                        .to_string()
+                                                        .trim()
+                                                        .is_empty(),
+                                                )
+                                                .on_click(cx.listener(|this, _, window, cx| {
+                                                    this.complete_prompt_auth(window, cx);
+                                                })),
+                                            ),
+                                        ),
+                        )
+                    }),
             )
             .child(
                 div()

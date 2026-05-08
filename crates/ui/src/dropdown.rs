@@ -17,7 +17,9 @@ use crate::{
 };
 
 mod searchable_list;
-pub use searchable_list::{SearchableList, SearchableListEvent};
+pub use searchable_list::{
+    SearchableList, SearchableListEvent, SearchableListItemState,
+};
 
 #[derive(Clone)]
 pub enum ListEvent {

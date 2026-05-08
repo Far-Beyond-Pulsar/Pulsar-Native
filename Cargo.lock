@@ -60,6 +60,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
+name = "agent_chat_core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde_json",
+]
+
+[[package]]
+name = "agent_provider_github_copilot"
+version = "0.1.0"
+dependencies = [
+ "agent_chat_core",
+ "anyhow",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ahash"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5081,6 +5100,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
+ "webpki-roots 1.0.7",
 ]
 
 [[package]]
@@ -9258,6 +9278,8 @@ dependencies = [
  "native-tls",
  "percent-encoding",
  "pin-project-lite",
+ "quinn",
+ "rustls",
  "rustls-pki-types",
  "serde",
  "serde_json",
@@ -9265,6 +9287,7 @@ dependencies = [
  "sync_wrapper",
  "tokio",
  "tokio-native-tls",
+ "tokio-rustls",
  "tower 0.5.3",
  "tower-http 0.6.8",
  "tower-service",
@@ -9272,6 +9295,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+ "webpki-roots 1.0.7",
 ]
 
 [[package]]
@@ -12602,6 +12626,9 @@ dependencies = [
 name = "ui_core"
 version = "0.1.0"
 dependencies = [
+ "agent_chat_core",
+ "agent_provider_github_copilot",
+ "anyhow",
  "blueprint_editor_plugin",
  "engine_backend",
  "engine_state",
