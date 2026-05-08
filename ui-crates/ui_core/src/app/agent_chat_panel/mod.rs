@@ -555,6 +555,29 @@ impl Render for AgentChatPanel {
                                             .px_3()
                                             .py_1()
                                             .child(
+                                                canvas(
+                                                    move |bounds, _, cx| {
+                                                        panel.update(cx, |panel, cx| {
+                                                            let measured = bounds.size.height;
+                                                            if panel
+                                                                .message_row_heights
+                                                                .get(&ix)
+                                                                .copied()
+                                                                != Some(measured)
+                                                            {
+                                                                panel
+                                                                    .message_row_heights
+                                                                    .insert(ix, measured);
+                                                                cx.notify();
+                                                            }
+                                                        });
+                                                    },
+                                                    |_, _, _, _| {},
+                                                )
+                                                .absolute()
+                                                .inset_0(),
+                                            )
+                                            .child(
                                                 h_flex()
                                                     .w_full()
                                                     .min_w_0()
@@ -727,29 +750,6 @@ impl Render for AgentChatPanel {
                                                         ),
                                                 )
                                             })
-                                            .child(
-                                                canvas(
-                                                    move |bounds, _, cx| {
-                                                        panel.update(cx, |panel, cx| {
-                                                            let measured = bounds.size.height;
-                                                            if panel
-                                                                .message_row_heights
-                                                                .get(&ix)
-                                                                .copied()
-                                                                != Some(measured)
-                                                            {
-                                                                panel
-                                                                    .message_row_heights
-                                                                    .insert(ix, measured);
-                                                                cx.notify();
-                                                            }
-                                                        });
-                                                    },
-                                                    |_, _, _, _| {},
-                                                )
-                                                .absolute()
-                                                .inset_0(),
-                                            )
                                             .into_any_element()
                                     })
                                     .collect::<Vec<_>>()
