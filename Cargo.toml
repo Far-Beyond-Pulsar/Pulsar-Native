@@ -55,6 +55,13 @@ agent_chat_core       = { path = "agent-providers/agent_chat_core" }
 agent_chat_tools      = { path = "agent-providers/agent_chat_tools" }
 agent_provider_demo_random = { path = "agent-providers/agent_provider_demo_random" }
 agent_provider_github_copilot = { path = "agent-providers/agent_provider_github_copilot" }
+agent_provider_openai = { path = "agent-providers/agent_provider_openai" }
+agent_provider_anthropic = { path = "agent-providers/agent_provider_anthropic" }
+agent_provider_openrouter = { path = "agent-providers/agent_provider_openrouter" }
+agent_provider_groq = { path = "agent-providers/agent_provider_groq" }
+agent_provider_together = { path = "agent-providers/agent_provider_together" }
+agent_provider_mistral = { path = "agent-providers/agent_provider_mistral" }
+agent_provider_gemini = { path = "agent-providers/agent_provider_gemini" }
 
 # ---------- Reflection System ----------
 pulsar_reflection     = { path = "crates/pulsar_reflection" }

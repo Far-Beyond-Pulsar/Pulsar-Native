@@ -4,8 +4,15 @@ use agent_chat_core::{
     ProviderRegistry,
 };
 use agent_chat_tools::ToolRegistry;
+use agent_provider_anthropic::AnthropicProvider;
 use agent_provider_demo_random::DemoRandomProvider;
+use agent_provider_gemini::GeminiProvider;
 use agent_provider_github_copilot::GithubCopilotProvider;
+use agent_provider_groq::GroqProvider;
+use agent_provider_mistral::MistralProvider;
+use agent_provider_openai::OpenAiProvider;
+use agent_provider_openrouter::OpenRouterProvider;
+use agent_provider_together::TogetherProvider;
 use engine_state;
 use gpui::{prelude::FluentBuilder as _, *};
 use serde::{Deserialize, Serialize};
@@ -120,6 +127,13 @@ impl AgentChatPanel {
         let mut provider_registry = ProviderRegistry::new();
         provider_registry.register(Arc::new(GithubCopilotProvider::new()));
         provider_registry.register(Arc::new(DemoRandomProvider::new()));
+        provider_registry.register(Arc::new(OpenAiProvider::new()));
+        provider_registry.register(Arc::new(AnthropicProvider::new()));
+        provider_registry.register(Arc::new(OpenRouterProvider::new()));
+        provider_registry.register(Arc::new(GroqProvider::new()));
+        provider_registry.register(Arc::new(TogetherProvider::new()));
+        provider_registry.register(Arc::new(MistralProvider::new()));
+        provider_registry.register(Arc::new(GeminiProvider::new()));
         let wip_providers = Self::wip_providers_from_catalog(&provider_catalog, &provider_registry);
 
         let prompt_input =
@@ -284,18 +298,18 @@ impl AgentChatPanel {
                 endpoint: "https://api.openai.com/v1",
                 models: Arc::new(vec![
                     ModelDefinition {
-                        id: "gpt-5.3-codex",
-                        label: "GPT-5.3 Codex",
+                        id: "gpt-4.1",
+                        label: "GPT-4.1",
                         supports_tools: true,
                     },
                     ModelDefinition {
-                        id: "gpt-5.3-mini",
-                        label: "GPT-5.3 Mini",
+                        id: "gpt-4.1-mini",
+                        label: "GPT-4.1 Mini",
                         supports_tools: true,
                     },
                     ModelDefinition {
-                        id: "gpt-5.3",
-                        label: "GPT-5.3",
+                        id: "gpt-4o",
+                        label: "GPT-4o",
                         supports_tools: true,
                     },
                     ModelDefinition {
@@ -340,49 +354,19 @@ impl AgentChatPanel {
                 endpoint: "https://api.anthropic.com/v1",
                 models: Arc::new(vec![
                     ModelDefinition {
-                        id: "claude-opus-4-1",
-                        label: "Claude Opus 4.1",
-                        supports_tools: true,
-                    },
-                    ModelDefinition {
-                        id: "claude-4-opus",
-                        label: "Claude 4 Opus",
-                        supports_tools: true,
-                    },
-                    ModelDefinition {
-                        id: "claude-4-sonnet",
-                        label: "Claude 4 Sonnet",
-                        supports_tools: true,
-                    },
-                    ModelDefinition {
-                        id: "claude-3.5-sonnet",
-                        label: "Claude 3.5 Sonnet",
-                        supports_tools: true,
-                    },
-                    ModelDefinition {
-                        id: "claude-3.7-sonnet",
+                        id: "claude-3-7-sonnet-latest",
                         label: "Claude 3.7 Sonnet",
                         supports_tools: true,
                     },
                     ModelDefinition {
-                        id: "claude-3.5-haiku",
+                        id: "claude-3-5-sonnet-latest",
+                        label: "Claude 3.5 Sonnet",
+                        supports_tools: true,
+                    },
+                    ModelDefinition {
+                        id: "claude-3-5-haiku-latest",
                         label: "Claude 3.5 Haiku",
                         supports_tools: true,
-                    },
-                    ModelDefinition {
-                        id: "claude-3-opus",
-                        label: "Claude 3 Opus",
-                        supports_tools: true,
-                    },
-                    ModelDefinition {
-                        id: "claude-3-sonnet",
-                        label: "Claude 3 Sonnet",
-                        supports_tools: true,
-                    },
-                    ModelDefinition {
-                        id: "claude-3-haiku",
-                        label: "Claude 3 Haiku",
-                        supports_tools: false,
                     },
                 ]),
             },
@@ -851,6 +835,103 @@ impl AgentChatPanel {
                 ]),
             },
             ProviderDefinition {
+                id: "openrouter",
+                label: "OpenRouter",
+                kind: ProviderKind::Cloud,
+                endpoint: "https://openrouter.ai/api/v1/chat/completions",
+                models: Arc::new(vec![
+                    ModelDefinition {
+                        id: "openai/gpt-4o",
+                        label: "GPT-4o (OpenRouter)",
+                        supports_tools: true,
+                    },
+                    ModelDefinition {
+                        id: "anthropic/claude-3.7-sonnet",
+                        label: "Claude 3.7 Sonnet (OpenRouter)",
+                        supports_tools: true,
+                    },
+                    ModelDefinition {
+                        id: "google/gemini-2.5-pro",
+                        label: "Gemini 2.5 Pro (OpenRouter)",
+                        supports_tools: true,
+                    },
+                    ModelDefinition {
+                        id: "meta-llama/llama-3.3-70b-instruct",
+                        label: "Llama 3.3 70B (OpenRouter)",
+                        supports_tools: false,
+                    },
+                ]),
+            },
+            ProviderDefinition {
+                id: "groq",
+                label: "Groq",
+                kind: ProviderKind::Cloud,
+                endpoint: "https://api.groq.com/openai/v1/chat/completions",
+                models: Arc::new(vec![
+                    ModelDefinition {
+                        id: "llama-3.3-70b-versatile",
+                        label: "Llama 3.3 70B Versatile",
+                        supports_tools: true,
+                    },
+                    ModelDefinition {
+                        id: "llama-3.1-8b-instant",
+                        label: "Llama 3.1 8B Instant",
+                        supports_tools: true,
+                    },
+                    ModelDefinition {
+                        id: "mixtral-8x7b-32768",
+                        label: "Mixtral 8x7B",
+                        supports_tools: false,
+                    },
+                ]),
+            },
+            ProviderDefinition {
+                id: "together",
+                label: "Together AI",
+                kind: ProviderKind::Cloud,
+                endpoint: "https://api.together.xyz/v1/chat/completions",
+                models: Arc::new(vec![
+                    ModelDefinition {
+                        id: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+                        label: "Llama 3.3 70B Instruct Turbo",
+                        supports_tools: true,
+                    },
+                    ModelDefinition {
+                        id: "Qwen/Qwen2.5-Coder-32B-Instruct",
+                        label: "Qwen 2.5 Coder 32B",
+                        supports_tools: true,
+                    },
+                    ModelDefinition {
+                        id: "mistralai/Mixtral-8x7B-Instruct-v0.1",
+                        label: "Mixtral 8x7B Instruct",
+                        supports_tools: false,
+                    },
+                ]),
+            },
+            ProviderDefinition {
+                id: "gemini",
+                label: "Google Gemini (Direct)",
+                kind: ProviderKind::Cloud,
+                endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/",
+                models: Arc::new(vec![
+                    ModelDefinition {
+                        id: "gemini-2.5-pro",
+                        label: "Gemini 2.5 Pro",
+                        supports_tools: true,
+                    },
+                    ModelDefinition {
+                        id: "gemini-2.5-flash",
+                        label: "Gemini 2.5 Flash",
+                        supports_tools: true,
+                    },
+                    ModelDefinition {
+                        id: "gemini-2.0-flash",
+                        label: "Gemini 2.0 Flash",
+                        supports_tools: true,
+                    },
+                ]),
+            },
+            ProviderDefinition {
                 id: "jan",
                 label: "Jan",
                 kind: ProviderKind::Local,
@@ -1081,11 +1162,28 @@ impl AgentChatPanel {
     }
 
     fn auth_token_for_provider(&self, provider_id: &str) -> Option<String> {
+        let env_token = match provider_id {
+            "github_copilot" => ProcessEnvironment
+                .get_env("GITHUB_TOKEN")
+                .or_else(|| ProcessEnvironment.get_env("GH_TOKEN"))
+                .or_else(|| ProcessEnvironment.get_env("GITHUB_COPILOT_TOKEN"))
+                .or_else(|| ProcessEnvironment.get_env("COPILOT_TOKEN")),
+            "openai" => ProcessEnvironment.get_env("OPENAI_API_KEY"),
+            "anthropic" => ProcessEnvironment.get_env("ANTHROPIC_API_KEY"),
+            "openrouter" => ProcessEnvironment.get_env("OPENROUTER_API_KEY"),
+            "groq" => ProcessEnvironment.get_env("GROQ_API_KEY"),
+            "together" => ProcessEnvironment.get_env("TOGETHER_API_KEY"),
+            "mistral" => ProcessEnvironment.get_env("MISTRAL_API_KEY"),
+            "gemini" => ProcessEnvironment
+                .get_env("GOOGLE_API_KEY")
+                .or_else(|| ProcessEnvironment.get_env("GEMINI_API_KEY")),
+            _ => None,
+        };
+
         self.provider_tokens
             .get(provider_id)
             .cloned()
-            .or_else(|| ProcessEnvironment.get_env("GITHUB_COPILOT_TOKEN"))
-            .or_else(|| ProcessEnvironment.get_env("COPILOT_TOKEN"))
+            .or(env_token)
     }
 
     fn maybe_require_auth_for_active_provider(&mut self, cx: &mut Context<Self>) {

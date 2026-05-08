@@ -76,11 +76,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent_provider_anthropic"
+version = "0.1.0"
+dependencies = [
+ "agent_chat_core",
+ "anyhow",
+ "reqwest 0.12.28",
+ "serde_json",
+]
+
+[[package]]
 name = "agent_provider_demo_random"
 version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
+ "serde_json",
+]
+
+[[package]]
+name = "agent_provider_gemini"
+version = "0.1.0"
+dependencies = [
+ "agent_chat_core",
+ "anyhow",
+ "reqwest 0.12.28",
  "serde_json",
 ]
 
@@ -94,6 +114,56 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+]
+
+[[package]]
+name = "agent_provider_groq"
+version = "0.1.0"
+dependencies = [
+ "agent_chat_core",
+ "anyhow",
+ "reqwest 0.12.28",
+ "serde_json",
+]
+
+[[package]]
+name = "agent_provider_mistral"
+version = "0.1.0"
+dependencies = [
+ "agent_chat_core",
+ "anyhow",
+ "reqwest 0.12.28",
+ "serde_json",
+]
+
+[[package]]
+name = "agent_provider_openai"
+version = "0.1.0"
+dependencies = [
+ "agent_chat_core",
+ "anyhow",
+ "reqwest 0.12.28",
+ "serde_json",
+]
+
+[[package]]
+name = "agent_provider_openrouter"
+version = "0.1.0"
+dependencies = [
+ "agent_chat_core",
+ "anyhow",
+ "reqwest 0.12.28",
+ "serde_json",
+]
+
+[[package]]
+name = "agent_provider_together"
+version = "0.1.0"
+dependencies = [
+ "agent_chat_core",
+ "anyhow",
+ "reqwest 0.12.28",
+ "serde_json",
 ]
 
 [[package]]
@@ -12644,8 +12714,15 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "agent_chat_tools",
+ "agent_provider_anthropic",
  "agent_provider_demo_random",
+ "agent_provider_gemini",
  "agent_provider_github_copilot",
+ "agent_provider_groq",
+ "agent_provider_mistral",
+ "agent_provider_openai",
+ "agent_provider_openrouter",
+ "agent_provider_together",
  "anyhow",
  "blueprint_editor_plugin",
  "engine_backend",
