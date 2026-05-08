@@ -38,6 +38,11 @@ fn render_math_svg(value: &str, display_mode: bool) -> Option<SharedString> {
     )
     .ok()?;
 
+    #[cfg(debug_assertions)]
+    eprintln!(
+        "math svg render display_mode={display_mode} tex={value:?}\n{svg}\n"
+    );
+
     let svg: SharedString = svg.into();
 
     if let Ok(mut cache) = MATH_SVG_CACHE.lock() {
@@ -45,6 +50,20 @@ fn render_math_svg(value: &str, display_mode: bool) -> Option<SharedString> {
     }
 
     Some(svg)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::render_math_svg;
+
+    #[test]
+    fn print_math_svg_debug_output() {
+        let inline = render_math_svg(r"x^2 + y^2", false).expect("inline svg");
+        let block = render_math_svg(r"\\frac{a}{b}", true).expect("block svg");
+
+        println!("INLINE SVG:\n{}", inline);
+        println!("BLOCK SVG:\n{}", block);
+    }
 }
 
 static BLOCK_DELIM_RE: Lazy<Regex> =
