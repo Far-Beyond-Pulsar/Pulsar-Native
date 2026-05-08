@@ -1,5 +1,6 @@
 use gpui::SharedString;
 use mathjax_svg_rs::{render_tex as render_mathjax_tex, HorizontalAlign, Options as MathJaxOptions};
+use mermaid_rs_renderer::render as render_mermaid;
 use once_cell::sync::Lazy;
 use markdown::{
     Constructs,
@@ -22,8 +23,10 @@ use crate::{
 
 static MATH_SVG_CACHE: Lazy<Mutex<HashMap<(bool, String), SharedString>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+static MERMAID_SVG_CACHE: Lazy<Mutex<HashMap<String, SharedString>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
-fn normalize_math_svg(svg: &str) -> String {
+fn normalize_svg(svg: &str) -> String {
     static SVG_OPEN_TAG_RE: Lazy<Regex> =
         Lazy::new(|| Regex::new(r"(?s)^<svg\b([^>]*)>").expect("valid svg tag regex"));
     static WIDTH_EX_RE: Lazy<Regex> =
@@ -92,10 +95,24 @@ fn render_math_svg(value: &str, display_mode: bool) -> Option<SharedString> {
     )
     .ok()?;
 
-    let svg: SharedString = normalize_math_svg(&svg).into();
+    let svg: SharedString = normalize_svg(&svg).into();
 
     if let Ok(mut cache) = MATH_SVG_CACHE.lock() {
         cache.insert(cache_key, svg.clone());
+    }
+
+    Some(svg)
+}
+
+fn render_mermaid_svg(value: &str) -> Option<SharedString> {
+    if let Some(cached) = MERMAID_SVG_CACHE.lock().ok()?.get(value).cloned() {
+        return Some(cached);
+    }
+
+    let svg: SharedString = normalize_svg(&render_mermaid(value).ok()?).into();
+
+    if let Ok(mut cache) = MERMAID_SVG_CACHE.lock() {
+        cache.insert(value.to_string(), svg.clone());
     }
 
     Some(svg)
@@ -442,12 +459,42 @@ fn ast_to_node(
             }
         }
         Node::Break(_) => node::Node::Break { html: false },
-        Node::Code(raw) => node::Node::CodeBlock(CodeBlock::new(
-            raw.value.into(),
-            raw.lang.map(|s| s.into()),
-            style,
-            highlight_theme,
-        )),
+        Node::Code(raw) => {
+            let lang = raw.lang.clone();
+            let is_mermaid = lang
+                .as_deref()
+                .map(|lang| lang.eq_ignore_ascii_case("mermaid"))
+                .unwrap_or(false);
+
+            if is_mermaid {
+                if let Some(svg) = render_mermaid_svg(&raw.value) {
+                    let mut paragraph = Paragraph::default();
+                    paragraph.push_image(ImageNode {
+                        url: raw.value.clone().into(),
+                        alt: Some(raw.value.clone().into()),
+                        title: Some(raw.value.clone().into()),
+                        mermaid_code: Some(raw.value.clone().into()),
+                        mermaid_svg: Some(svg),
+                        ..Default::default()
+                    });
+                    node::Node::Paragraph(paragraph)
+                } else {
+                    node::Node::CodeBlock(CodeBlock::new(
+                        raw.value.into(),
+                        lang.map(|s| s.into()),
+                        style,
+                        highlight_theme,
+                    ))
+                }
+            } else {
+                node::Node::CodeBlock(CodeBlock::new(
+                    raw.value.into(),
+                    lang.map(|s| s.into()),
+                    style,
+                    highlight_theme,
+                ))
+            }
+        }
         Node::Heading(val) => {
             let mut paragraph = Paragraph::default();
             val.children.iter().for_each(|c| {

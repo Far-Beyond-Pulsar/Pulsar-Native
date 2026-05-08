@@ -29,11 +29,11 @@ use crate::{
 
 use super::{utils::list_item_prefix, TextViewStyle};
 
-static MATH_RENDER_CACHE: Lazy<Mutex<HashMap<(u64, u16), Arc<CachedMathImage>>>> =
+static SVG_RENDER_CACHE: Lazy<Mutex<HashMap<(u64, u16), Arc<CachedSvgImage>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Clone)]
-struct CachedMathImage {
+struct CachedSvgImage {
     image: Arc<RenderImage>,
     width_px: f32,
     height_px: f32,
@@ -106,6 +106,8 @@ pub struct ImageNode {
     pub math_tex: Option<SharedString>,
     pub math_svg: Option<SharedString>,
     pub math_display_mode: bool,
+    pub mermaid_code: Option<SharedString>,
+    pub mermaid_svg: Option<SharedString>,
     pub width: Option<DefiniteLength>,
     pub height: Option<DefiniteLength>,
 }
@@ -128,6 +130,8 @@ impl PartialEq for ImageNode {
             && self.math_tex == other.math_tex
             && self.math_svg == other.math_svg
             && self.math_display_mode == other.math_display_mode
+            && self.mermaid_code == other.mermaid_code
+            && self.mermaid_svg == other.mermaid_svg
             && self.width == other.width
             && self.height == other.height
     }
@@ -661,7 +665,7 @@ impl Node {
 }
 
 impl Paragraph {
-    fn colorize_math_svg(svg: &str, text_color: gpui::Hsla) -> String {
+    fn colorize_svg(svg: &str, text_color: gpui::Hsla) -> String {
         let rgba: gpui::Rgba = text_color.into();
         let r = (rgba.r * 255.0).round().clamp(0.0, 255.0) as u8;
         let g = (rgba.g * 255.0).round().clamp(0.0, 255.0) as u8;
@@ -671,19 +675,19 @@ impl Paragraph {
         svg.replace("currentColor", &css_color)
     }
 
-    fn render_math_svg(
+    fn render_cached_svg(
         svg: &str,
         text_color: gpui::Hsla,
         raster_scale: f32,
-    ) -> Option<Arc<CachedMathImage>> {
-        let colored_svg = Self::colorize_math_svg(svg, text_color);
+    ) -> Option<Arc<CachedSvgImage>> {
+        let colored_svg = Self::colorize_svg(svg, text_color);
         let scale_key = (raster_scale * 100.0).round().clamp(1.0, u16::MAX as f32) as u16;
 
         let mut hasher = DefaultHasher::new();
         colored_svg.hash(&mut hasher);
         let svg_hash = hasher.finish();
 
-        if let Some(cached) = MATH_RENDER_CACHE
+        if let Some(cached) = SVG_RENDER_CACHE
             .lock()
             .ok()?
             .get(&(svg_hash, scale_key))
@@ -710,13 +714,13 @@ impl Paragraph {
         let png_bytes = pixmap.encode_png().ok()?;
         let rgba = image::load_from_memory(&png_bytes).ok()?.into_rgba8();
         let frame = image::Frame::new(rgba);
-        let cached = Arc::new(CachedMathImage {
+        let cached = Arc::new(CachedSvgImage {
             image: Arc::new(RenderImage::new(smallvec::smallvec![frame])),
             width_px,
             height_px,
         });
 
-        if let Ok(mut cache) = MATH_RENDER_CACHE.lock() {
+        if let Ok(mut cache) = SVG_RENDER_CACHE.lock() {
             cache.insert((svg_hash, scale_key), cached.clone());
         }
 
@@ -767,10 +771,14 @@ impl Paragraph {
                     );
                 }
                 let image_node = image;
-                let image_element = if let Some(svg) = &image_node.math_svg {
-                    let colored_svg = Self::colorize_math_svg(svg, text_color);
+                let image_element = if let Some(svg) = image_node
+                    .math_svg
+                    .as_ref()
+                    .or(image_node.mermaid_svg.as_ref())
+                {
+                    let colored_svg = Self::colorize_svg(svg, text_color);
 
-                    if let Some(rendered) = Self::render_math_svg(svg, text_color, raster_scale) {
+                    if let Some(rendered) = Self::render_cached_svg(svg, text_color, raster_scale) {
                         img(ImageSource::Render(rendered.image.clone()))
                             .id(ix)
                             .object_fit(ObjectFit::Contain)
@@ -1279,6 +1287,8 @@ impl Paragraph {
                         } else {
                             text.push_str(&format!("${}$", math_tex));
                         }
+                    } else if let Some(mermaid_code) = &image.mermaid_code {
+                        text.push_str(&format!("```mermaid\n{}\n```", mermaid_code));
                     } else {
                         let alt = image.alt.clone().unwrap_or_default();
                         let title = image

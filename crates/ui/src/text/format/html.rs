@@ -332,6 +332,8 @@ fn parse_paragraph(
                     math_tex: None,
                     math_svg: None,
                     math_display_mode: false,
+                    mermaid_code: None,
+                    mermaid_svg: None,
                     width,
                     height,
                     title: title.map(Into::into),
@@ -438,6 +440,8 @@ fn parse_node(
                     math_tex: None,
                     math_svg: None,
                     math_display_mode: false,
+                    mermaid_code: None,
+                    mermaid_svg: None,
                     width,
                     height,
                 });
