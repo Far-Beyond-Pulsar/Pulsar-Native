@@ -390,6 +390,7 @@ impl Render for AgentChatPanel {
                                     .icon(IconName::Plus)
                                     .xsmall()
                                     .ghost()
+                                    .tooltip("Add custom provider")
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.start_add_provider_prompt(window, cx);
                                     })),
@@ -427,6 +428,7 @@ impl Render for AgentChatPanel {
                                                 .xsmall()
                                                 .ghost()
                                                 .label("Open Browser")
+                                                .tooltip("Authenticate with browser")
                                                 .on_click(cx.listener(|this, _, _, cx| {
                                                     this.begin_browser_auth(cx);
                                                 })),
@@ -436,6 +438,7 @@ impl Render for AgentChatPanel {
                                                 .xsmall()
                                                 .primary()
                                                 .label("Use Token")
+                                                .tooltip("Confirm authentication token")
                                                 .disabled(
                                                     self.auth_token_input
                                                         .read(cx)
@@ -481,6 +484,7 @@ impl Render for AgentChatPanel {
                                                 .xsmall()
                                                 .ghost()
                                                 .label("Cancel")
+                                                .tooltip("Cancel adding provider")
                                                 .on_click(cx.listener(|this, _, window, cx| {
                                                     this.cancel_add_provider_prompt(window, cx);
                                                 })),
@@ -490,6 +494,7 @@ impl Render for AgentChatPanel {
                                                 .xsmall()
                                                 .primary()
                                                 .label("Next")
+                                                .tooltip("Continue to next step")
                                                 .disabled(
                                                     self.custom_provider_input
                                                         .read(cx)
@@ -644,6 +649,7 @@ impl Render for AgentChatPanel {
                                                                         .xsmall()
                                                                         .ghost()
                                                                         .icon(IconName::Undo)
+                                                                        .tooltip("Rollback to this message")
                                                                         .disabled(
                                                                             this.is_request_in_flight,
                                                                         )
@@ -665,6 +671,7 @@ impl Render for AgentChatPanel {
                                                                         .xsmall()
                                                                         .primary()
                                                                         .icon(IconName::Check)
+                                                                        .tooltip("Confirm rollback")
                                                                         .disabled(
                                                                             this.is_request_in_flight,
                                                                         )
@@ -684,6 +691,7 @@ impl Render for AgentChatPanel {
                                                                         .xsmall()
                                                                         .ghost()
                                                                         .icon(IconName::Close)
+                                                                        .tooltip("Cancel rollback")
                                                                         .on_click(cx.listener(
                                                                             |this, _, _, cx| {
                                                                                 this.cancel_rollback_confirmation(
@@ -701,6 +709,7 @@ impl Render for AgentChatPanel {
                                                                     .xsmall()
                                                                     .ghost()
                                                                     .icon(IconName::GitFork)
+                                                                    .tooltip("Fork conversation from here")
                                                                     .disabled(
                                                                         this.is_request_in_flight,
                                                                     )
@@ -777,6 +786,7 @@ impl Render for AgentChatPanel {
                                     .xsmall()
                                     .ghost()
                                     .label("+")
+                                    .tooltip("Start new chat")
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.start_new_chat(cx);
                                     })),
@@ -837,6 +847,7 @@ impl Render for AgentChatPanel {
                                 Button::new("agent-chat-send")
                                     .icon(IconName::Send)
                                     .label("Send")
+                                    .tooltip("Send message")
                                     .disabled(
                                         self.is_request_in_flight
                                             || self
