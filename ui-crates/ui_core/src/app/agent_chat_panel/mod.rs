@@ -327,6 +327,7 @@ impl Render for AgentChatPanel {
                         .xsmall()
                         .ghost()
                         .justify_start()
+                        .tooltip("Select provider")
                         .label(
                             provider
                                 .map(|p| format!("Provider: {} ({})", p.label, p.id))
@@ -344,6 +345,7 @@ impl Render for AgentChatPanel {
                         .xsmall()
                         .ghost()
                         .justify_start()
+                        .tooltip("Select model")
                         .label(
                             model
                                 .map(|m| format!("Model: {} ({})", m.label, m.id))
@@ -361,6 +363,7 @@ impl Render for AgentChatPanel {
                         .xsmall()
                         .ghost()
                         .justify_start()
+                        .tooltip("Select chat")
                         .label(format!("Chat: {}", current_chat_id))
                         .dropdown_caret(true),
                 )
