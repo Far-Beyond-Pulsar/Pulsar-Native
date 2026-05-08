@@ -8,8 +8,15 @@ use agent_chat_tools::{ToolContext, ToolRegistry};
 use agent_provider_demo_random::DemoRandomProvider;
 use agent_provider_github_copilot::GithubCopilotProvider;
 use gpui::{prelude::FluentBuilder as _, *};
+use serde::{Deserialize, Serialize};
 use smol::Timer;
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    fs,
+    path::PathBuf,
+    sync::Arc,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 use ui::{
     button::{Button, ButtonVariants as _},
     dock::{Panel, PanelEvent},
@@ -52,12 +59,35 @@ struct ChatMessage {
     content: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct PersistedChatMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct ChatSessionFile {
+    id: String,
+    title: String,
+    created_at: u64,
+    updated_at: u64,
+    messages: Vec<PersistedChatMessage>,
+}
+
+#[derive(Clone, Debug)]
+struct ChatHistoryEntry {
+    id: String,
+    title: String,
+    updated_at: u64,
+}
+
 pub struct AgentChatPanel {
     focus_handle: FocusHandle,
     messages_scroll_handle: VirtualListScrollHandle,
     messages_scroll_state: ScrollbarState,
     prompt_input: Entity<InputState>,
     auth_token_input: Entity<InputState>,
+    chat_history_list: Entity<SearchableList<ChatHistoryEntry>>,
     provider_list: Entity<SearchableList<ProviderDefinition>>,
     model_list: Entity<SearchableList<ModelDefinition>>,
     provider_catalog: Vec<ProviderDefinition>,
@@ -66,6 +96,8 @@ pub struct AgentChatPanel {
     tool_registry: ToolRegistry,
     provider_tokens: HashMap<&'static str, String>,
     pending_auth_provider: Option<&'static str>,
+    current_chat_id: String,
+    current_chat_created_at: u64,
     active_provider_ix: usize,
     active_model_ix: usize,
     messages: Vec<ChatMessage>,
@@ -84,6 +116,15 @@ impl AgentChatPanel {
             cx.new(|cx| InputState::new(window, cx).placeholder("Ask the engine assistant..."));
         let auth_token_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Paste provider token..."));
+
+        let chat_history_list = cx.new(|cx| {
+            SearchableList::new(window, cx, Vec::<ChatHistoryEntry>::new(), |chat| {
+                format!("{} ({})", chat.title, chat.id)
+            })
+            .with_empty_text("No chats found")
+            .with_max_width(px(340.0))
+            .with_max_height(px(380.0))
+        });
 
         let wip_for_list = wip_providers.clone();
         let provider_list = cx.new(|cx| {
@@ -146,14 +187,22 @@ impl AgentChatPanel {
                     }
                 },
             ),
+            cx.subscribe(
+                &chat_history_list,
+                move |this, _, event: &SearchableListEvent<ChatHistoryEntry>, cx| {
+                    let SearchableListEvent::Select(entry) = event;
+                    this.load_chat_session(&entry.id, cx);
+                },
+            ),
         ];
 
-        Self {
+        let mut this = Self {
             focus_handle: cx.focus_handle(),
             messages_scroll_handle: VirtualListScrollHandle::new(),
             messages_scroll_state: ScrollbarState::default(),
             prompt_input,
             auth_token_input,
+            chat_history_list,
             provider_list,
             model_list,
             provider_catalog,
@@ -162,6 +211,8 @@ impl AgentChatPanel {
             tool_registry: ToolRegistry::with_default_tools(),
             provider_tokens: HashMap::new(),
             pending_auth_provider: None,
+            current_chat_id: String::new(),
+            current_chat_created_at: 0,
             active_provider_ix: 0,
             active_model_ix: 0,
             messages: vec![ChatMessage {
@@ -169,7 +220,10 @@ impl AgentChatPanel {
                 content: "Agent Chat is ready. Choose provider/model and ask anything about your project.".to_string(),
             }],
             _subscriptions: subscriptions,
-        }
+        };
+
+        this.bootstrap_chat_storage(cx);
+        this
     }
 
     fn wip_providers_from_catalog(
@@ -806,6 +860,192 @@ impl AgentChatPanel {
         self.provider_catalog.get(self.active_provider_ix)
     }
 
+    fn now_epoch_secs() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
+    }
+
+    fn now_epoch_nanos() -> u128 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    }
+
+    fn chats_dir() -> PathBuf {
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(".ppulsar.chats")
+    }
+
+    fn ensure_chats_dir() -> Option<PathBuf> {
+        let dir = Self::chats_dir();
+        if fs::create_dir_all(&dir).is_ok() {
+            Some(dir)
+        } else {
+            None
+        }
+    }
+
+    fn chat_file_path(chat_id: &str) -> Option<PathBuf> {
+        Some(Self::ensure_chats_dir()?.join(format!("{chat_id}.json")))
+    }
+
+    fn normalize_role(role: &str) -> &'static str {
+        match role {
+            "user" => "user",
+            "assistant" => "assistant",
+            "system" => "system",
+            _ => "assistant",
+        }
+    }
+
+    fn default_system_message() -> ChatMessage {
+        ChatMessage {
+            role: "system",
+            content: "Agent Chat is ready. Choose provider/model and ask anything about your project.".to_string(),
+        }
+    }
+
+    fn inferred_chat_title(messages: &[ChatMessage]) -> String {
+        if let Some(user_message) = messages.iter().find(|m| m.role == "user") {
+            user_message
+                .content
+                .chars()
+                .take(60)
+                .collect::<String>()
+                .trim()
+                .to_string()
+        } else {
+            "New Chat".to_string()
+        }
+    }
+
+    fn save_current_chat(&self) {
+        if self.current_chat_id.is_empty() {
+            return;
+        }
+
+        let Some(path) = Self::chat_file_path(&self.current_chat_id) else {
+            return;
+        };
+
+        let payload = ChatSessionFile {
+            id: self.current_chat_id.clone(),
+            title: Self::inferred_chat_title(&self.messages),
+            created_at: self.current_chat_created_at,
+            updated_at: Self::now_epoch_secs(),
+            messages: self
+                .messages
+                .iter()
+                .map(|m| PersistedChatMessage {
+                    role: m.role.to_string(),
+                    content: m.content.clone(),
+                })
+                .collect(),
+        };
+
+        if let Ok(serialized) = serde_json::to_string_pretty(&payload) {
+            let _ = fs::write(path, serialized);
+        }
+    }
+
+    fn read_chat_index() -> Vec<ChatHistoryEntry> {
+        let Some(dir) = Self::ensure_chats_dir() else {
+            return Vec::new();
+        };
+
+        let mut entries = Vec::new();
+        let Ok(files) = fs::read_dir(dir) else {
+            return entries;
+        };
+
+        for file in files.flatten() {
+            let path = file.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+                continue;
+            }
+
+            let Ok(raw) = fs::read_to_string(&path) else {
+                continue;
+            };
+            let Ok(chat) = serde_json::from_str::<ChatSessionFile>(&raw) else {
+                continue;
+            };
+
+            entries.push(ChatHistoryEntry {
+                id: chat.id,
+                title: chat.title,
+                updated_at: chat.updated_at,
+            });
+        }
+
+        entries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        entries
+    }
+
+    fn refresh_chat_history_list(&mut self, cx: &mut Context<Self>) {
+        let entries = Self::read_chat_index();
+        self.chat_history_list.update(cx, |list, cx| {
+            list.set_items(entries, cx);
+        });
+    }
+
+    fn load_chat_session(&mut self, chat_id: &str, cx: &mut Context<Self>) {
+        let Some(path) = Self::chat_file_path(chat_id) else {
+            return;
+        };
+        let Ok(raw) = fs::read_to_string(path) else {
+            return;
+        };
+        let Ok(chat) = serde_json::from_str::<ChatSessionFile>(&raw) else {
+            return;
+        };
+
+        self.current_chat_id = chat.id;
+        self.current_chat_created_at = chat.created_at;
+        self.messages = chat
+            .messages
+            .into_iter()
+            .map(|m| ChatMessage {
+                role: Self::normalize_role(&m.role),
+                content: m.content,
+            })
+            .collect();
+
+        if self.messages.is_empty() {
+            self.messages.push(Self::default_system_message());
+        }
+
+        self.scroll_messages_to_bottom();
+        cx.notify();
+    }
+
+    fn start_new_chat(&mut self, cx: &mut Context<Self>) {
+        self.current_chat_id = format!("chat-{}", Self::now_epoch_nanos());
+        self.current_chat_created_at = Self::now_epoch_secs();
+        self.messages = vec![Self::default_system_message()];
+        self.save_current_chat();
+        self.refresh_chat_history_list(cx);
+        self.scroll_messages_to_bottom();
+        cx.notify();
+    }
+
+    fn bootstrap_chat_storage(&mut self, cx: &mut Context<Self>) {
+        let entries = Self::read_chat_index();
+        self.chat_history_list.update(cx, |list, cx| {
+            list.set_items(entries.clone(), cx);
+        });
+
+        if let Some(latest) = entries.first() {
+            self.load_chat_session(&latest.id, cx);
+        } else {
+            self.start_new_chat(cx);
+        }
+    }
+
     fn active_model(&self) -> Option<&ModelDefinition> {
         self.active_provider()
             .and_then(|provider| provider.models.get(self.active_model_ix))
@@ -930,6 +1170,8 @@ impl AgentChatPanel {
                     role: "system",
                     content: format!("{} authenticated successfully.", provider_id),
                 });
+                self.save_current_chat();
+                self.refresh_chat_history_list(cx);
                 self.scroll_messages_to_bottom();
                 cx.notify();
             }
@@ -939,6 +1181,8 @@ impl AgentChatPanel {
                     role: "system",
                     content: format!("Authentication failed: {err}"),
                 });
+                self.save_current_chat();
+                self.refresh_chat_history_list(cx);
                 self.scroll_messages_to_bottom();
                 cx.notify();
             }
@@ -1014,6 +1258,7 @@ impl AgentChatPanel {
                         if let Some(message) = panel.messages.get_mut(message_ix) {
                             message.content.push_str(&chunk);
                         }
+                        panel.save_current_chat();
                         panel.scroll_messages_to_bottom();
                         cx.notify();
                     })
@@ -1217,6 +1462,8 @@ impl AgentChatPanel {
         self.prompt_input.update(cx, |input, cx| {
             input.set_value("", window, cx);
         });
+        self.save_current_chat();
+        self.refresh_chat_history_list(cx);
         self.scroll_messages_to_bottom();
         cx.notify();
     }
@@ -1255,6 +1502,8 @@ impl Render for AgentChatPanel {
         let auth_provider = self.pending_auth_provider;
         let provider_list = self.provider_list.clone();
         let model_list = self.model_list.clone();
+        let chat_history_list = self.chat_history_list.clone();
+        let current_chat_id = self.current_chat_id.clone();
         let message_item_sizes = std::rc::Rc::new(
             self.messages
                 .iter()
@@ -1298,6 +1547,20 @@ impl Render for AgentChatPanel {
         )
         .content(move |_window, _cx| model_list.clone());
 
+        let chat_history_popover = Popover::<SearchableList<ChatHistoryEntry>>::new(
+            "agent-chat-history-popover",
+        )
+        .anchor(Corner::TopLeft)
+        .trigger(
+            Button::new("agent-chat-history-trigger")
+                .xsmall()
+                .ghost()
+                .justify_start()
+                .label(format!("Chats: {}", current_chat_id))
+                .dropdown_caret(true),
+        )
+        .content(move |_window, _cx| chat_history_list.clone());
+
         v_flex()
             .size_full()
             .bg(cx.theme().sidebar)
@@ -1311,6 +1574,22 @@ impl Render for AgentChatPanel {
                     .border_b_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().tab_bar)
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .items_center()
+                            .gap_1()
+                            .child(
+                                Button::new("agent-chat-new-chat")
+                                    .xsmall()
+                                    .ghost()
+                                    .label("New Chat")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.start_new_chat(cx);
+                                    })),
+                            )
+                            .child(chat_history_popover),
+                    )
                     .child(
                         h_flex()
                             .w_full()

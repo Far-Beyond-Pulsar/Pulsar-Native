@@ -33,18 +33,15 @@ impl DemoRandomProvider {
         ]
     }
 
-    fn sentence_pool() -> &'static [&'static str] {
+fn sentence_pool() -> &'static [&'static str] {
         &[
-            "I traced the signal through the editor and found a tiny shortcut no one noticed.",
-            "This response is synthetic, but it is behaving like a real provider round-trip.",
-            "A calm compiler and a noisy log can still make a very productive afternoon.",
-            "The panel state is stable, and the provider bridge is doing exactly what it should.",
-            "I can keep riffing while you wire the next provider implementation.",
-            "Tool calls are optional here; this model is intentionally lightweight for demos.",
-            "The model picked this line at random to mimic non-deterministic generation.",
-            "If this feels alive, your provider abstraction is already paying off.",
-            "Every prompt nudges the sentence mix, so no two replies should look identical.",
-            "Use this provider for UI and flow testing when network auth is not available.",
+            "When evaluating the lifecycle of a provider bridge, it is vital to consider how the internal state machine transitions from a 'connecting' status to a 'streaming' status, especially when the underlying transport layer is being mocked. This specific mock implementation bypasses the standard handshake protocol to deliver immediate feedback to the UI components, which is essential for rapid prototyping of the editor's primary viewport and ensuring the layout remains responsive under heavy text loads.",
+            "The architectural decoupling we've achieved here allows the frontend to remain blissfully unaware of whether it is communicating with a multi-billion parameter model running on a high-end GPU cluster or a simple static array within a Rust binary. By simulating the asynchronous nature of a real-world inference stream, we can verify that our reactive hooks—specifically those responsible for managing the message buffer—are correctly handling append operations without introducing unnecessary re-renders that would degrade the user experience.",
+            "Let's take a moment to analyze the signal flow: once the provider receives the request, it triggers a non-deterministic selection process to mimic the probabilistic nature of generative AI. This provides a diverse range of text lengths and complexities, allowing us to stress-test the CSS Grid or Flexbox containers that house the chat bubbles, ensuring that even the most verbose responses don't break the layout or cause awkward horizontal scrolling on smaller viewport dimensions.",
+            "A robust testing suite requires more than just 'Hello World' snippets; it needs substantial blocks of prose to validate that the markdown parser is behaving as expected when encountering nested structures. While this current provider is intentionally lightweight, the plan is to eventually integrate a local WASM-based tokenizer that can provide real-time token counts, giving the developer a clear picture of the overhead involved in every round-trip before they ever commit to a paid API tier.",
+            "We noticed earlier that the panel state would occasionally flicker during high-frequency updates, but by switching to this stable provider bridge, the data flow has smoothed out significantly. This allows us to focus on the more nuanced aspects of the UX, such as the subtle animations of the typing indicator and the way the scroll-to-bottom logic interacts with a user who is manually trying to read a previous response while a new, extremely long paragraph is being streamed into the view.",
+            "Consider the implications of using this synthetic provider for offline development: you can continue to refine the prompt engineering and UI logic in environments with zero connectivity, such as during a flight or in a remote workspace. Because these responses are pre-compiled into the binary, there is zero latency, which provides an idealized 'best-case scenario' benchmark that we can use to compare against the inevitable jitter and latency spikes of a production network environment.",
+            "If the goal is to simulate a truly complex reasoning chain, we might want to extend this pool to include even more technical jargon and pseudo-code snippets. This ensures that the syntax highlighter doesn't choke on unexpected character sequences and that the typography remains legible even when the model decides to dump five hundred words of architectural advice directly into the primary interaction thread without any prior warning or formatting."
         ]
     }
 
