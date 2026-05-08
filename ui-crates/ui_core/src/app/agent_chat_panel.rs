@@ -865,28 +865,12 @@ impl Render for AgentChatPanel {
             .child(
                 v_flex()
                     .w_full()
-                    .gap_2()
+                    .gap_1()
                     .px_3()
                     .py_2()
                     .border_b_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().tab_bar)
-                    .child(
-                        h_flex()
-                            .justify_between()
-                            .items_center()
-                            .child(div().text_sm().font_semibold().child("Agentic Chat"))
-                            .child(
-                                div().text_xs().text_color(cx.theme().muted_foreground).child(
-                                    provider
-                                        .map(|p| match p.kind {
-                                            ProviderKind::Cloud => "Cloud",
-                                            ProviderKind::Local => "Local",
-                                        })
-                                        .unwrap_or("N/A"),
-                                ),
-                            ),
-                    )
                     .child(
                         h_flex()
                             .w_full()
@@ -898,26 +882,6 @@ impl Render for AgentChatPanel {
                             .w_full()
                             .items_center()
                             .child(model_popover),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(
-                                provider
-                                    .map(|p| format!("Endpoint: {}", p.endpoint))
-                                    .unwrap_or_else(|| "Endpoint: n/a".to_string()),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(match model {
-                                Some(m) if m.supports_tools => "Tools: supported",
-                                Some(_) => "Tools: limited",
-                                None => "Tools: unknown",
-                            }),
                     ),
             )
             .child(
@@ -969,7 +933,7 @@ impl Render for AgentChatPanel {
             .child(
                 v_flex()
                     .w_full()
-                    .gap_2()
+                    .gap_1()
                     .px_3()
                     .py_2()
                     .border_t_1()
@@ -998,12 +962,6 @@ impl Render for AgentChatPanel {
                                         this.send_prompt(window, cx);
                                     })),
                             ),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("Provider adapters are intentionally decoupled so cloud and local transports can be plugged in independently."),
                     ),
             )
     }
