@@ -2,13 +2,13 @@ use crate::popup_menu::{PopupMenu, PopupMenuExt};
 use crate::{
     h_flex,
     indicator::Indicator,
-    tooltip::{smart_tooltip_anchor_and_position, Tooltip},
+    tooltip::{HoverTooltip, Tooltip},
     ActiveTheme, Colorize as _, Disableable, FocusableExt as _, Icon, Selectable, Sizable, Size,
     StyleSized, StyledExt,
 };
 use gpui::{
-    anchored, deferred, div, prelude::FluentBuilder as _, px, relative, Action,
-    AnyElement, App, ClickEvent, Context, Corner, Corners, Div, Edges, ElementId, Hsla,
+    div, prelude::FluentBuilder as _, px, relative, Action, AnyElement, App, ClickEvent,
+    Context, Corner, Corners, Div, Edges, ElementId, Hsla,
     InteractiveElement, Interactivity, IntoElement, ParentElement, Pixels, RenderOnce,
     SharedString, Stateful,
     StatefulInteractiveElement as _, StyleRefinement, Styled, Window,
@@ -437,7 +437,7 @@ impl RenderOnce for Button {
             .clone();
         let is_focused = focus_handle.is_focused(window);
 
-        self.base
+        let element = self.base
             .refine_style(&self.style)
             .relative()
             .group("")
@@ -583,34 +583,23 @@ impl RenderOnce for Button {
                     .border_color(normal_style.border.opacity(0.8))
                     .text_color(normal_style.fg.opacity(0.8))
             })
-            .when_some(self.tooltip, |this, (tooltip, action)| {
-                let (anchor, position) = smart_tooltip_anchor_and_position(window);
-                this.child(
-                    deferred(
-                        anchored()
-                            .anchor(anchor)
-                            .snap_to_window_with_margin(px(8.))
-                            .position(position)
-                            .child(
-                                div()
-                                    .invisible()
-                                    .group_hover("", |this| this.visible())
-                                    .child(
-                                        Tooltip::new(tooltip.clone())
-                                            .when_some(action.clone(), |this, (action, context)| {
-                                                this.action(
-                                                    action.boxed_clone().as_ref(),
-                                                    context.as_ref().map(|c| c.as_ref()),
-                                                )
-                                            })
-                                            .build(window, cx),
-                                    ),
-                            ),
-                    )
-                    .with_priority(1),
-                )
+            .focus_ring(is_focused, px(0.), window, cx);
+
+        if let Some((tooltip, action)) = self.tooltip {
+            HoverTooltip::new(self.id.clone(), element, move |window, cx| {
+                Tooltip::new(tooltip.clone())
+                    .when_some(action.clone(), |this, (action, context)| {
+                        this.action(
+                            action.boxed_clone().as_ref(),
+                            context.as_ref().map(|c| c.as_ref()),
+                        )
+                    })
+                    .build(window, cx)
             })
-            .focus_ring(is_focused, px(0.), window, cx)
+            .into_any_element()
+        } else {
+            element.into_any_element()
+        }
     }
 }
 

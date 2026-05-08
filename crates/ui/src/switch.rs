@@ -1,13 +1,13 @@
 use crate::{
     h_flex,
     text::Text,
-    tooltip::{smart_tooltip_anchor_and_position, Tooltip},
+    tooltip::{HoverTooltip, Tooltip},
     ActiveTheme, Disableable, Side, Sizable, Size, StyledExt,
 };
 use gpui::{
-    anchored, deferred, div, prelude::FluentBuilder as _, px, Animation,
-    AnimationExt as _, App, ElementId, InteractiveElement, IntoElement, ParentElement as _,
-    RenderOnce, SharedString, StatefulInteractiveElement, StyleRefinement, Styled, Window,
+    div, prelude::FluentBuilder as _, px, Animation, AnimationExt as _, App, ElementId,
+    InteractiveElement, IntoElement, ParentElement as _, RenderOnce, SharedString,
+    StatefulInteractiveElement, StyleRefinement, Styled, Window,
 };
 use std::{rc::Rc, time::Duration};
 
@@ -125,7 +125,7 @@ impl RenderOnce for Switch {
             cx.theme().radius
         };
 
-        div()
+        let element = div()
             .refine_style(&self.style)
             .relative()
             .group("")
@@ -213,23 +213,15 @@ impl RenderOnce for Switch {
                     },
                 ),
             )
-            .when_some(self.tooltip.clone(), |this, tooltip| {
-                let (anchor, position) = smart_tooltip_anchor_and_position(window);
-                this.child(
-                    deferred(
-                        anchored()
-                            .anchor(anchor)
-                            .snap_to_window_with_margin(px(8.))
-                            .position(position)
-                            .child(
-                                div()
-                                    .invisible()
-                                    .group_hover("", |this| this.visible())
-                                    .child(Tooltip::new(tooltip.clone()).build(window, cx)),
-                            ),
-                    )
-                    .with_priority(1),
-                )
+            ;
+
+        if let Some(tooltip) = self.tooltip {
+            HoverTooltip::new(self.id.clone(), element, move |window, cx| {
+                Tooltip::new(tooltip.clone()).build(window, cx)
             })
+            .into_any_element()
+        } else {
+            element.into_any_element()
+        }
     }
 }

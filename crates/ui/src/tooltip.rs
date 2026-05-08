@@ -1,10 +1,11 @@
 use gpui::{
-    anchored, deferred, div, point, prelude::FluentBuilder, px, AnyElement, AnyView, App,
-    AppContext, Bounds, Context, Corner, Element, ElementId, GlobalElementId, Hitbox,
-    HitboxBehavior, InspectorElementId, IntoElement, LayoutId, ParentElement, Point, Render,
-    SharedString, StyleRefinement, Styled, Window, Pixels,
+    anchored, deferred, div, point, prelude::FluentBuilder, px, Action, AnyElement, AnyView,
+    App, AppContext, Bounds, Context, Corner, Element, ElementId, GlobalElementId, Hitbox,
+    HitboxBehavior, InspectorElementId, IntoElement, LayoutId, ParentElement, Pixels, Point,
+    Render, SharedString, StyleRefinement, Styled, Window,
 };
-use std::rc::Rc;
+use std::{cell::RefCell, 
+rc::Rc};
 
 use crate::{h_flex, text::Text, ActiveTheme, Kbd, StyledExt};
 
@@ -66,7 +67,13 @@ impl Tooltip {
 }
 
 pub fn smart_tooltip_anchor_and_position(window: &Window) -> (Corner, Point<Pixels>) {
-    let mouse = window.mouse_position();
+    smart_tooltip_anchor_and_position_at(window.mouse_position(), window)
+}
+
+pub fn smart_tooltip_anchor_and_position_at(
+    mouse: Point<Pixels>,
+    window: &Window,
+) -> (Corner, Point<Pixels>) {
     let bounds = window.bounds();
     let anchor = match (
         mouse.x > bounds.size.width / 2.0,
@@ -90,26 +97,40 @@ pub fn smart_tooltip_anchor_and_position(window: &Window) -> (Corner, Point<Pixe
     (anchor, point(x, y))
 }
 
+#[derive(Default)]
+struct HoverTooltipSharedState {
+    visible: bool,
+    mouse_position: Point<Pixels>,
+}
+
 pub struct HoverTooltip {
     id: ElementId,
     trigger: Option<AnyElement>,
     tooltip_builder: Rc<dyn Fn(&mut Window, &mut App) -> AnyView>,
 }
 
-#[derive(Default)]
-struct HoverTooltipElementState {
+pub struct HoverTooltipElementState {
     trigger_layout_id: Option<LayoutId>,
     tooltip_layout_id: Option<LayoutId>,
     trigger_element: Option<AnyElement>,
     tooltip_element: Option<AnyElement>,
-    trigger_bounds: Option<Bounds<Pixels>>,
-    visible: bool,
-    mouse_position: Point<Pixels>,
+    hover_state: Rc<RefCell<HoverTooltipSharedState>>,
 }
 
-struct HoverTooltipPrepaintState {
+impl Default for HoverTooltipElementState {
+    fn default() -> Self {
+        Self {
+            trigger_layout_id: None,
+            tooltip_layout_id: None,
+            trigger_element: None,
+            tooltip_element: None,
+            hover_state: Rc::new(RefCell::new(HoverTooltipSharedState::default())),
+        }
+    }
+}
+
+pub struct HoverTooltipPrepaintState {
     hitbox: Hitbox,
-    trigger_bounds: Option<Bounds<Pixels>>,
 }
 
 impl HoverTooltip {
@@ -171,11 +192,13 @@ impl Element for HoverTooltip {
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
         self.with_element_state(id.unwrap(), window, cx, |this, element_state, window, cx| {
+            let hover_state = element_state.hover_state.clone();
             let mut tooltip_layout_id = None;
             let mut tooltip_element = None;
 
-            if element_state.visible {
-                let (anchor, position) = smart_tooltip_anchor_and_position(window);
+            if hover_state.borrow().visible {
+                let mouse_position = hover_state.borrow().mouse_position;
+                let (anchor, position) = smart_tooltip_anchor_and_position_at(mouse_position, window);
                 let builder = this.tooltip_builder.clone();
 
                 let mut element = deferred(
@@ -211,7 +234,7 @@ impl Element for HoverTooltip {
                     tooltip_layout_id,
                     trigger_element: Some(trigger_element),
                     tooltip_element,
-                    ..Default::default()
+                    hover_state,
                 },
             )
         })
@@ -236,20 +259,16 @@ impl Element for HoverTooltip {
         let trigger_bounds = request_layout
             .trigger_layout_id
             .map(|layout_id| window.layout_bounds(layout_id));
-        let hitbox = window.insert_hitbox(
-            trigger_bounds.unwrap_or_default(),
-            HitboxBehavior::Normal,
-        );
+        let hitbox = window.insert_hitbox(trigger_bounds.unwrap_or_default(), HitboxBehavior::Normal);
 
-        HoverTooltipPrepaintState {
-            hitbox,
-            trigger_bounds,
-        }
+        let _ = trigger_bounds;
+
+        HoverTooltipPrepaintState { hitbox }
     }
 
     fn paint(
         &mut self,
-        id: Option<&GlobalElementId>,
+        _id: Option<&GlobalElementId>,
         _: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
         request_layout: &mut Self::RequestLayoutState,
@@ -257,52 +276,31 @@ impl Element for HoverTooltip {
         window: &mut Window,
         cx: &mut App,
     ) {
-        self.with_element_state(id.unwrap(), window, cx, |_, element_state, window, cx| {
-            element_state.trigger_bounds = prepaint.trigger_bounds;
+        if let Some(mut element) = request_layout.trigger_element.take() {
+            element.paint(window, cx);
+        }
 
-            if let Some(mut element) = request_layout.trigger_element.take() {
-                element.paint(window, cx);
+        if let Some(mut element) = request_layout.tooltip_element.take() {
+            element.paint(window, cx);
+        }
+
+        let hitbox = prepaint.hitbox.clone();
+        let hover_state = request_layout.hover_state.clone();
+        window.on_mouse_event(move |event: &gpui::MouseMoveEvent, phase, window, _cx| {
+            if !phase.bubble() {
+                return;
             }
 
-            if let Some(mut element) = request_layout.tooltip_element.take() {
-                element.paint(window, cx);
+            let hovered = hitbox.is_hovered(window);
+            let mut hover_state = hover_state.borrow_mut();
+            let should_refresh = hover_state.visible != hovered
+                || (hovered && hover_state.mouse_position != event.position);
+
+            if should_refresh {
+                hover_state.visible = hovered;
+                hover_state.mouse_position = event.position;
+                window.refresh();
             }
-
-            let hitbox = prepaint.hitbox.clone();
-            let view_id = window.current_view();
-            window.on_mouse_event(move |event: &gpui::MouseMoveEvent, phase, window, cx| {
-                if !phase.bubble() {
-                    return;
-                }
-
-                let hovered = hitbox.is_hovered(window);
-                let mouse_position = event.position;
-
-                let changed = cx.update_view(view_id, |_, cx| {
-                    let root = window.root::<crate::Root>();
-                    let _ = root;
-                    let _ = cx;
-                });
-                let _ = changed;
-
-                let state = window.with_optional_element_state::<HoverTooltipElementState, _>(
-                    id,
-                    |element_state, _| element_state.unwrap().unwrap_or_default(),
-                );
-                let mut state = state.unwrap_or_default();
-                let was_visible = state.visible;
-                state.visible = hovered;
-                state.mouse_position = mouse_position;
-
-                window.with_optional_element_state::<HoverTooltipElementState, _>(
-                    id,
-                    |_, _| ((), Some(state)),
-                );
-
-                if was_visible != hovered {
-                    window.refresh();
-                }
-            });
         });
     }
 }
