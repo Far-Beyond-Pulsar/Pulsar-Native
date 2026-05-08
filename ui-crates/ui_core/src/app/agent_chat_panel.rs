@@ -7,6 +7,7 @@ use agent_chat_core::{
 use agent_chat_tools::{ToolContext, ToolRegistry};
 use agent_provider_demo_random::DemoRandomProvider;
 use agent_provider_github_copilot::GithubCopilotProvider;
+use engine_state;
 use gpui::{prelude::FluentBuilder as _, *};
 use serde::{Deserialize, Serialize};
 use smol::Timer;
@@ -874,16 +875,13 @@ impl AgentChatPanel {
             .unwrap_or(0)
     }
 
-    fn chats_dir() -> PathBuf {
-        std::env::current_dir()
-            .and_then(|p| p.canonicalize())
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join(".pulsar")
-            .join("chats")
+    fn chats_dir() -> Option<PathBuf> {
+        let project_root = engine_state::get_project_path().map(PathBuf::from)?;
+        Some(project_root.join(".pulsar").join("chats"))
     }
 
     fn ensure_chats_dir() -> Option<PathBuf> {
-        let dir = Self::chats_dir();
+        let dir = Self::chats_dir()?;
         if fs::create_dir_all(&dir).is_ok() {
             Some(dir)
         } else {
@@ -1374,8 +1372,10 @@ impl AgentChatPanel {
                 match provider.chat_completion(&token, &request) {
                     Ok(response) => {
                         if !response.tool_calls.is_empty() {
-                            let workspace_root = std::env::current_dir()
-                                .unwrap_or_else(|_| std::path::PathBuf::from("."));
+                            let workspace_root = engine_state::get_project_path()
+                                .map(PathBuf::from)
+                                .or_else(|| std::env::current_dir().ok())
+                                .unwrap_or_else(|| std::path::PathBuf::from("."));
                             let tool_ctx = ToolContext { workspace_root };
 
                             let mut followup_messages = request.messages.clone();
