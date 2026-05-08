@@ -8,16 +8,20 @@ use agent_chat_tools::{ToolContext, ToolRegistry};
 use agent_provider_demo_random::DemoRandomProvider;
 use agent_provider_github_copilot::GithubCopilotProvider;
 use gpui::{prelude::FluentBuilder as _, *};
-use std::{collections::HashMap, sync::Arc};
+use smol::Timer;
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use ui::{
     button::{Button, ButtonVariants as _},
     dock::{Panel, PanelEvent},
     dropdown::{SearchableList, SearchableListEvent, SearchableListItemState},
+    input::Enter,
     popover::Popover,
+    scroll::{Scrollbar, ScrollbarState},
     Disableable,
     h_flex,
     input::{InputState, TextInput},
-    v_flex, ActiveTheme as _, IconName, Sizable, StyledExt,
+    v_flex, v_virtual_list, ActiveTheme as _, IconName, Sizable, StyledExt,
+    VirtualListScrollHandle,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,6 +54,8 @@ struct ChatMessage {
 
 pub struct AgentChatPanel {
     focus_handle: FocusHandle,
+    messages_scroll_handle: VirtualListScrollHandle,
+    messages_scroll_state: ScrollbarState,
     prompt_input: Entity<InputState>,
     auth_token_input: Entity<InputState>,
     provider_list: Entity<SearchableList<ProviderDefinition>>,
@@ -144,6 +150,8 @@ impl AgentChatPanel {
 
         Self {
             focus_handle: cx.focus_handle(),
+            messages_scroll_handle: VirtualListScrollHandle::new(),
+            messages_scroll_state: ScrollbarState::default(),
             prompt_input,
             auth_token_input,
             provider_list,
@@ -922,6 +930,7 @@ impl AgentChatPanel {
                     role: "system",
                     content: format!("{} authenticated successfully.", provider_id),
                 });
+                self.scroll_messages_to_bottom();
                 cx.notify();
             }
             Ok(AuthResult::Cancelled) => {}
@@ -930,6 +939,7 @@ impl AgentChatPanel {
                     role: "system",
                     content: format!("Authentication failed: {err}"),
                 });
+                self.scroll_messages_to_bottom();
                 cx.notify();
             }
         }
@@ -975,6 +985,71 @@ impl AgentChatPanel {
         }
     }
 
+    fn stream_assistant_chunks(
+        &mut self,
+        chunks: Vec<String>,
+        fallback_message: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let chunks = if chunks.is_empty() {
+            fallback_message
+                .map(|text| vec![text])
+                .unwrap_or_else(|| vec!["Provider returned an empty response.".to_string()])
+        } else {
+            chunks
+        };
+
+        let message_ix = self.messages.len();
+        self.messages.push(ChatMessage {
+            role: "assistant",
+            content: String::new(),
+        });
+        self.scroll_messages_to_bottom();
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            for chunk in chunks {
+                cx.update(|cx| {
+                    this.update(cx, |panel, cx| {
+                        if let Some(message) = panel.messages.get_mut(message_ix) {
+                            message.content.push_str(&chunk);
+                        }
+                        panel.scroll_messages_to_bottom();
+                        cx.notify();
+                    })
+                    .ok();
+                })
+                .ok();
+
+                Timer::after(Duration::from_millis(14)).await;
+            }
+        })
+        .detach();
+    }
+
+    fn on_prompt_enter(&mut self, enter: &Enter, window: &mut Window, cx: &mut Context<Self>) {
+        if enter.secondary {
+            return;
+        }
+
+        if self.prompt_input.read(cx).focus_handle(cx).is_focused(window) {
+            self.send_prompt(window, cx);
+        }
+    }
+
+    fn scroll_messages_to_bottom(&self) {
+        self.messages_scroll_handle.scroll_to_bottom();
+    }
+
+    fn message_row_height(message: &ChatMessage) -> Pixels {
+        let line_breaks = message.content.matches('\n').count();
+        let chars = message.content.chars().count();
+        let wrapped_lines = (chars / 72).max(1);
+        let total_lines = (wrapped_lines + line_breaks).max(1);
+        let estimated = 36.0 + (total_lines as f32 * 18.0);
+        px(estimated.min(260.0))
+    }
+
     fn send_prompt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let prompt = self.prompt_input.read(cx).text().to_string();
         let prompt = prompt.trim().to_string();
@@ -986,6 +1061,7 @@ impl AgentChatPanel {
             role: "user",
             content: prompt.clone(),
         });
+        self.scroll_messages_to_bottom();
 
         let provider_id = self
             .active_provider()
@@ -1080,18 +1156,11 @@ impl AgentChatPanel {
 
                             match provider.chat_completion(&token, &followup_request) {
                                 Ok(final_response) => {
-                                    if let Some(message) = final_response.assistant_message {
-                                        self.messages.push(ChatMessage {
-                                            role: "assistant",
-                                            content: message,
-                                        });
-                                    } else {
-                                        self.messages.push(ChatMessage {
-                                            role: "assistant",
-                                            content: "Provider finished tool run but returned no text response."
-                                                .to_string(),
-                                        });
-                                    }
+                                    self.stream_assistant_chunks(
+                                        final_response.streamed_text_chunks,
+                                        final_response.assistant_message,
+                                        cx,
+                                    );
                                 }
                                 Err(err) => {
                                     self.messages.push(ChatMessage {
@@ -1102,11 +1171,14 @@ impl AgentChatPanel {
                                     });
                                 }
                             }
-                        } else if let Some(message) = response.assistant_message {
-                            self.messages.push(ChatMessage {
-                                role: "assistant",
-                                content: message,
-                            });
+                        } else if response.assistant_message.is_some()
+                            || !response.streamed_text_chunks.is_empty()
+                        {
+                            self.stream_assistant_chunks(
+                                response.streamed_text_chunks,
+                                response.assistant_message,
+                                cx,
+                            );
                         } else {
                             self.messages.push(ChatMessage {
                                 role: "assistant",
@@ -1137,6 +1209,7 @@ impl AgentChatPanel {
         self.prompt_input.update(cx, |input, cx| {
             input.set_value("", window, cx);
         });
+        self.scroll_messages_to_bottom();
         cx.notify();
     }
 }
@@ -1174,6 +1247,12 @@ impl Render for AgentChatPanel {
         let auth_provider = self.pending_auth_provider;
         let provider_list = self.provider_list.clone();
         let model_list = self.model_list.clone();
+        let message_item_sizes = std::rc::Rc::new(
+            self.messages
+                .iter()
+                .map(|message| size(px(0.0), Self::message_row_height(message)))
+                .collect::<Vec<_>>(),
+        );
 
         let provider_popover = Popover::<SearchableList<ProviderDefinition>>::new(
             "agent-chat-provider-popover",
@@ -1214,6 +1293,7 @@ impl Render for AgentChatPanel {
         v_flex()
             .size_full()
             .bg(cx.theme().sidebar)
+            .on_action(cx.listener(Self::on_prompt_enter))
             .child(
                 v_flex()
                     .w_full()
@@ -1288,48 +1368,81 @@ impl Render for AgentChatPanel {
             )
             .child(
                 div()
+                    .relative()
                     .flex_1()
-                    .overflow_hidden()
-                    .px_3()
-                    .py_2()
                     .child(
-                        v_flex()
-                            .w_full()
-                            .gap_2()
-                            .children(self.messages.iter().enumerate().map(|(ix, message)| {
-                                let is_user = message.role == "user";
-                                h_flex()
-                                    .w_full()
-                                    .justify_start()
-                                    .when(is_user, |this| this.justify_end())
-                                    .child(
-                                        v_flex()
-                                            .max_w(px(520.0))
-                                            .gap_1()
+                        v_virtual_list(
+                            cx.entity().clone(),
+                            "agent-chat-messages-virtual-list",
+                            message_item_sizes,
+                            move |
+                                this,
+                                range: std::ops::Range<usize>,
+                                _window,
+                                cx: &mut Context<Self>,
+                            | {
+                                range
+                                    .map(|ix| {
+                                        let Some(message) = this.messages.get(ix) else {
+                                            return div().h(px(52.0)).into_any_element();
+                                        };
+
+                                        let is_user = message.role == "user";
+                                        h_flex()
+                                            .w_full()
+                                            .min_w_0()
                                             .px_3()
-                                            .py_2()
-                                            .rounded(px(8.0))
-                                            .bg(if is_user {
-                                                cx.theme().primary.opacity(0.16)
-                                            } else {
-                                                cx.theme().secondary
-                                            })
+                                            .py_1()
+                                            .justify_start()
+                                            .when(is_user, |el| el.justify_end())
                                             .child(
-                                                div()
-                                                    .text_xs()
-                                                    .font_semibold()
-                                                    .text_color(cx.theme().muted_foreground)
-                                                    .child(if is_user { "You" } else { "Agent" }),
+                                                v_flex()
+                                                    .w_auto()
+                                                    .max_w(px(620.0))
+                                                    .min_w_0()
+                                                    .gap_1()
+                                                    .px_3()
+                                                    .py_2()
+                                                    .rounded(px(8.0))
+                                                    .bg(if is_user {
+                                                        cx.theme().primary.opacity(0.16)
+                                                    } else {
+                                                        cx.theme().secondary
+                                                    })
+                                                    .child(
+                                                        div()
+                                                            .text_xs()
+                                                            .font_semibold()
+                                                            .text_color(cx.theme().muted_foreground)
+                                                            .child(if is_user { "You" } else { "Agent" }),
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .w_full()
+                                                            .min_w_0()
+                                                            .whitespace_normal()
+                                                            .text_sm()
+                                                            .text_color(cx.theme().foreground)
+                                                            .child(message.content.clone()),
+                                                    ),
                                             )
-                                            .child(
-                                                div()
-                                                    .text_sm()
-                                                    .text_color(cx.theme().foreground)
-                                                    .child(message.content.clone()),
-                                            ),
-                                    )
-                                    .id(("agent-chat-message", ix))
-                            })),
+                                            .id(("agent-chat-message", ix))
+                                            .into_any_element()
+                                    })
+                                    .collect::<Vec<_>>()
+                            },
+                        )
+                        .track_scroll(&self.messages_scroll_handle)
+                        .size_full(),
+                    )
+                    .child(
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .child(Scrollbar::vertical(
+                                &self.messages_scroll_state,
+                                &self.messages_scroll_handle,
+                            )),
                     ),
             )
             .child(
@@ -1344,9 +1457,10 @@ impl Render for AgentChatPanel {
                     .child(
                         h_flex()
                             .w_full()
+                            .min_w_0()
                             .gap_2()
                             .items_center()
-                            .child(TextInput::new(&self.prompt_input).flex_1())
+                            .child(TextInput::new(&self.prompt_input).flex_1().min_w_0())
                             .child(
                                 // Rope-based input text is converted to String for validation.
                                 Button::new("agent-chat-send")

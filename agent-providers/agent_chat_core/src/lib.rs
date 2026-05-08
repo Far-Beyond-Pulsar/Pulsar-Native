@@ -147,6 +147,7 @@ pub struct ChatRequest {
 #[derive(Clone, Debug)]
 pub struct ChatResponse {
     pub assistant_message: Option<String>,
+    pub streamed_text_chunks: Vec<String>,
     pub tool_calls: Vec<ToolCall>,
     pub finish_reason: Option<String>,
     pub raw_response: serde_json::Value,

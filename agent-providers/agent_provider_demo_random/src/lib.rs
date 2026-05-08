@@ -77,6 +77,22 @@ impl DemoRandomProvider {
             _ => 3,
         }
     }
+
+    fn chunk_text(mut seed: u64, text: &str) -> Vec<String> {
+        let chars: Vec<char> = text.chars().collect();
+        let mut chunks = Vec::new();
+        let mut cursor = 0usize;
+
+        while cursor < chars.len() {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let chunk_len = 3 + ((seed as usize) % 14);
+            let end = (cursor + chunk_len).min(chars.len());
+            chunks.push(chars[cursor..end].iter().collect::<String>());
+            cursor = end;
+        }
+
+        chunks
+    }
 }
 
 impl Default for DemoRandomProvider {
@@ -131,10 +147,13 @@ impl ChatProvider for DemoRandomProvider {
             parts.push(pool[ix]);
         }
 
-        let assistant_message = Some(parts.join(" "));
+        let full_text = parts.join(" ");
+        let assistant_message = Some(full_text.clone());
+        let streamed_text_chunks = Self::chunk_text(seed, &full_text);
 
         Ok(ChatResponse {
             assistant_message,
+            streamed_text_chunks,
             tool_calls: Vec::new(),
             finish_reason: Some("stop".to_string()),
             raw_response: json!({

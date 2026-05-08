@@ -288,6 +288,16 @@ impl ChatProvider for GithubCopilotProvider {
             .context("invalid JSON from Copilot chat API")?;
         let assistant_message = Self::parse_assistant_message(&raw_response);
         let tool_calls = Self::parse_tool_calls(&raw_response);
+        let streamed_text_chunks = assistant_message
+            .as_ref()
+            .map(|text| {
+                text.chars()
+                    .collect::<Vec<_>>()
+                    .chunks(20)
+                    .map(|chunk| chunk.iter().collect::<String>())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
         let finish_reason = raw_response
             .get("choices")
             .and_then(|choices| choices.as_array())
@@ -298,6 +308,7 @@ impl ChatProvider for GithubCopilotProvider {
 
         Ok(ChatResponse {
             assistant_message,
+            streamed_text_chunks,
             tool_calls,
             finish_reason,
             raw_response,
