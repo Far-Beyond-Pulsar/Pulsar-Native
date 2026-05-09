@@ -52,6 +52,10 @@ pub struct LevelEditorPanel {
     // Handles to sub-panels so we can forward notifications after scene mutations.
     hierarchy_panel_entity: Option<Entity<crate::level_editor::HierarchyPanelWrapper>>,
     properties_panel_entity: Option<Entity<crate::level_editor::PropertiesPanelWrapper>>,
+
+    // Last scene revision observed by this panel. Used to detect AI-driven changes
+    // that happen outside normal GPUI action handlers.
+    last_observed_scene_revision: u64,
 }
 
 impl LevelEditorPanel {
@@ -234,6 +238,7 @@ impl LevelEditorPanel {
             workspace: None,
             hierarchy_panel_entity: None,
             properties_panel_entity: None,
+            last_observed_scene_revision: 0,
         }
     }
 
@@ -1039,6 +1044,14 @@ impl Render for LevelEditorPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Initialize workspace on first render
         self.initialize_workspace(window, cx);
+
+        // Apply external scene mutations (e.g. AI tool calls) to panel UI.
+        let current_revision = self.shared_state.read().scene_revision;
+        if current_revision != self.last_observed_scene_revision {
+            self.last_observed_scene_revision = current_revision;
+            self.notify_sub_panels(cx);
+            cx.notify();
+        }
 
         // Sync gizmo tool state and hierarchy selection to Helio.
         // NOTE: Viewport clicks use atomic selection (select_object_atomic) which updates

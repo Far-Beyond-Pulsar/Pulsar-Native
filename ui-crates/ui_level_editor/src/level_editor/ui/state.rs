@@ -48,6 +48,9 @@ pub struct LevelEditorState {
     pub current_scene: Option<PathBuf>,
     /// Whether the scene has unsaved changes
     pub has_unsaved_changes: bool,
+    /// Monotonic scene revision used to propagate external mutations (e.g. AI tools)
+    /// into UI refresh paths that normally rely on GPUI action callbacks.
+    pub scene_revision: u64,
     /// Current transform tool (Select, Move, Rotate, Scale)
     pub current_tool: TransformTool,
     /// Viewport camera mode
@@ -231,6 +234,7 @@ impl Default for LevelEditorState {
             editor_mode: EditorMode::Edit, // Start in edit mode
             current_scene: None,
             has_unsaved_changes: false,
+            scene_revision: 0,
             current_tool: TransformTool::Move,
             camera_mode: CameraMode::Perspective,
             show_wireframe: false,

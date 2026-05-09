@@ -129,8 +129,9 @@ impl Render for HierarchyPanelWrapper {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.state.read();
 
-        // Track scene changes by checking object count
-        let current_revision = state.scene_database.scene_db.get_all_snapshots().len() as u64;
+        // Track all scene changes (including edits that do not change object count)
+        // through the shared scene revision counter.
+        let current_revision = state.scene_revision;
         if current_revision != self.last_scene_revision {
             self.last_scene_revision = current_revision;
             cx.notify();
@@ -188,6 +189,8 @@ pub struct PropertiesPanelWrapper {
     property_input: Entity<InputState>,
     /// Tracks which sections are collapsed (by section name)
     collapsed_sections: HashSet<String>,
+    /// Last scene revision observed by properties panel.
+    last_scene_revision: u64,
 }
 
 impl PropertiesPanelWrapper {
@@ -223,6 +226,7 @@ impl PropertiesPanelWrapper {
             editing_property: None,
             property_input,
             collapsed_sections,
+            last_scene_revision: 0,
         }
     }
 
@@ -306,6 +310,13 @@ impl Render for PropertiesPanelWrapper {
         let state = self.state.read();
         let collapsed_sections = self.collapsed_sections.clone();
         let selected_object_id = state.selected_object();
+        let scene_revision = state.scene_revision;
+
+        // Force a section rebuild on external scene changes even when selection stays the same.
+        if scene_revision != self.last_scene_revision {
+            self.last_scene_revision = scene_revision;
+            self.current_object_id = None;
+        }
 
         // Update sections when selection changes or when sections are unexpectedly missing
         if selected_object_id != self.current_object_id
