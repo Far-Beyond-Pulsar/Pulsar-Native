@@ -1,5 +1,6 @@
 use super::*;
 use crate::custom_providers::{self, CustomProvider};
+use agent_provider_openai::OpenAiCompatibleProvider;
 use std::path::PathBuf;
 
 impl AgentChatPanel {
@@ -163,6 +164,27 @@ impl AgentChatPanel {
                     .borrow_mut()
                     .insert(provider.id.clone());
                 self.custom_providers_list.push(provider);
+                if let Some(saved_provider) = self.custom_providers_list.last() {
+                    let models = saved_provider
+                        .models
+                        .iter()
+                        .map(|model| {
+                            (
+                                model.id.clone(),
+                                model.label.clone(),
+                                model.supports_tools,
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    self.provider_registry
+                        .register(Arc::new(OpenAiCompatibleProvider::from_dynamic_ollama(
+                            saved_provider.id.clone(),
+                            saved_provider.label.clone(),
+                            saved_provider.endpoint.clone(),
+                            agent_chat_core::ProviderKind::Local,
+                            models,
+                        )));
+                }
                 self.provider_catalog.push(provider_definition);
                 self.provider_list.update(cx, |list, cx| {
                     list.set_items(self.provider_catalog.clone(), cx);

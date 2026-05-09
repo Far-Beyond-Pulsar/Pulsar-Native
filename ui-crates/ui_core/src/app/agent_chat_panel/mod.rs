@@ -18,7 +18,7 @@ use agent_provider_gemini::GeminiProvider;
 use agent_provider_github_copilot::GithubCopilotProvider;
 use agent_provider_groq::GroqProvider;
 use agent_provider_mistral::MistralProvider;
-use agent_provider_openai::OpenAiProvider;
+use agent_provider_openai::{OpenAiCompatibleProvider, OpenAiProvider};
 use agent_provider_openrouter::OpenRouterProvider;
 use agent_provider_together::TogetherProvider;
 use gpui::{prelude::FluentBuilder as _, *};
@@ -107,6 +107,37 @@ impl AgentChatPanel {
         provider_registry.register(Arc::new(TogetherProvider::new()));
         provider_registry.register(Arc::new(MistralProvider::new()));
         provider_registry.register(Arc::new(GeminiProvider::new()));
+        for provider in &provider_catalog {
+            if provider.kind != ProviderKind::Local || provider_registry.get(provider.id).is_some() {
+                continue;
+            }
+
+            let use_ollama_protocol = provider.id == "ollama"
+                || custom_provider_ids.borrow().contains(provider.id);
+            let models = provider
+                .models
+                .iter()
+                .map(|model| (model.id.to_string(), model.label.to_string(), model.supports_tools))
+                .collect::<Vec<_>>();
+            let runtime_provider = if use_ollama_protocol {
+                OpenAiCompatibleProvider::from_dynamic_ollama(
+                    provider.id.to_string(),
+                    provider.label.to_string(),
+                    provider.endpoint.to_string(),
+                    agent_chat_core::ProviderKind::Local,
+                    models,
+                )
+            } else {
+                OpenAiCompatibleProvider::from_dynamic(
+                    provider.id.to_string(),
+                    provider.label.to_string(),
+                    provider.endpoint.to_string(),
+                    agent_chat_core::ProviderKind::Local,
+                    models,
+                )
+            };
+            provider_registry.register(Arc::new(runtime_provider));
+        }
         let wip_providers = Self::wip_providers_from_catalog(&provider_catalog, &provider_registry);
 
         let prompt_input =
