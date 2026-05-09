@@ -442,13 +442,23 @@ impl AgentChatPanel {
                                 response.tool_calls.len()
                             );
                             
-                            // Add assistant message with tool calls
+                            // Add assistant message with tool calls (if any text)
                             if let Some(text) = &response.assistant_message {
                                 current_messages.push(ProviderChatMessage {
                                     role: ChatRole::Assistant,
                                     content: text.clone(),
                                 });
+                                // Show assistant text to user
+                                let _ = tx_for_chunks.try_send(StreamEvent::Chunk(text.clone()));
                             }
+                            
+                            // Show tool calls as messages to user (italicized in UI)
+                            let tool_calls_text = response.tool_calls
+                                .iter()
+                                .map(|call| format!("*Calling {}*", call.name))
+                                .collect::<Vec<_>>()
+                                .join("\n");
+                            let _ = tx_for_chunks.try_send(StreamEvent::Chunk(format!("\n\n{}\n\n", tool_calls_text)));
                             
                             // Create tool context for execution
                             let workspace_root = match engine_state::get_project_path() {
@@ -461,7 +471,8 @@ impl AgentChatPanel {
                                 current_file: None,
                             };
                             
-                            // Execute each tool call
+                            // Execute each tool call and show results
+                            let mut all_results = Vec::new();
                             for tool_call in &response.tool_calls {
                                 println!(
                                     "[agent_chat][request={}] executing tool: {}",
@@ -479,12 +490,25 @@ impl AgentChatPanel {
                                     Err(err) => format!("Tool error: {}", err),
                                 };
                                 
-                                // Add tool result message
+                                // Show tool result to user
+                                let result_display = format!(
+                                    "**{}**: {}\n\n",
+                                    tool_call.name,
+                                    tool_result.chars().take(200).collect::<String>()
+                                );
+                                let _ = tx_for_chunks.try_send(StreamEvent::Chunk(result_display));
+                                
+                                // Add tool result to message history for LLM
+                                all_results.push((tool_call.name.clone(), tool_result));
+                            }
+                            
+                            // Add all tool results to message history for LLM to read
+                            for (tool_name, tool_result) in all_results {
                                 current_messages.push(ProviderChatMessage {
                                     role: ChatRole::Tool,
                                     content: format!(
                                         "Tool: {}\nResult: {}",
-                                        tool_call.name, tool_result
+                                        tool_name, tool_result
                                     ),
                                 });
                             }
