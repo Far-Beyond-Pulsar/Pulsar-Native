@@ -35,6 +35,7 @@ impl AgentChatPanel {
             .map(|m| ProviderChatMessage {
                 role: Self::provider_role_from_chat_role(m.role),
                 content: m.content.clone(),
+                tool_call_id: None,
             })
             .collect()
     }
@@ -118,6 +119,7 @@ impl AgentChatPanel {
                 "Conversation summary (auto-compacted to fit context window):\n{}",
                 summary_lines.join("\n")
             ),
+            tool_call_id: None,
         });
         compacted.extend(kept_dialog_reversed);
 
