@@ -4,12 +4,16 @@ use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, RwLock},
 };
 
 #[derive(Clone, Debug)]
 pub struct ToolContext {
     pub workspace_root: PathBuf,
+    /// Optional plugin tool bridge for accessing plugin tools
+    pub plugin_bridge: Option<Arc<RwLock<plugin_manager::PluginToolBridge>>>,
+    /// Current file being edited (if any)
+    pub current_file: Option<PathBuf>,
 }
 
 pub trait ChatTool: Send + Sync {
@@ -32,6 +36,8 @@ impl ToolRegistry {
         this.register(Arc::new(ReadFileTool));
         this.register(Arc::new(ListDirTool));
         this.register(Arc::new(SearchWorkspaceTool));
+        this.register(Arc::new(QueryPluginToolsTool));
+        this.register(Arc::new(ExecutePluginToolTool));
         this
     }
 
@@ -81,6 +87,29 @@ impl ToolRegistry {
                         "max_results": { "type": "integer", "minimum": 1 }
                     },
                     "required": ["query"]
+                }
+            }),
+            json!({
+                "name": "query_plugin_tools",
+                "description": "Query available AI tools from plugins for the current file.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file_path": { "type": ["string", "null"], "description": "Optional file path. If not provided, uses current_file from context." }
+                    }
+                }
+            }),
+            json!({
+                "name": "execute_plugin_tool",
+                "description": "Execute an AI tool provided by a plugin.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "tool_name": { "type": "string", "description": "Name of the tool to execute" },
+                        "file_path": { "type": ["string", "null"], "description": "File to operate on. If not provided, uses current_file from context." },
+                        "tool_args": { "type": "object", "description": "Arguments to pass to the tool" }
+                    },
+                    "required": ["tool_name", "tool_args"]
                 }
             }),
         ]
@@ -190,6 +219,106 @@ impl ChatTool for SearchWorkspaceTool {
         });
 
         Ok(json!({ "query": query, "results": results }))
+    }
+}
+
+struct QueryPluginToolsTool;
+impl ChatTool for QueryPluginToolsTool {
+    fn name(&self) -> &'static str {
+        "query_plugin_tools"
+    }
+
+    fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
+        let bridge = ctx
+            .plugin_bridge
+            .as_ref()
+            .ok_or_else(|| anyhow!("Plugin bridge not available"))?;
+
+        let file_path = args
+            .get("file_path")
+            .and_then(|v| v.as_str())
+            .map(|p| PathBuf::from(p))
+            .or_else(|| ctx.current_file.clone());
+
+        let file_path_str = file_path
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "(no file)".to_string());
+
+        let bridge_lock = bridge.read().map_err(|_| anyhow!("Failed to lock plugin bridge"))?;
+
+        let tools = if let Some(file_path) = &file_path {
+            bridge_lock.tools_for_file(file_path)
+        } else {
+            bridge_lock.all_tools()
+        };
+
+        let tool_schemas: Vec<Value> = tools
+            .iter()
+            .map(|tool| {
+                json!({
+                    "name": tool.definition.name,
+                    "description": tool.definition.description,
+                    "category": tool.definition.category,
+                    "parameters": tool.definition.parameters_json_schema,
+                    "plugin_id": tool.plugin_id.to_string(),
+                })
+            })
+            .collect();
+
+        Ok(json!({
+            "file_path": file_path_str,
+            "tools_available": tool_schemas.len(),
+            "tools": tool_schemas,
+        }))
+    }
+}
+
+struct ExecutePluginToolTool;
+impl ChatTool for ExecutePluginToolTool {
+    fn name(&self) -> &'static str {
+        "execute_plugin_tool"
+    }
+
+    fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
+        let tool_name = args
+            .get("tool_name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("execute_plugin_tool.tool_name is required"))?;
+
+        let _tool_args = args
+            .get("tool_args")
+            .cloned()
+            .unwrap_or_else(|| json!({}));
+
+        let file_path = args
+            .get("file_path")
+            .and_then(|v| v.as_str())
+            .map(|p| PathBuf::from(p))
+            .or_else(|| ctx.current_file.clone())
+            .ok_or_else(|| anyhow!("No file path provided or available in context"))?;
+
+        let bridge = ctx
+            .plugin_bridge
+            .as_ref()
+            .ok_or_else(|| anyhow!("Plugin bridge not available"))?;
+
+        let bridge_lock = bridge.read().map_err(|_| anyhow!("Failed to lock plugin bridge"))?;
+
+        let _tool = bridge_lock
+            .tool(tool_name)
+            .ok_or_else(|| anyhow!("Tool not found: {}", tool_name))?;
+
+        // Note: We would need mutable access to the plugin instance to execute the tool.
+        // This requires integration with the plugin manager. For now, return a placeholder.
+        // The actual execution would go through PluginManager::execute_plugin_tool()
+
+        Ok(json!({
+            "status": "error",
+            "message": "Plugin tool execution requires PluginManager integration. Please execute through the UI.",
+            "tool_name": tool_name,
+            "file_path": file_path.display().to_string(),
+        }))
     }
 }
 

@@ -63,10 +63,12 @@ use ui::dock::PanelView;
 pub mod builtin;
 mod permanent_library;
 mod registry;
+pub mod tool_bridge;
 
 pub use builtin::{BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext};
 pub use permanent_library::PermanentLibrary;
 pub use registry::{EditorRegistry, FileTypeRegistry};
+pub use tool_bridge::PluginToolBridge;
 
 // ============================================================================
 // Global Plugin Manager

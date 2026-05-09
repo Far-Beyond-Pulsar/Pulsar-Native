@@ -72,6 +72,7 @@ name = "agent_chat_tools"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "plugin_manager",
  "serde_json",
 ]
 
@@ -8432,6 +8433,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51bae2ac328883f7acdfea3d66a7c35751187f870bc81f94563733a154d7a670"
 dependencies = [
  "plotters-backend",
+]
+
+[[package]]
+name = "plugin_ai_macro"
+version = "0.1.0"
+dependencies = [
+ "plugin_editor_api",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "plugin_ai_tools"
+version = "0.1.0"
+dependencies = [
+ "plugin_editor_api",
+ "serde_json",
 ]
 
 [[package]]
