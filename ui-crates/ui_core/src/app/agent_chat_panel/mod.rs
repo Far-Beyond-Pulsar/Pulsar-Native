@@ -28,7 +28,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
     rc::Rc,
-    sync::Arc,
+    sync::{Arc, RwLock},
 };
 use ui::{
     button::{Button, ButtonVariants as _},
@@ -65,6 +65,7 @@ pub struct AgentChatPanel {
     pub(crate) wip_providers: HashMap<&'static str, String>,
     pub(crate) provider_registry: ProviderRegistry,
     pub(crate) tool_registry: ToolRegistry,
+    pub(crate) plugin_bridge: Option<Arc<RwLock<plugin_manager::PluginToolBridge>>>,
     pub(crate) provider_tokens: HashMap<&'static str, String>,
     pub(crate) pending_auth_provider: Option<&'static str>,
     pub(crate) pending_device_code: Option<String>,
@@ -141,6 +142,12 @@ impl AgentChatPanel {
             provider_registry.register(Arc::new(runtime_provider));
         }
         let wip_providers = Self::wip_providers_from_catalog(&provider_catalog, &provider_registry);
+        let plugin_bridge = plugin_manager::global().and_then(|manager_lock| {
+            manager_lock
+                .read()
+                .ok()
+                .map(|manager| Arc::new(RwLock::new(manager.build_tool_bridge())))
+        });
 
         let prompt_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Ask the engine assistant..."));
@@ -270,6 +277,7 @@ impl AgentChatPanel {
             wip_providers,
             provider_registry,
             tool_registry: ToolRegistry::with_default_tools(),
+            plugin_bridge,
             provider_tokens: HashMap::new(),
             pending_auth_provider: None,
             pending_device_code: None,

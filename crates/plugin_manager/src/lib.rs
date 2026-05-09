@@ -475,6 +475,15 @@ impl PluginManager {
         self.plugins.values().map(|p| &p.metadata).collect()
     }
 
+    /// Build a snapshot bridge containing AI tools exposed by all loaded plugins.
+    pub fn build_tool_bridge(&self) -> PluginToolBridge {
+        let mut bridge = PluginToolBridge::new();
+        for (plugin_id, loaded_plugin) in &self.plugins {
+            bridge.discover_plugin_tools(plugin_id.clone(), loaded_plugin.plugin);
+        }
+        bridge
+    }
+
     /// Get a reference to the file type registry.
     pub fn file_type_registry(&self) -> &FileTypeRegistry {
         &self.file_type_registry

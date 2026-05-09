@@ -379,6 +379,7 @@ impl AgentChatPanel {
         let tx_for_finish = tx.clone();
         let provider_for_task = provider.clone();
         let tool_registry_for_task = self.tool_registry.clone();
+        let plugin_bridge_for_task = self.plugin_bridge.clone();
         let completion_sent = Arc::new(AtomicBool::new(false));
 
         let completion_for_worker = completion_sent.clone();
@@ -533,7 +534,7 @@ impl AgentChatPanel {
                             };
                             let tool_context = agent_chat_tools::ToolContext {
                                 workspace_root,
-                                plugin_bridge: None,
+                                plugin_bridge: plugin_bridge_for_task.clone(),
                                 current_file: None,
                             };
                             
